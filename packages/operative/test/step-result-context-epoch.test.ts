@@ -55,4 +55,33 @@ describe('StepResult.contextEpochId', () => {
     }).result;
     expect(result.steps.every((step) => !('contextEpochId' in step))).toBe(true);
   });
+
+  it('names the epoch of a mutated provider retry, which is what the response used', async () => {
+    let next = 0;
+    const sealer = createContextEpochSealer({ newEpochId: () => `epoch-${++next}` });
+    let calls = 0;
+    const result = await createActiveRun({
+      generate: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('transient');
+        return { content: 'Done.', toolCalls: [] };
+      },
+      toolbox: createTestToolbox([lookup]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      contextEpoch: sealer,
+      retry: {
+        attempts: 2,
+        sleep: async () => {},
+        // A mutation the sealer sees as a context change, so it seals a successor epoch.
+        mutate: (context) => {
+          const conversation = new Conversation(context.conversation.current);
+          conversation.appendSystemMessage('Retrying with less context.');
+          return { ...context, conversation };
+        },
+      },
+    }).result;
+    expect(result.steps[0]?.contextEpochId).toBe(sealer.current()?.epochId);
+    expect(result.steps[0]?.contextEpochId).not.toBe('epoch-1');
+  });
 });

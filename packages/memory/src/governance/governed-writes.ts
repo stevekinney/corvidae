@@ -1,6 +1,7 @@
 import type { GuardrailProvenance } from 'armorer';
 
 import type { MemoryRecord } from '../memory-record-storage';
+import { memoryCorrelationSchema } from '../transition-events';
 import {
   delegationChainIncludes,
   holdsGovernanceAuthority,
@@ -268,6 +269,22 @@ function admissionDiagnostic(
 }
 
 /**
+ * The context a write runs in: one whose notifications carry the write's
+ * correlation, parsed and detached once so nothing the caller does later can
+ * change it. `undefined` when the write names a malformed correlation.
+ */
+export function correlated(
+  context: GovernanceContext,
+  options: Pick<GovernedWriteOptions, 'correlation'>,
+): GovernanceContext | undefined {
+  if (options.correlation === undefined) return context;
+  const parsed = memoryCorrelationSchema.safeParse(options.correlation);
+  if (!parsed.success) return undefined;
+  const correlation = parsed.data;
+  return { ...context, recordEvent: (event) => context.recordEvent(event, correlation) };
+}
+
+/**
  * Admission for every governed write. Ordinary conversation and model-facing
  * tools are untrusted writers: the source and its trust are classified from the
  * persisted authority, content is validated and scanned, quotas apply, and a
@@ -275,13 +292,6 @@ function admissionDiagnostic(
  * trusted than its least trusted source. The writer learns only the outcome;
  * which detector fired, and why, is recorded as a protected diagnostic.
  */
-/** The context a write runs in: one whose notifications carry the write's correlation. */
-function correlated(context: GovernanceContext, options: GovernedWriteOptions): GovernanceContext {
-  const { correlation } = options;
-  if (correlation === undefined) return context;
-  return { ...context, recordEvent: (event) => context.recordEvent(event, correlation) };
-}
-
 export async function admitWrite(
   governance: GovernanceContext,
   authority: MemoryAuthority,
@@ -289,6 +299,9 @@ export async function admitWrite(
   options: GovernedWriteOptions,
 ): Promise<MemoryWriteReceipt> {
   const context = correlated(governance, options);
+  if (context === undefined) {
+    return reject(governance, authority, governance.operationId(), 'invalid-request');
+  }
   const operationId = context.operationId();
   const policy = context.policy();
   const allowed = await context.authorize(authority, 'write', ownPrivateResource(authority), {

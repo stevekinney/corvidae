@@ -307,8 +307,8 @@ export async function executeGeneration(
         const sealMutatedEpoch =
           deps.contextEpoch === undefined
             ? undefined
-            : (mutatedContext: GenerateContext, providerAttempt: number): string =>
-                deps.contextEpoch!.seal({
+            : (mutatedContext: GenerateContext, providerAttempt: number): string => {
+                const mutatedEpochId = deps.contextEpoch!.seal({
                   conversation: mutatedContext.conversation,
                   steering: steeringDesiredState,
                   plan: deps.selection?.getPlan(),
@@ -322,6 +322,10 @@ export async function executeGeneration(
                     attempt: stepRetryCount + providerAttempt,
                   },
                 }).epochId;
+                // The mutated request is what a successful retry sends, so the step names its epoch.
+                contextEpochId = mutatedEpochId;
+                return mutatedEpochId;
+              };
         try {
           response =
             deps.parentContext !== undefined && deps.withTraceContext !== undefined

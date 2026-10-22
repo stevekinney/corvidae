@@ -1,10 +1,11 @@
 import type { EvidenceProjectionStorage } from './evidence-projection-storage';
 import { MemoryEvidenceValidationError } from './evidence-schema';
-import type {
-  MemoryCorrelation,
-  TransitionEvent,
-  TransitionEventSink,
-  TransitionSourceReference,
+import {
+  type MemoryCorrelation,
+  memoryCorrelationSchema,
+  type TransitionEvent,
+  type TransitionEventSink,
+  type TransitionSourceReference,
 } from './transition-events';
 import { classifyStoreError, type TransitionResult } from './transition-outcome';
 import { plannedProjections, type TransitionPlan } from './transition-plan';
@@ -205,7 +206,11 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
     const { proposal, digest } = snapshotTransitionProposal(raw);
     const { tenantId, operationId, authority } = proposal;
     const signal = submitOptions?.signal;
-    const correlation = submitOptions?.correlation;
+    // Parsed and detached once, so every event of the attempt carries the same, valid correlation.
+    const correlation =
+      submitOptions?.correlation === undefined
+        ? undefined
+        : memoryCorrelationSchema.parse(submitOptions.correlation);
     // A call, not a property read, so no narrowing hides a signal that aborts between awaits.
     const isAborted = (): boolean => signal?.aborted === true;
     const requestedAt = now();

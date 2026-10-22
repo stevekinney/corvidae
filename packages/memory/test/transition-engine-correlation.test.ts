@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { EvidenceProjectionCapacityError } from '../src/evidence-projection-storage';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryCorrelation } from '../src/transition-events';
 import { TRANSITION_BACKENDS } from './transition-backends';
 import {
@@ -86,12 +87,26 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
 
     it('carries it on a conflict, too', async () => {
       const harness = createHarness(makeBackend, {
-        storage: storageFailingWith(makeBackend(), new EvidenceProjectionCapacityError('maxEvidence')),
+        storage: storageFailingWith(
+          makeBackend(),
+          new EvidenceProjectionCapacityError('maxEvidence'),
+        ),
       });
       await harness.engine.submit(appendProposal('op-1'), { correlation: runA });
       expect(harness.recorder.events.map((event) => event.correlation)).toEqual(
         harness.recorder.events.map(() => runA),
       );
+    });
+
+    it('refuses a malformed correlation instead of sending it to the sink', async () => {
+      const harness = createHarness(makeBackend);
+      const error = await rejectionOf(
+        harness.engine.submit(appendProposal('op-1'), {
+          correlation: { runId: '', extra: 'leak' } as unknown as MemoryCorrelation,
+        }),
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect(harness.recorder.events).toEqual([]);
     });
   });
 }
