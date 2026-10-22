@@ -109,7 +109,7 @@ afterEach(() => {
   for (const close of closers.splice(0)) close();
 });
 
-async function openEngines() {
+async function openEngines(scheduleOptions: { backfill?: boolean } = {}) {
   const clock = { now: START };
   const shared = new BunSQLiteStorage(':memory:');
   const a = engineStorage(shared);
@@ -126,7 +126,10 @@ async function openEngines() {
       return 'done';
     });
   }
-  await engineA.schedule('across-workflow', null, '* * * * *', { id: SCHEDULE_ID });
+  await engineA.schedule('across-workflow', null, '* * * * *', {
+    id: SCHEDULE_ID,
+    ...scheduleOptions,
+  });
   return { clock, shared, a, b, engineA, engineB };
 }
 
@@ -257,9 +260,14 @@ describe('a transition that read a schedule another engine has since changed', (
 });
 
 /** Ticks engine B at the schedule's first occurrence; the tick resolves once its write is let go. */
-async function tickB(clock: { now: number }, engineB: Engine, shared: Storage) {
+async function tickB(
+  clock: { now: number },
+  engineB: Engine,
+  shared: Storage,
+  lateByMilliseconds = 0,
+) {
   const { nextFireAt } = await stateOf(shared);
-  clock.now = nextFireAt!;
+  clock.now = nextFireAt! + lateByMilliseconds;
   return engineB.scheduler.tick(clock.now);
 }
 
@@ -279,6 +287,44 @@ describe('a timer tick on one engine while another changes the schedule', () => 
     expect(state.status).toBe('paused');
     expect(state.revision).toBe(2);
     expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).toBeNull();
+  });
+
+  it('does not write a missed fire back over a pause either', async () => {
+    const { clock, shared, b, engineA, engineB } = await openEngines();
+    const hold = b.holdScheduleWrite();
+
+    // Ten minutes late: the occurrence is missed, and only the counts and the next fire are written.
+    const ticking = tickB(clock, engineB, shared, 10 * 60_000);
+    await hold.reached;
+    await engineA.pauseSchedule(SCHEDULE_ID);
+    hold.release();
+    await ticking;
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(state.status).toBe('paused');
+    expect(state.missedFireCount).toBe(0);
+  });
+
+  it('does not write the end of a backfilled occurrence back over a pause', async () => {
+    const { clock, shared, b, engineA, engineB } = await openEngines({ backfill: true });
+    const first = b.holdScheduleWrite();
+
+    // The one due occurrence starts a run and writes the schedule; the tick then waits for the
+    // run's turn with the serialization released, and writes again when it comes back.
+    const ticking = tickB(clock, engineB, shared);
+    await first.reached;
+    first.release();
+    const second = b.holdScheduleWrite();
+    await second.reached;
+    await engineA.pauseSchedule(SCHEDULE_ID);
+    second.release();
+    await ticking;
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(state.status).toBe('paused');
+    expect(state.revision).toBe(2);
   });
 
   it('commits its write when the schedule changed only in bytes, not in revision', async () => {
