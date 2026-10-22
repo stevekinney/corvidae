@@ -13,7 +13,7 @@ import {
 
 describe('run.* terminal frames (CIN-507)', () => {
   const conversation = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: 'conversation-1',
     status: 'active' as const,
     metadata: {},
@@ -196,7 +196,7 @@ describe('run.* terminal frames (CIN-507)', () => {
   test('encodes the conversation it validated when a getter answers differently per read', () => {
     const histories: unknown[] = [
       {
-        schemaVersion: 6,
+        schemaVersion: 7,
         id: 'conversation-1',
         status: 'active',
         metadata: {},

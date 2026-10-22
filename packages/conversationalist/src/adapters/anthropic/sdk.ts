@@ -2,6 +2,7 @@ import type {
   ContentBlockParam,
   MessageParam,
   TextBlockParam,
+  ToolResultBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
 import { baseMimeType } from '../../media-types';
 import type { ContentPartLineage } from '../../multi-modal';
@@ -182,7 +183,13 @@ function toSdkToolResultBlock(
   return {
     type: 'tool_result',
     tool_use_id: block.tool_use_id,
-    content: block.content,
+    content:
+      typeof block.content === 'string'
+        ? block.content
+        : (block.content.map((part) => toSdkContentBlock(part)) as Exclude<
+            ToolResultBlockParam['content'],
+            string | undefined
+          >),
     ...(block.is_error === undefined ? {} : { is_error: block.is_error }),
     ...(cacheControl ? { cache_control: cacheControl } : {}),
   };

@@ -29,6 +29,7 @@ import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 import { setupHappyDom } from '@lostgradient/testing';
 import { uniqueFileName } from '@lostgradient/testing/temporary-path';
 import { importWithoutDomGlobals } from '../../test/import-without-dom-globals.ts';
+import { CURRENT_SCHEMA_VERSION } from './schema-version.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 // testing-library reads `globalThis.document` / `window` at module-init, so we
@@ -265,13 +266,15 @@ describe('Chat — basic render', () => {
 
     try {
       const conversation = createConversation({ id: 'future-schema' });
-      conversation.schemaVersion = 7;
+      // Derived from the supported version, so the next schema bump keeps this test meaningful.
+      const newer = CURRENT_SCHEMA_VERSION + 1;
+      conversation.schemaVersion = newer;
       const first = render(Chat, {
         props: { id: 'future-schema-chat', conversation },
       });
       await tick();
 
-      const newerConversation = { ...conversation, schemaVersion: 8 };
+      const newerConversation = { ...conversation, schemaVersion: newer + 1 };
       first.rerender({ conversation: newerConversation });
       await tick();
       first.rerender({ conversation });
@@ -283,8 +286,8 @@ describe('Chat — basic render', () => {
 
       expect(warnings).toHaveLength(2);
       expect(warnings.map((warning) => warning[0])).toEqual([
-        '[Chat] Conversation schema version 7 is newer than the supported version 6. Upgrade @lostgradient/chat before relying on this history.',
-        '[Chat] Conversation schema version 8 is newer than the supported version 6. Upgrade @lostgradient/chat before relying on this history.',
+        `[Chat] Conversation schema version ${newer} is newer than the supported version ${CURRENT_SCHEMA_VERSION}. Upgrade @lostgradient/chat before relying on this history.`,
+        `[Chat] Conversation schema version ${newer + 1} is newer than the supported version ${CURRENT_SCHEMA_VERSION}. Upgrade @lostgradient/chat before relying on this history.`,
       ]);
     } finally {
       console.warn = originalWarn;

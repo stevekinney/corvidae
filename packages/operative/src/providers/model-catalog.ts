@@ -87,6 +87,13 @@ export interface BackendDescriptor {
    * fetched by the host and delivered as bytes.
    */
   readonly providerFetchesRemoteUrls: boolean;
+  /**
+   * The media modalities this backend accepts inside a tool result, on top of
+   * `modalities[m].input`. Absent or empty: a tool result may carry text only,
+   * and selection excludes this backend for a conversation whose tool results
+   * carry media.
+   */
+  readonly toolResultModalities?: readonly Modality[] | undefined;
   readonly generatedAssetBehavior?: readonly GeneratedAssetBehavior[] | undefined;
   readonly contextWindowTokens: number;
   readonly maxOutputTokens: number;

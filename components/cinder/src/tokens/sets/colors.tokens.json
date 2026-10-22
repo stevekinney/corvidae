@@ -10,7 +10,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.945, 0.045, 145]
+          "components": [0.945, 0.075, 148]
         },
         "$description": "Soft success-tinted surface background.",
         "$extensions": {
@@ -18,7 +18,7 @@
             "cssProperty": "--cinder-status-success-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(94.5% 0.045 145), oklch(28% 0.07 145))",
+            "cssRecipe": "light-dark(oklch(94.5% 0.075 148), oklch(28% 0.07 145))",
             "palette": {
               "family": "success",
               "role": "background"
@@ -30,7 +30,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4, 0.127, 145]
+          "components": [0.44, 0.128, 148]
         },
         "$description": "Foreground color on the soft success surface.",
         "$extensions": {
@@ -38,7 +38,7 @@
             "cssProperty": "--cinder-status-success-text",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(40% 0.127 145), oklch(88% 0.11 145))",
+            "cssRecipe": "light-dark(oklch(44% 0.128 148), oklch(88% 0.11 145))",
             "palette": {
               "family": "success",
               "role": "text"
@@ -70,7 +70,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.392, 0.05, 148.675]
+          "components": [0.456, 0.05, 151.329]
         },
         "$description": "Success color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -86,7 +86,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.67784, 0.05, 145.387]
+          "components": [0.74328, 0.05, 148]
         },
         "$description": "Success color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -104,7 +104,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.945, 0.042, 75]
+          "components": [0.955, 0.053, 88]
         },
         "$description": "Soft warning-tinted surface background.",
         "$extensions": {
@@ -112,7 +112,7 @@
             "cssProperty": "--cinder-status-warning-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(94.5% 0.042 75), oklch(28% 0.06 75))",
+            "cssRecipe": "light-dark(oklch(95.5% 0.053 88), oklch(28% 0.06 75))",
             "palette": {
               "family": "warning",
               "role": "background"
@@ -124,7 +124,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4, 0.085, 75]
+          "components": [0.47, 0.109, 62]
         },
         "$description": "Foreground color on the soft warning surface.",
         "$extensions": {
@@ -132,7 +132,7 @@
             "cssProperty": "--cinder-status-warning-text",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(40% 0.085 75), oklch(90% 0.08 75))",
+            "cssRecipe": "light-dark(oklch(47% 0.109 62), oklch(90% 0.08 75))",
             "palette": {
               "family": "warning",
               "role": "text"
@@ -164,7 +164,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4176, 0.05, 75.978]
+          "components": [0.5776, 0.05, 75.641]
         },
         "$description": "Warning color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -180,7 +180,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.70344, 0.05, 75]
+          "components": [0.86488, 0.05, 75]
         },
         "$description": "Warning color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -246,7 +246,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.945, 0.026, 25]
+          "components": [0.95, 0.025, 25]
         },
         "$description": "Soft danger-tinted surface background.",
         "$extensions": {
@@ -254,7 +254,7 @@
             "cssProperty": "--cinder-status-danger-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(94.5% 0.026 25), oklch(28% 0.09 25))",
+            "cssRecipe": "light-dark(oklch(95% 0.025 25), oklch(28% 0.09 25))",
             "palette": {
               "family": "danger",
               "role": "background"
@@ -266,7 +266,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.42, 0.16, 25]
+          "components": [0.49, 0.201, 27]
         },
         "$description": "Foreground color on the soft danger surface.",
         "$extensions": {
@@ -274,7 +274,7 @@
             "cssProperty": "--cinder-status-danger-text",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(42% 0.16 25), oklch(90% 0.05 25))",
+            "cssRecipe": "light-dark(oklch(49% 0.201 27), oklch(90% 0.05 25))",
             "palette": {
               "family": "danger",
               "role": "text"
@@ -306,7 +306,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.392, 0.05, 23.081]
+          "components": [0.4368, 0.05, 25.392]
         },
         "$description": "Danger color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -322,7 +322,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.67784, 0.05, 24.755]
+          "components": [0.72408, 0.05, 27]
         },
         "$description": "Danger color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -340,7 +340,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.945, 0.03, 230]
+          "components": [0.95, 0.028, 235]
         },
         "$description": "Soft info-tinted surface background.",
         "$extensions": {
@@ -348,7 +348,7 @@
             "cssProperty": "--cinder-status-info-background",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(94.5% 0.03 230), oklch(28% 0.057 230))",
+            "cssRecipe": "light-dark(oklch(95% 0.028 235), oklch(28% 0.057 230))",
             "palette": {
               "family": "info",
               "role": "background"
@@ -360,7 +360,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4, 0.079, 230]
+          "components": [0.46, 0.103, 238]
         },
         "$description": "Foreground color on the soft info surface.",
         "$extensions": {
@@ -368,7 +368,7 @@
             "cssProperty": "--cinder-status-info-text",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark(oklch(40% 0.079 230), oklch(88% 0.071 230))",
+            "cssRecipe": "light-dark(oklch(46% 0.103 238), oklch(88% 0.071 230))",
             "palette": {
               "family": "info",
               "role": "text"
@@ -400,7 +400,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.392, 0.05, 231.393]
+          "components": [0.424, 0.05, 238.535]
         },
         "$description": "Info color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -416,7 +416,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.67784, 0.05, 230.275]
+          "components": [0.71128, 0.05, 238]
         },
         "$description": "Info color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -435,7 +435,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.93472, 0.02816, 256.8]
+        "components": [0.94064, 0.0288, 257.04]
       },
       "$description": "Soft accent-tinted background, mixed 88% toward the current surface.",
       "$extensions": {
@@ -451,7 +451,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.5, 0.22, 270],
+        "components": [0.52, 0.24, 272],
         "alpha": 0.4
       },
       "$description": "Soft accent-tinted border, the accent color mixed 60% toward transparent.",

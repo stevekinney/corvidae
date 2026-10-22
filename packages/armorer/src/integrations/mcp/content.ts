@@ -1,6 +1,8 @@
 import { isSpecType, type CallToolResult, type ContentBlock } from '@modelcontextprotocol/server';
 
+import { assertToolResultParts, isToolContent, toolContent, type JSONObject } from '../../protocol';
 import type { ToolResultLike } from '../../types';
+import { mcpBlocksToParts, partsToMcpBlocks } from './parts';
 
 /**
  * Maps Armorer tool results to MCP `CallToolResult`s (server direction) and
@@ -8,9 +10,9 @@ import type { ToolResultLike } from '../../types';
  *
  * Both directions keep MCP content blocks — text, image, audio, embedded
  * resource, resource link — in their protocol order. A tool that returns
- * blocks has them sent as blocks, never serialized into a text block that
- * merely looks like JSON; a remote result that carries non-text blocks
- * reaches the Armorer caller as those same blocks.
+ * parts (`toolContent`) or blocks has them sent as blocks, never serialized
+ * into a text block that merely looks like JSON; a remote result that carries
+ * non-text blocks reaches the Armorer caller as ordered tool-result parts.
  */
 
 type CallToolResultShape = {
@@ -54,11 +56,37 @@ function isCallToolResultShape(value: unknown): value is CallToolResultShape {
 /** Converts an Armorer tool result into an MCP `CallToolResult` (server direction). */
 export function toCallToolResult(result: ToolResultLike): CallToolResult {
   if (result.outcome === 'error') {
+    // An error that carries parts sends them, in order, flagged as an error.
+    if (result.parts !== undefined) {
+      assertToolResultParts(result.parts);
+      const structured = toStructuredContent(result.content);
+      return {
+        content: partsToMcpBlocks(result.parts),
+        ...(structured === undefined ? {} : { structuredContent: structured }),
+        isError: true,
+      };
+    }
     const message = result.error?.message ?? stringifyResult(result.content);
     return { content: toTextContent(message), isError: true };
   }
 
+  // A materialized or persisted result carries its parts on `parts`, not inside a raw value.
+  if (result.parts !== undefined && !isToolContent(getExecutionValue(result))) {
+    assertToolResultParts(result.parts);
+    const structured = toStructuredContent(result.content);
+    return {
+      content: partsToMcpBlocks(result.parts),
+      ...(structured === undefined ? {} : { structuredContent: structured }),
+    };
+  }
   const executionValue = getExecutionValue(result);
+  if (isToolContent(executionValue)) {
+    const structured = toStructuredContent(executionValue.value);
+    return {
+      content: partsToMcpBlocks(executionValue.parts),
+      ...(structured === undefined ? {} : { structuredContent: structured }),
+    };
+  }
   if (isContentBlockArray(executionValue)) {
     return { content: [...executionValue] };
   }
@@ -83,24 +111,29 @@ export function toCallToolResult(result: ToolResultLike): CallToolResult {
  * (client direction).
  *
  * - An error result throws with its text.
- * - A result with any non-text block returns its blocks in order — wrapped
- *   with `structuredContent` as `{ content, structuredContent }` when the
- *   server sent both, so neither part is dropped.
+ * - A result with any non-text block returns `toolContent`: every block as an
+ *   ordered tool-result part, with `structuredContent` (when the server sent
+ *   it) as the value beside them. A `resource_link` becomes an
+ *   `mcp-resource` reference to `options.serverId`.
  * - A text-only result with `structuredContent` returns the structured value
  *   (the text is its mirror).
  * - Otherwise text blocks are returned as text, parsed as JSON when they
  *   hold JSON (the inverse of the server direction's text mirror).
  */
-export function parseMcpCallResult(result: CallToolResult): unknown {
+export function parseMcpCallResult(
+  result: CallToolResult,
+  options: { serverId?: string | undefined } = {},
+): unknown {
   if (result.isError) {
     throw new Error(extractMcpErrorMessage(result));
   }
   const content: ContentBlock[] = Array.isArray(result.content) ? result.content : [];
   const hasNonTextBlock = content.some((block) => !isTextContentBlock(block));
   if (hasNonTextBlock) {
+    const parts = mcpBlocksToParts(content, options.serverId);
     return result.structuredContent === undefined
-      ? content
-      : { content, structuredContent: result.structuredContent };
+      ? toolContent(parts)
+      : toolContent(parts, { value: result.structuredContent as JSONObject });
   }
   if (result.structuredContent !== undefined) {
     return result.structuredContent;

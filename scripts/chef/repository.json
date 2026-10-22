@@ -7,8 +7,8 @@
   },
   "manifestName": "corvidae",
   "installCommand": "bun install --frozen-lockfile",
-  "gateCommand": "bun run validate",
+  "gateCommand": "bun run check",
   "affectedCheckCommand": "bun run check",
-  "lockPattern": "^[^ ]*bun [^ ]*run-exclusively\\.ts",
+  "lockPattern": "^[^ ]*bun [^ ]*run-exclusively\\.ts [^-]",
   "mergeMethod": "squash"
 }

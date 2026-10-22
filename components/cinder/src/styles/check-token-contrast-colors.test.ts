@@ -186,6 +186,9 @@ describe('accent + accent-text contrast (both arms)', () => {
 
 describe('status color contrast', () => {
   const DECORATIVE_BORDER = 1.4;
+  // The neutral status border aliases `--cinder-border`, a 9% structural tier since COR-1552, so it
+  // takes that tier's floor: 1.198 measured against the neutral background, in the light arm.
+  const NEUTRAL_STATUS_BORDER = 1.14;
 
   it('keeps the opacity scale bounded and ordered by visual weight', () => {
     for (const [name, value] of Object.entries({ opacityDisabled, opacityMuted, opacityFaint })) {
@@ -230,7 +233,7 @@ describe('status color contrast', () => {
             background[arm],
           ),
           `${name} border ${arm}`,
-        ).toBeGreaterThanOrEqual(DECORATIVE_BORDER);
+        ).toBeGreaterThanOrEqual(name === 'neutral' ? NEUTRAL_STATUS_BORDER : DECORATIVE_BORDER);
       }
     }
   });

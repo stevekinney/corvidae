@@ -1,5 +1,5 @@
 import { appendMessages, createConversationHistory } from '../../conversation/index';
-import type { MultiModalContent } from '../../multi-modal';
+import { isMediaContent, type MultiModalContent } from '../../multi-modal';
 import type { ConversationHistory as Conversation, MessageInput, ToolResult } from '../../types';
 import { createMediaPart, inlineBase64Source, sourceFromUrl } from '../media';
 import { isCanonicalToolResultPayload, parseJSONValue, toJSONValue } from '../shared';
@@ -55,8 +55,27 @@ function toMessageInputFromBlock(
   return {
     role: 'tool-result',
     content: '',
-    toolResult: parseToolResultContent(block.tool_use_id, block.content, block.is_error),
+    toolResult:
+      typeof block.content === 'string'
+        ? parseToolResultContent(block.tool_use_id, block.content, block.is_error)
+        : parseToolResultBlocks(block.tool_use_id, block.content, block.is_error),
   };
+}
+
+/** A tool_result whose content is blocks: its text, image, and document blocks as ordered parts. */
+function parseToolResultBlocks(
+  callId: string,
+  blocks: Exclude<AnthropicToolResultBlock['content'], string>,
+  isError?: boolean,
+): ToolResult {
+  const parts = blocks.map((block) => {
+    const part = toGroupableContentPart(block);
+    if (part === undefined || !(part.type === 'text' || isMediaContent(part))) {
+      throw new TypeError(`Anthropic tool_result content cannot hold a ${block.type} block.`);
+    }
+    return part;
+  });
+  return { callId, outcome: isError ? 'error' : 'success', content: null, parts };
 }
 
 /**

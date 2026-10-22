@@ -18,6 +18,8 @@ import {
   type MCPRequestExecutionContext,
   type MCPServer,
 } from '../src/index';
+import { toCallToolResult } from '../src/integrations/mcp/content';
+import { toolContent } from '../src/protocol';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient, type NegotiationMode } from './fixtures/mcp-in-process-client';
 
@@ -293,11 +295,48 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
     const mcp = await createEndpoint([]);
     const { client } = await connectInProcessClient(mcp, mode);
     try {
-      const tools = await fromMcpClientTools(client);
+      const tools = await fromMcpClientTools(client, { serverId: 'conformance' });
       const sum = tools.find((tool) => tool.name === 'sum');
       const media = tools.find((tool) => tool.name === 'media');
       expect(await sum?.execute({ a: 4, b: 5 })).toEqual({ total: 9 });
-      expect(await media?.execute({})).toEqual([...RICH_BLOCKS]);
+      // Every MCP block type arrives as an ordered portable part.
+      expect(await media?.execute({})).toEqual(
+        toolContent([
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            source: { kind: 'inline', data: 'iVBORw0KGgo=', encoding: 'base64' },
+          },
+          { type: 'text', text: 'between the image and the audio' },
+          {
+            type: 'audio',
+            mimeType: 'audio/wav',
+            source: { kind: 'inline', data: 'UklGRg==', encoding: 'base64' },
+          },
+          {
+            type: 'file',
+            name: 'report',
+            source: { kind: 'mcp-resource', serverId: 'conformance', uri: 'file:///report.md' },
+          },
+          {
+            type: 'document',
+            mimeType: 'text/plain',
+            source: { kind: 'inline', data: 'notes', encoding: 'utf8' },
+            metadata: { mcpResourceUri: 'file:///notes.txt' },
+          },
+        ]),
+      );
+      // Re-exposing that result over MCP emits the same blocks in the same order.
+      const reexported = await createToolbox(tools).execute({ name: 'media', arguments: {} });
+      expect(toCallToolResult(reexported).content).toEqual([...RICH_BLOCKS]);
+      // Without a serverId, a resource link cannot be referenced and the call fails.
+      const unidentified = await fromMcpClientTools(client);
+      const unidentifiedMedia = unidentified.find((tool) => tool.name === 'media');
+      const failed = await createToolbox(unidentifiedMedia ? [unidentifiedMedia] : []).execute({
+        name: 'media',
+        arguments: {},
+      });
+      expect(failed.error?.message).toMatch(/no serverId was configured/);
     } finally {
       await client.close();
     }

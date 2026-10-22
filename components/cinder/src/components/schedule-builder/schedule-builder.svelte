@@ -9,7 +9,7 @@
    * @tag cron
    * @tag form
    * @useWhen Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.
-   * @useWhen You want a friendly presets UI (every N, daily, weekly, monthly) that still round-trips to a portable cron or interval value.
+   * @useWhen You want a friendly presets UI (daily, weekly, monthly) that still round-trips to a portable cron or interval value.
    * @avoidWhen You need overlap policy, jitter, or backfill controls — those belong to the consumer's surrounding form. | invocation-rule-builder
    * @avoidWhen You only need to pick a single point in time, not a recurrence — use date-picker instead. | date-picker
    * @related date-picker, segmented-control, input, time-field
@@ -43,7 +43,6 @@
     describeValue,
     joinCron,
     lowerDailyAt,
-    lowerEveryN,
     lowerMonthlyOnDay,
     lowerWeeklyAt,
     valueToCronFields,
@@ -56,7 +55,7 @@
     type CronEditorMode,
   } from './schedule-builder-cron-editor.ts';
 
-  type PresetKind = 'every' | 'daily' | 'weekly' | 'monthly';
+  type PresetKind = 'daily' | 'weekly' | 'monthly';
 
   const AUTHORING_MODES = [
     'presets',
@@ -95,8 +94,6 @@
       : normalizedAriaLabel,
   );
 
-  const seedValue = untrack(() => value ?? defaultScheduleValue());
-
   function scheduleValuesEqual(a: ScheduleValue, b: ScheduleValue): boolean {
     if (a.mode !== b.mode) return false;
     if (a.mode === 'cron' && b.mode === 'cron') return a.expression === b.expression;
@@ -120,19 +117,13 @@
     return resolvedAllowedModes.includes(mode);
   }
 
+  // An omitted value opens on Presets; an explicit value opens on the mode that authors it, so an
+  // interval value opens Interval and a cron value opens Cron. A mode the consumer excluded falls
+  // back to the first allowed one.
   function initialAuthoringMode(
     candidateValue: ScheduleValue | undefined,
     candidateAllowedModes: ScheduleAuthoringMode[],
   ): ScheduleAuthoringMode {
-    if (candidateValue?.mode === 'interval') {
-      const presetsCanRepresentInterval =
-        candidateValue.unit === 'minutes' || candidateValue.unit === 'hours';
-      if (presetsCanRepresentInterval && candidateAllowedModes.includes('presets')) {
-        return 'presets';
-      }
-      if (candidateAllowedModes.includes('interval')) return 'interval';
-    }
-
     const preferredMode =
       candidateValue === undefined
         ? 'presets'
@@ -144,21 +135,24 @@
       : candidateAllowedModes[0]!;
   }
 
+  /**
+   * The field state a value seeds. The RAW value decides the authoring mode, because an omitted
+   * value is not the same as the default value: it opens on Presets, where an explicit interval
+   * opens Interval. The resolved value (the default when omitted) seeds the cron and interval
+   * fields.
+   */
   function seedFieldsFromValue(
-    seededValue: ScheduleValue,
+    rawValue: ScheduleValue | undefined,
     candidateAllowedModes: ScheduleAuthoringMode[],
   ) {
+    const seededValue = rawValue ?? defaultScheduleValue();
     const interval = valueToInterval(seededValue);
-    const isMinutesOrHours =
-      interval !== undefined && (interval.unit === 'minutes' || interval.unit === 'hours');
     return {
-      authoringMode: initialAuthoringMode(seededValue, candidateAllowedModes),
+      authoringMode: initialAuthoringMode(rawValue, candidateAllowedModes),
       cronFields: valueToCronFields(seededValue),
       intervalEvery: interval?.every ?? 15,
       intervalUnit: interval?.unit ?? ('minutes' as ScheduleIntervalUnit),
-      presetKind: 'every' as PresetKind,
-      presetEveryValue: isMinutesOrHours ? interval!.every : 15,
-      presetEveryUnit: (isMinutesOrHours ? interval!.unit : 'minutes') as 'minutes' | 'hours',
+      presetKind: 'daily' as PresetKind,
       presetDailyTime: '09:00',
       presetWeeklyDays: [] as number[],
       presetWeeklyTime: '09:00',
@@ -168,7 +162,7 @@
   }
 
   const initialSeed = seedFieldsFromValue(
-    seedValue,
+    untrack(() => value),
     normalizeAllowedModes(untrack(() => allowedModes)),
   );
 
@@ -181,8 +175,6 @@
   let intervalEvery = $state(initialSeed.intervalEvery);
   let intervalUnit = $state<ScheduleIntervalUnit>(initialSeed.intervalUnit);
 
-  let presetEveryValue = $state(initialSeed.presetEveryValue);
-  let presetEveryUnit = $state<'minutes' | 'hours'>(initialSeed.presetEveryUnit);
   let presetDailyTime = $state(initialSeed.presetDailyTime);
   let presetWeeklyDays = $state<number[]>(initialSeed.presetWeeklyDays);
   let presetWeeklyTime = $state(initialSeed.presetWeeklyTime);
@@ -196,8 +188,6 @@
     intervalEvery = seed.intervalEvery;
     intervalUnit = seed.intervalUnit;
     presetKind = seed.presetKind;
-    presetEveryValue = seed.presetEveryValue;
-    presetEveryUnit = seed.presetEveryUnit;
     presetDailyTime = seed.presetDailyTime;
     presetWeeklyDays = seed.presetWeeklyDays;
     presetWeeklyTime = seed.presetWeeklyTime;
@@ -207,8 +197,6 @@
 
   function applyPresetSeedToFields(seed: ReturnType<typeof seedFieldsFromValue>): void {
     presetKind = seed.presetKind;
-    presetEveryValue = seed.presetEveryValue;
-    presetEveryUnit = seed.presetEveryUnit;
     presetDailyTime = seed.presetDailyTime;
     presetWeeklyDays = seed.presetWeeklyDays;
     presetWeeklyTime = seed.presetWeeklyTime;
@@ -218,8 +206,6 @@
 
   function valueForPresets(): ScheduleValue {
     switch (presetKind) {
-      case 'every':
-        return lowerEveryN(presetEveryValue, presetEveryUnit);
       case 'daily':
         return lowerDailyAt(presetDailyTime);
       case 'weekly':
@@ -259,7 +245,10 @@
     }
   });
 
-  let lastKnownValue: ScheduleValue = seedValue;
+  // What the component shows right now is the committed value until the first edit: the controlled
+  // value when there is one, otherwise the value its own fields already express (the Daily preset,
+  // `defaultScheduleValue()`, when Presets is allowed).
+  let lastKnownValue: ScheduleValue = untrack(() => value ?? currentValue);
 
   function initialValueProp(): ScheduleValue | undefined {
     return value;
@@ -273,11 +262,10 @@
     previousValueProp = incoming;
     if (!propChanged) return;
 
-    const resolved = incoming ?? defaultScheduleValue();
     // Undefined explicitly resets; defined equal values are controlled echoes.
-    if (incoming !== undefined && scheduleValuesEqual(resolved, lastKnownValue)) return;
-    applySeedToFields(seedFieldsFromValue(resolved, resolvedAllowedModes));
-    lastKnownValue = resolved;
+    if (incoming !== undefined && scheduleValuesEqual(incoming, lastKnownValue)) return;
+    applySeedToFields(seedFieldsFromValue(incoming, resolvedAllowedModes));
+    lastKnownValue = incoming ?? untrack(() => currentValue);
   });
 
   $effect(() => {
@@ -369,16 +357,6 @@
     emitChange();
   }
 
-  function handlePresetEveryValueChange(next: number | null): void {
-    presetEveryValue = toPositiveInteger(next);
-    emitChange();
-  }
-
-  function handlePresetEveryUnitChange(event: Event): void {
-    presetEveryUnit = (event.currentTarget as HTMLSelectElement).value as 'minutes' | 'hours';
-    emitChange();
-  }
-
   function acceptPresetTime(next: string | undefined, commit: (time: string) => void): void {
     if (!next) return;
     commit(next);
@@ -430,15 +408,11 @@
     onAuthoringModeChange={handleAuthoringModeChange}
     {presetKind}
     onPresetKindChange={handlePresetKindChange}
-    {presetEveryValue}
-    {presetEveryUnit}
     {presetDailyTime}
     {presetWeeklyDays}
     {presetWeeklyTime}
     {presetMonthlyDay}
     {presetMonthlyTime}
-    onPresetEveryValueChange={handlePresetEveryValueChange}
-    onPresetEveryUnitChange={handlePresetEveryUnitChange}
     onPresetDailyTimeChange={handlePresetDailyTimeChange}
     onToggleWeeklyDay={toggleWeeklyDay}
     onPresetWeeklyTimeChange={handlePresetWeeklyTimeChange}
@@ -463,7 +437,7 @@
   {#if previewResult.status !== 'hidden'}
     <div class="cinder-schedule-builder__preview">
       <span class="cinder-schedule-builder__section-label" id={`${baseId}-preview-label`}>
-        Upcoming fires
+        Next runs
       </span>
       {#if previewResult.status === 'invalid'}
         <p class="cinder-schedule-builder__empty">
@@ -481,7 +455,7 @@
           {/each}
         </ul>
       {:else}
-        <p class="cinder-schedule-builder__empty">No upcoming fires.</p>
+        <p class="cinder-schedule-builder__empty">No upcoming runs.</p>
       {/if}
     </div>
   {/if}

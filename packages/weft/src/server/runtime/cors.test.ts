@@ -140,6 +140,21 @@ describe('buildPreflightResponse', () => {
     expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Cache-Control');
   });
 
+  it('admits the MCP request headers a browser MCP client sends by default', () => {
+    const response = buildPreflightResponse(
+      resolveCorsPolicy({ allowedOrigins: ['https://app.example.com'] }),
+      preflight({
+        origin: 'https://app.example.com',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'mcp-protocol-version, mcp-method, mcp-name',
+      }),
+    );
+    const allowed = response.headers.get('Access-Control-Allow-Headers') ?? '';
+    for (const header of ['Mcp-Protocol-Version', 'Mcp-Method', 'Mcp-Name']) {
+      expect(allowed).toContain(header);
+    }
+  });
+
   it('allows preflight requests without requested headers', () => {
     const response = buildPreflightResponse(
       policy,

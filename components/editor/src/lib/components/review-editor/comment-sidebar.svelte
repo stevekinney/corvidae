@@ -706,12 +706,12 @@
 
   .diff-comment-status-resolved {
     background: var(--cinder-status-success-subtle);
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
 
   .diff-comment-status-outdated {
     background: var(--cinder-status-warning-subtle);
-    color: var(--cinder-status-warning-solid);
+    color: var(--cinder-status-warning-text);
   }
 
   .diff-comment-captured-detail {
