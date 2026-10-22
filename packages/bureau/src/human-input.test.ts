@@ -1137,11 +1137,12 @@ describe('the first park request in a step is honored and the rest are refused (
     calls: ParkCall[],
   ) {
     const checkpoints = createCheckpointStore(started.bureau.kv!);
-    await waitForCondition(
-      async () => (await checkpoints.loadSteps(started.run.id)).length >= 1,
-      'expected the first step to be committed',
-    );
-    const [step] = await checkpoints.loadSteps(started.run.id);
+    await waitForCondition(async () => {
+      const committed = await checkpoints.loadSteps(started.run.id);
+      return committed.length >= 1;
+    }, 'expected the first step to be committed');
+    const steps = await checkpoints.loadSteps(started.run.id);
+    const [step] = steps;
     const outcomes = new Map<string, Outcome>();
     for (const result of step!.results) outcomes.set(result.toolCallId, result.result as Outcome);
     expect(outcomes.size).toBe(calls.length);
