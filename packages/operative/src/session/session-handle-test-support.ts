@@ -214,7 +214,7 @@ export async function waitForEventLoop(predicate: () => Promise<boolean> | boole
 }
 
 /** Wait until a parked run has committed its durable sleep timer. */
-export async function waitForParkedSleep(storage: Storage, runId: string): Promise<void> {
+export async function waitForParkedSleep(storage: MemoryStorage, runId: string): Promise<void> {
   await waitForEventLoop(() => storage.has(parkedSleepTimerKey(runId)));
 }
 
