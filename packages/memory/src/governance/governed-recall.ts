@@ -263,7 +263,7 @@ async function scoringPasses(
       run.evidence.length = 0;
       run.selected.clear();
       run.tokens = 0;
-      return pending;
+      break;
     }
     run.cost += pass.cost;
     pending = await admitRanked(run, pass.ranked);
