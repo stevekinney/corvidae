@@ -6,12 +6,16 @@
  * is rebuilt from the bodies rather than refused.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
-import { createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentSession } from '../agent-session';
 import { createSessionStore, summarizeSession } from './create-session-store';
-import { createSessionHandle, ForkIdentifierInUseError } from './session-handle';
+import {
+  createSessionHandle,
+  ForkIdentifierInUseError,
+  ForkThroughMessageError,
+} from './session-handle';
 import { createTestRunOptions } from './session-handle-test-support';
 import {
   SESSION_FORKED_FROM_MESSAGE_METADATA_KEY,
@@ -157,57 +161,78 @@ describe('the summary index at format version 3', () => {
   });
 });
 
-describe('session.fork() recording its lineage', () => {
+describe('session.fork() through a message', () => {
+  const TURNS: ReadonlyArray<readonly ['user' | 'assistant', string]> = [
+    ['user', 'first question'],
+    ['assistant', 'first answer'],
+    ['user', 'second question'],
+    ['assistant', 'second answer'],
+  ];
+
   async function source() {
     const store = createSessionStore(textValueStore(new MemoryStorage()));
-    await store.save(sessionWith('source', { [SESSION_OWNER_METADATA_KEY]: 'alice' }));
+    const conversation = new Conversation(createConversationHistory());
+    for (const [role, content] of TURNS) conversation.appendMessages({ role, content });
+    const history = conversation.current;
+    await store.save(
+      createAgentSession({
+        id: 'source',
+        agentName: 'fork-agent',
+        conversationHistory: history,
+        metadata: { [SESSION_OWNER_METADATA_KEY]: 'alice' },
+        runs: [],
+      }),
+    );
     const handle = createSessionHandle('source', {
       store,
       agentName: 'fork-agent',
       runOptions: createTestRunOptions(),
     });
-    return { store, handle };
+    return { store, handle, ids: history.ids };
   }
 
-  it('records the parent and the message when the fork names the message it branches from', async () => {
-    const { store, handle } = await source();
+  it('copies the history through that message and records the parent and the message', async () => {
+    const { store, handle, ids } = await source();
 
-    const forked = await handle.fork({ forkedFromMessageId: 'message-1' });
+    const forked = await handle.fork({ throughMessageId: ids[1]! });
 
     const session = await store.load(forked.id);
+    expect(session?.conversationHistory.ids).toEqual([ids[0]!, ids[1]!]);
+    expect(Object.keys(session?.conversationHistory.messages ?? {})).toEqual([ids[0]!, ids[1]!]);
     expect(session?.metadata).toEqual({
       [SESSION_OWNER_METADATA_KEY]: 'alice',
       [SESSION_PARENT_METADATA_KEY]: 'source',
-      [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: 'message-1',
+      [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: ids[1]!,
     });
-    const [row] = await store.list({ owner: 'alice', limit: 10 });
-    expect((await store.list({ owner: 'alice' })).find((entry) => entry.id === forked.id)).toMatchObject(
-      { parentContextId: 'source', forkedFromMessageId: 'message-1' },
-    );
-    expect(row).toBeDefined();
+    expect((await store.load('source'))?.conversationHistory.ids).toEqual(ids);
+    expect((await store.list({ owner: 'alice' })).find((row) => row.id === forked.id)).toMatchObject({
+      parentContextId: 'source',
+      forkedFromMessageId: ids[1]!,
+      messageCount: 2,
+    });
   });
 
   it('gives the fork the owner it is told, not the source’s', async () => {
-    const { store, handle } = await source();
+    const { store, handle, ids } = await source();
 
-    const forked = await handle.fork({ forkedFromMessageId: 'message-1', owner: 'bob' });
+    const forked = await handle.fork({ throughMessageId: ids[3]!, owner: 'bob' });
 
     expect((await store.load(forked.id))?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('bob');
     expect((await store.list({ owner: 'bob' })).map((row) => row.id)).toEqual([forked.id]);
   });
 
   it('creates the fork under the identifier it is given', async () => {
-    const { store, handle } = await source();
+    const { store, handle, ids } = await source();
 
-    const forked = await handle.fork({ forkedFromMessageId: 'message-1', id: 'planned-id' });
+    const forked = await handle.fork({ throughMessageId: ids[1]!, id: 'planned-id' });
 
     expect(forked.id).toBe('planned-id');
     expect(await store.exists('planned-id')).toBe(true);
   });
 
   it('creates nothing more when the same fork is asked for again under the same identifier', async () => {
-    const { store, handle } = await source();
-    const options = { forkedFromMessageId: 'message-1', id: 'planned-id', owner: 'alice' };
+    const { store, handle, ids } = await source();
+    const options = { throughMessageId: ids[1]!, id: 'planned-id', owner: 'alice' };
     await handle.fork(options);
     const before = (await store.list({})).length;
 
@@ -218,18 +243,37 @@ describe('session.fork() recording its lineage', () => {
   });
 
   it('refuses an identifier a different session already holds, and changes nothing', async () => {
-    const { store, handle } = await source();
+    const { store, handle, ids } = await source();
     await store.save(sessionWith('taken', { [SESSION_OWNER_METADATA_KEY]: 'alice' }));
-    await handle.fork({ forkedFromMessageId: 'message-1', id: 'planned-id' });
+    await handle.fork({ throughMessageId: ids[1]!, id: 'planned-id' });
 
-    await expect(handle.fork({ forkedFromMessageId: 'message-1', id: 'taken' })).rejects.toBeInstanceOf(
+    await expect(handle.fork({ throughMessageId: ids[1]!, id: 'taken' })).rejects.toBeInstanceOf(
       ForkIdentifierInUseError,
     );
-    await expect(
-      handle.fork({ forkedFromMessageId: 'message-2', id: 'planned-id' }),
-    ).rejects.toBeInstanceOf(ForkIdentifierInUseError);
+    await expect(handle.fork({ throughMessageId: ids[3]!, id: 'planned-id' })).rejects.toBeInstanceOf(
+      ForkIdentifierInUseError,
+    );
     expect((await store.load('planned-id'))?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(
-      'message-1',
+      ids[1]!,
+    );
+  });
+
+  it('refuses a message the session does not hold, and creates nothing', async () => {
+    const { store, handle } = await source();
+    const before = (await store.list({})).length;
+
+    await expect(handle.fork({ throughMessageId: 'no-such-message' })).rejects.toBeInstanceOf(
+      ForkThroughMessageError,
+    );
+
+    expect((await store.list({})).length).toBe(before);
+  });
+
+  it('refuses a fork that names both a run and a message', async () => {
+    const { handle, ids } = await source();
+
+    await expect(handle.fork({ throughRun: 0, throughMessageId: ids[1]! })).rejects.toBeInstanceOf(
+      TypeError,
     );
   });
 

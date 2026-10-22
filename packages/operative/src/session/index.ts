@@ -7,6 +7,7 @@ export {
 export { conversationThroughRun } from './run-conversation-boundary';
 export {
   ForkIdentifierInUseError,
+  ForkThroughMessageError,
   ForkThroughRunError,
   NoDurableEngineError,
   NoRunningRunError,
@@ -16,6 +17,7 @@ export {
 export type {
   ForkThroughRunErrorReason,
   MonitorOptions,
+  SessionForkOptions,
   SessionHandle,
   SessionHandleContext,
   SessionRunOptions,

@@ -11,6 +11,7 @@ import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import { normalizeAgentRunWorkflowResult } from '../durable/run-workflow-result';
 import { toAgentRunError } from '../errors';
 import type { RunOutcome, RunResult } from '../types';
+import { ForkThroughMessageError } from './session-handle-types';
 import { createRunConversationBoundary } from './run-conversation-boundary';
 import type { SessionStore } from './types';
 
@@ -22,6 +23,27 @@ export function historyOrEmpty(
   // environment seam — only relevant on the `undefined` branch, since an
   // existing `history`'s id is untouched either way.
   return history ?? createConversationHistory(undefined, { runtime });
+}
+
+/**
+ * The session's stored history through `messageId`, inclusive (COR-1560): the ids up to and
+ * including it, and exactly those messages. A message the session does not hold throws a
+ * `ForkThroughMessageError`. The result shares nothing with the session.
+ */
+export function historyThroughMessage(
+  session: AgentSession,
+  messageId: string,
+): ConversationHistory {
+  const history = session.conversationHistory;
+  const index = history.ids.indexOf(messageId);
+  if (index < 0) throw new ForkThroughMessageError(session.id, messageId);
+  const ids = history.ids.slice(0, index + 1);
+  const messages: ConversationHistory['messages'] = {};
+  for (const id of ids) {
+    const message = history.messages[id];
+    if (message !== undefined) messages[id] = message;
+  }
+  return structuredClone({ ...history, ids, messages });
 }
 
 function messagesAreEqual(

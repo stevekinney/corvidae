@@ -169,15 +169,17 @@ export interface SessionHandle {
    * An invalid, negative, out-of-range, still-running, or boundary-less fork
    * point rejects with `ForkThroughRunError` before anything is persisted.
    *
-   * A fork that names the message it branches from (`forkedFromMessageId`) records its lineage in
-   * the reserved metadata keys `SESSION_PARENT_METADATA_KEY` and
-   * `SESSION_FORKED_FROM_MESSAGE_METADATA_KEY`, which the summary index carries, so a listing
-   * shows where it came from before it has a run (COR-1560). `owner` replaces the source's owner
+   * A fork through a message (`throughMessageId`) copies the stored history through that message,
+   * inclusive, and records its lineage in the reserved metadata keys
+   * `SESSION_PARENT_METADATA_KEY` and `SESSION_FORKED_FROM_MESSAGE_METADATA_KEY`, which the
+   * summary index carries, so a listing shows where it came from before it has a run (COR-1560).
+   * A message the session does not hold rejects with `ForkThroughMessageError` before anything is
+   * persisted; naming `throughRun` too is a `TypeError`. `owner` replaces the source's owner
    * of record, for a branch made on behalf of another principal. `id` creates the fork under an
    * identifier the caller chose, so a caller that records the identifier before it forks can find
-   * the fork again after a crash: asking again for the same fork under the same `id` returns the
-   * session already there and creates nothing, and any other holder of the `id` rejects with
-   * `ForkIdentifierInUseError`.
+   * the fork again after a crash: asking again for the same fork through the same message under
+   * the same `id` returns the session already there and creates nothing, and any other holder of
+   * the `id` rejects with `ForkIdentifierInUseError`.
    */
   fork(options?: SessionForkOptions): Promise<SessionHandle>;
 
@@ -451,12 +453,29 @@ function forkThroughRunMessage(
 export interface SessionForkOptions {
   /** The 0-based run sequence whose terminal conversation boundary the fork copies. */
   readonly throughRun?: number | undefined;
+  /**
+   * The message the fork branches at: the fork's history is the session's stored history through
+   * that message, inclusive, and the fork records its lineage. Excludes `throughRun`.
+   */
+  readonly throughMessageId?: string | undefined;
   /** The identifier the fork is created under; a fresh one is minted when omitted. */
   readonly id?: string | undefined;
   /** The fork's owner of record; the source's owner when omitted. */
   readonly owner?: string | undefined;
-  /** The message the fork branches at; names it, and records the fork's lineage. */
-  readonly forkedFromMessageId?: string | undefined;
+}
+
+/** Thrown when `fork({ throughMessageId })` names a message the session does not hold. */
+export class ForkThroughMessageError extends Error {
+  readonly code = 'ForkThroughMessageError';
+  readonly sessionId: string;
+  readonly messageId: string;
+
+  constructor(sessionId: string, messageId: string) {
+    super(`Session "${sessionId}" holds no message "${messageId}" to fork through.`);
+    this.name = 'ForkThroughMessageError';
+    this.sessionId = sessionId;
+    this.messageId = messageId;
+  }
 }
 
 /**
