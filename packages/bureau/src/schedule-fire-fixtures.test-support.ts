@@ -296,6 +296,36 @@ export function holdingWrites(marker: string) {
 }
 
 /**
+ * Wraps a storage so that the first `times` writes that carry `marker` reject, as a storage fault
+ * does, and the writes after them go through.
+ */
+export function failingWrites(marker: string, times: number) {
+  let remaining = times;
+  return {
+    get failed(): number {
+      return times - remaining;
+    },
+    wrap(storage: Storage): Storage {
+      return new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (!['conditionalBatch', 'put', 'batch'].includes(property)) return call();
+            if (remaining > 0 && storedText(args).includes(marker)) {
+              remaining -= 1;
+              return Promise.reject(new Error('simulated storage fault'));
+            }
+            return call();
+          };
+        },
+      });
+    },
+  };
+}
+
+/**
  * A storage whose process dies between a fire step's session write, which carries `marker`, and
  * the step's commit: the journal write of the step is held for good, so the hook has run and the
  * request has been announced, and the step never commits. `reached` resolves at the hold.

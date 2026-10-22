@@ -3,27 +3,26 @@
  * not settle it. Two Bureaus open one SQLite database under `workflow-lease` ownership: one runs
  * the fire, the other serves the stream.
  *
- * Nothing here waits on a wall clock. Each Bureau runs on a manual runtime, and the history feed's
- * live poll, which is a raw `setTimeout` the runtime does not own, runs on Bun's fake timers and is
- * driven a poll interval at a time.
+ * Nothing here waits on a wall clock (see `schedule-fire-stream.test-support.ts`).
  */
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen, type GenerateFunction } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { type GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
-import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
-import {
-  OWNER,
-  readFrames,
-  subscribeRequest,
-} from './http/management/management-fixtures.test-support.ts';
+import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
   createScheduleFireHarness,
   fireOnce,
-  handlerOf,
   pollUntil,
 } from './schedule-fire-fixtures.test-support';
+import {
+  advanceFeedPoll,
+  driveUntil,
+  fireBureauOptions,
+  followFire,
+  parkedGenerate,
+  settledEventsOf,
+} from './schedule-fire-stream.test-support';
+import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
 import type { Bureau } from './types';
 
 const harness = createScheduleFireHarness();
@@ -33,77 +32,19 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-const OWNERSHIP = {
-  ownership: 'workflow-lease',
-  workflowClaimTtlMs: 30_000,
-  workflowClaimRenewIntervalMs: 25,
-} as const;
-
-/** The history feed's live poll interval, which the fake clock is advanced by. */
-const FEED_POLL_MILLISECONDS = 100;
-
-/** Lets work that waits on the fake clock make progress: one poll interval, then a few turns. */
-async function advanceFeedPoll(): Promise<void> {
-  jest.advanceTimersByTime(FEED_POLL_MILLISECONDS);
-  for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
-}
-
-/** Drives the fake clock until `done()`, or fails after a bounded number of polls. */
-async function driveUntil(done: () => boolean, what: string): Promise<void> {
-  for (let poll = 0; poll < 200; poll += 1) {
-    if (done()) return;
-    await advanceFeedPoll();
-  }
-  throw new Error(`Condition was not met: ${what}`);
-}
-
-async function settledEventsOf(bureau: Bureau, fireId: string) {
-  const page = await bureau.eventHistory({ kind: 'run', id: fireId });
-  if (!('events' in page)) return [];
-  return page.events.filter((event) => event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND);
-}
-
 /** A holder that runs a fire parked on `gate`, and a peer that serves a stream of it. */
 async function holderAndPeer(generate: GenerateFunction) {
   jest.useFakeTimers();
   const path = harness.nextDatabasePath();
-  const options = {
-    generate,
-    stopWhen: stopWhen.noToolCalls(),
-    durableOwnership: OWNERSHIP,
-    durableBackgroundTasks: 'manual' as const,
-  };
   const holder = await harness.open({
-    ...options,
-    runtime: createManualRuntimeServices({ identifierSeed: 'holder' }),
+    ...fireBureauOptions(generate, 'holder'),
     storage: await harness.sqliteStorage(path),
   });
   const peer = await harness.open({
-    ...options,
-    runtime: createManualRuntimeServices({ identifierSeed: 'peer' }),
+    ...fireBureauOptions(generate, 'peer'),
     storage: await harness.sqliteStorage(path),
   });
   return { holder, peer };
-}
-
-/** Follows a fire's stream on `bureau`, resolving its frames once the stream has ended. */
-async function followFire(bureau: Bureau, fireId: string) {
-  let ended = false;
-  const frames = readFrames(
-    await handlerOf(bureau)(
-      subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
-    ),
-    { timeoutMs: 30_000 },
-  ).finally(() => {
-    ended = true;
-  });
-  frames.catch(() => undefined);
-  return {
-    frames,
-    get ended(): boolean {
-      return ended;
-    },
-  };
 }
 
 describe('a fire settled on another Bureau ends the stream this one serves', () => {
@@ -184,5 +125,83 @@ describe('a fire settled on another Bureau ends the stream this one serves', () 
       'completed',
       'completed',
     ]);
+  });
+});
+
+type Captured = { owner: string; subscription: { readonly closed: boolean } };
+
+/** Records each history subscription a Bureau's streams open. */
+function captureSubscriptions(bureau: Bureau): Captured[] {
+  const captured: Captured[] = [];
+  const original = bureau.subscribeEventHistory.bind(bureau);
+  (bureau as { subscribeEventHistory: Bureau['subscribeEventHistory'] }).subscribeEventHistory = (
+    owner,
+    listener,
+    options,
+  ) => {
+    const subscription = original(owner, listener, options);
+    captured.push({ owner: `${owner.kind}:${owner.id}`, subscription });
+    return subscription;
+  };
+  return captured;
+}
+
+describe('the fire stream closes the history subscription it opens, however it ends', () => {
+  it('when the history ends it on a peer', async () => {
+    const { gate, parked, generate } = parkedGenerate();
+    const { holder, peer } = await holderAndPeer(generate);
+    const captured = captureSubscriptions(peer);
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    const stream = await followFire(peer, fireId);
+    await advanceFeedPoll();
+    const mine = captured.filter((entry) => entry.owner === `run:${fireId}`);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.subscription.closed).toBe(false);
+
+    gate.resolve();
+    await driveUntil(() => stream.ended, 'the peer stream to end');
+    await stream.frames;
+    await advanceFeedPoll();
+
+    expect(mine[0]?.subscription.closed).toBe(true);
+  });
+
+  it('when the client goes away before the fire settles', async () => {
+    const { gate, parked, generate } = parkedGenerate();
+    const { holder, peer } = await holderAndPeer(generate);
+    const captured = captureSubscriptions(peer);
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    const stream = await followFire(peer, fireId, 1);
+    await driveUntil(() => stream.ended, 'the client to stop reading');
+    await advanceFeedPoll();
+    await advanceFeedPoll();
+
+    const mine = captured.filter((entry) => entry.owner === `run:${fireId}`);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.subscription.closed).toBe(true);
+    gate.resolve();
+  });
+
+  it('when the settling Bureau ends it through its own announcement', async () => {
+    const { gate, parked, generate } = parkedGenerate();
+    const { holder } = await holderAndPeer(generate);
+    const captured = captureSubscriptions(holder);
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    const stream = await followFire(holder, fireId);
+    await advanceFeedPoll();
+
+    gate.resolve();
+    await driveUntil(() => stream.ended, 'the holder stream to end');
+    const frames = await stream.frames;
+    await advanceFeedPoll();
+
+    const mine = captured.filter((entry) => entry.owner === `run:${fireId}`);
+    expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
+    expect(mine[0]?.subscription.closed).toBe(true);
+    expect(await settledEventsOf(holder, fireId)).toHaveLength(1);
+    expect(SCHEDULE_FIRE_SETTLED_EVENT_KIND).toBe('schedule.fire.settled');
   });
 });

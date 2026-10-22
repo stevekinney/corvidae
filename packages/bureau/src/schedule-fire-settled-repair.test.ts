@@ -1,0 +1,158 @@
+/**
+ * COR-1594, correction 1 — a fire's end reaches every open peer stream, including when the
+ * `schedule.fire.settled` append failed, when the settling process died between the settlement and
+ * the append, and when the fire was cancelled by a process that holds no run for it.
+ *
+ * Nothing here waits on a wall clock (see `schedule-fire-stream.test-support.ts`).
+ */
+import { afterEach, describe, expect, it, jest } from 'bun:test';
+
+import { OWNER } from './http/management/management-fixtures.test-support.ts';
+import {
+  createScheduleFireHarness,
+  failingWrites,
+  fireOnce,
+  holdingWrites,
+  pollUntil,
+} from './schedule-fire-fixtures.test-support';
+import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
+import {
+  advanceFeedPoll,
+  driveUntil,
+  fireBureauOptions,
+  followFire,
+  parkedGenerate,
+  settledEventsOf,
+} from './schedule-fire-stream.test-support';
+import type { Bureau } from './types';
+
+const harness = createScheduleFireHarness();
+
+afterEach(async () => {
+  jest.useRealTimers();
+  await harness.dispose();
+});
+
+const statusesOf = (frames: readonly { data?: unknown }[]) =>
+  frames.map((frame) => (frame.data as { status?: string }).status);
+
+async function settled(bureau: Bureau, fireId: string): Promise<void> {
+  await pollUntil(async () => {
+    const view = await bureau.tasks.get(fireId);
+    return view?.status === 'completed' ? true : undefined;
+  }, 'the settlement to be readable');
+}
+
+describe('a rejected append of the settled event', () => {
+  it('is tried again, so a peer stream that was open across it ends', async () => {
+    jest.useFakeTimers();
+    const { gate, parked, generate } = parkedGenerate();
+    const path = harness.nextDatabasePath();
+    const fault = failingWrites(SCHEDULE_FIRE_SETTLED_EVENT_KIND, 1);
+    const holder = await harness.open({
+      ...fireBureauOptions(generate, 'holder'),
+      storage: await harness.sqliteStorage(path, (storage) => fault.wrap(storage)),
+    });
+    const peer = await harness.open({
+      ...fireBureauOptions(generate, 'peer'),
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    const stream = await followFire(peer, fireId);
+    await advanceFeedPoll();
+    expect(stream.ended).toBe(false);
+
+    gate.resolve();
+    await driveUntil(() => stream.ended, 'the peer stream to end');
+    const frames = await stream.frames;
+
+    expect(fault.failed).toBe(1);
+    expect(statusesOf(frames)).toEqual(['working', 'completed']);
+    expect(await settledEventsOf(holder, fireId)).toHaveLength(1);
+  });
+});
+
+describe('a process that dies between the settlement and the append', () => {
+  it('leaves the event to the next boot, which ends the open peer stream once', async () => {
+    jest.useFakeTimers();
+    const { gate, parked, generate } = parkedGenerate();
+    const path = harness.nextDatabasePath();
+    const hold = holdingWrites(SCHEDULE_FIRE_SETTLED_EVENT_KIND);
+    harness.onDispose(() => hold.release());
+    const holder = await harness.open({
+      ...fireBureauOptions(generate, 'holder'),
+      storage: await harness.sqliteStorage(path, (storage) => hold.wrap(storage)),
+    });
+    const peer = await harness.open({
+      ...fireBureauOptions(generate, 'peer'),
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    const stream = await followFire(peer, fireId);
+    await advanceFeedPoll();
+
+    hold.arm();
+    gate.resolve();
+    await hold.reached;
+    await settled(peer, fireId);
+    // The holder is dead at its append: the stream open across the window hears nothing.
+    for (let poll = 0; poll < 20; poll += 1) await advanceFeedPoll();
+    expect(stream.ended).toBe(false);
+    expect(await settledEventsOf(peer, fireId)).toHaveLength(0);
+
+    // The next boot, on the same store, finds a settled fire whose event was never appended.
+    await harness.open({
+      ...fireBureauOptions(generate, 'restart'),
+      storage: await harness.sqliteStorage(path),
+    });
+    await driveUntil(() => stream.ended, 'the peer stream to end after the next boot');
+    const frames = await stream.frames;
+
+    expect(statusesOf(frames)).toEqual(['working', 'completed']);
+    expect(await settledEventsOf(peer, fireId)).toHaveLength(1);
+
+    // A boot after that finds the event and appends nothing.
+    const again = await harness.open({
+      ...fireBureauOptions(generate, 'restart-again'),
+      storage: await harness.sqliteStorage(path),
+    });
+    await advanceFeedPoll();
+    expect(await settledEventsOf(again, fireId)).toHaveLength(1);
+  });
+});
+
+describe('a fire cancelled by a process that holds no run for it', () => {
+  it('ends a peer stream that was open across the cancel', async () => {
+    jest.useFakeTimers();
+    const { gate, parked, generate } = parkedGenerate();
+    const path = harness.nextDatabasePath();
+    const holder = await harness.open({
+      ...fireBureauOptions(generate, 'holder'),
+      storage: await harness.sqliteStorage(path),
+    });
+    const watcher = await harness.open({
+      ...fireBureauOptions(generate, 'watcher'),
+      storage: await harness.sqliteStorage(path),
+    });
+    const canceller = await harness.open({
+      ...fireBureauOptions(generate, 'canceller'),
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    const stream = await followFire(watcher, fireId);
+    await advanceFeedPoll();
+    expect(stream.ended).toBe(false);
+
+    const receipt = await canceller.tasks.cancel(fireId, 0);
+    expect(receipt).toEqual({ receipt: 'canceled' });
+    await driveUntil(() => stream.ended, 'the watcher stream to end');
+    const frames = await stream.frames;
+    gate.resolve();
+
+    expect(statusesOf(frames)).toEqual(['working', 'canceled']);
+    expect(await settledEventsOf(canceller, fireId)).toHaveLength(1);
+  });
+});

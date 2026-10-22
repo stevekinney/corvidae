@@ -6,140 +6,25 @@
  */
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
-import type { BatchOperation, Storage } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import type { Engine } from '../engine.ts';
-import type { ScheduleState } from '../types.ts';
 import { getInternals } from './internals.ts';
+import {
+  closeOpenedEngines,
+  openEngines,
+  SCHEDULE_ID,
+  stateOf,
+  tickB,
+} from './schedule-across-engines.test-support.ts';
 import * as scheduleOccurrence from './schedule-occurrence.ts';
 import { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
-import {
-  createEngine,
-  drainEngine,
-  registerWorkflow,
-  START,
-  tickEngine,
-} from './schedule.test-support.ts';
+import { drainEngine, tickEngine } from './schedule.test-support.ts';
 import { recoverOrphanedScheduleTimers } from './schedules.ts';
 import { createScheduleTimerId } from './state-utilities.ts';
-import { decodeScheduleState } from './validation/schedule-decode.ts';
 
-const SCHEDULE_ID = 'across-engines';
-
-/** Whether a write removes a timer, as a pause or a cancel of an active schedule does. */
-function removesTimer(operations: readonly BatchOperation[]): boolean {
-  return operations.some(
-    (operation) => operation.type === 'delete' && operation.key.startsWith('timer-idx:'),
-  );
-}
-
-/** What a held write is: the first one that puts the schedule's own key. */
-function putsScheduleKey(operations: readonly BatchOperation[]): boolean {
-  return operations.some(
-    (operation) => operation.type === 'put' && operation.key === KEYS.schedule(SCHEDULE_ID),
-  );
-}
-
-type Hold = { readonly reached: Promise<void>; release(): void };
-
-/**
- * One engine's handle on the shared store. `holdScheduleWrite()` parks the next write that puts
- * the schedule key until `release()`; `failRunStarts` makes a write that creates a scheduled run
- * throw, as a storage fault does.
- */
-function engineStorage(shared: Storage) {
-  let armed:
-    | {
-        reached: () => void;
-        open: Promise<void>;
-        matches: (operations: readonly BatchOperation[]) => boolean;
-      }
-    | undefined;
-  let failRunStarts = false;
-  const hold = (matches: (operations: readonly BatchOperation[]) => boolean): Hold => {
-    const reached = Promise.withResolvers<void>();
-    const open = Promise.withResolvers<void>();
-    armed = { reached: reached.resolve, open: open.promise, matches };
-    return { reached: reached.promise, release: open.resolve };
-  };
-  const storage = new Proxy(shared, {
-    get(target, property) {
-      const member = Reflect.get(target, property, target) as unknown;
-      if (typeof member !== 'function' || typeof property !== 'string') return member;
-      return (...args: unknown[]) => {
-        const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
-        if (property !== 'batch' && property !== 'conditionalBatch') return call();
-        const operations = (property === 'batch' ? args[0] : args[1]) as BatchOperation[];
-        if (
-          failRunStarts &&
-          operations.some(
-            (operation) => operation.type === 'put' && operation.key.startsWith('schedule-run:'),
-          )
-        ) {
-          return Promise.reject(new Error('simulated schedule start failure'));
-        }
-        if (armed?.matches(operations)) {
-          const held = armed;
-          armed = undefined;
-          held.reached();
-          return held.open.then(call);
-        }
-        return call();
-      };
-    },
-  });
-  return {
-    storage,
-    holdScheduleWrite(): Hold {
-      return hold(putsScheduleKey);
-    },
-    holdTimerRemoval(): Hold {
-      return hold(removesTimer);
-    },
-    failRunStarts(): void {
-      failRunStarts = true;
-    },
-  };
-}
-
-const closers: Array<() => void> = [];
-afterEach(() => {
-  for (const close of closers.splice(0)) close();
-});
-
-async function openEngines(scheduleOptions: { backfill?: boolean } = {}) {
-  const clock = { now: START };
-  const shared = new BunSQLiteStorage(':memory:');
-  const a = engineStorage(shared);
-  const b = engineStorage(shared);
-  const engineA = createEngine(clock, a.storage);
-  const engineB = createEngine(clock, b.storage);
-  closers.push(
-    () => engineA[Symbol.dispose](),
-    () => engineB[Symbol.dispose](),
-  );
-  for (const engine of [engineA, engineB]) {
-    registerWorkflow(engine, 'across-workflow', async function* (ctx) {
-      yield* ctx.waitForSignal('release');
-      return 'done';
-    });
-  }
-  await engineA.schedule('across-workflow', null, '* * * * *', {
-    id: SCHEDULE_ID,
-    ...scheduleOptions,
-  });
-  return { clock, shared, a, b, engineA, engineB };
-}
-
-async function stateOf(shared: Storage): Promise<ScheduleState> {
-  const bytes = await shared.get(KEYS.schedule(SCHEDULE_ID));
-  const state = bytes === null ? null : decodeScheduleState(bytes);
-  if (state === null) throw new Error('The schedule is missing.');
-  return state;
-}
+afterEach(closeOpenedEngines);
 
 type Transition = {
   readonly name: string;
@@ -259,18 +144,6 @@ describe('a transition that read a schedule another engine has since changed', (
     });
   }
 });
-
-/** Ticks engine B at the schedule's first occurrence; the tick resolves once its write is let go. */
-async function tickB(
-  clock: { now: number },
-  engineB: Engine,
-  shared: Storage,
-  lateByMilliseconds = 0,
-) {
-  const { nextFireAt } = await stateOf(shared);
-  clock.now = nextFireAt! + lateByMilliseconds;
-  return engineB.scheduler.tick(clock.now);
-}
 
 describe('a timer tick on one engine while another changes the schedule', () => {
   it('does not write the schedule back to active after a pause', async () => {
