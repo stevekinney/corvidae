@@ -72,7 +72,7 @@
   const resource: McpAppResource = {
     html: appHtml,
     // The app asks for the camera; the host grants nothing, so the request is denied.
-    meta: { permissions: { camera: {} } },
+    ui: { permissions: { camera: {} } },
   };
 
   let mounted = $state(true);

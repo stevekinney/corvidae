@@ -68,7 +68,7 @@ afterEach(() => {
 
 const RESOURCE: McpAppResource = {
   html: '<!doctype html><html><head><title>App</title></head><body>hi</body></html>',
-  meta: {
+  ui: {
     csp: {
       connectDomains: ['https://api.example.com'],
       resourceDomains: ['https://cdn.example.com'],
@@ -282,7 +282,7 @@ describe('McpApp host protocol', () => {
 describe('McpApp permissions', () => {
   const requesting: McpAppResource = {
     html: '<p>camera app</p>',
-    meta: { permissions: { camera: {}, geolocation: {} } },
+    ui: { permissions: { camera: {}, geolocation: {} } },
   };
 
   test('denies a permission the resource requests when the host does not grant it', async () => {

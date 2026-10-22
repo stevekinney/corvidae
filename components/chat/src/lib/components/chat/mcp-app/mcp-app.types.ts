@@ -12,7 +12,7 @@ export type McpAppResource = {
   /** The HTML document the app ships. */
   html: string;
   /** The `_meta.ui` block of the resource: declared CSP and requested permissions. */
-  meta?: McpUiResourceMeta | undefined;
+  ui?: McpUiResourceMeta | undefined;
 };
 
 /** Host-supplied loader that fetches a `ui://` resource. The component owns no MCP client. */

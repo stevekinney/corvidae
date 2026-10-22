@@ -36,7 +36,7 @@
   let initialized = false;
 
   const permissions = $derived(
-    resolveMcpAppPermissions(resource?.meta?.permissions, grantedPermissions),
+    resolveMcpAppPermissions(resource?.ui?.permissions, grantedPermissions),
   );
   const allow = $derived(buildAllowAttribute(permissions));
 
@@ -92,7 +92,7 @@
     const connection = untrack(() =>
       createMcpAppBridge({
         frameWindow,
-        csp: loaded.meta?.csp,
+        csp: loaded.ui?.csp,
         permissions,
         hostContext: effectiveHostContext(),
         onToolCall,
@@ -112,7 +112,7 @@
     void (async () => {
       try {
         await connection.connect();
-        if (active) element.srcdoc = buildMcpAppDocument(loaded.html, loaded.meta?.csp);
+        if (active) element.srcdoc = buildMcpAppDocument(loaded.html, loaded.ui?.csp);
       } catch (error) {
         failed = true;
         report(error);
