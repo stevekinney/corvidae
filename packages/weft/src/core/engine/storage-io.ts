@@ -22,6 +22,7 @@ import type { EngineInternals } from './internals.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { isScheduleReadCondition, ScheduleReadConditionLostError } from './schedule-state-read.ts';
 import { createScheduleTimerId, decodeWorkflowStartHeaders } from './state-utilities.ts';
+import { retryTerminalWorkflowStateWrite } from './terminal-write-retry.ts';
 import { decodeWorkflowState } from './validation.ts';
 import {
   buildWorkflowClaimExternalTerminalRotationTransition,
@@ -141,6 +142,10 @@ type WorkflowStateCommitOptions = {
    * side effects it took, so the caller can re-decide and commit again.
    */
   extraConditions?: ConditionalBatchCondition[];
+  /** Retry a refused write in process, as this terminal write; read only by the self commit. */
+  retryRefusedWrite?: 'completion' | 'failure';
+  /** Rebuild the operations over a fresher record of the same run; read only with a retry. */
+  rebuildOperations?: (fresh: WorkflowState) => BatchOperation[];
 };
 
 /**
@@ -157,6 +162,8 @@ function buildWorkflowStateCommit(
 ): {
   operations: BatchOperation[];
   conditions: ConditionalBatchCondition[];
+  /** The staged side-effect operations the commit folded in; a rebuilt batch carries them too. */
+  sideEffectOperations: BatchOperation[];
   hasPendingSideEffects: boolean;
   restoreSideEffects: () => void;
 } {
@@ -167,17 +174,15 @@ function buildWorkflowStateCommit(
         internals.checkpoints?.get(workflowId)?.workflowExecutionToken,
       )
     : undefined;
-  const operationsWithSideEffects =
-    pendingSideEffects === undefined
-      ? operations
-      : [...operations, ...pendingSideEffects.operations];
+  const sideEffectOperations = pendingSideEffects?.operations ?? [];
   const storageSupportsConditionalBatch = internals.storage.capabilities().conditionalBatch;
   const conditions = storageSupportsConditionalBatch
     ? [...(pendingSideEffects?.conditions ?? []), ...(options.extraConditions ?? [])]
     : [];
   return {
-    operations: operationsWithSideEffects,
+    operations: [...operations, ...sideEffectOperations],
     conditions,
+    sideEffectOperations,
     hasPendingSideEffects: pendingSideEffects !== undefined,
     restoreSideEffects: () => {
       if (pendingSideEffects !== undefined) {
@@ -236,18 +241,35 @@ export async function commitSelfWorkflowStateOperations(
   options: WorkflowStateCommitOptions = {},
 ): Promise<void> {
   const commit = buildWorkflowStateCommit(internals, state.id, operations, options);
+  const onLostRace = () =>
+    new Error(
+      `Workflow state commit for workflow "${state.id}" lost its atomic side-effect precondition.`,
+    );
 
   try {
-    await commitFencedEngineWrite(
-      internals,
-      state.id,
-      commit.operations,
-      commit.conditions,
-      () =>
-        new Error(
-          `Workflow state commit for workflow "${state.id}" lost its atomic side-effect precondition.`,
-        ),
-    );
+    try {
+      await commitFencedEngineWrite(
+        internals,
+        state.id,
+        commit.operations,
+        commit.conditions,
+        onLostRace,
+      );
+    } catch (error) {
+      // A refused write is retried in process when asked: from this catch, so no extra promise turn.
+      if (options.retryRefusedWrite === undefined) throw error;
+      await retryTerminalWorkflowStateWrite(
+        internals,
+        state,
+        options.retryRefusedWrite,
+        commit.operations,
+        commit.conditions,
+        error,
+        onLostRace,
+        options.rebuildOperations,
+        commit.sideEffectOperations,
+      );
+    }
   } catch (error) {
     commit.restoreSideEffects();
     throw error;
