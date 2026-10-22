@@ -160,7 +160,9 @@ export async function endRunAfterFailedWrite(
   if (write === 'failure') return abandonRun(internals, workflowId, failure, run);
   try {
     await failWorkflow(internals, workflowId, failWith ?? failure, termination, 'system');
-    if (internals.resultResolvers.get(workflowId) === waiterForRun(internals, workflowId, run)) {
+    // Only a waiter failing the run left pending: with none registered, failing it already wrote and
+    // announced the outcome, and settling again would announce it twice.
+    if (isTerminalWaiterPending(internals, workflowId, run)) {
       await settleRunFromStoredRecord(internals, workflowId, termination, run);
     }
   } catch (failureError) {

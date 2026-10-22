@@ -70,8 +70,9 @@ export async function startParked(
 export async function startParkedUnobserved(
   definition: typeof steps | typeof failsAfterSignal,
   workflowId: string,
+  options: { readonly ownership?: 'lease' | 'workflow-lease' } = {},
 ): Promise<Omit<Run, 'result'>> {
-  const { observed: _none, ...run } = await openParked(definition, workflowId, {}, false);
+  const { observed: _none, ...run } = await openParked(definition, workflowId, options, false);
   return run;
 }
 

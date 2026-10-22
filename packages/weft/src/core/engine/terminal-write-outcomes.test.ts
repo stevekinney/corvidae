@@ -257,6 +257,7 @@ describe('every exit from a terminal write settles the run', () => {
         const run = await startParked(kind === 'completion' ? steps : failsAfterSignal, id);
         await using engine = run.engine;
         const arming = behaviour.arm(run, id, kind);
+        const announced = countTerminalEvents(engine);
 
         await engine.signal(id, 'go', 'x');
         const outcome = behaviour.outcome(kind);
@@ -295,9 +296,53 @@ describe('every exit from a terminal write settles the run', () => {
         const internals = getInternals(engine);
         expect(internals.resultResolvers.has(id)).toBe(false);
         if (!abandoned) expect(internals.checkpoints.has(id)).toBe(false);
+
+        // 6. The run is announced at most once.
+        expect(announced()).toBeLessThanOrEqual(1);
       });
     }
   }
+});
+
+/** Counts the completed and failed events `engine` dispatches from now on. */
+function countTerminalEvents(engine: EventTarget): () => number {
+  let count = 0;
+  engine.addEventListener(WorkflowCompletedEvent.type, () => (count += 1));
+  engine.addEventListener(WorkflowFailedEvent.type, () => (count += 1));
+  return () => count;
+}
+
+describe('a run nobody asked the result of', () => {
+  it.each([
+    ['the default ownership', undefined],
+    ["ownership: 'workflow-lease'", 'workflow-lease'],
+  ] as const)(
+    'is announced as failed exactly once when its completion is refused, under %s',
+    async (_name, ownership) => {
+      const id = `unobserved-${ownership ?? 'none'}`;
+      const run = await startParkedUnobserved(
+        steps,
+        id,
+        ownership === undefined ? {} : { ownership },
+      );
+      const engine = run.engine;
+      const failures: unknown[] = [];
+      const failed = Promise.withResolvers<void>();
+      engine.addEventListener(WorkflowFailedEvent.type, (event) => {
+        failures.push(event);
+        failed.resolve();
+      });
+      run.refusing.refuse({ matches: terminalPut(id, 'completion') });
+
+      await engine.signal(id, 'go', 'x');
+      // No result() is ever asked for: the run is watched only through its events, and disposing
+      // the engine waits out what is left of the terminal path before anything is counted.
+      await failed.promise;
+      await engine[Symbol.asyncDispose]();
+
+      expect(failures).toHaveLength(1);
+    },
+  );
 });
 
 describe('a result() first asked for while the engine is ending the run', () => {
@@ -531,6 +576,54 @@ describe('the exits that need the engine in a particular state', () => {
       value: ANOTHER_WRITERS_RESULT,
     });
     expect(internals.resultResolvers.has(id)).toBe(false);
+  });
+
+  it('leaves a waiter bound to another run alone, though the run being ended captured none', async () => {
+    const id = 'another-runs-waiter';
+    const run = await startParked(steps, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const registered = internals.resultResolvers.get(id)!;
+    const captured = { ...captureTerminatedRun(internals, id), waiter: undefined };
+    // The waiter now registered belongs to a replacement run, under another token.
+    registered.workflowExecutionToken = 'a-replacement-run';
+    const record = decode((await run.refusing.base.get(KEYS.workflow(id)))!) as WorkflowState;
+    record.status = 'completed';
+    record.result = ANOTHER_WRITERS_RESULT;
+    await run.refusing.base.put(KEYS.workflow(id), encode(record));
+
+    const outcome = await settleRunFromStoredRecord(
+      internals,
+      id,
+      createTerminationCallbacks(engine),
+      captured,
+    );
+
+    expect(outcome).toBe('settled');
+    expect(internals.resultResolvers.get(id)).toBe(registered);
+    registered.workflowExecutionToken = captured.workflowExecutionToken;
+  });
+
+  it('announces nothing for an unstamped record of a run this engine did not hold', async () => {
+    const id = 'unheld-unstamped';
+    const run = await startParked(steps, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const captured = { ...captureTerminatedRun(internals, id), held: false };
+    const completions: unknown[] = [];
+    engine.addEventListener(WorkflowCompletedEvent.type, (event) => completions.push(event));
+    const record = decode((await run.refusing.base.get(KEYS.workflow(id)))!) as WorkflowState;
+    record.status = 'completed';
+    record.result = ANOTHER_WRITERS_RESULT;
+    await run.refusing.base.put(KEYS.workflow(id), encode(record));
+
+    await settleRunFromStoredRecord(internals, id, createTerminationCallbacks(engine), captured);
+
+    expect(await settlementOf(run.result)).toEqual({
+      kind: 'value',
+      value: ANOTHER_WRITERS_RESULT,
+    });
+    expect(completions).toEqual([]);
   });
 
   it('leaves a waiter a terminated run is holding back for its in-flight activity', async () => {
