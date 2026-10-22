@@ -7,7 +7,7 @@ import { createAgent } from '@lostgradient/operative';
 import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import { SessionForkRefusedError, type SessionForkRefusalReason } from '../../session-fork.ts';
 import { waitForRunState } from '../../test';
 import { noopTool, OPUS_5, OPUS_5_5 } from '../../testing/model-override.test-support.ts';
@@ -174,11 +174,16 @@ describe('bureau.contexts.fork', () => {
         weftCode: 'Conflict',
         reason: 'not-a-branch-point',
       });
-      expect(missing.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'message' });
+      // The fault names the message by its identifier, as every other `NotFound` names its resource.
+      expect(missing.error?.data).toMatchObject({
+        weftCode: 'NotFound',
+        resource: 'message',
+        identifier: 'no-such-message',
+      });
     });
   });
 
-  it('answers another owner’s context and a missing one as the same not found, and lets an operator branch any', async () => {
+  it('answers another owner’s context and a missing one as the same not found, and lets an operator holding read and write branch any', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
       const through = `${run.id}:step:1`;
@@ -187,7 +192,7 @@ describe('bureau.contexts.fork', () => {
         throughMessageId: through,
       });
       const missing = await forkCall(opened, 'no-such-context', 'alice-key');
-      const operator = await forkCall(opened, run.sessionId, 'contexts-writer-key', {
+      const operator = await forkCall(opened, run.sessionId, 'operator-key', {
         commandId: 'operator-fork',
         throughMessageId: through,
       });
@@ -196,7 +201,28 @@ describe('bureau.contexts.fork', () => {
       expect(missing.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
       expect(operator.error).toBeUndefined();
       const child = await opened.bureau.getSession(operator.result?.['contextId'] as string);
-      expect(child?.metadata['sessionOwner']).toBe('api-key:contexts-writer');
+      expect(child?.metadata['sessionOwner']).toBe('api-key:operator');
+    });
+  });
+
+  it('refuses a caller holding only the write scope, since a fork would copy a history it may not read', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedSession(opened);
+      const before = await opened.bureau.listSessions();
+
+      const writeOnly = await forkCall(opened, run.sessionId, 'contexts-writer-key', {
+        commandId: 'write-only-fork',
+        throughMessageId: `${run.id}:step:1`,
+      });
+
+      // The same answer as a context the caller may not see, and nothing is created.
+      expect(writeOnly.error?.data).toMatchObject({
+        weftCode: 'NotFound',
+        resource: 'context',
+        identifier: run.sessionId,
+      });
+      const after = await opened.bureau.listSessions();
+      expect(after.length).toBe(before.length);
     });
   });
 
@@ -282,12 +308,30 @@ describe('bureau.contexts.fork refusals', () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'anonymous:local');
       const handler = stubbed(opened, async () => {
-        throw new BureauError('Cannot fork: Bureau is shutting down.', 'CONFLICT');
+        throw new BureauShuttingDownError(
+          'Cannot fork: Bureau is shutting down.',
+          '2026-10-22T00:00:00.000Z',
+        );
       });
 
       const body = await call(handler, run.sessionId);
 
       expect(body.error?.data).toMatchObject({ weftCode: 'Unavailable', reason: 'shutting-down' });
+    });
+  });
+
+  it('does not report another conflict, such as steering contention, as shutting down', async () => {
+    await withBureau(async (opened) => {
+      const run = await finishedSession(opened, 'anonymous:local');
+      const handler = stubbed(opened, async () => {
+        throw new BureauError('Steering for this session is contended.', 'CONFLICT');
+      });
+
+      const body = await call(handler, run.sessionId);
+
+      expect(body.error).toBeDefined();
+      expect(body.error?.data).not.toMatchObject({ reason: 'shutting-down' });
+      expect(body.error?.data).not.toMatchObject({ weftCode: 'Unavailable' });
     });
   });
 });

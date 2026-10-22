@@ -24,7 +24,8 @@
  * | the `commandId` named another message  | `Conflict`    | `command-conflict`                  |
  * | Bureau is shutting down                | `Unavailable` | `shutting-down`                     |
  *
- * It requires `bureau.contexts:write` to branch another owner's context, and writes no audit entry.
+ * Branching another owner's context copies its history, so it requires both `bureau.contexts:read`
+ * and `bureau.contexts:write`; the call writes no audit entry.
  *
  * @module contexts-fork-operation
  */
@@ -33,7 +34,7 @@ import { ForkThroughMessageError, sessionOwnerOf } from '@lostgradient/operative
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import { SessionForkRefusedError } from '../../session-fork.ts';
 import type { Bureau } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -68,10 +69,10 @@ const contextsForkOutput = z.object({
   carriedOverride: steeringOutcomeSchema.nullable(),
 });
 
-/** The fault a refused branch answers with. */
-function faultForRefusal(error: SessionForkRefusedError): OperationFault {
+/** The fault a refused branch answers with; a missing message is named by its identifier. */
+function faultForRefusal(error: SessionForkRefusedError, throughMessageId: string): OperationFault {
   if (error.reason === 'message-not-found') {
-    return resourceNotFound('message', error.message);
+    return resourceNotFound('message', throughMessageId);
   }
   return { code: 'Conflict', message: error.message, data: { reason: error.reason } };
 }
@@ -85,7 +86,7 @@ export const contextsForkOperation = defineOperation<
   mcpExposable: false,
   summary: 'Branch a context after a reply',
   description:
-    'Branches one of the caller’s own contexts after a completed agent reply: a new context that shares the history through `throughMessageId`, which must be the final assistant message of a run that ended `completed`, is owned by the caller, and records its lineage (`parentContextId`, `forkedFromMessageId`). The parent’s latest model override is carried onto the new context as `<commandId>:model`, and its admission outcome is returned as `carriedOverride`, `null` when the parent had none; a refused admission (the model is no longer allowed) leaves the new context in place on the agent’s default. `commandId` is the caller’s own identifier: an exact retry, even after a restart, returns the original answer and creates nothing more. The command’s identity is the caller’s owner, the context and the `commandId`, so an operator and the owner retrying one `commandId` make two forks, and a settled command is kept for 24 hours, after which an exact retry branches again. A message the context does not hold is `NotFound`. A message that is not the final assistant reply of a run is a `Conflict` with reason `not-a-branch-point`; a run that ended in error `branch-from-errored-run`; an aborted run `branch-from-aborted-run`; a run with a tool approval waiting `branch-with-pending-approval`; a reply with a tool call that has no result `branch-with-unresolved-tool-call`; and a `commandId` already used for another message `command-conflict`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`. Requires `bureau.contexts:write` to branch another owner’s context; no scope is needed for the caller’s own. The call writes no audit entry.',
+    'Branches one of the caller’s own contexts after a completed agent reply: a new context that shares the history through `throughMessageId`, which must be the final assistant message of a run that ended `completed`, is owned by the caller, and records its lineage (`parentContextId`, `forkedFromMessageId`). The parent’s latest model override is carried onto the new context as `<commandId>:model`, and its admission outcome is returned as `carriedOverride`, `null` when the parent had none; a refused admission (the model is no longer allowed) leaves the new context in place on the agent’s default. `commandId` is the caller’s own identifier: an exact retry, even after a restart, returns the original answer and creates nothing more. The command’s identity is the caller’s owner, the context and the `commandId`, so an operator and the owner retrying one `commandId` make two forks, and a settled command is kept for 24 hours, after which an exact retry branches again. A message the context does not hold is `NotFound`. A message that is not the final assistant reply of a run is a `Conflict` with reason `not-a-branch-point`; a run that ended in error `branch-from-errored-run`; an aborted run `branch-from-aborted-run`; a run with a tool approval waiting `branch-with-pending-approval`; a reply with a tool call that has no result `branch-with-unresolved-tool-call`; and a `commandId` already used for another message `command-conflict`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`. Branching another owner’s context copies its history, so it requires both `bureau.contexts:read` and `bureau.contexts:write`; a caller holding only one of them is answered `NotFound`, as for a context it may not see. No scope is needed for the caller’s own. The call writes no audit entry.',
   destructive: true,
   tags: ['Contexts'],
   inputSchema: contextsForkInput,
@@ -111,16 +112,22 @@ export const contextsForkOperation = defineOperation<
       } satisfies OperationFault;
     }
     const owner = ownerOfPrincipal(principal);
-    // The one session loaded here is the one authorized and the one branched.
+    // The one session loaded here is the one authorized and the one branched. A fork copies the
+    // parent's history to its caller, so another owner's context needs the read scope as well as
+    // the write scope: neither implies the other.
     const session = await host.contexts.getSession(contextId);
+    const mayAct = (operatorScope: 'bureau.contexts:read' | 'bureau.contexts:write') =>
+      session !== undefined &&
+      host.ownership.mayAccess({
+        principal,
+        resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
+        operatorScope,
+      });
     if (
       owner === undefined ||
       session === undefined ||
-      !host.ownership.mayAccess({
-        principal,
-        resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
-        operatorScope: 'bureau.contexts:write',
-      })
+      !mayAct('bureau.contexts:read') ||
+      !mayAct('bureau.contexts:write')
     ) {
       throw resourceNotFound('context', contextId);
     }
@@ -139,8 +146,12 @@ export const contextsForkOperation = defineOperation<
         carriedOverride: carried === null ? null : projectSteeringOutcome(carried),
       };
     } catch (error) {
-      if (error instanceof SessionForkRefusedError) throw faultForRefusal(error);
-      if (error instanceof BureauError && error.code === 'CONFLICT') {
+      if (error instanceof SessionForkRefusedError) {
+        throw faultForRefusal(error, input.throughMessageId);
+      }
+      // Only a closed Bureau is `shutting-down`. Steering contention while the parent's override is
+      // carried is not: it surfaces as an error, and the ledger lets an exact retry finish the fork.
+      if (error instanceof BureauShuttingDownError) {
         throw {
           code: 'Unavailable',
           message: error.message,
