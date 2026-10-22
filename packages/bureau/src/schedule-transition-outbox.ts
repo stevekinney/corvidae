@@ -34,13 +34,18 @@ const TRANSITION_KINDS: ReadonlySet<string> = new Set<ScheduleTransitionKind>([
   'schedule.cancelled',
 ]);
 
+/** The prefix of one schedule's pending transitions, which a scan returns in commit order. */
+export function scheduleTransitionKeyPrefix(scheduleId: string): string {
+  return `${SCHEDULE_TRANSITION_KEY_PREFIX}${encodeURIComponent(scheduleId)}:`;
+}
+
 /** The storage key of one pending transition, and the dedupe key its records are written under. */
 export function scheduleTransitionKey(
   transition: PendingScheduleTransition,
   ordinal: string,
 ): string {
   const committedAt = String(Math.max(0, Math.trunc(transition.committedAtMs))).padStart(16, '0');
-  return `${SCHEDULE_TRANSITION_KEY_PREFIX}${encodeURIComponent(transition.scheduleId)}:${committedAt}:${ordinal}`;
+  return `${scheduleTransitionKeyPrefix(transition.scheduleId)}${committedAt}:${ordinal}`;
 }
 
 /** The operation that writes `transition`'s pending record under `key`. */

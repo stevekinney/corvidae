@@ -310,6 +310,7 @@ import {
   type PendingScheduleTransition,
   SCHEDULE_TRANSITION_KEY_PREFIX,
   scheduleTransitionKey,
+  scheduleTransitionKeyPrefix,
   type ScheduleTransitionKind,
   scheduleTransitionOperation,
 } from './schedule-transition-outbox';
@@ -16234,7 +16235,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     guard: ScheduleRevisionGuard | undefined,
     apply: (transition: import('@lostgradient/weft').ScheduleTransitionOptions) => Promise<void>,
   ): Promise<void> {
-    const storage = runtime.durable!.engine.storage;
     const transition: PendingScheduleTransition = {
       kind,
       scheduleId,
@@ -16248,12 +16248,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...scheduleTransitionOptions(guard),
       additionalOperations: [scheduleTransitionOperation(key, transition)],
     });
-    // Everything after the commit is a failure to record, never a failure of the transition.
+    // Everything after the commit is a failure to record, never a failure of the transition. The
+    // schedule's whole pending queue is drained, so this transition is recorded behind any earlier
+    // one still pending; when Weft wrote nothing, the queue holds nothing of this call's.
     try {
-      // Absent after the call: Weft wrote nothing, or another pass has already recorded the
-      // transition and removed its pending record.
-      if ((await storage.get(key)) === null) return;
-      await recordScheduleTransition(key, transition);
+      await recordPendingScheduleTransitions(scheduleTransitionKeyPrefix(scheduleId));
     } catch (error) {
       diagnose({
         level: 'error',
@@ -16279,6 +16278,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (scheduleTransitionsRecording.has(key)) return;
     scheduleTransitionsRecording.add(key);
     try {
+      // A scan's snapshot can be stale: another drain may have recorded and removed the key since.
+      if ((await runtime.durable!.engine.storage.get(key)) === null) return;
       await writeScheduleTransition(key, transition);
     } finally {
       scheduleTransitionsRecording.delete(key);
@@ -16328,17 +16329,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const scheduleTransitionsRecording = new Set<string>();
 
   /**
-   * COR-194 — records every schedule transition still pending: one a process committed and did not
-   * live to record, or one whose record failed after its commit. Each schedule's transitions are
+   * COR-194 — records every schedule transition still pending under `prefix` (every schedule's,
+   * or one schedule's for the live drain): one a process committed and did not live to record, one
+   * whose record failed after its commit, or one just committed. Each schedule's transitions are
    * recorded in the order they committed, and a failure defers the rest of that schedule's to a
    * later pass, so its history is never written out of order. A record this build cannot read is
    * reported and kept, since a build that can may read it later.
    */
-  async function recordPendingScheduleTransitions(): Promise<void> {
+  async function recordPendingScheduleTransitions(
+    prefix: string = SCHEDULE_TRANSITION_KEY_PREFIX,
+  ): Promise<void> {
     const durable = runtime.durable;
     if (!durable) return;
     const pending: Array<[string, Uint8Array]> = [];
-    for await (const entry of durable.engine.storage.scan(SCHEDULE_TRANSITION_KEY_PREFIX)) {
+    for await (const entry of durable.engine.storage.scan(prefix)) {
       pending.push(entry);
     }
     const deferredSchedules = new Set<string>();

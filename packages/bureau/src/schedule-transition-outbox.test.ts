@@ -272,4 +272,23 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     await close(bureau);
     expect(await pendingKeys(fixture)).not.toContain(key);
   });
+
+  it("records a live transition behind its schedule's earlier pending one, in commit order", async () => {
+    const fixture = newFixture();
+    const bureau = await open(fixture);
+    const scheduleId = await createSchedule(bureau);
+    const resumed: string[] = [];
+    bureau.addEventListener('schedule.resumed', (event) => resumed.push(event.scheduleId));
+    await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
+
+    await bureau.resumeSchedule(scheduleId);
+
+    expect(await transitionKinds(bureau, scheduleId)).toEqual([
+      'schedule.paused',
+      'schedule.resumed',
+    ]);
+    expect(resumed).toEqual([scheduleId]);
+    await close(bureau);
+    expect(await pendingKeys(fixture)).toEqual([]);
+  });
 });
