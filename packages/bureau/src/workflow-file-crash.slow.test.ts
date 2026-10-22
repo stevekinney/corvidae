@@ -175,7 +175,7 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
     for (const stepRun of stepRuns.items) {
       expect(await bureau.tasks.record(stepRun.id)).toBeUndefined();
     }
-    const page = await bureau.tasks.list({ limit: 100, offset: 0 });
+    const page = await bureau.tasks.enumerate({ limit: 100, offset: 0 });
     expect(page.tasks).toEqual([]);
   } finally {
     const shutdown = await bureau?.shutdown();
