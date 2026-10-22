@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { formatAnthropicToolResults } from '../src/adapters/anthropic';
-import { formatGeminiToolResults } from '../src/adapters/gemini';
-import { formatOpenAIToolResults } from '../src/adapters/openai';
+import {
+  formatAnthropicToolResults,
+  formatAnthropicToolResultsAsync,
+} from '../src/adapters/anthropic';
+import { formatGeminiToolResults, formatGeminiToolResultsAsync } from '../src/adapters/gemini';
+import { formatOpenAIToolResults, formatOpenAIToolResultsAsync } from '../src/adapters/openai';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import { createToolResultCache } from '../src/idempotency/create-tool-result-cache';
@@ -247,5 +250,18 @@ describe('tool-result parts contract', () => {
       output: ['Here is the chart:', { $ref: 'part-1' }, 'and the source data.'],
     });
     expect(gemini?.functionResponse.parts).toHaveLength(1);
+  });
+
+  it('formats a settled result with parts the same way through every async formatter', async () => {
+    const result = await createToolbox([chartTool()]).execute({
+      id: 'call-async',
+      name: 'chart',
+      arguments: { series: 'sales' },
+    });
+    const media = { ...result, parts: PARTS.slice(0, 3) };
+    const textOnly = { ...result, parts: [{ type: 'text' as const, text: 'one' }] };
+    expect(await formatGeminiToolResultsAsync(media)).toEqual(formatGeminiToolResults(media));
+    expect(await formatAnthropicToolResultsAsync(media)).toEqual(formatAnthropicToolResults(media));
+    expect(await formatOpenAIToolResultsAsync(textOnly)).toEqual(formatOpenAIToolResults(textOnly));
   });
 });

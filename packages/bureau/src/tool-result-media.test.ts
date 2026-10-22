@@ -8,10 +8,13 @@ import {
   createModelCatalog,
   type GenerateContext,
   type GenerateResponse,
+  stopWhen,
+  type Toolbox,
+  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool } from 'armorer';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createTool, createToolbox } from 'armorer';
 import { toolContent } from 'armorer/protocol';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -31,6 +34,8 @@ const snapshotBase64 = base64Of(snapshotPng);
 
 const snapshotTool = createTool({
   name: 'snapshot',
+  // Approval authorization signs the tool's version.
+  version: '1.0.0',
   description: 'Takes a snapshot',
   input: z.object({}),
   async execute() {
@@ -120,5 +125,69 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
     expect(JSON.stringify(audit)).not.toContain(snapshotBase64);
 
     expect(await run.closed()).toEqual({ status: 'completed' });
+  });
+});
+
+describe('a tool-returned image through an approved review', () => {
+  it('is admitted as the run owner’s asset before the session keeps it', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const gated = createToolbox([snapshotTool], {
+      approvalSecret: 'tool-result-media-approval',
+      policy: {
+        beforeExecute: () => ({
+          allow: false,
+          status: 'needs_approval',
+          reason: 'Operator approval required',
+          action: { message: 'Approve snapshot' },
+        }),
+      },
+    }) as unknown as Toolbox;
+    let step = 0;
+    const bureau = await createBureau({
+      agents: {
+        photographer: createAgent({
+          toolbox: gated,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+          generate: withBackendDescriptors(async () => {
+            step += 1;
+            const response: GenerateResponse =
+              step === 1
+                ? { content: '', toolCalls: [{ id: 'snap-1', name: 'snapshot', arguments: {} }] }
+                : { content: 'Done.', toolCalls: [] };
+            return response;
+          }, descriptors),
+        }),
+      },
+      assets: { storage: fixture.storage },
+      persistence: textValueStore(new MemoryStorage()),
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+
+    const run = await bureau.createRun({
+      agentName: 'photographer',
+      message: 'Take a snapshot',
+      principal: alice.id,
+    });
+    await waitForRunState(bureau, run.id);
+    for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
+    const [review] = bureau.listPendingReviews();
+    expect(review?.kind).toBe('tool-approval');
+    await bureau.resolveReview({ id: review!.id, decision: 'approve', principal: alice.id });
+
+    const session = await bureau.getSession(run.sessionId);
+    const history = session!.conversationHistory;
+    const row = history.ids
+      .map((id) => history.messages[id]!)
+      .find((message) => message.toolResult?.callId === 'snap-1');
+    expect(row?.toolResult?.outcome).toBe('success');
+    const image = row?.toolResult?.parts?.[1];
+    expect(image).toMatchObject({ type: 'image', source: { kind: 'managed-asset' } });
+    const source = (image as { source: { kind: 'managed-asset'; assetId: string } }).source;
+    const descriptor = await bureau.assets!.inspect(source.assetId, alice);
+    expect(descriptor.owner).toBe(alice.id);
+    expect(JSON.stringify(session)).not.toContain(snapshotBase64);
   });
 });

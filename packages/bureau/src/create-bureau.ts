@@ -95,6 +95,8 @@ import {
   createSessionHandle,
   ForkThroughMessageError,
   SKILL_TOOL_DENIED_CODE,
+  admitToolResultMedia,
+  createStepGeneratedMediaAdmitter,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -124,6 +126,7 @@ import {
   type ReusableApprovalGrantInput,
   type SignedPendingToolApproval,
   type Tool,
+  type ToolExecutionResult,
   type ToolRequestContext,
 } from 'armorer';
 import {
@@ -14884,7 +14887,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let lastError: unknown;
     try {
       // Collected before the write: a resumed tool may stream its output.
-      const toolResult = await materializeToolResultAsync(outcome);
+      const materialized = await materializeToolResultAsync(outcome);
+      const toolResult =
+        input.decision === 'approve'
+          ? await admitApprovedToolResultMedia(review, outcome as ToolExecutionResult, materialized)
+          : materialized;
       // The run's own terminal save is in flight when its approval is resolved
       // at once; the row to replace is not stored until it lands.
       await sessionPersistence.drain();
@@ -14948,6 +14955,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // A fixed sentence: it reaches a client's screen, and the storage error's text
     // (which can name keys and paths) stays in the diagnostic above.
     return new ApprovalOutcomeNotWrittenError(APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE);
+  }
+
+  /**
+   * COR-792 — an approved tool's media reaches the session as a run's does: admitted as the run
+   * owner's managed assets, or the result becomes the error that names the refused part. The
+   * session's own commit then claims the row's assets.
+   */
+  async function admitApprovedToolResultMedia(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    executed: ToolExecutionResult,
+    materialized: Awaited<ReturnType<typeof materializeToolResultAsync>>,
+  ): Promise<Awaited<ReturnType<typeof materializeToolResultAsync>>> {
+    if (materialized.parts === undefined) return materialized;
+    const service = assetServiceHolder.current;
+    const port =
+      service === undefined
+        ? undefined
+        : createAssetGeneratedMediaAdmitter(
+            service,
+            ownerOrLocal(runAttribution.get(review.runId)?.principal),
+          );
+    const step = { step: 0, runId: review.runId };
+    const [admitted] = await admitToolResultMedia(
+      createStepGeneratedMediaAdmitter({ port, ...step, signal: new AbortController().signal }),
+      [{ ...executed, content: materialized.content, parts: materialized.parts }],
+      step,
+    );
+    return materializeToolResultAsync(admitted!);
   }
 
   /** What a session-path resolution claims in the durable decision record (COR-1579). */

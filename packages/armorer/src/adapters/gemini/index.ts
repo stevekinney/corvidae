@@ -124,10 +124,9 @@ export async function formatGeminiToolResultsAsync(
   return Promise.all(
     resultList.map(async (result) => {
       const stream = getStreamingPayload(result) ?? null;
-      const content =
-        stream === null
-          ? result.content
-          : normalizeAsyncContent(await collectAsyncIterable(stream));
+      // A settled result, parts included, formats exactly as the synchronous formatter does.
+      if (stream === null) return toFunctionResponsePart(result, options);
+      const content = normalizeAsyncContent(await collectAsyncIterable(stream));
       return {
         functionResponse: {
           name: resolveGeminiToolName(result, options),
