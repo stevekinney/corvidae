@@ -42,8 +42,7 @@ Version 1 defines no parameters. A server sends `params` as an empty object or o
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Command receipts AgentExtension.params",
-  "type": "object",
-  "additionalProperties": false
+  "type": "object"
 }
 ```
 
@@ -79,7 +78,7 @@ The client puts the object in `params.message.metadata`, because `SendMessage` a
     "expectedRevision": { "type": "string", "minLength": 1 },
     "deadline": {
       "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+      "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:([0-5]\\d|60)(\\.\\d+)?(Z|[+-]([01]\\d|2[0-3]):[0-5]\\d)$"
     }
   },
   "additionalProperties": false
@@ -217,7 +216,7 @@ Every error is a JSON-RPC error envelope with HTTP 200, `error.data` an array of
 
 This specification fixes both reasons at `-32602`, the code of the plain-client form of the same refusal, so a client that does not recognize the reason still treats the error as a rejected request.
 
-Every error produced after the request was parsed carries the command's `messageId` in `ErrorInfo.metadata.commandId` and, when the message carried one, its correlation identifier in `ErrorInfo.metadata.correlationId`.
+Every error a `SendMessage` or `SendStreamingMessage` produces after its request was parsed carries the command's `messageId` in `ErrorInfo.metadata.commandId` and, when the message carried one, its correlation identifier in `ErrorInfo.metadata.correlationId`. `CancelTask` and the push-configuration methods carry no message, so their errors carry neither.
 
 <!-- schema: error-info -->
 

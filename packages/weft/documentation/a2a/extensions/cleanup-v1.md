@@ -42,8 +42,7 @@ Version 1 defines no parameters. A server sends `params` as an empty object or o
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Cleanup AgentExtension.params",
-  "type": "object",
-  "additionalProperties": false
+  "type": "object"
 }
 ```
 

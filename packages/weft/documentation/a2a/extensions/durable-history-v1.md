@@ -2,7 +2,7 @@
 
 Extension URI: `https://github.com/stevekinney/weft/blob/main/packages/weft/documentation/a2a/extensions/durable-history-v1.md`
 
-This extension lets an A2A 1.0.1 client resume a `SubscribeToTask` stream after a disconnect without losing or repeating a task update. It is specified for any server built on `@lostgradient/weft/a2a` that keeps a durable, ordered event history for its tasks; Bureau is the first such server. A client needs nothing but this document and [the A2A specification](https://a2a-protocol.org/v1.0.1/specification/) to use it.
+This extension lets an A2A 1.0.1 client resume a `SubscribeToTask` stream after a disconnect and recover the task's current state without its state ever moving backwards: the stream resumes with the current `Task`, which supersedes every update the client missed, and then carries each later update once. It does not replay the intermediate updates; a client that needs every transition reads the server's full history (rule 3). It is specified for any server built on `@lostgradient/weft/a2a` that keeps a durable, ordered event history for its tasks; Bureau is the first such server. A client needs nothing but this document and [the A2A specification](https://a2a-protocol.org/v1.0.1/specification/) to use it.
 
 The URI is a stable identifier that clients compare as an opaque string. A client never needs to fetch it.
 
@@ -42,8 +42,7 @@ Version 1 defines no parameters. A server sends `params` as an empty object or o
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Durable history AgentExtension.params",
-  "type": "object",
-  "additionalProperties": false
+  "type": "object"
 }
 ```
 
