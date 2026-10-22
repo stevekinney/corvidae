@@ -84,7 +84,10 @@ describe('a terminal write that landed is never sent again', () => {
 
 describe('a terminal write never overwrites another writer', () => {
   /** Another writer replaces the workflow record at the moment the completion's first attempt fails. */
-  async function interferedCompletion(workflowId: string, change: (state: WorkflowState) => void) {
+  async function interferedCompletion(
+    workflowId: string,
+    change: (state: WorkflowState) => Uint8Array | void,
+  ) {
     const run = await startParked(steps, workflowId);
     const key = KEYS.workflow(workflowId);
     let othersBytes: Uint8Array | undefined;
@@ -95,8 +98,7 @@ describe('a terminal write never overwrites another writer', () => {
       times: 1,
       before: async () => {
         const state = decode((await run.refusing.base.get(key))!) as WorkflowState;
-        change(state);
-        othersBytes = encode(state);
+        othersBytes = change(state) ?? encode(state);
         await run.refusing.base.put(key, othersBytes);
         readsBeforeRetry = run.refusing.readCount(key);
         changed.resolve();
@@ -123,6 +125,53 @@ describe('a terminal write never overwrites another writer', () => {
       run.refusing.attemptsMatching(putsWorkflowStatus('interfered', 'completed')),
     ).toHaveLength(1);
     expect(engine).toBeDefined();
+  });
+
+  it('does not overwrite a record it cannot read', async () => {
+    const { run, key, othersBytes } = await interferedCompletion(
+      'unreadable-record',
+      () => new Uint8Array([0xc1, 0xc1, 0xc1]),
+    );
+    await using engine = run.engine;
+
+    expect(await run.refusing.base.get(key)).toEqual(othersBytes);
+    expect(
+      run.refusing.attemptsMatching(putsWorkflowStatus('unreadable-record', 'completed')),
+    ).toHaveLength(1);
+    expect(engine).toBeDefined();
+  });
+
+  it('does not overwrite a change made between its read and its send', async () => {
+    const run = await startParked(steps, 'changed-after-read');
+    await using engine = run.engine;
+    const key = KEYS.workflow('changed-after-read');
+    let othersBytes: Uint8Array | undefined;
+    run.refusing.refuse({
+      matches: putsWorkflowStatus('changed-after-read', 'completed'),
+      times: 1,
+    });
+    // The retry reads the record, finds it as it decided, and sends: another writer changes the
+    // record just before that send reaches the store, so the send loses its guard.
+    run.refusing.refuse({
+      matches: putsWorkflowStatus('changed-after-read', 'completed'),
+      mode: 'pass',
+      times: 1,
+      before: async () => {
+        const state = decode((await run.refusing.base.get(key))!) as WorkflowState;
+        state.updatedAt += 1;
+        othersBytes = encode(state);
+        await run.refusing.base.put(key, othersBytes);
+      },
+    });
+
+    await engine.signal('changed-after-read', 'go', 'x');
+    await run.refusing.whenAttempts(2, putsWorkflowStatus('changed-after-read', 'completed'));
+    for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
+
+    expect(await run.refusing.base.get(key)).toEqual(othersBytes ?? null);
+    expect(
+      run.refusing.attemptsMatching(putsWorkflowStatus('changed-after-read', 'completed')),
+    ).toHaveLength(2);
   });
 
   it('does not mistake another writer’s record with the same status for its own write', async () => {

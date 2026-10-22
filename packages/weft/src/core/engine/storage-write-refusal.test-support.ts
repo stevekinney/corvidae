@@ -16,8 +16,11 @@ import type { WorkflowState } from '../types.ts';
 
 const WRITE_METHODS = new Set(['put', 'delete', 'batch', 'conditionalBatch']);
 
-/** How a matching write is handled: refused outright, or applied and then reported as failed. */
-export type WriteRefusalMode = 'refuse' | 'land-then-throw';
+/**
+ * How a matching write is handled: refused outright, applied and then reported as failed, or sent
+ * through as it is once the rule's `before` hook has run (so a test can change the store under it).
+ */
+export type WriteRefusalMode = 'refuse' | 'land-then-throw' | 'pass';
 
 /**
  * One rule of a {@link RefusingStorage}: which writes it handles, what it does to them, and how
@@ -187,6 +190,10 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
         }
         rule.remaining -= 1;
         await rule.before?.();
+        if (rule.mode === 'pass') {
+          record({ method, operations, conditions, outcome: 'passed' });
+          return call(...args);
+        }
         if (rule.mode === 'land-then-throw') {
           record({ method, operations, conditions, outcome: 'land-then-throw' });
           await call(...args);
