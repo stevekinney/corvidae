@@ -1155,3 +1155,51 @@ test('keeps an uploading code attachment from submitting', async () => {
   unmount(instance);
   target.remove();
 });
+
+describe('ChatInput composer controls (COR-1552)', () => {
+  test('the send button renders the send-horizontal glyph, not the arrow-up glyph', () => {
+    const { container } = render(ChatInput, { id: 'send-glyph' });
+
+    const send = container.querySelector<HTMLButtonElement>('button.chat-input-send');
+    expect(send?.getAttribute('aria-label')).toBe('Send message');
+    expect(send?.querySelector('svg.lucide-send-horizontal')).not.toBeNull();
+    expect(send?.querySelector('svg.lucide-arrow-up')).toBeNull();
+  });
+
+  test('an empty composer disables the send button', () => {
+    const { container } = render(ChatInput, { id: 'send-disabled' });
+
+    expect(container.querySelector<HTMLButtonElement>('button.chat-input-send')?.disabled).toBe(
+      true,
+    );
+  });
+
+  test('the stop state keeps its own glyph in place of the send glyph', () => {
+    const { container } = render(ChatInput, {
+      id: 'stop-glyph',
+      sending: true,
+      onstop: () => {},
+    });
+
+    const stop = container.querySelector<HTMLButtonElement>('button.chat-input-send[data-stop]');
+    expect(stop?.getAttribute('aria-label')).toBe('Stop generating');
+    expect(stop?.querySelector('svg.lucide-send-horizontal')).toBeNull();
+  });
+
+  test('no keyboard shortcut text is visible', () => {
+    const { container } = render(ChatInput, { id: 'hint-hidden' });
+
+    const shortcutText = Array.from(container.querySelectorAll<HTMLElement>('*')).filter(
+      (element) =>
+        element.children.length === 0 &&
+        /Press .*(to send|for a newline)/.test(element.textContent),
+    );
+    expect(shortcutText.length).toBeGreaterThan(0);
+    for (const element of shortcutText) {
+      expect(
+        element.closest('.cinder-sr-only'),
+        `"${element.textContent.trim()}" renders visibly`,
+      ).not.toBeNull();
+    }
+  });
+});

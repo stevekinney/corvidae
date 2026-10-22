@@ -54,7 +54,7 @@ export function minimalServerContext(
     workflowEventFeed: null as never,
     fleetEventFeed: null as never,
     activeJsonRpcSessions: new Set(),
-    mcpSessionManager: null as never,
+    mcpEndpoint: null as never,
     authenticatorPromise: null,
     rateLimiter: null,
     visibilityPollMs: 5000,

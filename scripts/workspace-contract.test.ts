@@ -195,7 +195,7 @@ describe('internal workspace architecture', () => {
     ]);
     // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
     // agent sessions stop oversubscribing it and timing out unrelated tests.
-    for (const stage of ['check', 'lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
+    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
     expect(scripts['typecheck']).toBe(
@@ -209,9 +209,10 @@ describe('internal workspace architecture', () => {
     // branch. The root-owned browser-fixture task runs outside `--affected`, which filters by
     // package and would skip it for a change confined to `scripts/browser-fixtures`; its key follows
     // that workspace through `transit`, so it replays from cache when nothing there changed.
-    // `validate` stays the full gate.
+    // `validate` stays the full gate. `check` is the per-pull-request gate, so it runs `--shared`:
+    // parallel sessions run it side by side instead of queueing it behind a full validate.
     expect(scripts['check']).toBe(
-      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
+      "bun scripts/run-exclusively.ts --shared 'bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under

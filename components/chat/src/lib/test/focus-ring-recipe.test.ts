@@ -210,3 +210,67 @@ describe('Chat focus-ring recipes', () => {
     expect(declarationValue(fallback!, 'box-shadow')).toBe('none');
   });
 });
+
+function isUnderMedia(node: Node, query: RegExp): boolean {
+  let current = node.parent;
+  while (current) {
+    if (current.type === 'atrule' && (current as AtRule).name.toLowerCase() === 'media') {
+      if (query.test((current as AtRule).params)) return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+const COARSE_POINTER = /\(\s*any-pointer\s*:\s*coarse\s*\)/i;
+
+describe('Chat composer controls (COR-1552)', () => {
+  test('the input area has no top rule', () => {
+    const rules = findRules(styles.chatImplementation, '.chat-input-area');
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) {
+      expect(declarationValue(rule, 'border-top')).toBeUndefined();
+      expect(declarationValue(rule, 'border')).toBeUndefined();
+    }
+  });
+
+  test('the composer frame uses the control border on the control background', () => {
+    const frame = findRules(styles.input, '.chat-input')[0];
+    expect(declarationValue(frame!, 'background')).toBe('var(--cinder-control-background)');
+    expect(declarationValue(frame!, 'border')).toBe('1px solid var(--cinder-control-border)');
+  });
+
+  test('the send button is 32px square with the medium radius', () => {
+    const base = findRules(styles.input, '.chat-input-send').find(
+      (rule) => !isUnderForcedColors(rule) && !isUnderMedia(rule, COARSE_POINTER),
+    );
+    expect(declarationValue(base!, 'width')).toBe('2rem');
+    expect(declarationValue(base!, 'height')).toBe('2rem');
+    expect(declarationValue(base!, 'border-radius')).toBe('var(--cinder-radius-md)');
+  });
+
+  test('the disabled send button is transparent with no inset ring', () => {
+    const disabled = findRules(styles.input, '.chat-input-send:disabled')[0];
+    expect(declarationValue(disabled!, 'background')).toBe('transparent');
+    const shadow = declarationValue(disabled!, 'box-shadow');
+    expect(shadow === undefined || shadow === 'none').toBe(true);
+  });
+
+  test('a coarse pointer gets a hit area of at least the 44px touch target', () => {
+    const hitArea = findRules(styles.input, '.chat-input-send::after').find((rule) =>
+      isUnderMedia(rule, COARSE_POINTER),
+    );
+    expect(hitArea).toBeDefined();
+    expect(declarationValue(hitArea!, 'content')).toBe("''");
+    expect(declarationValue(hitArea!, 'position')).toBe('absolute');
+    expect(declarationValue(hitArea!, 'inset')).toContain(
+      '(var(--cinder-touch-target-min) - 2rem) / -2',
+    );
+    // The stop state draws a 1px border, which the extension is measured inside of.
+    expect(declarationValue(hitArea!, 'inset')).toContain('var(--_cinder-chat-send-edge)');
+    const base = findRules(styles.input, '.chat-input-send').find(
+      (rule) => !isUnderForcedColors(rule) && !isUnderMedia(rule, COARSE_POINTER),
+    );
+    expect(declarationValue(base!, 'position')).toBe('relative');
+  });
+});

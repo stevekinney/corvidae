@@ -37,6 +37,7 @@ export {
   RefreshCw,
   RotateCcw,
   Search,
+  SendHorizontal,
   Square,
   Strikethrough,
   Terminal,

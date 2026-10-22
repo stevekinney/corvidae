@@ -11,7 +11,6 @@ import {
   type McpAccessContext,
 } from './access.ts';
 import { parseMcpListFilter } from './list-filter.ts';
-import type { McpSession } from './session.ts';
 import { tupleListsEqual } from './tuple-list-equality.ts';
 
 /** MCP tool definition. */
@@ -28,14 +27,23 @@ export type McpToolResult = {
   readonly isError?: boolean;
 };
 
-type ToolCallContext = McpAccessContext & {
-  readonly session: McpSession;
-  readonly requestId: unknown;
+/**
+ * What a tool call runs with: the caller's access context and the abort signal
+ * of the MCP request that carries it. The SDK aborts the signal when the client
+ * cancels the request, and a workflow tool cancels the workflow it started.
+ */
+export type McpToolCallContext = McpAccessContext & {
+  readonly signal?: AbortSignal | undefined;
+  /**
+   * Receives work a call starts and does not await, such as cancelling the workflow of a call the
+   * client cancelled, so the entry that owns the connection can wait for it before closing.
+   */
+  readonly trackPendingWork?: ((work: Promise<unknown>) => void) | undefined;
 };
 
 type ToolImplementation = {
   readonly definition: McpToolDefinition;
-  readonly call: (argumentsValue: unknown, context: ToolCallContext) => Promise<unknown>;
+  readonly call: (argumentsValue: unknown, context: McpToolCallContext) => Promise<unknown>;
 };
 
 type ToolRegistrySignatureEntry = readonly [
@@ -76,7 +84,7 @@ export function listMcpTools(engine: Engine): McpToolDefinition[] {
 export async function callMcpTool(
   name: string,
   argumentsValue: unknown,
-  context: ToolCallContext,
+  context: McpToolCallContext,
 ): Promise<McpToolResult> {
   const tool = getToolRegistry(context.engine).toolsByName.get(name);
   if (tool === undefined) {
@@ -157,29 +165,20 @@ function buildToolImplementations(engine: Engine): ToolImplementation[] {
       call: async (argumentsValue, context) => {
         assertScope(context, 'workflows:write', 'Calling workflow tools');
         const { input, timeoutMs } = parseWorkflowToolArguments(argumentsValue);
-        const workflowId = crypto.randomUUID();
-        context.session.trackRequest(context.requestId, workflowId);
-        try {
-          if (context.session.isRequestCancelled(context.requestId)) {
-            throw new McpToolExecutionError('Workflow cancelled');
-          }
-          const handle = await runtimeWorkflowEngine(context.engine).start(definition.type, input, {
-            id: workflowId,
-          });
-          if (context.session.isRequestCancelled(context.requestId)) {
-            await context.engine.cancel(handle.id);
-          }
-          const outcome = await waitForWorkflowToolResult(handle, {
-            timeoutMs,
-            signal: context.session.requestSignal(context.requestId),
-          });
-          if (outcome.status === 'timed-out') {
-            return workflowToolStillRunningResult(handle.id, timeoutMs);
-          }
-          return { workflowId: handle.id, result: outcome.result };
-        } finally {
-          context.session.untrackRequest(context.requestId);
+        if (context.signal?.aborted) throw new McpToolExecutionError('Workflow cancelled');
+        const handle = await runtimeWorkflowEngine(context.engine).start(definition.type, input, {
+          id: crypto.randomUUID(),
+        });
+        const outcome = await waitForWorkflowToolResult(handle, {
+          timeoutMs,
+          signal: context.signal,
+          cancel: () => context.engine.cancel(handle.id),
+          trackPendingWork: context.trackPendingWork,
+        });
+        if (outcome.status === 'timed-out') {
+          return workflowToolStillRunningResult(handle.id, timeoutMs);
         }
+        return { workflowId: handle.id, result: outcome.result };
       },
     });
   }
@@ -242,9 +241,15 @@ function parseWorkflowToolTimeoutMs(value: unknown): number {
 
 async function waitForWorkflowToolResult(
   handle: ResultHandle,
-  options: { timeoutMs: number; signal?: AbortSignal | undefined },
+  options: {
+    timeoutMs: number;
+    signal?: AbortSignal | undefined;
+    cancel: () => Promise<void>;
+    trackPendingWork?: ((work: Promise<unknown>) => void) | undefined;
+  },
 ): Promise<WorkflowToolResultWaitOutcome> {
   if (options.signal?.aborted) {
+    await options.cancel();
     throw new McpToolExecutionError('Workflow cancelled');
   }
 
@@ -260,7 +265,13 @@ async function waitForWorkflowToolResult(
     options.signal === undefined
       ? undefined
       : new Promise<never>((_resolve, reject) => {
-          const abort = () => reject(new McpToolExecutionError('Workflow cancelled'));
+          const abort = () => {
+            reject(new McpToolExecutionError('Workflow cancelled'));
+            const cancellation = options.cancel().catch((error: unknown) => {
+              console.warn('MCP workflow tool cancellation failed:', error);
+            });
+            options.trackPendingWork?.(cancellation);
+          };
           options.signal?.addEventListener('abort', abort, { once: true });
           cleanupAbortListener = () => options.signal?.removeEventListener('abort', abort);
         });

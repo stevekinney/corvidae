@@ -78,11 +78,11 @@ The other direct routes (`healthCheck`, `getMetrics`, `apiCatalog`, `mcpDiscover
 | `server/serve-internals.ts:269-270` | `createEngineEventFeedBackend(engine)` | Weft-specific |
 | `server/serve-internals.ts:310` | live operation registry gets `storage: options.engine.storage` | Weft-specific |
 | `server/serve-internals.ts:325` | `createFleetEventFeed(options.engine.storage)` | Weft-specific |
-| `server/serve-internals.ts:327` | `createMcpSessionManager(engine)` | Weft-specific |
+| `server/serve-internals.ts:397` | `createMcpEndpoint(engine)` | Weft-specific |
 | `server/serve-internals.ts:337` | `getEnginePayloadSizeMaxBytes(engine)` | Weft-specific |
 | `server/serve-internals.ts:455` | `registerWorkflowEventLifecycle(options.engine as Engine, …)` | Weft-specific |
 | `server/runtime/authentication-bridge.ts:43` | `ServerFetchOptions.engine` | Weft-specific (input) |
-| `server/runtime/authentication-bridge.ts:185-195` | `/mcp` → `handleMcpHttpRequest({ engine, … })` | Weft-specific |
+| `server/runtime/authentication-bridge.ts:184-193` | `/mcp` → `handleMcpHttpRequest({ endpoint: context.mcpEndpoint, … })` | Weft-specific |
 | `server/runtime/authentication-bridge.ts:253-262` | `/jsonrpc` → `handleJsonRpcHttpRequestSafely({ engine, … })`, which reaches `DispatchContext` through `server/json-rpc-transport-helpers.ts:28-35` and `server/json-rpc-http.ts:38`, `:92` | Catalog-generic (the host slot) |
 | `server/json-rpc-dispatch.ts:155`, `:180-188` | `rpc.discover` duck-types the slot for MCP tools | Catalog-generic (already optional) |
 | `server/runtime/authentication-bridge.ts:265-269` | REST and direct routes → `handleRequest(request, options.engine, …)` | See the `handleRequest` table |

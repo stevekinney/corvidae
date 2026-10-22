@@ -1,5 +1,6 @@
 import type { ToolErrorCategory } from './core/errors';
 import type { ExecutionSnapshot } from './execution-lifecycle';
+import { redactToolContent } from './protocol';
 import type { ToolCall } from './types';
 type ToolConfiguration = import('./is-tool').ToolConfiguration;
 type ToolValidationReport = import('./is-tool').ToolValidationReport;
@@ -108,7 +109,8 @@ export class ToolExecuteSuccessEvent extends Event {
   readonly ownerId: string | undefined;
   constructor(detail: { result: unknown } & ToolEventDetailContext & ToolExecutionIdentity) {
     super(ToolExecuteSuccessEvent.type);
-    this.result = detail.result;
+    // COR-792: an event shows a returned part's type, size, and identity, never its bytes.
+    this.result = redactToolContent(detail.result);
     this.toolCall = detail.toolCall;
     this.configuration = detail.configuration;
     this.executionId = detail.executionId;
@@ -165,7 +167,8 @@ export class ToolSettledEvent extends Event {
   ) {
     super(ToolSettledEvent.type);
     this.status = detail.status ?? (detail.error !== undefined ? 'error' : 'success');
-    this.result = detail.result;
+    // COR-792: an event shows a returned part's type, size, and identity, never its bytes.
+    this.result = redactToolContent(detail.result);
     this.error = detail.error;
     this.toolCall = detail.toolCall;
     this.configuration = detail.configuration;
@@ -281,7 +284,8 @@ export class ToolFinishedEvent extends Event {
     this.durationMs = detail.durationMs;
     this.startedAt = detail.startedAt;
     this.finishedAt = detail.finishedAt;
-    this.result = detail.result;
+    // COR-792: an event shows a returned part's type, size, and identity, never its bytes.
+    this.result = redactToolContent(detail.result);
     this.error = detail.error;
     this.reason = detail.reason;
     this.errorCategory = detail.errorCategory;

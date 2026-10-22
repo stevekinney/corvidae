@@ -15,7 +15,7 @@ describe('testMcpSession', () => {
     scripted = new ScriptedFetch();
     scripted.enqueueJson(
       { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } },
-      { headers: { 'Mcp-Session-Id': 'sess_abc', 'Mcp-Session-Token': 'tok_xyz' } },
+      { headers: { 'cache-control': 'no-cache' } },
     );
 
     const result = await testMcpSession(fakeClient('http://weft.test/api'));
@@ -29,8 +29,12 @@ describe('testMcpSession', () => {
         : undefined;
     expect(requestMethod).toBe('initialize');
     expect(result.response.status).toBe(200);
-    expect(result.response.headers['mcp-session-id']).toBe('sess_abc');
-    expect(result.response.headers['mcp-session-token']).toBe('tok_xyz');
+    expect(result.response.headers['cache-control']).toBe('no-cache');
+    expect(result.response.body).toEqual({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { protocolVersion: '2025-03-26' },
+    });
   });
 
   test('a 403 response is a normal, non-throwing result', async () => {

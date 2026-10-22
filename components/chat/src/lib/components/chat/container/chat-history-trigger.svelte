@@ -71,7 +71,7 @@
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border-strong);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-md);
     cursor: pointer;
   }

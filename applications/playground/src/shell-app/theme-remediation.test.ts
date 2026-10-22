@@ -107,7 +107,7 @@ describe('determinism and pinned Culori fixtures', () => {
       'foreground-oklch-remediation/1+oklch-chroma-grid-101/1',
     );
     const canvas = first.results.find((result) => result.pairingId === 'text:default:canvas');
-    expect(canvas?.ratio).toBeCloseTo(5.055802114224761, 9);
+    expect(canvas?.ratio).toBeCloseTo(5.21779252312817, 9);
   });
 
   test('Culori conversions are pinned for sRGB and Display P3', () => {

@@ -181,7 +181,7 @@
   }
 
   .chat-attachment-preview[data-error] .chat-attachment-preview-icon {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 
   .chat-attachment-preview-error-badge {

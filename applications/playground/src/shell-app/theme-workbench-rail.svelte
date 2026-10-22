@@ -67,7 +67,7 @@
   }
   /* Selection is shown by a border and weight, not by color alone. */
   .rail__item[aria-current='true'] {
-    border-color: var(--cinder-border-strong);
+    border-color: var(--cinder-border-control);
     background: var(--cinder-surface-inset);
     font-weight: var(--cinder-font-semibold);
   }

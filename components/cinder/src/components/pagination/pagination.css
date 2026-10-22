@@ -94,7 +94,7 @@
     .cinder-pagination__step:hover:not(:disabled),
     .cinder-pagination__page:hover:not([data-cinder-current]) {
       background: color-mix(in oklch, var(--cinder-text-default) 8%, transparent);
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-border-control);
     }
   }
 

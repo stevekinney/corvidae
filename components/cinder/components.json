@@ -4181,7 +4181,7 @@
       "tags": ["schedule", "recurrence", "cron", "form"],
       "useWhen": [
         "Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.",
-        "You want a friendly presets UI (every N, daily, weekly, monthly) that still round-trips to a portable cron or interval value."
+        "You want a friendly presets UI (daily, weekly, monthly) that still round-trips to a portable cron or interval value."
       ],
       "avoidWhen": [
         {

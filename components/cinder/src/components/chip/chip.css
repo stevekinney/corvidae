@@ -89,6 +89,14 @@
     border-color: var(--cinder-status-neutral-border);
   }
 
+  /* A toggle chip is a <button>, so its resting edge is a control boundary and keeps the 3:1 the
+   * control tier clears; a display chip keeps the faint status-neutral edge above. Equal
+   * specificity with the disabled block below, so this stays ABOVE it: a disabled toggle chip
+   * keeps its muted edge. */
+  button.cinder-chip[data-cinder-variant='neutral'] {
+    border-color: var(--cinder-border-control);
+  }
+
   .cinder-chip[data-cinder-variant='success'] {
     background: var(--cinder-status-success-background);
     color: var(--cinder-status-success-text);

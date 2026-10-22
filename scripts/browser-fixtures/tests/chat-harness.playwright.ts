@@ -59,6 +59,7 @@ async function openHarness(
     colorScheme?: 'dark' | 'light';
     viewport?: { width: number; height: number };
     hasTouch?: boolean;
+    isMobile?: boolean;
     locale?: string;
     timezoneId?: string;
   },
@@ -70,6 +71,7 @@ async function openHarness(
     reducedMotion: options?.reducedMotion ?? 'reduce',
     viewport: options?.viewport ?? { width: 1280, height: 900 },
     hasTouch: options?.hasTouch ?? false,
+    isMobile: options?.isMobile ?? false,
   };
   if (options?.locale !== undefined) contextOptions.locale = options.locale;
   if (options?.timezoneId !== undefined) contextOptions.timezoneId = options.timezoneId;
@@ -3725,6 +3727,74 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
       await expect(timeline.getByRole('button', { name: /load earlier messages/i })).toHaveCount(0);
     } finally {
       await context.close();
+    }
+  });
+});
+
+test.describe('chat harness — composer send button hit area (COR-1552)', () => {
+  // The send button is drawn 32px square. Under a coarse pointer its hit area is the 44×44 target:
+  // a box spans [centre - 22, centre + 22), so the four points 21px out from the centre are inside
+  // it, and each must resolve to the button or one of its descendants.
+  const PROBE_DISTANCE = 21;
+
+  async function probeSendButton(page: Page, button: Locator): Promise<void> {
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+    const box = await button.boundingBox();
+    expect(box?.width).toBeCloseTo(32, 0);
+    expect(box?.height).toBeCloseTo(32, 0);
+    const centre = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+    for (const [dx, dy] of [
+      [-PROBE_DISTANCE, 0],
+      [PROBE_DISTANCE, 0],
+      [0, -PROBE_DISTANCE],
+      [0, PROBE_DISTANCE],
+    ] as const) {
+      const owner = await page.evaluate(
+        ([x, y]) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest('.chat-input-send')
+            ?.getAttribute('aria-label') ?? null,
+        [centre.x + dx, centre.y + dy] as const,
+      );
+      expect(owner, `point (${dx}, ${dy}) from the send button centre`).toBe(
+        await button.getAttribute('aria-label'),
+      );
+    }
+  }
+
+  test('the send state resolves 21px out on both axes to the send button', async ({ browser }) => {
+    const { harness, page, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      const composer = harness.locator('#harness-chat').getByRole('textbox', { name: 'Message' });
+      await composer.fill('a draft that enables sending');
+      const send = harness.locator('#harness-chat .chat-input-send:not([data-stop])');
+      await expect(send).toBeEnabled();
+      await probeSendButton(page, send);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('the stop state resolves 21px out on both axes to the stop button', async ({ browser }) => {
+    const { harness, page, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      await holdStreamOpen(page);
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness.locator('[data-testid="send-reply"]').click();
+      const stop = harness.locator('#harness-chat .chat-input-send[data-stop]');
+      await expect(stop).toBeVisible();
+      await probeSendButton(page, stop);
+    } finally {
+      await dispose();
     }
   });
 });

@@ -44,27 +44,43 @@
   }
 
   .cinder-toggle {
+    /* The button's own box is the hit area, and the visible track is the box minus its padding:
+     * the track is 32 × 18, and the padding grows the box around it. With a fine pointer the box
+     * is the track plus 3px above and below, 32 × 24, which keeps the 24px floor of WCAG 2.5.8 on
+     * the element's own box. A coarse pointer pads it out to 44 × 44 (WCAG 2.5.5) below while the
+     * drawn track stays 32 × 18. */
+    --_cinder-toggle-pad-inline: 0rem;
+    --_cinder-toggle-pad-block: 0.1875rem;
+
     /* Layout: pill track containing the sliding thumb. */
     position: relative;
     display: inline-flex;
     flex-shrink: 0;
     align-items: center;
+    /* The foundation's unlayered universal border-box rule wins over this layer either way, so the
+     * box is sized as a border box: the track plus its padding. */
     box-sizing: border-box;
 
-    /* Dimensions — 44 × 24 px satisfies WCAG 2.5.5 minimum touch target at 44 px height
-   * when the surrounding interactive area is considered. Adjust via tokens if needed.
-   */
-    width: var(--cinder-toggle-width, 2.75rem); /* 44px */
-    height: var(--cinder-toggle-height, 1.5rem); /* 24px */
+    width: calc(var(--cinder-toggle-width, 2rem) + 2 * var(--_cinder-toggle-pad-inline));
+    height: calc(var(--cinder-toggle-height, 1.125rem) + 2 * var(--_cinder-toggle-pad-block));
 
-    padding: 0;
+    padding-block: var(--_cinder-toggle-pad-block);
+    padding-inline: var(--_cinder-toggle-pad-inline);
     border: none;
-    border-radius: var(--cinder-radius-full);
+    /* The padding box's corners are the track's radius plus the padding, so the painted
+     * (content-box) track keeps a full pill end on each side. */
+    border-radius: calc(
+        var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-inline)
+      ) /
+      calc(var(--cinder-toggle-height, 1.125rem) / 2 + var(--_cinder-toggle-pad-block));
     cursor: pointer;
     vertical-align: middle;
 
-    /* Track background — unset (off) state. */
+    /* Track background — unset (off) state. The clip stays on the content box, so the track is
+     * all that is painted. Every state rule below sets `background-color`, never the `background`
+     * shorthand, because the shorthand would reset this clip. */
     background: var(--cinder-toggle-track-off, var(--cinder-toggle-track-off-resting));
+    background-clip: content-box;
 
     transition:
       background-color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease),
@@ -76,7 +92,7 @@
  * ---------------------------------------- */
 
   .cinder-toggle[data-cinder-checked] {
-    background: var(--cinder-toggle-track-on, var(--cinder-accent-solid));
+    background-color: var(--cinder-toggle-track-on, var(--cinder-accent-solid));
   }
 
   /* ----------------------------------------
@@ -123,14 +139,14 @@
 
   @media (hover: hover) {
     .cinder-toggle:hover:not(:disabled) {
-      background: var(
+      background-color: var(
         --cinder-toggle-track-off-hover,
         var(--cinder-toggle-track-off-hover-resting)
       );
     }
 
     .cinder-toggle[data-cinder-checked]:hover:not(:disabled) {
-      background: var(--cinder-toggle-track-on-hover, var(--cinder-accent-solid-hover));
+      background-color: var(--cinder-toggle-track-on-hover, var(--cinder-accent-solid-hover));
     }
   }
 
@@ -156,13 +172,15 @@
     /* Circle sitting inside the track, vertically centered with a gap on every side. */
     position: absolute;
     inset-block-start: 50%;
-    inset-inline-start: 0.125rem; /* 2px gap from track edge */
+    /* The padding box starts before the track does, so the 2px gap from the track edge is added
+     * to the inline padding. */
+    inset-inline-start: calc(var(--_cinder-toggle-pad-inline) + 0.125rem);
     display: block;
     width: var(
       --cinder-toggle-thumb-size,
-      1.125rem
-    ); /* 18px — leaves 3px vertical gap in 24px track */
-    height: var(--cinder-toggle-thumb-size, 1.125rem);
+      0.875rem
+    ); /* 14px — a 2px gap all round in an 18px track */
+    height: var(--cinder-toggle-thumb-size, 0.875rem);
     border-radius: 50%;
     background: var(--cinder-toggle-thumb-color, #ffffff);
     box-shadow: var(--cinder-shadow-sm);
@@ -176,9 +194,20 @@
   }
 
   /* Pressed: slide thumb to the end. Travel distance is track-width minus thumb-size minus
- * the 2px gap on each side: 44 - 18 - 4 = 22px = 1.375rem. */
+ * the 2px gap on each side: 32 - 14 - 4 = 14px = 0.875rem. */
   .cinder-toggle[data-cinder-checked] .cinder-toggle__thumb {
-    transform: translate(var(--cinder-toggle-thumb-travel, 1.375rem), -50%);
+    transform: translate(var(--cinder-toggle-thumb-travel, 0.875rem), -50%);
+  }
+
+  /* ----------------------------------------
+ * Coarse pointer: a 44 × 44 hit area around the 32 × 18 track
+ * ---------------------------------------- */
+
+  @media (any-pointer: coarse) {
+    .cinder-toggle {
+      --_cinder-toggle-pad-inline: calc((2.75rem - var(--cinder-toggle-width, 2rem)) / 2);
+      --_cinder-toggle-pad-block: calc((2.75rem - var(--cinder-toggle-height, 1.125rem)) / 2);
+    }
   }
 
   /* ----------------------------------------
