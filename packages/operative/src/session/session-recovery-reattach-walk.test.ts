@@ -10,10 +10,12 @@ import { createSessionEngine } from './session-engine-test-fixture';
 import { createSessionHandle } from './session-handle';
 import {
   createCheckpointStoreFixture,
+  createParkedRunEngine,
   createTestRunOptions,
   fixtureRuntime,
-  makeParkingWorkflow,
   makeProbeWorkflow,
+  settleParkedRun,
+  waitForParkedSleep,
 } from './session-handle-test-support';
 
 // Drain Weft's deferred inline-launch queue between tests — prevents one test's
@@ -218,8 +220,6 @@ describe('recover() — running reference selection', () => {
     //         (we own recoverAll), call recoverAll(), then call
     //         session.recover() to prove it re-attaches to the resumed workflow.
 
-    // Use a short sleep so the test does not wall-clock-wait.
-    const SLEEP_MS = 50;
     const storage = new MemoryStorage();
     const sessionId = 'd2-recovery-session';
     const runId = `${sessionId}:0`;
@@ -228,11 +228,10 @@ describe('recover() — running reference selection', () => {
     const firstKv = textValueStore(storage, { disposeUnderlyingStorage: false });
     const firstStore = createSessionStore(firstKv);
 
-    const { engine: engine1, checkpointStore: cs1 } = await createRunEngine({
-      storage,
-      runWorkflow: makeParkingWorkflow(SLEEP_MS),
+    // The parked-run engine never arms the poller and reads a frozen clock,
+    // so the run stays parked until the test fires its sleep.
+    const { engine: engine1, checkpointStore: cs1 } = await createParkedRunEngine(storage, {
       recover: false,
-      startScheduler: false, // do NOT arm the poller; the run stays parked
     });
 
     // Persist the session with status 'running' (simulates what the session
@@ -257,10 +256,8 @@ describe('recover() — running reference selection', () => {
 
     // Start the durable workflow under the run's id so recovery can find it.
     const firstHandle = await engine1.start('agentRun', {}, { id: runId });
-    // Drain the inline launch so the run reaches ctx.sleep before disposal.
-    for (let i = 0; i < 10; i++) {
-      await yieldToPortableEventLoop();
-    }
+    // Wait for the run to commit its ctx.sleep timer before disposal.
+    await waitForParkedSleep(storage, runId);
     // "Crash": dispose the first engine. The workflow stays in storage as
     // in-progress (parked on its sleep).
     engine1[Symbol.dispose]();
@@ -275,13 +272,8 @@ describe('recover() — running reference selection', () => {
     );
 
     // recover:false so we call recoverAll() ourselves (the bureau owns recovery).
-    // startScheduler:true so the parked ctx.sleep timer fires.
-    const { engine: engine2 } = await createRunEngine({
-      storage,
-      runWorkflow: makeParkingWorkflow(SLEEP_MS),
-      recover: false,
-      startScheduler: true,
-    });
+    // The parked ctx.sleep fires only when settleParkedRun ticks the scheduler.
+    const { engine: engine2 } = await createParkedRunEngine(storage, { recover: false });
 
     try {
       // Boot recovery: resume in-flight workflows.
@@ -301,6 +293,7 @@ describe('recover() — running reference selection', () => {
       expect(reattached).not.toBeNull();
 
       // The reattached run settles when the parked ctx.sleep fires.
+      await settleParkedRun(engine2, runId);
       const result = await reattached!.result();
       // finishReason proves the run completed (not errored, not aborted).
       expect(result.finishReason).toBe('stop-condition');

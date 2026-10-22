@@ -5,7 +5,6 @@ import { createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
 import { createCheckpointStore } from '../durable/checkpoint-store';
-import { createRunEngine } from '../durable/create-run-engine';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';
 import type { OperativeEventMap, SessionRecoverEvent } from '../events';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -14,9 +13,11 @@ import { createSessionEngine } from './session-engine-test-fixture';
 import { createSessionHandle } from './session-handle';
 import {
   createCheckpointStoreFixture,
+  createParkedRunEngine,
   createTestRunOptions,
   fixtureRuntime,
-  makeParkingWorkflow,
+  settleParkedRun,
+  waitForParkedSleep,
 } from './session-handle-test-support';
 import type { SessionStore } from './types';
 
@@ -31,7 +32,6 @@ describe('recover() — successful reattach events', () => {
     const storage = new MemoryStorage();
     const sessionId = 'd2-event-session';
     const runId = `${sessionId}:0`;
-    const SLEEP_MS = 50;
 
     // Pre-seed the session as 'running' in the store.
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
@@ -53,14 +53,9 @@ describe('recover() — successful reattach events', () => {
     await store.save(session);
 
     // Start the first engine + park a run.
-    const { engine: engine1 } = await createRunEngine({
-      storage,
-      runWorkflow: makeParkingWorkflow(SLEEP_MS),
-      recover: false,
-      startScheduler: false,
-    });
+    const { engine: engine1 } = await createParkedRunEngine(storage, { recover: false });
     const firstHandle = await engine1.start('agentRun', {}, { id: runId });
-    for (let i = 0; i < 10; i++) await yieldToPortableEventLoop();
+    await waitForParkedSleep(storage, runId);
     engine1[Symbol.dispose]();
     void firstHandle.result().catch(() => {});
 
@@ -68,12 +63,7 @@ describe('recover() — successful reattach events', () => {
     const kv2 = textValueStore(storage, { disposeUnderlyingStorage: false });
     const store2 = createSessionStore(kv2);
     const cs2 = createCheckpointStore(textValueStore(storage, { disposeUnderlyingStorage: false }));
-    const { engine: engine2 } = await createRunEngine({
-      storage,
-      runWorkflow: makeParkingWorkflow(SLEEP_MS),
-      recover: false,
-      startScheduler: true,
-    });
+    const { engine: engine2 } = await createParkedRunEngine(storage, { recover: false });
 
     try {
       await engine2.recoverAll();
@@ -104,6 +94,7 @@ describe('recover() — successful reattach events', () => {
       expect(recoverEvents[0]!.failures).toHaveLength(0);
 
       // Let the recovered run finish so no dangling promises.
+      await settleParkedRun(engine2, runId);
       await reattached!.result();
     } finally {
       engine2[Symbol.dispose]();
