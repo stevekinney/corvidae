@@ -10,8 +10,10 @@ Toolbox provides a pre-configured `search-tools` tool that enables semantic disc
 
 The search tool works both with and without vector embeddings:
 
-- **With embeddings**: Enables semantic search (e.g., "notify someone" finds `send-email`)
-- **Without embeddings**: Falls back to fuzzy text matching on names, descriptions, and tags
+- **With embeddings**: Also matches and ranks tools by embedding similarity, so a query such as "notify someone" can find `send-email` when the embedding model places them close together
+- **Without embeddings**: Matches by fuzzy text on names, descriptions, tags, and schema and metadata keys
+
+Either way it searches with [`searchTools`](searching-tools.md), filtered to the query's fuzzy text matches (and any `tags`), and returns the matches in `searchTools`' ranked order with its scores.
 
 ## Installation
 
@@ -28,59 +30,59 @@ import { createToolbox, createTool } from 'armorer';
 import { createSearchTool } from 'armorer';
 import { z } from 'zod';
 
-// Create a toolbox and register some tools
-const toolbox = createToolbox();
-
-createTool(
-  {
-    name: 'send-email',
-    description: 'Send an email message to one or more recipients',
-    input: z.object({
-      to: z.array(z.string().email()),
-      subject: z.string(),
-      body: z.string(),
-    }),
-    tags: ['communication', 'email'],
-    async execute({ to, subject, body }) {
-      console.log(`Sending email to ${to.join(', ')}`);
-      return { sent: true };
-    },
+const sendEmail = createTool({
+  name: 'send-email',
+  description: 'Send an email message to one or more recipients',
+  input: z.object({
+    to: z.array(z.string().email()),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  tags: ['communication', 'email'],
+  async execute({ to, subject, body }) {
+    console.log(`Sending email to ${to.join(', ')}`);
+    return { sent: true };
   },
-  toolbox,
-);
+});
 
-createTool(
-  {
-    name: 'schedule-meeting',
-    description: 'Create a calendar event and invite attendees',
-    input: z.object({
-      title: z.string(),
-      startTime: z.string().datetime(),
-      attendees: z.array(z.string().email()),
-    }),
-    tags: ['calendar', 'scheduling'],
-    async execute({ title }) {
-      return { scheduled: true, eventId: 'evt_123' };
-    },
+const scheduleMeeting = createTool({
+  name: 'schedule-meeting',
+  description: 'Create a calendar event and invite attendees',
+  input: z.object({
+    title: z.string(),
+    startTime: z.string().datetime(),
+    attendees: z.array(z.string().email()),
+  }),
+  tags: ['calendar', 'scheduling'],
+  async execute({ title }) {
+    return { scheduled: true, eventId: 'evt_123' };
   },
-  toolbox,
-);
+});
 
-// Create the search tool (automatically registered with toolbox)
+// Create a toolbox with some tools
+const toolbox = createToolbox([sendEmail, scheduleMeeting]);
+
+// Create a search tool that searches that toolbox
 const searchTool = createSearchTool(toolbox);
 
 // Search for tools
-const results = await searchTool({ query: 'contact someone' });
+const results = await searchTool({ query: 'send message' });
 console.log(results);
 // [
-//   { name: 'send-email', description: '...', tags: ['communication', 'email'], score: 1.5 },
-//   { name: 'schedule-meeting', description: '...', tags: ['calendar', 'scheduling'], score: 0.8 }
+//   {
+//     name: 'send-email',
+//     description: 'Send an email message to one or more recipients',
+//     tags: ['communication', 'email'],
+//     score: 3,
+//   },
 // ]
 ```
 
+Without embeddings, only tools whose text matches the query are returned: `schedule-meeting` shares no words with "send message", and a query such as "contact someone" returns `[]` because neither tool mentions contacting.
+
 ## With Semantic Search (Embeddings)
 
-For better search results, configure your toolbox with an embedding function:
+For better search results, configure your toolbox with an embedding function. The search tool uses the toolbox's `embed` function and any vectors stored with `registerToolEmbeddings`:
 
 ```typescript
 import { createToolbox } from 'armorer';
@@ -102,12 +104,15 @@ const toolbox = createToolbox([], {
 // Register tools...
 
 // Create search tool
-const searchTool = createSearchTool(toolbox);
+const searchTool = createSearchTool(toolbox, { explain: true });
 
-// Semantic search finds relevant tools even without exact keyword matches
+// Semantic search can find tools that share no words with the query
 const results = await searchTool({ query: 'notify user about something' });
-// Finds 'send-email' even though 'notify' isn't in the name or description
+// With a registered `send-email` tool that the embedding model places close to the query:
+// [{ name: 'send-email', ..., score: 0.95, reasons: ['embedding:name:0.95'] }]
 ```
+
+A tool matches when its text matches the query or when the cosine similarity between the query's embedding and one of the tool's field embeddings reaches the fuzzy threshold (0.7 by default). Each embedding match adds the best field's similarity, weighted by that field, to the score and reports it as an `embedding:<field>:<similarity>` reason. The search tool waits for an asynchronous `embed` function to finish embedding the query and the tools before it searches, so embeddings apply from the first call.
 
 ## Configuration Options
 
@@ -127,15 +132,16 @@ interface CreateSearchToolOptions {
 
   /** Additional tags to add to the tool. */
   tags?: string[];
-
-  /** Automatically register the tool with the toolbox. @default true */
-  register?: boolean;
 }
 ```
 
 ### Example with Options
 
 ```typescript
+import { createSearchTool, type AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const searchTool = createSearchTool(toolbox, {
   limit: 5, // Return at most 5 tools
   explain: true, // Include match reasons
@@ -148,10 +154,11 @@ const results = await searchTool({ query: 'send message' });
 // [
 //   {
 //     name: 'send-email',
-//     description: '...',
-//     score: 2.1,
-//     reasons: ['text:description', 'tag:communication']
-//   }
+//     description: 'Send an email message to one or more recipients',
+//     tags: ['communication', 'email'],
+//     score: 3,
+//     reasons: ['text:name', 'text:description'],
+//   },
 // ]
 ```
 
@@ -168,6 +175,10 @@ The search tool accepts these parameters:
 ### Filtering by Tags
 
 ```typescript
+import type { SearchTool } from 'armorer';
+
+declare const searchTool: SearchTool;
+
 // Find only communication-related tools
 const results = await searchTool({
   query: 'send something',
@@ -187,18 +198,27 @@ Each result contains:
 | `score`       | `number`   | Relevance score (higher is more relevant)      |
 | `reasons`     | `string[]` | Match explanations (when `explain` is enabled) |
 
+`score` is the `searchTools` ranking score, not a value between 0 and 1: each matching field, matching tag, and embedding match adds its weight, so compare scores within one result list rather than against a fixed cutoff. Results are sorted by score, highest first, with ties ordered by name.
+
+`reasons` lists what contributed to the score, in this order:
+
+- `tag:<tag>` for each `tags` filter value the tool carries
+- `text:<field>` for each field the query text matched (`name`, `description`, `schemaKeys`, `metadataKeys`), and `text:tags(<tags>)` for matching tags
+- `embedding:<field>:<similarity>` for the best embedding match, with the cosine similarity to two decimal places
+
 ## Dynamic Tool Discovery
 
-The search tool automatically discovers tools registered at any time—before or after the search tool itself is installed. This is because it queries `toolbox.tools()` at execution time, not at creation time.
+The search tool reads `toolbox.getAvailable()` each time it runs, not when it is created, so results reflect each tool's current [availability](registry.md#availability). A tool whose `availability` hook returns `false` is left out of the results.
+
+## Exposing the Search Tool to a Model
+
+`createSearchTool(toolbox)` returns a standalone tool and does not add it to the toolbox. Toolboxes are immutable, so add it with `extend()` to get a toolbox the model can call it through:
 
 ```typescript
-const toolbox = createToolbox();
+import { createSearchTool, createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
 
-// Install the search tool first
-createSearchTool(toolbox);
-
-// Register tools later - they will be discoverable
-toolbox.register(
+const toolbox = createToolbox([
   createTool({
     name: 'send-email',
     description: 'Send an email',
@@ -207,33 +227,16 @@ toolbox.register(
       return { sent: true };
     },
   }),
-);
+]);
 
-// The search tool finds tools registered after it was installed
-const results = await toolbox.execute({
+// The search tool searches `toolbox`; `withSearch` also exposes the search tool itself
+const withSearch = toolbox.extend(createSearchTool(toolbox));
+
+const results = await withSearch.execute({
   name: 'search-tools',
   arguments: { query: 'send' },
 });
 // Results include 'send-email'
-```
-
-This means you can:
-
-- Install the search tool early in your application setup
-- Dynamically register tools based on user permissions or feature flags
-- Load tools lazily and have them immediately searchable
-
-## Without Auto-Registration
-
-If you want to create the search tool without automatically registering it:
-
-```typescript
-const searchTool = createSearchTool(toolbox, {
-  register: false,
-});
-
-// Manually register later if needed
-toolbox.register(searchTool);
 ```
 
 ## Using with Provider Adapters
@@ -241,10 +244,14 @@ toolbox.register(searchTool);
 The search tool integrates seamlessly with provider adapters:
 
 ```typescript
-import { toOpenAITools } from 'armorer';
+import { toOpenAITools, type AnyToolbox } from 'armorer';
+import OpenAI from 'openai';
+
+declare const withSearch: AnyToolbox;
+declare const openai: OpenAI;
 
 // Get all tools including the search tool
-const tools = toOpenAITools(toolbox);
+const tools = toOpenAITools(withSearch);
 
 // Use with OpenAI
 const response = await openai.chat.completions.create({
@@ -267,8 +274,37 @@ import { z } from 'zod';
 
 const openai = new OpenAI();
 
+// Define your tools
+const sendEmail = createTool({
+  name: 'send-email',
+  description: 'Send an email to recipients',
+  input: z.object({
+    to: z.array(z.string().email()),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  tags: ['communication'],
+  async execute({ to, subject, body }) {
+    // Implementation
+    return { sent: true };
+  },
+});
+
+const getContacts = createTool({
+  name: 'get-contacts',
+  description: 'Retrieve contact information',
+  input: z.object({
+    filter: z.string().optional(),
+  }),
+  tags: ['contacts', 'readonly'],
+  async execute({ filter }) {
+    // Implementation
+    return [{ name: 'John', email: 'john@example.com' }];
+  },
+});
+
 // Create toolbox with embeddings for semantic search
-const toolbox = createToolbox([], {
+const tools = createToolbox([sendEmail, getContacts], {
   embed: async (texts) => {
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small',
@@ -278,43 +314,8 @@ const toolbox = createToolbox([], {
   },
 });
 
-// Register your tools
-createTool(
-  {
-    name: 'send-email',
-    description: 'Send an email to recipients',
-    input: z.object({
-      to: z.array(z.string().email()),
-      subject: z.string(),
-      body: z.string(),
-    }),
-    tags: ['communication'],
-    async execute({ to, subject, body }) {
-      // Implementation
-      return { sent: true };
-    },
-  },
-  toolbox,
-);
-
-createTool(
-  {
-    name: 'get-contacts',
-    description: 'Retrieve contact information',
-    input: z.object({
-      filter: z.string().optional(),
-    }),
-    tags: ['contacts', 'readonly'],
-    async execute({ filter }) {
-      // Implementation
-      return [{ name: 'John', email: 'john@example.com' }];
-    },
-  },
-  toolbox,
-);
-
 // Add the search tool
-createSearchTool(toolbox, { explain: true });
+const toolbox = tools.extend(createSearchTool(tools, { explain: true }));
 
 // Agent loop
 async function runAgent(userMessage: string) {
@@ -348,6 +349,7 @@ Always explain which tools you found and why you chose the one you're using.`,
       messages.push(choice.message);
 
       for (const toolCall of choice.message.tool_calls) {
+        if (toolCall.type !== 'function') continue;
         const result = await toolbox.execute({
           id: toolCall.id,
           name: toolCall.function.name,
