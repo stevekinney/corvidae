@@ -97,7 +97,8 @@ export class A2uiDataModel {
   readonly #onChange: ((value: A2uiJsonValue) => void) | undefined;
 
   constructor(initial: A2uiJsonValue | undefined, onChange?: (value: A2uiJsonValue) => void) {
-    this.#root = ownCopy(initial ?? {});
+    // Only an absent model starts empty; an explicit `null` is a value of its own.
+    this.#root = ownCopy(initial === undefined ? {} : initial);
     this.#onChange = onChange;
   }
 
@@ -109,7 +110,7 @@ export class A2uiDataModel {
 
   /** Replaces the whole model, as a server update does. */
   replace(value: A2uiJsonValue | undefined): void {
-    this.#root = ownCopy(value ?? {});
+    this.#root = ownCopy(value === undefined ? {} : value);
     this.#version += 1;
   }
 

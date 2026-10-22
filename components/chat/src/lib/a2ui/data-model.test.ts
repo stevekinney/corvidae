@@ -24,4 +24,15 @@ describe('the data model', () => {
     expect(childPointer('', 0)).toBe('/0');
     expect(childPointer('/items', 'a/b')).toBe('/items/a~1b');
   });
+
+  test('an explicit null model stays null; only an absent one starts as {}', () => {
+    expect(new A2uiDataModel(null).snapshot()).toBeNull();
+    expect(new A2uiDataModel(undefined).snapshot()).toEqual({});
+
+    const model = new A2uiDataModel({ a: 1 });
+    model.replace(null);
+    expect(model.snapshot()).toBeNull();
+    model.replace(undefined);
+    expect(model.snapshot()).toEqual({});
+  });
 });

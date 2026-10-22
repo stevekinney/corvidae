@@ -1149,4 +1149,48 @@ describe('control fixes', () => {
       else process.env['TZ'] = original;
     }
   });
+
+  test('a DateTimeInput that enables neither a date nor a time renders no control and is reported', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'no-control',
+        components: [{ id: 'root', component: 'DateTimeInput', label: 'When', value: '' }],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(container.querySelector('input')).toBeNull();
+    expect(diagnostics.some((entry) => entry.message.includes('neither a date nor a time'))).toBe(
+      true,
+    );
+  });
+
+  test('a Slider shows its failing check as the other checkable inputs do', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'slider-check',
+        components: [
+          {
+            id: 'root',
+            component: 'Slider',
+            label: 'Volume',
+            min: 0,
+            max: 10,
+            value: 2,
+            checks: [{ condition: false, message: 'Turn it up' }],
+          },
+        ],
+      },
+    });
+    await flush();
+
+    const slider = screen.getByRole('slider', { name: /Volume/ });
+    expect(slider.getAttribute('aria-invalid')).toBe('true');
+    const described = (slider.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(described.map((id) => document.getElementById(id)?.textContent?.trim())).toContain(
+      'Turn it up',
+    );
+  });
 });

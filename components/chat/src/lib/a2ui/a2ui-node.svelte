@@ -23,6 +23,7 @@
     Combobox,
     DatePicker,
     Divider,
+    FormField,
     Image,
     Input,
     Modal,
@@ -107,6 +108,15 @@
       if (typeof name === 'string' && !(Object.hasOwn(A2UI_ICONS, name) && A2UI_ICONS[name])) {
         context.report('unknown-icon', id, `Cinder has no icon for "${name}"`);
       }
+    } else if (
+      problem === undefined &&
+      component?.component === 'DateTimeInput' &&
+      dateTimeControl(
+        resolveBoolean(prop('enableDate'), evaluation),
+        resolveBoolean(prop('enableTime'), evaluation),
+      ).control === 'none'
+    ) {
+      report('a DateTimeInput enables neither a date nor a time, so it renders no control');
     } else if (problem === 'unsupported' && component !== undefined) {
       context.report(
         'unsupported-component',
@@ -279,7 +289,9 @@
   );
 
   /** A DateTimeInput's name when the surface gives it no label. */
-  function dateTimeLabel(kind: ReturnType<typeof dateTimeControl>): string {
+  function dateTimeLabel(
+    kind: Exclude<ReturnType<typeof dateTimeControl>, { control: 'none' }>,
+  ): string {
     if (kind.control === 'time-field') return 'Time';
     return kind.granularity === 'day' ? 'Date' : 'Date and time';
   }
@@ -758,18 +770,24 @@
     {:else if type === 'Slider'}
       {@const min = resolveNumber(prop('min'), evaluation) ?? 0}
       {@const max = resolveNumber(prop('max'), evaluation) ?? 100}
-      <Slider
-        label={nameOr(text('label'), 'Value')}
-        {min}
-        {max}
-        step={sliderStep(min, max)}
-        bind:value={
-          () =>
-            resolveNumber(read('value'), evaluation) ?? resolveNumber(prop('min'), evaluation) ?? 0,
-          (next) => setLocal('value', next)
-        }
-        class="a2ui-leaf"
-      />
+      {@const label = nameOr(text('label'), 'Value')}
+      <!-- Slider has no error of its own; a FormField carries its failing check,
+           marking it invalid and describing it with the message. -->
+      <FormField id={domId} {label} {...optional('error', checkMessage)} class="a2ui-leaf">
+        <Slider
+          {label}
+          {min}
+          {max}
+          step={sliderStep(min, max)}
+          bind:value={
+            () =>
+              resolveNumber(read('value'), evaluation) ??
+              resolveNumber(prop('min'), evaluation) ??
+              0,
+            (next) => setLocal('value', next)
+          }
+        />
+      </FormField>
     {:else if type === 'DateTimeInput'}
       {@const kind = dateTimeControl(
         resolveBoolean(prop('enableDate'), evaluation),
@@ -794,7 +812,7 @@
           )}
           class="a2ui-leaf"
         />
-      {:else}
+      {:else if kind.control === 'date-picker'}
         <DatePicker
           id={domId}
           label={nameOr(text('label'), dateTimeLabel(kind))}
