@@ -96,7 +96,7 @@ describe('a catalog task across a boot', () => {
     const durable = await restarted.getDurableRun(run.id);
     expect(record).toMatchObject({ taskId: run.id, owner: 'api-key:alice', agentName: 'asker' });
     expect(record?.createdAt).toBe(new Date(durable!.createdAt).toISOString());
-    const listed = await restarted.tasks.list({ limit: 50, offset: 0 });
+    const listed = await restarted.tasks.enumerate({ limit: 50, offset: 0 });
     expect(listed.tasks.filter((task) => task.id === run.id)).toHaveLength(1);
   });
 
