@@ -64,6 +64,8 @@ export interface InteractiveSurfaceA2ui {
   readonly components: readonly InteractiveSurfaceJsonObject[];
   /** Theme parameters for the catalog's `theme` schema. */
   readonly theme?: InteractiveSurfaceJsonObject | undefined;
+  /** A2UI's `createSurface` flag asking the client to send its whole data model back. */
+  readonly sendDataModel?: boolean | undefined;
 }
 
 /** The content security policy of an MCP App, as MCP Apps declares it. */
@@ -376,6 +378,8 @@ export type InteractiveSurfaceRejectionReason =
   | 'closed'
   /** The content exceeds the payload cap. */
   | 'payload-too-large'
+  /** The surface kept changing while the command was checked. Nothing committed; retry it. */
+  | 'contended'
   /** The Bureau keeps no durable history, so it has no surfaces. */
   | 'unsupported-capability';
 

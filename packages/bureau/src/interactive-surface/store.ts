@@ -330,17 +330,15 @@ export function createInteractiveSurfaces(
     return text === null ? undefined : (JSON.parse(text) as StoredCursor);
   }
 
-  /** Records the committing event's cursor, unless a later revision already has. */
   /**
-   * Records `cursor` for `surface`'s revision, only while the projection still
-   * reads `committed`: once a later commit or the task's removal has replaced
-   * it, this write is stale, and a removal can never be followed by a cursor.
+   * Records the committing event's cursor, unless a later revision already
+   * has, and only while the stored surface is still at `surface`'s revision.
+   * The fence is the revision, not the projection's text: an action admitted
+   * meanwhile changes the text but not the revision, and the cursor still
+   * belongs to it, while a later commit or the task's removal makes this
+   * write stale, so a removal can never be followed by a cursor.
    */
-  async function writeCursor(
-    surface: InteractiveSurface,
-    cursor: string,
-    committed: string,
-  ): Promise<void> {
+  async function writeCursor(surface: InteractiveSurface, cursor: string): Promise<void> {
     const key = cursorKey(surface.taskId, surface.surfaceId);
     const projection = surfaceKey(surface.taskId, surface.surfaceId);
     const next = JSON.stringify({ revision: surface.revision, cursor } satisfies StoredCursor);
@@ -352,18 +350,24 @@ export function createInteractiveSurfaces(
       ) {
         return;
       }
+      const stored = await store.get(projection);
+      if (
+        stored === null ||
+        (JSON.parse(stored) as StoredSurface).surface.revision !== surface.revision
+      ) {
+        return;
+      }
       if (
         await store.conditionalBatch(
           [
             { key, expectedValue: recorded },
-            { key: projection, expectedValue: committed },
+            { key: projection, expectedValue: stored },
           ],
           [{ type: 'put', key, value: next }],
         )
       ) {
         return;
       }
-      if ((await store.get(projection)) !== committed) return;
     }
   }
 
@@ -394,9 +398,8 @@ export function createInteractiveSurfaces(
     const conditions: ConditionalBatchCondition[] = [
       { key, expectedValue: expected === null ? null : new TextEncoder().encode(expected) },
     ];
-    const committed = JSON.stringify(next);
     const operations: BatchOperation[] = [
-      { type: 'put', key, value: new TextEncoder().encode(committed) },
+      { type: 'put', key, value: new TextEncoder().encode(JSON.stringify(next)) },
     ];
     let cursor: string;
     try {
@@ -410,7 +413,7 @@ export function createInteractiveSurfaces(
       throw error;
     }
     // Only an event that committed a revision names that revision's cursor.
-    if (advancesRevision) await writeCursor(next.surface, cursor, committed);
+    if (advancesRevision) await writeCursor(next.surface, cursor);
     return cursor;
   }
 
@@ -598,14 +601,21 @@ export function createInteractiveSurfaces(
   }
 
   /** Runs `attempt` until it does not lose a race, or the attempt budget is spent. */
-  async function retrying<T>(attempt: () => Promise<T>): Promise<T> {
-    for (let index = 1; ; index += 1) {
+  /**
+   * Runs a commit attempt again each time it loses its race. Admitted actions
+   * change a surface without advancing its revision, so a command can keep
+   * losing while it stays valid; after the last attempt it is refused as
+   * `contended`, which a caller may retry, rather than thrown.
+   */
+  async function retrying<T>(attempt: () => Promise<T>): Promise<T | InteractiveSurfaceRejection> {
+    for (let index = 1; index <= MAX_COMMIT_ATTEMPTS; index += 1) {
       try {
         return await attempt();
       } catch (error: unknown) {
-        if (!(error instanceof LostRace) || index >= MAX_COMMIT_ATTEMPTS) throw error;
+        if (!(error instanceof LostRace)) throw error;
       }
     }
+    return rejection('contended', 'the surface kept changing while the command was checked');
   }
 
   /** Runs a command body, mapping validation failures to their rejections. */

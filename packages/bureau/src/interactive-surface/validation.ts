@@ -92,6 +92,10 @@ export function readIdentifier(value: unknown, where: string): string {
   }
   // eslint-disable-next-line no-control-regex -- the point is to refuse control characters.
   if (/[\u0000-\u001f\u007f]/.test(value)) fail(`${where} must not contain control characters`);
+  // An unpaired surrogate cannot be encoded into a storage key.
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(value)) {
+    fail(`${where} must be well-formed Unicode`);
+  }
   return value;
 }
 
@@ -280,7 +284,7 @@ function readInputForm(
 function readA2ui(value: Record<string, unknown>): InteractiveSurfaceRepresentation {
   assertKnownFields(
     value,
-    ['kind', 'specificationVersion', 'catalogId', 'components', 'theme'],
+    ['kind', 'specificationVersion', 'catalogId', 'components', 'theme', 'sendDataModel'],
     'representation',
   );
   if (value['specificationVersion'] !== INTERACTIVE_SURFACE_A2UI_VERSION) {
@@ -305,12 +309,17 @@ function readA2ui(value: Record<string, unknown>): InteractiveSurfaceRepresentat
     value['theme'] === undefined
       ? undefined
       : readJsonObject(value['theme'], 'representation.theme');
+  const sendDataModel = value['sendDataModel'];
+  if (sendDataModel !== undefined && typeof sendDataModel !== 'boolean') {
+    fail('representation.sendDataModel must be a boolean');
+  }
   return {
     kind: 'a2ui',
     specificationVersion: INTERACTIVE_SURFACE_A2UI_VERSION,
     catalogId,
     components,
     ...(theme === undefined ? {} : { theme }),
+    ...(sendDataModel === undefined ? {} : { sendDataModel }),
   };
 }
 
@@ -324,7 +333,17 @@ function readOrigins(value: unknown, where: string): readonly string[] {
     // host and port, no credentials); default ports and letter case are allowed.
     const shaped = /^[a-z][a-z0-9+.-]*:\/\/[^/?#@\s]+$/i.test(origin);
     const parsed = shaped && URL.canParse(origin) ? new URL(origin) : undefined;
-    if (parsed === undefined || !ORIGIN_PROTOCOLS.has(parsed.protocol)) {
+    // The parse is checked too: it reads `\` as `/`, so a shape alone can hide a path.
+    if (
+      parsed === undefined ||
+      !ORIGIN_PROTOCOLS.has(parsed.protocol) ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.pathname !== '/' ||
+      parsed.search !== '' ||
+      parsed.hash !== '' ||
+      origin.includes('\\')
+    ) {
       fail(`${where} must hold only origins, such as "https://example.com"`);
     }
   }

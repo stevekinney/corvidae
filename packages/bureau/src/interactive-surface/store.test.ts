@@ -753,6 +753,96 @@ describe('closing, cancellation, and cleanup', () => {
     expect(named).toMatchObject({ outcome: 'accepted' });
   });
 
+  it('keeps a revision’s cursor when an action lands while it is being written', async () => {
+    const { surfaces, storage } = harness();
+    await surfaces.create(createCommand());
+    // Hold the update's cursor write open until the action has committed.
+    const action = Promise.withResolvers<void>();
+    const get = storage.get.bind(storage);
+    Reflect.set(storage, 'get', async (key: string) => {
+      if (key.includes('cursor:')) await action.promise;
+      return get(key);
+    });
+    const updating = surfaces.update(updateCommand());
+    let admitted: unknown;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      admitted = await surfaces.act(actionRequest({ revision: 2 }));
+      if ((admitted as { outcome?: string }).outcome === 'accepted') break;
+      await Promise.resolve();
+    }
+    expect(admitted).toMatchObject({ outcome: 'accepted' });
+    action.resolve();
+    expect(await updating).toMatchObject({ outcome: 'accepted' });
+
+    const surface = await snapshotOf(surfaces);
+    expect(surface.eventCursor).not.toBeNull();
+  });
+
+  it('answers a command that keeps losing its commit with a contended rejection', async () => {
+    const { surfaces, storage } = harness();
+    await surfaces.create(createCommand());
+    // Every read of the projection sees it changed again, and every commit fails.
+    let reads = 0;
+    const get = storage.get.bind(storage);
+    Reflect.set(storage, 'get', async (key: string) => {
+      const value = await get(key);
+      if (value === null || !key.includes('surface:')) return value;
+      reads += 1;
+      return new TextEncoder().encode(`${new TextDecoder().decode(value)}${' '.repeat(reads)}`);
+    });
+    Reflect.set(storage, 'conditionalBatch', async () => false);
+
+    expect(await surfaces.update(updateCommand())).toMatchObject({
+      outcome: 'rejected',
+      reason: 'contended',
+    });
+  });
+
+  it('refuses an unpaired surrogate in an identifier and a backslash path in a CSP origin', async () => {
+    const { surfaces } = harness();
+    expect(await surfaces.create(createCommand({ surfaceId: '\ud800' }))).toMatchObject({
+      reason: 'invalid',
+    });
+    expect(
+      await surfaces.create(
+        createCommand({
+          commandId: 'create-2',
+          surfaceId: 'app',
+          actions: [],
+          representation: {
+            kind: 'mcp-app',
+            resourceUri: 'ui://reviews/pending',
+            mimeType: 'text/html;profile=mcp-app',
+            contentDigest: `sha256:${'c'.repeat(64)}`,
+            instanceId: 'instance-1',
+            csp: { connectDomains: ['https://example.com\\evil'], resourceDomains: [] },
+            permissions: {},
+          },
+        }),
+      ),
+    ).toMatchObject({ reason: 'invalid' });
+  });
+
+  it('keeps an A2UI surface’s sendDataModel flag', async () => {
+    const { surfaces } = harness();
+    const created = await surfaces.create(
+      createCommand({
+        actions: [],
+        representation: {
+          kind: 'a2ui',
+          specificationVersion: 'v0.9.1',
+          catalogId: 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json',
+          components: [{ id: 'root', component: 'Text', text: 'Hello' }],
+          sendDataModel: true,
+        },
+      }),
+    );
+    expect(created).toMatchObject({
+      outcome: 'accepted',
+      surface: { representation: { sendDataModel: true } },
+    });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

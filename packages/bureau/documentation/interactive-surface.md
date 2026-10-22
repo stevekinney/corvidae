@@ -40,7 +40,7 @@ The cleanup acknowledgement a task's surfaces report reuses Operative's `Cleanup
 The representation union is closed: `input-form`, `a2ui`, and `mcp-app`, discriminated by `kind`. It grows only with a new contract version. Each kind keeps its own validation and security metadata beside the shared lifecycle fields.
 
 - **`input-form`** is the native kind, which every host must render. Its `schema` is a JSON Schema 2020-12 schema of an object; the schema must compile, may not declare `$id`, may not be asynchronous (admission validates synchronously), may not use `pattern` or `patternProperties` (an untrusted regular expression can stall Bureau when a value is admitted), and has no `format` assertion (the 2020-12 default). `submitLabel` optionally names the submit control. `@lostgradient/chat` renders it with Cinder's `SchemaForm`.
-- **`a2ui`** is an A2UI surface, experimental, pinned to A2UI `v0.9.1` by `specificationVersion`. It carries the `catalogId` its components come from, the `components` list as A2UI's `updateComponents` carries it (one has the id `root`, and ids are unique), and an optional `theme`. Bureau checks this shape; it does not validate the components against their catalog (see [Design](#design)).
+- **`a2ui`** is an A2UI surface, experimental, pinned to A2UI `v0.9.1` by `specificationVersion`. It carries the `catalogId` its components come from, the `components` list as A2UI's `updateComponents` carries it (one has the id `root`, and ids are unique), an optional `theme`, and A2UI's optional `sendDataModel` flag, which asks the client to send its whole data model back with each action. Bureau checks this shape; it does not validate the components against their catalog (see [Design](#design)).
 - **`mcp-app`** is an MCP App: its `ui://` `resourceUri`, the `text/html;profile=mcp-app` `mimeType`, the `contentDigest` of the resource's bytes (`sha256:` and 64 lowercase hex digits), the `instanceId` of the app instance this revision shows, its `csp` (`connectDomains`, `resourceDomains`, and optionally `frameDomains` and `baseUriDomains`, each a list of origins: a scheme of `https`, `http`, `wss`, or `ws`, a host, and an optional port, with no path, query, fragment, or credentials), its `permissions` (`camera`, `microphone`, `geolocation`, `clipboardWrite`; an absent one is denied), and optionally the `toolName` whose result it presents. Bureau applies no narrower guard than this: the host's sandbox contains the app.
 
 An update may replace the representation, but not change its kind.
@@ -75,7 +75,7 @@ Every command carries `contractVersion`, a `type`, the `taskId`, and a `commandI
 | Owner abort (`surface.owner-abort`) | `AbortInteractiveSurfacesReceipt` | Yes |
 | Cleanup (`surface.cleanup`, a query) | `InteractiveSurfaceCleanupReceipt` | Yes |
 
-A receipt is either an acceptance or an `InteractiveSurfaceRejection`, whose `reason` is one of `invalid`, `not-found`, `conflict`, `stale-revision` (with the surface's `currentRevision`), `stale-instance`, `closed`, `payload-too-large`, or `unsupported-capability`. A rejection commits nothing. `bureau.surfaces` never throws for a refused command; it throws only when storage fails.
+A receipt is either an acceptance or an `InteractiveSurfaceRejection`, whose `reason` is one of `invalid`, `not-found`, `conflict`, `stale-revision` (with the surface's `currentRevision`), `stale-instance`, `closed`, `payload-too-large`, `contended` (the surface kept changing while the command was checked, so it may be retried as is), or `unsupported-capability`. A rejection commits nothing. `bureau.surfaces` never throws for a refused command; it throws only when storage fails.
 
 Subscribe, context update, and action result are defined so their consumers can build against them, but Bureau does not serve them yet: a subscriber replays the task's durable history (see below), a client's data model is not written back to the surface, and what became of an admitted action is read from the task itself.
 
@@ -170,7 +170,7 @@ A surface follows its task: it stays readable, frozen or closed, until `BureauOp
 
 ## Payload limits
 
-A surface's content, its representation, data, summary, and actions as JSON, is capped at `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, 1 MiB, which is the default `maxRequestBodyBytes` of `createBureauHandler`, so a surface that fits the cap fits in one request. A larger create or update is rejected as `payload-too-large`. Identifiers are at most 256 characters with no control characters, and a summary at most 4,096.
+A surface's content, its representation, data, summary, and actions as JSON, is capped at `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, 1 MiB, which is the default `maxRequestBodyBytes` of `createBureauHandler`, so a surface that fits the cap fits in one request. A larger create or update is rejected as `payload-too-large`. Identifiers are at most 256 characters of well-formed Unicode with no control characters, and a summary at most 4,096.
 
 ## Accessibility
 
