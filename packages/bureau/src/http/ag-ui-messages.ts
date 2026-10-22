@@ -18,6 +18,7 @@
  */
 
 import type { Message as AgUiMessage } from '@ag-ui/core';
+import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
 import {
   agUiConversationAdapter,
   type ConversationHistory,
@@ -26,7 +27,6 @@ import {
   mergeAGUIMessages,
 } from 'conversationalist';
 
-import { MEMORY_EVIDENCE_METADATA_KEY } from '../memory-evidence-metadata.ts';
 import { assetPartsOf } from './ag-ui-asset-parts.ts';
 import { ASSET_FILE_PROVIDER, ASSET_PARTS_METADATA_KEY } from './ag-ui-vocabulary.ts';
 
@@ -154,6 +154,31 @@ export function snapshotMessages(history: ConversationHistory): AgUiMessage[] {
   } catch {
     return agUiConversationAdapter.export(textOnly(visible));
   }
+}
+
+/** The row a human's answer appends to a run's conversation: its id, and the text the run renders. */
+export type AnswerRow = { readonly id: string; readonly content: string };
+
+/**
+ * The `messages` of a `MESSAGES_SNAPSHOT` that also carries the answers a resume just delivered,
+ * for the ones `history` does not hold yet (the run appends its own row when it wakes, which a
+ * stream that opens first has not seen). An answer travels as a row of this snapshot and never as
+ * a user-role `TEXT_MESSAGE_*` run: a client reads a snapshot's rows as the thread, and may
+ * discard text of a role it did not stream. A row `history` already holds is the snapshot's own
+ * and is not added again.
+ */
+export function snapshotMessagesWithAnswers(
+  history: ConversationHistory | undefined,
+  answerRows: ReadonlyArray<AnswerRow>,
+): AgUiMessage[] {
+  const messages = history === undefined ? [] : snapshotMessages(history);
+  const held = new Set(history?.ids ?? []);
+  for (const row of answerRows) {
+    if (held.has(row.id)) continue;
+    held.add(row.id);
+    messages.push({ id: row.id, role: 'user', content: row.content });
+  }
+  return messages;
 }
 
 /**

@@ -4,6 +4,7 @@
  * Pure and synchronous: no sleeps, no timers, no provider call. Epoch ids
  * are injected so every assertion names the exact chain it is about.
  */
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -12,6 +13,7 @@ import {
   createContextEpochSealer,
   digestText,
   epochSourcesUnchanged,
+  MEMORY_EVIDENCE_METADATA_KEY,
   sealContextEpoch,
 } from './context-epoch.ts';
 import type { SteeringDesiredState } from './durable/types.ts';
@@ -532,5 +534,128 @@ describe('conversation source digest ordering', () => {
     const digestOf = (epoch: typeof userFirst) =>
       epoch.sources.find((source) => source.sourceId === 'conversation')?.digest;
     expect(digestOf(userFirst)).not.toBe(digestOf(assistantFirst));
+  });
+});
+
+describe('the memory-evidence source (COR-771)', () => {
+  const evidence = (text: string) => `<memory-evidence>\n${text}\n</memory-evidence>`;
+  function appendBundle(conversation: Conversation, bundleRevision: string, text: string) {
+    const content = evidence(text);
+    conversation.appendSystemMessage(content, {
+      [MEMORY_EVIDENCE_METADATA_KEY]: {
+        sessionId: 'chat-1',
+        bundleRevision,
+        contentDigest: `sha256:${sha256HexSync(content)}`,
+      },
+    });
+  }
+  const sourceOf = (conversation: Conversation) =>
+    sealContextEpoch({ epochId: 'epoch-1', conversation, consumer: CONSUMER }).sources.find(
+      (source) => source.sourceId === 'memory-evidence',
+    );
+
+  it('is absent by composition when the turn carries no governed-memory evidence', () => {
+    expect(sourceOf(conversationWith([['user', 'hi']]))).toEqual({
+      sourceId: 'memory-evidence',
+      trust: 'untrusted-retrieved',
+      precedence: 3,
+      availability: 'degraded-ok',
+      redaction: 'digest-only',
+      disposition: { kind: 'absent-by-composition' },
+    });
+  });
+
+  it('records the bundle revision and content digest the turn consumed', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    expect(sourceOf(conversation)).toMatchObject({
+      trust: 'untrusted-retrieved',
+      disposition: { kind: 'included' },
+      revision: 'sha256:bundle-1',
+      digest: `sha256:${sha256HexSync(evidence('aisle'))}`,
+    });
+  });
+
+  it('flags a bundle whose message no longer holds the content its digest names', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    // A compaction or redaction rewrote the evidence row in place.
+    conversation.redactMessageAtPosition(1, 'summarized');
+    expect(sourceOf(conversation)).toMatchObject({
+      disposition: { kind: 'excluded', reason: 'memory-evidence-modified' },
+      revision: 'sha256:bundle-1',
+    });
+  });
+
+  it('counts an evidence row as retrieved in the conversation vector too', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    const epoch = sealContextEpoch({ epochId: 'epoch-1', conversation, consumer: CONSUMER });
+    const digest = epoch.sources.find((source) => source.sourceId === 'conversation')?.digest;
+    expect(digest).toStartWith('operator=1,agent=0,retrieved=1,');
+  });
+
+  it('flags a rewritten newest bundle instead of falling back to an older intact one', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    appendBundle(conversation, 'sha256:bundle-2', 'window');
+    conversation.redactMessageAtPosition(2, 'summarized');
+    expect(sourceOf(conversation)).toMatchObject({
+      disposition: { kind: 'excluded', reason: 'memory-evidence-modified' },
+      revision: 'sha256:bundle-2',
+    });
+  });
+
+  it('flags a stale bundle left in context beside a newer one', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    appendBundle(conversation, 'sha256:bundle-2', 'window');
+    expect(sourceOf(conversation)).toMatchObject({
+      disposition: { kind: 'excluded', reason: 'stale-memory-evidence-in-context' },
+      revision: 'sha256:bundle-2',
+    });
+  });
+
+  it('keeps recording the same current bundle across a steering change', () => {
+    const sealer = createContextEpochSealer({ newEpochId: sequentialEpochIds() });
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    const before = sealer.seal({
+      conversation,
+      steering: { paused: false, configVersion: 1, model: 'm' },
+      consumer: CONSUMER,
+    });
+    const after = sealer.seal({
+      conversation,
+      steering: { paused: false, configVersion: 2, model: 'other' },
+      consumer: { ...CONSUMER, step: 1 },
+    });
+    // Steering seals a successor, and the bundle it names is still the one in context.
+    expect(after.supersedes).toBe(before.epochId);
+    const memoryOf = (epoch: typeof before) =>
+      epoch.sources.find((source) => source.sourceId === 'memory-evidence');
+    expect(memoryOf(after)).toEqual(memoryOf(before));
+    expect(memoryOf(after)?.disposition).toEqual({ kind: 'included' });
+  });
+
+  it('seals a successor that records the new bundle once the stale one is withdrawn', () => {
+    const sealer = createContextEpochSealer({ newEpochId: sequentialEpochIds() });
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    const first = sealer.seal({ conversation, consumer: CONSUMER });
+    conversation.redactMessageAtPosition(1, 'withdrawn');
+    appendBundle(conversation, 'sha256:bundle-2', 'window');
+    const second = sealer.seal({ conversation, consumer: { ...CONSUMER, step: 1 } });
+    const revisionOf = (epoch: typeof first) =>
+      epoch.sources.find((source) => source.sourceId === 'memory-evidence');
+    expect(revisionOf(first)).toMatchObject({
+      revision: 'sha256:bundle-1',
+      disposition: { kind: 'included' },
+    });
+    expect(second.supersedes).toBe(first.epochId);
+    expect(revisionOf(second)).toMatchObject({
+      revision: 'sha256:bundle-2',
+      disposition: { kind: 'included' },
+    });
   });
 });

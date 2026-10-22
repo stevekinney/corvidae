@@ -40,6 +40,10 @@ const RECLAIMED = {
   outcomes: [{ workflowId: WORKFLOW_ID, status: 'reclaimed' }],
 };
 
+/** The attempts a refused terminal write makes, with the waits between them shortened to none. */
+const FAILURE_WRITE_RETRY_DELAYS = [0, 0, 0, 0];
+const FAILURE_WRITE_ATTEMPTS = FAILURE_WRITE_RETRY_DELAYS.length + 1;
+
 class RacingStorage extends MemoryStorage {
   /** While set, the holder scan of a reclaim listing waits here. */
   holderScanGate: PromiseWithResolvers<void> | null = null;
@@ -51,8 +55,12 @@ class RacingStorage extends MemoryStorage {
   /** When set, the next read of this key throws once. */
   failReadOf: string | null = null;
   readReadFailures = 0;
-  /** When set, the next conditional batch that writes the run as `failed` throws once. */
-  failNextFailedWrite = false;
+  /**
+   * How many of the next conditional batches that write the run as `failed` throw. The engine
+   * retries a refused terminal write (COR-1626), so a fault that outlasts every attempt is one per
+   * attempt: `FAILURE_WRITE_ATTEMPTS`.
+   */
+  failedWritesToFault = 0;
   failedWriteFaults = 0;
   /** When set, the next conditional batch that writes the run as `running` is refused once. */
   refuseNextRunningWrite = false;
@@ -119,8 +127,8 @@ class RacingStorage extends MemoryStorage {
         operation.type === 'put' && operation.key === KEYS.workflow(WORKFLOW_ID),
     );
     const status = written === undefined ? undefined : decodeWorkflowState(written.value).status;
-    if (this.failNextFailedWrite && status === 'failed') {
-      this.failNextFailedWrite = false;
+    if (this.failedWritesToFault > 0 && status === 'failed') {
+      this.failedWritesToFault--;
       this.failedWriteFaults++;
       throw new Error('transient storage error on the terminal write');
     }
@@ -552,6 +560,7 @@ describe('a delayed start that stops short of its launch', () => {
       resolveWorkflowServices: resolver.option,
     });
     const internals = getInternals(engine);
+    internals.storageWriteRetryDelaysForTesting = FAILURE_WRITE_RETRY_DELAYS;
     const registry = internals.workflowClaimRegistry!;
     const probe = probeFor(storage);
     await engine.start('counted', null, {
@@ -562,9 +571,9 @@ describe('a delayed start that stops short of its launch', () => {
     internals.workflowServices.delete(WORKFLOW_ID);
     clock.now = START_AT;
 
-    storage.failNextFailedWrite = true;
+    storage.failedWritesToFault = FAILURE_WRITE_ATTEMPTS;
     await engine.scheduler.tick(clock.now);
-    expect(storage.failedWriteFaults).toBe(1);
+    expect(storage.failedWriteFaults).toBe(FAILURE_WRITE_ATTEMPTS);
     expect(await statusOf(storage)).toBe('running');
     // The marker is settled and the folded claim released, so the run is not hidden from the scan.
     expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
@@ -729,19 +738,20 @@ describe('a prepared start that stops short of its launch', () => {
       resolveWorkflowServices: resolver.option,
     });
     const internals = getInternals(engine);
+    internals.storageWriteRetryDelaysForTesting = FAILURE_WRITE_RETRY_DELAYS;
     const probe = probeFor(storage);
     const prepared = await engine.prepare('counted', null, {
       id: WORKFLOW_ID,
       services: { owner: 'prepared' },
     });
     internals.workflowServices.delete(WORKFLOW_ID);
-    storage.failNextFailedWrite = true;
+    storage.failedWritesToFault = FAILURE_WRITE_ATTEMPTS;
     const outcome = await prepared.launch().then(
       () => 'resolved',
       (error: Error) => error.message,
     );
     expect(outcome).not.toBe('resolved');
-    expect(storage.failedWriteFaults).toBe(1);
+    expect(storage.failedWriteFaults).toBe(FAILURE_WRITE_ATTEMPTS);
     expect(await statusOf(storage)).toBe('running');
     expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBeNull();
