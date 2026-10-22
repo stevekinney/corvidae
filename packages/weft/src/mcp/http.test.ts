@@ -148,6 +148,10 @@ async function initialize(server: WeftServer): Promise<void> {
     },
     serverInfo: { name: 'weft' },
   });
+  // The stateless lane keeps no instance to deliver `notifications/tools/list_changed` from, and
+  // the SDK's stateless legacy handler advertises neither it nor resource subscriptions.
+  const { capabilities } = body.result as { capabilities: { tools: { listChanged?: boolean } } };
+  expect(capabilities.tools.listChanged).not.toBe(true);
 }
 
 function legacyHeaders(headers?: HeadersInit): Headers {
