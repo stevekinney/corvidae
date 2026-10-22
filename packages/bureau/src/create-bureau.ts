@@ -94,6 +94,7 @@ import {
   SESSION_OWNER_METADATA_KEY,
   createSessionHandle,
   ForkThroughMessageError,
+  SKILL_TOOL_DENIED_CODE,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -15446,8 +15447,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             typeof result === 'object' &&
             'outcome' in result &&
             result.outcome === 'error' &&
-            'approvalBindingConsumed' in result &&
-            result.approvalBindingConsumed === false
+            (('approvalBindingConsumed' in result && result.approvalBindingConsumed === false) ||
+              // COR-1628: the run's skill gate refuses the resumed call before it runs. With no
+              // approval store there is no consumption to report, so the refusal is recognised by
+              // its code, and the review stays pending as it does with a store.
+              (result as { error?: { code?: string } }).error?.code === SKILL_TOOL_DENIED_CODE)
           ) {
             const failedResult = result as {
               error?: { message?: string };

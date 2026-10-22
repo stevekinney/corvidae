@@ -77,7 +77,9 @@ export function createGatedExecute(
 ): (callOrCalls: ToolCallInput | ToolCallInput[], options?: ExecuteOptions) => Promise<unknown> {
   return async (callOrCalls, options) => {
     const visible = new Set(visibleTools().map((tool) => tool.name));
-    const registered = target.tools().map((tool) => tool.name);
+    // Unique, as Armorer's own resolution runs over the keys of its name map: a name registered
+    // under two versions or namespaces would otherwise be ambiguous here and pass through.
+    const registered = [...new Set(target.tools().map((tool) => tool.name))];
     const calls = Array.isArray(callOrCalls) ? callOrCalls : [callOrCalls];
 
     const refusals = new Map<number, ToolExecutionResult>();

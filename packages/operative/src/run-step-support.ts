@@ -189,7 +189,7 @@ export function dispatchSettledResults(
           toolCallId: call.id,
           status: result.outcome === 'success' ? 'success' : 'error',
           result: result.result,
-          error: result.outcome === 'success' ? undefined : result.result,
+          error: result.outcome === 'success' ? undefined : (result.error ?? result.result),
         },
       ),
     );

@@ -271,6 +271,46 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
     expect(executed).toEqual([]);
   });
 
+  it.each([
+    ['a toolbox built with resolution', true],
+    ['a toolbox without resolution', false],
+  ])(
+    'refuses a near-miss name of a hidden tool registered in two versions on %s',
+    async (_label, resolution) => {
+      const executed: string[] = [];
+      const versioned = (name: string, version: string) =>
+        createTool({
+          name,
+          version,
+          description: `The ${name} tool at ${version}`,
+          input: z.object({}),
+          execute: async () => {
+            executed.push(`${name}@${version}`);
+            return `${name}@${version} ran`;
+          },
+        });
+      const toolbox = createToolbox(
+        [versioned('search', '1.0.0'), versioned('write', '1.0.0'), versioned('write', '2.0.0')],
+        { resolution },
+      );
+      expect(toolbox.tools().filter((tool) => tool.name === 'write')).toHaveLength(2);
+      const gated = withActiveSkillToolPolicy(toolbox, () => ({ allowList: ['search'] }));
+
+      const results = await gated.execute([
+        { id: 'call-Write', name: 'Write', arguments: {} },
+        { id: 'call-namespaced', name: 'tools.write', arguments: {} },
+        { id: 'call-write', name: 'write', arguments: {} },
+      ]);
+
+      expect(results.map((result) => result.error?.code)).toEqual([
+        'SKILL_TOOL_DENIED',
+        'SKILL_TOOL_DENIED',
+        'SKILL_TOOL_DENIED',
+      ]);
+      expect(executed).toEqual([]);
+    },
+  );
+
   it('refuses a call that names a hidden tool by its id', async () => {
     const { gated, toolbox, executed } = harness();
     const writeId = toolbox.getTool('write')!.id;
@@ -393,6 +433,67 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
     const statuses = Object.fromEntries(settled.map((event) => [event.toolCallId, event.status]));
     expect(settled).toHaveLength(2);
     expect(statuses).toEqual({ 'call-search': 'success', 'call-write': 'error' });
+  });
+
+  it('settles a streamed call once, when its stream ends', async () => {
+    const stream = createTool({
+      name: 'stream-tool',
+      description: 'Streams',
+      input: z.object({}),
+      execute: async function* () {
+        yield 'a';
+        yield 'b';
+      },
+    });
+    const run = createActiveRun({
+      generate: createMockGenerate([
+        { content: '', toolCalls: [{ id: 'stream-1', name: 'stream-tool', arguments: {} }] },
+        { content: 'done', toolCalls: [] },
+      ]),
+      toolbox: createToolbox([stream]),
+      conversation: new Conversation(),
+      runId: 'stream-run',
+      collectAsync: true,
+      executeOptions: { stream: true },
+      stopWhen: ({ toolCalls }) => toolCalls.length === 0,
+    });
+    const settled: ToolSettledBubbleEvent[] = [];
+    run.addEventListener('tool.settled', (event) => settled.push(event));
+
+    await run.result;
+
+    expect(settled.map((event) => [event.toolCallId, event.status])).toEqual([
+      ['stream-1', 'success'],
+    ]);
+  });
+
+  it('carries the reason on the tool.settled of a call the toolbox rejects before it runs', async () => {
+    const { gated } = harness();
+    const run = createActiveRun({
+      generate: createMockGenerate([
+        {
+          content: '',
+          toolCalls: [
+            { id: 'call-missing', name: 'nonexistent', arguments: {} },
+            { id: 'call-write', name: 'write', arguments: {} },
+          ],
+        },
+        { content: 'done', toolCalls: [] },
+      ]),
+      toolbox: gated,
+      conversation: new Conversation(),
+      runId: 'reason-run',
+      stopWhen: ({ toolCalls }) => toolCalls.length === 0,
+    });
+    const settled: ToolSettledBubbleEvent[] = [];
+    run.addEventListener('tool.settled', (event) => settled.push(event));
+
+    await run.result;
+
+    const byCall = Object.fromEntries(settled.map((event) => [event.toolCallId, event]));
+    expect(byCall['call-missing']?.status).toBe('error');
+    expect(JSON.stringify(byCall['call-missing']?.error)).toContain('NOT_FOUND');
+    expect(JSON.stringify(byCall['call-write']?.error)).toContain('SKILL_TOOL_DENIED');
   });
 
   it('records the refusal in the run when a model asks for a hidden tool and then a visible one', async () => {

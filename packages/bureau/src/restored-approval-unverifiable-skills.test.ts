@@ -5,7 +5,7 @@
  * with no toolbox of its own, are unverifiable too. A snapshot that verifiably names no skill is
  * not, and such an approval runs as before.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { KEYS, type Storage } from '@lostgradient/weft';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
@@ -30,13 +30,51 @@ import {
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau } from './types';
+import type { Bureau, BureauDiagnostic } from './types';
 
 const harness = createScheduleFireHarness();
 
+/**
+ * A toolbox with no approval state to consume: its resume reports no `approvalBindingConsumed`,
+ * as a toolbox without an approval store does. The resume still runs through the receiver, so a
+ * skill gate in front of it still sees the call.
+ */
+function withoutConsumptionReport(toolbox: Toolbox): Toolbox {
+  return new Proxy(toolbox, {
+    get(target, property, receiver) {
+      const member = Reflect.get(target, property, receiver) as unknown;
+      if (property !== 'resumeApproval' || typeof member !== 'function') return member;
+      return async function (this: unknown, ...args: unknown[]) {
+        const result = (await (member as (...a: unknown[]) => Promise<object>).apply(
+          this,
+          args,
+        )) as { approvalBindingConsumed?: boolean };
+        const { approvalBindingConsumed: _consumed, ...unreported } = result;
+        return unreported;
+      };
+    },
+  });
+}
+
+/** What the Bureaus a test opened reported, which a test that expects a fault asserts. */
+const diagnostics: BureauDiagnostic[] = [];
+
 afterEach(async () => {
   await harness.dispose();
+  diagnostics.length = 0;
 });
+
+/** The boot recovery of a fire whose checkpoint store is unavailable fails, and says so once. */
+function expectBootRecoveryFailure(): void {
+  expect(diagnostics.map(({ level, scope, message }) => ({ level, scope, message }))).toEqual([
+    {
+      level: 'error',
+      scope: 'recovery',
+      message:
+        '[bureau] Durable run recovery failed during boot: the checkpoint store is unavailable',
+    },
+  ]);
+}
 afterAll(removeSkillRoots);
 
 const SESSION = 'unverifiable-skills-session';
@@ -165,6 +203,7 @@ async function restartFire(
     stopWhen: stopWhen.noToolCalls(),
     skills: { catalog: await catalog.discover() },
     toolbox: chargeApprovalToolbox(charges),
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     storage:
       wrap === undefined ? { type: 'sqlite', path } : await harness.sqliteStorage(path, wrap),
   });
@@ -196,6 +235,7 @@ describe('a restored fire approval whose snapshot cannot be read', () => {
       principal: OWNER.alice,
     });
     expect(denied.decision).toBe('deny');
+    expectBootRecoveryFailure();
   });
 
   for (const [label, allowedTools, outcome] of [
@@ -228,6 +268,7 @@ describe('a restored fire approval whose snapshot cannot be read', () => {
         expect(second.message).toContain('not permitted by the run');
         expect(charges).toEqual([]);
       }
+      expectBootRecoveryFailure();
     });
   }
 });
@@ -584,13 +625,14 @@ describe('a restored session-run approval is decided under the snapshot read at 
     reads: BodyReads,
     charges: number[],
     withSkills = true,
+    shapeToolbox: (toolbox: Toolbox) => Toolbox = (toolbox) => toolbox,
   ) {
     const parked = await parkedRunWithSkill(catalog);
     const restarted = await harness.open({
       generate: lockedAfterCharging('stop'),
       stopWhen: stopWhen.noToolCalls(),
       ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
-      toolbox: chargeApprovalToolbox(charges),
+      toolbox: shapeToolbox(chargeApprovalToolbox(charges)),
       storage: await harness.sqliteStorage(parked.path, sessionBodyReads(reads)),
     });
     const restored = await pollUntil(
@@ -600,7 +642,7 @@ describe('a restored session-run approval is decided under the snapshot read at 
     return { ...parked, restarted, restored };
   }
 
-  it('follows a snapshot that has changed since a clean restore', async () => {
+  it('is checked against the changed snapshot at approve, and the live run toolbox still refuses the call', async () => {
     const charges: number[] = [];
     const { restarted, restored, path } = await restoreRun(
       await skillCatalogOnDisk(),
@@ -623,6 +665,30 @@ describe('a restored session-run approval is decided under the snapshot read at 
     expect(after.message).not.toContain('not permitted by the run');
     expect(after.message).toContain("the active skills' allowed-tools exclude it");
     expect(charges).toEqual([]);
+  });
+
+  it('keeps the review pending when the run toolbox refuses the call and no approval is consumed', async () => {
+    const charges: number[] = [];
+    const { restarted, restored, path, run } = await restoreRun(
+      await skillCatalogOnDisk(),
+      newBodyReads(),
+      charges,
+    );
+    await rewriteSkillSnapshotOnDisk(path, (metadata) => {
+      metadata['activeSkillRecords'] = [];
+    });
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain("the active skills' allowed-tools exclude it");
+    expect(charges).toEqual([]);
+    expect(restarted.listPendingReviews().some((review) => review.id === restored.id)).toBe(true);
+    const denied = await restarted.resolveReview({
+      id: restored.id,
+      decision: 'deny',
+      principal: OWNER.alice,
+    });
+    expect(denied.decision).toBe('deny');
   });
 
   it('is refused when the snapshot names another run', async () => {
