@@ -306,3 +306,25 @@ describe('a switched model reaches the provider call', () => {
     });
   });
 });
+
+describe('a Bureau that is shutting down', () => {
+  it('throws for an in-process caller and logs nothing, so a retry after a restart is admitted normally', async () => {
+    const path = createTemporaryPath('model-shutdown', '.sqlite');
+    cleanups.push(() => removeTemporaryPath(path));
+    const bureau = await openBureau({ path });
+    const run = await startRun(bureau);
+    await waitForRunState(bureau, run.id);
+    const closing = bureau.dispose();
+
+    const attempt = await steer(bureau, run.sessionId, 'during-shutdown', OPUS_5.model).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await closing;
+
+    expect(attempt).toMatchObject({ code: 'CONFLICT' });
+    const restarted = await openBureau({ path });
+    const retry = await steer(restarted, run.sessionId, 'during-shutdown', OPUS_5.model);
+    expect(retry.outcome).toBe('accepted');
+  });
+});
