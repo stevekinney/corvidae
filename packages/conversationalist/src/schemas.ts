@@ -185,8 +185,8 @@ function withoutAbsentCitations<Part extends { type: string }>(
 /** Zod schema for one part of a tool result: a text part or a media part. */
 export const toolResultPartSchema = z
   .discriminatedUnion('type', [...portablePartSchemas])
-  .transform(
-    (value): ToolResultPart => withoutAbsentCitations(value) as ToolResultPart,
+  .transform((value): ToolResultPart =>
+    withoutAbsentCitations(value),
   ) satisfies z.ZodType<ToolResultPart>;
 
 const multiModalContentUnion = z.discriminatedUnion('type', [
@@ -242,7 +242,7 @@ export const multiModalContentSchema = multiModalContentUnion.transform(
   (value): MultiModalContent => {
     // Drop absent optional fields rather than carrying `key: undefined`, so the
     // output matches the interfaces under `exactOptionalPropertyTypes`.
-    return withoutAbsentCitations(value) as MultiModalContent;
+    return withoutAbsentCitations(value);
   },
 ) satisfies z.ZodType<MultiModalContent>;
 

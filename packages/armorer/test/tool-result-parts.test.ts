@@ -47,7 +47,7 @@ function chartTool(onExecute: () => void = () => {}) {
     name: 'chart',
     description: 'Draws a chart',
     input: z.object({ series: z.string() }),
-    idempotencyKey: ({ series }) => series,
+    idempotencyKey: (input) => (input as { series: string }).series,
     async execute({ series }) {
       onExecute();
       return toolContent(PARTS, { value: { series, points: 3 } });
