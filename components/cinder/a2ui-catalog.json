@@ -5,39 +5,6 @@
   "description": "Cinder components an agent may place on an A2UI v0.9.1 surface. Offered only to clients that list this catalog's id in supportedCatalogIds.",
   "catalogId": "https://cinder.website/a2ui/v0_9_1/catalogs/cinder/v1/catalog.json",
   "components": {
-    "Callout": {
-      "type": "object",
-      "description": "Inline static note or aside that highlights supporting commentary alongside body content without claiming live-region urgency. A2UI 'label' maps from Cinder 'title'.",
-      "allOf": [
-        {
-          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "component": {
-              "const": "Callout"
-            },
-            "label": {
-              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
-              "description": "Optional title rendered as a `<p class=\"cinder-callout__title\">`.\n\nRendered as a paragraph rather than a heading element so the\ncallout does not inject an entry into the document outline. If a\ncallout genuinely participates in the outline (e.g. it titles a\nstandalone section), wrap it in a `<section>` with its own heading\nrather than promoting this prop to `<h*>`.\n\nWhen supplied and no `aria-label` or `aria-labelledby` is passed\non rest props, the title also becomes the `aria-label` of the\nroot element so the landmark or note has an accessible name. Accessible name (Cinder `title`)."
-            },
-            "semantic": {
-              "type": "string",
-              "description": "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark.",
-              "enum": ["aside", "note"]
-            },
-            "variant": {
-              "type": "string",
-              "description": "Visual + semantic variant. Default `'info'`.",
-              "enum": ["info", "success", "warning", "danger"]
-            }
-          },
-          "required": ["component", "label"]
-        }
-      ],
-      "unevaluatedProperties": false
-    },
     "Checkbox": {
       "type": "object",
       "description": "Binary or tri-state selection control with bindable checked and indeterminate state for forms and lists. A2UI 'label' maps from Cinder 'label'.",
@@ -274,6 +241,9 @@
             },
             "step": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber"
+            },
+            "value": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber"
             }
           },
           "required": ["component", "label"]
@@ -283,7 +253,7 @@
     },
     "Progress": {
       "type": "object",
-      "description": "Determinate or indeterminate progressbar rendered as a horizontal bar or ring with full ARIA value semantics. A2UI 'label' maps from Cinder 'label'.",
+      "description": "Determinate or indeterminate progressbar rendered as a horizontal bar or ring with full ARIA value semantics. A2UI 'label' maps from Cinder 'ariaLabel'.",
       "allOf": [
         {
           "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
@@ -296,7 +266,7 @@
             },
             "label": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
-              "description": "Human-readable status, exposed as `aria-valuetext`. NOT the accessible\nname — supply `ariaLabel` or `ariaLabelledby` for that. Accessible name (Cinder `label`)."
+              "description": "Accessible name applied directly to the progressbar element when no\nvisible label element is present in the page. Required unless\n`ariaLabelledby` is supplied. Accessible name (Cinder `ariaLabel`)."
             },
             "max": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
@@ -324,7 +294,7 @@
     },
     "Rating": {
       "type": "object",
-      "description": "Star rating control with bindable numeric value, optional half-star precision, and a non-interactive readonly display mode. A2UI 'label' maps from Cinder 'label'.",
+      "description": "Star rating control with bindable numeric value, optional half-star precision, and a non-interactive readonly display mode. A2UI 'label' maps from Cinder 'aria-label'.",
       "allOf": [
         {
           "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
@@ -337,7 +307,7 @@
             },
             "label": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
-              "description": "Visible group label rendered above the rating. Accessible name (Cinder `label`)."
+              "description": "Group accessible name when no visible `label` is supplied. Accessible name (Cinder `aria-label`)."
             },
             "count": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
@@ -466,9 +436,6 @@
     },
     "anyComponent": {
       "oneOf": [
-        {
-          "$ref": "#/components/Callout"
-        },
         {
           "$ref": "#/components/Checkbox"
         },

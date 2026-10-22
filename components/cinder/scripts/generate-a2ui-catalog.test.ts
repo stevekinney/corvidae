@@ -19,6 +19,8 @@ import {
   type CatalogInputs,
   CINDER_A2UI_CATALOG_ID,
   createA2uiMessageValidator,
+  findAccessibleNameSource,
+  mapProperty,
   readCatalogInputs,
   readVendoredSchemas,
   validateA2uiCatalog,
@@ -75,6 +77,42 @@ describe('buildA2uiCatalog', () => {
     expect(() =>
       buildA2uiCatalog({ ...base, schemas: { meter: { ...meter, properties: unnamed } } }),
     ).toThrow('Meter (meter): schema has no accessible-name property');
+  });
+
+  it('fails when a required property has no A2UI mapping', () => {
+    const base = syntheticInputs();
+    const meter = base.schemas['meter'];
+    if (meter === undefined) throw new Error('fixture has no meter');
+    expect(() =>
+      buildA2uiCatalog({
+        ...base,
+        schemas: {
+          meter: {
+            ...meter,
+            metadata: { unsupportedProps: [{ name: 'children', required: true }] },
+          },
+        },
+      }),
+    ).toThrow("Meter (meter): required 'children' has no A2UI mapping");
+  });
+
+  it('maps a nullable scalar as its scalar', () => {
+    expect(
+      mapProperty({ anyOf: [{ type: 'number' }, { type: 'null' }], description: 'n' }),
+    ).toEqual({
+      $ref: 'https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber',
+      description: 'n',
+    });
+    expect(mapProperty({ anyOf: [{ type: 'number' }, { type: 'string' }] })).toBeUndefined();
+  });
+
+  it('prefers an explicit accessible-name property over a visible label', () => {
+    expect(
+      findAccessibleNameSource({ label: { type: 'string' }, ariaLabel: { type: 'string' } }),
+    ).toBe('ariaLabel');
+    expect(String(catalog.components['Progress']?.['description'])).toContain(
+      "from Cinder 'ariaLabel'",
+    );
   });
 
   it('fails when an allowlisted component is listed twice', () => {

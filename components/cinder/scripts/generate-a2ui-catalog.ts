@@ -84,11 +84,14 @@ export const EXCLUDED_CINDER_PROPERTIES: ReadonlySet<string> = new Set([
 /**
  * Cinder properties that can carry a component's accessible name, in
  * precedence order. The first one a schema declares becomes the A2UI `label`.
+ * An explicit accessible-name property wins over a visible `label`, because a
+ * component that declares both uses `label` for something else (Progress's is
+ * its `aria-valuetext`).
  */
 export const ACCESSIBLE_NAME_SOURCES: readonly string[] = [
-  'label',
   'ariaLabel',
   'aria-label',
+  'label',
   'alt',
   'title',
 ];
@@ -103,7 +106,7 @@ export type JsonObject = { [key: string]: unknown };
 export type CinderSchema = {
   properties: Record<string, JsonObject>;
   required?: string[];
-  metadata?: { unsupportedProps?: Array<{ name: string }> };
+  metadata?: { unsupportedProps?: Array<{ name: string; required?: boolean }> };
 };
 
 /** The manifest fields this generator reads for one component. */
@@ -184,6 +187,18 @@ function dynamicReference(typeName: string, source: JsonObject): JsonObject {
  * bind them to the surface's data model as well as set them literally.
  */
 export function mapProperty(source: JsonObject): JsonObject | undefined {
+  // A nullable scalar (`number | null`) maps as its scalar: an agent leaves it
+  // unset rather than sending null.
+  const anyOf = source['anyOf'];
+  if (Array.isArray(anyOf)) {
+    const scalars = anyOf.filter((option) => !(isJsonObject(option) && option['type'] === 'null'));
+    const [scalar] = scalars;
+    if (scalars.length !== 1 || !isJsonObject(scalar) || scalars.length === anyOf.length) {
+      return undefined;
+    }
+    const description = source['description'];
+    return mapProperty(typeof description === 'string' ? { ...scalar, description } : scalar);
+  }
   if (Array.isArray(source['enum'])) {
     if (!source['enum'].every((value) => typeof value === 'string')) return undefined;
     const entry: JsonObject = { type: 'string' };
@@ -220,7 +235,14 @@ function buildEntry(
   info: CatalogComponentInfo,
   nameSource: string,
 ): EntryResult {
-  const unsupported = new Set((schema.metadata?.unsupportedProps ?? []).map((prop) => prop.name));
+  const unsupportedProps = schema.metadata?.unsupportedProps ?? [];
+  const requiredUnsupported = unsupportedProps.filter((prop) => prop.required === true);
+  if (requiredUnsupported.length > 0) {
+    return {
+      error: `${info.name} (${id}): required ${requiredUnsupported.map((prop) => `'${prop.name}'`).join(', ')} has no A2UI mapping, so a catalog entry could not build it`,
+    };
+  }
+  const unsupported = new Set(unsupportedProps.map((prop) => prop.name));
   const nameSchema = schema.properties[nameSource] ?? {};
   if (nameSchema['type'] !== 'string') {
     return {
