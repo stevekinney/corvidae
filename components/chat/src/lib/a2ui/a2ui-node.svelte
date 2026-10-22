@@ -167,6 +167,29 @@
 
   const checkMessage = $derived(failingCheck(prop('checks'), evaluation));
 
+  // ── Accessibility (ComponentCommon.accessibility) ──
+  /** An `accessibility` field as text, or `undefined` when it is absent or empty. */
+  function accessibilityText(name: 'label' | 'description'): string | undefined {
+    const accessibility = prop('accessibility');
+    if (typeof accessibility !== 'object' || accessibility === null) return undefined;
+    const value = plainText(resolveString(Reflect.get(accessibility, name), evaluation));
+    return value === '' ? undefined : value;
+  }
+
+  /** The explicit accessible name, which wins over any name inferred from content. */
+  const accessibleName = $derived(accessibilityText('label'));
+  const accessibleDescription = $derived(accessibilityText('description'));
+  const descriptionId = $derived(`${domId}-description`);
+  /** Points a control at its explicit description, when it has one. */
+  const describedBy = $derived(
+    optional('aria-describedby', accessibleDescription === undefined ? undefined : descriptionId),
+  );
+
+  /** A control's name: its visible label, else its explicit name, else a fallback. */
+  function nameOr(visible: string, fallback: string): string {
+    return visible || accessibleName || fallback;
+  }
+
   // ── Modal ──
   let modalOpen = $state(false);
   let modalTrigger = $state<HTMLElement | null>(null);
@@ -280,7 +303,7 @@
         {#snippet children(src)}
           <Image
             {src}
-            alt={text('description')}
+            alt={accessibleName ?? text('description')}
             fit={mapEnum(A2UI_ENUM_MAPPINGS.Image.fit, 'Image.fit', prop('fit'), report)}
             size={mapEnum(
               A2UI_ENUM_MAPPINGS.Image.variant,
@@ -295,25 +318,42 @@
     {:else if type === 'Icon'}
       {@const name = resolveDynamicProp('name')}
       {#if typeof name === 'object' && name !== null && typeof (name as { svgPath?: unknown }).svgPath === 'string'}
-        <svg class="a2ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+        <svg
+          class="a2ui-icon"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          {...accessibleName === undefined
+            ? { 'aria-hidden': 'true' }
+            : { role: 'img', 'aria-label': accessibleName }}
+        >
           <path d={(name as { svgPath: string }).svgPath} />
         </svg>
       {:else}
         {@const Icon = typeof name === 'string' ? A2UI_ICONS[name] : undefined}
         {#if Icon}
-          <Icon class="a2ui-icon" size={24} aria-hidden="true" />
+          {#if accessibleName === undefined}
+            <Icon class="a2ui-icon" size={24} aria-hidden="true" />
+          {:else}
+            <span role="img" aria-label={accessibleName}>
+              <Icon class="a2ui-icon" size={24} aria-hidden="true" />
+            </span>
+          {/if}
         {/if}
       {/if}
     {:else if type === 'Video'}
       <A2uiAsset url={text('url')} componentId={id}>
         {#snippet children(src)}
-          <VideoPlayer {src} label="Video" class="a2ui-leaf" />
+          <VideoPlayer {src} label={accessibleName ?? 'Video'} class="a2ui-leaf" />
         {/snippet}
       </A2uiAsset>
     {:else if type === 'AudioPlayer'}
       <A2uiAsset url={text('url')} componentId={id}>
         {#snippet children(src)}
-          <AudioPlayer {src} label={text('description') || 'Audio'} class="a2ui-leaf" />
+          <AudioPlayer
+            {src}
+            label={accessibleName ?? (text('description') || 'Audio')}
+            class="a2ui-leaf"
+          />
         {/snippet}
       </A2uiAsset>
     {:else if type === 'Row' || type === 'Column'}
@@ -401,7 +441,8 @@
         )}
         disabled={activate === undefined && checkMessage !== undefined}
         title={checkMessage}
-        {...optional('aria-label', iconButtonLabel())}
+        {...optional('aria-label', accessibleName ?? iconButtonLabel())}
+        {...describedBy}
         class="a2ui-leaf"
         onclick={(event: MouseEvent) => {
           if (activate !== undefined) activate(event);
@@ -432,7 +473,8 @@
       {#if control === 'textarea'}
         <Textarea
           id={domId}
-          label={text('label')}
+          label={nameOr(text('label'), '')}
+          {...describedBy}
           value={typeof value === 'string' ? value : ''}
           {...optional('error', error)}
           class="a2ui-leaf"
@@ -442,7 +484,8 @@
       {:else if control === 'number-input'}
         <NumberInput
           id={domId}
-          label={text('label')}
+          label={nameOr(text('label'), '')}
+          {...describedBy}
           value={typeof value === 'number' ? value : (resolveNumber(value, evaluation) ?? null)}
           {...optional('error', error)}
           class="a2ui-leaf"
@@ -453,7 +496,8 @@
         <Input
           id={domId}
           type={control === 'password' ? 'password' : 'text'}
-          label={text('label')}
+          label={nameOr(text('label'), '')}
+          {...describedBy}
           value={typeof value === 'string' ? value : ''}
           {...optional('error', error)}
           class="a2ui-leaf"
@@ -463,7 +507,8 @@
     {:else if type === 'CheckBox'}
       <Checkbox
         id={domId}
-        label={text('label')}
+        label={nameOr(text('label'), '')}
+        {...describedBy}
         checked={read('value') === true}
         {...optional('error', checkMessage)}
         class="a2ui-leaf"
@@ -487,9 +532,14 @@
         ),
         resolveBoolean(prop('filterable'), evaluation),
       )}
-      {@const label = text('label') || 'Options'}
+      {@const label = nameOr(text('label'), 'Options')}
       {#if control === 'checkbox-group'}
-        <CheckboxGroup {label} {...optional('error', checkMessage)} class="a2ui-leaf">
+        <CheckboxGroup
+          {label}
+          {...optional('error', checkMessage)}
+          {...describedBy}
+          class="a2ui-leaf"
+        >
           {#each options as option (option.value)}
             <Checkbox
               id={`${domId}-${option.value}`}
@@ -509,6 +559,7 @@
         <MultiSelect
           id={domId}
           {label}
+          {...describedBy}
           items={options.map((option) => ({ id: option.value, label: option.label }))}
           bind:selectedIds={() => selected, (next) => setLocal('value', [...next])}
           filterable={resolveBoolean(prop('filterable'), evaluation)}
@@ -519,6 +570,7 @@
         <RadioGroup
           name={domId}
           {label}
+          {...optional('description', accessibleDescription)}
           bind:value={() => selected[0] ?? '', (next) => setLocal('value', [next])}
           {...optional('error', checkMessage)}
           class="a2ui-leaf"
@@ -535,6 +587,7 @@
         <Combobox
           id={domId}
           {label}
+          {...describedBy}
           {options}
           bind:value={
             () => selected[0] ?? '', (next) => setLocal('value', next === '' ? [] : [next])
@@ -546,6 +599,7 @@
         <Select
           id={domId}
           {label}
+          {...describedBy}
           {options}
           bind:value={
             () => selected[0] ?? '', (next) => setLocal('value', next === '' ? [] : [next])
@@ -556,7 +610,7 @@
       {/if}
     {:else if type === 'Slider'}
       <Slider
-        label={text('label') || 'Value'}
+        label={nameOr(text('label'), 'Value')}
         min={resolveNumber(prop('min'), evaluation) ?? 0}
         max={resolveNumber(prop('max'), evaluation) ?? 100}
         bind:value={
@@ -575,7 +629,8 @@
       {#if kind.control === 'time-field'}
         <TimeField
           id={domId}
-          label={text('label') || dateTimeLabel(kind)}
+          label={nameOr(text('label'), dateTimeLabel(kind))}
+          {...describedBy}
           bind:value={
             () => dateTimeForControl(value, 'time') ?? '', (next) => setLocal('value', next)
           }
@@ -585,7 +640,8 @@
       {:else}
         <DatePicker
           id={domId}
-          label={text('label') || dateTimeLabel(kind)}
+          label={nameOr(text('label'), dateTimeLabel(kind))}
+          {...describedBy}
           granularity={kind.granularity}
           {...optional('min', text('min') || undefined)}
           {...optional('max', text('max') || undefined)}
@@ -602,6 +658,9 @@
       {/if}
     {/if}
   </svelte:element>
+  {#if accessibleDescription !== undefined}
+    <span id={descriptionId} hidden>{accessibleDescription}</span>
+  {/if}
 {/if}
 
 <style>

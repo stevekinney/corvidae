@@ -653,4 +653,50 @@ describe('review fixes', () => {
     );
     expect(diagnostics.some((entry) => entry.message.includes('listed more than once'))).toBe(true);
   });
+
+  test('accessibility metadata names and describes a component over inferred fallbacks', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'accessibility',
+        components: [
+          { id: 'root', component: 'Column', children: ['add', 'email', 'logo'] },
+          {
+            id: 'add',
+            component: 'Button',
+            child: 'add-icon',
+            action: { event: { name: 'add' } },
+            accessibility: { label: { path: '/addLabel' }, description: 'Adds this product' },
+          },
+          { id: 'add-icon', component: 'Icon', name: 'add' },
+          {
+            id: 'email',
+            component: 'TextField',
+            label: 'Email',
+            value: '',
+            accessibility: { description: 'We never share it' },
+          },
+          {
+            id: 'logo',
+            component: 'Icon',
+            name: 'search',
+            accessibility: { label: 'Favorite' },
+          },
+        ],
+        dataModel: { addLabel: 'Add item' },
+      },
+    });
+    await flush();
+
+    const add = screen.getByRole('button', { name: 'Add item' });
+    expect(add.getAttribute('aria-describedby')).not.toBeNull();
+    expect(document.getElementById(add.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+      'Adds this product',
+    );
+    const email = screen.getByRole('textbox', { name: 'Email' });
+    const described = (email.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(described.map((id) => document.getElementById(id)?.textContent)).toContain(
+      'We never share it',
+    );
+    expect(screen.getByRole('img', { name: 'Favorite' })).not.toBeNull();
+  });
 });
