@@ -118,7 +118,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // the journey with the reviews, tasks, and run-detail work, from one coverage run at that head. The
   // other areas held. Every floor rose or held against both parents.
   measuredAt: '2026-10-21T00:00:00.000Z',
-  overall: { linesFound: 74204, linesHit: 72388, functionsFound: 14673, functionsHit: 14298 },
+  overall: { linesFound: 74204, linesHit: 72388, functionsFound: 14673, functionsHit: 14289 },
   areas: {
     fixtures: {
       linesFound: 799,
@@ -133,11 +133,17 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsHit: 70,
     },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
+    // COR-1591, owner decision 2026-10-22: lowered by 9 functions, 649 to 640. `routes.test.ts` now
+    // checks the route table's wiring and no longer calls the nine `load` arrows in `routes.ts` (9 of
+    // its 21 functions are unhit), because compiling every route component there took 4.8 to 7.0 s of
+    // a file that now runs in under 2 s. Compilation stays covered by `svelte-check` and
+    // `build.slow.test.ts`. The other 18 unhit functions in `src/app` are unchanged, and the lines floor
+    // held. `OVERALL` functions fall by the same 9, 14298 to 14289, because it rolls these up.
     'src/app': {
       linesFound: 3873,
       linesHit: 3806,
       functionsFound: 667,
-      functionsHit: 649,
+      functionsHit: 640,
     },
     'src/lib': { linesFound: 4193, linesHit: 4176, functionsFound: 643, functionsHit: 639 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
