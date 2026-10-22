@@ -148,31 +148,49 @@ async function settles(served: Served, id: string, state: string): Promise<void>
 }
 
 describe('a withdrawn agent with tasks', () => {
-  it('serves its tasks with no card and no new task, and continues a waiting one', async () => {
+  it('serves its remaining tasks, with no card and no new task', async () => {
     const served = await serveWriter();
     const parked = await sent(served, message('park here'));
-    const doomed = await sent(served, message('park too'));
     const finished = await sent(served, message('quick'));
     expect(parked.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
     expect(finished.status.state).toBe('TASK_STATE_COMPLETED');
-    const original = message('quick again');
-    const created = await sent(served, original);
 
     await withdraw(served);
 
     expect(await card(served)).toBe(404);
     const kept = await got(served, finished.id);
     expect(kept.id).toBe(finished.id);
-    const waiting = await got(served, parked.id);
-    expect(waiting.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+    const subscribed = await rpc(served, 'SubscribeToTask', { id: parked.id });
+    expect(subscribed.headers.get('content-type')).toContain('text/event-stream');
+    const reader = subscribed.body!.getReader();
+    const first = await reader.read();
+    await reader.cancel();
+    expect(new TextDecoder().decode(first.value)).toContain(parked.id);
     const refused = await call(served, 'SendMessage', { message: message('new') });
     expect(refused.error.code).toBe(-32001);
-    // An exact retry of a send whose binding is retained still resolves to its task.
+    const canceled = await call(served, 'CancelTask', { id: parked.id });
+    expect(canceled.result.id).toBe(parked.id);
+    await settles(served, parked.id, 'TASK_STATE_CANCELED');
+  });
+
+  it('resolves an exact retry of a send whose response was lost to its original task', async () => {
+    const served = await serveWriter();
+    const original = message('quick');
+    const created = await sent(served, original);
+
+    await withdraw(served);
+
     const retried = await sent(served, original);
     expect(retried.id).toBe(created.id);
-    const canceled = await call(served, 'CancelTask', { id: doomed.id });
-    expect(canceled.result.id).toBe(doomed.id);
-    await settles(served, doomed.id, 'TASK_STATE_CANCELED');
+  });
+
+  it('completes a task that was waiting for input with a continuation', async () => {
+    const served = await serveWriter();
+    const parked = await sent(served, message('park here'));
+    expect(parked.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+
+    await withdraw(served);
+
     const answered = await sent(served, message('blue', { taskId: parked.id }));
     expect(answered.id).toBe(parked.id);
     await settles(served, parked.id, 'TASK_STATE_COMPLETED');
