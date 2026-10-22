@@ -16,7 +16,6 @@ import {
   FORK_LEDGER_KEY_PREFIX,
   FORK_OPERATION_VERSION,
   SessionForkRefusedError,
-  type SessionForkRefusalReason,
 } from './session-fork';
 import { waitForRunState } from './test';
 import { approvalToolbox } from './http/management/management-fixtures.test-support';

@@ -10,7 +10,12 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForRunState } from './test';
-import { readSteeringLogEntries, readSteeringLogHead } from './steering-log';
+import {
+  appendSteeringLogEvent,
+  readSteeringLogEntries,
+  readSteeringLogHead,
+  type SteeringLogEvent,
+} from './steering-log';
 import {
   createSteppedGenerate,
   GPT_4_1,
@@ -323,5 +328,49 @@ describe('a Bureau that is shutting down', () => {
     const restarted = await openBureau({ path });
     const retry = await steer(restarted, run.sessionId, 'during-shutdown', OPUS_5.model);
     expect(retry.outcome).toBe('accepted');
+  });
+});
+
+describe('a steering log written before the provider field existed', () => {
+  it('still folds: a bare model override is desired state with an unspecified provider', async () => {
+    const path = createTemporaryPath('model-legacy-log', '.sqlite');
+    cleanups.push(() => removeTemporaryPath(path));
+    const bureau = await openBureau({ path });
+    const run = await startRun(bureau);
+    await waitForRunState(bureau, run.id);
+    const session = await bureau.getSession(run.sessionId);
+    const kv = bureau.kv!;
+    // The record exactly as the previous version wrote it: a bare model string, no provider.
+    const legacy = JSON.parse(
+      JSON.stringify({
+        type: 'admit',
+        command: {
+          id: 'legacy-1',
+          idOrigin: 'caller',
+          sessionId: run.sessionId,
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-opus-5' },
+          requestedAt: new Date().toISOString(),
+        },
+        liveRunIds: [],
+        now: new Date().toISOString(),
+      }),
+    ) as SteeringLogEvent;
+    const head = await readSteeringLogHead(kv, run.sessionId, session!.incarnation);
+    const appended = await appendSteeringLogEvent(
+      kv,
+      run.sessionId,
+      session!.incarnation,
+      head,
+      legacy,
+    );
+    expect(appended.status).toBe('appended');
+
+    const steering = await bureau.getSessionSteering(run.sessionId);
+
+    expect(steering).toEqual({
+      model: { provider: null, model: 'claude-opus-5' },
+      configVersion: 1,
+    });
   });
 });

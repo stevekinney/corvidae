@@ -255,6 +255,29 @@ describe('bureau.contexts.fork refusals', () => {
     return (await response.json()) as RpcBody;
   };
 
+  it.each([
+    'not-a-branch-point',
+    'branch-from-errored-run',
+    'branch-from-aborted-run',
+    'branch-with-pending-approval',
+    'branch-with-unresolved-tool-call',
+    'command-conflict',
+  ] satisfies SessionForkRefusalReason[])(
+    'answers %s as a Conflict with that reason',
+    async (reason) => {
+      await withBureau(async (opened) => {
+        const run = await finishedSession(opened, 'anonymous:local');
+        const handler = stubbed(opened, async () => {
+          throw new SessionForkRefusedError(reason, 'refused');
+        });
+
+        const body = await call(handler, run.sessionId);
+
+        expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason });
+      });
+    },
+  );
+
   it('answers a shutting-down Bureau as Unavailable', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened, 'anonymous:local');
