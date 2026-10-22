@@ -11,6 +11,9 @@ Bureau does not know where the directory lives. The host passes a path (`BureauO
 name: Researcher
 description: Finds and cites sources
 model: anthropic/claude-sonnet-4-5
+models:
+  - anthropic/claude-sonnet-4-5
+  - openai/gpt-4.1
 tools:
   - lookup-order
 skills:
@@ -31,6 +34,7 @@ The frontmatter keys are:
 - `name`: a display label, optional, defaulting to the identifier. It need not be unique.
 - `description`: what the agent does, optional.
 - `model`: required, written `<provider>/<model-or-alias>`, split on the first `/`. It must name a non-retired row in the deployment's model catalog (`bureau.modelCatalog`). A bare model name is not accepted, because it would be ambiguous across providers.
+- `models`: optional, the models a session of this agent may be switched to through `bureau.contexts.steer`, each written `<provider>/<model-or-alias>` like `model`. A file agent is selectable: `model` is its default, `models` narrows the choice, and without it the deployment's model catalog is allowed. `bureau.agents.models` reports the list filtered to the rows the catalog holds, so an entry the catalog lacks is left out rather than making the file invalid. The list is checked when the file is parsed, never against the catalog: every entry is `<provider>/<name>`, non-empty and unique, the list is not empty, and it includes the default `model`, compared as the literal string the file wrote (an alias of the default does not count). A violation is `invalid-frontmatter`, with `problem.issues[].path` set to `models.<index>` for an entry and to `models` for the list. Changing the list changes the file, so the `definitionRevision` rises. An `update` that omits `models` removes it, as it does `tools`, whether through `BureauAgentCatalog.update` or `bureau.agents.definitions.update`; a client that read the list sends it back to keep it. A run's snapshot keeps the list its run started with.
 - `tools`: a list of unique names from the deployment's tool catalog (`BureauOptions.agentTools`). Defaults to none.
 - `skills`: descriptive Agent Card skills (`id`, `name`, `description`, `tags`, and optionally `examples`, `inputModes`, `outputModes`), never executable skills. Ids are unique within the agent.
 - `published`: a strict boolean, default `false`. It records whether the agent may be offered over the network. A persisted agent is published by this key and nothing else: the `publish` allowlist of `createBureauHandler` governs code-defined agents only. See [Publication](#publication).
@@ -117,6 +121,8 @@ An agent is published when its file says so and the file is `ready`; an `invalid
 ## Snapshots
 
 A run uses the definition it started with. When a run of a file agent starts, Bureau stores the parsed definition in its database under `bureau-agent-snapshot:v1:<id>:<hash>`, where the hash is the file's, and ties the run to it with `bureau-agent-run:v1:<runId>`. The run records the hash (`agentDefinitionHash` in a `bureau.run` run's recovery record, `lastAgentDefinitionHash` in a session run's metadata), and the snapshot is written before the record that names it.
+
+A switch (`bureau.contexts.steer`) reaches the provider call through the agent's generate, which picks each step's model from that step's own steering: the model the session was switched to, or the default. A model that is no longer usable when a step runs (a hand edit has dropped it from `models`, the catalog has retired it, or `resolveAgentGenerate` now throws for it) fails the step with a `ModelOverrideUnusableError` naming the model. It never falls back to the default, and `bureau.contexts.get` keeps reporting the override.
 
 Editing or deleting the file mid-run does not change the run, because the agent object was built from the snapshot's values. A run resumed after a restart is rebuilt from the snapshot, with the model and tools resolved against the catalogs as they are now, even if the file is gone. A snapshot that was pruned fails the resume with `AgentSnapshotError` (`snapshot-missing`), and a model or tool the deployment no longer has fails it with `snapshot-unresolvable`. Neither falls back to the current file.
 

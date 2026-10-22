@@ -209,6 +209,26 @@ describe('an agent that exists', () => {
     expect(sent.instructions).toBe('Changed.');
   });
 
+  test('carries the loaded models list through a save with an unrelated edit, unchanged', () => {
+    const detail = readyAgent();
+    const models = ['anthropic/sonnet', 'openai/gpt-4.1'];
+    const form = AgentEditorState.edit(
+      { ...detail, definition: detail.definition && { ...detail.definition, models } },
+      catalogFixture(),
+    );
+    form.description = 'Described again.';
+    const sent = form.toDefinition();
+    expect(sent.models).toEqual(models);
+    expect(sent.description).toBe('Described again.');
+  });
+
+  test('saves an agent that lists no models with none', () => {
+    const form = AgentEditorState.edit(readyAgent(), catalogFixture());
+    form.description = 'Described again.';
+    expect('models' in form.toDefinition()).toBe(false);
+    expect('models' in AgentEditorState.create(catalogFixture()).toDefinition()).toBe(false);
+  });
+
   test('writes the chosen model once it is changed', () => {
     const form = AgentEditorState.edit(readyAgent(), catalogFixture());
     form.model = 'anthropic/claude-haiku-5';
