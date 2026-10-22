@@ -9,7 +9,7 @@ import { query, signal, update } from '../types/message-handles.ts';
 import { StandardSchemaValidationError } from '../types/standard-schema-validate.ts';
 import { workflow } from '../types/workflow-function.ts';
 import { UndeclaredWorkflowMessageError } from './declared-messages.ts';
-import { Engine } from './index.ts';
+import { ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING, Engine } from './index.ts';
 
 const engines: Engine[] = [];
 function track(engine: Engine): Engine {
@@ -217,5 +217,31 @@ describe('payloadValidation engine option', () => {
 
     await schemaRejection(engine.update(handle.id, 'rename', { name: 7 }));
     expect(await engine.query('missing-workflow', 'lookup', { key: 1 })).toBeUndefined();
+  });
+
+  it('validates a message sent under a builder alias against its declared schema', async () => {
+    const aliased = workflow({ name: 'aliased' })
+      .signals({ approveAlias: approval })
+      .updates({ renameAlias: rename })
+      .queries({ lookupAlias: lookup })
+      .execute(async function* (ctx: WorkflowContext) {
+        ctx.onUpdate('renameAlias', () => 'renamed');
+        ctx.onQuery('lookupAlias', () => 'found');
+        return yield* ctx.waitForSignal('approveAlias');
+      });
+    const engine = track(
+      new Engine({ storage: new MemoryStorage(), payloadValidation: 'inbound' }),
+    );
+    engine.register(aliased);
+    const handle = await engine.start('aliased', null);
+    await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](handle.id);
+
+    await schemaRejection(engine.signal(handle.id, 'approveAlias', { approved: 'yes' }));
+    await schemaRejection(engine.update(handle.id, 'renameAlias', { name: 1 }));
+    await schemaRejection(engine.query(handle.id, 'lookupAlias', { key: 1 }));
+
+    expect(await engine.query(handle.id, 'lookupAlias', { key: 'k' })).toBe('found');
+    await engine.signal(handle.id, 'approveAlias', { approved: true });
+    expect(await handle.result()).toEqual({ approved: true });
   });
 });

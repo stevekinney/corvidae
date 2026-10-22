@@ -96,7 +96,8 @@ export async function validateMessageInput(
   if (internals.options.payloadValidation !== 'inbound') return;
   const registration = await resolveWorkflowRegistration(internals, workflowId);
   const messages = boundary === 'update' ? registration?.updates : registration?.queries;
-  await validateInboundPayload(internals, boundary, messages?.[name]?.inputSchema, payload);
+  const schema = declaredMessage(registration, messages, boundary, name)?.inputSchema;
+  await validateInboundPayload(internals, boundary, schema, payload);
 }
 
 /**
@@ -109,11 +110,24 @@ export async function validateSignalPayloads(
   deliveries: ReadonlyArray<{ readonly signalName: string; readonly payload: unknown }>,
 ): Promise<void> {
   for (const { signalName, payload } of deliveries) {
-    await validateInboundPayload(
-      internals,
-      'signal',
-      registration?.signals?.[signalName]?.inputSchema,
-      payload,
-    );
+    const declared = declaredMessage(registration, registration?.signals, 'signal', signalName);
+    await validateInboundPayload(internals, 'signal', declared?.inputSchema, payload);
   }
+}
+
+/**
+ * The declared definition a message `name` arrives under: the one whose wire
+ * name it is, else the one a builder key aliases it to. A closed message set
+ * admits both, so both must reach the declared schema.
+ */
+function declaredMessage<TMessage>(
+  registration: RegistrationEntry | undefined,
+  messages: Readonly<Record<string, TMessage>> | undefined,
+  kind: 'signal' | 'update' | 'query',
+  name: string,
+): TMessage | undefined {
+  if (messages === undefined) return undefined;
+  if (Object.hasOwn(messages, name)) return messages[name];
+  const wireName = registration?.messageAliases?.[kind]?.[name];
+  return wireName === undefined ? undefined : messages[wireName];
 }

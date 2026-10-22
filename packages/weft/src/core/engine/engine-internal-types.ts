@@ -35,6 +35,13 @@ import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
  */
 export type WorkflowExecutionIdentity = { type: string; revision: string | undefined };
 
+/** Per message kind, each builder key that aliases a different wire name, mapped to that wire name. */
+export type MessageAliases = Readonly<{
+  signal?: Readonly<Record<string, string>>;
+  update?: Readonly<Record<string, string>>;
+  query?: Readonly<Record<string, string>>;
+}>;
+
 export interface RegistrationEntry {
   handler: WorkflowFunction;
   version: string;
@@ -45,6 +52,12 @@ export interface RegistrationEntry {
   signals?: Readonly<Record<string, Readonly<SignalDefinition<unknown>>>>;
   updates?: Readonly<Record<string, Readonly<UpdateDefinition<unknown>>>>;
   queries?: Readonly<Record<string, Readonly<QueryDefinition<unknown>>>>;
+  /**
+   * Builder keys that alias a different wire name, per message kind
+   * (`.signals({ localAlias: signal('wireName') })`). The maps above are keyed
+   * by wire name; an alias resolves through this to its declared definition.
+   */
+  messageAliases?: MessageAliases;
   /** Engine-provided activities the workflow declared with `.uses()`, keyed by name. */
   uses?: Readonly<Record<string, UsedActivityDefinition>>;
   searchAttributes?: SearchAttributeSchema;
