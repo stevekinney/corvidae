@@ -440,10 +440,11 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
       name: 'stream-tool',
       description: 'Streams',
       input: z.object({}),
-      execute: async function* () {
-        yield 'a';
-        yield 'b';
-      },
+      execute: async () =>
+        (async function* () {
+          yield 'a';
+          yield 'b';
+        })(),
     });
     const run = createActiveRun({
       generate: createMockGenerate([
