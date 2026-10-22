@@ -1,6 +1,6 @@
 # Armorer Public API Reference
 
-Armorer is a private workspace library. Import its supported runtime, type, adapter, registry, and test utilities from `armorer`. The [package manifest](../package.json) exposes only `src/index.ts`; the capability groups below all share that entry point.
+Armorer is a private workspace library. Import its supported runtime, type, adapter, registry, and test utilities from `armorer`. The [package manifest](../package.json) also exposes three subpaths that keep optional or platform-specific dependencies out of the root: `armorer/protocol` (the dependency-free tool protocol), `armorer/open-ai/agents` (the OpenAI Agents SDK integration, which loads `@openai/agents`), and `armorer/coding` (the Bun-only coding tools). Every capability group below comes from the root unless its section names a subpath.
 
 ```typescript
 import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
@@ -468,6 +468,8 @@ Import MCP integration helpers from `armorer`.
 
 ## OpenAI Agents integration
 
+Import these from `armorer/open-ai/agents`.
+
 ### Functions
 
 - `createOpenAIToolGate`
@@ -485,6 +487,46 @@ Import MCP integration helpers from `armorer`.
 ### Test seam
 
 - `internalOpenAIAgentsTestUtilities`
+
+## Coding tools
+
+Import these from `armorer/coding`. They use Bun APIs, so they stay out of the browser-facing root.
+
+### Functions
+
+- `createCodingToolbox`
+- `createCodingTools`
+- `createGlobTool`
+- `createGrepTool`
+- `createReadFileTool`
+- `createRootJail`
+- `isPathTraversalError`
+
+### Constants
+
+- `DEFAULT_GLOB_MAX_RESULTS`
+- `DEFAULT_GREP_MAX_FILE_BYTES`
+- `DEFAULT_GREP_MAX_MATCHES`
+- `DEFAULT_READ_FILE_MAX_BYTES`
+- `DEFAULT_READ_FILE_MAX_LINES`
+
+### Errors
+
+- `PathTraversalError`
+
+### Types
+
+- `CodingTools`
+- `CreateCodingToolsOptions`
+- `CreateGlobToolOptions`
+- `CreateGrepToolOptions`
+- `CreateReadFileToolOptions`
+- `GlobResult`
+- `GrepMatch`
+- `GrepResult`
+- `ReadFileResult`
+- `ReadFileTruncatedReason`
+- `RootJail`
 
 ## Prebuilt tools
 

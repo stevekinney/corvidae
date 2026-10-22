@@ -14,19 +14,23 @@ type OpenAIAgentsStrictToolOptions = Extract<
 >;
 type OpenAIAgentsToolParameters = OpenAIAgentsStrictToolOptions['parameters'];
 
+/** A tool object as the OpenAI Agents SDK's `tool()` function returns it. */
 export type OpenAIAgentTool = ReturnType<OpenAIAgentsModule['tool']>;
 
+/** Overrides for the name, description, or parameters of one converted tool. */
 export type OpenAIAgentToolConfiguration = {
   name?: string;
   description?: string;
   parameters?: OpenAIAgentsToolParameters;
 };
 
+/** Options for {@link toOpenAIAgentTools}. */
 export type OpenAIAgentToolOptions = {
   toolConfiguration?: (tool: Tool) => OpenAIAgentToolConfiguration;
   formatResult?: (result: ToolExecutionResult) => unknown;
 };
 
+/** The converted SDK tools and the names of all, mutating, and dangerous tools among them. */
 export type OpenAIAgentToolsResult = {
   tools: OpenAIAgentTool[];
   toolNames: string[];
@@ -34,6 +38,7 @@ export type OpenAIAgentToolsResult = {
   dangerousToolNames: string[];
 };
 
+/** Options for {@link createOpenAIToolGate}: what to gate, and which classes of tool to allow. */
 export type OpenAIToolGateOptions = {
   registry: ToolboxLike | Tool | readonly Tool[];
   readOnly?: boolean;
@@ -53,6 +58,7 @@ export type OpenAIToolGateOptions = {
   };
 };
 
+/** A tool gate's answer for one tool name, with a message when it denies the tool. */
 export type OpenAIToolGateDecision = { behavior: 'allow' | 'deny'; message?: string };
 
 /**
@@ -60,7 +66,7 @@ export type OpenAIToolGateDecision = { behavior: 'allow' | 'deny'; message?: str
  *
  * @example
  * ```ts
- * import { toOpenAIAgentTools } from 'armorer';
+ * import { toOpenAIAgentTools } from 'armorer/open-ai/agents';
  *
  * const tools = await toOpenAIAgentTools(toolbox);
  *
@@ -116,6 +122,11 @@ export async function toOpenAIAgentTools(
   };
 }
 
+/**
+ * Creates a gate that allows or denies a tool by name, from its read-only, mutating, or dangerous
+ * classification and the options' permissions. Tools outside the registry and `builtin` lists are
+ * denied unless `allowUnknown` is set.
+ */
 export function createOpenAIToolGate(
   options: OpenAIToolGateOptions,
 ): (toolName: string) => Promise<OpenAIToolGateDecision> {
@@ -307,6 +318,7 @@ async function loadOpenAIAgentsModule(): Promise<OpenAIAgentsModule> {
   return cachedOpenAIAgentsModulePromise;
 }
 
+/** Test seam: resets the cached `@openai/agents` module or replaces its loader. */
 export const internalOpenAIAgentsTestUtilities = {
   resetModuleState() {
     cachedOpenAIAgentsModule = undefined;
