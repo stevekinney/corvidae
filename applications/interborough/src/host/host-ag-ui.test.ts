@@ -1,4 +1,5 @@
 import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -84,13 +85,14 @@ describe('extra agents', () => {
     for (const name of SEEDED_AGENT_NAMES) {
       const home = await mkdtemp(join(tmpdir(), 'interborough-ag-ui-'));
       directories.push(home);
-      await expect(
+      const refusal = await rejectionOf(
         startHost({
           environment: { INTERBOROUGH_HOME: home },
           port: 0,
           extraAgents: { agents: { [name]: extraAgent }, published: [name] },
         }),
-      ).rejects.toThrow(`The extra agent "${name}" has the name of a seeded agent`);
+      );
+      expect(String(refusal)).toContain(`The extra agent "${name}" has the name of a seeded agent`);
     }
   });
 
