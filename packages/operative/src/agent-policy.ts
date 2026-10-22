@@ -126,8 +126,7 @@ export function withActiveSkillToolPolicy(
         ) => Promise<unknown>;
         return createGatedExecute(
           target,
-          (calls, options) =>
-            Reflect.apply(execute, receiver, [calls, options]) as Promise<unknown>,
+          (calls, options) => Reflect.apply(execute, receiver, [calls, options]),
           visibleTools,
         );
       }

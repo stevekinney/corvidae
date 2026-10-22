@@ -390,10 +390,9 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
 
     await run.result;
 
-    expect(settled.map((event) => [event.toolCallId, event.status]).sort()).toEqual([
-      ['call-search', 'success'],
-      ['call-write', 'error'],
-    ]);
+    const statuses = Object.fromEntries(settled.map((event) => [event.toolCallId, event.status]));
+    expect(settled).toHaveLength(2);
+    expect(statuses).toEqual({ 'call-search': 'success', 'call-write': 'error' });
   });
 
   it('records the refusal in the run when a model asks for a hidden tool and then a visible one', async () => {
