@@ -14,6 +14,7 @@ import {
   type GovernedMemory,
 } from '@lostgradient/memory';
 import {
+  type ContextEpochSealer,
   type ContextSourceRecord,
   createAgent,
   createContextEpochSealer,
@@ -24,11 +25,12 @@ import {
 import { MemoryStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
+import { createMemoryRecallHook, createRunMemoryAuthority } from './runtime-composition';
 import { waitForCondition, waitForRunState } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';
@@ -106,21 +108,35 @@ function evidenceRows(conversation: Conversation): Turn['rows'] {
   });
 }
 
-/** A generate function that records each turn, and the turns it recorded. */
-function recording(
-  sealer: ReturnType<typeof createContextEpochSealer>,
-  respond: GenerateFunction,
-): { readonly generate: GenerateFunction; readonly turns: Turn[] } {
+/**
+ * A generate function that records each turn, the turns it recorded, and the
+ * per-run sealer factory with every sealer it made. Each run gets its own
+ * sealer, and a turn reads the epoch of the run it belongs to.
+ */
+function recording(respond: GenerateFunction): {
+  readonly generate: GenerateFunction;
+  readonly turns: Turn[];
+  readonly createContextEpoch: () => ContextEpochSealer;
+  readonly sealers: ContextEpochSealer[];
+} {
   const turns: Turn[] = [];
+  const sealers: ContextEpochSealer[] = [];
+  const createContextEpoch = () => {
+    const created = createContextEpochSealer();
+    sealers.push(created);
+    return created;
+  };
   const generate: GenerateFunction = async (context) => {
+    // The tests run one run at a time, so the newest sealer is this run's.
+    const sealer = sealers.at(-1);
     turns.push({
       step: context.step,
-      source: sealer.current()?.sources.find((source) => source.sourceId === 'memory-evidence'),
+      source: sealer?.current()?.sources.find((source) => source.sourceId === 'memory-evidence'),
       rows: evidenceRows(context.conversation),
     });
     return respond(context);
   };
-  return { generate, turns };
+  return { generate, turns, createContextEpoch, sealers };
 }
 
 const probe = createTool({
@@ -148,14 +164,13 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
   it('names the bundle revision in a direct run, and is absent without governed memory', async () => {
     const memory = governedMemory();
     const car = await seed(memory);
-    const sealer = createContextEpochSealer();
-    const { generate, turns } = recording(sealer, async () => ({
+    const { generate, turns, createContextEpoch } = recording(async () => ({
       content: 'noted',
       toolCalls: [],
     }));
     const bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, contextEpoch: sealer }) },
+      agents: { scout: createAgent({ generate, createContextEpoch }) },
       memory,
       stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
@@ -181,7 +196,7 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
 
     const plain = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, contextEpoch: sealer }) },
+      agents: { scout: createAgent({ generate, createContextEpoch }) },
       stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(plain);
@@ -197,8 +212,7 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
   it('withdraws a bundle a memory-policy change made stale, and the next epoch records the new one', async () => {
     const memory = governedMemory();
     await seed(memory);
-    const sealer = createContextEpochSealer();
-    const { generate, turns } = recording(sealer, async (context) => {
+    const { generate, turns, createContextEpoch } = recording(async (context) => {
       if (context.step > 0) return { content: 'done', toolCalls: [] };
       await activateNextPolicy(memory);
       return { content: '', toolCalls: [{ id: 'call-1', name: 'probe', arguments: {} }] };
@@ -206,7 +220,7 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
     const bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
       agents: {
-        scout: createAgent({ generate, contextEpoch: sealer, toolbox: createToolbox([probe]) }),
+        scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([probe]) }),
       },
       memory,
       stopWhen: stopWhen.noToolCalls(),
@@ -233,12 +247,81 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
   });
 });
 
+describe('a session’s next run (COR-771)', () => {
+  it('seals its own epoch chain and recalls under the policy now in force', async () => {
+    const memory = governedMemory();
+    await seed(memory);
+    const { generate, turns, createContextEpoch, sealers } = recording(async () => ({
+      content: 'noted',
+      toolCalls: [],
+    }));
+    const bureau = await createBureau<AgentDefinitions>({
+      id: 'tenant-a',
+      agents: { scout: createAgent({ generate, createContextEpoch }) },
+      memory,
+      stopWhen: stopWhen.noToolCalls(),
+      requestAuthorityValidator: () => true,
+    });
+    bureaus.push(bureau);
+    const ask = async () => {
+      const run = await bureau.createRun({
+        message: 'Which automobile?',
+        sessionId: 'session-1',
+        agentName: 'scout',
+        principal: 'owner-a',
+        requestContext,
+      });
+      await waitForRunState(bureau, run.id);
+    };
+    await ask();
+    await activateNextPolicy(memory);
+    await ask();
+
+    const [first, second] = turns;
+    expect(sealers).toHaveLength(2);
+    expect(sealers[1]?.current()?.supersedes).toBeUndefined();
+    expect(second?.rows).toHaveLength(1);
+    expect(second?.source).toMatchObject({
+      disposition: { kind: 'included' },
+      revision: second?.rows[0]?.bundleRevision,
+    });
+    expect(second?.source?.revision).not.toBe(first?.source?.revision);
+  });
+});
+
+describe('the recall hook at step 0 (COR-771)', () => {
+  it('withdraws a row recalled under an older policy before it recalls again', async () => {
+    const memory = governedMemory();
+    await seed(memory);
+    const authority = createRunMemoryAuthority(requestContext, {
+      runId: 'run-1',
+      tenantId: 'tenant-a',
+      ownerId: 'owner-a',
+    });
+    const hook = createMemoryRecallHook(memory, authority, {
+      collection: 'scout',
+      sessionId: 'session-1',
+    });
+    // A host-supplied conversation that already holds a row from an earlier run.
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Which automobile?');
+    await hook({ step: 0, conversation });
+    await activateNextPolicy(memory);
+    conversation.appendUserMessage('Which automobile again?');
+    await hook({ step: 0, conversation });
+
+    const rows = evidenceRows(conversation);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.content).toContain('withdrawn');
+    expect(rows[1]?.content).toContain('<memory-evidence>');
+  });
+});
+
 describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
   async function recover(changePolicyWhileParked: boolean) {
     const memory = governedMemory();
     const car = await seed(memory);
-    const sealer = createContextEpochSealer();
-    const { generate, turns } = recording(sealer, async (context) =>
+    const { generate, turns, createContextEpoch } = recording(async (context) =>
       context.step === 0
         ? {
             content: '',
@@ -258,7 +341,7 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
       const bureau = await createBureau<AgentDefinitions>({
         id: 'tenant-a',
         agents: {
-          scout: createAgent({ generate, contextEpoch: sealer, toolbox: createToolbox([]) }),
+          scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([]) }),
         },
         memory,
         storage: fixture.configuration,

@@ -323,15 +323,16 @@ function memoryEvidenceSource(conversation: Conversation): ContextSourceRecord {
       typeof message.content === 'string' &&
       `sha256:${sha256HexSync(message.content)}` === metadata.contentDigest,
   );
-  const current = intact.at(-1)?.metadata;
+  // The newest tagged row is the bundle the turn means to carry; an older intact
+  // row never stands in for it when the newest one was rewritten.
+  const latestIntact = intact.at(-1)?.message === tagged.at(-1)?.message;
   const revisions = new Set(intact.map(({ metadata }) => metadata.bundleRevision));
   let disposition: ContextSourceDisposition = INCLUDED;
-  if (current === undefined) disposition = { kind: 'excluded', reason: 'memory-evidence-modified' };
+  if (!latestIntact) disposition = { kind: 'excluded', reason: 'memory-evidence-modified' };
   else if (revisions.size > 1) {
     disposition = { kind: 'excluded', reason: 'stale-memory-evidence-in-context' };
   }
-  const named = current ?? latest;
-  return { ...base, disposition, revision: named.bundleRevision, digest: named.contentDigest };
+  return { ...base, disposition, revision: latest.bundleRevision, digest: latest.contentDigest };
 }
 
 /**

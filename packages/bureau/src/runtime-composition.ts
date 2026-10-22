@@ -1258,9 +1258,9 @@ function staleEvidencePositions(conversation: Conversation, policyRevision: stri
  * detector trips on is quarantined instead.
  *
  * A bundle never outlives the memory policy it was recalled under (COR-771).
- * On every later step, including the first step of a recovered run, an
- * evidence row recalled under an older policy revision is withdrawn and the
- * prompt is recalled again, so the next epoch records the new bundle rather
+ * On every step, including step 0 of a session's next run and the first step
+ * of a recovered run, an evidence row recalled under an older policy revision
+ * is withdrawn and the prompt is recalled again, so the next epoch records the new bundle rather
  * than carrying the stale one as current. Compaction and steering never
  * recall: a compaction that rewrites the row breaks its digest, which the
  * epoch flags, and steering does not change what memory returns.
@@ -1286,14 +1286,14 @@ export function createMemoryRecallHook(
     const latestUserMessage = messages.findLast((message) => message.role === 'user');
     const query = latestUserMessage === undefined ? '' : messageText(latestUserMessage);
 
-    if (context.step !== 0) {
-      const stale = staleEvidencePositions(context.conversation, memory.policyRevision);
-      if (stale.length === 0) {
-        return;
-      }
-      for (const position of stale) {
-        context.conversation.redactMessageAtPosition(position, WITHDRAWN_MEMORY_EVIDENCE);
-      }
+    // Stale rows are withdrawn on every step, step 0 included: a session's
+    // next run starts at step 0 with the rows its earlier runs recalled.
+    const stale = staleEvidencePositions(context.conversation, memory.policyRevision);
+    for (const position of stale) {
+      context.conversation.redactMessageAtPosition(position, WITHDRAWN_MEMORY_EVIDENCE);
+    }
+    if (context.step !== 0 && stale.length === 0) {
+      return;
     }
 
     if (query.trim() === '') {

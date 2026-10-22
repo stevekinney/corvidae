@@ -124,11 +124,13 @@ export interface CreateAgentOptionsBase {
   contextManagement?: ContextManagementOptions | undefined;
 
   /**
-   * Seals an effective-context epoch at every generate attempt of this agent's
-   * runs; see `RunOptions.contextEpoch`. Sealing is opt-in: without one, no
-   * epoch is recorded.
+   * Creates the effective-context epoch sealer for one run; see
+   * `RunOptions.contextEpoch`. Called once per run, because a sealer chains
+   * the epochs it seals: one shared across runs would link a run's first
+   * epoch to another run's last. Sealing is opt-in: without it, no epoch is
+   * recorded.
    */
-  contextEpoch?: ContextEpochSealer | undefined;
+  createContextEpoch?: (() => ContextEpochSealer) | undefined;
 
   /**
    * Projects media parts whose source no provider takes directly (a managed
@@ -751,6 +753,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // a no-op when `context?.principal` is `undefined`, so nothing
     // overwrites whatever `rest.principal` would otherwise have carried).
     principal: _discardedConstructionTimePrincipal,
+    // Resolved per run below, so each run seals its own epoch chain.
+    createContextEpoch,
     ...rest
   } = options as CreateAgentOptions & { principal?: unknown };
 
@@ -913,6 +917,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
         : {}),
       // The merged agent-tier plan built above, policy registrations included.
       ...(hooks === undefined ? {} : { hooks }),
+      ...(createContextEpoch === undefined ? {} : { contextEpoch: createContextEpoch() }),
       // AB-21: `AgentRunContext` fields translate onto their `RunOptions`
       // equivalents — `agentName` stamps curated `tool.*` events (falling
       // back to this agent's own `name`), `signal` drives per-run abort,

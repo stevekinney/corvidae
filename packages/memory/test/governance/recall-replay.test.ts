@@ -2,7 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { type RecallRecording, replayRecording } from '../../scripts/replay-recall';
+import {
+  type RecallRecording,
+  recordedBaseline,
+  replayRecording,
+} from '../../scripts/replay-recall';
 import {
   compareMemoryEvidenceManifests,
   type MemoryEvidenceManifest,
@@ -54,6 +58,30 @@ describe('recorded recall replays', () => {
     const replay = await replayRecording(changed);
     expect(replay.passed).toBe(false);
     expect(replay.differences.map((difference) => difference.kind)).toContain('record-revision');
+  });
+
+  it('names a changed record that stays excluded for the same reason', async () => {
+    const recorded = await recording('exact-and-paraphrase');
+    const changed: RecallRecording = {
+      ...recorded,
+      records: recorded.records.map((record, index) =>
+        index === 2
+          ? { ...record, content: 'Deployment procedure: run every check first.' }
+          : record,
+      ),
+    };
+    const replay = await replayRecording(changed);
+    expect(replay.passed).toBe(false);
+    expect(replay.differences.map((difference) => difference.kind)).toEqual(['record-revision']);
+  });
+
+  it('drops expected differences when a recording is refreshed as a new baseline', async () => {
+    const recorded = await recording('policy-revision-changed');
+    const fresh = await replayRecording(recorded);
+    const refreshed = recordedBaseline(recorded, fresh.manifest);
+    expect(refreshed).not.toHaveProperty('expectedDifferences');
+    const replayed = await replayRecording(refreshed);
+    expect(replayed.passed).toBe(true);
   });
 
   it('reproduces the bundle revision when nothing changed', async () => {

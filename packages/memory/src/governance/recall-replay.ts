@@ -153,21 +153,27 @@ function exclusionDifferences(
   recorded: MemoryEvidenceManifest,
   replayed: MemoryEvidenceManifest,
 ): MemoryRecallDifference[] {
-  const before = new Map(recorded.exclusions.map((item) => [item.recordId, item.reason]));
-  const after = new Map(replayed.exclusions.map((item) => [item.recordId, item.reason]));
+  const before = new Map(recorded.exclusions.map((item) => [item.recordId, item]));
+  const after = new Map(replayed.exclusions.map((item) => [item.recordId, item]));
   const recordIds = [...new Set([...before.keys(), ...after.keys()])];
-  return recordIds.flatMap((recordId): MemoryRecallDifference[] =>
-    before.get(recordId) === after.get(recordId)
-      ? []
-      : [
-          {
-            kind: 'exclusion',
-            recordId,
-            recorded: before.get(recordId),
-            replayed: after.get(recordId),
-          },
-        ],
-  );
+  return recordIds.flatMap((recordId): MemoryRecallDifference[] => {
+    const was = before.get(recordId);
+    const now = after.get(recordId);
+    // An excluded record whose content changed is a difference even when its reason did not.
+    if (was !== undefined && now !== undefined && was.reason === now.reason) {
+      return was.revision === now.revision
+        ? []
+        : [{ kind: 'record-revision', recordId, recorded: was.revision, replayed: now.revision }];
+    }
+    return [
+      {
+        kind: 'exclusion',
+        recordId,
+        recorded: was?.reason,
+        replayed: now?.reason,
+      },
+    ];
+  });
 }
 
 /**

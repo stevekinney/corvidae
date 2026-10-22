@@ -587,6 +587,17 @@ describe('the memory-evidence source (COR-771)', () => {
     });
   });
 
+  it('flags a rewritten newest bundle instead of falling back to an older intact one', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    appendBundle(conversation, 'sha256:bundle-2', 'window');
+    conversation.redactMessageAtPosition(2, 'summarized');
+    expect(sourceOf(conversation)).toMatchObject({
+      disposition: { kind: 'excluded', reason: 'memory-evidence-modified' },
+      revision: 'sha256:bundle-2',
+    });
+  });
+
   it('flags a stale bundle left in context beside a newer one', () => {
     const conversation = conversationWith([['user', 'seat?']]);
     appendBundle(conversation, 'sha256:bundle-1', 'aisle');

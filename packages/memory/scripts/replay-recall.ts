@@ -122,6 +122,18 @@ export async function replayRecording(input: RecallRecording): Promise<RecallRep
   }
 }
 
+/**
+ * A recording refreshed from a fresh run: its manifest replaced, and its
+ * expected differences dropped, because a baseline never differs from itself.
+ */
+export function recordedBaseline(
+  recording: RecallRecording,
+  manifest: MemoryEvidenceManifest,
+): RecallRecording {
+  const { expectedDifferences: _stale, ...baseline } = recording;
+  return { ...baseline, manifest };
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const record = argv.includes('--record');
   const files = argv.filter((argument) => argument !== '--record');
@@ -136,7 +148,7 @@ async function main(argv: readonly string[]): Promise<number> {
     if (record) {
       await Bun.write(
         file,
-        `${JSON.stringify({ ...recording, manifest: replay.manifest }, null, 2)}\n`,
+        `${JSON.stringify(recordedBaseline(recording, replay.manifest), null, 2)}\n`,
       );
       console.log(`recorded ${replay.name}`);
       continue;
