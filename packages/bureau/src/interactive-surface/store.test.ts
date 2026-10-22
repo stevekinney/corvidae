@@ -879,4 +879,81 @@ describe('review fixes', () => {
 
     expect(await evidence).toEqual({ status: 'completed' });
   });
+
+  it('freezes a surface created after its task’s settlement already ran, and drops one whose task was deleted', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    const states: (InteractiveSurfaceTask | undefined)[] = [];
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async () => states.shift(),
+      now: () => runtime.clock.now(),
+    });
+    const live = { owner: OWNER, contextId: 'session-1' };
+    // The settlement ran before this surface existed, and is cached as not-required.
+    await surfaces.settleTask(TASK, 'canceled');
+
+    states.push(live, { ...live, settled: 'canceled' });
+    const frozen = await surfaces.create(createCommand());
+    states.push(live, undefined);
+    const orphan = await surfaces.create(createCommand({ commandId: 'c2', surfaceId: 'orphan' }));
+
+    expect(frozen).toMatchObject({ outcome: 'accepted', surface: { liveness: 'frozen' } });
+    expect(orphan).toMatchObject({ outcome: 'rejected', reason: 'not-found' });
+    states.push(live);
+    expect(await surfaces.snapshot({ ...snapshotQuery, surfaceId: 'orphan' })).toMatchObject({
+      reason: 'not-found',
+    });
+  });
+
+  it('refuses a regular-expression keyword in a surface schema, but not a property named pattern', async () => {
+    const { surfaces } = harness();
+    const withPattern = await surfaces.create(
+      createCommand({
+        representation: {
+          kind: 'input-form',
+          schema: { type: 'object', properties: { code: { type: 'string', pattern: '^(a+)+$' } } },
+        },
+      }),
+    );
+    const namedPattern = await surfaces.create(
+      createCommand({
+        commandId: 'create-2',
+        surfaceId: 'named',
+        representation: {
+          kind: 'input-form',
+          schema: { type: 'object', properties: { pattern: { type: 'string' } } },
+        },
+      }),
+    );
+
+    expect(withPattern).toMatchObject({ reason: 'invalid' });
+    expect(namedPattern).toMatchObject({ outcome: 'accepted' });
+  });
+
+  it('requires a new instanceId when an MCP App’s resource changes', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand({ representation: mcpApp, actions: [] }));
+    const same = await surfaces.update(
+      updateCommand({
+        data: undefined,
+        representation: { ...mcpApp, contentDigest: `sha256:${'d'.repeat(64)}` },
+      }),
+    );
+    const rotated = await surfaces.update(
+      updateCommand({
+        commandId: 'update-2',
+        data: undefined,
+        representation: {
+          ...mcpApp,
+          contentDigest: `sha256:${'d'.repeat(64)}`,
+          instanceId: 'instance-2',
+        },
+      }),
+    );
+
+    expect(same).toMatchObject({ reason: 'invalid' });
+    expect(rotated).toMatchObject({ outcome: 'accepted' });
+  });
 });

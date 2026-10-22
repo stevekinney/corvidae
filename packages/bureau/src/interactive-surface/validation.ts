@@ -150,6 +150,36 @@ export function readAudience(value: unknown): readonly string[] {
 
 // ── Schemas ─────────────────────────────────────────────────────────
 
+/** Subschema positions that hold a map of property names to schemas. */
+const SCHEMA_MAPS: ReadonlySet<string> = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+]);
+
+/** Keywords whose value is data, not a schema, and is not searched. */
+const DATA_KEYWORDS: ReadonlySet<string> = new Set(['const', 'enum', 'default', 'examples']);
+
+/** Whether a schema or any subschema uses `pattern` or `patternProperties`. */
+function declaresPattern(schema: unknown): boolean {
+  if (Array.isArray(schema)) return schema.some(declaresPattern);
+  if (!isPlainObject(schema)) return false;
+  if (typeof schema['pattern'] === 'string' || schema['patternProperties'] !== undefined) {
+    return true;
+  }
+  for (const [keyword, value] of Object.entries(schema)) {
+    if (DATA_KEYWORDS.has(keyword)) continue;
+    if (SCHEMA_MAPS.has(keyword) && isPlainObject(value)) {
+      if (Object.values(value).some(declaresPattern)) return true;
+    } else if (typeof value === 'object' && declaresPattern(value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Compiles and caches JSON Schema 2020-12 validators. Unknown keywords are
  * allowed (authors annotate their schemas), and `format` is not asserted,
@@ -165,6 +195,12 @@ export class InteractiveSurfaceSchemaCompiler {
     const cached = this.#cache.get(key);
     if (cached !== undefined) return cached;
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
+    // A schema's regular expressions run on Bureau's event loop when a value is
+    // admitted, and an untrusted author can write one that backtracks for
+    // seconds, so v1 refuses them.
+    if (declaresPattern(schema)) {
+      fail(`${where} must not use "pattern" or "patternProperties"`);
+    }
     let validate: ValidateFunction;
     try {
       validate = this.#ajv.compile(schema);

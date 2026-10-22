@@ -702,16 +702,29 @@ export function createInteractiveSurfaces(
           INTERACTIVE_SURFACE_EVENT_KINDS.created,
           { contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION, commandId, surface },
         );
-        // A task that settled while the surface was being created has already
-        // announced its settlement, so freeze what was just committed now.
+        // Reconcile with the task as it is now. A settlement or deletion that
+        // ran while this create committed may have scanned the task's surfaces
+        // before this one existed, so this create handles its own surface
+        // directly rather than relying on a settlement already cached.
         const after = await options.task(taskId);
-        if (after?.settled !== undefined) {
+        if (after === undefined) {
+          // The task was deleted: its surfaces go with it.
+          await store.delete(surfaceKey(taskId, surfaceId));
+          await store.delete(cursorKey(taskId, surfaceId));
+          return rejection('not-found', 'the task was deleted while the surface was being created');
+        }
+        if (after.settled !== undefined) {
+          await freezeOne(
+            taskId,
+            surfaceId,
+            after.settled === 'canceled' ? 'cancelled' : 'task-ended',
+            `task-settled:${taskId}`,
+          );
+          const reconciled = await load(taskId, surfaceId);
           // The create committed, so it is accepted; the surface it reports is frozen.
-          await settleTask(taskId, after.settled);
-          const settled = await load(taskId, surfaceId);
           return accepted(
             commandId,
-            await withCursor(settled?.stored.surface ?? { ...surface, eventCursor: cursor }),
+            await withCursor(reconciled?.stored.surface ?? { ...surface, eventCursor: cursor }),
             false,
             1,
           );
@@ -778,6 +791,21 @@ export function createInteractiveSurfaces(
         if (changes.representation !== undefined && changes.representation.kind !== before.kind) {
           throw new InteractiveSurfaceValidationError(
             `representation.kind must stay "${before.kind}"`,
+          );
+        }
+        // A new MCP App resource is a new app instance, so it must carry a new
+        // `instanceId`; otherwise the old instance's actions would still pass.
+        const next = changes.representation;
+        const previous = before.representation;
+        if (
+          next?.kind === 'mcp-app' &&
+          previous?.kind === 'mcp-app' &&
+          (next.resourceUri !== previous.resourceUri ||
+            next.contentDigest !== previous.contentDigest) &&
+          next.instanceId === previous.instanceId
+        ) {
+          throw new InteractiveSurfaceValidationError(
+            'a new MCP App resource or digest needs a new instanceId',
           );
         }
         const revision = before.revision + 1;
