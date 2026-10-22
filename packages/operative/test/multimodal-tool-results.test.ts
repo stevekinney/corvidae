@@ -251,6 +251,24 @@ describe('tool-result media review fixes', () => {
     expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
   });
 
+  it('admits media a hook adds in place before throwing, before the row is kept', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (toolResult) => {
+      Object.assign(toolResult, {
+        parts: [{ type: 'text', text: 'see image' }, inlineImage] satisfies ToolResultPart[],
+      });
+      throw new Error('validation failed');
+    });
+    const result = await runWith([{ type: 'text', text: 'ok' }], {
+      generatedMediaAdmitter: admitter.port,
+      hooks,
+    }).result;
+    const toolResult = toolResultRow(result.conversation)?.toolResult;
+    expect(toolResult?.parts?.[1]).toMatchObject({ source: { kind: 'managed-asset' } });
+    expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
+  });
+
   it('retains the managed assets of a tool-result row a plugin hid', async () => {
     const managed = {
       ...inlineImage,

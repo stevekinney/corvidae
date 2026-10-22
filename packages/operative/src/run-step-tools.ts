@@ -71,13 +71,15 @@ export async function executeTools(
   let results: ToolExecutionResult[] = [];
   const resultRowScope = { runId: deps.runId, step };
   /**
-   * Appends a step's result rows, then claims the managed assets they now point at, so none
-   * expires under its row. An append failure throws; a retention failure is returned, for the
-   * caller to report.
+   * Admits a step's result rows, appends them, then claims the managed assets they now point at,
+   * so none expires under its row. Every committed row passes through admission here, whatever a
+   * hook did to it on the way; media admitted already is a managed asset and passes unchanged.
+   * An append failure throws; a retention failure is returned, for the caller to report.
    */
   const commitToolResults = async (
-    rows: ToolExecutionResult[],
+    unadmitted: ToolExecutionResult[],
   ): Promise<{ error: unknown } | undefined> => {
+    const rows = await admitToolResultMedia(admitter, unadmitted, mediaContext);
     if (deps.collectAsync) {
       await conversation.appendToolResultsAsync(rows, resultRowBatch(resultRowScope, rows));
     } else {
@@ -426,8 +428,8 @@ export async function executeTools(
           // Validation failed, but the underlying tool execution already
           // produced real results — seal the tool calls with those
           // (unvalidated) results rather than leaving them dangling.
-          // The rows still carry admitted media, so they are retained as the normal path's are;
-          // the validation error is what the step reports either way.
+          // The rows are admitted and retained as the normal path's are, whatever a hook did to
+          // them before it threw; the validation error is what the step reports either way.
           await commitToolResults(results);
           emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
           return { kind: 'error', error, errorKind: 'tool' };
