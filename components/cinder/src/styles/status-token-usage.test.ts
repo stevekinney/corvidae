@@ -41,8 +41,7 @@ describe('status token usage', () => {
     expect(failures).toEqual([]);
   });
 
-  test('badge and chip variants use semantic status triples directly', async () => {
-    const badgeSource = await readFile(join(COMPONENTS_DIR, 'badge', 'badge.css'), 'utf-8');
+  test('chip variants use semantic status triples directly', async () => {
     const chipSource = await readFile(join(COMPONENTS_DIR, 'chip', 'chip.css'), 'utf-8');
 
     // Accent lives under its own domain rather than `status.*`: it is a brand
@@ -51,14 +50,40 @@ describe('status token usage', () => {
       variant === 'accent' ? '--cinder-accent' : `--cinder-status-${variant}`;
 
     for (const status of ['neutral', 'accent', 'success', 'warning', 'danger', 'info']) {
-      expect(badgeSource).toContain(`var(${soft(status)}-background)`);
-      expect(badgeSource).toContain(`var(${soft(status)}-text)`);
-      expect(badgeSource).toContain(`var(${soft(status)}-border)`);
-
       expect(chipSource).toContain(`var(${soft(status)}-background)`);
       expect(chipSource).toContain(`var(${soft(status)}-text)`);
       expect(chipSource).toContain(`var(${soft(status)}-border)`);
     }
+  });
+
+  // COR-1552: a Badge draws no visible outline. Its border is still there, so the box
+  // keeps the same size, but each variant paints it in its own background. The
+  // `--cinder-status-*-border` tokens are untouched, because Chip and the danger Button
+  // read them and the stop button's hover paints one over its background.
+  test("each Badge variant's border-color is its own background token", async () => {
+    const badgeSource = await readFile(join(COMPONENTS_DIR, 'badge', 'badge.css'), 'utf-8');
+    const soft = (variant: string) =>
+      variant === 'accent' ? '--cinder-accent' : `--cinder-status-${variant}`;
+
+    for (const variant of ['neutral', 'accent', 'success', 'warning', 'danger', 'info']) {
+      const rule = badgeSource.match(
+        new RegExp(`\\.cinder-badge\\[data-cinder-variant='${variant}'\\]\\s*\\{([^}]*)\\}`),
+      );
+      expect(rule?.[1], `${variant} rule`).toBeDefined();
+      const body = rule?.[1] ?? '';
+      expect(declarationValue(body, 'background')).toBe(`var(${soft(variant)}-background)`);
+      expect(declarationValue(body, 'color')).toBe(`var(${soft(variant)}-text)`);
+      expect(declarationValue(body, 'border-color')).toBe(`var(${soft(variant)}-background)`);
+    }
+
+    const critical = badgeSource.match(
+      /\.cinder-badge\[data-cinder-severity='critical'\]\s*\{([^}]*)\}/,
+    );
+    const criticalBody = critical?.[1] ?? '';
+    expect(declarationValue(criticalBody, 'border-color')).toBe(
+      declarationValue(criticalBody, 'background'),
+    );
+    expect(badgeSource).not.toMatch(/-border\)/);
   });
 
   test('derived status tiers retain the polarity-aware relative-color formula', async () => {

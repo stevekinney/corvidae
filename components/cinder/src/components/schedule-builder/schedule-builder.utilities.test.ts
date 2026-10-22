@@ -10,7 +10,6 @@ import {
   describeValue,
   joinCron,
   lowerDailyAt,
-  lowerEveryN,
   lowerMonthlyOnDay,
   lowerWeeklyAt,
   parseTime,
@@ -242,22 +241,6 @@ describe('schedule-builder utilities', () => {
 
     test('trims surrounding whitespace', () => {
       expect(parseTime('  09:30  ')).toEqual({ hour: 9, minute: 30 });
-    });
-  });
-
-  describe('lowerEveryN', () => {
-    test('lowers a positive integer and unit to an interval value', () => {
-      expect(lowerEveryN(15, 'minutes')).toEqual({ mode: 'interval', every: 15, unit: 'minutes' });
-      expect(lowerEveryN(2, 'hours')).toEqual({ mode: 'interval', every: 2, unit: 'hours' });
-    });
-
-    test('falls back to 1 for a non-positive every value', () => {
-      expect(lowerEveryN(0, 'minutes')).toEqual({ mode: 'interval', every: 1, unit: 'minutes' });
-      expect(lowerEveryN(-5, 'minutes')).toEqual({ mode: 'interval', every: 1, unit: 'minutes' });
-    });
-
-    test('falls back to 1 for a non-integer every value', () => {
-      expect(lowerEveryN(1.5, 'minutes')).toEqual({ mode: 'interval', every: 1, unit: 'minutes' });
     });
   });
 
@@ -593,25 +576,58 @@ describe('schedule-builder utilities', () => {
     });
 
     test('describes a daily cron expression', () => {
-      expect(describeValue({ mode: 'cron', expression: '30 9 * * *' })).toBe('Daily at 09:30');
+      expect(describeValue({ mode: 'cron', expression: '30 9 * * *' })).toBe(
+        'Repeats every day at 09:30',
+      );
     });
 
     test('describes a weekly cron expression with a single day', () => {
       expect(describeValue({ mode: 'cron', expression: '0 9 * * 1' })).toBe(
-        'Weekly on Monday at 09:00',
+        'Repeats every week on Monday at 09:00',
       );
     });
 
     test('describes a weekly cron expression with multiple days', () => {
       expect(describeValue({ mode: 'cron', expression: '0 9 * * 1,3,5' })).toBe(
-        'Weekly on Monday, Wednesday, Friday at 09:00',
+        'Repeats every week on Monday, Wednesday, Friday at 09:00',
+      );
+      expect(describeValue({ mode: 'cron', expression: '0 9 * * 1,3' })).toBe(
+        'Repeats every week on Monday, Wednesday at 09:00',
       );
     });
 
-    test('describes a monthly cron expression', () => {
-      expect(describeValue({ mode: 'cron', expression: '0 9 15 * *' })).toBe(
-        'Monthly on day 15 at 09:00',
+    test('describes a monthly cron expression with an ordinal day', () => {
+      expect(describeValue({ mode: 'cron', expression: '0 9 1 * *' })).toBe(
+        'Repeats every month on the 1st at 09:00',
       );
+      expect(describeValue({ mode: 'cron', expression: '0 9 15 * *' })).toBe(
+        'Repeats every month on the 15th at 09:00',
+      );
+    });
+
+    test('ordinals follow English: 1st, 2nd, 3rd, then th, with 11th to 13th and 21st to 23rd', () => {
+      const ordinals = new Map([
+        [1, '1st'],
+        [2, '2nd'],
+        [3, '3rd'],
+        [4, '4th'],
+        [10, '10th'],
+        [11, '11th'],
+        [12, '12th'],
+        [13, '13th'],
+        [20, '20th'],
+        [21, '21st'],
+        [22, '22nd'],
+        [23, '23rd'],
+        [24, '24th'],
+        [30, '30th'],
+        [31, '31st'],
+      ]);
+      for (const [day, ordinal] of ordinals) {
+        expect(describeValue({ mode: 'cron', expression: `0 9 ${day} * *` })).toBe(
+          `Repeats every month on the ${ordinal} at 09:00`,
+        );
+      }
     });
 
     test('falls back to a raw cron description for an expression matching no known shape', () => {

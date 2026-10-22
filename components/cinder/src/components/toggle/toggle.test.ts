@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ComponentProps } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -566,5 +568,37 @@ describe('Toggle — FormField context', () => {
     const label = container.querySelector('.cinder-toggle-field__label');
     expect(label?.textContent).toContain('Notifications');
     expect(button.getAttribute('aria-labelledby')).toBe(label?.id ?? null);
+  });
+});
+
+// happy-dom cannot measure layout, so the rendered sizes are asserted in
+// `scripts/browser-fixtures/tests/toggle-size.playwright.ts`. These cases read the stylesheet and
+// assert only the values that hold whatever mechanism draws the track inside the hit area.
+describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
+  const css = readFileSync(join(import.meta.dirname, 'toggle.css'), 'utf8');
+
+  function declaration(selector: string, property: string): string | undefined {
+    const rule = css.match(new RegExp(`${selector.replace(/[.[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`));
+    return rule?.[1]?.match(new RegExp(`(?:^|[;\\s])${property}:\\s*([^;]+);`))?.[1]?.trim();
+  }
+
+  test('the track is 2rem by 1.125rem', () => {
+    expect(declaration('.cinder-toggle', 'width')).toContain('2rem');
+    expect(declaration('.cinder-toggle', 'height')).toContain('1.125rem');
+  });
+
+  test('the thumb is 0.875rem and travels 0.875rem', () => {
+    expect(declaration('.cinder-toggle__thumb', 'width')).toContain('0.875rem');
+    expect(declaration('.cinder-toggle__thumb', 'height')).toContain('0.875rem');
+    expect(
+      declaration('.cinder-toggle[data-cinder-checked] .cinder-toggle__thumb', 'transform'),
+    ).toContain('0.875rem');
+  });
+
+  test('a coarse pointer sizes the hit area to at least 2.75rem by 2.75rem', () => {
+    const coarse = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n  \}/);
+    expect(coarse?.[1], 'no (pointer: coarse) block').toBeDefined();
+    expect(coarse![1]).toContain('.cinder-toggle');
+    expect(coarse![1].match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });

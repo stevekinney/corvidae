@@ -111,11 +111,22 @@ describe('ScheduleBuilder', () => {
       expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
     });
 
-    test('starts in presets for a minutes/hours interval value (it cleanly matches "every N")', () => {
+    test('opens Presets on the daily kind when the value is omitted', () => {
+      const { container, getByRole } = render(ScheduleBuilder, {});
+
+      expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
+      expect(getByRole('radio', { name: 'Daily' }).getAttribute('aria-checked')).toBe('true');
+      expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
+        'Repeats every day at 09:00',
+      );
+    });
+
+    test('starts in interval mode for a minutes/hours interval value', () => {
       const value: ScheduleValue = { mode: 'interval', every: 5, unit: 'hours' };
       const { container, getByLabelText } = render(ScheduleBuilder, { value });
 
-      expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
+      expect(container.querySelector('[data-sb-panel="interval"]')).not.toBeNull();
+      expect(container.querySelector('[data-sb-panel="presets"]')).toBeNull();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
         'Every 5 hours',
       );
@@ -148,7 +159,7 @@ describe('ScheduleBuilder', () => {
 
       expect(container.querySelector('[data-sb-panel="cron"]')).not.toBeNull();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
-        'Daily at 14:30',
+        'Repeats every day at 14:30',
       );
       expect(requiredInstance(getByLabelText('Minute'), HTMLInputElement).value).toBe('30');
       expect(requiredInstance(getByLabelText('Hour'), HTMLInputElement).value).toBe('14');
@@ -209,7 +220,7 @@ describe('ScheduleBuilder', () => {
       const initialValue: ScheduleValue = { mode: 'interval', every: 15, unit: 'minutes' };
       const { container, rerender } = render(ScheduleBuilder, { value: initialValue });
 
-      expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
+      expect(container.querySelector('[data-sb-panel="interval"]')).not.toBeNull();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
         'Every 15 minutes',
       );
@@ -221,7 +232,7 @@ describe('ScheduleBuilder', () => {
 
       expect(container.querySelector('[data-sb-panel="cron"]')).not.toBeNull();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
-        'Weekly on Monday at 09:00',
+        'Repeats every week on Monday at 09:00',
       );
     });
 
@@ -296,7 +307,7 @@ describe('ScheduleBuilder', () => {
 
       expect(container.querySelector('[data-sb-panel="cron"]')).not.toBeNull();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
-        'Weekly on Monday at 09:00',
+        'Repeats every week on Monday at 09:00',
       );
 
       // A controlled parent clearing `value` back to `undefined` is a
@@ -306,20 +317,21 @@ describe('ScheduleBuilder', () => {
 
       expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
-        'Every 15 minutes',
+        'Repeats every day at 09:00',
       );
     });
 
     test('resets to the default even when the committed value already equals the default and the user browsed to another mode', async () => {
-      // The parent starts controlled at exactly the default value. The user
-      // switches to Cron — a non-committing mode switch that emits nothing, so
-      // `lastKnownValue` stays at the default while the visible panel is now
-      // Cron. A content-equality short-circuit would then swallow a reset (the
-      // resolved default equals the committed default) and strand the UI in
-      // Cron; the reset must force the panel back to the default Presets state.
+      // The parent starts controlled at exactly the default value, which is an interval and so
+      // opens Interval. The user switches to Cron — a non-committing mode switch that emits
+      // nothing, so `lastKnownValue` stays at the default while the visible panel is now Cron. A
+      // content-equality short-circuit would then swallow a reset (the resolved default equals the
+      // committed default) and strand the UI in Cron; the reset must force the panel back to the
+      // omitted-value state: Presets on the daily kind.
       const defaultValue: ScheduleValue = { mode: 'interval', every: 15, unit: 'minutes' };
       const { container, getByRole, rerender } = render(ScheduleBuilder, { value: defaultValue });
 
+      expect(container.querySelector('[data-sb-panel="interval"]')).not.toBeNull();
       await fireEvent.click(getByRole('tab', { name: 'Cron' }));
       expect(container.querySelector('[data-sb-panel="cron"]')).not.toBeNull();
 
@@ -327,6 +339,7 @@ describe('ScheduleBuilder', () => {
 
       expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
       expect(container.querySelector('[data-sb-panel="cron"]')).toBeNull();
+      expect(getByRole('radio', { name: 'Daily' }).getAttribute('aria-checked')).toBe('true');
     });
 
     test('an uncontrolled component (no value prop, ever) does not reset a mid-edit cron field on re-render', async () => {
@@ -432,105 +445,80 @@ describe('ScheduleBuilder', () => {
       expect(requiredInstance(getByLabelText('Minute'), HTMLInputElement).value).toBe('0');
     });
 
-    test('switching to presets after committing a representable hours interval seeds the "every N" preset instead of the default', async () => {
+    test('switching from Interval to Presets shows the daily default and emits nothing', async () => {
+      const onValueChange = mock();
       const value: ScheduleValue = { mode: 'interval', every: 2, unit: 'hours' };
-      const { container, getByLabelText, getByRole } = render(ScheduleBuilder, { value });
+      const { container, getByRole } = render(ScheduleBuilder, { value, onValueChange });
 
-      // Bounce through cron on the way to presets, same as the coordinator's
-      // repro: the committed value must survive an intermediate mode, not
-      // just a direct interval -> presets switch.
-      await fireEvent.click(getByRole('tab', { name: 'Cron' }));
+      expect(container.querySelector('[data-sb-panel="interval"]')).not.toBeNull();
       await fireEvent.click(getByRole('tab', { name: 'Presets' }));
 
-      expect(getByRole('radio', { name: 'Every N' }).getAttribute('aria-checked')).toBe('true');
-      expect(requiredInstance(getByLabelText('Every'), HTMLInputElement).value).toBe('2');
-      const unitSelect = requiredInstance(getByLabelText('Unit'), HTMLSelectElement);
-      expect(unitSelect.value).toBe('hours');
+      expect(getByRole('radio', { name: 'Daily' }).getAttribute('aria-checked')).toBe('true');
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
-        'Every 2 hours',
+        'Repeats every day at 09:00',
       );
+      expect(onValueChange).not.toHaveBeenCalled();
     });
 
-    test('switching to presets from a non-representable value leaves the "every N" preset at its default', async () => {
+    test("an interval value with 'interval' excluded from allowedModes lands on the daily default", () => {
+      const onValueChange = mock();
+      const value: ScheduleValue = { mode: 'interval', every: 2, unit: 'hours' };
+      const { container, getByRole } = render(ScheduleBuilder, {
+        value,
+        allowedModes: ['presets', 'cron'],
+        onValueChange,
+      });
+
+      expect(container.querySelector('[data-sb-panel="presets"]')).not.toBeNull();
+      expect(getByRole('radio', { name: 'Daily' }).getAttribute('aria-checked')).toBe('true');
+      expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
+        'Repeats every day at 09:00',
+      );
+      expect(onValueChange).not.toHaveBeenCalled();
+    });
+
+    test('switching to presets from a non-representable value leaves the daily preset at its default', async () => {
       const value: ScheduleValue = { mode: 'cron', expression: '0 9 * * 1' };
-      const { getByLabelText, getByRole } = render(ScheduleBuilder, { value });
+      const { getByLabelText, getByRole, queryByLabelText } = render(ScheduleBuilder, { value });
 
       await fireEvent.click(getByRole('tab', { name: 'Presets' }));
 
-      expect(requiredInstance(getByLabelText('Every'), HTMLInputElement).value).toBe('15');
-      const unitSelect = requiredInstance(getByLabelText('Unit'), HTMLSelectElement);
-      expect(unitSelect.value).toBe('minutes');
+      expect(getByRole('radio', { name: 'Daily' }).getAttribute('aria-checked')).toBe('true');
+      expect(requiredInstance(getByLabelText('At'), HTMLInputElement).value).toBe('09:00');
+      expect(queryByLabelText('Every')).toBeNull();
     });
   });
 
   describe('presets mode', () => {
-    test('presets "every" kind commits an interval value via onValueChange', async () => {
-      const onValueChange = mock();
-      const { getByLabelText } = render(ScheduleBuilder, { onValueChange });
+    test('offers Daily, Weekly and Monthly only, with no "Every N" kind or Every and Unit fields', () => {
+      const { getAllByRole, queryByLabelText, queryByRole } = render(ScheduleBuilder, {});
 
-      const everyInput = requiredInstance(getByLabelText('Every'), HTMLInputElement);
-      await fireEvent.input(everyInput, { target: { value: '30' } });
-      await fireEvent.blur(everyInput);
-
-      expect(onValueChange).toHaveBeenCalledTimes(1);
-      const [emitted] = onValueChange.mock.calls[0]!;
-      expect(emitted).toEqual({ mode: 'interval', every: 30, unit: 'minutes' });
-    });
-
-    test('coerces a fractional "every" to a positive integer before emitting', async () => {
-      const onValueChange = mock();
-      const { getByLabelText } = render(ScheduleBuilder, { onValueChange });
-
-      const everyInput = requiredInstance(getByLabelText('Every'), HTMLInputElement);
-      await fireEvent.input(everyInput, { target: { value: '2.5' } });
-      await fireEvent.blur(everyInput);
-
-      // The emitted `every` must always be a positive integer — no fractional leak.
-      const [emitted] = onValueChange.mock.calls.at(-1)! as [{ mode: string; every: number }];
-      expect(emitted.mode).toBe('interval');
-      expect(Number.isInteger(emitted.every)).toBe(true);
-      expect(emitted.every).toBeGreaterThanOrEqual(1);
-    });
-
-    test('presets "every" unit select commits an interval value via onValueChange', async () => {
-      const onValueChange = mock();
-      const { getByLabelText } = render(ScheduleBuilder, { onValueChange });
-
-      const unitSelect = requiredInstance(getByLabelText('Unit'), HTMLSelectElement);
-      await fireEvent.change(unitSelect, { target: { value: 'hours' } });
-
-      expect(onValueChange).toHaveBeenCalledTimes(1);
-      expect(onValueChange.mock.calls[0]![0]).toEqual({
-        mode: 'interval',
-        every: 15,
-        unit: 'hours',
-      });
+      const kinds = getAllByRole('radio').map((radio) => radio.textContent?.trim());
+      expect(kinds).toEqual(['Daily', 'Weekly', 'Monthly']);
+      expect(queryByRole('radio', { name: 'Every N' })).toBeNull();
+      expect(queryByLabelText('Every')).toBeNull();
+      expect(queryByLabelText('Unit')).toBeNull();
     });
 
     test('presets "daily at" commits a cron value via onValueChange', async () => {
       const onValueChange = mock();
       const { container, getByLabelText, getByRole } = render(ScheduleBuilder, { onValueChange });
 
-      await fireEvent.click(getByRole('radio', { name: 'Daily' }));
-      // Switching preset kind commits immediately with that kind's current
-      // fields (default time 09:00) — see "preset-kind switch commits an
-      // onValueChange" below for a dedicated assertion on that behavior.
-      expect(onValueChange).toHaveBeenCalledTimes(1);
-      expect(onValueChange.mock.calls[0]![0]).toEqual({ mode: 'cron', expression: '0 9 * * *' });
-
+      // Daily is the default kind, so choosing it again commits nothing and the first change is
+      // the time.
+      expect(getByRole('radio', { name: 'Daily' }).getAttribute('aria-checked')).toBe('true');
       const timeInput = container.querySelector<HTMLInputElement>('#' + getByLabelText('At').id)!;
       await fireEvent.change(timeInput, { target: { value: '09:15' } });
 
-      expect(onValueChange).toHaveBeenCalledTimes(2);
-      const [emitted] = onValueChange.mock.calls[1]!;
+      expect(onValueChange).toHaveBeenCalledTimes(1);
+      const [emitted] = onValueChange.mock.calls[0]!;
       expect(emitted).toEqual({ mode: 'cron', expression: '15 9 * * *' });
     });
 
     test('clearing a Daily time keeps the prior time in the emitted value and in the field, instead of silently becoming midnight', async () => {
       const onValueChange = mock();
-      const { container, getByLabelText, getByRole } = render(ScheduleBuilder, { onValueChange });
+      const { container, getByLabelText } = render(ScheduleBuilder, { onValueChange });
 
-      await fireEvent.click(getByRole('radio', { name: 'Daily' }));
       const timeInput = container.querySelector<HTMLInputElement>('#' + getByLabelText('At').id)!;
       await fireEvent.change(timeInput, { target: { value: '09:15' } });
       onValueChange.mockClear();
@@ -546,7 +534,7 @@ describe('ScheduleBuilder', () => {
       // actually changed from the component's point of view.
       expect(onValueChange).not.toHaveBeenCalled();
       expect(container.querySelector('.cinder-schedule-builder__summary-text')?.textContent).toBe(
-        'Daily at 09:15',
+        'Repeats every day at 09:15',
       );
       // The field itself must re-assert the prior time rather than staying
       // blank, so it never visually diverges from the emitted/summarized value.
@@ -608,20 +596,20 @@ describe('ScheduleBuilder', () => {
       const onValueChange = mock();
       const { getByRole } = render(ScheduleBuilder, { onValueChange });
 
-      // Default kind is "every" (interval); switching to another kind changes
-      // the derived value immediately, so it must emit — unlike the top-level
-      // authoring-mode tabs, there is no "browsing an empty panel" state here.
-      await fireEvent.click(getByRole('radio', { name: 'Daily' }));
+      // Default kind is "daily"; switching to another kind changes the derived value immediately,
+      // so it must emit — unlike the top-level authoring-mode tabs, there is no "browsing an
+      // empty panel" state here.
+      await fireEvent.click(getByRole('radio', { name: 'Monthly' }));
 
       expect(onValueChange).toHaveBeenCalledTimes(1);
-      expect(onValueChange.mock.calls[0]![0]).toEqual({ mode: 'cron', expression: '0 9 * * *' });
+      expect(onValueChange.mock.calls[0]![0]).toEqual({ mode: 'cron', expression: '0 9 1 * *' });
     });
 
     test('re-selecting the already-active preset kind does not emit a redundant onValueChange', async () => {
       const onValueChange = mock();
       const { getByRole } = render(ScheduleBuilder, { onValueChange });
 
-      await fireEvent.click(getByRole('radio', { name: 'Every N' }));
+      await fireEvent.click(getByRole('radio', { name: 'Daily' }));
 
       expect(onValueChange).not.toHaveBeenCalled();
     });
@@ -630,12 +618,7 @@ describe('ScheduleBuilder', () => {
       const onValueChange = mock();
       const { getByLabelText, getByRole } = render(ScheduleBuilder, { onValueChange });
 
-      // every
-      await fireEvent.change(getByLabelText('Unit'), {
-        target: { value: 'hours' },
-      });
       // daily
-      await fireEvent.click(getByRole('radio', { name: 'Daily' }));
       await fireEvent.change(getByLabelText('At'), {
         target: { value: '08:00' },
       });
@@ -830,7 +813,7 @@ describe('ScheduleBuilder', () => {
     test('reflects the default value', () => {
       const { container } = render(ScheduleBuilder, {});
       const summary = container.querySelector('.cinder-schedule-builder__summary-text');
-      expect(summary?.textContent).toBe('Every 15 minutes');
+      expect(summary?.textContent).toBe('Repeats every day at 09:00');
     });
 
     test('updates live as interval fields change', async () => {
@@ -847,11 +830,11 @@ describe('ScheduleBuilder', () => {
     test('reflects a controlled initial cron value immediately, without opening the Cron tab', () => {
       // A cron `value` opens directly in Cron mode (see "initial authoring mode"
       // below), so the real value is seeded and described on the very first
-      // render instead of showing the presets "every N" default.
+      // render instead of showing the presets default.
       const value: ScheduleValue = { mode: 'cron', expression: '0 9 * * 1' };
       const { container } = render(ScheduleBuilder, { value });
       const summary = container.querySelector('.cinder-schedule-builder__summary-text');
-      expect(summary?.textContent).toBe('Weekly on Monday at 09:00');
+      expect(summary?.textContent).toBe('Repeats every week on Monday at 09:00');
     });
   });
 
@@ -873,7 +856,7 @@ describe('ScheduleBuilder', () => {
 
       expect(computeNextFires).toHaveBeenCalled();
       const [calledValue, calledCount] = computeNextFires.mock.calls[0]!;
-      expect(calledValue).toEqual({ mode: 'interval', every: 15, unit: 'minutes' });
+      expect(calledValue).toEqual({ mode: 'cron', expression: '0 9 * * *' });
       expect(calledCount).toBe(5);
 
       const items = getAllByRole('listitem');
@@ -889,7 +872,7 @@ describe('ScheduleBuilder', () => {
       const { container } = render(ScheduleBuilder, { computeNextFires });
 
       expect(container.querySelector('.cinder-schedule-builder__preview-list')).toBeNull();
-      expect(container.textContent).toContain('No upcoming fires.');
+      expect(container.textContent).toContain('No upcoming runs.');
     });
 
     test('passes a custom previewCount through to computeNextFires', () => {
