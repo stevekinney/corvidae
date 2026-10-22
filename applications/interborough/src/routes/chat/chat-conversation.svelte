@@ -13,6 +13,10 @@
    * carry text only. Files upload as they are attached (`../../lib/chat-attachments.ts`), and the
    * assets a row carries, returned by the agent or attached by the person, are shown under it.
    *
+   * Quoting is on (`capabilities.quote`): a reader selects part of an agent's reply, or uses its Quote
+   * message action, and the quotes go out as Markdown block quotes ahead of the typed text, as part
+   * of the message itself, so the controller sends them like any other text.
+   *
    * A new chat (`isNew`, at `/chat/new`) has no session yet. The client names the thread, the agent
    * is chosen above the composer, and the first message starts the run. When the run has started
    * the address becomes `/chat/:sessionId` by replacing the history entry, with this page kept
@@ -228,7 +232,7 @@
       adapter={session.chatAdapter}
       streaming={session.streaming}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
-      capabilities={{ attachments: attachable, editing: false, quote: false }}
+      capabilities={{ attachments: attachable, editing: false, quote: true }}
       uploadAttachment={upload}
       acceptedTypes={settings?.acceptedTypes ?? []}
       maxFileSize={settings?.maxFileSize}
