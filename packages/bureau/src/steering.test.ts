@@ -835,7 +835,7 @@ describe('createSteeringGate', () => {
       );
       expect(stale).toEqual({
         outcome: 'rejected',
-        failure: { failedAt: NOW, reason: 'policy-denied' },
+        failure: { failedAt: NOW, reason: 'stale-revision' },
       });
       // The stale resume must not have reversed the pause.
       expect(gate.getDesiredState()).toEqual({ paused: true, configVersion: 1 });

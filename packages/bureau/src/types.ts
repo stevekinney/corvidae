@@ -100,7 +100,11 @@ import type { BureauGoals } from './goal-types';
 import type { ModelCatalogService } from './model-catalog-refresh';
 import type { BureauModelPolicyOptions, PlanSelectionRequest } from './model-policy';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
-import type { SteeringCommandAdmissionOutcome, SteeringCommandRequest } from './steering';
+import type {
+  SessionSteeringState,
+  SteeringCommandAdmissionOutcome,
+  SteeringCommandRequest,
+} from './steering';
 import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier';
 
 // ── Provider Configuration ───────────────────────────────────────────
@@ -1887,6 +1891,14 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     sessionId: string,
     request: SteeringCommandRequest,
   ): Promise<SteeringCommandAdmissionOutcome>;
+
+  /**
+   * What the session's steering has settled on (COR-1559): its latest admitted `model` override
+   * and its `configVersion`. On a durable Bureau the session's log is folded first, so the answer
+   * includes commands another process admitted. `undefined` for a session this Bureau does not
+   * hold. It does not authorize the caller: that is the caller's to do, as for `getSession`.
+   */
+  getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined>;
 
   /**
    * Synchronous, constant capability discovery for the three session verbs

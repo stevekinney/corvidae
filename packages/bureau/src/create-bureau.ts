@@ -400,6 +400,7 @@ import {
   normalizeRunRequestContext,
   recoveredRequestContextFromMetadata,
 } from './session-request-context';
+import { allowsModelOverride, describeAgentModels } from './agent-models';
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
@@ -410,7 +411,9 @@ import {
   isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
+  type SessionSteeringState,
   type SteeringRefusal,
+  steersIdleSession,
 } from './steering';
 import {
   appendSteeringLogEvent,
@@ -3487,6 +3490,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const same =
       asked['target'] === first['target'] &&
       asked['override'] === first['override'] &&
+      asked['provider'] === first['provider'] &&
       asked['policyRef'] === first['policyRef'];
     return same ? { ...command, requestedValue: decided } : command;
   }
@@ -13244,6 +13248,75 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * COR-1559 — whether `agentName`'s agent allows a session to be switched to `override`. An agent
+   * that declares what it allows (a selectable or fixed one, and every file agent) is held to
+   * it; one that does not (routed, opaque, or a name this Bureau cannot find) is bounded by the
+   * deployment's catalog alone, which the caller has already checked. A file agent's model must
+   * also be one the host's resolver can set up: a model it cannot is not allowed.
+   */
+  function agentAllowsModel(
+    agentName: string,
+    override: { readonly model: string; readonly provider?: string | undefined },
+  ): boolean {
+    const agent = agentCatalog.find(agentName);
+    if (agent === undefined) return true;
+    const descriptors = modelCatalog.catalog().descriptors;
+    const allowed = describeAgentModels(agent, descriptors);
+    if (!allowed.restricts) return true;
+    if (!allowsModelOverride(allowed.models, override)) return false;
+    if (readFileAgentBinding(agent) === undefined || resolveAgentGenerate === undefined) {
+      return true;
+    }
+    const row = descriptors.find(
+      (descriptor) =>
+        descriptor.model === override.model &&
+        (override.provider === undefined || descriptor.provider === override.provider) &&
+        allowsModelOverride(allowed.models, {
+          model: descriptor.model,
+          provider: descriptor.provider,
+        }),
+    );
+    if (row === undefined) return false;
+    try {
+      resolveAgentGenerate(row);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined> {
+    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
+    if (session === undefined) return undefined;
+    const kv = durableSteeringStore();
+    let gate: BureauSteeringGate | undefined;
+    if (kv === undefined) {
+      gate = steeringGates.get(sessionId);
+    } else {
+      try {
+        gate = (
+          await enqueueSteering(sessionId, () =>
+            catchUpSteering(kv, sessionId, session.incarnation),
+          )
+        ).gate;
+      } catch (error) {
+        // A session deleted while its log was read has no steering to report.
+        const afterFailure = await runtime.sessionStore?.load(sessionId);
+        if (afterFailure?.incarnation !== session.incarnation) return undefined;
+        throw error;
+      }
+    }
+    const desired = gate?.getDesiredState();
+    return {
+      model:
+        desired?.model === undefined
+          ? null
+          : { provider: desired.modelProvider ?? null, model: desired.model },
+      configVersion: gate?.getConfigVersion() ?? 0,
+    };
+  }
+
   async function admitSteeringRequest(
     sessionId: string,
     request: SteeringCommandRequest,
@@ -13309,6 +13382,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         session,
         request.principal,
         request.runId,
+        steersIdleSession(request.requestedValue),
       );
       if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
       if (preAdmission.verdict === 'session-terminal') {
@@ -13500,9 +13574,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
       const { descriptors } = modelCatalog.catalog();
+      // COR-1559: a `model` override may name the provider that serves the model. It is held to
+      // the catalog, and below to the agent, as the pair when it does, and as the name alone
+      // (every record written before the field existed) when it does not.
+      const overrideProvider =
+        steeringTarget === 'model'
+          ? (configurationRequest as { provider?: string | undefined }).provider
+          : undefined;
       const known =
         steeringTarget === 'model'
-          ? descriptors.some((descriptor) => descriptor.model === override)
+          ? descriptors.some(
+              (descriptor) =>
+                descriptor.model === override &&
+                (overrideProvider === undefined || descriptor.provider === overrideProvider),
+            )
           : steeringTarget === 'provider'
             ? descriptors.some((descriptor) => descriptor.provider === override)
             : steeringTarget === 'effort'
@@ -13523,6 +13608,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           {
             outcome: 'rejected',
             failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          },
+          configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
+        );
+      }
+      // COR-1559: the model is also held to what the session's agent allows, decided now rather
+      // than at a step boundary, and refused through the log like any refusal so a retry is
+      // answered the same.
+      if (
+        steeringTarget === 'model' &&
+        override !== undefined &&
+        !agentAllowsModel(session.agentName, { model: override, provider: overrideProvider })
+      ) {
+        return refuseSteering(
+          {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'model-not-allowed' },
           },
           configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
         );
@@ -13609,6 +13710,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     session: AgentSession,
     principal: string,
     namedRunId?: string,
+    idleAllowed = false,
   ): Promise<{
     verdict: 'not-found' | 'session-terminal' | 'proceed';
     liveRunIds: string[];
@@ -13667,6 +13769,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         principal,
         liveRunIds,
         namedRunId,
+        idleAllowed,
       ),
       liveRunIds,
     };
@@ -14090,6 +14193,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         principal,
         liveRunIds,
         command.runId,
+        steersIdleSession(command.requestedValue),
       );
       if (preAdmission === 'not-found') return { outcome: 'not-found' };
       if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
@@ -14171,6 +14275,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       command.principal,
       liveRunIds,
       command.runId,
+      steersIdleSession(command.requestedValue),
     );
     if (preAdmission === 'not-found') return { outcome: 'not-found' };
     if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
@@ -17572,6 +17677,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     whenRunRecorded,
     sessionInputsDeliveredBy,
     submitSteeringCommand,
+    getSessionSteering,
     // AB-192: constant, not computed from runtime state — the built-in
     // `agentRun` workflow never registers `ctx.onUpdate`/`ctx.onQuery`
     // handlers, so `update`/`query` are unsupported today regardless of

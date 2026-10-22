@@ -352,6 +352,7 @@ export {
 export type {
   BureauSteeringGate,
   ImplementedSteeringCommand,
+  SessionSteeringState,
   SteeringAdmissionContext,
   SteeringCommandAdmissionOutcome,
   SteeringCommandConflict,

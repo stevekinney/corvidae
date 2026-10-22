@@ -35,11 +35,9 @@ export interface SteeringCommandRequest {
    *  configVersion has moved past this value" (`SteeringCommand.expectedRevision`'s
    *  own doc comment). Enforced in {@link BureauSteeringGate.admit} by
    *  rejecting a mismatch outright — `{ outcome: 'rejected', failure: {
-   *  reason: 'policy-denied' } }`. `'policy-denied'` is a reuse of an
-   *  existing ratified `SteeringCommandFailure` reason, not a perfect
-   *  semantic fit (AB-67's decision record fixes no reason specifically for
-   *  "stale expected revision") — chosen over fabricating a new,
-   *  unratified reason string. */
+   *  reason: 'stale-revision' } }` (COR-1559: it was `'policy-denied'`, a
+   *  reason that also covers a policy refusal, until a caller needed to tell
+   *  the two apart). */
   readonly expectedRevision?: number;
   /** ISO deadline. A command admitted after its own deadline has passed is
    *  rejected with `SteeringCommandFailure.reason: 'deadline-passed'` — the
@@ -112,8 +110,10 @@ export interface SteeringCommandConflict {
  *   bound to the session's current non-terminal run
  *   (`SteeringCommandFailure.reason: 'run-terminal'`, per
  *   `SteeringCommand.runId`'s own doc comment), a `deadline` already passed
- *   (`reason: 'deadline-passed'`), or a stale `expectedRevision` (`reason:
- *   'policy-denied'`, see {@link SteeringCommandRequest.expectedRevision}).
+ *   (`reason: 'deadline-passed'`), a stale `expectedRevision` (`reason:
+ *   'stale-revision'`, see {@link SteeringCommandRequest.expectedRevision}),
+ *   or a `model` the session's agent does not allow (`reason:
+ *   'model-not-allowed'`, decided by `Bureau.submitSteeringCommand`).
  *   Distinct from `conflict` (no idempotency-key collision) and from
  *   `unsupported-capability` (the request is well-formed, just invalid on
  *   its own terms).
@@ -180,6 +180,16 @@ const CONFIGURATION_TARGETS: ReadonlySet<string> = new Set<ConfigurationTargetKi
   'effort',
 ]);
 
+/**
+ * Whether a command can be admitted to a session with no run in progress (COR-1559): a `model`
+ * override sets what the session's next run starts with, so it needs no live run. Every other
+ * target either binds to a live run (`pause`, `resume`) or is deferred to a run that exists, and
+ * keeps its `session-terminal` for an idle session.
+ */
+export function steersIdleSession(requestedValue: SteeringRequestedValue): boolean {
+  return requestedValue.target === 'model';
+}
+
 /** Narrows a target to one of the four configuration coordinates. */
 export function isConfigurationTarget(target: string): target is ConfigurationTargetKind {
   return CONFIGURATION_TARGETS.has(target);
@@ -208,6 +218,21 @@ export interface SteeringAdmissionContext {
 }
 
 /**
+ * What a session's steering has settled on, as `Bureau.getSessionSteering` reports it (COR-1559):
+ * the latest admitted `model` override, and the `configVersion` a later command's
+ * `expectedRevision` is compared against.
+ */
+export interface SessionSteeringState {
+  /**
+   * The model the session's latest `model` override named, or `null` before any: the agent uses
+   * its default. `provider` is `null` for an override that named none.
+   */
+  readonly model: { readonly provider: string | null; readonly model: string } | null;
+  /** The session's `configVersion`: how many steering commands it has accepted. */
+  readonly configVersion: number;
+}
+
+/**
  * Bureau's concrete `SteeringGate` (AB-67/AB-199): the per-session state
  * machine `submitSteeringCommand` and `runStep`'s boundary read both consult
  * — `submitSteeringCommand` calls {@link admit}/{@link failAcceptedForRun},
@@ -233,6 +258,13 @@ export interface BureauSteeringGate extends SteeringGate {
    *  third-party `SteeringGate` that predates AB-199's cross-run dedupe
    *  addition and has no cross-run memory of its own). */
   getAppliedFloor(): number;
+  /**
+   * The session's `configVersion` as a command's `expectedRevision` is compared against it: the
+   * number of commands the gate has accepted, an `agent-identity` command still waiting for the
+   * session's next run included. {@link SteeringGate.getDesiredState} reports the effective
+   * version instead, which that command does not advance until a run takes it.
+   */
+  getConfigVersion(): number;
   /**
    * The highest `configVersion` `runId` can observe: what its own
    * `forRun(runId).getDesiredState()` reports. A run never sees another
@@ -614,7 +646,11 @@ function sameRequestedValue(a: SteeringRequestedValue, b: SteeringRequestedValue
   const policyRefB = 'policyRef' in b ? b.policyRef : undefined;
   const overrideA = 'override' in a ? a.override : undefined;
   const overrideB = 'override' in b ? b.override : undefined;
-  return policyRefA === policyRefB && overrideA === overrideB;
+  // COR-1559: a `model` override's provider is part of its value, so the same model name under
+  // another provider is a different request, and one that names none is provider-unspecified.
+  const providerA = a.target === 'model' ? a.provider : undefined;
+  const providerB = b.target === 'model' ? b.provider : undefined;
+  return policyRefA === policyRefB && overrideA === overrideB && providerA === providerB;
 }
 
 /**
@@ -726,6 +762,8 @@ export function createSteeringGate(
   const desiredConfiguration: {
     route?: string;
     model?: string;
+    /** The provider the latest `model` override named (COR-1559); kept apart from `provider`. */
+    modelProvider?: string;
     provider?: string;
     effort?: Effort;
   } = {};
@@ -1057,6 +1095,10 @@ export function createSteeringGate(
       return appliedFloor;
     },
 
+    getConfigVersion(): number {
+      return rawConfigVersion;
+    },
+
     getRunVisibleVersion(runId: string): number {
       return runVisibleVersion(runId);
     },
@@ -1135,8 +1177,7 @@ export function createSteeringGate(
       // itself, which always constructs `command.sessionId` from the same
       // `sessionId` it looked this gate up by) could steer the wrong
       // session's gate on the very first admission, no idempotency
-      // collision required. `'policy-denied'` is reused for the same
-      // reason `expectedRevision` mismatch below reuses it: no ratified
+      // collision required. `'policy-denied'` is reused: no ratified
       // reason fits "wrong gate" specifically.
       if (command.sessionId !== sessionId) {
         return {
@@ -1164,7 +1205,7 @@ export function createSteeringGate(
       if (command.expectedRevision !== undefined && command.expectedRevision !== rawConfigVersion) {
         return {
           outcome: 'rejected',
-          failure: { failedAt: context.now, reason: 'policy-denied' },
+          failure: { failedAt: context.now, reason: 'stale-revision' },
         };
       }
 
@@ -1258,12 +1299,19 @@ export function createSteeringGate(
           return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
         }
         const requested = command.requestedValue.override;
+        // COR-1559: a `model` override carries the provider it names, which is part of its
+        // value: the same model under another provider is a different request.
+        const requestedProvider =
+          target === 'model' ? (command.requestedValue as { provider?: string }).provider : undefined;
         // Idempotent at the value, matching the pause/resume rule directly
         // above: re-requesting the value the session already desires is
         // accepted with no new `configVersion` and no state change, so a
         // client that retries with a fresh command id cannot inflate the
         // version and invalidate every other caller's `expectedRevision`.
-        if (desiredConfiguration[target] === requested) {
+        if (
+          desiredConfiguration[target] === requested &&
+          (target !== 'model' || desiredConfiguration.modelProvider === requestedProvider)
+        ) {
           const stored = record(command, undefined, effectiveConfigVersion, context.now);
           // A distinct command re-requesting the value already in force is
           // a genuine additional owner of it, and must be swept by the
@@ -1284,6 +1332,11 @@ export function createSteeringGate(
           desiredConfiguration.effort = requested as Effort;
         } else {
           desiredConfiguration[target] = requested;
+        }
+        // The model and its provider are one request: a later override replaces both.
+        if (target === 'model') {
+          if (requestedProvider === undefined) delete desiredConfiguration.modelProvider;
+          else desiredConfiguration.modelProvider = requestedProvider;
         }
         const stored = record(command, undefined, version, context.now);
         addConfigurationOwner(target, command.principal, command.id);

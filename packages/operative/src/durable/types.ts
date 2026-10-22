@@ -510,8 +510,25 @@ export type SteeringRequestedValue =
     } // a catalog agent name; must be a key of Bureau<D>'s agents map
   | { readonly target: 'route'; readonly policyRef: string; readonly override?: undefined }
   | { readonly target: 'route'; readonly override: string; readonly policyRef?: undefined } // must name a configured RoutingOptions.routes entry
-  | { readonly target: 'model'; readonly policyRef: string; readonly override?: undefined }
-  | { readonly target: 'model'; readonly override: string; readonly policyRef?: undefined }
+  | {
+      readonly target: 'model';
+      readonly policyRef: string;
+      readonly override?: undefined;
+      readonly provider?: undefined;
+    }
+  | {
+      readonly target: 'model';
+      readonly override: string;
+      /**
+       * The catalog provider the model is served by (COR-1559), for a deployment whose
+       * catalog lists one model name under more than one provider. When present, admission
+       * and step selection match the model and the provider; absent (every record written
+       * before this field existed), they match the model name alone. It is not the
+       * `provider` target: that one is a separate coordinate of its own.
+       */
+      readonly provider?: string | undefined;
+      readonly policyRef?: undefined;
+    }
   | {
       readonly target: 'provider';
       readonly policyRef: string;
@@ -625,6 +642,9 @@ export type SteeringCommandFailure =
   | SteeringCommandFailureOf<'run-ambiguous'> // pause/resume only: no runId given and the session has zero or more than one non-terminal run (AB-67's 2026-09-02 coordinator amendments)
   | SteeringCommandFailureOf<'authorization-revoked'>
   | SteeringCommandFailureOf<'policy-denied'>
+  | SteeringCommandFailureOf<'model-not-allowed'> // a `model` override the session's agent does not allow, decided at admission (COR-1559)
+  | SteeringCommandFailureOf<'stale-revision'> // `expectedRevision` is behind the session's `configVersion` (COR-1559)
+  | SteeringCommandFailureOf<'shutting-down'> // Bureau was closing admission, so nothing was decided (COR-1559); never logged
   | SteeringCommandFailureOf<'deadline-passed'>
   | {
       readonly failedAt: string; // ISO
@@ -659,6 +679,12 @@ export interface SteeringDesiredState {
   readonly agentName?: string | undefined;
   readonly route?: string | undefined;
   readonly model?: string | undefined;
+  /**
+   * The provider the latest `model` override named, or absent when it named none
+   * (COR-1559). Kept apart from `provider`, which only a `provider` command sets: a
+   * provider command never rewrites it, and a later `model` override replaces it.
+   */
+  readonly modelProvider?: string | undefined;
   readonly provider?: string | undefined;
   readonly effort?: Effort | undefined;
   readonly paused: boolean;
