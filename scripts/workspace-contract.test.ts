@@ -354,6 +354,31 @@ describe('internal workspace architecture', () => {
       expect(manifest.scripts?.['typecheck'], directory).toContain('--tsconfig ./tsconfig.json');
     }
   });
+  test('every library and component lints its documentation coverage, keyed on the checker', async () => {
+    // Verification workspaces are tooling for this repository, not a documented surface.
+    const documented = libraries.filter((name) => !verificationLibraries.includes(name));
+    const checker = 'bun ../../scripts/check-documentation-coverage.ts';
+    for (const name of documented) {
+      const directory = `${componentLibraries.includes(name) ? 'components' : 'packages'}/${name}`;
+      const manifest = await readManifest(directory);
+      expect(manifest.scripts?.['lint'], directory).toEndWith(` && ${checker}`);
+    }
+    // A package-specific `lint` override replaces the generic task, so each one must restate the
+    // checker among its inputs or edits to the checker would replay a stale result.
+    const configuration: { tasks: Record<string, { inputs?: string[] }> } = await Bun.file(
+      join(root, 'turbo.json'),
+    ).json();
+    const lintTasks = Object.entries(configuration.tasks).filter(
+      ([task]) => task === 'lint' || (task.endsWith('#lint') && !task.startsWith('//')),
+    );
+    expect(lintTasks.length).toBeGreaterThan(0);
+    for (const [task, definition] of lintTasks) {
+      expect(definition.inputs, task).toContain('$TURBO_DEFAULT$');
+      expect(definition.inputs, task).toContain(
+        '$TURBO_ROOT$/scripts/check-documentation-coverage.ts',
+      );
+    }
+  });
   test('locked workspace executable metadata matches existing manifest entrypoints', async () => {
     const lock = Bun.JSON5.parse(await Bun.file(join(root, 'bun.lock')).text()) as {
       workspaces: Record<string, Pick<Manifest, 'name' | 'bin'>>;
