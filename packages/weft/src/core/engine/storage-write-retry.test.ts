@@ -56,13 +56,13 @@ type Run = {
 
 /** Start `definition` over a refusing storage and park it on its signal, then arm the storage. */
 async function startParked(
-  definition: typeof steps,
+  definition: typeof steps | typeof failsAfterSignal,
   workflowId: string,
   options: { readonly delays?: readonly number[] } = {},
 ): Promise<Run> {
   const refusing = createRefusingStorage(new MemoryStorage());
   const engine = new Engine({ storage: refusing.storage });
-  engine.register(definition);
+  engine.register(definition as typeof steps);
   getInternals(engine).storageWriteRetryDelaysForTesting = options.delays ?? NO_WAIT;
   const handle = await engine.start(definition.name, null, { id: workflowId });
   const result = handle.result();

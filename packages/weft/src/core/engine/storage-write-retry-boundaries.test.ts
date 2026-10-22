@@ -181,7 +181,9 @@ describe('an error that is not a storage refusal is attempted once', () => {
   });
 
   it('an error nothing marked as the adapter threw it is rethrown before any retry', async () => {
-    const internals = { storageWriteRetryDelaysForTesting: [0, 0, 0, 0] } as EngineInternals;
+    const internals = {
+      storageWriteRetryDelaysForTesting: [0, 0, 0, 0],
+    } as unknown as EngineInternals;
     const cause = new Error('not from the storage adapter');
     let attempts = 0;
 
