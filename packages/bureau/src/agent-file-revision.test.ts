@@ -13,10 +13,12 @@ import {
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { decode, resolveStorage, type Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { hashAgentFileBytes } from './agent-file';
 import { AGENT_REVISION_KEY_PREFIX } from './agent-revision-store';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import {
   type AgentFileFixture,
   agentFileText,
@@ -24,6 +26,7 @@ import {
   KNOWN_MODEL,
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
+import { startFileBureau } from './testing/agent-file-bureau.test-support';
 
 const fixtures: AgentFileFixture[] = [];
 const directories: string[] = [];
@@ -285,8 +288,6 @@ describe('a deleted file', () => {
 
     const restarted = await start({ directory, revisionStore });
     await restarted.put('helper.md', validAgentFile('Version three.\n'));
-    // A catalog that has recorded nothing defers once against a record for other content.
-    await restarted.catalog.refresh();
     await restarted.catalog.refresh();
 
     expect(revisionOf(restarted)).toBe(3);
@@ -501,7 +502,24 @@ describe('a scan that read the file just before a peer’s edit', () => {
 describe('a catalog that has recorded nothing yet', () => {
   const hashOf = (text: string) => hashAgentFileBytes(new TextEncoder().encode(text));
 
-  it('adopts the record a peer wrote just before its first settle, and writes no revert', async () => {
+  it('writes a change made while the Bureau was down on its first scan, so the revision names the new content', async () => {
+    const directory = sharedDirectory();
+    const revisionStore = newStore();
+    const before = await start({ directory, revisionStore });
+    await before.put('helper.md', versionOne);
+    await before.catalog.refresh();
+    await before.dispose();
+    fixtures.splice(fixtures.indexOf(before), 1);
+    const restarted = await start({ directory, revisionStore });
+    await restarted.put('helper.md', versionTwo);
+
+    await restarted.catalog.refresh();
+
+    expect(revisionOf(restarted)).toBe(2);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
+  });
+
+  it('may count a peer’s edit twice when its first read of the file was stale, and never lowers the revision', async () => {
     const inner = newStore();
     const key = `${AGENT_REVISION_KEY_PREFIX}helper`;
     let peerWrote = false;
@@ -519,36 +537,74 @@ describe('a catalog that has recorded nothing yet', () => {
     };
     const fixture = await start({ revisionStore: store });
     await fixture.put('helper.md', versionOne);
+    const listed: Array<number | undefined> = [];
 
     await fixture.catalog.refresh();
-
-    expect(await recordedRevisionOf(inner)).toBe(2);
-    expect(revisionOf(fixture)).toBe(2);
-    // The file now is what the peer recorded.
+    listed.push(revisionOf(fixture));
     await fixture.put('helper.md', versionTwo);
     await fixture.catalog.refresh();
-    expect(await recordedRevisionOf(inner)).toBe(2);
-    expect(revisionOf(fixture)).toBe(2);
+    listed.push(revisionOf(fixture));
+
+    // Each revision names the content it was listed with, and none is lower than the record's 2.
+    expect(listed).toEqual([3, 4]);
   });
+});
 
-  it('writes a change made while the Bureau was down on its second scan', async () => {
-    const directory = sharedDirectory();
-    const revisionStore = newStore();
-    const before = await start({ directory, revisionStore });
-    await before.put('helper.md', versionOne);
-    await before.catalog.refresh();
-    await before.dispose();
-    fixtures.splice(fixtures.indexOf(before), 1);
-    const restarted = await start({ directory, revisionStore });
-    await restarted.put('helper.md', versionTwo);
+describe('a Bureau restarted after an offline edit', () => {
+  it('lists the new content at a new revision on its first refresh, and a run started then records it', async () => {
+    const directory = createTemporaryDirectory('bureau-revision-offline-edit');
+    directories.push(directory);
+    const agents = createTemporaryDirectory('bureau-revision-offline-agents');
+    directories.push(agents);
+    const storagePath = join(directory, 'bureau.sqlite');
+    const overrides = {
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' as const },
+      durableBackgroundTasks: 'manual' as const,
+      onDiagnostic: () => undefined,
+    };
+    const recordOf = async (storage: Storage, runId: string) => {
+      const bytes = await storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`);
+      return bytes === null
+        ? undefined
+        : (decode(bytes) as { definitionRevision: number; agentDefinitionHash?: string });
+    };
+    const text = (instructions: string) => agentFileText({ model: KNOWN_MODEL }, instructions);
 
-    await restarted.catalog.refresh();
-    expect(revisionOf(restarted)).toBe(1);
-    expect(await recordedRevisionOf(revisionStore)).toBe(1);
-    await restarted.catalog.refresh();
+    const firstStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const first = await startFileBureau({
+      directory: agents,
+      overrides: { ...overrides, storage: firstStorage },
+    });
+    await first.put('researcher.md', text('Before the restart.\n'));
+    await first.bureau.agents.refresh();
+    const before = first.bureau.run('researcher', 'hello');
+    await before.result();
+    const beforeRecord = await recordOf(firstStorage, before.id);
+    await first.dispose();
 
-    expect(revisionOf(restarted)).toBe(2);
-    expect(await recordedRevisionOf(revisionStore)).toBe(2);
+    // Edited while the Bureau is down.
+    await first.put('researcher.md', text('Edited while down.\n'));
+
+    const secondStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const second = await startFileBureau({
+      directory: agents,
+      overrides: { ...overrides, storage: secondStorage },
+    });
+    try {
+      const listed = second.bureau.agents.list().find((entry) => entry.id === 'researcher');
+      const after = second.bureau.run('researcher', 'hello again');
+      await after.result();
+      const afterRecord = await recordOf(secondStorage, after.id);
+
+      expect(beforeRecord?.definitionRevision).toBe(1);
+      expect(listed?.definitionRevision).toBe(2);
+      expect(afterRecord?.definitionRevision).toBe(2);
+      expect(afterRecord?.agentDefinitionHash).toBe(listed?.definitionHash);
+      expect(afterRecord?.agentDefinitionHash).not.toBe(beforeRecord?.agentDefinitionHash);
+    } finally {
+      await second.dispose();
+    }
   });
 });
 
