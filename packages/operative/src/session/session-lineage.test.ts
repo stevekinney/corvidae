@@ -222,11 +222,12 @@ describe('session.fork() recording its lineage', () => {
     await store.save(sessionWith('taken', { [SESSION_OWNER_METADATA_KEY]: 'alice' }));
     await handle.fork({ forkedFromMessageId: 'message-1', id: 'planned-id' });
 
-    const forTaken = handle.fork({ forkedFromMessageId: 'message-1', id: 'taken' });
-    const forOtherMessage = handle.fork({ forkedFromMessageId: 'message-2', id: 'planned-id' });
-
-    await expect(forTaken).rejects.toBeInstanceOf(ForkIdentifierInUseError);
-    await expect(forOtherMessage).rejects.toBeInstanceOf(ForkIdentifierInUseError);
+    await expect(handle.fork({ forkedFromMessageId: 'message-1', id: 'taken' })).rejects.toBeInstanceOf(
+      ForkIdentifierInUseError,
+    );
+    await expect(
+      handle.fork({ forkedFromMessageId: 'message-2', id: 'planned-id' }),
+    ).rejects.toBeInstanceOf(ForkIdentifierInUseError);
     expect((await store.load('planned-id'))?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(
       'message-1',
     );

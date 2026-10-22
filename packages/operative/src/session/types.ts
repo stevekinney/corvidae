@@ -47,6 +47,17 @@ export interface SessionSummary {
    * filter matches.
    */
   owner: string | null;
+  /**
+   * The session this one was branched from, read from the session's metadata when it is saved
+   * (see `SESSION_PARENT_METADATA_KEY`), or `null` for a session that was not branched. Kept in
+   * the summary index like `owner`.
+   */
+  parentContextId: string | null;
+  /**
+   * The message of the parent session this one was branched at (see
+   * `SESSION_FORKED_FROM_MESSAGE_METADATA_KEY`), or `null`.
+   */
+  forkedFromMessageId: string | null;
   messageCount: number;
   createdAt: string;
   updatedAt: string;

@@ -168,8 +168,18 @@ export interface SessionHandle {
    * reaches the fork.
    * An invalid, negative, out-of-range, still-running, or boundary-less fork
    * point rejects with `ForkThroughRunError` before anything is persisted.
+   *
+   * A fork that names the message it branches from (`forkedFromMessageId`) records its lineage in
+   * the reserved metadata keys `SESSION_PARENT_METADATA_KEY` and
+   * `SESSION_FORKED_FROM_MESSAGE_METADATA_KEY`, which the summary index carries, so a listing
+   * shows where it came from before it has a run (COR-1560). `owner` replaces the source's owner
+   * of record, for a branch made on behalf of another principal. `id` creates the fork under an
+   * identifier the caller chose, so a caller that records the identifier before it forks can find
+   * the fork again after a crash: asking again for the same fork under the same `id` returns the
+   * session already there and creates nothing, and any other holder of the `id` rejects with
+   * `ForkIdentifierInUseError`.
    */
-  fork(options?: { throughRun?: number }): Promise<SessionHandle>;
+  fork(options?: SessionForkOptions): Promise<SessionHandle>;
 
   /**
    * Start a fresh attempt (COR-1354): a new session, with a new id, that does
@@ -434,6 +444,35 @@ function forkThroughRunMessage(
       return `${prefix} targets a run that has not reached a terminal status.`;
     case 'unavailable':
       return `${prefix} targets a run with no recorded conversation boundary.`;
+  }
+}
+
+/** What {@link SessionHandle.fork} takes. */
+export interface SessionForkOptions {
+  /** The 0-based run sequence whose terminal conversation boundary the fork copies. */
+  readonly throughRun?: number | undefined;
+  /** The identifier the fork is created under; a fresh one is minted when omitted. */
+  readonly id?: string | undefined;
+  /** The fork's owner of record; the source's owner when omitted. */
+  readonly owner?: string | undefined;
+  /** The message the fork branches at; names it, and records the fork's lineage. */
+  readonly forkedFromMessageId?: string | undefined;
+}
+
+/**
+ * Thrown when `fork({ id })` names an identifier a session already holds that is not this very
+ * fork: another session, or a branch of another message. Nothing is created or changed.
+ */
+export class ForkIdentifierInUseError extends Error {
+  readonly code = 'ForkIdentifierInUseError';
+  readonly sessionId: string;
+  readonly forkId: string;
+
+  constructor(sessionId: string, forkId: string) {
+    super(`Session "${forkId}" already exists and is not a fork of "${sessionId}" at this message.`);
+    this.name = 'ForkIdentifierInUseError';
+    this.sessionId = sessionId;
+    this.forkId = forkId;
   }
 }
 
