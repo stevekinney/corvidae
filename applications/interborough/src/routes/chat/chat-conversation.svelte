@@ -17,6 +17,11 @@
    * message action, and the quotes go out as Markdown block quotes ahead of the typed text, as part
    * of the message itself, so the controller sends them like any other text.
    *
+   * A session has a model picker in the composer (`model-picker.svelte`), and the final agent
+   * message of each completed turn offers Branch from here (`branch-points.ts`), which opens a new
+   * session that continues from that reply. A branch's header says where it came from
+   * (`branch-origin.svelte`).
+   *
    * A new chat (`isNew`, at `/chat/new`) has no session yet. The client names the thread, the agent
    * is chosen above the composer, and the first message starts the run. When the run has started
    * the address becomes `/chat/:sessionId` by replacing the history entry, with this page kept
@@ -24,26 +29,37 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Alert, Combobox } from '@lostgradient/cinder';
+  import { Alert, Button, Combobox } from '@lostgradient/cinder';
   import { Chat } from '@lostgradient/chat';
+  import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
-  import { getContext, listAgents, type AgentSummary } from '../../lib/bureau-client.ts';
+  import {
+    forkContext,
+    forkRefusalReason,
+    getContext,
+    listAgents,
+    type AgentSummary,
+  } from '../../lib/bureau-client.ts';
   import {
     attachmentSettings,
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
   import ApprovalAlert from './approval-alert.svelte';
+  import BranchOrigin from './branch-origin.svelte';
+  import { branchPointIds } from './branch-points.ts';
   import ChatAssets from './chat-assets.svelte';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
+  import ModelPicker from './model-picker.svelte';
   import SessionTasks from './session-tasks.svelte';
 
   interface ChatConversationProps {
@@ -124,6 +140,12 @@
   });
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
 
+  /** Reads the session again, for the model picker, and says whether it could. */
+  async function reloadContext(): Promise<boolean> {
+    const result = await context.refetch();
+    return !result.isError;
+  }
+
   function chooseAgent(value: string): void {
     agent = value;
     router.navigate(`/chat/new?agent=${encodeURIComponent(value)}`, { replace: true });
@@ -132,6 +154,45 @@
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
   // rows (`chat-assets.svelte`). An answer to a question is shown as it was typed (`answer-rows.ts`).
   const shown = $derived(withoutAssetParts(withTypedAnswers(session.conversation)));
+
+  // The messages that offer a branch. A run that is going, or that the page is still reading, has
+  // not finished its last message.
+  const branchPoints = $derived(
+    branchPointIds(session.conversation, session.streaming || session.attaching),
+  );
+  let branching = $state(false);
+  let branchFailure = $state<string | undefined>(undefined);
+  const branchCommands = createPendingCommandKey();
+
+  /** What a refused or failed branch says: the Bureau's reason when it gave one. */
+  function branchFailureText(error: unknown): string {
+    const reason = forkRefusalReason(error);
+    const refused: Readonly<Record<string, string>> = CHAT_COPY.branch.refused;
+    return (reason === undefined ? undefined : refused[reason]) ?? CHAT_COPY.branch.fault;
+  }
+
+  async function branchFrom(messageId: string): Promise<void> {
+    if (branching) return;
+    branching = true;
+    branchFailure = undefined;
+    try {
+      const branchId = await forkContext({
+        contextId: sessionId,
+        commandId: branchCommands.keyFor(sessionId, messageId),
+        throughMessageId: messageId,
+      });
+      branchCommands.confirmed();
+      void queryClient.invalidateQueries({ queryKey: ['contexts'] });
+      router.navigate(chatSessionPath(branchId));
+    } catch (error) {
+      // A refusal is the Bureau's answer, so the next attempt is a new command. A fault is not
+      // known to have failed, so the retry keeps its identifier.
+      if (forkRefusalReason(error) !== undefined) branchCommands.confirmed();
+      branchFailure = branchFailureText(error);
+    } finally {
+      branching = false;
+    }
+  }
 
   let deciding = $state(false);
 
@@ -183,6 +244,9 @@
     <h1 class="weft-chat-header__title">{displayTitle}</h1>
     {#if !choosing}
       <p class="weft-chat-header__agent">{agent}</p>
+      {#if context.data?.parentContextId}
+        <BranchOrigin parentId={context.data.parentContextId} />
+      {/if}
     {/if}
   </header>
 
@@ -212,6 +276,12 @@
     </Alert>
   {/if}
 
+  {#if branchFailure !== undefined}
+    <Alert variant="danger" dismissible onDismiss={() => (branchFailure = undefined)}>
+      <p class="weft-chat-approval__message">{branchFailure}</p>
+    </Alert>
+  {/if}
+
   {#if choosing}
     <div class="weft-chat-agent">
       <Combobox
@@ -238,6 +308,33 @@
       maxFileSize={settings?.maxFileSize}
       formatAttachmentError={chatAttachmentErrorMessage}
     >
+      {#snippet composerActions()}
+        {#if !choosing}
+          <ModelPicker
+            {sessionId}
+            agentName={agent}
+            current={context.data?.model}
+            revision={context.data?.configVersion}
+            reload={reloadContext}
+          />
+        {/if}
+      {/snippet}
+      {#snippet messageActions({ message })}
+        {#if branchPoints.has(message.id)}
+          <Button
+            type="button"
+            class="chat-message-action-button"
+            size="xs"
+            variant="ghost"
+            iconOnly
+            label={CHAT_COPY.branch.action}
+            disabled={branching}
+            onclick={() => void branchFrom(message.id)}
+          >
+            <GitBranch class="cinder-icon-xs" />
+          </Button>
+        {/if}
+      {/snippet}
       {#snippet row({ message }, renderDefault)}
         {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
         <!-- A message of only files has no bubble to show. A row with no file is Chat's own. -->

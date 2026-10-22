@@ -535,6 +535,46 @@ export const CHAT_COPY = {
   dismiss: 'Dismiss',
   /** The accessible name of the transcript and composer region. */
   regionLabel: 'Conversation',
+  /** The model picker in the composer, and what it says when a switch does not take. */
+  modelPicker: {
+    label: 'Model',
+    /** The picker's choice when the session has no model of its own and the agent names no default. */
+    agentDefault: 'Agent default',
+    /** The Bureau's own count of the chat's changes was behind: the chat was switched somewhere else. */
+    staleRevision: 'This chat changed elsewhere. Showing the model it uses now.',
+    /** The agent does not allow that model (any more). */
+    modelNotAllowed: 'This agent does not allow that model. The chat keeps its current model.',
+    /** The chat is over, so it takes no other model. */
+    sessionTerminal: 'This chat has ended, so its model cannot be changed.',
+    /** The agent cannot be switched to another model. */
+    unsupportedCapability: 'This agent cannot be switched to another model.',
+    /** Anything else the Bureau answered without switching, such as a Bureau that is closing. */
+    notSwitched: 'The model was not changed. The chat keeps its current model.',
+    /** The request itself failed, so nobody knows whether the Bureau took it. */
+    fault: 'The model could not be changed. The chat keeps its current model.',
+  },
+  /** Branching a chat from one of an agent's replies. */
+  branch: {
+    /** The action on a reply that ends a completed turn. */
+    action: 'Branch from here',
+    /** What a branch's header says, before the link to the chat it came from. */
+    branchedFrom: 'Branched from',
+    /** What it says when that chat has been deleted, with no link. */
+    parentDeleted: 'a chat that was deleted',
+    /** Said under the chat when a branch could not be made, by the reason the Bureau gave. */
+    refused: {
+      'not-a-branch-point': 'Only the last reply of a finished turn can be branched.',
+      'branch-from-errored-run': 'That turn ended in an error, so it cannot be branched.',
+      'branch-from-aborted-run': 'That turn was stopped, so it cannot be branched.',
+      'branch-with-pending-approval':
+        'That turn is waiting for an approval, so it cannot be branched.',
+      'branch-with-unresolved-tool-call':
+        'That turn has a tool call without a result, so it cannot be branched.',
+      'command-conflict': 'That branch could not be made. Try again.',
+    },
+    /** The reply no longer exists in the chat, and any other fault. */
+    fault: 'The chat could not be branched. You are still in this chat.',
+  },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
     listLabel: 'Files',

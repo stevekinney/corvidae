@@ -107,6 +107,7 @@ describe('the host’s agent directory', () => {
       'tool-runner',
       'request-human-input',
       'echo',
+      'model-switcher',
       'internal',
     ]);
     const created = await host.bureau.agents.create('writer', {

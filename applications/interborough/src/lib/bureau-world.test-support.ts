@@ -8,7 +8,7 @@
  */
 import type { ReviewListEntry } from '@lostgradient/weft';
 
-import { contextFixture } from './bureau-fixtures.test-support.ts';
+import { contextDetailFixture } from './bureau-fixtures.test-support.ts';
 import type { BureauReview } from './bureau-reviews.ts';
 import {
   StubFault,
@@ -101,7 +101,7 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
           ? world.tasks.some((task) => task.contextId === id)
           : world.contexts.includes(id);
       if (!known) throw notFound('context', id);
-      return contextFixture(id);
+      return contextDetailFixture(id);
     },
     'bureau.reviews.list': () => ({
       reviews: world.reviews.filter((review) => review.status === 'pending'),
