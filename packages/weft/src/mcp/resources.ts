@@ -83,6 +83,19 @@ export async function listMcpResources(
   }));
 }
 
+/**
+ * Assert that the caller may hear about `uri`: the scopes reading it would
+ * need, checked without reading it. A URI that is not a Weft resource needs
+ * nothing, since no change is ever published for it.
+ */
+export function assertResourceSubscriptionAllowed(uri: string, context: McpAccessContext): void {
+  const parsed = parseWeftResourceUri(uri);
+  if (parsed === null) return;
+  assertScope(context, 'workflows:read', 'Subscribing to workflow resources');
+  if (parsed.kind === 'events')
+    assertScope(context, 'events:read', 'Subscribing to workflow events');
+}
+
 /** Read a visible Weft MCP resource. */
 export async function readMcpResource(
   uri: string,

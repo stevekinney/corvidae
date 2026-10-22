@@ -13,6 +13,7 @@ import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createMcpEndpoint, type McpEndpoint, type McpEndpointOptions } from './http.ts';
 import { connectInProcessClient, type NegotiationMode } from './mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';
@@ -169,7 +170,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
       call.catch(() => {});
       const workflowId = await runningWorkflowOf(engine, 'hold');
       request.abort(new Error('user pressed stop'));
-      await expect(call).rejects.toThrow();
+      expect(await throwingRejectionOf(call)).toThrow();
       if (era === 'modern') {
         // 2026-07-28: closing the request's response stream aborts the call,
         // and the tool cancels the workflow it started.

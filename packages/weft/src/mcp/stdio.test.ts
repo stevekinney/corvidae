@@ -317,8 +317,15 @@ describe('runMcpStdioSession', () => {
     const parseError = await waitForLine(output, (line) => line.error?.code === -32700);
     expect(parseError).toMatchObject({ id: null, error: { message: 'Parse error' } });
 
+    input.sendRaw('{"jsonrpc":"2.0","id":7}\n');
+    const invalid = await waitForLine(output, (line) => line.id === 7);
+    expect(invalid).toMatchObject({ id: 7, error: { code: -32600, message: 'Invalid Request' } });
+
     input.sendRaw('x'.repeat(600));
-    const oversize = await waitForLine(output, (line) => line.error?.code === -32600);
+    const oversize = await waitForLine(
+      output,
+      (line) => line.error?.message === 'frame exceeds maxFrameBytes',
+    );
     expect(oversize).toMatchObject({ id: null, error: { message: 'frame exceeds maxFrameBytes' } });
 
     input.send({

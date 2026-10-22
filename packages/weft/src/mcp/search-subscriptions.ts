@@ -49,33 +49,50 @@ export class SearchSubscriptions {
   }
 }
 
+/** A 2026-07-28 `subscriptions/listen` request: its id and the resource URIs it subscribes to. */
+export type ListenRequest = {
+  readonly id: string | number | null;
+  readonly resourceSubscriptions: ReadonlyArray<string>;
+};
+
 /**
- * The search URIs a 2026-07-28 `subscriptions/listen` request names. Modern
+ * The `subscriptions/listen` request `request` carries, if it is one. Modern
  * clients send the method in the `Mcp-Method` header, which the SDK checks
  * against the body, so other requests are never read here.
  */
-async function listenSearchUris(request: Request, maxBodyBytes: number): Promise<string[]> {
-  if (request.method !== 'POST') return [];
-  if (request.headers.get('mcp-method') !== 'subscriptions/listen') return [];
+export async function readListenRequest(
+  request: Request,
+  maxBodyBytes: number,
+): Promise<ListenRequest | undefined> {
+  if (request.method !== 'POST') return undefined;
+  if (request.headers.get('mcp-method') !== 'subscriptions/listen') return undefined;
   const body = await readRequestBody(request.clone(), maxBodyBytes).catch(() => undefined);
-  if (body === undefined || body.tooLarge) return [];
-  let message: unknown;
+  if (body === undefined || body.tooLarge) return undefined;
   try {
-    message = JSON.parse(body.text);
+    return listenRequestOf(JSON.parse(body.text));
   } catch {
-    return [];
+    return undefined;
   }
-  const subscriptions = (
-    message as { params?: { notifications?: { resourceSubscriptions?: unknown } } } | null
-  )?.params?.notifications?.resourceSubscriptions;
-  if (!Array.isArray(subscriptions)) return [];
-  return [
-    ...new Set(
-      subscriptions.filter(
-        (uri): uri is string => typeof uri === 'string' && isWorkflowSearchResourceUri(uri),
-      ),
-    ),
-  ];
+}
+
+function listenRequestOf(message: unknown): ListenRequest {
+  const record = message as {
+    id?: unknown;
+    params?: { notifications?: { resourceSubscriptions?: unknown } };
+  } | null;
+  const id = record?.id;
+  const subscriptions = record?.params?.notifications?.resourceSubscriptions;
+  return {
+    id: typeof id === 'string' || typeof id === 'number' ? id : null,
+    resourceSubscriptions: Array.isArray(subscriptions)
+      ? [...new Set(subscriptions.filter((uri): uri is string => typeof uri === 'string'))]
+      : [],
+  };
+}
+
+async function listenSearchUris(request: Request, maxBodyBytes: number): Promise<string[]> {
+  const listen = await readListenRequest(request, maxBodyBytes);
+  return (listen?.resourceSubscriptions ?? []).filter(isWorkflowSearchResourceUri);
 }
 
 /** Call `release` once the response body finishes, fails, or is cancelled. */

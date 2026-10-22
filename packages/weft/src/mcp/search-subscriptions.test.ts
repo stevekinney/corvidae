@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+
 import { SearchSubscriptions } from './search-subscriptions.ts';
 
 const SEARCH_URI = 'weft://workflows/search?status=running';
@@ -66,18 +68,20 @@ describe('SearchSubscriptions', () => {
     expect(subscriptions.uris()).toEqual([SEARCH_URI]);
 
     failing.controller.error(new Error('stream broke'));
-    await expect(second.text()).rejects.toThrow('stream broke');
+    expect(await throwingRejectionOf(second.text())).toThrow('stream broke');
     expect(subscriptions.uris()).toEqual([]);
   });
 
   it('releases the URIs when serving throws, and ignores other requests', async () => {
     const subscriptions = new SearchSubscriptions();
 
-    await expect(
-      subscriptions.serve(listenRequest([SEARCH_URI]), 1_024, async () => {
-        throw new Error('handler failed');
-      }),
-    ).rejects.toThrow('handler failed');
+    expect(
+      await throwingRejectionOf(
+        subscriptions.serve(listenRequest([SEARCH_URI]), 1_024, async () => {
+          throw new Error('handler failed');
+        }),
+      ),
+    ).toThrow('handler failed');
     expect(subscriptions.uris()).toEqual([]);
 
     const bodyless = await subscriptions.serve(listenRequest([SEARCH_URI]), 1_024, async () => {

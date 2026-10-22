@@ -60,8 +60,9 @@ export class StreamLineTransport implements Transport {
     let message: JSONRPCMessage;
     try {
       message = parseJSONRPCMessage(value);
-    } catch (error) {
-      this.onerror?.(error instanceof Error ? error : new Error(String(error)));
+    } catch {
+      // Valid JSON that is not a JSON-RPC message: answer it, so the peer is not left waiting.
+      void this.reject(requestIdOf(value), -32600, 'Invalid Request');
       return;
     }
     // A `subscriptions/listen` request stays open until the connection ends,
@@ -110,4 +111,10 @@ function cancelledRequestId(params: unknown): RequestId | undefined {
 
 function requestIdKey(id: RequestId): string {
   return `${typeof id}:${String(id)}`;
+}
+
+/** The id a malformed frame names, when it names one a response can echo. */
+function requestIdOf(value: unknown): RequestId | null {
+  const id = (value as { id?: unknown } | null)?.id;
+  return typeof id === 'string' || typeof id === 'number' ? id : null;
 }

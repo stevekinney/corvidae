@@ -1099,6 +1099,52 @@ describe('MCP Streamable HTTP transport', () => {
     expect(authenticatedBody.error).toBeUndefined();
   });
 
+  it('refuses a subscriptions/listen stream for resources the principal cannot read', async () => {
+    const engine = createEngine();
+    const endpoint = trackEndpoint(createMcpEndpoint(engine));
+    const listen = (uris: string[]) =>
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          'mcp-method': 'subscriptions/listen',
+          'mcp-protocol-version': '2026-07-28',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'listen',
+          method: 'subscriptions/listen',
+          params: { notifications: { resourceSubscriptions: uris } },
+        }),
+      });
+    const search = 'weft://workflows/search?status=running';
+    const unscoped = principalFromJwtClaims({ sub: 'signaller', scope: 'signals:write' });
+    const refused = await handleMcpHttpRequest({
+      request: listen([search]),
+      endpoint,
+      principal: unscoped,
+      authRequired: true,
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({
+      id: 'listen',
+      error: { code: -32011, message: 'Subscribing to workflow resources requires workflows:read' },
+    });
+
+    const reader = principalFromJwtClaims({ sub: 'reader', scope: 'workflows:read' });
+    const events = await handleMcpHttpRequest({
+      request: listen(['weft://workflows/w-1/events']),
+      endpoint,
+      principal: reader,
+      authRequired: true,
+    });
+    expect(events.status).toBe(403);
+    expect(await events.json()).toMatchObject({
+      error: { message: 'Subscribing to workflow events requires events:read' },
+    });
+  });
+
   it('refuses tool calls and resource reads the principal has no scope for', async () => {
     const engine = createEngine();
     const endpoint = trackEndpoint(createMcpEndpoint(engine));

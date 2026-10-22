@@ -7,10 +7,11 @@ import {
 
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import { anonymousPrincipal, isAuthenticated, type Principal } from '../server/principal.ts';
+import { McpToolExecutionError, type McpAccessContext } from './access.ts';
 import { McpChangeFeed } from './change-feed.ts';
 import { DEFAULT_MCP_MAX_BODY_BYTES } from './protocol.ts';
-import { workflowResourceUri } from './resources.ts';
-import { SearchSubscriptions } from './search-subscriptions.ts';
+import { assertResourceSubscriptionAllowed, workflowResourceUri } from './resources.ts';
+import { readListenRequest, SearchSubscriptions } from './search-subscriptions.ts';
 import { createMcpServerFactory, type McpServerRegistrar } from './server.ts';
 
 /**
@@ -51,6 +52,7 @@ export type McpEndpointOptions = {
  * ```
  */
 export class McpEndpoint implements AsyncDisposable {
+  readonly #engine: Engine;
   readonly #feed: McpChangeFeed;
   readonly #searchSubscriptions = new SearchSubscriptions();
   readonly #maxBodyBytes: number;
@@ -60,6 +62,7 @@ export class McpEndpoint implements AsyncDisposable {
     // Registry-erase the covariance-widened parameter (#708) to the plain
     // default `Engine` the tool and resource projections read.
     const erasedEngine = engine as Engine;
+    this.#engine = erasedEngine;
     this.#maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MCP_MAX_BODY_BYTES;
     this.#feed = new McpChangeFeed(erasedEngine);
     this.#handler = createMcpHandler(
@@ -94,6 +97,14 @@ export class McpEndpoint implements AsyncDisposable {
    * and refuses an anonymous caller when authentication is required.
    */
   async serve(request: Request, principal: Principal, authRequired: boolean): Promise<Response> {
+    // The SDK opens a listen stream without asking Weft, so refuse any resource the caller
+    // could not read before the stream exists.
+    const refusal = await refuseUnreadableSubscriptions(request, this.#maxBodyBytes, {
+      engine: this.#engine,
+      principal,
+      authRequired,
+    });
+    if (refusal !== undefined) return refusal;
     const authInfo = accessAuthInfo(principal, authRequired);
     return this.#searchSubscriptions.serve(request, this.#maxBodyBytes, () =>
       this.#handler.fetch(request, { authInfo }),
@@ -248,4 +259,27 @@ function validateOrigin(
   if (publicOrigin !== undefined && origin === publicOrigin) return null;
   if (trustedHosts?.includes(originUrl.host)) return null;
   return new Response('Forbidden', { status: 403 });
+}
+
+async function refuseUnreadableSubscriptions(
+  request: Request,
+  maxBodyBytes: number,
+  context: McpAccessContext,
+): Promise<Response | undefined> {
+  const listen = await readListenRequest(request, maxBodyBytes);
+  if (listen === undefined) return undefined;
+  try {
+    for (const uri of listen.resourceSubscriptions) assertResourceSubscriptionAllowed(uri, context);
+    return undefined;
+  } catch (error) {
+    if (!(error instanceof McpToolExecutionError)) throw error;
+    return Response.json(
+      {
+        jsonrpc: '2.0',
+        id: listen.id,
+        error: { code: -32011, message: error.message, data: { reason: error.message } },
+      },
+      { status: 403, headers: { 'cache-control': 'no-store' } },
+    );
+  }
 }
