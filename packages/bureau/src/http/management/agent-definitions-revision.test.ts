@@ -8,6 +8,7 @@ import { createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { agentFileText, KNOWN_MODEL } from '../../testing/agent-file-fixtures.test-support.ts';
+import { agentsListOperation } from './deployment-operations.ts';
 import {
   agentDefinitionsGetOperation,
   agentDefinitionsListOperation,
@@ -145,5 +146,22 @@ describe('definitionRevision on the wire', () => {
         text: null,
       }).success,
     ).toBe(false);
+  });
+
+  it('is never 0 on bureau.agents.list either', () => {
+    const entry = {
+      name: 'x',
+      displayName: 'x',
+      description: null,
+      kind: 'file',
+      publishState: 'published',
+      media: null,
+    };
+    const accepts = (definitionRevision: unknown) =>
+      agentsListOperation.outputSchema.safeParse({ agents: [{ ...entry, definitionRevision }] })
+        .success;
+
+    expect([1, 7].map(accepts)).toEqual([true, true]);
+    expect([0, -1, 1.5, null].map(accepts)).toEqual([false, false, false, false]);
   });
 });
