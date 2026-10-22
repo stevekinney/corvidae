@@ -111,6 +111,7 @@ import {
   MemoryStorage,
   type RecoveredWorkflowInfo,
   textValueStore,
+  isWeftErrorLike,
   type WorkflowState,
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
@@ -1510,6 +1511,14 @@ export function wireStreamEventTargetFrames(
   };
 }
 
+/**
+ * This engine's own disposal rejected a recovered run's handle. The run is still durable and the
+ * next boot resumes it, so a shutdown is not reported as the run failing.
+ */
+function rejectedByOwnDisposal(error: unknown): boolean {
+  return isWeftErrorLike(error) && error.code === 'EngineDisposedError';
+}
+
 export async function monitorRecoveredScheduledFire(
   handle: RecoveredRunHandle,
   diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
@@ -1533,6 +1542,7 @@ export async function monitorRecoveredScheduledFire(
       });
     }
   } catch (error) {
+    if (rejectedByOwnDisposal(error)) return;
     diagnose({
       level: 'error',
       scope: 'recovery',
@@ -1600,6 +1610,7 @@ export async function monitorRecoveredCatalogRun(
       recovered: true,
       durableEnd,
     });
+    if (settlement === undefined && rejectedByOwnDisposal(error)) return;
     diagnose({
       level: 'error',
       scope: 'recovery',
@@ -5789,7 +5800,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (review !== undefined) {
         await recordReviewStatusTransition(review, 'canceled', principal, {
           audit: true,
-          dispatch: known.historyHoldsCancel !== true,
+          dispatch: !historyHoldsCancel,
         });
         return;
       }
@@ -5862,6 +5873,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const rebuild = (target: CanceledReviewTarget): PendingReview | undefined => {
       const described = committed?.get(target.id);
       if (described === undefined || described.kind !== target.kind) return undefined;
+      // The checkpoint holds only the approval its step first raised. A re-gated round's approval
+      // lived in the session, which the cancel cleared, so a record built for it here would carry
+      // round 0's reason and action under a later round. Such a round is reported, not written.
+      if (described.kind === 'tool-approval' && target.round > 0) return undefined;
       return described.kind === 'tool-approval'
         ? {
             ...base,

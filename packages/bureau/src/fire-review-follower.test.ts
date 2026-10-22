@@ -47,9 +47,19 @@ afterEach(async () => {
 const runOwner = (id: string): DurableEventOwner => ({ kind: 'run', id });
 const closing = (reviewId: string) => ({ reviewId, runId: 'ignored', principal: 'p', kind: 'x' });
 
-async function openHistory(): Promise<{ history: DurableEventHistory; storage: Storage }> {
+/**
+ * A history over fresh memory storage. A test that stores a record the history cannot decode passes
+ * `diagnostics`, so the skip the history reports is collected rather than printed.
+ */
+async function openHistory(
+  diagnostics?: BureauDiagnostic[],
+): Promise<{ history: DurableEventHistory; storage: Storage }> {
   const storage = await resolveStorage({ type: 'memory' });
-  const history = createDurableEventHistory(storage, createManualRuntimeServices());
+  const history = createDurableEventHistory(
+    storage,
+    createManualRuntimeServices(),
+    diagnostics === undefined ? undefined : (diagnostic) => diagnostics.push(diagnostic),
+  );
   cleanups.push(() => history.dispose());
   return { history, storage };
 }
@@ -1008,7 +1018,8 @@ describe('a followed fire whose reviews cannot all be verified', () => {
   });
 
   it('reads a fire again when an event of its subscription cannot be decoded', async () => {
-    const { history, storage } = await openHistory();
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
     const rereads: string[] = [];
     const { follower } = followerWithRereads(history, async (runId) => {
       rereads.push(runId);
@@ -1030,10 +1041,14 @@ describe('a followed fire whose reviews cannot all be verified', () => {
 
     await eventually(() => (rereads.length > 0 ? true : undefined), 'the fire to be read again');
     expect(rereads).toEqual(['fire-a']);
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
   });
 
   it('reads a fire again when its catch-up page skips a record it cannot decode', async () => {
-    const { history, storage } = await openHistory();
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
     const rawFeed = createFleetEventFeed(storage);
     await rawFeed.append({
       kind: 'review.approved',
@@ -1052,10 +1067,14 @@ describe('a followed fire whose reviews cannot all be verified', () => {
     await follower.settled();
 
     expect(rereads).toEqual(['fire-a']);
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
   });
 
   it('marks a fire for reconciliation when the read an undecodable event asks for fails', async () => {
-    const { history, storage } = await openHistory();
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
     let calls = 0;
     const { follower } = followerWithRereads(history, async () => {
       calls += 1;
@@ -1077,6 +1096,9 @@ describe('a followed fire whose reviews cannot all be verified', () => {
     // The first read fails; the reconciliation it marks reads the fire's history, which skips the
     // same record and so reads the fire again, and that one succeeds.
     await eventually(() => (calls >= 2 ? true : undefined), 'the fire to be reconciled');
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
   });
 });
 
@@ -1131,7 +1153,8 @@ describe('a read the follower started beside its reconciliation', () => {
   });
 
   it('is waited for by dispose when a skipped record started it', async () => {
-    const { history, storage } = await openHistory();
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
     const gate = Promise.withResolvers<void>();
     const calls: string[] = [];
     const follower = slowFollower(history, async (runId) => {
@@ -1161,6 +1184,9 @@ describe('a read the follower started beside its reconciliation', () => {
     await disposing;
 
     expect(disposed).toBe(true);
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
   });
 });
 

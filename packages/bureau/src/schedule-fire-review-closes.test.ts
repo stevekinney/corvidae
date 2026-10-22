@@ -241,8 +241,38 @@ function unreadableSteps(
   });
 }
 
-async function openWaiting(path: string, wrap: (storage: Storage) => Storage = (s) => s) {
-  return harness.open({ ...waitOptions, storage: await harness.sqliteStorage(path, wrap) });
+type DiagnosticCollector = (diagnostic: { readonly message: string }) => void;
+
+async function openWaiting(
+  path: string,
+  wrap: (storage: Storage) => Storage = (s) => s,
+  onDiagnostic?: DiagnosticCollector,
+) {
+  return harness.open({
+    ...waitOptions,
+    storage: await harness.sqliteStorage(path, wrap),
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+  });
+}
+
+/** What a Bureau reported. A fault test asserts the failure it injected, rather than printing it. */
+function reportedDiagnostics() {
+  const messages: string[] = [];
+  const onDiagnostic: DiagnosticCollector = (diagnostic) => {
+    messages.push(diagnostic.message);
+  };
+  return {
+    onDiagnostic,
+    /** Resolves once a report holding every fragment has arrived. */
+    reported: (...fragments: string[]) =>
+      pollUntil(
+        () =>
+          messages.some((message) => fragments.every((fragment) => message.includes(fragment)))
+            ? true
+            : undefined,
+        `a report of ${fragments.join(' … ')}`,
+      ),
+  };
 }
 
 /**
@@ -372,7 +402,12 @@ describe('a canceled fire’s closes, retried at boot', () => {
   it('writes the audit record that failed once, exactly once, at the next boot', async () => {
     const path = harness.nextDatabasePath();
     const failing = failingWriteOnce('audit-dedupe:v1:review.canceled');
-    const first = await openWaiting(path, (storage) => failing.wrap(storage));
+    const diagnostics = reportedDiagnostics();
+    const first = await openWaiting(
+      path,
+      (storage) => failing.wrap(storage),
+      diagnostics.onDiagnostic,
+    );
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-audit-retry');
     const review = await reviewOf(first, fireId);
 
@@ -386,6 +421,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
       'the task to settle',
     );
     expect(failing.state.failures).toBe(1);
+    await diagnostics.reported(`Could not record the canceled closing of review "${review.id}"`);
     expect(await auditRecordsOf(first, fireId, 'review.human-wait.canceled', review.id)).toEqual(
       [],
     );
@@ -422,7 +458,12 @@ describe('a canceled fire’s closes, retried at boot', () => {
   it('writes the history event that failed once after the audit record committed, and no second audit record', async () => {
     const path = harness.nextDatabasePath();
     const failing = failingWriteOnce('outbox-dedupe:', 'review.canceled');
-    const first = await openWaiting(path, (storage) => failing.wrap(storage));
+    const diagnostics = reportedDiagnostics();
+    const first = await openWaiting(
+      path,
+      (storage) => failing.wrap(storage),
+      diagnostics.onDiagnostic,
+    );
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-history-retry');
     const review = await reviewOf(first, fireId);
 
@@ -436,6 +477,9 @@ describe('a canceled fire’s closes, retried at boot', () => {
       'the task to settle',
     );
     expect(failing.state.failures).toBe(1);
+    await diagnostics.reported(
+      `Failed to record durable event "review.canceled" for run:${fireId}`,
+    );
     const firstKinds = await historyKinds(first, fireId);
     expect(firstKinds.filter((kind) => kind === 'review.canceled')).toEqual([]);
     await first.dispose();
@@ -476,8 +520,13 @@ describe('a canceled fire’s closes, retried at boot', () => {
     const noRequest = failingWrites('review.requested');
     const hold = holdingWrites('review.human-wait.canceled');
     harness.onDispose(() => hold.release());
+    const diagnostics = reportedDiagnostics();
     const open = async (wrap: (storage: Storage) => Storage) =>
-      harness.open({ ...options, storage: await harness.sqliteStorage(path, wrap) });
+      harness.open({
+        ...options,
+        storage: await harness.sqliteStorage(path, wrap),
+        onDiagnostic: diagnostics.onDiagnostic,
+      });
     const first = await open((storage) => hold.wrap(noRequest.wrap(storage)));
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-strict');
     const answered = await reviewOf(first, fireId);
@@ -500,6 +549,13 @@ describe('a canceled fire’s closes, retried at boot', () => {
     await pollUntil(
       async () => ((await taskStatus(second, fireId)) === 'canceled' ? true : undefined),
       'the task to settle despite the close that could not be made',
+    );
+    await diagnostics.reported(
+      `Failed to record durable event "review.requested" for run:${fireId}`,
+    );
+    await diagnostics.reported(
+      `canceled schedule fire "${fireId}" was closed`,
+      'its checkpoint could not be read strictly',
     );
     await sleep(300);
     expect(await auditRecordsOf(second, fireId, 'review.human-wait.canceled')).toEqual([]);
@@ -563,12 +619,17 @@ const continuing: GenerateFunction = async (context) => {
   });
 };
 
-async function openApproving(path: string, wrap: (storage: Storage) => Storage = (s) => s) {
+async function openApproving(
+  path: string,
+  wrap: (storage: Storage) => Storage = (s) => s,
+  onDiagnostic?: DiagnosticCollector,
+) {
   return harness.open({
     generate: continuing,
     toolbox: approvalToolbox([]),
     stopWhen: stopWhen.noToolCalls(),
     storage: await harness.sqliteStorage(path, wrap),
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
   });
 }
 
@@ -576,7 +637,12 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
   it('has its audit record written exactly once when only that write failed', async () => {
     const path = harness.nextDatabasePath();
     const failing = failingWriteOnce('audit-dedupe:v1:review.canceled');
-    const first = await openApproving(path, (storage) => failing.wrap(storage));
+    const reportedFirst = reportedDiagnostics();
+    const first = await openApproving(
+      path,
+      (storage) => failing.wrap(storage),
+      reportedFirst.onDiagnostic,
+    );
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-approval-audit-retry');
     const review = await reviewOf(first, fireId);
     expect(review.kind).toBe('tool-approval');
@@ -591,6 +657,7 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
       'the task to settle',
     );
     expect(failing.state.failures).toBe(1);
+    await reportedFirst.reported(`Could not record the canceled closing of review "${review.id}"`);
     expect(await auditRecordsOf(first, fireId, 'review.tool-approval.canceled', review.id)).toEqual(
       [],
     );
@@ -627,7 +694,12 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
   it('writes nothing for an approval whose checkpoint cannot be read, reports it, and writes it at a later boot', async () => {
     const path = harness.nextDatabasePath();
     const failing = failingWriteOnce('audit-dedupe:v1:review.canceled');
-    const first = await openApproving(path, (storage) => failing.wrap(storage));
+    const reportedFirst = reportedDiagnostics();
+    const first = await openApproving(
+      path,
+      (storage) => failing.wrap(storage),
+      reportedFirst.onDiagnostic,
+    );
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-approval-unreadable');
     const review = await reviewOf(first, fireId);
     void first.durableEngine()?.cancel(fireId);
@@ -639,6 +711,7 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
       async () => ((await taskStatus(first, fireId)) === 'canceled' ? true : undefined),
       'the task to settle',
     );
+    await reportedFirst.reported(`Could not record the canceled closing of review "${review.id}"`);
     await first.dispose();
 
     // The checkpoint cannot be read at the next boot, so the approval cannot be described: no
@@ -710,7 +783,7 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
   });
 
-  it('repairs a re-gated approval at the round a supersession paired with a decision led to', async () => {
+  it('writes nothing for a re-gated round the checkpoint cannot describe, and reports it', async () => {
     const path = harness.nextDatabasePath();
     const first = await openApproving(path);
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-regated');
@@ -738,20 +811,28 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     await writer.dispose();
     await first.dispose();
 
-    const restarted = await openApproving(path);
-    const rounds = await pollUntil(async () => {
-      const records = await auditRecordsOf(
-        restarted,
-        fireId,
-        'review.tool-approval.canceled',
-        review.id,
-      );
-      const found = records.map(
-        (record) => (record.detail as { review: { round: number } }).review.round,
-      );
-      return found.includes(1) ? found : undefined;
-    }, 'the next boot to close the re-gated approval at its round');
-
-    expect(rounds.toSorted((left, right) => left - right)).toEqual([0, 1]);
+    // The boot finds round 1 open, but the checkpoint holds only round 0's approval, and round 1's
+    // lived in the session the cancel removed it from. A record built from round 0 would report
+    // round 1 with the wrong reason and action, so nothing is written and the boot says so.
+    const diagnostics: string[] = [];
+    const restarted = await harness.open({
+      generate: continuing,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopWhen.noToolCalls(),
+      storage: await harness.sqliteStorage(path),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    await pollUntil(
+      () =>
+        diagnostics.some((message) => message.includes(review.id) && message.includes('next boot'))
+          ? true
+          : undefined,
+      'the boot to report the round it could not write',
+    );
+    const rounds = (
+      await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id)
+    ).map((record) => (record.detail as { review: { round: number } }).review.round);
+    expect(rounds).toEqual([0]);
+    await restarted.dispose();
   });
 });
