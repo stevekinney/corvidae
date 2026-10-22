@@ -281,7 +281,12 @@ export type {
   ToolEventStamp,
 } from './events';
 // COR-581 — effective-context epochs
-export { createContextEpochSealer, digestText, epochSourcesUnchanged } from './context-epoch';
+export {
+  MEMORY_EVIDENCE_METADATA_KEY,
+  createContextEpochSealer,
+  digestText,
+  epochSourcesUnchanged,
+} from './context-epoch';
 export type {
   ContextEpochConsumer,
   ContextEpochSealInput,
@@ -293,6 +298,7 @@ export type {
   ContextSourceTrust,
   CreateContextEpochSealerOptions,
   EffectiveContextEpoch,
+  MemoryEvidenceMessageMetadata,
   SkillActivationBinding,
   SkillActivationContext,
 } from './context-epoch';

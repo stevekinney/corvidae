@@ -18,6 +18,7 @@
  */
 
 import type { Message as AgUiMessage } from '@ag-ui/core';
+import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
 import {
   agUiConversationAdapter,
   type ConversationHistory,
@@ -27,7 +28,6 @@ import {
   messageMediaParts,
 } from 'conversationalist';
 
-import { MEMORY_EVIDENCE_METADATA_KEY } from '../memory-evidence-metadata.ts';
 import { assetPartsOf } from './ag-ui-asset-parts.ts';
 import { ASSET_FILE_PROVIDER, ASSET_PARTS_METADATA_KEY } from './ag-ui-vocabulary.ts';
 
