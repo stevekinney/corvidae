@@ -2,6 +2,7 @@ import { TERMINAL_FIXTURE_NAMES } from './fixtures/terminal/scenarios.ts';
 
 export const appFixtureDeclarations = {
   chat: ['assertion'],
+  'chat-mcp-app': ['assertion'],
   'chat-navigation-rail': ['assertion'],
   'chat-sub-session': ['assertion'],
   'json-schema-editor': ['assertion'],
