@@ -6,10 +6,10 @@ import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
 import { normalizeToSerializedDefinitions, type ToolRegistryLike } from '../shared';
 import type {
-  GeminiFunctionCallPart,
   GeminiFunctionDeclaration,
   GeminiFunctionResponsePart,
   GeminiPart,
+  GeminiResponsePart,
   GeminiSchema,
   GeminiTool,
 } from './types';
@@ -21,16 +21,21 @@ export type {
   GeminiFunctionResponsePart,
   GeminiInlineDataPart,
   GeminiPart,
+  GeminiResponsePart,
   GeminiSchema,
   GeminiTextPart,
   GeminiTool,
 } from './types';
 
+// `GeminiPart` keeps a part literal such as `{ text }` free of excess-property
+// errors; `GeminiResponsePart` admits the SDK's all-optional `Part`.
+type GeminiResponseParts = readonly (GeminiPart | GeminiResponsePart)[] | undefined | null;
+
 type GeminiToolCallSource =
-  | GeminiPart[]
-  | { parts?: GeminiPart[] | undefined | null }
-  | { content?: { parts?: GeminiPart[] | undefined | null } | undefined | null }
-  | { contents?: ReadonlyArray<{ parts?: GeminiPart[] | undefined | null }> | undefined }
+  | readonly (GeminiPart | GeminiResponsePart)[]
+  | { parts?: GeminiResponseParts }
+  | { content?: { parts?: GeminiResponseParts } | undefined | null }
+  | { contents?: ReadonlyArray<{ parts?: GeminiResponseParts }> | undefined }
   | undefined
   | null;
 
@@ -85,9 +90,12 @@ export function parseGeminiToolCalls(parts: GeminiToolCallSource): ToolCallInput
     return [];
   }
 
-  return resolvedParts.flatMap((part) =>
-    'functionCall' in part ? [convertFunctionCallPart(part)] : [],
-  );
+  return resolvedParts.flatMap((part) => {
+    const functionCall = 'functionCall' in part ? part.functionCall : undefined;
+    return typeof functionCall?.name === 'string'
+      ? [convertFunctionCall({ ...functionCall, name: functionCall.name })]
+      : [];
+  });
 }
 
 export function formatGeminiToolResults(
@@ -173,10 +181,13 @@ function transformToGeminiSchema(schema: Record<string, unknown>): GeminiSchema 
   return rest;
 }
 
-function convertFunctionCallPart(part: GeminiFunctionCallPart): ToolCallInput {
+function convertFunctionCall(
+  functionCall: NonNullable<GeminiResponsePart['functionCall']> & { name: string },
+): ToolCallInput {
   return {
-    name: part.functionCall.name,
-    arguments: part.functionCall.args,
+    ...(typeof functionCall.id === 'string' ? { id: functionCall.id } : {}),
+    name: functionCall.name,
+    arguments: functionCall.args ?? {},
   };
 }
 
@@ -193,7 +204,7 @@ function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown
   };
 }
 
-function extractGeminiParts(input: GeminiToolCallSource): GeminiPart[] | undefined | null {
+function extractGeminiParts(input: GeminiToolCallSource): GeminiResponseParts {
   if (!input) {
     return input;
   }

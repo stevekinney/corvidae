@@ -275,6 +275,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@google/genai": "catalog:",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",

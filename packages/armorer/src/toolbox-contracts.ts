@@ -349,6 +349,7 @@ export interface ToolboxExecuteOptions extends Omit<ToolExecuteOptions, 'durable
   durableOperationKey?: string | ((call: ToolCall, index: number) => string | undefined);
   idempotencyKey?: string | ((call: ToolCall) => string | undefined);
   resolutionReceipt?: import('./idempotency/types').IdempotencyResolutionReceipt;
+  legacyResolutionReceipt?: import('./idempotency/types').LegacyIdempotencyResolutionReceipt;
 }
 
 export type InternalToolboxExecuteOptions = ToolboxExecuteOptions & {
