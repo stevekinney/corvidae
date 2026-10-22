@@ -20,6 +20,8 @@ import type { SearchAttributeSchema } from './search-attributes.ts';
 import type {
   ActivityMap,
   ActivityMapInput,
+  DisjointFrom,
+  MergeMaps,
   NormalizeActivities,
   QueryMap,
   SignalMap,
@@ -178,17 +180,6 @@ export type MarkBuilderState<S extends BuilderState, K extends keyof BuilderStat
       readonly [P in keyof S]: P extends K ? true : S[P];
     };
 
-/**
- * Combine the activity tables `.activities()` and `.uses()` each contribute,
- * in either call order. A builder that has not declared any activities yet
- * carries `{}`, which is returned unchanged so a single declaration keeps its
- * exact normalized type.
- */
-type MergeActivities<
-  TExisting extends ActivityMap,
-  TAdded extends ActivityMap,
-> = keyof TExisting extends never ? TAdded : TExisting & TAdded;
-
 // ---------------------------------------------------------------------------
 // Engine name-conflict guard (used by Engine.register's type signature)
 // ---------------------------------------------------------------------------
@@ -271,6 +262,9 @@ export interface WorkflowBuilder<
    * or an `{ execute, retry?, timeout?, ... }` options object. Calling
    * `.activities` twice before `.execute()` is a type error and throws
    * `WorkflowBuilderError` at runtime.
+   * A name the builder already declares with `.uses()`, including an activity
+   * shared by `createWorkflowFactory`, is a type error here and throws
+   * `WorkflowBuilderError`.
    *
    * @example
    * ```ts
@@ -285,11 +279,11 @@ export interface WorkflowBuilder<
    */
   activities: TState['activities'] extends true
     ? never
-    : <TInput extends ActivityMapInput>(
+    : <TInput extends ActivityMapInput & DisjointFrom<TActivities>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
-        MergeActivities<TActivities, NormalizeActivities<TInput>>,
+        MergeMaps<TActivities, NormalizeActivities<TInput>>,
         TSignals,
         TUpdates,
         TQueries,
@@ -306,8 +300,10 @@ export interface WorkflowBuilder<
    * activity's own `name`. The declaration puts the activity's schemas in the
    * workflow's contract and links the workflow to the activity in the registry
    * snapshot; dispatch still resolves the engine's registered implementation.
-   * A name declared in both `.activities()` and `.uses()` throws at
-   * `.execute()`. Calling `.uses` twice before `.execute()` is a type error and
+   * A name declared in both `.activities()` and `.uses()` is a type error and
+   * throws at `.execute()`. On a builder from `createWorkflowFactory`, these
+   * entries merge with the factory's shared activities, and redeclaring one
+   * throws `WorkflowBuilderError`. Calling `.uses` twice before `.execute()` is a type error and
    * throws `WorkflowBuilderError` at runtime.
    *
    * @example
@@ -324,11 +320,11 @@ export interface WorkflowBuilder<
    */
   uses: TState['uses'] extends true
     ? never
-    : <TInput extends UsesMapInput>(
+    : <TInput extends UsesMapInput & DisjointFrom<TActivities>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
-        MergeActivities<TActivities, NormalizeActivities<TInput>>,
+        MergeMaps<TActivities, NormalizeActivities<TInput>>,
         TSignals,
         TUpdates,
         TQueries,
@@ -345,6 +341,10 @@ export interface WorkflowBuilder<
    * that declares no signals accepts any name. Calling `.signals` twice
    * before `.execute()` is a type error and throws `WorkflowBuilderError` at
    * runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared signals, whose declaration closes the set for every
+   * workflow the factory builds; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -359,12 +359,12 @@ export interface WorkflowBuilder<
    */
   signals: TState['signals'] extends true
     ? never
-    : <TInput extends SignalMap>(
+    : <TInput extends SignalMap & DisjointFrom<TSignals>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
-        TInput,
+        MergeMaps<TSignals, TInput>,
         TUpdates,
         TQueries,
         TSearchAttributes,
@@ -379,6 +379,10 @@ export interface WorkflowBuilder<
    * persisting it, while a workflow that declares no updates accepts any
    * name. Calling `.updates` twice before `.execute()` is a type error and
    * throws `WorkflowBuilderError` at runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared updates, whose declaration closes the set for every
+   * workflow the factory builds; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -391,13 +395,13 @@ export interface WorkflowBuilder<
    */
   updates: TState['updates'] extends true
     ? never
-    : <TInput extends UpdateMap>(
+    : <TInput extends UpdateMap & DisjointFrom<TUpdates>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
         TSignals,
-        TInput,
+        MergeMaps<TUpdates, TInput>,
         TQueries,
         TSearchAttributes,
         MarkBuilderState<TState, 'updates'>,
@@ -411,6 +415,10 @@ export interface WorkflowBuilder<
    * `activityProgress` query always answers), while a workflow that declares
    * no queries accepts any name. Calling `.queries` twice before `.execute()`
    * is a type error and throws `WorkflowBuilderError` at runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared queries, whose declaration closes the set for every
+   * workflow the factory builds; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -423,14 +431,14 @@ export interface WorkflowBuilder<
    */
   queries: TState['queries'] extends true
     ? never
-    : <TInput extends QueryMap>(
+    : <TInput extends QueryMap & DisjointFrom<TQueries>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
         TSignals,
         TUpdates,
-        TInput,
+        MergeMaps<TQueries, TInput>,
         TSearchAttributes,
         MarkBuilderState<TState, 'queries'>,
         TServices
