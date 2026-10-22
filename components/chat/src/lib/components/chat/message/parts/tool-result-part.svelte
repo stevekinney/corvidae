@@ -33,15 +33,6 @@
     }
     return stringify(result.content);
   });
-
-  const actionSchema = $derived(
-    result.outcome === 'action_required' && result.action?.type === 'input'
-      ? result.action.schema
-      : undefined,
-  );
-  const formattedSchema = $derived(
-    actionSchema === undefined ? undefined : stringify(actionSchema),
-  );
 </script>
 
 <div
@@ -56,11 +47,6 @@
   {:else if isActionRequired}
     <div class="chat-message-tool-action" role="status">
       <p class="chat-message-tool-action-message">{formatted}</p>
-      {#if formattedSchema !== undefined}
-        <div class="chat-message-tool-action-schema" aria-label="Requested input schema">
-          <ToolPayloadCode code={formattedSchema} />
-        </div>
-      {/if}
     </div>
   {:else}
     <ToolPayloadCode code={formatted} />
@@ -88,9 +74,5 @@
 
   .chat-message-tool-action-message {
     margin: 0;
-  }
-
-  .chat-message-tool-action-schema {
-    margin-block-start: var(--cinder-space-2);
   }
 </style>
