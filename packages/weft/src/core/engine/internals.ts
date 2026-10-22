@@ -101,8 +101,8 @@ export interface EngineInternals {
   strategy: ExecutionStrategy;
   inlineStrategy: InlineExecutionStrategy | null;
   queuedInlineWorkflowStarts: QueuedInlineWorkflowExecutionStart[];
-  queuedInlineWorkflowStartIds: Set<string>;
-  queuedOrLaunchingInlineWorkflowStartIds: Set<string>;
+  // A queued or launching start's only state is its record in `local-execution.ts`, held beside
+  // the engine; what used to be two membership sets here is derived from it (COR-1625).
   queuedInlineWorkflowStartFlushScheduled: boolean;
   queuedInlineWorkflowStartChannel: MessageChannel | null;
   handleCache: Map<string, { ref: WeakRef<WorkflowHandle>; unregisterToken: object }>;

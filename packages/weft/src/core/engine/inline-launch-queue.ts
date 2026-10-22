@@ -1,13 +1,13 @@
-import { CleanupWarningEvent, WorkflowStartedEvent } from '../events.ts';
-import { releaseLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
-import type { QueuedInlineWorkflowExecutionStart } from './engine-internal-types.ts';
-import { currentExecutionAttempt } from './execution-attempts.ts';
+import { WorkflowStartedEvent } from '../events.ts';
+import type {
+  QueuedInlineWorkflowExecutionStart,
+  QueuedInlineWorkflowStartRequest,
+} from './engine-internal-types.ts';
+import { letGoOfFailedQueuedStart } from './inline-launch-failure.ts';
 import type { EngineInternals } from './internals.ts';
 import { startWorkflowExecution } from './lifecycle.ts';
-import { releaseFreshlyAcquiredResumeClaim } from './lifecycle/standalone-claim-acquire.ts';
 import {
-  isInlineWorkflowExecutionLive,
-  isQueuedInlineWorkflowStartStale,
+  isPendingLaunchStale,
   recordInlineWorkflowStartLaunching,
   recordInlineWorkflowStartQueued,
   settleEveryInlineWorkflowStart,
@@ -89,10 +89,13 @@ async function settleQueuedShutdownWork(
  */
 export function queueInlineWorkflowExecutionStart(
   internals: EngineInternals,
-  start: QueuedInlineWorkflowExecutionStart,
+  request: QueuedInlineWorkflowStartRequest,
   callbacks: InlineLaunchQueueCallbacks,
 ): void {
-  recordInlineWorkflowStartQueued(internals, start.workflowId);
+  const start: QueuedInlineWorkflowExecutionStart = {
+    ...request,
+    launch: recordInlineWorkflowStartQueued(internals, request.workflowId),
+  };
   internals.queuedInlineWorkflowStarts.push(start);
   if (internals.options.inlineLaunchSchedulingMode === 'manual') {
     return;
@@ -126,7 +129,7 @@ function settleDiscardedInlineStarts(
   discarded: QueuedInlineWorkflowExecutionStart[],
 ): void {
   for (const start of discarded) {
-    settleInlineWorkflowStart(internals, start.workflowId);
+    settleInlineWorkflowStart(internals, start.launch);
     start.onStarted?.();
   }
 }
@@ -315,40 +318,6 @@ async function isQueuedStartStillTheLiveRun(
 }
 
 /**
- * A queued launch threw. Report it, and when it threw before it started the generator, let the
- * run go: nothing drives it, and nothing else would, because the engine holds its adopted
- * checkpoint (so `recoverAll()` reads the run as local) and renews the claim its start folded (so
- * the reclaim scan excludes it). Releasing the checkpoint and the attempt undoes what the start
- * installed, as the start's own rollback does for a batch that failed to commit, and releasing the
- * claim leaves the run `running` with no holder, which the reclaim scan lists as ownerless and the
- * next pass acquires and drives, on this engine or any other. The run is not failed: it never ran,
- * its durable state is intact, and a terminal write needs the storage that just failed. A throw
- * after the generator started leaves a live run alone and is only reported. Both releases are
- * guarded on the run still being this start's generation, and the claim release is best-effort,
- * as every claim release on a failure path is.
- */
-async function letGoOfFailedQueuedStart(
-  internals: EngineInternals,
-  start: QueuedInlineWorkflowExecutionStart,
-  error: unknown,
-): Promise<void> {
-  const normalizedError = error instanceof Error ? error : new Error(String(error));
-  internals.engine.dispatchEvent(
-    new CleanupWarningEvent('inline-launch', normalizedError, start.workflowId),
-  );
-  if (isInlineWorkflowExecutionLive(internals, start.workflowId)) return;
-  const attempt = currentExecutionAttempt(internals, start.workflowId);
-  const holdsThisStartsRun =
-    attempt !== undefined && attempt.workflowExecutionToken === start.workflowExecutionToken;
-  if (!holdsThisStartsRun) return;
-  const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(start.workflowId) ?? null;
-  releaseLaunchCheckpoint(internals, start.workflowId);
-  if (claimEpoch !== null) {
-    await releaseFreshlyAcquiredResumeClaim(internals, start.workflowId, claimEpoch);
-  }
-}
-
-/**
  * What follows the generator's first scheduled turn. Async disposal starts queued workflows so
  * their first turns cannot fire later against torn-down state: it aborts cooperatively after
  * `generator.next()` has been scheduled, before awaiting either the advance or pending-update
@@ -369,6 +338,22 @@ function settleQueuedStartFirstAdvance(
     return undefined;
   }
   return callbacks.processPendingUpdatesAfterInlineAdvance(start.workflowId);
+}
+
+/**
+ * Move the queued start's own record to `launching`, in the same synchronous turn as the launch
+ * that follows, or report the start stale: enqueued under a claim this engine lost and took back
+ * since, so its checkpoint may be behind the run's durable one; the reclaim that took the claim
+ * back drives the run from storage instead (COR-1618). Synchronous, so the launch path gains no
+ * turn.
+ */
+function beginQueuedStartLaunch(
+  internals: EngineInternals,
+  start: QueuedInlineWorkflowExecutionStart,
+): boolean {
+  if (isPendingLaunchStale(internals, start.launch)) return false;
+  recordInlineWorkflowStartLaunching(internals, start.launch);
+  return true;
 }
 
 async function startQueuedInlineWorkflowExecution(
@@ -404,15 +389,9 @@ async function startQueuedInlineWorkflowExecution(
       return;
     }
 
-    // A start enqueued under a claim this engine lost and took back since carries the checkpoint
-    // of that time, which another holder may have advanced; the reclaim that took the claim back
-    // drives the run from storage instead, and this stale copy is discarded (COR-1618). Decided
-    // in the same synchronous turn as the launch, so no reclaim can land between the two.
-    if (isQueuedInlineWorkflowStartStale(internals, start.workflowId)) {
+    if (!beginQueuedStartLaunch(internals, start)) {
       return;
     }
-
-    recordInlineWorkflowStartLaunching(internals, start.workflowId);
     internals.engine.dispatchEvent(
       new WorkflowStartedEvent(start.workflowId, start.workflowType, start.input),
     );
@@ -437,7 +416,7 @@ async function startQueuedInlineWorkflowExecution(
     throw error;
   } finally {
     // The launch is over, whatever it did: the run is now live, let go, or someone else's.
-    settleInlineWorkflowStart(internals, start.workflowId);
+    settleInlineWorkflowStart(internals, start.launch);
     // Settle the `defer: false` awaiter exactly once. The generator has been
     // driven by this point on the success path; on the skip/throw paths the run
     // will not become live, so resolving (rather than hanging the awaiter) is the

@@ -111,6 +111,7 @@ import {
   MemoryStorage,
   type RecoveredWorkflowInfo,
   textValueStore,
+  isWeftErrorLike,
   type WorkflowState,
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
@@ -316,6 +317,7 @@ import {
   createWorkflowDocumentHost,
   WorkflowAgentStepError,
 } from './workflow-host';
+import { createFireReviewSeeds, trackFireReviewSeeds } from './fire-review-seeds';
 import {
   createFireReviewFollower,
   type FireReviewFollower,
@@ -325,6 +327,7 @@ import {
   adoptRestoredScheduledFire,
   committedFireApprovalIds,
   committedFireReviewIds,
+  committedFireReviews,
   endContinuingScheduledFire,
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
@@ -552,6 +555,23 @@ function omitKey(record: Record<string, JSONValue>, omittedKey: string): Record<
   return remaining;
 }
 
+/**
+ * A set of review ids that tells `onAdd` whenever one is added (COR-1622). The ids of the approvals
+ * that left (decided, expired, found invalid) are kept in two such sets, and each addition is a
+ * moment the Bureau may hold no tool approval any more, which stops its expiry sweep's own timer.
+ */
+class NotifyingReviewIdSet extends Set<string> {
+  constructor(private readonly onAdd: () => void) {
+    super();
+  }
+
+  override add(value: string): this {
+    super.add(value);
+    this.onAdd();
+    return this;
+  }
+}
+
 function stringValues(values: readonly JSONValue[]): string[] {
   const strings: string[] = [];
   for (const value of values) {
@@ -656,6 +676,29 @@ function closesReviewRound(
   const recorded = fields['round'];
   return (typeof recorded === 'number' ? recorded : 0) === round;
 }
+/**
+ * The status an audit record closes a review round with (COR-1622), or `undefined` when it is not a
+ * terminal record of that round. {@link closesReviewRound}'s rule, with the status it found.
+ */
+function closingStatusOfRound(
+  record: { readonly type: string; readonly detail: unknown },
+  reviewId: string,
+  round: number | undefined,
+): string | undefined {
+  return closesReviewRound(record, reviewId, round) ? record.type.split('.').pop() : undefined;
+}
+/**
+ * What closing a canceled fire's review needs to know to find the closing's records (COR-1622): the
+ * review's id and kind, its run, and the round it stood at (`0` for a human wait). Not the review
+ * itself, which only a record that is to be written needs in full.
+ */
+type CanceledReviewTarget = {
+  readonly id: string;
+  readonly runId: string;
+  readonly kind: 'tool-approval' | 'human-wait';
+  readonly round: number;
+};
+
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
 
 /**
@@ -1468,6 +1511,14 @@ export function wireStreamEventTargetFrames(
   };
 }
 
+/**
+ * This engine's own disposal rejected a recovered run's handle. The run is still durable and the
+ * next boot resumes it, so a shutdown is not reported as the run failing.
+ */
+function rejectedByOwnDisposal(error: unknown): boolean {
+  return isWeftErrorLike(error) && error.code === 'EngineDisposedError';
+}
+
 export async function monitorRecoveredScheduledFire(
   handle: RecoveredRunHandle,
   diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
@@ -1491,6 +1542,7 @@ export async function monitorRecoveredScheduledFire(
       });
     }
   } catch (error) {
+    if (rejectedByOwnDisposal(error)) return;
     diagnose({
       level: 'error',
       scope: 'recovery',
@@ -1558,6 +1610,7 @@ export async function monitorRecoveredCatalogRun(
       recovered: true,
       durableEnd,
     });
+    if (settlement === undefined && rejectedByOwnDisposal(error)) return;
     diagnose({
       level: 'error',
       scope: 'recovery',
@@ -1784,6 +1837,12 @@ function hasMaintenanceSurface(surface: {
 }): boolean {
   return surface.durableEngine || surface.auditTrail || surface.memory || surface.tasksRemoved > 0;
 }
+
+/**
+ * How often the Bureau's own timer runs its maintenance, and the expiry sweep that goes with it
+ * (COR-1613, COR-1622): five minutes, the cadence of Weft's own retention sweep.
+ */
+export const EXPIRY_SWEEP_INTERVAL_MILLISECONDS = 300_000;
 
 /**
  * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
@@ -2486,7 +2545,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // run may take a moment to produce its next action. This set is the
   // authoritative "already handled" marker so a resolved review disappears
   // from the queue immediately, and is never accidentally resolved twice.
-  const resolvedReviewIds = new Set<string>();
+  // COR-1622: the expiry sweep's own timer. Declared ahead of the id sets whose additions check
+  // whether it is still needed, so no order of construction can read it before it exists.
+  // `RuntimeTimeoutHandle` is opaque, so a flag tracks whether the timer is armed.
+  let lazyExpirySweepTimer: RuntimeTimeoutHandle;
+  let lazyExpirySweepArmed = false;
+  let lazyExpirySweepPass: Promise<void> | undefined;
+  const resolvedReviewIds = new NotifyingReviewIdSet(() => stopLazyExpirySweepWhenNoneHeld());
   const resolvingReviewIds = new Set<string>();
   const reviewResolutionCleanupPending = new Map<
     string,
@@ -2516,6 +2581,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     pendingApprovalOverrides.delete(reviewId);
     pendingApprovalRounds.delete(reviewId);
     approvalRequestedAt.delete(reviewId);
+    stopLazyExpirySweepWhenNoneHeld();
   }
   const terminalReviewSessions = new Map<
     string,
@@ -2536,7 +2602,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // A persisted approval can be stale by the time a process restarts. Keep
   // that failure scoped to its review rather than preventing the bureau from
   // recovering unrelated runs.
-  const invalidApprovalReviewIds = new Set<string>();
+  const invalidApprovalReviewIds = new NotifyingReviewIdSet(() =>
+    stopLazyExpirySweepWhenNoneHeld(),
+  );
   // AB-54 usage analytics: agentName/principal resolved deterministically at
   // `createRun` time, keyed by runId. Layer A only (in-memory, like the rest
   // of RunSummary) — a durably recovered run (process restart) has no entry
@@ -4300,12 +4368,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * process: the ids requested, and the ids since closed. A process that replays a step finds the
    * dead one's requests here, which its own memory cannot hold.
    */
-  async function readFireReviewHistory(
-    runId: string,
-  ): Promise<{ requested: Set<string>; closed: Set<string> }> {
+  async function readFireReviewHistory(runId: string): Promise<{
+    requested: Set<string>;
+    closed: Set<string>;
+    /**
+     * COR-1622 — the requests whose current round no decision has ended, by review id: the
+     * candidates a canceled fire's boot repairs. A review's round advances only on a
+     * `review.superseded` paired with that round's decision (a re-gate records the supersession,
+     * then the decision of the round it leaves). A supersession with no decision after it ends the
+     * request, as `closeAbandonedFireRequests` writes for a request a crashed attempt abandoned. A
+     * request whose current round has a terminal event other than `review.canceled` is closed. A
+     * lone `review.canceled` stays a candidate, flagged, because its audit half may be missing.
+     */
+    open: Map<string, { readonly round: number; readonly canceled: boolean }>;
+  }> {
     const requested = new Set<string>();
     const closed = new Set<string>();
-    if (eventHistoryInstance === undefined) return { requested, closed };
+    const rounds = new Map<
+      string,
+      {
+        round: number;
+        decided: boolean;
+        awaitingDecision: boolean;
+        ended: boolean;
+        canceled: boolean;
+      }
+    >();
+    const open = new Map<string, { readonly round: number; readonly canceled: boolean }>();
+    if (eventHistoryInstance === undefined) return { requested, closed, open };
     // The events this process dispatched are written asynchronously: wait for them first.
     await durableEventProducerInstance?.waitForActiveWrites({ kind: 'run', id: runId });
     let since: string | undefined;
@@ -4318,21 +4408,60 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       for (const event of page.events) {
         const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
         if (typeof reviewId !== 'string') continue;
+        const state = rounds.get(reviewId) ?? {
+          round: 0,
+          decided: false,
+          awaitingDecision: false,
+          ended: false,
+          canceled: false,
+        };
+        rounds.set(reviewId, state);
         if (event.kind === 'review.requested') requested.add(reviewId);
-        else if (
-          REVIEW_CLOSING_EVENT_KINDS.has(event.kind) ||
-          event.kind === REVIEW_SUPERSEDED_EVENT_KIND
-        ) {
+        else if (event.kind === 'review.canceled') {
           closed.add(reviewId);
+          state.canceled = true;
+        } else if (REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) {
+          closed.add(reviewId);
+          if (state.awaitingDecision) {
+            // The decision of the round a re-gate left: the next round is now the current one.
+            state.round += 1;
+            state.awaitingDecision = false;
+            state.decided = false;
+            state.canceled = false;
+          } else {
+            state.decided = true;
+          }
+        } else if (event.kind === REVIEW_SUPERSEDED_EVENT_KIND) {
+          closed.add(reviewId);
+          // A second supersession with no decision between them leaves the first one lone.
+          if (state.awaitingDecision) state.ended = true;
+          state.awaitingDecision = true;
         }
       }
       if (!page.hasMore || page.nextCursor === undefined) break;
       since = page.nextCursor;
     }
-    return { requested, closed };
+    for (const reviewId of requested) {
+      const state = rounds.get(reviewId);
+      if (state === undefined || state.ended || state.awaitingDecision || state.decided) continue;
+      open.set(reviewId, { round: state.round, canceled: state.canceled });
+    }
+    return { requested, closed, open };
   }
 
-  const fireHistorySeeded = new Set<string>();
+  /**
+   * COR-1622 — each fire's seed read of its review history, kept as a promise so a close writer
+   * can wait for a read that is still under way, and dropped with the fire.
+   */
+  const fireReviewSeeds = createFireReviewSeeds({
+    read: async (runId) => {
+      const history = await readFireReviewHistory(runId);
+      const announced = announcedReviewRequests.get(runId) ?? new Set<string>();
+      announcedReviewRequests.set(runId, announced);
+      for (const id of history.requested) announced.add(id);
+    },
+    diagnose,
+  });
 
   /**
    * COR-1621 — the one subscription this process keeps on the durable history of the fires it
@@ -4364,23 +4493,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     target: { signalName?: string; callId?: string },
   ): Promise<void> {
     followFireReviews(runId);
-    if (!fireHistorySeeded.has(runId)) {
-      fireHistorySeeded.add(runId);
-      try {
-        const history = await readFireReviewHistory(runId);
-        const announced = announcedReviewRequests.get(runId) ?? new Set<string>();
-        announcedReviewRequests.set(runId, announced);
-        for (const id of history.requested) announced.add(id);
-      } catch (error) {
-        fireHistorySeeded.delete(runId);
-        diagnose({
-          level: 'error',
-          scope: 'durable-event-history',
-          message: `[bureau] Could not read the review history of schedule fire "${runId}", so a replayed request may be announced again: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      }
-    }
+    // The request is announced after the read of what the history already says, and a close
+    // written meanwhile waits for the same read (`fireReviewSeeds.pending`), so it follows the request.
+    await fireReviewSeeds.ensure(runId);
     announceReview(runId, reviewId, kind, target);
   }
 
@@ -4393,6 +4508,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function closeAbandonedFireRequests(runId: string): Promise<void> {
     const durable = runtime.durable;
     if (durable === undefined || eventHistoryInstance === undefined) return;
+    await fireReviewSeeds.pending(runId);
     const history = await readFireReviewHistory(runId);
     const committed = committedFireReviewIds(
       runId,
@@ -4415,8 +4531,87 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     announcedReviewRequests.set(runId, announced);
     if (announced.has(reviewId)) return;
     announced.add(reviewId);
+    if (kind === 'tool-approval') ensureLazyExpirySweep();
     const owner = runAttribution.get(runId)?.principal ?? ANONYMOUS_LOCAL_OWNER;
     emitter.dispatch(new ReviewRequestedEvent(reviewId, runId, owner, kind, target));
+  }
+
+  /**
+   * COR-1622 — whether the Bureau's own maintenance timer runs, and so sweeps expired reviews: the
+   * same rule that starts it below. A Bureau without one (no durable engine, memory or audit
+   * retention to drive) would never expire an approval it holds, so it keeps a timer of its own
+   * for as long as it holds one. A `'manual'` host drives the sweep with `runDurableMaintenance`.
+   */
+  const automaticMaintenanceRuns =
+    needsAutomaticMaintenance({
+      durableEngine: Boolean(runtime.durable),
+      memory: runtime.memory !== undefined,
+      keyValueStore: Boolean(runtime.kv),
+      activeAuditRetention: Boolean(options.auditRetention && options.auditRetention !== 'forever'),
+    }) && options.durableBackgroundTasks !== 'manual';
+
+  /**
+   * Whether this process holds a tool approval, of a live run or a restored one, counting an
+   * approval whose binding has run out and that no sweep has yet released (which
+   * `listPendingReviews` leaves out) and one whose resolution is in flight (not yet recorded as
+   * resolved). The sweep's timer stops when this is false and not before.
+   */
+  function holdsToolApproval(): boolean {
+    const leftOrInvalid = (id: string): boolean =>
+      resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id);
+    for (const [runId, runState] of store.getState().runs) {
+      if (catalogRunIds.has(runId)) continue;
+      for (const step of runState.steps) {
+        for (const result of step.results) {
+          if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
+          if (!leftOrInvalid(`approval:${runId}:${result.pendingApproval.callId}`)) return true;
+        }
+      }
+    }
+    for (const id of pendingApprovalOverrides.keys()) if (!leftOrInvalid(id)) return true;
+    return false;
+  }
+
+  /** The check every approval's leaving makes: with none held, the sweep's timer is not needed. */
+  function stopLazyExpirySweepWhenNoneHeld(): void {
+    if (lazyExpirySweepArmed && !holdsToolApproval()) stopLazyExpirySweep();
+  }
+
+  function stopLazyExpirySweep(): void {
+    if (!lazyExpirySweepArmed) return;
+    runtimeServices.timers.clearInterval(lazyExpirySweepTimer);
+    lazyExpirySweepArmed = false;
+  }
+
+  /**
+   * COR-1622 — arms the expiry sweep's own timer when this Bureau holds a tool approval and no
+   * other timer sweeps for it. It stops itself on the first tick that finds none held, so an idle
+   * process is never kept alive by it, and `shutdown` clears it.
+   */
+  function ensureLazyExpirySweep(): void {
+    if (lazyExpirySweepArmed || automaticMaintenanceRuns) return;
+    if (options.durableBackgroundTasks === 'manual' || maintenanceAdmissionClosed) return;
+    lazyExpirySweepArmed = true;
+    lazyExpirySweepTimer = runtimeServices.timers.setInterval(() => {
+      if (lazyExpirySweepPass !== undefined) return;
+      const pass = (async () => {
+        try {
+          await sweepExpiredReviews();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Expired-review sweep failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        stopLazyExpirySweepWhenNoneHeld();
+      })().finally(() => {
+        lazyExpirySweepPass = undefined;
+      });
+      lazyExpirySweepPass = pass;
+      detachBestEffortPromise(pass);
+    }, EXPIRY_SWEEP_INTERVAL_MILLISECONDS);
   }
 
   /**
@@ -4540,6 +4735,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         runToolboxesByRunId.delete(removedRunId);
         terminalReviewSessions.delete(removedRunId);
         announcedReviewRequests.delete(removedRunId);
+        fireReviewSeeds.release(removedRunId);
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === removedRunId) reviewResolutionCleanupPending.delete(reviewId);
         }
@@ -5496,14 +5692,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1613 — whether a review already has a terminal record in the audit trail for its round:
-   * approved, denied, rejected, expired, revoked or canceled. A re-gated approval keeps its id
-   * across rounds and each round it leaves is recorded, so a round's record closes that round
-   * alone; `superseded` is not terminal. The whole trail of the run is read, a page at a time.
-   * Without an audit trail there is nothing to read, and a closing is written.
+   * COR-1613 — the status a review's round was closed with in the audit trail: approved, denied,
+   * rejected, expired, revoked or canceled, or `undefined` when no terminal record of the round
+   * exists. A re-gated approval keeps its id across rounds and each round it leaves is recorded, so
+   * a round's record closes that round alone; `superseded` is not terminal. The whole trail of the
+   * run is read, a page at a time. Without an audit trail there is nothing to read.
    */
-  async function reviewHasTerminalRecord(review: PendingReview): Promise<boolean> {
-    if (auditTrailInstance === undefined) return false;
+  async function terminalAuditStatusOf(review: CanceledReviewTarget): Promise<string | undefined> {
+    if (auditTrailInstance === undefined) return undefined;
     const round = review.kind === 'tool-approval' ? review.round : undefined;
     let after: { timestampMs: number; sequence: number } | undefined;
     for (;;) {
@@ -5512,11 +5708,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         limit: AUDIT_PAGE_SIZE,
         ...(after === undefined ? {} : { after }),
       });
-      if (page.some((record) => closesReviewRound(record, review.id, round))) return true;
+      for (const record of page) {
+        const status = closingStatusOfRound(record, review.id, round);
+        if (status !== undefined) return status;
+      }
       const last = page.at(-1);
-      if (last === undefined || page.length < AUDIT_PAGE_SIZE) return false;
+      if (last === undefined || page.length < AUDIT_PAGE_SIZE) return undefined;
       after = { timestampMs: last.timestampMs, sequence: last.sequence ?? -1 };
     }
+  }
+
+  /**
+   * COR-1622 — whether the durable history holds the `review.canceled` of a review's round, by the
+   * deduplication key it is written with (COR-1621). The events this process dispatched are written
+   * asynchronously, so they are waited for first. A history written before the key existed is not
+   * found here, and a Bureau with no history has none to be missing it.
+   */
+  async function canceledRecordedInHistory(review: CanceledReviewTarget): Promise<boolean> {
+    if (eventHistoryInstance === undefined) return true;
+    const owner = { kind: 'run', id: review.runId } as const;
+    await durableEventProducerInstance?.waitForActiveWrites(owner);
+    return eventHistoryInstance.wasRecorded(
+      owner,
+      'review.canceled',
+      reviewCanceledDedupeKey(review.id, review.round),
+    );
   }
 
   /** The canceled closings in flight in this process, by review and round (COR-1613). */
@@ -5532,13 +5748,73 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the settlement that follows it, waits for the first instead of reading the trail before the
    * first has written.
    */
-  function closeCanceledFireReview(review: PendingReview, principal: string): Promise<void> {
-    const key = `${review.id}:${review.kind === 'tool-approval' ? review.round : 0}`;
+  function closeCanceledFireReview(
+    review: PendingReview,
+    principal: string,
+    known: { readonly historyHoldsCancel?: boolean } = {},
+  ): Promise<void> {
+    return closeCanceledReviewTarget(
+      {
+        id: review.id,
+        runId: review.runId,
+        kind: review.kind,
+        round: review.kind === 'tool-approval' ? review.round : 0,
+      },
+      principal,
+      () => review,
+      known,
+    );
+  }
+
+  /**
+   * COR-1622 — closes a canceled review by what finding its records needs, and builds the review
+   * (`full`) only when its audit record is to be written. A review that cannot be built is not
+   * written from a guess: nothing is written, and the closing fails to be reported and retried at
+   * the next boot.
+   *
+   * The history is already known to hold the review's `review.canceled` when `known` says so (read
+   * at boot), so only its audit half is checked, and an event written before the deduplication key
+   * existed is not written again.
+   */
+  function closeCanceledReviewTarget(
+    target: CanceledReviewTarget,
+    principal: string,
+    full: () => PendingReview | undefined,
+    known: { readonly historyHoldsCancel?: boolean } = {},
+  ): Promise<void> {
+    const key = `${target.id}:${target.round}`;
     const inFlight = closingCanceledReviews.get(key);
     if (inFlight !== undefined) return inFlight;
     const closing = (async () => {
-      if (await reviewHasTerminalRecord(review)) return;
-      await recordReviewStatusTransition(review, 'canceled', principal);
+      // COR-1622: the audit record and the history event are two writes, and either can be the one
+      // that is missing (the history append failed, or the process died between them), so each is
+      // checked on its own and only the missing one is written. A round another status closed is
+      // left as it was decided.
+      const status = await terminalAuditStatusOf(target);
+      if (status !== undefined && status !== 'canceled') return;
+      const auditMissing = status === undefined;
+      const historyHoldsCancel =
+        known.historyHoldsCancel === true || (await canceledRecordedInHistory(target));
+      if (!auditMissing && historyHoldsCancel) return;
+      const review = auditMissing ? full() : undefined;
+      if (review !== undefined) {
+        await recordReviewStatusTransition(review, 'canceled', principal, {
+          audit: true,
+          dispatch: !historyHoldsCancel,
+        });
+        return;
+      }
+      // Without an audit trail there is no record to build a review for.
+      if (auditMissing && auditTrailInstance !== undefined) {
+        throw new Error(
+          `Review "${target.id}" cannot be rebuilt from what the fire committed, so its canceled record is not written`,
+        );
+      }
+      // Only the history event is missing, and it needs no more than the review's identity.
+      await fireReviewSeeds.pending(target.runId);
+      emitter.dispatch(
+        new ReviewCanceledEvent(target.id, target.runId, principal, target.kind, target.round),
+      );
     })().finally(() => {
       closingCanceledReviews.delete(key);
     });
@@ -5554,32 +5830,119 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1613 — the human wait a canceled fire was parked on, derived from its checkpoint (the
-   * park the last committed step ended on), and closed once. A task of another kind has none.
+   * COR-1622 — the reviews of a canceled fire that nothing has closed, read at boot, closed once
+   * each, whether or not the fire's task is settled (a settlement never waits for a close, so a
+   * settled task can still hold an open request). Two sources make the list:
+   *
+   * - each request the fire's durable history holds that no closing has ended, at the round it
+   *   stands at, which is how a close that failed once is retried: the audit record and the
+   *   history event are checked on their own, and only the missing one is written;
+   * - the human wait the fire's checkpoint ends on, for a wait whose request the history never
+   *   got. The checkpoint is read strictly: a malformed latest step could name the wrong park, so
+   *   it closes nothing, and a later boot with a readable checkpoint closes the right one.
+   *
+   * A task of another kind has none. Each review is closed on its own, so one that cannot be
+   * leaves the others; the failures are reported, and the next boot tries again.
    */
-  async function closeCanceledFireWaitFromCheckpoint(taskId: string): Promise<void> {
-    const record = await tasks.record(taskId);
+  async function closeOpenReviewsOfCanceledFire(runId: string): Promise<void> {
+    const record = await tasks.record(runId);
     const durable = runtime.durable;
     if (record === undefined || record.kind !== 'schedule-fire' || durable === undefined) return;
-    const outstanding = countCheckpointParks(
-      await durable.checkpointStore.loadSteps(taskId),
-    ).outstanding;
-    if (outstanding === undefined) return;
-    await closeCanceledFireReview(
-      {
-        kind: 'human-wait',
-        id: `human-wait:${taskId}:${outstanding.signalName}:${outstanding.ordinal}`,
-        runId: taskId,
-        sessionId: record.contextId,
-        agentName: record.agentName ?? undefined,
-        signalName: outstanding.signalName,
-        prompt: outstanding.prompt,
-        requestedAt: Date.parse(record.createdAt) || 0,
-        ageMilliseconds: 0,
-        status: 'pending',
-      },
-      'system:run-abort',
-    );
+    const failures: string[] = [];
+    // The fire's committed steps, read strictly: they are the only description of a canceled
+    // review that is left (its session left with the cancel). A step that cannot be read could
+    // name the wrong review, so it describes nothing, and a record that needs it is not written.
+    let committed: ReturnType<typeof committedFireReviews> | undefined;
+    let outstanding: ReturnType<typeof countCheckpointParks>['outstanding'];
+    try {
+      const steps = await durable.checkpointStore.loadSteps(runId, { strict: true });
+      committed = committedFireReviews(runId, steps);
+      outstanding = countCheckpointParks(steps).outstanding;
+    } catch (error) {
+      failures.push(`its checkpoint could not be read strictly: ${serializeUnknownError(error)}`);
+    }
+    const base = {
+      runId,
+      sessionId: record.contextId,
+      agentName: record.agentName ?? undefined,
+      requestedAt: Date.parse(record.createdAt) || 0,
+      ageMilliseconds: 0,
+      status: 'pending',
+    } as const;
+    /** The review the checkpoint committed under `id`, as the live revoke would have built it. */
+    const rebuild = (target: CanceledReviewTarget): PendingReview | undefined => {
+      const described = committed?.get(target.id);
+      if (described === undefined || described.kind !== target.kind) return undefined;
+      // The checkpoint holds only the approval its step first raised. A re-gated round's approval
+      // lived in the session, which the cancel cleared, so a record built for it here would carry
+      // round 0's reason and action under a later round. Such a round is reported, not written.
+      if (described.kind === 'tool-approval' && target.round > 0) return undefined;
+      return described.kind === 'tool-approval'
+        ? {
+            ...base,
+            kind: 'tool-approval',
+            id: target.id,
+            approval: described.approval,
+            round: target.round,
+          }
+        : {
+            ...base,
+            kind: 'human-wait',
+            id: target.id,
+            signalName: described.signalName,
+            prompt: described.prompt,
+          };
+    };
+    const kindOf = (id: string): CanceledReviewTarget['kind'] =>
+      id.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
+    const candidates = new Map<string, CanceledReviewTarget>();
+    // The candidates whose history already holds a `review.canceled`: their audit half is what may
+    // be missing.
+    const canceledInHistory = new Set<string>();
+    try {
+      const history = await readFireReviewHistory(runId);
+      for (const [id, { round, canceled }] of history.open) {
+        const kind = kindOf(id);
+        candidates.set(id, { id, runId, kind, round: kind === 'human-wait' ? 0 : round });
+        if (canceled) canceledInHistory.add(id);
+      }
+    } catch (error) {
+      failures.push(`its history could not be read: ${serializeUnknownError(error)}`);
+    }
+    if (outstanding !== undefined) {
+      const id = `human-wait:${runId}:${outstanding.signalName}:${outstanding.ordinal}`;
+      if (!candidates.has(id)) candidates.set(id, { id, runId, kind: 'human-wait', round: 0 });
+    }
+    for (const target of candidates.values()) {
+      try {
+        await closeCanceledReviewTarget(target, 'system:run-abort', () => rebuild(target), {
+          historyHoldsCancel: canceledInHistory.has(target.id),
+        });
+      } catch (error) {
+        failures.push(`review "${target.id}" could not be closed: ${serializeUnknownError(error)}`);
+      }
+    }
+    if (failures.length > 0) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Not every review of canceled schedule fire "${runId}" was closed, and the next boot tries again: ${failures.join('; ')}`,
+      });
+    }
+  }
+
+  /**
+   * COR-1622 — the boot's retry of every canceled fire's open closes: the fires whose task is
+   * settled as canceled, whose closes `reconcileTaskRecords` never reaches because it settles only
+   * what is unsettled. A fire still unsettled is closed as it is settled.
+   */
+  async function retryCanceledFireCloses(): Promise<void> {
+    for (let offset = 0; ;) {
+      const page = await tasks.list({ status: 'canceled', limit: 100, offset });
+      for (const view of page.tasks) await closeOpenReviewsOfCanceledFire(view.id);
+      if (page.nextOffset === null) break;
+      offset = page.nextOffset;
+    }
   }
 
   /**
@@ -5708,7 +6071,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * to land, is dropped as another process closed it; one the session holds at a later round is
    * refreshed; a human wait the engine no longer parks on is dropped the same way.
    */
-  async function rereadFireReviews(runId: string): Promise<void> {
+  async function rereadFireReviews(runId: string): Promise<number | undefined> {
     const sessionId = terminalReviewSessions.get(runId)?.sessionId;
     const heldIds = Array.from(pendingApprovalOverrides.keys()).filter((id) =>
       id.startsWith(`approval:${runId}:`),
@@ -5716,9 +6079,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // One review that cannot be read again must not keep the fire's others from being: each is
     // tried, and the first failure is thrown after them all, so the pass still counts as failed.
     const failures: unknown[] = [];
-    if (sessionId !== undefined && heldIds.length > 0) {
-      const session = await runtime.sessionStore?.load(sessionId);
-      if (session !== undefined) {
+    // When the youngest review that could not yet be verified has had its grace.
+    let retryAt: number | undefined;
+    const retryNoEarlierThan = (at: number): void => {
+      retryAt = retryAt === undefined ? at : Math.max(retryAt, at);
+    };
+    if (heldIds.length > 0) {
+      const sessions = runtime.sessionStore;
+      // Nothing to read the approvals against: they cannot be verified, which is not the same as
+      // the session being gone, so the fire stays marked and is tried again.
+      if (sessionId === undefined || sessions === undefined) {
+        throw new Error(
+          `The approvals held of schedule fire "${runId}" cannot be verified against its session: ${
+            sessions === undefined ? 'there is no session store' : 'no session is recorded for it'
+          }`,
+        );
+      }
+      const session = await sessions.load(sessionId);
+      if (session === undefined) {
+        // The session is gone (deleted by a peer): so are the approvals it held.
+        for (const id of heldIds) {
+          try {
+            await tasks.reviewClosedElsewhere(runId, id, REREAD_CLOSURE);
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+      } else {
         const decided = Array.isArray(session.metadata['resolvedReviewIds'])
           ? new Set(stringValues(session.metadata['resolvedReviewIds']))
           : new Set<string>();
@@ -5729,9 +6116,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               await adoptPersistedApprovalRound(runId, id, persisted);
               continue;
             }
-            const age = runtimeServices.clock.now() - (approvalRequestedAt.get(id) ?? 0);
-            if (decided.has(id) || age > FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS) {
+            const requestedAt = approvalRequestedAt.get(id) ?? 0;
+            if (
+              decided.has(id) ||
+              runtimeServices.clock.now() - requestedAt >=
+                FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS
+            ) {
               await tasks.reviewClosedElsewhere(runId, id, REREAD_CLOSURE);
+            } else {
+              // Not yet in the session, and young enough that it may not have landed: it is read
+              // again when its grace ends, not counted as verified.
+              retryNoEarlierThan(requestedAt + FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS);
             }
           } catch (error) {
             failures.push(error);
@@ -5740,17 +6135,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
     try {
-      const closedWait = await runHumanWaits.rereadClosed(
+      const wait = await runHumanWaits.rereadClosed(
         runId,
         FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS,
       );
-      if (closedWait !== undefined) {
-        await tasks.reviewClosedElsewhere(runId, closedWait, REREAD_CLOSURE);
+      if (wait.closed !== undefined) {
+        await tasks.reviewClosedElsewhere(runId, wait.closed, REREAD_CLOSURE);
       }
+      if (wait.retryAt !== undefined) retryNoEarlierThan(wait.retryAt);
     } catch (error) {
       failures.push(error);
     }
     if (failures.length > 0) throw failures[0];
+    return retryAt;
   }
 
   /** Whether this process still holds an approval of the fire: one that is expired counts. */
@@ -6011,6 +6408,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       }
     }
+    // COR-1622: a restored approval is held, and expires, like one raised here.
+    if (pendingApprovalOverrides.size > 0) ensureLazyExpirySweep();
   }
 
   function persistedApprovalRunIds(metadata: unknown): Set<string> {
@@ -8264,7 +8663,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const content = typeof result['content'] === 'string' ? result['content'] : '';
       // COR-1613: a fire canceled while parked on a human wait, whose process died before it
       // wrote the wait's `canceled` record, has its wait closed here, from the checkpoint.
-      if (state.status === 'cancelled') await closeCanceledFireWaitFromCheckpoint(taskId);
+      if (state.status === 'cancelled') {
+        // COR-1622: a close that cannot be made is reported and retried at the next boot; it never
+        // keeps the task from being settled.
+        await closeOpenReviewsOfCanceledFire(taskId).catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not close the reviews of canceled schedule fire "${taskId}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        });
+      }
       await tasks.recordSettled(taskId, {
         at: runtimeServices.clock.nowISO(),
         status,
@@ -8287,6 +8697,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
+    // COR-1622: the open closes of every canceled fire, settled or not.
+    await retryCanceledFireCloses().catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Could not retry the closes of canceled schedule fires at boot: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
     // A durable catalog run still in flight whose task record was never written: the lost
     // admission window. A run that is over is not given a record here: its task either was
     // settled and has since been removed by retention, or never existed, and recreating it at
@@ -11403,6 +11822,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1622 — expired reviews go with a manual host's maintenance, as they do with the
+      // automatic timer's: ahead of task retention, which holds a task open for a review it lists.
+      try {
+        await sweepExpiredReviews(now);
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual expired-review sweep failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       // COR-1477 — before the receipt prune: a task leaves only once its
       // binding is gone, so a binding the prune below deletes releases its task
       // in the next pass.
@@ -11516,7 +11947,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // Uses `runtimeServices.timers` (never a bare global `setInterval`) so a
   // test using `createManualRuntimeServices()` can drive this
   // deterministically via `runtime.advance(...)`, with no real sleep.
-  const AUTOMATIC_RUN_OWNERSHIP_PRUNE_INTERVAL_MS = 300_000;
+  const AUTOMATIC_RUN_OWNERSHIP_PRUNE_INTERVAL_MS = EXPIRY_SWEEP_INTERVAL_MILLISECONDS;
   // `RuntimeTimeoutHandle` is `unknown` (lifecycle's own opaque-handle
   // type), so it cannot be distinguished from `undefined` by type alone —
   // a separate boolean tracks whether the timer was actually started.
@@ -11576,18 +12007,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // bureau (`runtime.durable` truthy) still always starts the timer
   // regardless of `auditRetention`, since `pruneStaleRunOwnership()` has
   // real work to do there independent of audit retention.
-  const hasActiveAuditRetention = Boolean(
-    options.auditRetention && options.auditRetention !== 'forever',
-  );
-  if (
-    needsAutomaticMaintenance({
-      durableEngine: Boolean(runtime.durable),
-      memory: runtime.memory !== undefined,
-      keyValueStore: Boolean(runtime.kv),
-      activeAuditRetention: hasActiveAuditRetention,
-    }) &&
-    options.durableBackgroundTasks !== 'manual'
-  ) {
+  if (automaticMaintenanceRuns) {
     automaticRunOwnershipPruneTimerStarted = true;
     automaticRunOwnershipPruneTimer = runtimeServices.timers.setInterval(() => {
       if (automaticRunOwnershipPruneCurrentPass) return;
@@ -14764,6 +15184,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the direct write below remains correct exactly as it always was.
     requestOptions?: { auditAlreadyAppended?: boolean },
   ): Promise<void> {
+    // COR-1622: a close follows the request it closes in the history, and the request of a fire's
+    // first review waits for its seed read.
+    await fireReviewSeeds.pending(review.runId);
     if (!requestOptions?.auditAlreadyAppended) {
       await auditTrailInstance?.record(
         buildReviewDecisionAuditRecord(review, decision, principal, reason),
@@ -14844,7 +15267,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     review: PendingReview,
     status: Exclude<ReviewStatus, 'pending' | 'approved' | 'denied' | 'rejected'>,
     principal: string,
+    // COR-1622: `audit: false` leaves the audit record alone, because it is already there and the
+    // history event is what is being written; `dispatch: false` writes no event, because the
+    // history already holds it and the audit record is what is being written.
+    parts: { readonly audit?: boolean; readonly dispatch?: boolean } = {},
   ): Promise<void> {
+    // COR-1622: a close follows the request it closes in the history.
+    await fireReviewSeeds.pending(review.runId);
     // AB-391: `expired` (`sweepExpiredReviews`), `revoked`/`canceled`
     // (`revokePendingApprovalsForRun`), and `superseded` (`resolveReview`'s
     // re-gate branch) each have no preceding session-store commit this
@@ -14857,13 +15286,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // rejection is diagnosed here and the closing goes on, as a failed unkeyed write always did.
     const round = review.kind === 'tool-approval' ? review.round : 0;
     try {
-      await auditTrailInstance?.record({
-        runId: review.runId,
-        type: `review.${review.kind}.${status}`,
-        detail: { review: { ...review, status }, status },
-        principal,
-        ...(status === 'canceled' ? { dedupeKey: reviewCanceledDedupeKey(review.id, round) } : {}),
-      });
+      if (parts.audit !== false)
+        await auditTrailInstance?.record({
+          runId: review.runId,
+          type: `review.${review.kind}.${status}`,
+          detail: { review: { ...review, status }, status },
+          principal,
+          ...(status === 'canceled'
+            ? { dedupeKey: reviewCanceledDedupeKey(review.id, round) }
+            : {}),
+        });
     } catch (error) {
       diagnose({
         level: 'error',
@@ -14877,23 +15309,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // above. `approve`/`deny`/`reject` never reach this function — they
     // dispatch from `recordReviewDecision` instead — so the switch below is
     // exhaustive over exactly `expired | revoked | canceled | superseded`.
-    switch (status) {
-      case 'expired':
-        emitter.dispatch(new ReviewExpiredEvent(review.id, review.runId, principal, review.kind));
-        break;
-      case 'revoked':
-        emitter.dispatch(new ReviewRevokedEvent(review.id, review.runId, principal, review.kind));
-        break;
-      case 'canceled':
-        emitter.dispatch(
-          new ReviewCanceledEvent(review.id, review.runId, principal, review.kind, round),
-        );
-        break;
-      case 'superseded':
-        emitter.dispatch(
-          new ReviewSupersededEvent(review.id, review.runId, principal, review.kind),
-        );
-        break;
+    if (parts.dispatch !== false) {
+      switch (status) {
+        case 'expired':
+          emitter.dispatch(new ReviewExpiredEvent(review.id, review.runId, principal, review.kind));
+          break;
+        case 'revoked':
+          emitter.dispatch(new ReviewRevokedEvent(review.id, review.runId, principal, review.kind));
+          break;
+        case 'canceled':
+          emitter.dispatch(
+            new ReviewCanceledEvent(review.id, review.runId, principal, review.kind, round),
+          );
+          break;
+        case 'superseded':
+          emitter.dispatch(
+            new ReviewSupersededEvent(review.id, review.runId, principal, review.kind),
+          );
+          break;
+      }
     }
     // COR-1577: a catalog run's review has no session whose ownership could need restoring.
     if (review.sessionId !== undefined) {
@@ -15117,6 +15551,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
+    // Whatever this sweep released, the timer is only needed while an approval is still held.
+    stopLazyExpirySweepWhenNoneHeld();
     return sweptCount;
   }
 
@@ -15634,6 +16070,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;
       }
+      // COR-1622: the expiry sweep's own timer, and a pass still under way.
+      stopLazyExpirySweep();
+      await lazyExpirySweepPass;
       // AB-390 — the session-outbox retry timer (armed when this bureau
       // last lost a claim to a still-live peer) must not fire after
       // shutdown: a retry drain running post-teardown would race the very
@@ -15994,6 +16433,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           closeReview: (runId, reviewId, eventKind) =>
             tasks.reviewClosedElsewhere(runId, reviewId, eventKind),
           reread: rereadFireReviews,
+          now: runtimeServices.clock.now,
           timers: runtimeServices.timers,
           diagnose,
           attempts: SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS,
@@ -16541,6 +16981,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     now: runtimeServices.clock.now,
     recordDecision: async (review, decision, principal, reason, writeAudit) => {
+      // COR-1622: a close follows the request it closes in the history.
+      await fireReviewSeeds.pending(review.runId);
       // COR-1579: only the caller whose decision record turned `recorded` writes the entry, so
       // two processes deciding one park alike leave one.
       if (writeAudit) {
@@ -17317,6 +17759,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         cause: error,
       });
     }
+    // COR-1622: the fire's final reconciliation is done, so its seed read is dropped (after a read
+    // still under way, which a close written by it may be waiting on); a later announcement of
+    // the same run id reads its history afresh, and the map holds only the fires in flight.
+    await fireReviewSeeds.pending(settlement.runId);
+    fireReviewSeeds.release(settlement.runId);
     const status =
       settlement.status === 'completed'
         ? settledTaskState('completed', settlement.finishReason)
@@ -17567,6 +18014,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   trackScheduledFireReviewState(bureau, scheduledFireReviewState);
+  trackFireReviewSeeds(bureau, fireReviewSeeds);
   if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
   return bureau;
 }
