@@ -171,11 +171,16 @@ function mediaCharLength(part: MediaContent): number {
  * payloads are not under-counted toward the context budget.
  */
 export function simpleTokenEstimator(message: Message): number {
+  // A tool result's parts are payload the model reads, so they count like content.
+  const resultParts = (message.toolResult?.parts ?? []).reduce(
+    (sum, part) => sum + partCharLength(part),
+    0,
+  );
   if (typeof message.content === 'string') {
-    return Math.ceil(message.content.length / 4);
+    return Math.ceil((message.content.length + resultParts) / 4);
   }
   const total = messageParts(message).reduce((sum, part) => sum + partCharLength(part), 0);
-  return Math.ceil(total / 4);
+  return Math.ceil((total + resultParts) / 4);
 }
 
 /**
