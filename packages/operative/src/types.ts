@@ -380,6 +380,12 @@ export interface StepResult {
   results: readonly ToolExecutionResult[];
   usage?: TokenUsage | undefined;
   metadata?: Record<string, JSONValue> | undefined;
+  /**
+   * The effective-context epoch of the generate attempt that produced this
+   * step: the last attempt's, when the step retried. Absent when the run has
+   * no `contextEpoch` sealer (COR-768).
+   */
+  contextEpochId?: string | undefined;
   final: boolean;
 }
 
