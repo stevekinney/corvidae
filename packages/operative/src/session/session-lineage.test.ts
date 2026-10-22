@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
+import { rejectionOf } from '../testing/promise-outcome.test-support';
 import { createSessionStore, summarizeSession } from './create-session-store';
 import {
   createSessionHandle,
@@ -254,12 +255,12 @@ describe('session.fork() through a message', () => {
     await store.save(sessionWith('taken', { [SESSION_OWNER_METADATA_KEY]: 'alice' }));
     await handle.fork({ throughMessageId: ids[1]!, id: 'planned-id' });
 
-    await expect(handle.fork({ throughMessageId: ids[1]!, id: 'taken' })).rejects.toBeInstanceOf(
-      ForkIdentifierInUseError,
-    );
-    await expect(
-      handle.fork({ throughMessageId: ids[3]!, id: 'planned-id' }),
-    ).rejects.toBeInstanceOf(ForkIdentifierInUseError);
+    expect(
+      await rejectionOf(handle.fork({ throughMessageId: ids[1]!, id: 'taken' })),
+    ).toBeInstanceOf(ForkIdentifierInUseError);
+    expect(
+      await rejectionOf(handle.fork({ throughMessageId: ids[3]!, id: 'planned-id' })),
+    ).toBeInstanceOf(ForkIdentifierInUseError);
     const kept = await store.load('planned-id');
     expect(kept?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(ids[1]);
   });
@@ -269,7 +270,7 @@ describe('session.fork() through a message', () => {
     const listedBefore = await store.list({});
     const before = listedBefore.length;
 
-    await expect(handle.fork({ throughMessageId: 'no-such-message' })).rejects.toBeInstanceOf(
+    expect(await rejectionOf(handle.fork({ throughMessageId: 'no-such-message' }))).toBeInstanceOf(
       ForkThroughMessageError,
     );
 
@@ -280,9 +281,9 @@ describe('session.fork() through a message', () => {
   it('refuses a fork that names both a run and a message', async () => {
     const { handle, ids } = await source();
 
-    await expect(handle.fork({ throughRun: 0, throughMessageId: ids[1]! })).rejects.toBeInstanceOf(
-      TypeError,
-    );
+    expect(
+      await rejectionOf(handle.fork({ throughRun: 0, throughMessageId: ids[1]! })),
+    ).toBeInstanceOf(TypeError);
   });
 
   it('records no lineage for a fork that names no message, as before', async () => {
