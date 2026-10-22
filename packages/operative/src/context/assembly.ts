@@ -91,11 +91,14 @@ function estimateMessage(
     );
   }
   if (message.toolResult) {
-    const resultContent =
-      typeof message.toolResult.content === 'string'
-        ? message.toolResult.content
-        : JSON.stringify(message.toolResult.content);
-    tokens += estimator(resultContent);
+    // With parts, `content` is the application value beside them, which no provider sends.
+    if (message.toolResult.parts === undefined) {
+      const resultContent =
+        typeof message.toolResult.content === 'string'
+          ? message.toolResult.content
+          : JSON.stringify(message.toolResult.content);
+      tokens += estimator(resultContent);
+    }
     // A result's parts are what the model reads: text as text, media through the media
     // estimator under the same `messageId:partIndex` key its resolution uses.
     message.toolResult.parts?.forEach((part, partIndex) => {

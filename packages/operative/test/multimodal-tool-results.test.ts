@@ -370,4 +370,28 @@ describe('tool-result media in context assembly', () => {
     expect(positions).toEqual([`${row?.id}:1:image`]);
     expect(result.mediaCosts).toEqual([expect.objectContaining({ partIndex: 1, tokens: 50 })]);
   });
+
+  it('does not cost the structured value beside parts, which no provider sends', () => {
+    const estimated: string[] = [];
+    const conversation = new Conversation();
+    conversation.appendToolCall({ id: 'call-b', name: 'chart', arguments: {} });
+    conversation.appendToolResult({
+      callId: 'call-b',
+      outcome: 'success',
+      content: { sidecar: 'SIDECAR-VALUE' },
+      parts: [{ type: 'text', text: 'see' }],
+    });
+    createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({
+        maxTokens: 100_000,
+        tokenEstimator: (text) => {
+          estimated.push(text);
+          return 1;
+        },
+      }),
+    });
+    expect(estimated.some((text) => text.includes('SIDECAR-VALUE'))).toBe(false);
+    expect(estimated).toContain('see');
+  });
 });

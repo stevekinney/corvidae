@@ -59,7 +59,12 @@ export function toCallToolResult(result: ToolResultLike): CallToolResult {
     // An error that carries parts sends them, in order, flagged as an error.
     if (result.parts !== undefined) {
       assertToolResultParts(result.parts);
-      return { content: partsToMcpBlocks(result.parts), isError: true };
+      const structured = toStructuredContent(result.content);
+      return {
+        content: partsToMcpBlocks(result.parts),
+        ...(structured === undefined ? {} : { structuredContent: structured }),
+        isError: true,
+      };
     }
     const message = result.error?.message ?? stringifyResult(result.content);
     return { content: toTextContent(message), isError: true };
