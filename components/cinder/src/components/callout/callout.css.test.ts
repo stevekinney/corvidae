@@ -54,8 +54,13 @@ function findRuleIn(parsedRoot: ReturnType<typeof parse>, selector: string): Rul
   return match;
 }
 
-/** The fixed soft-border chroma in the partial (uniform across variants). */
-const SOFT_BORDER_CHROMA = { light: 0.05, dark: 0.08 };
+/**
+ * The fixed soft-border chroma in the partial (uniform across variants). Since COR-1552 the soft
+ * border is painted in the surface's own background so it draws no visible outline, which makes
+ * its chroma the surface's: the stripe still has to exceed it, which is what keeps the stripe
+ * "visibly stronger".
+ */
+const SOFT_BORDER_CHROMA = { light: 0.026, dark: 0.03 };
 
 /**
  * Every property that can paint or size a border edge — shorthands, longhands,
@@ -337,7 +342,7 @@ describe('callout stripe — directional treatment', () => {
       expect(sDark).toMatch(basePattern);
     });
 
-    test('soft border uses the fixed soft-border chroma values', () => {
+    test('soft border uses the surface background chroma values, so it draws no outline', () => {
       const border = declValue(borderRule, 'border-color');
       const [light, dark] = lightDarkArms(border!);
       expect(oklchChroma(light)).toBe(SOFT_BORDER_CHROMA.light);

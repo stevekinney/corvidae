@@ -8,7 +8,7 @@ import type {
   ToolQuery,
   ToolSearchOptions,
 } from './core/registry';
-import type { ToolCall, ToolExecutionResult } from './types';
+import type { RedactedToolExecutionResult, ToolCall, ToolExecutionResult } from './types';
 type Tool = import('./is-tool').Tool;
 type ToolMatch = RegistryToolMatch<unknown>;
 type ToolExecutionIdentity = { executionId?: string; ownerId?: string };
@@ -36,7 +36,8 @@ export class ToolboxCallEvent extends Event {
 export class ToolboxCompleteEvent extends Event {
   static readonly type = 'complete' as const;
   readonly tool: Tool;
-  readonly result: ToolExecutionResult;
+  /** The result with its media redacted: type, size, and identity, never bytes (COR-792). */
+  readonly result: RedactedToolExecutionResult;
   /**
    * Armorer's own per-execution id (AB-318). Set only once this call's
    * execution identity has actually been minted — `complete` always fires
@@ -45,7 +46,7 @@ export class ToolboxCompleteEvent extends Event {
   readonly executionId: string | undefined;
   /** Caller-supplied owner identity, echoed verbatim when supplied (AB-318). */
   readonly ownerId: string | undefined;
-  constructor(detail: { tool: Tool; result: ToolExecutionResult } & ToolExecutionIdentity) {
+  constructor(detail: { tool: Tool; result: RedactedToolExecutionResult } & ToolExecutionIdentity) {
     super(ToolboxCompleteEvent.type);
     this.tool = detail.tool;
     this.result = detail.result;

@@ -1,3 +1,5 @@
+import type { ToolResultPart } from './content-parts';
+
 // ── Tool Policy ──────────────────────────────────────────────────────
 
 /**
@@ -173,7 +175,13 @@ export interface ToolCallInput {
 export interface ToolResult {
   callId: string;
   outcome: 'success' | 'error' | 'action_required';
+  /** The JSON application value. With `parts`, the value beside them, or `null`. */
   content: JSONValue;
+  /**
+   * Ordered, model-facing text and media parts, when the tool answered with
+   * them (see `toolContent`). Absent on a result that carries only `content`.
+   */
+  parts?: readonly ToolResultPart[] | undefined;
   error?: ToolError | undefined;
   action?: ToolAction | undefined;
   inputDigest?: string | undefined;
@@ -184,6 +192,7 @@ export interface ToolResultInput {
   callId: string;
   outcome: 'success' | 'error' | 'action_required';
   content: unknown;
+  parts?: unknown;
   error?: ToolErrorInput | undefined;
   action?: ToolActionInput | undefined;
   inputDigest?: string | undefined;

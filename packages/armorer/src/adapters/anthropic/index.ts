@@ -10,6 +10,7 @@ import {
   normalizeToSerializedDefinitions,
   type ToolRegistryLike,
 } from '../shared';
+import { anthropicToolResultBlocks, toolResultParts } from '../tool-result-parts';
 import type { AnthropicTool, AnthropicToolResultBlock, AnthropicToolUseBlock } from './types';
 
 export type {
@@ -155,10 +156,11 @@ function convertToolUseBlock(contentBlock: AnthropicToolUseBlock): ToolCallInput
 }
 
 function convertToolResult(result: ToolResultLike, content: unknown): AnthropicToolResultBlock {
+  const parts = toolResultParts(result);
   const toolResult: AnthropicToolResultBlock = {
     type: 'tool_result',
     tool_use_id: getToolCallId(result),
-    content: stringifyToolContent(content),
+    content: parts === undefined ? stringifyToolContent(content) : anthropicToolResultBlocks(parts),
   };
 
   if (result.outcome !== 'success') {

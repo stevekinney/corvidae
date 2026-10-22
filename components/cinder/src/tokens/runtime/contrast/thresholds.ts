@@ -24,6 +24,21 @@ export const BOLD_FONT_WEIGHT = 700;
  */
 export const DECORATIVE_BORDER = 1.4;
 export const FAINT_BORDER = 1.1;
+/*
+ * Floors for the structural border tiers at 5%, 9% and 15% of the border ink (COR-1552). Each is
+ * pinned just under the lowest ratio its tier measures on any legal surface in either arm (dark:
+ * 1.067, 1.143 and 1.308; 1.198 for the neutral status border on the neutral background), so it
+ * still fails a regression below the weight the owner chose, which the shared 1.1 and 1.4 floors
+ * above would no longer do for `border` and `border.strong`.
+ */
+/** Floor for `border.muted`, the 5% interior hairline. */
+export const STRUCTURAL_MUTED_BORDER = 1.06;
+/** Floor for `border`, the 9% container edge. */
+export const STRUCTURAL_BORDER = 1.14;
+/** Floor for `border.strong`, the 15% emphasized structural edge. */
+export const STRUCTURAL_STRONG_BORDER = 1.3;
+/** Floor for the neutral status border, which aliases `border`, on the neutral background. */
+export const NEUTRAL_STATUS_BORDER = 1.14;
 /** Border tiers must read within this fraction of the larger ratio across the legal surfaces. */
 export const BORDER_TIER_MAX_SPREAD = 0.15;
 /** Chart series: the minimum pairwise CIEDE2000 distance and CIE L* separation. */

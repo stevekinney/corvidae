@@ -513,8 +513,8 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/mcp/resources.ts',
       {
         reason:
-          'Bun maps the workflow-resource parser closing brace as uncovered after the direct state-URI parsing assertion executes its return path (192); the exhaustive default for an unknown ParsedResourceUri kind is separately unreachable through the validated URI parser, which only ever produces one of the declared kinds (114-116).',
-        lines: new Set([114, 115, 116, 192]),
+          'Bun maps the workflow-resource parser closing brace as uncovered after the direct state-URI parsing assertion executes its return path (187); the exhaustive default for an unknown ParsedResourceUri kind is separately unreachable through the validated URI parser, which only ever produces one of the declared kinds (126-129).',
+        lines: new Set([126, 127, 128, 129, 187]),
         requireUncoveredLines: true,
       },
     ],
@@ -522,13 +522,26 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/mcp/stdio.ts',
       {
         reason:
-          'The remaining stdio lines are process stream-error, close, and malformed-frame exits that cannot be deterministically attributed in the parent LCOV process.',
-        functions: 3,
-        lines: new Set([
-          103, 104, 105, 106, 107, 126, 127, 205, 206, 207, 208, 209, 210, 211, 212, 241, 242, 279,
-          280, 281, 282, 341, 342, 361, 362, 363, 364, 365, 366, 367, 368,
-        ]),
+          'Bun reports one unnamed aggregate function in the stdio session although its admission, serving, frame-limit, drain, and failure paths are each asserted by stdio.test.ts.',
+        functions: 1,
+      },
+    ],
+    [
+      'src/mcp/server.ts',
+      {
+        reason:
+          'A resource-update notification that the SDK fails to send is reported from a promise rejection handler (275); the connection check before it leaves only a transport that closes between the check and the send, which no test can schedule deterministically.',
+        functions: 1,
+        lines: new Set([275]),
         requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/mcp/search-subscriptions.ts',
+      {
+        reason:
+          'Bun reports two unnamed aggregate functions although search-subscriptions.test.ts drives every tracking, release, cancellation, and stream-error path.',
+        functions: 2,
       },
     ],
     [
@@ -1022,14 +1035,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'src/mcp/dispatcher.ts',
-      {
-        reason:
-          'Bun reports three unnamed aggregate functions despite direct response assertions executing resource-template, prompt, unsubscribe, and response-error handlers.',
-        functions: 3,
-      },
-    ],
-    [
       'src/server/handler/auth-context-principal.ts',
       {
         reason:
@@ -1408,15 +1413,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The residual timer-source line guards an unknown persisted timer kind excluded by timer decoding.',
         lines: new Set([51]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/mcp/http.ts',
-      {
-        reason:
-          'The remaining HTTP lines are socket-close, stream-cancel, and response-write failure exits exercised through transport teardown without stable line attribution.',
-        lines: new Set([120, 121, 122, 123, 124, 125, 126, 127, 207, 208, 233, 470]),
         requireUncoveredLines: true,
       },
     ],

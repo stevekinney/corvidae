@@ -35,16 +35,16 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
-        "alpha": 0.32
+        "alpha": 0.48
       },
-      "$description": "Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary.",
+      "$description": "Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-button-border",
           "public": true,
           "category": "color",
           "component": "button",
-          "cssRecipe": "var(--cinder-border-strong)"
+          "cssRecipe": "var(--cinder-border-control)"
         }
       }
     },

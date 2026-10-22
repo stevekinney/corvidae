@@ -561,7 +561,7 @@
   },
   "control.border.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.2 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.09 },
     "$description": "Disabled control edge: the structural tier, since a disabled control is not an interactive boundary.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1475,7 +1475,7 @@
   "surface.canvas": {
     "$type": "color",
     "$value": { "colorSpace": "oklch", "components": [0.15, 0.035, 245] },
-    "$description": "Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.984 -> 0.994 -> 1.000); dark mode runs the same ordering at low lightness.",
+    "$description": "Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-canvas",
@@ -1498,21 +1498,21 @@
     "$type": "color"
   },
   "border": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.2 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.09 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 80%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 91%)",
         "cssProperty": "--cinder-border",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 20% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
+    "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
     "$type": "color"
   },
   "border.ink": {
     "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250] },
-    "$description": "The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 10%, `border` 20%, `border.strong` 32%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.",
+    "$description": "The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 5%, `border` 9%, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-border-ink",
@@ -1565,33 +1565,33 @@
     "$type": "color"
   },
   "border.muted": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.1 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.05 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 90%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 95%)",
         "cssProperty": "--cinder-border-muted",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 10% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.",
+    "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.",
     "$type": "color"
   },
   "border.strong": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.15 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)",
         "cssProperty": "--cinder-border-strong",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Emphasized structural edge and the resting edge of secondary buttons and button-like chips, whose label already identifies them. A 32% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own.",
+    "$description": "Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead.",
     "$type": "color"
   },
   "border.inverse": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.32 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.15 },
     "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1693,7 +1693,7 @@
   },
   "accent.text": {
     "$value": { "colorSpace": "oklch", "components": [0.72, 0.14, 270] },
-    "$description": "Accent used as text/icon on light surfaces. The light-mode fill accent (L=0.50) reads as a foreground at only ~4.7:1, just clearing AA, so this dedicated, slightly darker foreground token stays necessary for comfortable link/icon legibility. The dark arm matches the dark-mode accent fill.",
+    "$description": "Accent used as text/icon on light surfaces. The light-mode fill accent (L=0.52) reads as a foreground at 5.4:1 on the inset surface, which clears AA with little to spare, so this dedicated, slightly darker foreground token stays necessary for comfortable link/icon legibility. The dark arm matches the dark-mode accent fill.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-accent-text",
@@ -2601,7 +2601,7 @@
   },
   "status.neutral.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.2 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.09 },
     "$description": "Border color on the soft neutral surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2863,8 +2863,8 @@
   },
   "button.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.32 },
-    "$description": "Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary.",
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$description": "Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-button-border",

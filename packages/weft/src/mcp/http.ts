@@ -1,92 +1,200 @@
+import {
+  createMcpHandler,
+  type AuthInfo,
+  type McpHttpHandler,
+  type McpRequestContext,
+} from '@modelcontextprotocol/server';
+
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
-import { WeftError } from '../core/weft-error.ts';
-import {
-  anonymousPrincipal,
-  isAuthenticated,
-  isCredentialBacked,
-  type Principal,
-} from '../server/principal.ts';
-import { dispatchMcpMessage } from './dispatcher.ts';
-import {
-  accepts,
-  DEFAULT_MCP_MAX_BODY_BYTES,
-  isJsonContentType,
-  isMcpRequest,
-  isNotification,
-  MCP_PROTOCOL_VERSION,
-  parseMcpMessage,
-  type McpResponse,
-} from './protocol.ts';
-import { McpSessionLimitExceededError, McpSessionManager, type McpSession } from './session.ts';
+import { anonymousPrincipal, isAuthenticated, type Principal } from '../server/principal.ts';
+import { McpToolExecutionError, type McpAccessContext } from './access.ts';
+import { McpChangeFeed } from './change-feed.ts';
+import { DEFAULT_MCP_MAX_BODY_BYTES } from './protocol.ts';
+import { assertResourceSubscriptionAllowed, workflowResourceUri } from './resources.ts';
+import { readListenRequest, SearchSubscriptions } from './search-subscriptions.ts';
+import { createMcpServerFactory, type McpServerRegistrar } from './server.ts';
+
+/**
+ * Options for an MCP HTTP endpoint.
+ *
+ * @example
+ * ```ts
+ * import { type McpEndpointOptions } from '@lostgradient/weft';
+ *
+ * const options: McpEndpointOptions = { maxBodyBytes: 64 * 1024 };
+ * void options;
+ * ```
+ */
+export type McpEndpointOptions = {
+  /** Upper bound on a POST body, answered `413` when exceeded. */
+  readonly maxBodyBytes?: number;
+  /** Registers further tools or prompts on every server instance the endpoint builds. */
+  readonly registrars?: McpServerRegistrar | ReadonlyArray<McpServerRegistrar>;
+  /**
+   * The most `subscriptions/listen` streams the endpoint keeps open at once, across every
+   * caller; a further listen is refused in-band. Defaults to the SDK's 1024.
+   */
+  readonly maxSubscriptions?: number;
+};
+
+/**
+ * Weft's MCP endpoint, served through the official MCP SDK. It answers the
+ * 2026-07-28 revision on the SDK's modern lane and 2025-era clients on the
+ * SDK's stateless legacy lane, from one server factory, and publishes engine
+ * changes to `subscriptions/listen` streams. Dispose it to stop listening to
+ * the engine and close in-flight modern exchanges.
+ *
+ * @example
+ * ```ts
+ * import { createMcpEndpoint } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ *
+ * await using storage = new MemoryStorage();
+ * await using engine = new Engine({ storage });
+ * await using endpoint = createMcpEndpoint(engine);
+ *
+ * void endpoint;
+ * ```
+ */
+export class McpEndpoint implements AsyncDisposable {
+  readonly #engine: Engine;
+  readonly #feed: McpChangeFeed;
+  readonly #searchSubscriptions = new SearchSubscriptions();
+  readonly #maxBodyBytes: number;
+  readonly #handler: McpHttpHandler;
+
+  constructor(engine: RegistryAgnosticEngine, options: McpEndpointOptions = {}) {
+    // Registry-erase the covariance-widened parameter (#708) to the plain
+    // default `Engine` the tool and resource projections read.
+    const erasedEngine = engine as Engine;
+    this.#engine = erasedEngine;
+    this.#maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MCP_MAX_BODY_BYTES;
+    this.#feed = new McpChangeFeed(erasedEngine);
+    this.#handler = createMcpHandler(
+      createMcpServerFactory({
+        engine: erasedEngine,
+        access: accessFromRequestContext,
+        lifetime: 'request',
+        registrars: registrarList(options.registrars),
+      }),
+      {
+        legacy: 'stateless',
+        maxRequestBodySize: this.#maxBodyBytes,
+        ...(options.maxSubscriptions === undefined
+          ? {}
+          : { maxSubscriptions: options.maxSubscriptions }),
+      },
+    );
+    const notify = this.#handler.notify;
+    this.#feed.attach({
+      workflowChanged: (workflowId) => {
+        notify.resourceUpdated(workflowResourceUri(workflowId, 'state'));
+        notify.resourceUpdated(workflowResourceUri(workflowId, 'events'));
+        notify.resourceUpdated(workflowResourceUri(workflowId, 'checkpoints'));
+        for (const uri of this.#searchSubscriptions.uris()) notify.resourceUpdated(uri);
+      },
+      toolsChanged: () => {
+        notify.toolsChanged();
+      },
+    });
+  }
+
+  /**
+   * Serve one request as `principal` through the SDK's HTTP entry. Prefer
+   * {@link handleMcpHttpRequest}, which also validates the request's origin
+   * and refuses an anonymous caller when authentication is required.
+   */
+  async serve(request: Request, principal: Principal, authRequired: boolean): Promise<Response> {
+    // The SDK opens a listen stream without asking Weft, so refuse any resource the caller
+    // could not read before the stream exists.
+    const refusal = await refuseUnreadableSubscriptions(request, this.#maxBodyBytes, {
+      engine: this.#engine,
+      principal,
+      authRequired,
+    });
+    if (refusal !== undefined) return refusal;
+    const authInfo = accessAuthInfo(principal, authRequired);
+    return this.#searchSubscriptions.serve(request, this.#maxBodyBytes, () =>
+      this.#handler.fetch(request, { authInfo }),
+    );
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.#feed[Symbol.asyncDispose]();
+    await this.#handler.close();
+  }
+}
+
+/**
+ * Create an MCP HTTP endpoint for an engine.
+ *
+ * @example
+ * ```ts
+ * import { createMcpEndpoint } from '@lostgradient/weft';
+ * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ *
+ * await using storage = new MemoryStorage();
+ * await using engine = new Engine({ storage });
+ * await using endpoint = createMcpEndpoint(engine, { maxBodyBytes: 64 * 1024 });
+ *
+ * void endpoint;
+ * ```
+ */
+export function createMcpEndpoint(
+  engine: RegistryAgnosticEngine,
+  options?: McpEndpointOptions,
+): McpEndpoint {
+  return new McpEndpoint(engine, options);
+}
 
 /**
  * Options for handling one Streamable HTTP MCP request.
  *
  * @example
  * ```ts
- * import { createMcpSessionManager, type McpHttpRequestOptions } from '@lostgradient/weft';
+ * import { createMcpEndpoint, type McpHttpRequestOptions } from '@lostgradient/weft';
  * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
- * await using sessionManager = createMcpSessionManager(engine);
+ * await using endpoint = createMcpEndpoint(engine);
  *
- * const request = new Request('http://localhost/mcp', { method: 'GET' });
- * const options: McpHttpRequestOptions = {
- *   request,
- *   engine,
- *   sessionManager,
- *   authRequired: false,
- * };
+ * const request = new Request('http://localhost/mcp', { method: 'POST' });
+ * const options: McpHttpRequestOptions = { request, endpoint, authRequired: false };
  * void options;
  * ```
  */
 export type McpHttpRequestOptions = {
   readonly request: Request;
-  /**
-   * Typed as {@link RegistryAgnosticEngine} (see its JSDoc) rather than the
-   * plain default `Engine`, so both `new Engine({ storage })` and
-   * `Engine.create({ workflows })` type-check here directly.
-   */
-  readonly engine: RegistryAgnosticEngine;
-  readonly sessionManager: McpSessionManager;
+  readonly endpoint: McpEndpoint;
   readonly principal?: Principal;
   readonly authRequired: boolean;
-  readonly maxBodyBytes?: number;
   readonly publicOrigin?: string;
   readonly trustedHosts?: ReadonlyArray<string>;
 };
-
-class McpBodyTooLargeError extends WeftError<'McpBodyTooLargeError'> {
-  constructor() {
-    super('McpBodyTooLargeError', 'body too large');
-  }
-}
 
 /**
  * Handle one MCP Streamable HTTP request.
  *
  * Most applications should use `serve({ engine })`, which mounts `/mcp`
  * automatically. Use this helper when embedding the MCP transport in a custom
- * Bun server.
+ * Bun server. It refuses a cross-origin request that names neither the public
+ * origin nor a trusted host, refuses an anonymous caller when authentication
+ * is required, and hands everything else to the SDK with the caller's
+ * principal.
  *
  * @example
  * ```ts
- * import { createMcpSessionManager, handleMcpHttpRequest } from '@lostgradient/weft';
+ * import { createMcpEndpoint, handleMcpHttpRequest } from '@lostgradient/weft';
  * import { Engine, MemoryStorage } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
- * await using sessionManager = createMcpSessionManager(engine);
+ * await using endpoint = createMcpEndpoint(engine);
  *
  * Bun.serve({
  *   fetch(request) {
- *     return handleMcpHttpRequest({
- *       request,
- *       engine,
- *       sessionManager,
- *       authRequired: false,
- *     });
+ *     return handleMcpHttpRequest({ request, endpoint, authRequired: false });
  *   },
  * });
  * ```
@@ -95,366 +203,51 @@ export async function handleMcpHttpRequest(options: McpHttpRequestOptions): Prom
   const originFailure = validateOrigin(options.request, options.publicOrigin, options.trustedHosts);
   if (originFailure !== null) return originFailure;
 
-  switch (options.request.method) {
-    case 'POST':
-      return handleMcpPost(options);
-    case 'GET':
-      return handleMcpGet(options);
-    case 'DELETE':
-      return handleMcpDelete(options);
-    default:
-      return new Response('Method Not Allowed', {
-        status: 405,
-        headers: { allow: 'POST, GET, DELETE' },
-      });
-  }
-}
-
-async function handleMcpPost(options: McpHttpRequestOptions): Promise<Response> {
-  const headerFailure = validatePostHeaders(options.request);
-  if (headerFailure !== null) return headerFailure;
-
-  const parsed = await readMcpJsonBody(options);
-  if (parsed instanceof Response) return parsed;
-  if (!parsed.ok) {
+  const principal = options.principal ?? anonymousPrincipal();
+  if (options.authRequired && !isAuthenticated(principal)) {
     return Response.json(
       {
         jsonrpc: '2.0',
         id: null,
-        error: { code: -32700, message: 'Parse error' },
+        error: { code: -32011, message: 'MCP request requires authentication' },
       },
-      { status: 200, headers: noStoreHeaders() },
+      { status: 401, headers: { 'cache-control': 'no-store' } },
     );
   }
 
-  const sessionResolution = resolvePostSession(options, parsed.value);
-  if (sessionResolution instanceof Response) return sessionResolution;
-  const { session, createdSession, principal } = sessionResolution;
-
-  const result = await dispatchMcpMessage(parsed.value, {
-    // Registry-erase the widened `McpHttpRequestOptions.engine` back to the
-    // plain default `Engine` `dispatchMcpMessage` expects — see this option's
-    // JSDoc / #708.
-    engine: options.engine as Engine,
-    session,
-    principal,
-    authRequired: authRequiredFromOptions(options),
-  });
-
-  if (result.kind === 'accepted') {
-    return new Response(null, {
-      status: 202,
-      headers: maybeSessionHeaders(session, createdSession),
-    });
-  }
-
-  return Response.json(result.response, {
-    status: 200,
-    headers: maybeSessionHeaders(session, createdSession),
-  });
+  return options.endpoint.serve(options.request, principal, options.authRequired);
 }
 
-function validatePostHeaders(request: Request): Response | null {
-  if (!accepts(request.headers.get('accept'), 'application/json')) {
-    return new Response('Not Acceptable', { status: 406 });
-  }
-  if (!isJsonContentType(request.headers.get('content-type') ?? '')) {
-    return new Response('Unsupported Media Type', { status: 415 });
-  }
-  return null;
-}
+/** The key under `AuthInfo.extra` that carries the caller to the server factory. */
+const ACCESS_KEY = 'weft';
 
-async function readMcpJsonBody(
-  options: McpHttpRequestOptions,
-): Promise<ReturnType<typeof parseMcpMessage> | Response> {
-  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MCP_MAX_BODY_BYTES;
-  try {
-    const bytes = await readBodyBounded(options.request, maxBodyBytes);
-    return parseMcpMessage(new TextDecoder().decode(bytes));
-  } catch (error) {
-    return new Response(
-      error instanceof McpBodyTooLargeError ? 'Payload Too Large' : 'Bad Request',
-      {
-        status: error instanceof McpBodyTooLargeError ? 413 : 400,
-      },
-    );
-  }
-}
+type CarriedAccess = { readonly principal: Principal; readonly authRequired: boolean };
 
-function resolvePostSession(
-  options: McpHttpRequestOptions,
-  message: unknown,
-):
-  | {
-      readonly session: McpSession;
-      readonly createdSession: boolean;
-      readonly principal: Principal;
-    }
-  | Response {
-  const sessionHeader = sessionIdFromHeaders(options.request.headers);
-  const versionFailure = validateProtocolVersion(options.request.headers);
-  if (versionFailure !== null) return versionFailure;
-
-  if (shouldCreateSessionForPost(message, sessionHeader)) {
-    const principal = principalFromOptions(options);
-    try {
-      const session = options.sessionManager.create(principal);
-      bindSharedKeySession(session, principal, options.request.headers);
-      return { session, createdSession: true, principal };
-    } catch (error) {
-      if (error instanceof McpSessionLimitExceededError) {
-        return new Response(error.message, { status: 429, headers: noStoreHeaders() });
-      }
-      throw error;
-    }
-  }
-
-  if (sessionHeader === null) return new Response('Missing Mcp-Session-Id', { status: 400 });
-  const session = options.sessionManager.get(sessionHeader);
-  if (session === undefined) return new Response('MCP session not found', { status: 404 });
-  const principal = principalFromOptions(options);
-  if (
-    !isAuthorizedForSession(session, principal, continuationCredentials(options.request.headers))
-  ) {
-    return new Response('Forbidden', { status: 403, headers: noStoreHeaders() });
-  }
-  options.sessionManager.touch(session);
-  return { session, createdSession: false, principal };
-}
-
-function shouldCreateSessionForPost(message: unknown, sessionHeader: string | null): boolean {
-  if (sessionHeader !== null) return false;
-  if (!isMcpRequest(message)) return false;
-  return message.method === 'initialize' && !isNotification(message);
-}
-
-function handleMcpGet(options: McpHttpRequestOptions): Response {
-  if (!accepts(options.request.headers.get('accept'), 'text/event-stream')) {
-    return new Response('Not Acceptable', { status: 406 });
-  }
-  const versionFailure = validateProtocolVersion(options.request.headers);
-  if (versionFailure !== null) return versionFailure;
-  const sessionId = sessionIdFromHeaders(options.request.headers);
-  if (sessionId === null) return new Response('Missing Mcp-Session-Id', { status: 400 });
-  const session = options.sessionManager.get(sessionId);
-  if (session === undefined) return new Response('MCP session not found', { status: 404 });
-  const principal = principalFromOptions(options);
-  if (
-    !isAuthorizedForSession(session, principal, continuationCredentials(options.request.headers))
-  ) {
-    return new Response('Forbidden', { status: 403, headers: noStoreHeaders() });
-  }
-  options.sessionManager.touch(session);
-
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const encoder = new TextEncoder();
-      const write = (message: McpResponse | Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`));
-      };
-      controller.enqueue(encoder.encode(': connected\n\n'));
-      const remove = session.addTarget(write);
-      options.request.signal.addEventListener(
-        'abort',
-        () => {
-          remove();
-          try {
-            controller.close();
-          } catch {
-            // The client may already have closed the stream.
-          }
-        },
-        { once: true },
-      );
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      ...noStoreHeaders(),
-      'content-type': 'text/event-stream',
-      'Mcp-Session-Id': session.id,
-    },
-  });
-}
-
-function handleMcpDelete(options: McpHttpRequestOptions): Response {
-  const sessionId = sessionIdFromHeaders(options.request.headers);
-  if (sessionId === null) return new Response('Missing Mcp-Session-Id', { status: 400 });
-  const session = options.sessionManager.get(sessionId);
-  if (session === undefined) return new Response('MCP session not found', { status: 404 });
-  if (
-    !isAuthorizedForSession(
-      session,
-      principalFromOptions(options),
-      continuationCredentials(options.request.headers),
-    )
-  ) {
-    return new Response('Forbidden', { status: 403, headers: noStoreHeaders() });
-  }
-  options.sessionManager.delete(sessionId);
-  return new Response(null, { status: 204, headers: noStoreHeaders() });
-}
-
-function sessionIdFromHeaders(headers: Headers): string | null {
-  return headers.get('Mcp-Session-Id') ?? headers.get('MCP-Session-Id');
-}
-
-/** What a continuation request presents to prove it belongs to a session. */
-type ContinuationCredentials = {
-  readonly sessionToken: string | null;
-  readonly apiKey: string | null;
-};
-
-function continuationCredentials(headers: Headers): ContinuationCredentials {
-  return { sessionToken: sessionTokenFromHeaders(headers), apiKey: presentedApiKey(headers) };
+function accessAuthInfo(principal: Principal, authRequired: boolean): AuthInfo {
+  const access: CarriedAccess = { principal, authRequired };
+  return {
+    token: '',
+    clientId: isAuthenticated(principal) ? (principal.subject ?? principal.method) : 'anonymous',
+    scopes: isAuthenticated(principal) ? [...principal.scopes] : [],
+    extra: { [ACCESS_KEY]: access },
+  };
 }
 
 /**
- * The API key a request presents, read the way the authenticator reads it:
- * `X-API-Key`, else the bearer token of `Authorization`.
+ * Read back the caller {@link handleMcpHttpRequest} attached. A request that
+ * reached the SDK some other way carries none and is served as an anonymous
+ * caller on an endpoint that requires authentication.
  */
-function presentedApiKey(headers: Headers): string | null {
-  const headerKey = headers.get('X-API-Key');
-  if (headerKey) return headerKey;
-  const authorization = headers.get('Authorization');
-  return authorization?.startsWith('Bearer ') ? authorization.slice(7) : null;
+function accessFromRequestContext(request: McpRequestContext): CarriedAccess {
+  const carried = request.authInfo?.extra?.[ACCESS_KEY] as CarriedAccess | undefined;
+  return carried ?? { principal: anonymousPrincipal(), authRequired: true };
 }
 
-/**
- * Bind a new session to the API key its client presented when its principal is
- * the shared static-key subject. Every static key maps to that one subject, so
- * the principal alone cannot tell two keys apart; the key's digest can. A
- * standard MCP client sends no `Mcp-Session-Token` but presents the same key on
- * every request, so this keeps it working while a different key is refused. An
- * mTLS caller is not bound: the client certificate is not visible on the
- * `Request`, so its sessions keep requiring the token.
- */
-function bindSharedKeySession(session: McpSession, principal: Principal, headers: Headers): void {
-  if (principal.method !== 'api-key' || isCredentialBacked(principal)) return;
-  const apiKey = presentedApiKey(headers);
-  if (apiKey !== null) session.bindCredential(apiKey);
-}
-
-function sessionTokenFromHeaders(headers: Headers): string | null {
-  return headers.get('Mcp-Session-Token') ?? headers.get('MCP-Session-Token');
-}
-
-function validateProtocolVersion(headers: Headers): Response | null {
-  const version = headers.get('Mcp-Protocol-Version') ?? headers.get('MCP-Protocol-Version');
-  if (version === null) return null;
-  if (version === MCP_PROTOCOL_VERSION) return null;
-  return new Response('Unsupported MCP protocol version', { status: 400 });
-}
-
-function maybeSessionHeaders(session: McpSession, includeSession: boolean): HeadersInit {
-  const headers = noStoreHeaders();
-  if (includeSession) {
-    headers['Mcp-Session-Id'] = session.id;
-    // The continuation token is disclosed exactly once — on the `initialize`
-    // response that creates the session (`includeSession` is `createdSession`) — and
-    // is deliberately NOT echoed on any later response. That exposure asymmetry is
-    // the security gain: the client must send the session id on every continuation
-    // request (so it is routinely exposed to proxy/access logs), while the token is
-    // disclosed only here, so a leaked id alone cannot continue another caller's
-    // anonymous session.
-    headers['Mcp-Session-Token'] = session.token;
-  }
-  return headers;
-}
-
-function noStoreHeaders(): Record<string, string> {
-  return { 'cache-control': 'no-store' };
-}
-
-function authRequiredFromOptions(options: McpHttpRequestOptions): boolean {
-  return options.authRequired;
-}
-
-function principalFromOptions(options: McpHttpRequestOptions): Principal {
-  return options.principal ?? anonymousPrincipal();
-}
-
-/**
- * Authorize a continuation request (POST/GET/DELETE) against an existing session.
- * Returns `true` when the caller may drive, read, or terminate the session.
- *
- * Two layers: the caller's principal must own the session ({@link isSameSessionOwner}),
- * AND the caller must prove it is the client that created it:
- *
- * - Callers holding a credential that names them distinctly (`jwt`, or an
- *   `api-key` or `mtls` principal with a subject of its own) re-present it on
- *   every request, which is what rebuilds the principal, so they need nothing more.
- * - A session bound to a shared static-key subject (`api-key-caller`) admits a
- *   request that presents the same API key (compared by digest) or the
- *   per-session `Mcp-Session-Token`. A standard MCP client sends the key on every
- *   request and no token, so the digest keeps it working, while a different key
- *   holding only the session id is refused.
- * - Every other session (anonymous, `unauthenticated-local`, `stdio-local`, and
- *   the shared `mtls-caller`, whose certificate is not visible on the `Request`)
- *   shares its principal with every caller, so only the token separates them.
- */
-function isAuthorizedForSession(
-  session: McpSession,
-  caller: Principal,
-  presented: ContinuationCredentials,
-): boolean {
-  if (!isSameSessionOwner(session.principal, caller)) return false;
-  if (isCredentialBacked(session.principal)) return true;
-  if (presented.sessionToken !== null && presented.sessionToken === session.token) return true;
-  // A shared static-key session also admits the key it was bound to.
-  return session.isBoundToCredential(presented.apiKey);
-}
-
-function isSameSessionOwner(left: Principal, right: Principal): boolean {
-  if (left === right) return true;
-  if (left.method !== right.method) return false;
-  if (!isAuthenticated(left) || !isAuthenticated(right)) return left.method === right.method;
-  if (left.subject === undefined || right.subject === undefined) return false;
-  // Session identity binds the subject AND the authorization profile: a token
-  // for the same subject but a different scope set must not silently continue a
-  // session established under a narrower or broader profile. (This previously
-  // also compared a tenant id; with tenancy removed, the scope set is the
-  // remaining authorization dimension worth pinning.)
-  return left.subject === right.subject && haveSameScopes(left.scopes, right.scopes);
-}
-
-function haveSameScopes(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
-  if (left.size !== right.size) return false;
-  for (const scope of left) {
-    if (!right.has(scope)) return false;
-  }
-  return true;
-}
-
-async function readBodyBounded(request: Request, maxBytes: number): Promise<Uint8Array> {
-  const body = request.body;
-  if (body === null) return new Uint8Array();
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      total += result.value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel();
-        throw new McpBodyTooLargeError();
-      }
-      chunks.push(result.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bodyBytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bodyBytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bodyBytes;
+function registrarList(
+  registrars: McpServerRegistrar | ReadonlyArray<McpServerRegistrar> | undefined,
+): ReadonlyArray<McpServerRegistrar> {
+  if (registrars === undefined) return [];
+  return typeof registrars === 'function' ? [registrars] : registrars;
 }
 
 function validateOrigin(
@@ -474,4 +267,27 @@ function validateOrigin(
   if (publicOrigin !== undefined && origin === publicOrigin) return null;
   if (trustedHosts?.includes(originUrl.host)) return null;
   return new Response('Forbidden', { status: 403 });
+}
+
+async function refuseUnreadableSubscriptions(
+  request: Request,
+  maxBodyBytes: number,
+  context: McpAccessContext,
+): Promise<Response | undefined> {
+  const listen = await readListenRequest(request, maxBodyBytes);
+  if (listen === undefined) return undefined;
+  try {
+    for (const uri of listen.resourceSubscriptions) assertResourceSubscriptionAllowed(uri, context);
+    return undefined;
+  } catch (error) {
+    if (!(error instanceof McpToolExecutionError)) throw error;
+    return Response.json(
+      {
+        jsonrpc: '2.0',
+        id: listen.id,
+        error: { code: -32011, message: error.message, data: { reason: error.message } },
+      },
+      { status: 403, headers: { 'cache-control': 'no-store' } },
+    );
+  }
 }

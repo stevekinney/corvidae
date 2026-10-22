@@ -53,7 +53,7 @@ describe('Card CSS contract', () => {
       ".cinder-card[data-cinder-tone='danger'] > .cinder-card__header .cinder-card__title",
     );
     expect(css).toContain(".cinder-card[data-cinder-tone='danger'] > .cinder-card__footer");
-    expect(iconBlock).toContain('var(--cinder-status-danger-solid)');
+    expect(iconBlock).toContain('var(--cinder-status-danger-text)');
   });
 
   test('resting card uses the sm elevation token and transitions border/shadow/background', async () => {

@@ -1,5 +1,6 @@
 import type { ExecutionHandle } from './execution-lifecycle';
 import type { Tool } from './is-tool';
+import { redactToolResultMedia } from './protocol';
 import { resolveResultStream, wrapAsyncIterable } from './toolbox-execution-helpers';
 import type { ToolCall, ToolExecutionResult } from './types';
 
@@ -58,7 +59,8 @@ function settleToolOutcome(context: ExecutionSettlementContext, hasLiveStream: b
   }
   context.emit('complete', {
     tool: context.tool,
-    result,
+    // COR-792: the event shows returned media's type, size, and identity, never its bytes.
+    result: redactToolResultMedia(result),
     executionId: context.executionId,
     ...(context.ownerId !== undefined ? { ownerId: context.ownerId } : {}),
   });

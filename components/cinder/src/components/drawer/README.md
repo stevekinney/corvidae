@@ -1,6 +1,6 @@
 # Drawer
 
-Edge-anchored overlay panel for supplementary content without leaving the current page. The `placement` prop picks the edge: `left`, `right` (default), or `bottom` for mobile-style bottom sheets. Drawer is modal by default; set `modal={false}` for a non-modal `<aside>` that leaves the page interactive while still closing from the shared Escape stack.
+Edge-anchored overlay panel for supplementary content without leaving the current page. The `placement` prop picks the edge: `left`, `right` (default), or `bottom` for mobile-style bottom sheets. Drawer is modal by default; set `modal={false}` for a non-modal `<aside>` that leaves the page interactive while still closing from the shared Escape stack. A non-modal drawer reads as a side panel of the page: its panel is the inset surface (`--cinder-surface-inset`), and its header, body and footer are transparent, where a modal drawer is a raised sheet.
 
 ## Choosing this component
 

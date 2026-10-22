@@ -533,6 +533,7 @@ export async function runStep(
     toolCallInputs: response.toolCalls,
     emittedSettledCallIds: new Set<string>(),
     stepAbortController,
+    admitter,
   });
   if ('kind' in toolExecution) return toolExecution;
   const { materializedToolCalls, results } = toolExecution;

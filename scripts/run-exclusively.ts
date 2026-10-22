@@ -38,8 +38,13 @@
  * Turborepo's own default of ten tasks at once oversubscribes both. A stage that passes
  * `--concurrency` itself still wins, since the flag overrides the variable.
  *
- * Usage: `bun scripts/run-exclusively.ts '<shell command>' [arguments...]`. Arguments reach the
- * command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes them.
+ * `--shared` before the command skips the lock and keeps the install check and the Turborepo
+ * defaults. `bun run check`, the per-pull-request gate, uses it: it checks only the affected
+ * workspaces, so parallel sessions run it side by side rather than queue behind a full validate.
+ *
+ * Usage: `bun scripts/run-exclusively.ts [--shared] '<shell command>' [arguments...]`. Arguments
+ * reach the command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes
+ * them.
  */
 
 import { spawn } from 'node:child_process';
@@ -62,7 +67,8 @@ const processorsPerTurborepoTask = 3;
 
 /**
  * `environment` with the shared Turborepo cache and a memory-scaled task concurrency filled in
- * where the caller has not chosen its own.
+ * where the caller has not chosen its own. A `shared` run takes no lock, so several can run at
+ * once; each gets half the concurrency, since processors are what a full host runs out of.
  */
 export function withTurborepoDefaults(
   environment: Readonly<Record<string, string | undefined>>,
@@ -71,14 +77,13 @@ export function withTurborepoDefaults(
     totalMemoryBytes: totalmem(),
     processors: cpus().length,
   },
+  shared = false,
 ): Record<string, string | undefined> {
-  const concurrency = Math.max(
-    1,
-    Math.min(
-      Math.floor(host.processors / processorsPerTurborepoTask),
-      Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
-    ),
+  const exclusive = Math.min(
+    Math.floor(host.processors / processorsPerTurborepoTask),
+    Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
   );
+  const concurrency = Math.max(1, shared ? Math.floor(exclusive / 2) : exclusive);
   return {
     ...environment,
     TURBO_CACHE_DIR: environment['TURBO_CACHE_DIR'] || join(commonDirectory, 'turbo-cache'),
@@ -452,6 +457,12 @@ export type RunExclusivelyOptions = {
   readonly report?: (line: string) => void;
   /** The environment the command inherits; defaults to this process's. */
   readonly environment?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Runs without taking the host lock. `bun run check`, the per-pull-request gate, checks only
+   * the affected workspaces, so parallel sessions run it side by side instead of queueing it
+   * behind a full validate. It still gets the install check and the Turborepo defaults.
+   */
+  readonly shared?: boolean;
 };
 
 function describeHolder(holder: HostLockHolder | undefined): string {
@@ -489,6 +500,7 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
   let lock: HeldHostLock | undefined;
   const environment = options.environment ?? rootScriptEnvironment();
   try {
+    if (options.shared) return await runInProcessGroup(options, undefined, report, undefined);
     const lockDirectory = await options.lockDirectory;
     // A parent run that already holds the lock exported its token; a stage it started reuses the
     // lock rather than queueing behind its own parent.
@@ -599,10 +611,12 @@ async function gitCommonDirectory(): Promise<string> {
 }
 
 if (import.meta.main) {
-  const [script = '', ...args] = process.argv.slice(2);
+  const sharedFlag = '--shared';
+  const shared = process.argv[2] === sharedFlag;
+  const [script = '', ...args] = process.argv.slice(shared ? 3 : 2);
   if (script === '') {
     process.stderr.write(
-      "usage: bun scripts/run-exclusively.ts '<shell command>' [arguments...]\n",
+      "usage: bun scripts/run-exclusively.ts [--shared] '<shell command>' [arguments...]\n",
     );
     process.exitCode = 64;
   } else {
@@ -615,10 +629,11 @@ if (import.meta.main) {
       ),
       script: withPreflight(script),
       args,
+      shared,
       environment:
         commonDirectory === undefined
           ? rootScriptEnvironment()
-          : withTurborepoDefaults(rootScriptEnvironment(), commonDirectory),
+          : withTurborepoDefaults(rootScriptEnvironment(), commonDirectory, undefined, shared),
     });
   }
 }

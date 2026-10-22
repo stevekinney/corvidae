@@ -98,6 +98,7 @@ function normalizeMarkdownToolResult(value: unknown): unknown {
     callId: record['callId'],
     outcome: record['outcome'],
     content: record['content'],
+    ...(record['parts'] !== undefined ? { parts: record['parts'] } : {}),
     error: record['error'],
     action: record['action'],
     ...(typeof record['inputDigest'] === 'string' ? { inputDigest: record['inputDigest'] } : {}),
