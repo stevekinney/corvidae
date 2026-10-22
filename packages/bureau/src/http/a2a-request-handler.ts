@@ -80,7 +80,12 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, DECLARED_EXTENSIONS } from './a2a-agent-card.ts';
+import {
+  A2A_INPUT_MODES,
+  A2A_OUTPUT_MODES,
+  A2UI_EXTENSION_URI,
+  DECLARED_EXTENSIONS,
+} from './a2a-agent-card.ts';
 import type { A2ATaskRecords, A2AWireMessage } from './a2a-task-record.ts';
 import {
   agentMessage,
@@ -104,6 +109,9 @@ export const A2A_SEND_LEDGER_KEY_PREFIX = 'command-ledger:a2a-send:v1';
 /** The metadata key a continuation names the human wait it answers with. */
 export const SIGNAL_NAME_METADATA_KEY = 'signalName';
 
+/** The metadata key a continuation names the tool approval it decides with, among several. */
+export const CALL_ID_METADATA_KEY = 'callId';
+
 /** The metadata key a continuation to a working task names its delivery mode with. */
 export const DELIVERY_MODE_METADATA_KEY = 'deliveryMode';
 
@@ -122,8 +130,12 @@ const LISTED_HISTORY_LIMIT = 100;
 /** How long a blocking send waits between reads of a task no event has announced. */
 const SETTLE_POLL_MS = 1_000;
 
-/** What a send's ledger entry claims: nothing beyond the binding itself. */
-export type A2ASendClaim = Record<string, never>;
+/**
+ * What a send's ledger entry claims: for a continuation, the path it was admitted by. A retry
+ * of a claim left pending takes the same path, whatever state the task has reached since, so an
+ * answer that took effect is never resent as session input.
+ */
+export type A2ASendClaim = { readonly path?: 'answer' | 'input' | undefined };
 
 /** What a completed send's ledger entry holds: the task it created or continued. */
 export type A2ASendResult = { readonly taskId: string };
@@ -410,7 +422,12 @@ export function createBureauA2ARequestHandler(
     }
   }
 
-  async function createTask(message: Message, owner: Owner, version: string): Promise<string> {
+  async function createTask(
+    message: Message,
+    owner: Owner,
+    version: string,
+    onEffect: () => void,
+  ): Promise<string> {
     if (message.contextId !== '') {
       const contextOwner = await bureau.getOwner({ kind: 'session', id: message.contextId });
       // A context another caller owns is answered as if it did not exist, before anything loads it.
@@ -450,6 +467,7 @@ export function createBureauA2ARequestHandler(
         throw invalid(error.message);
       throw error;
     }
+    onEffect();
     await records.create({
       recordVersion: 1,
       taskId: run.id,
@@ -483,8 +501,10 @@ export function createBureauA2ARequestHandler(
     view: TaskView,
     owner: Owner,
     principal: Principal,
+    path: 'answer' | 'input',
+    onEffect: () => void,
   ): Promise<void> {
-    if (view.status === 'input-required') {
+    if (path === 'answer') {
       const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
       const decision = data?.decision;
       if (
@@ -500,6 +520,10 @@ export function createBureauA2ARequestHandler(
         throw invalid('A reject decision requires a reason.');
       }
       const signalName = message.metadata?.[SIGNAL_NAME_METADATA_KEY];
+      const callId = message.metadata?.[CALL_ID_METADATA_KEY];
+      if (callId !== undefined && typeof callId !== 'string') {
+        throw invalid('metadata.callId must be a string.');
+      }
       const text = textOf(message);
       if (decision === undefined && text === '') {
         throw invalid('An answer needs a text part, or a data part with a decision.');
@@ -510,11 +534,13 @@ export function createBureauA2ARequestHandler(
         ...(decision === undefined ? { answer: text } : { decision }),
         ...(reason === undefined ? {} : { reason }),
         ...(typeof signalName === 'string' ? { signalName } : {}),
+        ...(typeof callId === 'string' ? { callId } : {}),
       });
       if (!input.success)
         throw invalid(input.error.issues[0]?.message ?? 'The answer is not valid.');
       try {
         await options.respond(principal, input.data);
+        onEffect();
       } catch (error) {
         const fault = error as { code?: unknown; message?: unknown } | null;
         if (typeof fault?.code !== 'string') throw error;
@@ -550,6 +576,7 @@ export function createBureauA2ARequestHandler(
           `The message could not be admitted (${outcome.outcome}).`,
         );
       }
+      onEffect();
     }
     await records.update(view.id, (current) => {
       const entry = historyEntryOf(message, view.id, view.contextId);
@@ -605,11 +632,31 @@ export function createBureauA2ARequestHandler(
         'This agent does not deliver push notifications.',
       );
     }
-    const continued = continuing ? await checkContinuation(message, owner) : undefined;
+    const outputModes = params.configuration?.acceptedOutputModes ?? [];
+    if (outputModes.length > 0 && !outputModes.some((mode) => A2A_OUTPUT_MODES.includes(mode))) {
+      throw new ContentTypeNotSupportedError(
+        `This agent answers only in ${A2A_OUTPUT_MODES.join(', ')}, which acceptedOutputModes excludes.`,
+      );
+    }
+    // A claim an earlier attempt left pending already took effect, or may have: it is finished
+    // by the path it was admitted on, and the task's state since does not refuse it.
+    const pending =
+      located.state === 'retained' && located.entry.state === 'pending'
+        ? located.entry.claim
+        : undefined;
+    const continued = !continuing
+      ? undefined
+      : pending === undefined
+        ? await checkContinuation(message, owner)
+        : await ownTask(message.taskId, owner);
+    const path: 'answer' | 'input' | undefined =
+      continued === undefined
+        ? undefined
+        : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
 
     let claimed;
     try {
-      claimed = await ledger.claim(identity, digest, {});
+      claimed = await ledger.claim(identity, digest, path === undefined ? {} : { path });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
         throw invalid(
@@ -623,16 +670,26 @@ export function createBureauA2ARequestHandler(
     }
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     let taskId: string;
+    // Whether the command may have taken effect: a run created, a wait answered, an input
+    // admitted. From then on the claim is kept, so a retry finishes it by the same path rather
+    // than claiming afresh against the task's later state.
+    let effected = false;
     try {
       if (continued === undefined) {
-        taskId = await createTask(message, owner, version);
+        taskId = await createTask(message, owner, version, () => {
+          effected = true;
+        });
       } else {
-        await continueTask(message, continued, owner, user.principal);
+        await continueTask(message, continued, owner, user.principal, path ?? 'input', () => {
+          effected = true;
+        });
         taskId = continued.id;
       }
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
-      if (claimed.outcome === 'claimed') await ledger.release(entry).catch(() => undefined);
+      if (claimed.outcome === 'claimed' && !effected) {
+        await ledger.release(entry).catch(() => undefined);
+      }
       throw error;
     }
     await ledger.complete(entry, { taskId });
@@ -744,9 +801,15 @@ export function createBureauA2ARequestHandler(
           agentName,
           ...(params.contextId === '' ? {} : { contextId: params.contextId }),
           ...(status === undefined ? {} : { status }),
+          // A2A's filter is inclusive ("greater than or equal"), and the listing's is strict:
+          // timestamps have millisecond resolution, so one millisecond earlier is the same set.
           ...(params.statusTimestampAfter === undefined
             ? {}
-            : { statusTimestampAfter: params.statusTimestampAfter }),
+            : {
+                statusTimestampAfter: new Date(
+                  Date.parse(params.statusTimestampAfter) - 1,
+                ).toISOString(),
+              }),
           limit: pageSize,
           ...(params.pageToken === '' ? {} : { pageToken: params.pageToken }),
           project: async (view) => Task.toJSON(await respondWith(view, widest)),

@@ -922,3 +922,92 @@ describe('two identical sends at once', () => {
     });
   });
 });
+
+describe('the first review pass', () => {
+  it('forwards metadata.callId to select the approval a decision decides', async () => {
+    const charges: number[] = [];
+    const opened = await openBureau({
+      agents: {
+        payer: createAgent({
+          name: 'payer',
+          generate: chargesThenReports(),
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
+      publish: ['payer'],
+      handlerOptions: { publicUrl: PUBLIC_URL },
+    });
+    try {
+      const parked = await sendForTask(opened, 'payer', { message: message('pay') });
+      const decide = (callId: string) =>
+        send(opened, 'payer', {
+          message: {
+            ...message('', { taskId: parked.id, metadata: { callId } }),
+            parts: [{ data: { decision: 'approve' }, mediaType: 'application/json' }],
+          },
+          configuration: { returnImmediately: true },
+        });
+
+      const wrong = await decide('no-such-call');
+      const right = await decide('charge-1');
+
+      expect(wrong.body.error.code).toBe(-32602);
+      expect(right.body.error).toBeUndefined();
+      await waitForCondition(() => charges.length === 1, 'the approved charge never ran');
+    } finally {
+      await opened.dispose();
+    }
+  });
+
+  it('includes a task whose status timestamp equals statusTimestampAfter', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const task = await sendForTask(opened, 'asker', { message: message('boundary') });
+
+      const listed = await call(opened, 'asker', 'ListTasks', {
+        statusTimestampAfter: task.status.timestamp,
+      });
+
+      expect(listed.body.result.tasks.map((entry: Json) => entry.id)).toEqual([task.id]);
+    });
+  });
+
+  it('refuses acceptedOutputModes this agent cannot answer in, before admission', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const refused = await send(opened, 'asker', {
+        message: message('json only'),
+        configuration: { acceptedOutputModes: ['application/json'] },
+      });
+
+      expect(refused.body.error.code).toBe(-32005);
+      expect(opened.bureau.listRuns()).toEqual([]);
+    });
+  });
+
+  it('applies the handler’s maxRequestBodyBytes to A2A requests', async () => {
+    await withA2A(
+      { asker: answering('done') },
+      async (opened) => {
+        const oversized = await opened.handler(
+          new Request('http://localhost/a2a/asker', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'A2A-Version': '1.0',
+              'X-API-Key': 'alice-key',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'SendMessage',
+              params: { message: message('x'.repeat(4096)) },
+            }),
+          }),
+        );
+        expect(oversized.status).toBe(413);
+        expect(opened.bureau.listRuns()).toEqual([]);
+      },
+      { handlerOptions: { maxRequestBodyBytes: 1024 } },
+    );
+  });
+});

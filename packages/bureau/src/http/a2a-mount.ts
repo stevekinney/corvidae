@@ -60,6 +60,8 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
   readonly security: A2ASecurityDeclaration | undefined;
   readonly records: A2ATaskRecords;
   readonly ledger: A2ASendLedger;
+  /** The handler's request-body bound, applied to A2A requests too. */
+  readonly maxRequestBodyBytes?: number | undefined;
   readonly respond: BureauA2ARequestHandlerOptions['respond'];
 };
 
@@ -97,12 +99,16 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     const handler = createA2AHandler({
       requestHandler,
       agentCard,
-      publicUrl: `${publicUrl}${A2A_MOUNT_PREFIX}/${agentName}`,
-      discoveryUrl: `${discoveryUrl}${A2A_MOUNT_PREFIX}/${agentName}`,
+      // The name is one path segment, encoded, so the route's decode recovers it exactly.
+      publicUrl: `${publicUrl}${A2A_MOUNT_PREFIX}/${encodeURIComponent(agentName)}`,
+      discoveryUrl: `${discoveryUrl}${A2A_MOUNT_PREFIX}/${encodeURIComponent(agentName)}`,
       tenant: options.bureau.id,
       authenticate: (request) =>
         users.get(request) ?? Response.json({ error: 'Unauthorized' }, { status: 401 }),
       ...(options.signing === undefined ? {} : { signing: options.signing }),
+      ...(options.maxRequestBodyBytes === undefined
+        ? {}
+        : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
     });
     handlers.set(agentName, { revision: source.definitionRevision, handler });
     return handler;

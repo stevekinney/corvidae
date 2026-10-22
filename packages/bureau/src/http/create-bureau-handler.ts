@@ -735,6 +735,9 @@ function createA2AMount(
     records,
     ledger,
     respond: (principal, input) => respondToTask(host, principal, input),
+    ...(options.maxRequestBodyBytes === undefined
+      ? {}
+      : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
   });
 }
 
