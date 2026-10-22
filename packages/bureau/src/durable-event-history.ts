@@ -2305,37 +2305,28 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       { emittedAtMs: eventTimestamp(event) },
     );
   };
-  const schedulePausedListener = (event: SchedulePausedEvent): void => {
+  // COR-194 — a transition Bureau committed through its schedule-transition outbox carries the
+  // outbox's dedupe key and commit time. Bureau has already recorded it under that key before
+  // dispatching, so this write is a no-op for Bureau's own history; another history subscribed to
+  // the same bureau records it once, dated when it committed.
+  const scheduleTransitionListener = (
+    event: SchedulePausedEvent | ScheduleResumedEvent | ScheduleCancelledEvent,
+  ): void => {
     if (signal?.aborted) return;
     sink(
       { kind: 'schedule', id: event.scheduleId },
-      'schedule.paused',
+      event.type,
       { scheduleId: event.scheduleId },
-      { emittedAtMs: eventTimestamp(event) },
-    );
-  };
-  const scheduleResumedListener = (event: ScheduleResumedEvent): void => {
-    if (signal?.aborted) return;
-    sink(
-      { kind: 'schedule', id: event.scheduleId },
-      'schedule.resumed',
-      { scheduleId: event.scheduleId },
-      { emittedAtMs: eventTimestamp(event) },
-    );
-  };
-  const scheduleCancelledListener = (event: ScheduleCancelledEvent): void => {
-    if (signal?.aborted) return;
-    sink(
-      { kind: 'schedule', id: event.scheduleId },
-      'schedule.cancelled',
-      { scheduleId: event.scheduleId },
-      { emittedAtMs: eventTimestamp(event) },
+      {
+        emittedAtMs: event.committedAtMs ?? eventTimestamp(event),
+        ...(event.dedupeKey === undefined ? {} : { dedupeKey: event.dedupeKey }),
+      },
     );
   };
   bureau.addEventListener('schedule.created', scheduleCreatedListener);
-  bureau.addEventListener('schedule.paused', schedulePausedListener);
-  bureau.addEventListener('schedule.resumed', scheduleResumedListener);
-  bureau.addEventListener('schedule.cancelled', scheduleCancelledListener);
+  bureau.addEventListener('schedule.paused', scheduleTransitionListener);
+  bureau.addEventListener('schedule.resumed', scheduleTransitionListener);
+  bureau.addEventListener('schedule.cancelled', scheduleTransitionListener);
 
   // AB-313 — a run's explicit removal (`Bureau.deleteRun`) is the
   // "Bureau-level record was removed" evidence `bureau.eventHistory`'s
@@ -2686,9 +2677,9 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       bureau.removeEventListener('schedule.completed', scheduleCompletedListener);
       bureau.removeEventListener('schedule.failed', scheduleFailedListener);
       bureau.removeEventListener('schedule.created', scheduleCreatedListener);
-      bureau.removeEventListener('schedule.paused', schedulePausedListener);
-      bureau.removeEventListener('schedule.resumed', scheduleResumedListener);
-      bureau.removeEventListener('schedule.cancelled', scheduleCancelledListener);
+      bureau.removeEventListener('schedule.paused', scheduleTransitionListener);
+      bureau.removeEventListener('schedule.resumed', scheduleTransitionListener);
+      bureau.removeEventListener('schedule.cancelled', scheduleTransitionListener);
       bureau.removeEventListener('run.removed', runRemovedListener);
       bureau.removeEventListener('session.created', sessionCreatedListener);
       bureau.removeEventListener('session.saved', sessionSavedListener);
