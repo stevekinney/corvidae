@@ -1,4 +1,10 @@
-import type { ContentSource, MediaContent, Modality, TextContent } from 'armorer/protocol';
+import type {
+  ContentSource,
+  MediaContent,
+  Modality,
+  TextContent,
+  ToolResultPart,
+} from 'armorer/protocol';
 
 import type { JSONValue } from './types';
 
@@ -230,6 +236,13 @@ function copyMediaContent(part: MediaContent): MediaContent {
     source: { ...source },
     ...(metadata !== undefined ? { metadata: structuredClone(metadata) } : {}),
   };
+}
+
+/** Copies one tool-result part, as {@link copyMultiModalContent} copies any part. */
+export function copyToolResultPart(part: ToolResultPart): ToolResultPart {
+  return part.type === 'text'
+    ? (copyMultiModalContent(part) as TextContent)
+    : copyMediaContent(part);
 }
 
 /**

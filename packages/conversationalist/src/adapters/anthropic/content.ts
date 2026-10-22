@@ -230,9 +230,38 @@ export function toToolUseBlock(toolCall: ToolCall): AnthropicToolUseBlock {
 }
 
 /**
- * Converts an internal ToolResult to Anthropic tool_result block.
+ * Converts an internal ToolResult to Anthropic tool_result block. A
+ * successful result with `parts` sends them as ordered text, image, and
+ * document blocks; audio, video, and file parts are rejected, never
+ * flattened into text.
  */
-export function toToolResultBlock(toolResult: ToolResult): AnthropicToolResultBlock {
+export function toToolResultBlock(
+  toolResult: ToolResult,
+  context?: MediaExportContext,
+): AnthropicToolResultBlock {
+  if (toolResult.outcome === 'success' && toolResult.parts !== undefined) {
+    const parts = toolResult.parts;
+    const mediaContext =
+      context ??
+      createMediaExportContext(
+        'anthropic',
+        { id: toolResult.callId, role: 'tool-result' },
+        [],
+        undefined,
+      );
+    return {
+      type: 'tool_result',
+      tool_use_id: toolResult.callId,
+      content: parts.map((part, partIndex) => {
+        if (part.type === 'text') return { type: 'text', text: part.text };
+        const block = toAnthropicMedia(part, partIndex, mediaContext);
+        if (block.type !== 'image' && block.type !== 'document') {
+          return rejectPart(mediaContext, partIndex, part, 'part-type-not-accepted');
+        }
+        return block;
+      }),
+    };
+  }
   const payload =
     toolResult.outcome === 'success'
       ? toolResult.content

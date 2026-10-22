@@ -44,6 +44,8 @@ export interface GeminiFunctionResponsePart {
   functionResponse: {
     name: string;
     response: Record<string, unknown>;
+    /** Ordered media for a result that carries parts; inline bytes only. */
+    parts?: Array<{ inlineData: { mimeType: string; data: string } }>;
   };
 }
 
