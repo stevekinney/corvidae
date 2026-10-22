@@ -10062,6 +10062,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError('Cannot delete a running run', 'CONFLICT');
     }
 
+    // COR-1631: the run's surfaces go first. Nothing else has been removed yet, so a failure
+    // leaves the run in place and a second delete retries, instead of orphaning the surfaces.
+    await surfaces?.removeTask(id);
+
     await revokePendingApprovalsForRun(id, {
       status: 'revoked',
       principal: 'system:run-deletion',
@@ -10095,14 +10099,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         level: 'error',
         scope: 'task-registry',
         message: `[bureau] Could not remove the task record of deleted run "${id}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    });
-    await surfaces?.removeTask(id).catch((error: unknown) => {
-      diagnose({
-        level: 'error',
-        scope: 'interactive-surfaces',
-        message: `[bureau] Could not remove the surfaces of deleted run "${id}": ${serializeUnknownError(error)}`,
         cause: error,
       });
     });

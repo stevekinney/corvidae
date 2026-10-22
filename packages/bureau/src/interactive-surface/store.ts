@@ -280,29 +280,28 @@ function withoutValue(
  * be the model, so a continuation naming another task is refused here rather
  * than handed to the caller to dispatch.
  *
- * A run id can itself hold colons (a session run is `<sessionId>:<sequence>`),
- * so a review id is matched by its known prefix rather than split. A prefix
- * alone is ambiguous when this task's id begins another's (`a` and `a:0`), so a
- * review whose remainder names an existing longer task belongs to that task.
+ * A run id can itself hold colons (a session run is `<sessionId>:<sequence>`,
+ * and a session id may hold more), so no parse of a review id can find where a
+ * run id ends. The grammar fixes it instead: after `approval:<taskId>:` comes
+ * a call id with no colon, and after `human-wait:<taskId>:` a signal name with
+ * no colon and an ordinal. Any review id with one more segment, whichever run
+ * it names, is refused rather than guessed at.
  */
-async function assertOwnContinuations(
+function assertOwnContinuations(
   actions: readonly InteractiveSurfaceActionDefinition[],
   taskId: string,
   task: InteractiveSurfaceTask,
-  lookup: (taskId: string) => Promise<InteractiveSurfaceTask | undefined>,
-): Promise<void> {
+): void {
   for (const action of actions) {
     const continuation = action.continuation;
     if (continuation.type === 'review') {
       const reviewId = continuation.reviewId;
-      const prefix = [`approval:${taskId}:`, `human-wait:${taskId}:`].find((candidate) =>
-        reviewId.startsWith(candidate),
-      );
-      const remainder = prefix === undefined ? '' : reviewId.slice(prefix.length);
-      const separator = remainder.indexOf(':');
-      const longer =
-        separator > 0 ? await lookup(`${taskId}:${remainder.slice(0, separator)}`) : undefined;
-      if (prefix === undefined || longer !== undefined) {
+      const approval = `approval:${taskId}:`;
+      const wait = `human-wait:${taskId}:`;
+      const own =
+        (reviewId.startsWith(approval) && /^[^:]+$/.test(reviewId.slice(approval.length))) ||
+        (reviewId.startsWith(wait) && /^[^:]+:\d+$/.test(reviewId.slice(wait.length)));
+      if (!own) {
         throw new InteractiveSurfaceValidationError(
           `action "${action.name}" continues a review of another task`,
         );
@@ -698,6 +697,7 @@ export function createInteractiveSurfaces(
       data: surface.data,
       summary: surface.summary,
       actions: surface.actions,
+      audience: surface.audience,
     };
   }
 
@@ -734,10 +734,13 @@ export function createInteractiveSurfaces(
           'classification must be "standard" or "sensitive"',
         );
       }
-      assertWithinPayloadLimit({ representation, data, summary, actions }, maxPayloadBytes);
+      assertWithinPayloadLimit(
+        { representation, data, summary, actions, audience },
+        maxPayloadBytes,
+      );
       const digest = digestOf(record);
 
-      await assertOwnContinuations(actions, taskId, task, options.task);
+      assertOwnContinuations(actions, taskId, task);
       // Watch before committing, so a settlement after this point freezes the new surface.
       watch(taskId);
 
@@ -825,9 +828,7 @@ export function createInteractiveSurfaces(
       }
       const digest = digestOf(record);
 
-      if (changes.actions !== undefined) {
-        await assertOwnContinuations(changes.actions, taskId, task, options.task);
-      }
+      if (changes.actions !== undefined) assertOwnContinuations(changes.actions, taskId, task);
 
       return retrying(async () => {
         const loaded = await current(task, taskId, surfaceId);

@@ -159,7 +159,10 @@ export function readSummary(value: unknown): string {
 /** Reads an audience: unique, non-empty principals. */
 export function readAudience(value: unknown): readonly string[] {
   if (value === undefined) return [];
-  const audience = readStringList(value, 'audience');
+  // Each principal is an identifier: bounded, with no control characters.
+  const audience = readStringList(value, 'audience').map((principal, index) =>
+    readIdentifier(principal, `audience[${index}]`),
+  );
   if (new Set(audience).size !== audience.length) fail('audience must not repeat a principal');
   return audience;
 }
@@ -291,9 +294,8 @@ function readA2ui(value: Record<string, unknown>): InteractiveSurfaceRepresentat
     fail(`representation.specificationVersion must be "${INTERACTIVE_SURFACE_A2UI_VERSION}"`);
   }
   const catalogId = readIdentifier(value['catalogId'], 'representation.catalogId');
-  if (!Array.isArray(value['components']) || value['components'].length === 0) {
-    fail('representation.components must be a non-empty array');
-  }
+  // A2UI's `createSurface` carries no components; they follow in `updateComponents`.
+  if (!Array.isArray(value['components'])) fail('representation.components must be an array');
   const ids = new Set<string>();
   const components = value['components'].map((component: unknown, index) => {
     const where = `representation.components[${index}]`;
@@ -304,7 +306,9 @@ function readA2ui(value: Record<string, unknown>): InteractiveSurfaceRepresentat
     ids.add(id);
     return entry;
   });
-  if (!ids.has('root')) fail('representation.components must include the component "root"');
+  if (ids.size > 0 && !ids.has('root')) {
+    fail('representation.components must include the component "root" once it has any');
+  }
   const theme =
     value['theme'] === undefined
       ? undefined

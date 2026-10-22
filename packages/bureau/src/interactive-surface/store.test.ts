@@ -883,6 +883,61 @@ describe('closing, cancellation, and cleanup', () => {
     ).toMatchObject({ reason: 'invalid' });
   });
 
+  it('refuses a review of a run whose session id holds a colon, from a task its id begins with', async () => {
+    const { surfaces } = harness({ a: { owner: OWNER, contextId: 'a-session' } });
+    const review = (reviewId: string, commandId: string) =>
+      surfaces.create(
+        createCommand({
+          commandId,
+          surfaceId: commandId,
+          taskId: 'a',
+          actions: [
+            { name: 'approve', intent: 'approve', continuation: { type: 'review', reviewId } },
+          ],
+        }),
+      );
+
+    // `a:x:0` is a session run of session `a:x`; no task `a:x` exists to look up.
+    expect(await review('approval:a:x:0:call', 'foreign')).toMatchObject({ reason: 'invalid' });
+    expect(await review('human-wait:a:x:0:signal:1', 'foreign-wait')).toMatchObject({
+      reason: 'invalid',
+    });
+    expect(await review('approval:a:call-1', 'own')).toMatchObject({ outcome: 'accepted' });
+    expect(await review('human-wait:a:reason:0', 'own-wait')).toMatchObject({
+      outcome: 'accepted',
+    });
+  });
+
+  it('accepts an A2UI surface before its components arrive, and caps the audience', async () => {
+    const { surfaces } = harness();
+    expect(
+      await surfaces.create(
+        createCommand({
+          actions: [],
+          representation: {
+            kind: 'a2ui',
+            specificationVersion: 'v0.9.1',
+            catalogId: 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json',
+            components: [],
+          },
+        }),
+      ),
+    ).toMatchObject({ outcome: 'accepted' });
+
+    const huge = Array.from(
+      { length: 5000 },
+      (_, index) => `principal-${index}-${'x'.repeat(200)}`,
+    );
+    expect(
+      await surfaces.create(createCommand({ commandId: 'big', surfaceId: 'big', audience: huge })),
+    ).toMatchObject({ reason: 'payload-too-large' });
+    expect(
+      await surfaces.create(
+        createCommand({ commandId: 'long', surfaceId: 'long', audience: ['p'.repeat(300)] }),
+      ),
+    ).toMatchObject({ reason: 'invalid' });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

@@ -156,6 +156,40 @@ describe('interactive surfaces on a Bureau', () => {
     }
   });
 
+  it('keeps a run whose surfaces could not be removed, so deleting it again retries', async () => {
+    const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
+    const bureau = await open(fixture.configuration);
+    try {
+      const taskId = await startTask(bureau);
+      await createForm(bureau, taskId);
+      await bureau.tasks.cancel(taskId, 0);
+      await waitForCondition(async () => {
+        const run = await bureau.getRun(taskId);
+        return run?.status !== 'running';
+      }, 'the run stops');
+      const surfaces = surfacesOf(bureau);
+      const removeTask = surfaces.removeTask.bind(surfaces);
+      Reflect.set(surfaces, 'removeTask', async () => {
+        throw new Error('storage unavailable');
+      });
+
+      await expect(bureau.deleteRun(taskId)).rejects.toThrow('storage unavailable');
+      expect(await bureau.getRun(taskId)).toBeDefined();
+
+      Reflect.set(surfaces, 'removeTask', removeTask);
+      await bureau.deleteRun(taskId);
+      expect(
+        await surfaces.snapshot(
+          { type: 'surface.snapshot', contractVersion: version, taskId, surfaceId: 'confirm' },
+          { principal: OWNER },
+        ),
+      ).toMatchObject({ reason: 'not-found' });
+    } finally {
+      await bureau.dispose();
+      await fixture.dispose();
+    }
+  });
+
   it('has no surfaces without persistent storage', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { worker: createAgent({ generate: parks }) },
