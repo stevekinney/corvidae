@@ -318,6 +318,11 @@ export interface TaskRegistry {
   /** The records of tasks that have not been settled: the ones a crash may have left so. */
   unsettled(): Promise<readonly TaskRecord[]>;
   /**
+   * The records of schedule fires that have been settled (COR-1594). A boot reads them to append the
+   * history event of a fire whose process died between writing the settlement and appending it.
+   */
+  settledFires(): Promise<readonly TaskRecord[]>;
+  /**
    * Follows a task's `closed()` acknowledgement and records where its cleanup
    * ended. A second call for a task already followed returns the first.
    */
@@ -774,6 +779,21 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   }
 
   /**
+   * Tells {@link CreateTaskRegistryOptions.onFireSettled} that a schedule fire's settlement has been
+   * written, wherever it was written (COR-1594). Other kinds of task are not announced. A rejection
+   * is diagnosed and not thrown into the settlement: the boot pass over settled fires appends an
+   * event that never landed.
+   */
+  async function recordFireSettled(record: TaskRecord): Promise<void> {
+    if (record.kind !== 'schedule-fire' || options.onFireSettled === undefined) return;
+    try {
+      await options.onFireSettled(record);
+    } catch (error) {
+      diagnose(`Could not record in the history how schedule fire "${record.taskId}" ended`, error);
+    }
+  }
+
+  /**
    * Tells whoever waits that the task has settled. A listener is told once, and a task not yet
    * settled (a write that changed something else) tells no one. A listener that throws is its
    * own failure, never the write's.
@@ -891,13 +911,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         }),
       );
       if (recorded) await announceSettled(taskId);
-      if (recorded && captured.settled?.kind === 'schedule-fire' && options.onFireSettled) {
-        try {
-          await options.onFireSettled(captured.settled);
-        } catch (error) {
-          diagnose(`Could not record in the history how schedule fire "${taskId}" ended`, error);
-        }
-      }
+      if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
       return recorded;
     },
 
@@ -973,6 +987,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async unsettled() {
       const records = await allRecords();
       return records.filter((record) => record.settled === undefined);
+    },
+
+    async settledFires() {
+      const records = await allRecords();
+      return records.filter(
+        (record) => record.kind === 'schedule-fire' && record.settled !== undefined,
+      );
     },
 
     watchCleanup,
@@ -1163,18 +1184,25 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           // A durable run this process holds no live run for.
           const outcome = await host.cancelDurable(taskId);
           if (outcome.status === 'requested') {
-            await update(taskId, (current) => ({
-              ...current,
-              settled: {
-                at: clock.nowISO(),
-                status: 'canceled',
-                finishReason: 'aborted',
-                message: null,
-              },
-              // A stop with no acknowledgement behind it: a repeat answers the same.
-              cleanup: 'canceled',
-            }));
+            const canceled: { record?: TaskRecord } = {};
+            await update(taskId, (current) => {
+              const next: TaskRecord = {
+                ...current,
+                settled: {
+                  at: clock.nowISO(),
+                  status: 'canceled',
+                  finishReason: 'aborted',
+                  message: null,
+                },
+                // A stop with no acknowledgement behind it: a repeat answers the same.
+                cleanup: 'canceled',
+              };
+              canceled.record = next;
+              return next;
+            });
             await announceSettled(taskId);
+            // COR-1594: written here and not through `recordSettled`, so announced as it is.
+            if (canceled.record !== undefined) await recordFireSettled(canceled.record);
             return { receipt: 'canceled' };
           }
           if (outcome.status === 'failed') throw outcome.error;

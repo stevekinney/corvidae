@@ -1,6 +1,5 @@
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
-import { decode } from '../codec.ts';
 import type {
   PaginatedResult,
   ScheduleFilter,
@@ -21,11 +20,9 @@ import {
   resolveScheduleRevisionForPin,
 } from './pinned-schedule-revision.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
-import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { runScheduleTransition } from './schedule-state-operations.ts';
-import { ScheduleReadConditionLostError, scheduleReadConditions } from './schedule-state-read.ts';
 import {
   createScheduleTimerId,
   matchesScheduleFilter,
@@ -34,6 +31,7 @@ import {
 import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
+  assertCallerOwnedTransitionConditions,
   coerceExpectedScheduleRevision,
   coerceScheduleId,
   normalizeScheduleFilter,
@@ -166,53 +164,6 @@ export async function listSchedules(
   return paginateScheduleSummaries(items, normalizedFilter);
 }
 
-export async function recoverOrphanedScheduleTimers(internals: EngineInternals): Promise<void> {
-  for await (const [key, value] of internals.storage.scan('schedule:')) {
-    const scheduleKeySuffix = key.slice('schedule:'.length);
-    if (scheduleKeySuffix.includes(':')) continue;
-
-    const state = decodeScheduleState(value);
-    if (!isActiveScheduleWithTimer(state)) continue;
-
-    if (await hasCurrentScheduleTimer(internals, state)) continue;
-
-    // COR-1594: written back only if the schedule still holds the bytes the scan read. One that
-    // changed meanwhile belongs to whatever changed it, which arms its own timer.
-    try {
-      await writeScheduleState(internals, state, {
-        extraConditions: scheduleReadConditions(internals, state.id, { bytes: value }),
-      });
-    } catch (error) {
-      if (!(error instanceof ScheduleReadConditionLostError)) throw error;
-    }
-  }
-}
-
-function isActiveScheduleWithTimer(
-  state: ScheduleState | null,
-): state is ScheduleState & { nextFireAt: number } {
-  return state?.status === 'active' && state.nextFireAt !== null;
-}
-
-async function hasCurrentScheduleTimer(
-  internals: EngineInternals,
-  state: ScheduleState & { nextFireAt: number },
-): Promise<boolean> {
-  const timerKey = KEYS.scheduleTick(
-    resolveEffectiveScheduleFireAt(state, state.nextFireAt),
-    state.id,
-  );
-  const timerBytes = await internals.storage.get(timerKey);
-  if (timerBytes === null) {
-    return false;
-  }
-
-  const timerIndexBytes = await internals.storage.get(
-    `timer-idx:${createScheduleTimerId(state.id)}`,
-  );
-  return timerIndexBytes !== null && decode(timerIndexBytes) === timerKey;
-}
-
 export function toScheduleSummary(state: ScheduleState): ScheduleSummary {
   const { input: _input, ...summary } = state;
   const projectedSummary = {
@@ -304,6 +255,7 @@ export async function pauseSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  assertCallerOwnedTransitionConditions(normalizedScheduleId, options?.extraConditions);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,
@@ -340,6 +292,7 @@ export async function resumeSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  assertCallerOwnedTransitionConditions(normalizedScheduleId, options?.extraConditions);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,
@@ -378,6 +331,7 @@ export async function cancelSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  assertCallerOwnedTransitionConditions(normalizedScheduleId, options?.extraConditions);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,

@@ -294,11 +294,11 @@ import {
 import { ScheduleHandle } from './schedule-handle.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { loadScheduleState } from './schedule-state-read.ts';
+import { recoverOrphanedScheduleTimers } from './schedule-timer-recovery.ts';
 import {
   cancelSchedule as cancelScheduleFromInternals,
   listSchedules as listSchedulesFromInternals,
   pauseSchedule as pauseScheduleFromInternals,
-  recoverOrphanedScheduleTimers,
   resumeSchedule as resumeScheduleFromInternals,
   schedule as scheduleFromInternals,
   toScheduleSummary,
@@ -440,6 +440,7 @@ export {
 } from './revision-errors.ts';
 export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
+export { ScheduleReservedKeyError } from './schedule-reserved-key-error.ts';
 export { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 export { DefinitionSchemaRequiredError } from './schema-policy.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';

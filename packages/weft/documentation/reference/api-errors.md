@@ -181,6 +181,7 @@ These classes are exported from the package root and extend `WeftError`, but the
 | `EngineLeaseAcquisitionTimeoutError`     | `core/engine/lease-errors.ts`                  |
 | `EngineLeaseCorruptedError`              | `core/engine/lease-errors.ts`                  |
 | `EngineLeaseNotHeldError`                | `core/engine/lease-errors.ts`                  |
+| `ScheduleReservedKeyError`               | `core/engine/schedule-reserved-key-error.ts`   |
 | `ScheduleStaleRevisionError`             | `core/engine/schedule-stale-revision-error.ts` |
 | `WorkflowCatalogActivationConflictError` | `core/catalog/errors.ts`                       |
 | `WorkflowClaimUnavailableError`          | `core/engine/lease-errors.ts`                  |

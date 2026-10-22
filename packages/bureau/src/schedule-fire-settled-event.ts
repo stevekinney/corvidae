@@ -16,17 +16,33 @@
  *   definition, never its fires (see `durable-event-history.ts`), and a fire's task record carries
  *   no schedule id to find that owner by.
  * - **kind**: {@link SCHEDULE_FIRE_SETTLED_EVENT_KIND}.
- * - **payload**: `{ runId: string, status: 'completed' | 'failed' | 'canceled' }`. The status is
+ * - **payload**: `{ runId: string, status: TaskSettlement['status'] }`, the state the settlement records. The status is
  *   for a reader of the history; a stream reads the settled record itself and uses the event only
  *   as the signal that it has been written.
  * - **deduplication**: one event per fire, however many processes settle it
  *   ({@link scheduleFireSettledDedupeKey}).
  *
  * The kind is additive inside the existing record wrapper, so the history's schema version stays
- * 1, and a reader that does not list it drops it. A fire settled before this event existed has
- * none: a stream another process serves for it ends only when that process hears of the end some
- * other way.
+ * 1, and a reader that does not list it drops it.
+ *
+ * ## When it is appended, and what repairs a missing one
+ *
+ * - Every route that writes a fire's settlement announces it: the engine's terminal event, the
+ *   recovery of a fire that ended while no process held it, and a direct cancel of a fire the
+ *   cancelling process holds no run for.
+ * - A rejected append is tried again, as a session persistence write is. One that still fails is
+ *   diagnosed.
+ * - A process that dies between writing the settlement and appending the event leaves none. Every
+ *   boot reads the settled fires, finds the ones whose event was never appended (the deduplication
+ *   marker is absent), and appends it, so a stream open on another process ends at the next boot of
+ *   any Bureau on the store. This also covers a fire settled before this event existed.
+ *
+ * What is not covered is the time until that boot: a stream open on a peer across a dead
+ * settler's window hears nothing until then, and a client that reconnects reads the settled record
+ * at once.
  */
+
+import type { TaskSettlement } from './task-registry';
 
 /** The `kind` of the one event that records a schedule fire's end. */
 export const SCHEDULE_FIRE_SETTLED_EVENT_KIND = 'schedule.fire.settled';
@@ -34,7 +50,7 @@ export const SCHEDULE_FIRE_SETTLED_EVENT_KIND = 'schedule.fire.settled';
 /** The payload of a {@link SCHEDULE_FIRE_SETTLED_EVENT_KIND} event. */
 export interface ScheduleFireSettledPayload {
   readonly runId: string;
-  readonly status: 'completed' | 'failed' | 'canceled';
+  readonly status: TaskSettlement['status'];
 }
 
 /**

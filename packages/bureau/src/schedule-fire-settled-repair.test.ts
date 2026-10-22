@@ -120,6 +120,12 @@ describe('a process that dies between the settlement and the append', () => {
     });
     await advanceFeedPoll();
     expect(await settledEventsOf(again, fireId)).toHaveLength(1);
+
+    // The dead holder's append is let go, so it ends before its store is closed: it finds the
+    // event already there and writes nothing.
+    hold.release();
+    await advanceFeedPoll();
+    expect(await settledEventsOf(again, fireId)).toHaveLength(1);
   });
 });
 

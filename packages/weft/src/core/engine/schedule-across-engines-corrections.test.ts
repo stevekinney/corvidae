@@ -18,8 +18,8 @@ import {
   tickB,
 } from './schedule-across-engines.test-support.ts';
 import { ScheduleReservedKeyError } from './schedule-reserved-key-error.ts';
+import { recoverOrphanedScheduleTimers } from './schedule-timer-recovery.ts';
 import { drainEngine, tickEngine } from './schedule.test-support.ts';
-import { recoverOrphanedScheduleTimers } from './schedules.ts';
 import { createScheduleTimerId } from './state-utilities.ts';
 
 afterEach(closeOpenedEngines);
@@ -61,7 +61,8 @@ describe('orphan-timer recovery that loses its condition', () => {
     expect(await timerArmed(shared)).toBe(true);
     // And the schedule fires again.
     await tickEngine(engineA, clock, state.nextFireAt!);
-    expect((await stateOf(shared)).lastFireAt).toBe(state.nextFireAt!);
+    const { lastFireAt } = await stateOf(shared);
+    expect(lastFireAt).toBe(state.nextFireAt!);
   });
 
   it('stops once the schedule is no longer active', async () => {
@@ -79,7 +80,8 @@ describe('orphan-timer recovery that loses its condition', () => {
     hold.release();
     await recovering;
 
-    expect((await stateOf(shared)).status).toBe('paused');
+    const { status } = await stateOf(shared);
+    expect(status).toBe('paused');
     expect(await timerArmed(shared)).toBe(false);
   });
 
@@ -125,7 +127,8 @@ describe('a caller condition on a key Weft reserves', () => {
       await engineB.updateSchedule(SCHEDULE_ID, '*/5 * * * *');
       const before = await shared.get(KEYS.schedule(SCHEDULE_ID));
       // A runaway retry would never settle: bound it, so a regression fails instead of hanging.
-      a.capConditionalBatches(50);
+      a.capConditionalBatches(a.conditionalBatches + 50);
+      const batchesBefore = a.conditionalBatches;
 
       const error = await rejectionOf(
         run(engineA, {
@@ -135,7 +138,7 @@ describe('a caller condition on a key Weft reserves', () => {
       );
 
       expect(error).toBeInstanceOf(ScheduleReservedKeyError);
-      expect(a.conditionalBatches).toBe(0);
+      expect(a.conditionalBatches).toBe(batchesBefore);
       expect(await shared.get(KEYS.schedule(SCHEDULE_ID))).toEqual(before);
     });
   }
@@ -152,7 +155,8 @@ describe('a caller condition on a key Weft reserves', () => {
     );
 
     expect(error).toMatchObject({ message: 'the caller condition was lost' });
-    expect((await stateOf(shared)).status).toBe('active');
+    const { status } = await stateOf(shared);
+    expect(status).toBe('active');
   });
 });
 

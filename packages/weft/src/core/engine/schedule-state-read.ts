@@ -54,10 +54,23 @@ export class ScheduleReadConditionLostError extends Error {
   }
 }
 
+/** The conditions this module made, so one is told from a caller's by identity and never by key. */
+const engineReadConditions = new WeakSet<ConditionalBatchCondition>();
+
+/** Whether `condition` is one {@link scheduleReadConditions} made, and not a caller's. */
+export function isScheduleReadCondition(condition: ConditionalBatchCondition): boolean {
+  return engineReadConditions.has(condition);
+}
+
 /**
  * The condition that makes a schedule write conditional on the bytes it was decided from
  * (COR-1594), for `writeScheduleState`'s `extraConditions`. Empty on a storage without
- * `conditionalBatch`, which cannot be shared between processes either.
+ * `conditionalBatch`: a store that can be shared between processes has the capability, because
+ * the `'lease'` and `'workflow-lease'` ownership modes require it (`ownership-mode-marker.ts`), so
+ * a store that lacks it is one engine's alone.
+ *
+ * The condition is told from a caller's by identity ({@link isScheduleReadCondition}), so a
+ * caller's condition on any key, the schedule's own included, is judged as the caller's.
  */
 export function scheduleReadConditions(
   internals: EngineInternals,
@@ -65,5 +78,10 @@ export function scheduleReadConditions(
   loaded: Pick<LoadedScheduleState, 'bytes'>,
 ): ConditionalBatchCondition[] {
   if (!internals.storage.capabilities().conditionalBatch) return [];
-  return [{ key: KEYS.schedule(scheduleId), expectedValue: loaded.bytes }];
+  const condition: ConditionalBatchCondition = {
+    key: KEYS.schedule(scheduleId),
+    expectedValue: loaded.bytes,
+  };
+  engineReadConditions.add(condition);
+  return [condition];
 }

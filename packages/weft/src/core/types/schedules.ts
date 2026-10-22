@@ -264,7 +264,9 @@ export interface ScheduleTransitionOptions {
   /**
    * Caller-owned expected-value guards. The commit — the caller's operations
    * AND the schedule state transition together — is rejected unless every
-   * condition currently holds.
+   * condition currently holds. Each names a key of the caller's own: a key under one of
+   * Weft's reserved prefixes (`WEFT_RESERVED_KEY_PREFIXES`), the schedule's own key among
+   * them, is refused with {@link ScheduleReservedKeyError} before anything is read or written.
    */
   extraConditions?: ConditionalBatchCondition[];
   /**

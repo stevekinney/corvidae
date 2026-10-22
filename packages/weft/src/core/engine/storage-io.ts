@@ -20,7 +20,7 @@ import {
 import { getWorkflowExecutionStartedAt } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
-import { ScheduleReadConditionLostError } from './schedule-state-read.ts';
+import { isScheduleReadCondition, ScheduleReadConditionLostError } from './schedule-state-read.ts';
 import { createScheduleTimerId, decodeWorkflowStartHeaders } from './state-utilities.ts';
 import { decodeWorkflowState } from './validation.ts';
 import {
@@ -444,17 +444,17 @@ async function commitScheduleStateWithExtraConditions(
   if (committed) {
     return;
   }
-  // The schedule's own condition is judged first: it is the writer's to retry, and a caller's
-  // typed error must not stand in for it.
-  const scheduleKey = KEYS.schedule(state.id);
+  // The engine's own read condition is judged first, and told from a caller's by identity: it is
+  // the writer's to retry, and a caller's typed error must not stand in for it. A caller's
+  // condition on any key, the schedule's own included, is the caller's.
   const ordered = [
-    ...extraConditions.filter((condition) => condition.key === scheduleKey),
-    ...extraConditions.filter((condition) => condition.key !== scheduleKey),
+    ...extraConditions.filter(isScheduleReadCondition),
+    ...extraConditions.filter((condition) => !isScheduleReadCondition(condition)),
   ];
   for (const condition of ordered) {
     const currentValue = await internals.storage.get(condition.key);
     if (!storageValuesEqual(currentValue, condition.expectedValue)) {
-      if (condition.key === scheduleKey) throw new ScheduleReadConditionLostError(state.id);
+      if (isScheduleReadCondition(condition)) throw new ScheduleReadConditionLostError(state.id);
       throw (
         onExtraConditionsLost?.() ??
         new Error(`Schedule state commit for schedule "${state.id}" lost its precondition.`)

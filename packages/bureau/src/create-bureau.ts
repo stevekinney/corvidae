@@ -286,6 +286,7 @@ import {
   TASK_ARTIFACT_TEXT_LIMIT,
   TASK_STATUS_MESSAGE_LIMIT,
   type LiveTask,
+  type TaskRecord,
 } from './task-registry';
 import {
   ANONYMOUS_LOCAL_OWNER,
@@ -4108,19 +4109,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     identifiers: runtimeServices.identifiers,
     // COR-1594: the end of a fire reaches a stream another process serves through the fire's
     // durable history. A Bureau with no persistent storage has none, and no second process.
-    onFireSettled: async (record) => {
-      if (eventHistoryInstance === undefined || record.settled === undefined) return;
-      const payload: ScheduleFireSettledPayload = {
-        runId: record.taskId,
-        status: record.settled.status,
-      };
-      await eventHistoryInstance.record(
-        { kind: 'run', id: record.taskId },
-        SCHEDULE_FIRE_SETTLED_EVENT_KIND,
-        payload,
-        { dedupeKey: scheduleFireSettledDedupeKey(record.taskId) },
-      );
-    },
+    onFireSettled: appendFireSettledEvent,
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
     host: {
@@ -8239,6 +8228,39 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-1594 — records in the fire's durable history that its settlement is written, which is how a
+   * stream another process serves learns of the end. A rejected append is tried again, as a session
+   * persistence write is; one that still fails is diagnosed by the task registry, and the boot pass
+   * (`reconcileTaskRecords`) appends it at the next start. Idempotent: the append is deduplicated
+   * per fire, so a live end, a retry and the boot pass write one event between them.
+   */
+  async function appendFireSettledEvent(record: TaskRecord): Promise<void> {
+    if (eventHistoryInstance === undefined || record.settled === undefined) return;
+    const payload: ScheduleFireSettledPayload = {
+      runId: record.taskId,
+      status: record.settled.status,
+    };
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
+      try {
+        await eventHistoryInstance.record(
+          { kind: 'run', id: record.taskId },
+          SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+          payload,
+          { dedupeKey: scheduleFireSettledDedupeKey(record.taskId) },
+        );
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS) {
+          await sessionPersistenceSleep(sessionPersistenceRetryDelayMilliseconds);
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  /**
    * Boot-single-shot: called at most once per bureau, either immediately
    * during `createBureau()` or once from the deferred-authority-validator
    * path (never both — `durableRecoveryStarted` guards it). Resolves a
@@ -8306,6 +8328,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     for (const record of await tasks.unsettled()) {
       if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
+    }
+    // COR-1594: a fire whose settlement was written but whose history event never was, because its
+    // process died between the two, would leave a stream open on another process for ever. The
+    // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
+    if (eventHistoryInstance !== undefined) {
+      for (const record of await tasks.settledFires()) {
+        const owner = { kind: 'run', id: record.taskId } as const;
+        if (
+          await eventHistoryInstance.wasRecorded(
+            owner,
+            SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+            scheduleFireSettledDedupeKey(record.taskId),
+          )
+        ) {
+          continue;
+        }
+        try {
+          await appendFireSettledEvent(record);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'task-registry',
+            message: `[bureau] Could not record in the history how schedule fire "${record.taskId}" ended: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+      }
     }
     // A durable catalog run still in flight whose task record was never written: the lost
     // admission window. A run that is over is not given a record here: its task either was

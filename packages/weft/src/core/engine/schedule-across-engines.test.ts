@@ -20,8 +20,8 @@ import {
 } from './schedule-across-engines.test-support.ts';
 import * as scheduleOccurrence from './schedule-occurrence.ts';
 import { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
+import { recoverOrphanedScheduleTimers } from './schedule-timer-recovery.ts';
 import { drainEngine, tickEngine } from './schedule.test-support.ts';
-import { recoverOrphanedScheduleTimers } from './schedules.ts';
 import { createScheduleTimerId } from './state-utilities.ts';
 
 afterEach(closeOpenedEngines);

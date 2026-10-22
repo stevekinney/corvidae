@@ -253,6 +253,26 @@ describe('storage I/O helpers', () => {
     expect(reread?.state.revision).toBe(scheduleState.revision);
   });
 
+  it("judges a caller condition on the schedule key as the caller's, by identity and not by key", async () => {
+    const storage = new MemoryStorage();
+    const scheduleState = createScheduleState({ id: 'schedule-caller-condition' });
+    await storage.put(KEYS.schedule(scheduleState.id), encode(scheduleState));
+    const internals = createCommitInternals(storage, 'none');
+    const stale = encode({ ...scheduleState, updatedAt: scheduleState.updatedAt - 1 });
+
+    const rejection = await writeScheduleState(
+      internals,
+      { ...scheduleState, revision: 2 },
+      {
+        extraConditions: [{ key: KEYS.schedule(scheduleState.id), expectedValue: stale }],
+        onExtraConditionsLost: () => new Error('typed caller error'),
+      },
+    ).catch((error: unknown) => error);
+
+    expect(rejection).not.toBeInstanceOf(ScheduleReadConditionLostError);
+    expect((rejection as Error).message).toBe('typed caller error');
+  });
+
   it('writes when the schedule key still holds the bytes it was read as, and resolves with the bytes it wrote', async () => {
     const storage = new MemoryStorage();
     const scheduleState = createScheduleState({ id: 'schedule-read-condition-held' });
