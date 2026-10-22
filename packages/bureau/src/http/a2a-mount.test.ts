@@ -151,7 +151,7 @@ describe('the A2A Agent Card', () => {
             protocolVersion: '1.0',
           },
         ]);
-        expect(card.capabilities.streaming ?? false).toBe(false);
+        expect(card.capabilities.streaming).toBe(true);
         expect(card.capabilities.pushNotifications ?? false).toBe(false);
         expect(card.capabilities.extendedAgentCard ?? false).toBe(false);
         expect(card.capabilities.extensions.map((entry: Json) => entry.uri).toSorted()).toEqual(
@@ -866,33 +866,7 @@ describe('signed Agent Cards', () => {
   });
 });
 
-describe('what part 1 does not serve, and ListTasks input', () => {
-  it('answers SendStreamingMessage and SubscribeToTask with -32004, since streaming is not declared', async () => {
-    await withA2A({ asker: answering('done') }, async (opened) => {
-      const response = await opened.handler(
-        new Request('http://localhost/a2a/asker', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'A2A-Version': '1.0',
-            'X-API-Key': 'alice-key',
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'SendStreamingMessage',
-            params: { message: message('stream') },
-          }),
-        }),
-      );
-      const streamed: Json = await response.json();
-      const subscribed = await call(opened, 'asker', 'SubscribeToTask', { id: 'any' });
-
-      expect(streamed.error.code).toBe(-32004);
-      expect(subscribed.body.error.code).toBe(-32004);
-    });
-  });
-
+describe('ListTasks input', () => {
   it('refuses a statusTimestampAfter that is not a timestamp, and reads pageSize 0 as the default', async () => {
     await withA2A({ asker: answering('done') }, async (opened) => {
       await send(opened, 'asker', { message: message('one') });

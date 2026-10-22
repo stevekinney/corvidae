@@ -80,7 +80,7 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, DECLARED_EXTENSIONS } from './a2a-agent-card.ts';
+import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
 import type { A2ATaskRecords, A2AWireMessage } from './a2a-task-record.ts';
 import {
   agentMessage,
@@ -93,6 +93,7 @@ import {
   replyMessageId,
 } from './a2a-task-projection.ts';
 import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
+import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
 /** The version of the A2A send command's contract, part of every ledger identity. */
@@ -125,6 +126,9 @@ const SETTLE_POLL_MS = 1_000;
 /** What a send's ledger entry claims: nothing beyond the binding itself. */
 export type A2ASendClaim = Record<string, never>;
 
+/** A send once admitted: the task it created or continued, and how its responses show it. */
+type Admitted = { readonly taskId: string; readonly shape: ProjectionShape };
+
 /** What a completed send's ledger entry holds: the task it created or continued. */
 export type A2ASendResult = { readonly taskId: string };
 
@@ -151,7 +155,14 @@ export class BureauA2AUser implements User {
 /** The part of a Bureau the request handler reads. */
 export type A2ABureau = Pick<
   Bureau,
-  'createRun' | 'getRun' | 'getOwner' | 'submitSessionInput' | 'eventHistory'
+  | 'createRun'
+  | 'getRun'
+  | 'getOwner'
+  | 'submitSessionInput'
+  | 'eventHistory'
+  | 'subscribeEventHistory'
+  | 'addEventListener'
+  | 'removeEventListener'
 > & {
   readonly tasks: Pick<
     TaskRegistry,
@@ -210,10 +221,14 @@ function headerOf(context: ServerCallContext | undefined, name: string): string 
  * when its own alias header or `metadata.a2uiClientCapabilities` asks for it. Each is recorded on
  * the context, so the kit echoes it in the response's `A2A-Extensions` header.
  */
-function activate(context: ServerCallContext | undefined, message?: Message): ReadonlySet<string> {
+function activate(
+  declared: ReadonlySet<string>,
+  context: ServerCallContext | undefined,
+  message?: Message,
+): ReadonlySet<string> {
   const activated = new Set<string>();
   for (const uri of context?.requestedExtensions ?? []) {
-    if (DECLARED_EXTENSIONS.has(uri)) activated.add(uri);
+    if (declared.has(uri)) activated.add(uri);
   }
   const alias = headerOf(context, A2UI_EXTENSIONS_HEADER) ?? '';
   if (alias.split(',').some((entry) => entry.trim() === A2UI_EXTENSION_URI)) {
@@ -271,11 +286,16 @@ function requireMessage(params: SendMessageRequest): Message {
  * of its configuration (`acceptedOutputModes` as a set; `historyLength` and `returnImmediately`
  * are response controls), and the activated extensions.
  */
-function digestOf(params: SendMessageRequest, message: Message, activated: ReadonlySet<string>) {
+function digestOf(
+  params: SendMessageRequest,
+  message: Message,
+  activated: ReadonlySet<string>,
+  declared: ReadonlySet<string>,
+) {
   const wire = Message.toJSON(message) as Record<string, unknown>;
   const metadata = { ...(wire['metadata'] as Record<string, unknown> | undefined) };
   delete metadata[CORRELATION_ID_METADATA_KEY];
-  for (const uri of DECLARED_EXTENSIONS) if (!activated.has(uri)) delete metadata[uri];
+  for (const uri of declared) if (!activated.has(uri)) delete metadata[uri];
   const outputModes = [...new Set(params.configuration?.acceptedOutputModes ?? [])].toSorted();
   const configuration = params.configuration?.taskPushNotificationConfig;
   return digestCommandPayload({
@@ -301,8 +321,9 @@ export function createBureauA2ARequestHandler(
   const { agentName, bureau, records, ledger } = options;
   const cancelWait = options.cancelWaitMilliseconds ?? 0;
   const timers = options.timers ?? createDefaultRuntimeServices().timers;
-  /** Sends being answered in this process, by binding: an identical send waits for the first. */
-  const inFlight = new Map<string, Promise<Task>>();
+  const declared = declaredExtensionsOf(options.card());
+  /** Sends being admitted in this process, by binding: an identical send waits for the first. */
+  const inFlight = new Map<string, Promise<Admitted>>();
 
   /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
   async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
@@ -561,11 +582,11 @@ export function createBureauA2ARequestHandler(
   async function admit(
     params: SendMessageRequest,
     context: ServerCallContext | undefined,
-  ): Promise<Task> {
+  ): Promise<Admitted> {
     const user = userOf(context);
     const owner = ownerOf(context);
     const message = requireMessage(params);
-    const activated = activate(context, message);
+    const activated = activate(declared, context, message);
     const version = context?.requestedVersion ?? '1.0';
     const continuing = message.taskId !== '';
     const identity: CommandLedgerIdentity = {
@@ -574,21 +595,12 @@ export function createBureauA2ARequestHandler(
       requestId: message.messageId,
       operationVersion: `${A2A_SEND_OPERATION_VERSION}/${version}`,
     };
-    const digest = digestOf(params, message, activated);
+    const digest = digestOf(params, message, activated, declared);
     const shape: ProjectionShape = {
       historyLength: params.configuration?.historyLength,
       includeArtifacts: true,
       activated,
     };
-    const answer = async (taskId: string): Promise<Task> => {
-      const view =
-        params.configuration?.returnImmediately === true
-          ? await bureau.tasks.get(taskId)
-          : await settledView(taskId, requestSignalOf(context as ServerCallContext));
-      if (view === undefined) throw taskNotFound(taskId);
-      return respondWith(view, shape);
-    };
-
     // The caller's own binding first: an exact retry is owed its task whatever has changed since.
     const located = await ledger.locate(identity);
     if (located.state === 'retained' && located.entry.state === 'completed') {
@@ -597,7 +609,7 @@ export function createBureauA2ARequestHandler(
           `messageId '${message.messageId}' was already used with a different payload.`,
         );
       }
-      return answer(located.entry.result.taskId);
+      return { taskId: located.entry.result.taskId, shape };
     }
 
     if (params.configuration?.taskPushNotificationConfig !== undefined) {
@@ -619,7 +631,7 @@ export function createBureauA2ARequestHandler(
       throw error;
     }
     if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
-      return answer(claimed.entry.result.taskId);
+      return { taskId: claimed.entry.result.taskId, shape };
     }
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     let taskId: string;
@@ -636,7 +648,56 @@ export function createBureauA2ARequestHandler(
       throw error;
     }
     await ledger.complete(entry, { taskId });
-    return answer(taskId);
+    return { taskId, shape };
+  }
+
+  /**
+   * Admits a send once per binding at a time: one that arrives while an identical send is being
+   * admitted waits for it, so the second never reaches the run-creation ledger while the first
+   * holds its claim, and is then admitted on its own, as an exact retry or a conflict.
+   */
+  async function admitOnce(
+    params: SendMessageRequest,
+    context: ServerCallContext | undefined,
+  ): Promise<Admitted> {
+    const message = params.message;
+    if (message === undefined) return admit(params, context);
+    const key = [
+      ownerOf(context),
+      message.taskId,
+      message.messageId,
+      context?.requestedVersion ?? '1.0',
+    ].join('\u0000');
+    const running = inFlight.get(key);
+    if (running !== undefined) {
+      await running.catch(() => undefined);
+      return admit(params, context);
+    }
+    const attempt = admit(params, context);
+    inFlight.set(key, attempt);
+    try {
+      return await attempt;
+    } finally {
+      if (inFlight.get(key) === attempt) inFlight.delete(key);
+    }
+  }
+
+  /** Follows an admitted or existing task as a stream, starting from its current snapshot. */
+  function follow(
+    taskId: string,
+    shape: ProjectionShape,
+    context: ServerCallContext | undefined,
+  ): AsyncGenerator<StreamResponse> {
+    return followTask({
+      bureau,
+      taskId,
+      lastEventId: headerOf(context, 'last-event-id'),
+      durableHistoryActive: shape.activated.has(DURABLE_HISTORY_EXTENSION_URI),
+      snapshot: (view) => respondWith(view, shape),
+      replyOf,
+      timers,
+      signal: context === undefined ? undefined : requestSignalOf(context),
+    });
   }
 
   return {
@@ -649,39 +710,37 @@ export function createBureauA2ARequestHandler(
     },
 
     async sendMessage(params, context) {
-      // A send that arrives while one with the same binding is being answered waits for it, so
-      // the second never reaches the run-creation ledger while the first holds its claim; it is
-      // then answered on its own, as an exact retry or a conflict.
-      const message = params.message;
-      if (message === undefined) return admit(params, context);
-      const key = [
-        ownerOf(context),
-        message.taskId,
-        message.messageId,
-        context?.requestedVersion ?? '1.0',
-      ].join('\u0000');
-      const running = inFlight.get(key);
-      if (running !== undefined) {
-        await running.catch(() => undefined);
-        return admit(params, context);
-      }
-      const attempt = admit(params, context);
-      inFlight.set(key, attempt);
-      try {
-        return await attempt;
-      } finally {
-        if (inFlight.get(key) === attempt) inFlight.delete(key);
-      }
+      const { taskId, shape } = await admitOnce(params, context);
+      const view =
+        params.configuration?.returnImmediately === true
+          ? await bureau.tasks.get(taskId)
+          : await settledView(taskId, context === undefined ? undefined : requestSignalOf(context));
+      if (view === undefined) throw taskNotFound(taskId);
+      return respondWith(view, shape);
     },
 
-    // eslint-disable-next-line require-yield -- streaming is not declared yet, so this only refuses.
-    async *sendMessageStream(_params: SendMessageRequest): AsyncGenerator<StreamResponse> {
-      throw new UnsupportedOperationError('This agent does not declare streaming.');
+    async *sendMessageStream(params, context) {
+      // `returnImmediately` has no effect on a stream, which stays open through INPUT_REQUIRED
+      // and AUTH_REQUIRED and closes only once the task is terminal.
+      const { taskId, shape } = await admitOnce(params, context);
+      yield* follow(taskId, shape, context);
+    },
+
+    async *resubscribe(params: SubscribeToTaskRequest, context) {
+      const owner = ownerOf(context);
+      const activated = activate(declared, context);
+      const view = await ownTask(params.id, owner);
+      if (isTerminal(view.status)) {
+        throw new UnsupportedOperationError(
+          `Task '${view.id}' is ${view.status}: read it with GetTask.`,
+        );
+      }
+      yield* follow(view.id, { includeArtifacts: true, activated }, context);
     },
 
     async getTask(params: GetTaskRequest, context) {
       const owner = ownerOf(context);
-      const activated = activate(context);
+      const activated = activate(declared, context);
       const view = await ownTask(params.id, owner);
       return respondWith(view, {
         historyLength: params.historyLength,
@@ -692,7 +751,7 @@ export function createBureauA2ARequestHandler(
 
     async cancelTask(params: CancelTaskRequest, context) {
       const owner = ownerOf(context);
-      const activated = activate(context);
+      const activated = activate(declared, context);
       const view = await ownTask(params.id, owner);
       if (isTerminal(view.status)) {
         throw new TaskNotCancelableError(`Task '${view.id}' is ${view.status}.`);
@@ -708,7 +767,7 @@ export function createBureauA2ARequestHandler(
 
     async listTasks(params: ListTasksRequest, context): Promise<ListTasksResponse> {
       const owner = ownerOf(context);
-      const activated = activate(context);
+      const activated = activate(declared, context);
       // proto3 reads an unset `pageSize` as 0, which means the default.
       const pageSize =
         params.pageSize === undefined || params.pageSize === 0 ? 50 : params.pageSize;
@@ -808,11 +867,6 @@ export function createBureauA2ARequestHandler(
       throw new PushNotificationNotSupportedError(
         'This agent does not deliver push notifications.',
       );
-    },
-
-    // eslint-disable-next-line require-yield -- streaming is not declared yet, so this only refuses.
-    async *resubscribe(_params: SubscribeToTaskRequest): AsyncGenerator<StreamResponse> {
-      throw new UnsupportedOperationError('This agent does not declare streaming.');
     },
   };
 }

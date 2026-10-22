@@ -10,9 +10,10 @@
  * - Input modes are `text/plain` and `application/json` (an approval's decision travels as a
  *   data part); output is `text/plain`. Multimodal parts are COR-788's.
  * - `skills` are the agent's skill descriptors, or one skill standing for the agent itself.
- * - `capabilities.streaming` and `capabilities.pushNotifications` are `false` until their
- *   issues serve them; `extendedAgentCard` is `false`.
- * - Every extension is `required: false`.
+ * - `capabilities.streaming` is `true`; `pushNotifications` is `false` until COR-1543 serves it,
+ *   and `extendedAgentCard` is `false`.
+ * - The extensions are cleanup, A2UI's, and durable history where the Bureau keeps a durable
+ *   event history. Every one is `required: false`.
  *
  * @module a2a-agent-card
  */
@@ -22,6 +23,7 @@ import type { A2AAgentCardInput, A2ASecurityDeclaration } from '@lostgradient/we
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
 
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
+import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 
 /** The A2UI A2A extension of the pinned A2UI release (`v0.9.1`). */
 export const A2UI_EXTENSION_URI = 'https://a2ui.org/a2a-extension/a2ui/v0.9.1';
@@ -43,27 +45,36 @@ export type A2AAgentCardSource = {
   readonly skillDescriptors: readonly AgentSkillDescriptor[] | undefined;
   /** The credentials the handler enforces; `undefined` when every request is the local caller. */
   readonly security: A2ASecurityDeclaration | undefined;
+  /** Whether the Bureau keeps a durable event history, which the durable-history extension needs. */
+  readonly durableHistory: boolean;
 };
 
-const EXTENSIONS: readonly AgentExtension[] = [
-  {
-    uri: CLEANUP_EXTENSION_URI,
-    description: 'Reports whether a canceled task’s cleanup finished, beside its terminal state.',
-    required: false,
-    params: {},
-  },
-  {
-    uri: A2UI_EXTENSION_URI,
-    description: 'Carries A2UI surfaces to a client that renders them.',
-    required: false,
-    params: {},
-  },
-];
+const CLEANUP_EXTENSION: AgentExtension = {
+  uri: CLEANUP_EXTENSION_URI,
+  description: 'Reports whether a canceled task’s cleanup finished, beside its terminal state.',
+  required: false,
+  params: {},
+};
 
-/** The URIs of every extension a Bureau card declares. */
-export const DECLARED_EXTENSIONS: ReadonlySet<string> = new Set(
-  EXTENSIONS.map((extension) => extension.uri),
-);
+const DURABLE_HISTORY_EXTENSION: AgentExtension = {
+  uri: DURABLE_HISTORY_EXTENSION_URI,
+  description:
+    'Resumes SubscribeToTask from a durable cursor: the current Task first, then only later events.',
+  required: false,
+  params: {},
+};
+
+const A2UI_EXTENSION: AgentExtension = {
+  uri: A2UI_EXTENSION_URI,
+  description: 'Carries A2UI surfaces to a client that renders them.',
+  required: false,
+  params: {},
+};
+
+/** The URIs of the extensions a card declares: the ones a request may activate. */
+export function declaredExtensionsOf(card: Pick<AgentCard, 'capabilities'>): ReadonlySet<string> {
+  return new Set((card.capabilities?.extensions ?? []).map((extension) => extension.uri));
+}
 
 function skillOf(descriptor: AgentSkillDescriptor): AgentSkill {
   return {
@@ -110,10 +121,14 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
     version: String(source.definitionRevision),
     documentationUrl: undefined,
     capabilities: {
-      streaming: false,
+      streaming: true,
       pushNotifications: false,
       extendedAgentCard: false,
-      extensions: EXTENSIONS.map((extension) => ({ ...extension, params: {} })),
+      extensions: [
+        CLEANUP_EXTENSION,
+        ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION] : []),
+        A2UI_EXTENSION,
+      ].map((extension) => ({ ...extension, params: {} })),
     },
     securitySchemes: { ...source.security?.securitySchemes },
     securityRequirements: [...(source.security?.securityRequirements ?? [])],

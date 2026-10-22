@@ -210,6 +210,7 @@ export type BureauHandlerSource = Pick<
   | 'sessionInputsDeliveredBy'
   | 'assets'
   | 'addEventListener'
+  | 'removeEventListener'
 > & {
   readonly agents: {
     has(name: string): boolean;

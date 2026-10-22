@@ -55,7 +55,9 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
   readonly bureau: A2ABureau & { readonly id: string };
   readonly publication: { readonly includes: (agentName: string) => boolean };
   /** The card source of a catalog agent, or `undefined` when the catalog has none. */
-  readonly describe: (agentName: string) => Omit<A2AAgentCardSource, 'security'> | undefined;
+  readonly describe: (
+    agentName: string,
+  ) => Omit<A2AAgentCardSource, 'security' | 'durableHistory'> | undefined;
   /** The credentials the handler enforces; `undefined` when every request is the local caller. */
   readonly security: A2ASecurityDeclaration | undefined;
   readonly records: A2ATaskRecords;
@@ -80,12 +82,26 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
   const users = new WeakMap<Request, BureauA2AUser>();
   const handlers = new Map<string, { readonly revision: number; readonly handler: A2AHandler }>();
 
-  function handlerOf(agentName: string): A2AHandler | undefined {
+  // Whether the Bureau keeps a durable event history, asked once: the durable-history extension
+  // is declared only where it does.
+  let durableHistory: Promise<boolean> | undefined;
+  const keepsDurableHistory = (): Promise<boolean> => {
+    durableHistory ??= options.bureau
+      .eventHistory({ kind: 'run', id: '' }, { limit: 1 })
+      .then((answer) => !('outcome' in answer && answer.outcome === 'unsupported-capability'));
+    return durableHistory;
+  };
+
+  async function handlerOf(agentName: string): Promise<A2AHandler | undefined> {
     const source = options.describe(agentName);
     if (source === undefined) return undefined;
     const held = handlers.get(agentName);
     if (held !== undefined && held.revision === source.definitionRevision) return held.handler;
-    const agentCard = createBureauAgentCard({ ...source, security: options.security });
+    const agentCard = createBureauAgentCard({
+      ...source,
+      security: options.security,
+      durableHistory: await keepsDurableHistory(),
+    });
     const requestHandler = createBureauA2ARequestHandler({
       agentName,
       card: () => ({ ...agentCard, supportedInterfaces: [], signatures: [] }),
@@ -115,7 +131,7 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       const pathname = new URL(request.url).pathname;
       const agentName = decodeURIComponent(pathname.split('/')[2] ?? '');
       if (agentName === '' || !options.publication.includes(agentName)) return notFound();
-      const handler = handlerOf(agentName);
+      const handler = await handlerOf(agentName);
       if (handler === undefined) return notFound();
       // Without signing there is no key to publish; the kit would read the path as JSON-RPC.
       if (options.signing === undefined && pathname.endsWith('/.well-known/jwks.json')) {
