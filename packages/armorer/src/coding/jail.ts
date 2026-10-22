@@ -17,10 +17,12 @@ export class PathTraversalError extends Error {
   }
 }
 
+/** Reports whether `error` is a {@link PathTraversalError}. */
 export function isPathTraversalError(error: unknown): error is PathTraversalError {
   return error instanceof PathTraversalError;
 }
 
+/** Resolves repository-relative paths, refusing any that leave its root. Create one with {@link createRootJail}. */
 export interface RootJail {
   /** Real, canonical absolute path to the jail root (symlinks resolved). */
   readonly root: string;

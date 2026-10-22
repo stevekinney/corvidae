@@ -16,26 +16,24 @@ bun add @openai/agents
 
 ## Converting Tools
 
-Use `toOpenAIAgentTools` to convert Toolbox tools to OpenAI Agents SDK tools. This helper is async because the SDK is loaded lazily:
+Use `toOpenAIAgentTools` (from `armorer/open-ai/agents`) to convert Toolbox tools to OpenAI Agents SDK tools. This helper is async because the SDK is loaded lazily:
 
 ```typescript
 import { createToolbox, createTool } from 'armorer';
-import { toOpenAIAgentTools } from 'armorer';
+import { toOpenAIAgentTools } from 'armorer/open-ai/agents';
 import { Agent, run } from '@openai/agents';
 import { z } from 'zod';
 
-const toolbox = createToolbox();
-createTool(
-  {
+const toolbox = createToolbox([
+  createTool({
     name: 'sum',
     description: 'adds two numbers',
     input: z.object({ a: z.number(), b: z.number() }),
     async execute({ a, b }) {
       return a + b;
     },
-  },
-  toolbox,
-);
+  }),
+]);
 
 // Convert to OpenAI Agents SDK tools
 const { tools } = await toOpenAIAgentTools(toolbox);
@@ -56,6 +54,11 @@ console.log(result.finalOutput);
 The conversion automatically classifies tools and returns lists for permission control:
 
 ```typescript
+import type { Toolbox } from 'armorer';
+import { toOpenAIAgentTools } from 'armorer/open-ai/agents';
+
+declare const toolbox: Toolbox;
+
 const { tools, toolNames, mutatingToolNames, dangerousToolNames } =
   await toOpenAIAgentTools(toolbox);
 
@@ -75,6 +78,11 @@ Tools are classified as:
 Override tool properties during conversion:
 
 ```typescript
+import type { Toolbox } from 'armorer';
+import { toOpenAIAgentTools } from 'armorer/open-ai/agents';
+
+declare const toolbox: Toolbox;
+
 const { tools } = await toOpenAIAgentTools(toolbox, {
   toolConfiguration: (tool) => ({
     name: `custom_${tool.name}`,
@@ -92,13 +100,11 @@ Use `createOpenAIToolGate` to implement permission-based tool access control. Th
 
 ```typescript
 import { createToolbox, createTool } from 'armorer';
-import { createOpenAIToolGate } from 'armorer';
+import { createOpenAIToolGate } from 'armorer/open-ai/agents';
 import { z } from 'zod';
 
-const toolbox = createToolbox();
-
-createTool(
-  {
+const toolbox = createToolbox([
+  createTool({
     name: 'read-file',
     description: 'reads a file',
     input: z.object({ path: z.string() }),
@@ -106,12 +112,8 @@ createTool(
     async execute({ path }) {
       return { content: '...' };
     },
-  },
-  toolbox,
-);
-
-createTool(
-  {
+  }),
+  createTool({
     name: 'write-file',
     description: 'writes a file',
     input: z.object({ path: z.string(), content: z.string() }),
@@ -119,12 +121,8 @@ createTool(
     async execute({ path, content }) {
       return { success: true };
     },
-  },
-  toolbox,
-);
-
-createTool(
-  {
+  }),
+  createTool({
     name: 'delete-file',
     description: 'deletes a file',
     input: z.object({ path: z.string() }),
@@ -132,9 +130,8 @@ createTool(
     async execute({ path }) {
       return { success: true };
     },
-  },
-  toolbox,
-);
+  }),
+]);
 
 // Create a gate function
 const toolGate = createOpenAIToolGate({
@@ -158,9 +155,12 @@ console.log(deleteDecision); // { behavior: 'deny', message: 'Use --dangerous to
 ### Gate Options
 
 ```typescript
+import type { Tool, Toolbox } from 'armorer';
+import type { OpenAIAgentToolConfiguration } from 'armorer/open-ai/agents';
+
 type OpenAIToolGateOptions = {
   // The registry, tool, or array of tools to gate
-  registry: Toolbox | Tool | Tool[];
+  registry: Toolbox | Tool | readonly Tool[];
 
   // Enable read-only mode (denies all mutating tools)
   readOnly?: boolean;
@@ -198,6 +198,11 @@ type OpenAIToolGateOptions = {
 When working with agent systems that have their own builtin tools (like file system access), use the `builtin` option to classify them:
 
 ```typescript
+import type { Toolbox } from 'armorer';
+import { createOpenAIToolGate } from 'armorer/open-ai/agents';
+
+declare const toolbox: Toolbox;
+
 const toolGate = createOpenAIToolGate({
   registry: toolbox,
   readOnly: true,
