@@ -305,7 +305,8 @@ describe('a result() first asked for while the engine is ending the run', () => 
     const id = 'asked-during-the-window';
     const run = await startParkedUnobserved(steps, id);
     await using engine = run.engine;
-    const asked = Promise.withResolvers<Promise<unknown>>();
+    // Wrapped, so awaiting it hands back the result() promise rather than its outcome.
+    const asked = Promise.withResolvers<{ readonly result: Promise<unknown> }>();
     const other = otherWriterChanges(run as Run, id, (record) => {
       record.status = 'completed';
       record.result = ANOTHER_WRITERS_RESULT;
@@ -318,13 +319,13 @@ describe('a result() first asked for while the engine is ending the run', () => 
         // the record still says running; then another writer ends the run.
         const result = new WorkflowHandle(id, getInternals(engine).engine).result();
         void result.catch(() => {});
-        asked.resolve(result);
+        asked.resolve({ result });
         await other.before();
       },
     });
 
     await engine.signal(id, 'go', 'x');
-    const result = await asked.promise;
+    const { result } = await asked.promise;
 
     expect(await settlementOf(result)).toEqual({ kind: 'value', value: ANOTHER_WRITERS_RESULT });
     expect(getInternals(engine).resultResolvers.has(id)).toBe(false);
