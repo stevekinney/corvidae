@@ -11,7 +11,10 @@ If tools define `availability` hooks, prefer the async toolbox exporters (`await
 ### OpenAI
 
 ```typescript
-import { toOpenAITools } from 'armorer';
+import { toOpenAITools, type AnyToolbox, type Tool } from 'armorer';
+
+declare const myTool: Tool, tool1: Tool, tool2: Tool;
+declare const toolbox: AnyToolbox;
 
 // Single tool
 const openAITool = toOpenAITools(myTool);
@@ -20,7 +23,16 @@ const openAITool = toOpenAITools(myTool);
 const openAITools = toOpenAITools([tool1, tool2]);
 
 // From a toolbox, applying availability filters
-const openAITools = await toolbox.toOpenAITools();
+const availableOpenAITools = await toolbox.toOpenAITools();
+```
+
+```typescript
+import OpenAI from 'openai';
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+declare const messages: OpenAI.Chat.ChatCompletionMessageParam[];
+const openai = new OpenAI();
 
 // Use with OpenAI SDK
 const response = await openai.chat.completions.create({
@@ -30,12 +42,15 @@ const response = await openai.chat.completions.create({
 });
 ```
 
-> **OpenAI Chat Completions vs OpenAI Agents SDK**: The `toOpenAITools()` adapter here produces static tool definitions for the [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat). If you're building with the **OpenAI Agents SDK** (`@openai/agents`), use the separate [OpenAI Agents adapter](./openai-agents-sdk.md) (`armorer`) instead. It produces executable tool objects with result handling and tool gating.
+> **OpenAI Chat Completions vs OpenAI Agents SDK**: The `toOpenAITools()` adapter here produces static tool definitions for the [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat). If you're building with the **OpenAI Agents SDK** (`@openai/agents`), use the separate [OpenAI Agents adapter](./openai-agents-sdk.md) (`armorer/open-ai/agents`) instead. It produces executable tool objects with result handling and tool gating.
 
 ### Anthropic
 
 ```typescript
-import { toAnthropicTools } from 'armorer';
+import { toAnthropicTools, type AnyToolbox, type Tool } from 'armorer';
+
+declare const myTool: Tool, tool1: Tool, tool2: Tool;
+declare const toolbox: AnyToolbox;
 
 // Single tool
 const anthropicTool = toAnthropicTools(myTool);
@@ -44,11 +59,21 @@ const anthropicTool = toAnthropicTools(myTool);
 const anthropicTools = toAnthropicTools([tool1, tool2]);
 
 // From a toolbox, applying availability filters
-const anthropicTools = await toolbox.toAnthropicTools();
+const availableAnthropicTools = await toolbox.toAnthropicTools();
+```
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+declare const messages: Anthropic.MessageParam[];
+const anthropic = new Anthropic();
 
 // Use with Anthropic SDK
 const response = await anthropic.messages.create({
   model: 'claude-sonnet-4-20250514',
+  max_tokens: 1024,
   messages,
   tools: await toolbox.toAnthropicTools(),
 });
@@ -57,16 +82,28 @@ const response = await anthropic.messages.create({
 ### Google Gemini
 
 ```typescript
-import { toGeminiTools } from 'armorer';
+import { toGeminiTools, type AnyToolbox, type Tool } from 'armorer';
+
+declare const myTool: Tool, tool1: Tool, tool2: Tool;
+declare const toolbox: AnyToolbox;
 
 // Single tool
-const geminiTools = toGeminiTools(myTool);
+const geminiTool = toGeminiTools(myTool);
 
 // Multiple tools
 const geminiTools = toGeminiTools([tool1, tool2]);
 
 // From a toolbox, applying availability filters
-const geminiTools = await toolbox.toGeminiTools();
+const availableGeminiTools = await toolbox.toGeminiTools();
+```
+
+```typescript
+import { GoogleGenAI, type Content } from '@google/genai';
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+declare const contents: Content[];
+const client = new GoogleGenAI({});
 
 // Use with Gemini SDK
 const response = await client.models.generateContent({

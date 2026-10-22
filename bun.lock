@@ -275,9 +275,11 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "openai": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },

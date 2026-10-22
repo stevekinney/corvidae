@@ -55,6 +55,13 @@ A file that cannot be used is still listed by `bureau.agents.list()`, with `stat
 ## Wiring it in
 
 ```ts
+import { createBureau } from '@lostgradient/bureau';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Tool } from 'armorer';
+
+declare const lookupOrderTool: Tool;
+declare function generateFor(provider: string, model: string): GenerateFunction;
+
 const bureau = await createBureau({
   agents: {},
   agentDirectory: '/home/me/.interborough/agents',

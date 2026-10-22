@@ -2,12 +2,12 @@
 
 Manage tool dependencies and execution order.
 
-```typescript
-import { createToolbox, createTool } from 'armorer';
+```typescript file=tool-dependencies.ts
+import { createMiddleware, createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 // Dependency graph
-type DependencyGraph = Map<string, string[]>;
+export type DependencyGraph = Map<string, string[]>;
 
 function createDependencyMiddleware(dependencies: DependencyGraph) {
   // Track completed tools per execution context
@@ -69,11 +69,11 @@ const fetchUserData = createTool({
 });
 
 // Configure dependencies
-const deps: DependencyGraph = new Map([
+export const deps: DependencyGraph = new Map([
   ['fetch-user-data', ['authenticate']], // fetch-user-data depends on authenticate
 ]);
 
-const toolbox = createToolbox([authenticate.configuration, fetchUserData.configuration], {
+export const toolbox = createToolbox([authenticate.configuration, fetchUserData.configuration], {
   middleware: [createDependencyMiddleware(deps)],
 });
 
@@ -92,8 +92,11 @@ await toolbox.execute({
 ## Automatic Dependency Resolution
 
 ```typescript
+import type { AnyToolbox } from 'armorer';
+import { deps, toolbox, type DependencyGraph } from './tool-dependencies.ts';
+
 async function executeDependencyChain(
-  toolbox: Toolbox,
+  toolbox: AnyToolbox,
   toolName: string,
   params: unknown,
   dependencies: DependencyGraph,

@@ -233,6 +233,9 @@ A skill does not have to live on a filesystem: the self-improvement flow writes 
 
 ```typescript
 import { discoverSkills } from '@lostgradient/bureau/skills';
+import type { TextValueStore } from '@lostgradient/weft';
+
+declare const store: TextValueStore;
 
 const catalog = await discoverSkills({
   sources: [{ id: 'storage', kind: 'storage', location: 'kv://skills', precedence: 25 }],
@@ -285,8 +288,16 @@ import {
   createSkillArtifactLoader,
   createSkillClient,
   createSkillClientToolbox,
+  type SkillCatalogRevision,
   type SkillEventMap,
+  type SkillGuardrailOptions,
 } from '@lostgradient/bureau/skills';
+import type { TextValueStore } from '@lostgradient/weft';
+
+declare const catalog: SkillCatalogRevision;
+declare const storage: TextValueStore;
+declare const runId: string, sessionId: string;
+declare const guardrail: SkillGuardrailOptions;
 
 const events = new TypedEventTarget<SkillEventMap>();
 
@@ -438,6 +449,8 @@ Testing utilities for code that writes skills. Neither requires filesystem or ne
 ```typescript
 import { createMockKeyValueStore, createMockSkillProvider } from '@lostgradient/bureau/skills';
 import { parseSkillMarkdown } from '@lostgradient/bureau/skills';
+
+declare const otherSkill: string; // another SKILL.md document
 
 // In-memory TextValueStore backed by Weft MemoryStorage—
 // drop-in replacement for production stores in unit tests.

@@ -90,14 +90,18 @@ await memory.close();
 For production, supply a real embedder (your model provider's embedding endpoint) and the durable Weft-backed storage instead of the test doubles:
 
 ```typescript
+import type { Storage } from '@lostgradient/weft';
 import { createMemory, createWeftMemoryRecordStorage } from '@lostgradient/memory';
+
+// Your provider's embedding call, and the host runtime's Weft storage.
+declare function embedProvider(texts: string[]): Promise<number[][]>;
+declare const weftStorage: Storage;
 
 // Wire this to your provider—e.g. OpenAI's text-embedding-3-small (1536 dims).
 // An `Embedder` may return vectors synchronously or as a promise; a provider
 // call is async, so this one is too.
 const embedder = async (texts: string[]): Promise<number[][]> => embedProvider(texts);
 
-// `weftStorage` is a Weft Storage instance from the host runtime.
 const storage = createWeftMemoryRecordStorage(weftStorage);
 
 const memory = createMemory({ embedder, storage });
@@ -129,46 +133,72 @@ import {
 ### `createMemory(options)`
 
 ```typescript
-function createMemory(options: CreateMemoryOptions): Memory;
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createMemory,
+  type CreateMemoryOptions,
+  type Embedder,
+  type Memory,
+  type MemoryRecordStorage,
+  type OnConflictHandler,
+  type TextSearchProvider,
+} from '@lostgradient/memory';
 
-interface CreateMemoryOptions {
-  embedder: Embedder;
-  storage: MemoryRecordStorage;
-  namespace?: string; // default: 'default'
-  dimension?: number;
-  defaultSearchOptions?: Partial<MemorySearchOptions>;
-  deduplicationThreshold?: number; // default: 0.95—above this, update in place
-  conflictThreshold?: number; // must be < deduplicationThreshold; calls onConflict between the two
-  onConflict?: OnConflictHandler; // default: always 'keep-both'
-  textSearchProvider?: TextSearchProvider;
-  requireNamespace?: boolean; // default: false
-  temporalValidity?: boolean; // default: false
-  runtime?: RuntimeServices; // from `lifecycle`; defaults to the real clock/identifiers
-}
+const create: (options: CreateMemoryOptions) => Memory = createMemory;
 
-type OnConflictHandler = (
-  incoming: { content: string; metadata: Partial<MemoryMetadata> },
-  existing: { id: string; content: string; metadata: MemoryMetadata; similarity: number },
-) => Promise<'keep-both' | 'replace' | 'skip'> | 'keep-both' | 'replace' | 'skip';
+declare const embedder: Embedder;
+declare const storage: MemoryRecordStorage;
+declare const textSearchProvider: TextSearchProvider;
+declare const runtime: RuntimeServices;
+
+// Receives the incoming { content, metadata } and the existing
+// { id, content, metadata, similarity }; answers 'keep-both', 'replace', or
+// 'skip', synchronously or as a promise.
+const onConflict: OnConflictHandler = (incoming, existing) =>
+  incoming.content === existing.content ? 'skip' : 'keep-both';
+
+const options: CreateMemoryOptions = {
+  embedder,
+  storage,
+  namespace: 'default', // default: 'default'
+  dimension: 1536,
+  defaultSearchOptions: { limit: 10 },
+  deduplicationThreshold: 0.95, // default: 0.95—above this, update in place
+  conflictThreshold: 0.85, // must be < deduplicationThreshold; calls onConflict between the two
+  onConflict, // default: always 'keep-both'
+  textSearchProvider,
+  requireNamespace: false, // default: false
+  temporalValidity: false, // default: false
+  runtime, // from `lifecycle`; defaults to the real clock/identifiers
+};
+
+const memory = create(options);
 ```
 
-Returns a `Memory` instance:
+Returns a `Memory` instance, used like this:
 
 ```typescript
-interface Memory {
-  remember(content: string, metadata?: Partial<MemoryMetadata>): Promise<MemoryEntry>;
-  rememberOnce(
-    content: string,
-    metadata: Partial<MemoryMetadata> & { dedupeKey: string },
-  ): Promise<MemoryEntry>;
-  recall(query: string, options?: MemorySearchOptions): Promise<MemorySearchResult[]>;
-  list(options?: MemoryListOptions): Promise<MemorySearchResult[]>;
-  forget(id: string, namespace?: string): Promise<void>;
-  forgetAll(namespace?: string): Promise<void>;
-  count(namespace?: string): Promise<number>;
-  init(): Promise<void>;
-  close(): Promise<void>;
-}
+import type { Memory, MemoryEntry, MemorySearchResult } from '@lostgradient/memory';
+
+declare const memory: Memory;
+
+await memory.init();
+
+const entry: MemoryEntry = await memory.remember('The user prefers dark mode.', {
+  tags: ['preferences'],
+});
+const once: MemoryEntry = await memory.rememberOnce('Deploys run on Fridays.', {
+  dedupeKey: 'deploy-day',
+});
+
+const ranked: MemorySearchResult[] = await memory.recall('display settings', { limit: 5 });
+const newest: MemorySearchResult[] = await memory.list({ limit: 20 });
+
+await memory.forget(entry.id); // optional second argument: namespace
+await memory.forgetAll('scratch'); // defaults to the instance namespace
+const remaining: number = await memory.count();
+
+await memory.close();
 ```
 
 **`remember(content, metadata?)`:** Embeds `content`, checks for near-duplicates (cosine similarity ≥ `deduplicationThreshold` → update in place; ≥ `conflictThreshold` → calls `onConflict`), then writes a `MemoryRecord`. Returns the persisted `MemoryEntry`.
@@ -186,46 +216,64 @@ interface Memory {
 **`count(namespace?)`:** Returns the number of active entries.
 
 ```typescript
-interface MemorySearchOptions {
-  limit?: number;
-  threshold?: number;
-  namespace?: string;
-  includeVector?: boolean;
-  vectorWeight?: number; // default: 0.7
-  textWeight?: number; // default: 0.3
-  temporalDecay?: { halfLifeMilliseconds: number; evergreenExempt?: boolean };
-  diversify?: { lambda: number }; // 1 = pure relevance, 0 = pure diversity
-  vectorOnly?: boolean; // skip BM25 entirely
-  asOf?: number; // filter to facts valid at this epoch-millisecond timestamp
-}
+import type { Memory, MemorySearchOptions, MemorySearchResult } from '@lostgradient/memory';
+
+declare const memory: Memory;
+
+const options: MemorySearchOptions = {
+  limit: 10,
+  threshold: 0.2,
+  namespace: 'agent-42',
+  includeVector: false,
+  vectorWeight: 0.7, // default: 0.7
+  textWeight: 0.3, // default: 0.3
+  temporalDecay: { halfLifeMilliseconds: 7 * 24 * 60 * 60 * 1000, evergreenExempt: true },
+  diversify: { lambda: 0.7 }, // 1 = pure relevance, 0 = pure diversity
+  vectorOnly: false, // true skips BM25 entirely
+  asOf: Date.parse('2026-01-01T00:00:00Z'), // filter to facts valid at this epoch-millisecond timestamp
+};
+
+const results: MemorySearchResult[] = await memory.recall('display preferences', options);
+```
 
 Set `temporalValidity: true` to enable fact-validity metadata and as-of recall. This option is default-off. The previous `experimentalTemporalValidity` option was renamed and is no longer accepted.
 
-interface MemoryListOptions {
-  limit?: number; // default: 100
-  offset?: number; // default: 0
-  namespace?: string;
-}
+```typescript
+import type {
+  Memory,
+  MemoryListOptions,
+  MemoryMetadata,
+  MemorySearchResult,
+} from '@lostgradient/memory';
 
-interface MemoryMetadata {
-  namespace: string;
-  source: 'auto-capture' | 'tool' | 'manual' | 'experiential';
-  conversationId?: string;
-  agentId?: string;
-  importance?: number;
-  evergreen?: boolean;
-  tags?: string[];
-  dedupeKey?: string;
-  [key: string]: unknown;
-}
+declare const memory: Memory;
 
-interface MemorySearchResult {
-  id: string;
-  content: string;
-  score: number;
-  metadata: MemoryMetadata;
-  createdAt: number;
-}
+const listOptions: MemoryListOptions = {
+  limit: 100, // default: 100
+  offset: 0, // default: 0
+  namespace: 'agent-42',
+};
+
+const metadata: MemoryMetadata = {
+  namespace: 'agent-42',
+  source: 'manual', // or 'auto-capture', 'tool', 'experiential'
+  conversationId: 'conversation-7',
+  agentId: 'agent-42',
+  importance: 0.8,
+  evergreen: false,
+  tags: ['preferences'],
+  dedupeKey: 'display-mode',
+  validFrom: Date.parse('2026-01-01T00:00:00Z'), // temporal validity, when `temporalValidity` is on
+  invalidatedAt: Date.parse('2026-06-01T00:00:00Z'),
+  supersededBy: 'memory-9',
+  supersedes: 'memory-3',
+  team: 'design', // any other key is allowed
+};
+
+// Each result is { id, content, score, metadata, createdAt }.
+const page: MemorySearchResult[] = await memory.list(listOptions);
+const first: MemorySearchResult | undefined = page[0];
+const firstMetadata: MemoryMetadata | undefined = first?.metadata;
 ```
 
 ### Conflict vs. deduplication
@@ -237,15 +285,26 @@ interface MemorySearchResult {
 Wraps a `Memory` instance so every read and write is scoped to a specific namespace, with optional enforcement on unauthorized cross-namespace access.
 
 ```typescript
-function withNamespaceIsolation(memory: Memory, options: NamespaceIsolationOptions): Memory;
+import {
+  type Memory,
+  type NamespaceIsolationOptions,
+  withNamespaceIsolation,
+} from '@lostgradient/memory';
 
-interface NamespaceIsolationOptions {
-  namespace: string;
-  onUnauthorized?: 'throw' | 'ignore'; // default: 'throw'
-}
+const isolate: (memory: Memory, options: NamespaceIsolationOptions) => Memory =
+  withNamespaceIsolation;
+
+const options: NamespaceIsolationOptions = {
+  namespace: 'agent-42',
+  onUnauthorized: 'throw', // default: 'throw'; or 'ignore'
+};
 ```
 
 ```typescript
+import { type Memory, withNamespaceIsolation } from '@lostgradient/memory';
+
+declare const memory: Memory;
+
 // All operations on `agentMemory` are confined to the 'agent-42' namespace.
 const agentMemory = withNamespaceIsolation(memory, { namespace: 'agent-42' });
 await agentMemory.remember('User prefers dark mode.');
@@ -256,24 +315,45 @@ await agentMemory.remember('User prefers dark mode.');
 Wraps an `Embedder` with an LRU cache, keyed by text content. Avoids re-embedding strings that have already been seen this session.
 
 ```typescript
-function withEmbeddingCache(embedder: Embedder, options?: EmbeddingCacheOptions): CachedEmbedder;
+import {
+  type CachedEmbedder,
+  type Embedder,
+  type EmbeddingCacheOptions,
+  type EmbeddingVector,
+  withEmbeddingCache,
+} from '@lostgradient/memory';
 
-interface EmbeddingCacheOptions {
-  maximumEntries?: number; // default: 10_000
-  hash?: (text: string) => string | Promise<string>;
-  namespace?: string;
-}
+const wrap: (embedder: Embedder, options?: EmbeddingCacheOptions) => CachedEmbedder =
+  withEmbeddingCache;
 
-type CachedEmbedder = Embedder & {
-  cache: ReadonlyMap<string, EmbeddingVector>;
-  clearCache(): void;
-  clearNamespace(namespace: string): void;
-  // Evicts entries by the SHA-256 digest of the text they embedded.
-  evictContent(contentDigests: readonly string[]): number;
+declare const embedder: Embedder;
+
+const options: EmbeddingCacheOptions = {
+  maximumEntries: 10_000, // default: 10_000
+  hash: (text) => Bun.hash(text).toString(16), // default: SHA-256 hex digest
+  namespace: 'agent-42',
 };
+
+// A CachedEmbedder is still an Embedder, plus its cache controls.
+const cached: CachedEmbedder = wrap(embedder, options);
+const entries: ReadonlyMap<string, EmbeddingVector> = cached.cache;
+cached.clearCache();
+cached.clearNamespace('agent-42');
+// Evicts entries by the SHA-256 digest of the text they embedded; returns the count.
+const evicted: number = cached.evictContent(['<sha-256 hex digest>']);
 ```
 
 ```typescript
+import {
+  createMemory,
+  type Embedder,
+  type MemoryRecordStorage,
+  withEmbeddingCache,
+} from '@lostgradient/memory';
+
+declare const myEmbedder: Embedder;
+declare const storage: MemoryRecordStorage;
+
 const cachedEmbedder = withEmbeddingCache(myEmbedder, { maximumEntries: 5_000 });
 const memory = createMemory({ embedder: cachedEmbedder, storage });
 ```
@@ -283,24 +363,38 @@ const memory = createMemory({ embedder: cachedEmbedder, storage });
 Hypothetical Document Embeddings: instead of embedding the raw query, the system generates a plausible hypothetical answer and embeds that. Produces better recall for factual queries.
 
 ```typescript
-function withHyDE(memory: Memory, options: HyDEOptions): Memory;
+import {
+  createHyDEGenerator,
+  type CreateHyDEGeneratorOptions,
+  type HyDEOptions,
+  type HypotheticalAnswerGenerator,
+  type Memory,
+  withHyDE,
+} from '@lostgradient/memory';
 
-interface HyDEOptions {
-  generateHypothetical: HypotheticalAnswerGenerator;
-  augmentTextSearch?: boolean; // default: true—also passes hypothetical to BM25
-}
+const wrap: (memory: Memory, options: HyDEOptions) => Memory = withHyDE;
+const createGenerator: (options: CreateHyDEGeneratorOptions) => HypotheticalAnswerGenerator =
+  createHyDEGenerator;
 
-type HypotheticalAnswerGenerator = (query: string) => Promise<string>;
+// A HypotheticalAnswerGenerator maps a query to a hypothetical answer.
+const generateHypothetical: (query: string) => Promise<string> = createGenerator({
+  generateText: async (prompt) => `A plausible answer to: ${prompt}`,
+  systemPrompt: 'Answer in one or two sentences.', // optional; a default prompt is built in
+});
 
-function createHyDEGenerator(options: CreateHyDEGeneratorOptions): HypotheticalAnswerGenerator;
-
-interface CreateHyDEGeneratorOptions {
-  generateText: (prompt: string) => Promise<string>;
-  systemPrompt?: string;
-}
+const options: HyDEOptions = {
+  generateHypothetical,
+  augmentTextSearch: true, // default: true—also passes hypothetical to BM25
+};
 ```
 
 ```typescript
+import { createHyDEGenerator, type Memory, withHyDE } from '@lostgradient/memory';
+
+// Your memory instance and model client.
+declare const memory: Memory;
+declare const llm: { complete(prompt: string): Promise<string> };
+
 const generator = createHyDEGenerator({
   generateText: async (prompt) => await llm.complete(prompt),
 });
@@ -315,24 +409,29 @@ const results = await hydeMemory.recall('What does the user prefer for error mes
 Diagnostic snapshot of storage state across named namespaces.
 
 ```typescript
-function getMemoryStatus(
-  storage: MemoryRecordStorage,
-  options: GetMemoryStatusOptions,
-): Promise<MemoryStatus>;
+import {
+  type CachedEmbedder,
+  getMemoryStatus,
+  type GetMemoryStatusOptions,
+  type MemoryRecordStorage,
+  type MemoryStatus,
+} from '@lostgradient/memory';
 
-interface GetMemoryStatusOptions {
-  namespaces: string[];
-  tenantId?: string;
-  embedder?: unknown;
-  storageType?: string;
-}
+declare const storage: MemoryRecordStorage;
+declare const cachedEmbedder: CachedEmbedder;
 
-interface MemoryStatus {
-  totalEntries: number;
-  namespaces: Array<{ name: string; count: number }>;
-  storageType: string;
-  embeddingCacheSize?: number;
-}
+const options: GetMemoryStatusOptions = {
+  namespaces: ['default', 'experiential'], // required: storage cannot enumerate scopes
+  tenantId: 'acme',
+  embedder: cachedEmbedder, // inspected for an optional embedding cache size
+  storageType: 'weft', // defaults to the storage object's constructor name
+};
+
+const status: MemoryStatus = await getMemoryStatus(storage, options);
+const totalEntries: number = status.totalEntries;
+const perNamespace: Array<{ name: string; count: number }> = status.namespaces;
+const storageType: string = status.storageType;
+const embeddingCacheSize: number | undefined = status.embeddingCacheSize;
 ```
 
 ### `createConsolidationTask(options)`
@@ -340,23 +439,34 @@ interface MemoryStatus {
 Returns a chunked-task descriptor compatible with `operative`'s `createChunkedTask`. When run, consolidation scans stored memories in batches, merges near-duplicates (above `mergeThreshold`), resolves conflicts within `conflictRange`, and prunes entries whose evaluated importance falls below `pruneThreshold`. It operates only on stored memory records—it does not touch the identity/soul system.
 
 ```typescript
-function createConsolidationTask(
-  options: CreateConsolidationOptions,
-): ConsolidationChunkedTaskOptions;
+import { createChunkedTask } from '@lostgradient/operative';
+import {
+  type ConsolidationChunkedTaskOptions,
+  createConsolidationTask,
+  type CreateConsolidationOptions,
+  type Memory,
+} from '@lostgradient/memory';
 
-interface CreateConsolidationOptions {
-  memory: Memory;
-  namespace?: string;
-  chunkSize?: number; // default: 20
-  mergeThreshold?: number; // default: 0.75
-  merge: (entryA: string, entryB: string) => Promise<string>;
-  deduplicationThreshold?: number; // default: 0.95
-  resolveConflict?: (entryA: string, entryB: string) => Promise<string | null>;
-  conflictRange?: [number, number]; // default: [0.6, 0.9]
-  evaluateImportance?: (entry: string, metadata: MemoryMetadata) => Promise<number>;
-  pruneThreshold?: number; // default: 0.2
-  boostConfidenceOnMerge?: boolean; // default: true
-}
+declare const memory: Memory;
+declare const llm: { complete(prompt: string): Promise<string> };
+
+const options: CreateConsolidationOptions = {
+  memory,
+  namespace: 'default',
+  chunkSize: 20, // default: 20
+  mergeThreshold: 0.75, // default: 0.75
+  merge: async (entryA, entryB) => await llm.complete(`Merge:\n${entryA}\n${entryB}`),
+  deduplicationThreshold: 0.95, // default: 0.95
+  // Returns the reconciled content, or null to keep both.
+  resolveConflict: async (entryA, entryB) => await llm.complete(`Reconcile:\n${entryA}\n${entryB}`),
+  conflictRange: [0.6, 0.9], // default: [0.6, 0.9]
+  evaluateImportance: async (entry, metadata) => metadata.importance ?? 0.5,
+  pruneThreshold: 0.2, // default: 0.2
+  boostConfidenceOnMerge: true, // default: true
+};
+
+const task: ConsolidationChunkedTaskOptions = createConsolidationTask(options);
+const runConsolidation = createChunkedTask(task);
 ```
 
 ## Storage Backends
@@ -367,66 +477,66 @@ import { createWeftMemoryRecordStorage, DEFAULT_MEMORY_KEY_PREFIX } from '@lostg
 
 ### `MemoryRecordStorage` (contract)
 
-All backends implement this interface. Backends own durable record reads and vector lookup; `createMemory` owns retrieval semantics on top.
+All backends implement this interface; the calls below exercise each member. Backends own durable record reads and vector lookup; `createMemory` owns retrieval semantics on top.
 
 ```typescript
-interface MemoryRecordStorage {
-  init(): Promise<void>;
-  close(): Promise<void>;
-  put(record: MemoryRecord): Promise<void>;
-  get(id: string, scope: MemoryRecordScope): Promise<MemoryRecord | undefined>;
-  getMany(ids: string[], scope: MemoryRecordScope): Promise<MemoryRecord[]>;
-  getByDedupeKey?(scope: MemoryRecordScope, dedupeKey: string): Promise<MemoryRecord | undefined>;
-  putOnce?(record: MemoryRecord): Promise<MemoryRecordPutOnceResult>;
-  list(
-    scope: MemoryRecordScope,
-    options?: { limit?: number; offset?: number },
-  ): Promise<MemoryRecord[]>;
-  count(scope: MemoryRecordScope): Promise<number>;
-  searchByVector(
-    vector: EmbeddingVectorLike,
-    scope: MemoryRecordScope,
-    options: { limit: number; threshold?: number },
-  ): Promise<MemoryVectorSearchResult[]>;
-  update(
-    id: string,
-    scope: MemoryRecordScope,
-    patch: { content?: string; vector?: Float32Array; metadata?: Record<string, unknown> },
-    options?: { expectedVersion?: number },
-  ): Promise<MemoryRecord | undefined>;
-  delete(id: string, scope: MemoryRecordScope): Promise<boolean>;
-  deleteMany?(
-    references: readonly { id: string; scope: MemoryRecordScope; expectedVersion?: number }[],
-  ): Promise<number>;
-  deleteNamespace(scope: MemoryRecordScope): Promise<number>;
-}
+import type {
+  MemoryRecord,
+  MemoryRecordPutOnceResult,
+  MemoryRecordScope,
+  MemoryRecordStorage,
+  MemoryVectorSearchResult,
+} from '@lostgradient/memory';
 
-interface MemoryRecord {
-  id: string;
-  tenantId?: string;
-  namespace: string;
-  content: string;
-  vector: Float32Array;
-  metadata: Record<string, unknown>;
-  createdAt: number;
-  updatedAt: number;
-  version: number;
-  status: 'active' | 'deleted';
-}
+declare const storage: MemoryRecordStorage;
 
-interface MemoryRecordScope {
-  tenantId?: string;
-  namespace: string;
-}
+const scope: MemoryRecordScope = { tenantId: 'acme', namespace: 'default' }; // tenantId is optional
 
-interface MemoryVectorSearchResult {
-  id: string;
-  score: number;
-  record: MemoryRecord;
-}
+const record: MemoryRecord = {
+  id: 'memory-1',
+  tenantId: 'acme',
+  namespace: 'default',
+  content: 'The user prefers concise summaries.',
+  vector: new Float32Array(128),
+  metadata: { source: 'manual' },
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  version: 1,
+  status: 'active', // or 'deleted'
+};
 
-type MemoryRecordPutOnceResult =
-  { record: MemoryRecord; inserted: true } | { record: MemoryRecord; inserted: false };
+await storage.init();
+await storage.put(record);
+
+const found: MemoryRecord | undefined = await storage.get(record.id, scope);
+const several: MemoryRecord[] = await storage.getMany([record.id], scope);
+const page: MemoryRecord[] = await storage.list(scope, { limit: 50, offset: 0 });
+const total: number = await storage.count(scope);
+
+// Each hit is { id, score, record }.
+const hits: MemoryVectorSearchResult[] = await storage.searchByVector(record.vector, scope, {
+  limit: 5,
+  threshold: 0.2,
+});
+
+const updated: MemoryRecord | undefined = await storage.update(
+  record.id,
+  scope,
+  { content: 'The user prefers bullet-point summaries.', metadata: { source: 'manual' } },
+  { expectedVersion: record.version },
+);
+const deleted: boolean = await storage.delete(record.id, scope);
+const removedInNamespace: number = await storage.deleteNamespace(scope);
+
+// Optional members: a backend may leave them out.
+const byKey: MemoryRecord | undefined = await storage.getByDedupeKey?.(scope, 'deploy-day');
+// `inserted` is false when a record with the same dedupe key already existed.
+const once: MemoryRecordPutOnceResult | undefined = await storage.putOnce?.(record);
+const removedTogether: number | undefined = await storage.deleteMany?.([
+  { id: record.id, scope, expectedVersion: 2 },
+]);
+
+await storage.close();
 ```
 
 `deleteMany()` removes every referenced record in one transaction. `expectedVersion`, on `update()` or on a `deleteMany()` reference, turns the write into a compare-and-swap: if the live record is no longer at that version, nothing is written and the call rejects with `MemoryRecordVersionConflictError`. Governed memory requires both, and the shared contract harness checks them.
@@ -436,24 +546,39 @@ type MemoryRecordPutOnceResult =
 The default durable backend. Wraps a Weft `Storage` instance with the `MemoryRecordStorage` contract.
 
 ```typescript
-const DEFAULT_MEMORY_KEY_PREFIX = 'app:agent-bureau:memory:v1:';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { Storage } from '@lostgradient/weft';
+import {
+  createWeftMemoryRecordStorage,
+  type CreateWeftMemoryRecordStorageOptions,
+  DEFAULT_MEMORY_KEY_PREFIX,
+  type MemoryRecordStorage,
+} from '@lostgradient/memory';
 
-function createWeftMemoryRecordStorage(
+const defaultPrefix: 'app:agent-bureau:memory:v1:' = DEFAULT_MEMORY_KEY_PREFIX;
+
+const create: (
   storage: Storage,
   options?: CreateWeftMemoryRecordStorageOptions,
-): MemoryRecordStorage;
+) => MemoryRecordStorage = createWeftMemoryRecordStorage;
 
-interface CreateWeftMemoryRecordStorageOptions {
-  keyPrefix?: string;
-  disposeUnderlyingStorage?: boolean; // default: false
-  runtime?: RuntimeServices; // from `lifecycle`; controls update()'s updatedAt stamp, defaults to the real clock
-}
+declare const runtime: RuntimeServices;
+
+const options: CreateWeftMemoryRecordStorageOptions = {
+  keyPrefix: DEFAULT_MEMORY_KEY_PREFIX, // the default
+  disposeUnderlyingStorage: false, // default: false
+  runtime, // from `lifecycle`; controls update()'s updatedAt stamp, defaults to the real clock
+};
 ```
 
 ```typescript
-import { createWeftMemoryRecordStorage } from '@lostgradient/memory';
+import type { Storage } from '@lostgradient/weft';
+import { createMemory, createWeftMemoryRecordStorage, type Embedder } from '@lostgradient/memory';
 
 // `weftStorage` comes from the host runtime (`ctx.services` or a similar boundary).
+declare const weftStorage: Storage;
+declare const embedder: Embedder;
+
 const storage = createWeftMemoryRecordStorage(weftStorage, {
   keyPrefix: 'my-app:memory:v1:',
 });
@@ -466,14 +591,51 @@ const memory = createMemory({ embedder, storage });
 An optional external text-search provider for hybrid BM25+vector recall. Pass one to `createMemory` as `textSearchProvider`.
 
 ```typescript
-interface TextSearchProvider {
-  init(): Promise<void>;
-  close(): Promise<void>;
-  index(id: string, content: string, namespace: string): Promise<void>;
-  remove(id: string): Promise<void>;
-  clear(namespace?: string): Promise<void>;
-  search(query: string, namespace: string): Promise<Map<string, number>>; // id → score
-}
+import {
+  computeBM25Scores,
+  createMemory,
+  type Embedder,
+  type MemoryRecordStorage,
+  type TextSearchProvider,
+} from '@lostgradient/memory';
+
+declare const embedder: Embedder;
+declare const storage: MemoryRecordStorage;
+
+// A minimal in-process provider; a real one would call an external search index.
+const documents = new Map<string, { content: string; namespace: string }>();
+
+const textSearchProvider: TextSearchProvider = {
+  async init(): Promise<void> {},
+  async close(): Promise<void> {},
+  async index(id: string, content: string, namespace: string): Promise<void> {
+    documents.set(id, { content, namespace });
+  },
+  async remove(id: string): Promise<void> {
+    documents.delete(id);
+  },
+  async clear(namespace?: string): Promise<void> {
+    for (const [id, document] of documents) {
+      if (namespace === undefined || document.namespace === namespace) documents.delete(id);
+    }
+  },
+  // Resolves to id → score.
+  async search(query: string, namespace: string): Promise<Map<string, number>> {
+    const candidates = [...documents].filter(([, document]) => document.namespace === namespace);
+    const scores = computeBM25Scores(
+      query,
+      candidates.map(([, document]) => document.content),
+    );
+    const byId = new Map<string, number>();
+    for (const [index, score] of scores) {
+      const candidate = candidates[index];
+      if (candidate) byId.set(candidate[0], score);
+    }
+    return byId;
+  },
+};
+
+const memory = createMemory({ embedder, storage, textSearchProvider });
 ```
 
 ## Evidence and Projections
@@ -486,7 +648,20 @@ Evidence and projections are a second storage model beside `MemoryRecord`. They 
 
 ```ts
 import { MemoryStorage } from '@lostgradient/weft';
-import { createWeftEvidenceProjectionStorage, rebuildDerivedIndexes } from '@lostgradient/memory';
+import {
+  createWeftEvidenceProjectionStorage,
+  type EvidenceProjectionRecord,
+  type EvidenceRecord,
+  type MemoryAuthority,
+  rebuildDerivedIndexes,
+} from '@lostgradient/memory';
+
+// An admitted evidence record, a fact projection resting on it, and the caller's authority.
+declare const evidence: EvidenceRecord;
+declare const fact: EvidenceProjectionRecord;
+declare const authority: MemoryAuthority;
+const tenantId = 'tenant-a';
+const namespace = 'notes';
 
 const storage = createWeftEvidenceProjectionStorage(new MemoryStorage());
 
@@ -511,10 +686,14 @@ Transitions act on evidence and projections only. `MemoryRecord.version` is not 
 
 ```ts
 import {
+  type CorrectEvidenceProposal,
   createInMemoryEvidenceProjectionStorage,
   createMemoryAuthority,
   createTransitionEngine,
 } from '@lostgradient/memory';
+
+declare const newEvidence: CorrectEvidenceProposal['successor'];
+declare const newFact: NonNullable<CorrectEvidenceProposal['projections']>[number];
 
 const storage = createInMemoryEvidenceProjectionStorage();
 const engine = createTransitionEngine({
@@ -624,59 +803,102 @@ import {
 Returns `operative`-compatible hook functions that inject recalled memories into each agent step and capture tool outputs back to memory. These hooks wrap an ungoverned `Memory`: they carry no authority and admit nothing. Bureau's governed recall and persistence hooks are described in [Bureau's governed memory section](../bureau/README.md#governed-memory-cor-41).
 
 ```typescript
-function createMemoryHooks(options: MemoryHookOptions): {
-  prepareStep: (context: StepContextLike) => Promise<void>;
-  afterToolExecution: (context: ToolExecutionResultContextLike) => Promise<void>;
+import {
+  createMemoryHooks,
+  type Memory,
+  type MemoryGuardrailOptions,
+  type MemoryHookOptions,
+} from '@lostgradient/memory';
+
+declare const memory: Memory;
+declare const guardrail: MemoryGuardrailOptions;
+
+const options: MemoryHookOptions = {
+  memory,
+  namespace: 'agent-42',
+  autoRecall: true, // default: true—inject recalled context before each step
+  autoCapture: true, // default: true—capture tool results after execution
+  recallLimit: 5, // default: 5
+  guardrail, // scan recalled content before it is injected
 };
 
-interface MemoryHookOptions {
-  memory: Memory;
-  namespace?: string;
-  autoRecall?: boolean; // default: true—inject recalled context before each step
-  autoCapture?: boolean; // default: true—capture tool results after execution
-  recallLimit?: number; // default: 5
-}
+// `prepareStep` takes a step context and `afterToolExecution` a tool-result
+// context; both resolve to void.
+const { prepareStep, afterToolExecution } = createMemoryHooks(options);
 ```
 
 ```typescript
-import { createMemoryHooks } from '@lostgradient/memory';
-import { createActiveRun } from '@lostgradient/operative';
+import { createMemoryHooks, type Memory } from '@lostgradient/memory';
+import {
+  type AnyToolbox,
+  type Conversation,
+  createActiveRun,
+  type GenerateFunction,
+  HookRegistry,
+  type OperativeHookMap,
+} from '@lostgradient/operative';
 
-const hooks = createMemoryHooks({ memory, recallLimit: 10 });
+declare const memory: Memory;
+declare const generate: GenerateFunction;
+declare const toolbox: AnyToolbox;
+declare const conversation: Conversation;
 
-// Wire into an operative run via the top-level hook options. (RunOptions.hooks is
-// a HookRegistry, not an object map—individual hooks go at the top level.)
-const run = createActiveRun({
-  generate,
-  toolbox,
-  conversation,
-  prepareStep: hooks.prepareStep,
-  afterToolExecution: hooks.afterToolExecution,
+const memoryHooks = createMemoryHooks({ memory, recallLimit: 10 });
+
+// Register on the run's HookRegistry, the only hook surface a run has.
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('prepareStep', memoryHooks.prepareStep, { id: 'memory:recall', replay: 'safe' });
+hooks.on('afterToolExecution', memoryHooks.afterToolExecution, {
+  id: 'memory:capture',
+  replay: 'effectful',
 });
+
+const run = createActiveRun({ generate, toolbox, conversation, hooks });
 ```
 
 ### `createRunCaptureHook(options)`
 
-Captures a summary of each completed step as an experiential memory. Useful for building an agent's episodic memory over time.
+Captures a summary of each completed run, on its final step, as an experiential memory. Useful for building an agent's episodic memory over time.
 
 ```typescript
-function createRunCaptureHook(options: RunCaptureHookOptions): {
-  onStep: (context: StepResultLike) => Promise<void>;
+import {
+  createRunCaptureHook,
+  type Memory,
+  type RunCaptureHookOptions,
+  type StepResultLike,
+  summarizeRun,
+} from '@lostgradient/memory';
+
+declare const memory: Memory;
+
+// The default summarizer, exposed for customization.
+const summarize: (result: StepResultLike) => string = summarizeRun;
+
+const options: RunCaptureHookOptions = {
+  memory,
+  namespace: 'experiential', // default: 'experiential'
+  summarize, // receives { step, conversation, content, final, metadata? }
 };
 
-interface RunCaptureHookOptions {
-  memory: Memory;
-  namespace?: string; // default: 'experiential'
-  summarize?: (result: StepResultLike) => string;
-}
-
-// Default summarizer—exposed for customization.
-function summarizeRun(result: StepResultLike): string;
+// `onStep` captures only the final step and resolves to void.
+const { onStep } = createRunCaptureHook(options);
 ```
 
 ```typescript
-import { createRunCaptureHook } from '@lostgradient/memory';
-import { createActiveRun } from '@lostgradient/operative';
+import { createRunCaptureHook, type Memory } from '@lostgradient/memory';
+import {
+  type AnyToolbox,
+  type Conversation,
+  createActiveRun,
+  type GenerateFunction,
+  HookRegistry,
+  type OperativeHookMap,
+} from '@lostgradient/operative';
+
+declare const memory: Memory;
+declare const generate: GenerateFunction;
+declare const toolbox: AnyToolbox;
+declare const conversation: Conversation;
 
 const captureHook = createRunCaptureHook({
   memory,
@@ -684,34 +906,43 @@ const captureHook = createRunCaptureHook({
   summarize: (result) => `Step ${result.step}${result.final ? ' (final)' : ''}: ${result.content}`,
 });
 
-// Wire into an operative run via the top-level `onStep` option:
-const run = createActiveRun({
-  generate,
-  toolbox,
-  conversation,
-  onStep: captureHook.onStep,
-});
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('onStep', captureHook.onStep, { id: 'memory:run-capture', replay: 'effectful' });
+
+const run = createActiveRun({ generate, toolbox, conversation, hooks });
 ```
 
 ### `createReflectionHook(options)`
 
-Calls a `reflect` function after each step and stores the resulting insight as an experiential memory. The optional `shouldReflect` guard lets you filter which steps trigger reflection.
+Calls a `reflect` function on a run's final step and stores the resulting insight as an experiential memory. The optional `shouldReflect` guard lets you filter which runs trigger reflection.
 
 ```typescript
-function createReflectionHook(options: CreateReflectionHookOptions): {
-  onStep: (context: StepResultLike) => Promise<void>;
+import {
+  createReflectionHook,
+  type CreateReflectionHookOptions,
+  type Memory,
+} from '@lostgradient/memory';
+
+declare const memory: Memory;
+declare const llm: { complete(prompt: string): Promise<string> };
+
+const options: CreateReflectionHookOptions = {
+  memory,
+  reflect: async (runSummary) => await llm.complete(`Reflect on: ${runSummary}`),
+  namespace: 'experiential', // default: 'experiential'
+  shouldReflect: (result) => result.final && result.step > 1,
 };
 
-interface CreateReflectionHookOptions {
-  memory: Memory;
-  reflect: (runSummary: string) => Promise<string>;
-  namespace?: string; // default: 'experiential'
-  shouldReflect?: (result: StepResultLike) => boolean;
-}
+// `onStep` reflects only on the final step and resolves to void.
+const { onStep } = createReflectionHook(options);
 ```
 
 ```typescript
-import { createReflectionHook, summarizeRun } from '@lostgradient/memory';
+import { createReflectionHook, type Memory } from '@lostgradient/memory';
+
+// Your memory instance and model client.
+declare const memory: Memory;
+declare const llm: { complete(prompt: string): Promise<string> };
 
 const reflectionHook = createReflectionHook({
   memory,
@@ -737,8 +968,13 @@ Memory tools are `armorer` `Tool` instances. Pass them to a `Toolbox` alongside 
 Tool name: `memory_store`. Stores a string to memory with optional tags, importance score, and evergreen flag.
 
 ```typescript
-function createMemoryStoreTool(memory: Memory): Tool;
+import type { Tool } from 'armorer';
+import { createMemoryStoreTool, type Memory } from '@lostgradient/memory';
+
+declare const memory: Memory;
+
 // input: { content: string; tags?: string[]; importance?: number; evergreen?: boolean }
+const store: Tool = createMemoryStoreTool(memory);
 ```
 
 ### `createMemoryRecallTool(memory, options?)`
@@ -746,11 +982,21 @@ function createMemoryStoreTool(memory: Memory): Tool;
 Tool name: `memory_recall`. Retrieves relevant memories for a query string. The namespace is pinned by the host through `options.namespace` (defaulting to the memory's configured namespace); the model supplies only the query and limit, so it cannot widen the scope it searches.
 
 ```typescript
-function createMemoryRecallTool(
-  memory: Memory,
-  options?: { namespace?: string; guardrail?: MemoryGuardrailOptions },
-): Tool;
+import type { Tool } from 'armorer';
+import {
+  createMemoryRecallTool,
+  type CreateMemoryRecallToolOptions,
+  type Memory,
+  type MemoryGuardrailOptions,
+} from '@lostgradient/memory';
+
+declare const memory: Memory;
+declare const guardrail: MemoryGuardrailOptions;
+
+const options: CreateMemoryRecallToolOptions = { namespace: 'agent-42', guardrail };
+
 // input: { query: string; limit?: number }
+const recall: Tool = createMemoryRecallTool(memory, options);
 ```
 
 ### `createMemoryForgetTool(memory)`
@@ -758,8 +1004,13 @@ function createMemoryRecallTool(
 Tool name: `memory_forget`. Deletes a memory entry by id.
 
 ```typescript
-function createMemoryForgetTool(memory: Memory): Tool;
+import type { Tool } from 'armorer';
+import { createMemoryForgetTool, type Memory } from '@lostgradient/memory';
+
+declare const memory: Memory;
+
 // input: { id: string }
+const forget: Tool = createMemoryForgetTool(memory);
 ```
 
 ```typescript
@@ -768,7 +1019,10 @@ import {
   createMemoryStoreTool,
   createMemoryRecallTool,
   createMemoryForgetTool,
+  type Memory,
 } from '@lostgradient/memory';
+
+declare const memory: Memory;
 
 const memoryToolbox = createToolbox([
   createMemoryStoreTool(memory),
@@ -798,19 +1052,18 @@ Every loader below implements the same contract—`(document: string, options?: 
 Splits a Markdown string into overlapping chunks suitable for embedding. Chunks track their source line range so individual chunks can be located back in the original document. This is `ingest()`'s default loader.
 
 ```typescript
-function chunkMarkdown(content: string, options?: ChunkingOptions): ContentChunk[];
+import { chunkMarkdown, type ChunkingOptions, type ContentChunk } from '@lostgradient/memory';
 
-interface ChunkingOptions {
-  maximumTokens?: number; // default: 400
-  overlapTokens?: number; // default: 80
-}
+const options: ChunkingOptions = {
+  maximumTokens: 400, // default: 400
+  overlapTokens: 80, // default: 80
+};
 
-interface ContentChunk {
-  text: string;
-  startLine: number;
-  endLine: number;
-  index: number;
-  heading?: string; // nearest preceding structure-hint label, when known
+const chunks: ContentChunk[] = chunkMarkdown('# Setup\n\nInstall with `bun install`.', options);
+
+for (const { text, startLine, endLine, index, heading } of chunks) {
+  // `heading` is the nearest preceding structure-hint label, when known.
+  console.log(index, startLine, endLine, heading ?? '(none)', text.length);
 }
 ```
 
@@ -819,17 +1072,22 @@ interface ContentChunk {
 The ingestion contract for pre-extracted text: hand it plain text plus optional structural boundaries (headings, page breaks, ...) and it chunks by token count same as `chunkMarkdown`, except a chunk never spans across a boundary. This is the seam every non-Markdown loader (including `chunkHtml`) is built on, and the one to use for formats this package doesn't parse itself (PDF, DOCX, plain extracted text, ...).
 
 ```typescript
-function chunkText(document: ExtractedDocument, options?: ChunkingOptions): ContentChunk[];
+import {
+  chunkText,
+  type ContentChunk,
+  type ExtractedDocument,
+  type StructureHint,
+} from '@lostgradient/memory';
 
-interface StructureHint {
-  startLine: number; // 0-based line within `document.text`
-  label?: string; // e.g. a heading's text or "page 3"
-}
+declare const extractedText: string;
 
-interface ExtractedDocument {
-  text: string;
-  structure?: StructureHint[];
-}
+const structure: StructureHint[] = [
+  { startLine: 0, label: 'page 1' }, // startLine: 0-based line within `document.text`
+  { startLine: 42, label: 'page 2' }, // label: e.g. a heading's text or "page 3"
+];
+
+const document: ExtractedDocument = { text: extractedText, structure };
+const chunks: ContentChunk[] = chunkText(document, { maximumTokens: 400 });
 ```
 
 With no `structure` hints, `chunkText({ text })` behaves exactly like `chunkMarkdown(text)`.
@@ -839,11 +1097,15 @@ With no `structure` hints, `chunkText({ text })` behaves exactly like `chunkMark
 First-party HTML loader. Strips tags with Bun's built-in `HTMLRewriter` (a lightweight streaming parser—no DOM dependency), drops `<script>`/`<style>`/`<template>` content, inserts line breaks between block-level elements, and carries heading text forward as each chunk's `heading`. Built on `chunkText`, so headings become structure hints and a chunk never spans a heading boundary.
 
 ```typescript
-function chunkHtml(html: string, options?: ChunkingOptions): Promise<ContentChunk[]>;
+import { chunkHtml, type ChunkingOptions, type ContentChunk } from '@lostgradient/memory';
+
+const loadHtml: (html: string, options?: ChunkingOptions) => Promise<ContentChunk[]> = chunkHtml;
 ```
 
 ```typescript
-import { chunkHtml, ingest } from '@lostgradient/memory';
+import { chunkHtml, ingest, type Memory } from '@lostgradient/memory';
+
+declare const memory: Memory;
 
 const html = await Bun.file('docs/page.html').text();
 
@@ -858,9 +1120,16 @@ await ingest(memory, html, {
 This package intentionally does not bundle a PDF parser—extracting PDF text pulls in a heavyweight, native-dependent library, and only some consumers need it. Extract the text yourself (e.g. with [`pdf-parse`](https://www.npmjs.com/package/pdf-parse) or [`unpdf`](https://www.npmjs.com/package/unpdf), whichever fits your runtime), and feed the result to `chunkText` with page breaks as structure hints:
 
 ```typescript
-import { chunkText, ingest } from '@lostgradient/memory';
-// bun add pdf-parse (or your extractor of choice) as a project dependency
-import pdf from 'pdf-parse';
+import { chunkText, ingest, type Memory } from '@lostgradient/memory';
+
+// `bun add pdf-parse` (or your extractor of choice) as a project dependency.
+// This sketch types only the part of pdf-parse's default export it uses.
+interface PdfParseResult {
+  text: string;
+  numpages: number;
+}
+declare function pdf(data: Buffer): Promise<PdfParseResult>;
+declare const memory: Memory;
 
 const buffer = await Bun.file('report.pdf').arrayBuffer();
 const { text: fullText, numpages } = await pdf(Buffer.from(buffer));
@@ -869,9 +1138,9 @@ const { text: fullText, numpages } = await pdf(Buffer.from(buffer));
 const pages = fullText.split('\f');
 const lines: string[] = [];
 const structure: { startLine: number; label: string }[] = [];
-for (let i = 0; i < pages.length; i++) {
-  structure.push({ startLine: lines.length, label: `page ${i + 1}` });
-  lines.push(...pages[i]!.split('\n'));
+for (const [index, page] of pages.entries()) {
+  structure.push({ startLine: lines.length, label: `page ${index + 1}` });
+  lines.push(...page.split('\n'));
 }
 const text = lines.join('\n');
 
@@ -886,30 +1155,55 @@ await ingest(memory, text, {
 Chunks a document—via `options.chunk`, default `chunkMarkdown`—and calls `memory.rememberOnce()` for each chunk, tagged with `SOURCE_DOCUMENT_KEY` and `CHUNK_INDEX_KEY` metadata. Each chunk's `dedupeKey` is derived from the source identifier, chunk index, and chunk text, so **re-ingesting the same document through any loader (with the same `sourceIdentifier`) stores no new entries**—it's a no-op. Re-ingesting with different content under the same `sourceIdentifier` stores fresh entries alongside the old ones (see `createFileSynchronizer` below for a pattern that also removes stale chunks). During recall, only the highest-scoring chunk per source document is returned.
 
 ```typescript
-const SOURCE_DOCUMENT_KEY = '__sourceDocument';
-const CHUNK_INDEX_KEY = '__chunkIndex';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  CHUNK_INDEX_KEY,
+  chunkHtml,
+  ingest,
+  type IngestOptions,
+  type IngestResult,
+  type Memory,
+  type MemoryEntry,
+  SOURCE_DOCUMENT_KEY,
+} from '@lostgradient/memory';
 
-function ingest(memory: Memory, content: string, options?: IngestOptions): Promise<IngestResult>;
+const sourceDocumentKey: '__sourceDocument' = SOURCE_DOCUMENT_KEY;
+const chunkIndexKey: '__chunkIndex' = CHUNK_INDEX_KEY;
 
-interface IngestOptions extends ChunkingOptions {
-  sourceIdentifier?: string;
-  metadata?: Partial<MemoryMetadata>;
-  onProgress?: (progress: { completed: number; total: number }) => void;
-  /** Loader that turns `content` into chunks. Defaults to `chunkMarkdown`. */
-  chunk?: (document: string, options?: ChunkingOptions) => ContentChunk[] | Promise<ContentChunk[]>;
-  /** Controls the default `sourceIdentifier` when omitted. From `lifecycle`; defaults to the real clock/identifiers. */
-  runtime?: RuntimeServices;
-}
+const ingestDocument: (
+  memory: Memory,
+  content: string,
+  options?: IngestOptions,
+) => Promise<IngestResult> = ingest;
 
-interface IngestResult {
-  sourceIdentifier: string;
-  entries: MemoryEntry[];
-  chunkCount: number;
-}
+declare const memory: Memory;
+declare const html: string;
+declare const runtime: RuntimeServices;
+
+const options: IngestOptions = {
+  maximumTokens: 400, // IngestOptions extends ChunkingOptions
+  overlapTokens: 80,
+  sourceIdentifier: 'docs/page.html',
+  metadata: { source: 'manual', tags: ['docs'] },
+  onProgress: ({ completed, total }) => console.log(`${completed}/${total} chunks`),
+  chunk: chunkHtml, // the loader that turns `content` into chunks; defaults to `chunkMarkdown`
+  runtime, // controls the default `sourceIdentifier`; from `lifecycle`, defaults to the real clock/identifiers
+};
+
+const result: IngestResult = await ingestDocument(memory, html, options);
+const sourceIdentifier: string = result.sourceIdentifier;
+const entries: MemoryEntry[] = result.entries;
+const chunkCount: number = result.chunkCount;
+
+// Each stored entry carries its source and position under the two keys.
+const firstSource = entries[0]?.metadata[SOURCE_DOCUMENT_KEY];
+const firstIndex = entries[0]?.metadata[CHUNK_INDEX_KEY];
 ```
 
 ```typescript
-import { ingest } from '@lostgradient/memory';
+import { ingest, type Memory } from '@lostgradient/memory';
+
+declare const memory: Memory;
 
 const markdown = await Bun.file('docs/getting-started.md').text();
 
@@ -929,70 +1223,63 @@ const result = await ingest(memory, markdown, {
 Watches a directory for Markdown files and keeps memory in sync: new and modified files are ingested, deleted files are removed. Can run on a polling interval or be triggered manually.
 
 ```typescript
-function createFileSynchronizer(options: FileSynchronizerOptions): FileSynchronizer;
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createFileSynchronizer,
+  type FileSynchronizer,
+  type FileSynchronizerOptions,
+  type Memory,
+  type SynchronizeResult,
+} from '@lostgradient/memory';
 
-interface FileSynchronizerOptions {
-  memory: Memory;
-  directory: string;
-  extensions?: string[]; // default: ['.md']
-  chunking?: ChunkingOptions;
-  metadata?: Partial<MemoryMetadata>;
-  pollingInterval?: number; // default: 5000 ms
-  setIntervalFunction?: ScheduleInterval; // default: runtime.timers.setInterval
-  clearIntervalFunction?: ClearScheduledInterval; // default: runtime.timers.clearInterval
-  runtime?: RuntimeServices; // from `lifecycle`; defaults to the real clock/timers
-}
+declare const memory: Memory;
+declare const runtime: RuntimeServices;
 
-interface FileSynchronizer {
-  start(): Promise<void>;
-  // Halts future polling immediately, then awaits any synchronize() pass
-  // already in flight (whether started by a poll tick or a direct call)
-  // before resolving—an in-flight synchronization is drained, not abandoned.
-  stop(): Promise<void>;
-  synchronize(): Promise<SynchronizeResult>;
-  // Poll-cycle completion event (below)—TypedEventTarget-style surface
-  // from `lifecycle`'s `CompletableEventTarget`.
-  addEventListener(
-    type: 'poll-cycle.completed',
-    listener: (event: PollCycleCompletedEvent) => void,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  removeEventListener(
-    type: 'poll-cycle.completed',
-    listener: (event: PollCycleCompletedEvent) => void,
-    options?: boolean | EventListenerOptions,
-  ): void;
-  once(type: 'poll-cycle.completed', listener: (event: PollCycleCompletedEvent) => void): void;
-  on(type: 'poll-cycle.completed'): ObservableLike<PollCycleCompletedEvent>;
-  subscribe(
-    type: 'poll-cycle.completed',
-    observerOrNext?: Observer<PollCycleCompletedEvent> | ((value: PollCycleCompletedEvent) => void),
-    error?: (err: unknown) => void,
-    complete?: () => void,
-  ): Subscription;
-}
+const options: FileSynchronizerOptions = {
+  memory,
+  directory: './docs',
+  extensions: ['.md'], // default: ['.md']
+  chunking: { maximumTokens: 400, overlapTokens: 80 },
+  metadata: { source: 'manual' },
+  pollingInterval: 5_000, // default: 5000 ms
+  setIntervalFunction: runtime.timers.setInterval, // default: runtime.timers.setInterval
+  clearIntervalFunction: runtime.timers.clearInterval, // default: runtime.timers.clearInterval
+  runtime, // from `lifecycle`; defaults to the real clock/timers
+};
 
-interface SynchronizeResult {
-  added: number;
-  updated: number;
-  removed: number;
-}
+const synchronizer: FileSynchronizer = createFileSynchronizer(options);
 
-// Dispatched once a poll-triggered synchronize() pass settles, success or
-// failure—exactly one of `result`/`error` is set. Fires only after the
-// polling loop's internal lock has already been released, so a listener
-// that immediately schedules another poll tick on hearing this event is
-// safe. Not dispatched for the initial start()-triggered sync or a direct
-// synchronize() call—only for poll-tick-triggered passes.
-class PollCycleCompletedEvent extends Event {
-  static readonly type: 'poll-cycle.completed';
-  readonly result?: SynchronizeResult;
-  readonly error?: unknown;
-}
+await synchronizer.start();
+const result: SynchronizeResult = await synchronizer.synchronize(); // { added, updated, removed }
+
+// 'poll-cycle.completed' is dispatched once a poll-triggered synchronize()
+// pass settles, success or failure—exactly one of `result`/`error` is set. It
+// fires only after the polling loop's internal lock has been released, so a
+// listener that immediately schedules another poll tick is safe. It is not
+// dispatched for the initial start()-triggered sync or a direct synchronize()
+// call—only for poll-tick-triggered passes.
+const onPollCycle = (event: { readonly result?: SynchronizeResult; readonly error?: unknown }) => {
+  console.log(event.error ?? event.result);
+};
+
+// A TypedEventTarget-style surface from `lifecycle`'s `CompletableEventTarget`.
+synchronizer.addEventListener('poll-cycle.completed', onPollCycle);
+synchronizer.removeEventListener('poll-cycle.completed', onPollCycle);
+synchronizer.once('poll-cycle.completed', onPollCycle);
+const pollCycles = synchronizer.on('poll-cycle.completed'); // an ObservableLike of events
+const subscription = synchronizer.subscribe('poll-cycle.completed', onPollCycle);
+subscription.unsubscribe();
+
+// Halts future polling immediately, then awaits any synchronize() pass already
+// in flight (whether started by a poll tick or a direct call) before
+// resolving—an in-flight synchronization is drained, not abandoned.
+await synchronizer.stop();
 ```
 
 ```typescript
-import { createFileSynchronizer } from '@lostgradient/memory';
+import { createFileSynchronizer, type Memory } from '@lostgradient/memory';
+
+declare const memory: Memory;
 
 const synchronizer = createFileSynchronizer({
   memory,
@@ -1042,19 +1329,19 @@ These helpers power `recall()` internally but are exported for custom retrieval 
 Returns a `Map<number, number>` from document index to raw BM25 score. Scores are _not_ normalized—`recall()` normalizes via `score / (1 + score)` before merging with cosine similarity.
 
 ```typescript
-function computeBM25Scores(
-  query: string,
-  documents: string[],
-  options?: BM25Options,
-): Map<number, number>;
+import { type BM25Options, computeBM25Scores, tokenize } from '@lostgradient/memory';
 
-interface BM25Options {
-  k1?: number; // default: 1.2
-  b?: number; // default: 0.75
-  queryTerms?: string[];
-}
+const documents = ['The user prefers dark mode.', 'Deploys run on Fridays.'];
 
-function tokenize(text: string): string[];
+const options: BM25Options = {
+  k1: 1.2, // default: 1.2
+  b: 0.75, // default: 0.75
+  queryTerms: tokenize('dark mode'),
+};
+
+// Document index → raw BM25 score.
+const scores: Map<number, number> = computeBM25Scores('dark mode', documents, options);
+const tokens: string[] = tokenize('Dark mode, please.');
 ```
 
 ### `mergeHybridResults(vectorResults, textScores, candidates, options?)`
@@ -1062,20 +1349,46 @@ function tokenize(text: string): string[];
 Merges pre-computed vector scores with BM25 text scores into a ranked list.
 
 ```typescript
-function mergeHybridResults(
-  vectorResults: VectorSearchResult[],
-  textScores: Map<number, number>,
-  candidates: HybridSearchCandidate[],
-  options?: HybridSearchOptions,
-): HybridSearchResult[];
+import {
+  computeBM25Scores,
+  type HybridSearchCandidate,
+  type HybridSearchOptions,
+  type HybridSearchResult,
+  mergeHybridResults,
+  type VectorSearchResult,
+} from '@lostgradient/memory';
 
-interface HybridSearchOptions {
-  vectorWeight?: number; // default: 0.7
-  textWeight?: number; // default: 0.3
-  limit?: number; // default: 10
-  threshold?: number; // default: 0
-  candidateMultiplier?: number; // default: 3
-}
+const candidates: HybridSearchCandidate[] = [
+  { id: 'a', content: 'The user prefers dark mode.', metadata: {}, createdAt: 0 },
+  { id: 'b', content: 'Deploys run on Fridays.', metadata: {}, createdAt: 0 },
+];
+
+const vectorResults: VectorSearchResult[] = [
+  { id: 'a', score: 0.82 },
+  { id: 'b', score: 0.31 },
+];
+
+// Text scores are keyed by candidate index.
+const textScores: Map<number, number> = computeBM25Scores(
+  'dark mode',
+  candidates.map(({ content }) => content),
+);
+
+const options: HybridSearchOptions = {
+  vectorWeight: 0.7, // default: 0.7
+  textWeight: 0.3, // default: 0.3
+  limit: 10, // default: 10
+  threshold: 0, // default: 0
+  candidateMultiplier: 3, // default: 3
+};
+
+// Each result carries combinedScore, vectorScore, and textScore.
+const merged: HybridSearchResult[] = mergeHybridResults(
+  vectorResults,
+  textScores,
+  candidates,
+  options,
+);
 ```
 
 ### `applyTemporalDecay(results, options)`
@@ -1083,22 +1396,27 @@ interface HybridSearchOptions {
 Multiplies each result's score by an exponential decay factor based on `createdAt`. Entries with `metadata.evergreen = true` are exempt when `evergreenExempt` is `true` (default).
 
 ```typescript
-function applyTemporalDecay<
-  T extends { score: number; createdAt: number; metadata: { evergreen?: boolean } },
->(results: T[], options: TemporalDecayOptions): T[];
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  applyTemporalDecay,
+  computeTemporalDecay,
+  type MemorySearchResult,
+  type TemporalDecayOptions,
+} from '@lostgradient/memory';
 
-function computeTemporalDecay(
-  score: number,
-  createdAt: number,
-  options: TemporalDecayOptions,
-): number;
+declare const results: MemorySearchResult[];
+declare const runtime: RuntimeServices;
 
-interface TemporalDecayOptions {
-  halfLifeMilliseconds: number;
-  referenceTime?: number; // default: runtime.clock.now()
-  evergreenExempt?: boolean; // default: true
-  runtime?: RuntimeServices; // from `lifecycle`; controls the default referenceTime, defaults to the real clock
-}
+const options: TemporalDecayOptions = {
+  halfLifeMilliseconds: 7 * 24 * 60 * 60 * 1000,
+  referenceTime: runtime.clock.now(), // default: runtime.clock.now()
+  evergreenExempt: true, // default: true
+  runtime, // from `lifecycle`; controls the default referenceTime, defaults to the real clock
+};
+
+// Any result shape with { score, createdAt, metadata: { evergreen? } } works.
+const decayed: MemorySearchResult[] = applyTemporalDecay(results, options);
+const decayedScore: number = computeTemporalDecay(0.9, runtime.clock.now() - 86_400_000, options);
 ```
 
 ### `applyMaximalMarginalRelevance(results, limit, options)`
@@ -1106,15 +1424,23 @@ interface TemporalDecayOptions {
 Reranks results to balance relevance against diversity. `lambda` of `1` returns pure relevance order; `lambda` of `0` maximizes diversity.
 
 ```typescript
-function applyMaximalMarginalRelevance<T extends { score: number; vector?: number[] }>(
-  results: T[],
-  limit: number,
-  options: MaximalMarginalRelevanceOptions,
-): T[];
+import {
+  applyMaximalMarginalRelevance,
+  type MaximalMarginalRelevanceOptions,
+} from '@lostgradient/memory';
 
-interface MaximalMarginalRelevanceOptions {
-  lambda: number; // 1 = pure relevance, 0 = pure diversity
-}
+// Any result shape with { score, vector? } works; the result keeps that shape.
+const results = [
+  { id: 'a', score: 0.9, vector: [1, 0] },
+  { id: 'b', score: 0.85, vector: [0.99, 0.1] },
+  { id: 'c', score: 0.6, vector: [0, 1] },
+];
+
+const options: MaximalMarginalRelevanceOptions = {
+  lambda: 0.5, // 1 = pure relevance, 0 = pure diversity
+};
+
+const reranked: typeof results = applyMaximalMarginalRelevance(results, 2, options);
 ```
 
 ### `extractKeywords(query)` and `isStopWord(token)`
@@ -1122,8 +1448,10 @@ interface MaximalMarginalRelevanceOptions {
 Keyword extraction and stop-word filtering used inside the BM25 pipeline.
 
 ```typescript
-function extractKeywords(query: string): string[];
-function isStopWord(token: string): boolean;
+import { extractKeywords, isStopWord } from '@lostgradient/memory';
+
+const keywords: string[] = extractKeywords('What does the user prefer for error messages?');
+const stopWord: boolean = isStopWord('the');
 ```
 
 ## Identity
@@ -1159,31 +1487,33 @@ Identity captures who an agent _is_—its soul (durable values and traits), pers
 ### Core types
 
 ```typescript
-interface SoulItem {
-  id: string;
-  content: string;
-  source: 'seed' | 'graduated' | 'user-edit';
-  sourceEntryIds?: string[];
-  pinned: boolean;
-  topic?: string;
-  updatedAt: string; // ISO 8601
-  reinforcementCount: number;
-}
+import type { AgentIdentity, PersonaDescriptor, SoulItem } from '@lostgradient/memory';
 
-interface PersonaDescriptor {
-  name: string;
-  role: string;
-  expertise?: string;
-  taskContext?: string;
-  domain?: string;
-}
+const item: SoulItem = {
+  id: 'soul-item-1',
+  content: 'Prefers concrete examples over theory.',
+  source: 'graduated', // or 'seed', 'user-edit'
+  sourceEntryIds: ['memory-3', 'memory-9'],
+  pinned: false,
+  topic: 'style',
+  updatedAt: '2026-01-01T00:00:00.000Z', // ISO 8601
+  reinforcementCount: 3,
+};
 
-interface AgentIdentity {
-  soul: SoulItem[];
-  persona?: PersonaDescriptor;
-  personaText?: string;
-  userContext?: string;
-}
+const persona: PersonaDescriptor = {
+  name: 'Aria',
+  role: 'Research assistant',
+  expertise: 'Literature review',
+  taskContext: 'Summarizing papers for a weekly digest',
+  domain: 'Machine learning',
+};
+
+const identity: AgentIdentity = {
+  soul: [item],
+  persona,
+  personaText: 'You are Aria, a research assistant.',
+  userContext: 'The user is a staff engineer.',
+};
 ```
 
 ### `createStorageIdentityProvider(adapter)`
@@ -1191,10 +1521,18 @@ interface AgentIdentity {
 Persistent identity backed by a `TextValueStore` (e.g., a Weft-backed store). Archives every `saveSoul` call to history before overwriting.
 
 ```typescript
-function createStorageIdentityProvider(
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { TextValueStore } from '@lostgradient/weft';
+import { createStorageIdentityProvider, type IdentityProvider } from '@lostgradient/memory';
+
+const create: (
   adapter: TextValueStore,
   runtime?: RuntimeServices, // from `lifecycle`; defaults to the real clock
-): IdentityProvider;
+) => IdentityProvider = createStorageIdentityProvider;
+
+declare const store: TextValueStore;
+
+const provider = create(store);
 ```
 
 ### `createStaticIdentityProvider(initial?)`
@@ -1202,10 +1540,17 @@ function createStorageIdentityProvider(
 In-memory identity for tests or single-session use.
 
 ```typescript
-function createStaticIdentityProvider(
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  type AgentIdentity,
+  createStaticIdentityProvider,
+  type IdentityProvider,
+} from '@lostgradient/memory';
+
+const create: (
   initial?: Partial<AgentIdentity>,
   runtime?: RuntimeServices, // from `lifecycle`; defaults to the real clock
-): IdentityProvider;
+) => IdentityProvider = createStaticIdentityProvider;
 ```
 
 ### `createSoulSeed(options?)`
@@ -1213,16 +1558,21 @@ function createStaticIdentityProvider(
 Generates an initial set of `SoulItem[]` from declarative traits and values. Pass the result to an `IdentityProvider` on first startup to give the agent a personality.
 
 ```typescript
-function createSoulSeed(options?: CreateSoulSeedOptions): SoulItem[];
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createSoulSeed, type CreateSoulSeedOptions, type SoulItem } from '@lostgradient/memory';
 
-interface CreateSoulSeedOptions {
-  name?: string;
-  traits?: string[];
-  values?: string[];
-  style?: string[];
-  additional?: string;
-  runtime?: RuntimeServices; // from `lifecycle`; defaults to the real clock/identifiers
-}
+const create: (options?: CreateSoulSeedOptions) => SoulItem[] = createSoulSeed;
+
+declare const runtime: RuntimeServices;
+
+const options: CreateSoulSeedOptions = {
+  name: 'Aria',
+  traits: ['curious'],
+  values: ['accuracy'],
+  style: ['direct'],
+  additional: 'Prefer concrete examples over theory.',
+  runtime, // from `lifecycle`; defaults to the real clock/identifiers
+};
 ```
 
 ```typescript
@@ -1243,43 +1593,49 @@ const provider = createStaticIdentityProvider({ soul });
 Serializes an `AgentIdentity` into a system-prompt string, respecting token budget constraints.
 
 ```typescript
-function resolveIdentity(identity: AgentIdentity, budget?: SoulBudget): string;
+import { type AgentIdentity, resolveIdentity, type SoulBudget } from '@lostgradient/memory';
 
-interface SoulBudget {
-  maxTokens: number;
-  estimateTokens: (text: string) => number;
-  maxItemsPerTopic: number;
-}
+declare const identity: AgentIdentity;
+
+const budget: SoulBudget = {
+  maxTokens: 800,
+  estimateTokens: (text) => Math.ceil(text.length / 4),
+  maxItemsPerTopic: 3,
+};
+
+const systemPrompt: string = resolveIdentity(identity, budget); // budget is optional
 ```
 
 ### Soul lifecycle helpers
 
 ```typescript
-function getSoulDiff(provider: IdentityProvider, agentId?: string): Promise<SoulDiff>;
-function acceptSoulUpdate(
-  provider: IdentityProvider,
-  agentId?: string,
-): Promise<{ version: number } | undefined>;
-function rejectSoulUpdate(provider: IdentityProvider, agentId?: string): Promise<void>;
-function pinSoulItem(
-  provider: IdentityProvider,
-  itemId: string,
-  agentId?: string,
-  runtime?: RuntimeServices, // from `lifecycle`; defaults to the real clock
-): Promise<boolean>;
-function unpinSoulItem(
-  provider: IdentityProvider,
-  itemId: string,
-  agentId?: string,
-  runtime?: RuntimeServices, // from `lifecycle`; defaults to the real clock
-): Promise<boolean>;
+import {
+  acceptSoulUpdate,
+  getSoulDiff,
+  type IdentityProvider,
+  pinSoulItem,
+  rejectSoulUpdate,
+  type SoulDiff,
+  type SoulDiffEntry,
+  unpinSoulItem,
+} from '@lostgradient/memory';
 
-interface SoulDiff {
-  additions: SoulDiffEntry[];
-  removals: SoulDiffEntry[];
-  modifications: SoulDiffEntry[];
-  empty: boolean;
+declare const provider: IdentityProvider;
+declare const approved: boolean;
+
+// Every helper takes an optional agentId; pin and unpin also take an optional
+// `lifecycle` RuntimeServices, defaulting to the real clock.
+const diff: SoulDiff = await getSoulDiff(provider, 'agent-42');
+const changes: SoulDiffEntry[] = [...diff.additions, ...diff.removals, ...diff.modifications];
+
+if (!diff.empty && approved) {
+  const accepted: { version: number } | undefined = await acceptSoulUpdate(provider, 'agent-42');
+} else if (!diff.empty) {
+  await rejectSoulUpdate(provider, 'agent-42');
 }
+
+const pinned: boolean = await pinSoulItem(provider, 'soul-item-1', 'agent-42');
+const unpinned: boolean = await unpinSoulItem(provider, 'soul-item-1', 'agent-42');
 ```
 
 Soul distillation _never_ auto-applies. It produces a pending update that requires explicit `acceptSoulUpdate()` or `rejectSoulUpdate()`.
@@ -1289,26 +1645,44 @@ Soul distillation _never_ auto-applies. It produces a pending update that requir
 Returns a chunked-task descriptor compatible with `operative`'s `createChunkedTask`. Scans experiential memories and promotes high-confidence, high-reinforcement entries to pending soul updates.
 
 ```typescript
-function createSoulDistillationTask(
-  options: CreateSoulDistillationOptions,
-): SoulDistillationChunkedTaskOptions;
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createChunkedTask } from '@lostgradient/operative';
+import {
+  createSoulDistillationTask,
+  type CreateSoulDistillationOptions,
+  type IdentityProvider,
+  type Memory,
+  type SoulDistillationChunkedTaskOptions,
+} from '@lostgradient/memory';
 
-interface CreateSoulDistillationOptions {
-  memory: Memory;
-  provider: IdentityProvider;
-  agentId?: string;
-  namespace?: string;
-  budget: SoulBudget;
-  graduationConfidence?: number; // default: 0.9
-  graduationReinforcement?: number; // default: 3
-  distill: (
-    currentSoul: string,
-    candidates: Array<{ content: string; confidence: number; topic?: string }>,
-  ) => Promise<string>;
-  safetyFilter?: (item: string) => Promise<boolean>;
-  chunkSize?: number; // default: 50
-  runtime?: RuntimeServices; // from `lifecycle`; defaults to the real clock/identifiers
-}
+declare const memory: Memory;
+declare const provider: IdentityProvider;
+declare const llm: { complete(prompt: string): Promise<string> };
+declare const runtime: RuntimeServices;
+
+const options: CreateSoulDistillationOptions = {
+  memory,
+  provider,
+  agentId: 'agent-42',
+  namespace: 'experiential',
+  budget: {
+    maxTokens: 800,
+    estimateTokens: (text) => Math.ceil(text.length / 4),
+    maxItemsPerTopic: 3,
+  },
+  graduationConfidence: 0.9, // default: 0.9
+  graduationReinforcement: 3, // default: 3
+  distill: async (currentSoul, candidates) =>
+    await llm.complete(
+      `Current soul:\n${currentSoul}\n\nCandidates:\n${candidates.map(({ content }) => content).join('\n')}`,
+    ),
+  safetyFilter: async (item) => !(await llm.complete(`Is this biased? ${item}`)).startsWith('yes'),
+  chunkSize: 50, // default: 50
+  runtime, // from `lifecycle`; defaults to the real clock/identifiers
+};
+
+const task: SoulDistillationChunkedTaskOptions = createSoulDistillationTask(options);
+const runDistillation = createChunkedTask(task);
 ```
 
 ### Identity tools
@@ -1316,20 +1690,40 @@ interface CreateSoulDistillationOptions {
 Individual tool factories and a convenience bundle:
 
 ```typescript
-// Individual tools—each takes IdentityProvider:
-function createSoulDiffTool(provider: IdentityProvider): Tool; // 'soul_diff'
-function createSoulAcceptTool(provider: IdentityProvider): Tool; // 'soul_accept'
-function createSoulRejectTool(provider: IdentityProvider): Tool; // 'soul_reject'
-function createSoulPinTool(provider: IdentityProvider): Tool; // 'soul_pin'
-function createSoulViewTool(provider: IdentityProvider): Tool; // 'soul_view'
-function createPersonaListTool(provider: IdentityProvider): Tool; // 'persona_list'
-function createPersonaViewTool(provider: IdentityProvider): Tool; // 'persona_view'
-function createPersonaCreateTool(provider: IdentityProvider): Tool; // 'persona_create'
-function createPersonaUpdateTool(provider: IdentityProvider): Tool; // 'persona_update'
-function createPersonaDeleteTool(provider: IdentityProvider): Tool; // 'persona_delete'
+import type { Tool } from 'armorer';
+import {
+  createIdentityToolbox,
+  createPersonaCreateTool,
+  createPersonaDeleteTool,
+  createPersonaListTool,
+  createPersonaUpdateTool,
+  createPersonaViewTool,
+  createSoulAcceptTool,
+  createSoulDiffTool,
+  createSoulPinTool,
+  createSoulRejectTool,
+  createSoulViewTool,
+  type IdentityProvider,
+} from '@lostgradient/memory';
+
+declare const provider: IdentityProvider;
+
+// Individual tools—each takes an IdentityProvider:
+const individualTools: Tool[] = [
+  createSoulDiffTool(provider), // 'soul_diff'
+  createSoulAcceptTool(provider), // 'soul_accept'
+  createSoulRejectTool(provider), // 'soul_reject'
+  createSoulPinTool(provider), // 'soul_pin'
+  createSoulViewTool(provider), // 'soul_view'
+  createPersonaListTool(provider), // 'persona_list'
+  createPersonaViewTool(provider), // 'persona_view'
+  createPersonaCreateTool(provider), // 'persona_create'
+  createPersonaUpdateTool(provider), // 'persona_update'
+  createPersonaDeleteTool(provider), // 'persona_delete'
+];
 
 // Convenience bundle returning all ten tools:
-function createIdentityToolbox(provider: IdentityProvider): {
+const bundle: {
   soulDiff: Tool;
   soulAccept: Tool;
   soulReject: Tool;
@@ -1340,12 +1734,14 @@ function createIdentityToolbox(provider: IdentityProvider): {
   personaCreate: Tool;
   personaUpdate: Tool;
   personaDelete: Tool;
-};
+} = createIdentityToolbox(provider);
 ```
 
 ```typescript
-import { createToolbox, combineToolboxes } from 'armorer';
-import { createIdentityToolbox } from '@lostgradient/memory';
+import { createToolbox } from 'armorer';
+import { createIdentityToolbox, type IdentityProvider } from '@lostgradient/memory';
+
+declare const identityProvider: IdentityProvider;
 
 const identityTools = createIdentityToolbox(identityProvider);
 
@@ -1365,7 +1761,7 @@ const toolbox = createToolbox([
 
 This example runs in [`test/governance/memory-governance-guide.test.ts`](./test/governance/memory-governance-guide.test.ts), which imports from `../../src/index` instead of `@lostgradient/memory` and asserts the value each comment names:
 
-```typescript
+```typescript file=governed-memory.ts
 import { MemoryStorage } from '@lostgradient/weft';
 import {
   createGovernedMemory,
@@ -1386,7 +1782,7 @@ const memory = createGovernedMemory({
 });
 await memory.init();
 
-const alice = createMemoryAuthority({
+export const alice = createMemoryAuthority({
   principal: { kind: 'user', id: 'user:alice' },
   tenantId: 'acme',
   ownerId: 'alice',
@@ -1482,6 +1878,7 @@ A child can only narrow what its parent holds. This example runs in the same tes
 
 ```typescript
 import { attenuateMemoryAuthority } from '@lostgradient/memory';
+import { alice } from './governed-memory.ts';
 
 const child = attenuateMemoryAuthority(alice, {
   principal: { kind: 'agent', id: 'agent:planner' },
@@ -1794,6 +2191,7 @@ import { createMockEmbedder, createInMemoryMemoryRecordStorage } from '@lostgrad
 **`createInMemoryMemoryRecordStorage(options?)`:** Full in-memory backend with the identical observable contract as the Weft local backend—including `putOnce`, `searchByVector` with cosine ranking, and `deleteNamespace`. `options.now` injects the clock used to stamp `updatedAt` on `update()` (defaults to the real `Date.now`); a deterministic test supplies a fixed or stepped clock instead of reaching a real wall clock.
 
 ```typescript
+import { expect } from 'bun:test';
 import { createMemory } from '@lostgradient/memory';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '@lostgradient/memory';
 

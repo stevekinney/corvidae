@@ -16,6 +16,24 @@ The canonical loop is the same for every provider:
 7. Append the results with `appendToolResults(...)` or `appendToolResultsAsync(...)`.
 8. Repeat until the provider stops calling tools.
 
+The examples below share one toolbox:
+
+```ts file=weather-toolbox.ts
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+
+const getWeather = createTool({
+  name: 'get-weather',
+  description: 'Get the current weather for a city',
+  input: z.object({ city: z.string() }),
+  async execute({ city }) {
+    return { city, forecast: 'sunny' };
+  },
+});
+
+export const toolbox = createToolbox([getWeather]);
+```
+
 ## OpenAI
 
 ```ts
@@ -26,21 +44,28 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 import { toOpenAIMessagesGrouped } from 'conversationalist';
-import { createToolbox } from 'armorer';
 import { parseOpenAIToolCalls, toOpenAITools } from 'armorer';
+import OpenAI from 'openai';
+import { toolbox } from './weather-toolbox.ts';
+
+const openai = new OpenAI();
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'What is the weather in Denver?');
 
 const tools = toOpenAITools(toolbox);
-const messages = toOpenAIMessagesGrouped(conversation);
+const { messages } = toOpenAIMessagesGrouped(conversation);
 const completion = await openai.chat.completions.create({
   model: 'gpt-4o',
   messages,
   tools,
 });
 
-const toolCalls = parseOpenAIToolCalls(completion.choices[0]?.message?.tool_calls);
+// Armorer tools are function tools, so parse only the function tool calls.
+const functionToolCalls = completion.choices[0]?.message?.tool_calls?.filter(
+  (toolCall) => toolCall.type === 'function',
+);
+const toolCalls = parseOpenAIToolCalls(functionToolCalls);
 conversation = appendToolCalls(conversation, toolCalls);
 
 const results = await toolbox.execute(toolCalls, { stream: true });
@@ -57,8 +82,11 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
-import { createToolbox } from 'armorer';
 import { parseAnthropicToolCalls, toAnthropicTools } from 'armorer';
+import Anthropic from '@anthropic-ai/sdk';
+import { toolbox } from './weather-toolbox.ts';
+
+const anthropic = new Anthropic();
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'Use the weather tool for Denver.');
@@ -66,7 +94,8 @@ conversation = appendUserMessage(conversation, 'Use the weather tool for Denver.
 const { system, messages } = toAnthropicMessagesForSdk(conversation);
 const response = await anthropic.messages.create({
   model: 'claude-sonnet-4-20250514',
-  system,
+  max_tokens: 1024,
+  ...(system === undefined ? {} : { system }),
   messages,
   tools: toAnthropicTools(toolbox),
 });
@@ -90,20 +119,23 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 import { toGeminiMessages } from 'conversationalist';
-import { createToolbox } from 'armorer';
 import { parseGeminiToolCalls, toGeminiTools } from 'armorer';
+import { GoogleGenAI } from '@google/genai';
+import { toolbox } from './weather-toolbox.ts';
+
+const client = new GoogleGenAI({});
 
 let conversation = createConversationHistory({ title: 'Weather' });
 conversation = appendUserMessage(conversation, 'Stream the weather for Denver.');
 
 const { systemInstruction, contents } = toGeminiMessages(conversation);
-const response = await model.generateContent({
-  systemInstruction,
+const response = await client.models.generateContent({
+  model: 'gemini-2.5-flash',
   contents,
-  tools: toGeminiTools(toolbox),
+  config: { ...(systemInstruction ? { systemInstruction } : {}), tools: toGeminiTools(toolbox) },
 });
 
-const parsedCalls = parseGeminiToolCalls(response.response.candidates?.[0]?.content?.parts ?? []);
+const parsedCalls = parseGeminiToolCalls(response.candidates?.[0]?.content?.parts ?? []);
 const toolCalls = parsedCalls.map((toolCall, index) => ({
   ...toolCall,
   id: `call-gemini-${index + 1}`,

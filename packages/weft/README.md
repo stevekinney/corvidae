@@ -65,7 +65,7 @@ The full [Durability Guarantee](documentation/architecture/durability-guarantee.
 
 The smallest useful Weft program has four moving pieces: a storage backend, a named activity, a named workflow, and a handle that waits for the result.
 
-```typescript
+```typescript file=hello-world.ts
 import { Engine, workflow } from '@lostgradient/weft';
 import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
 
@@ -83,7 +83,7 @@ const welcome = workflow({ name: 'welcome' })
     return { greeting, onboarded: true };
   });
 
-const engine = await Engine.create({
+export const engine = await Engine.create({
   storage: new SQLiteStorage('./weft.db'),
   workflows: { welcome },
 });
@@ -109,7 +109,11 @@ If you'd rather wire things up by hand — useful for tests, isolating engines o
 
 When a workflow needs a live host capability that cannot be checkpointed, pass it as per-run `services`:
 
-```typescript partial
+```typescript
+import { engine } from './hello-world.ts';
+
+declare const crmClient: { lookup(email: string): Promise<{ accountId: string }> };
+
 const handle = await engine.start('welcome', { name: 'Steve' }, { services: { crmClient } });
 ```
 
@@ -188,8 +192,26 @@ Use `ctx.raceKeyed()` when the workflow needs to know which branch won without e
 
 Every workflow context exposes `ctx.workflowId` and `ctx.workflowType`. `workflowType` is the registered name from `workflow({ name })`, so shared workflow code can log, tag, or branch on the current workflow type without closing over definition-site state.
 
-```typescript partial
-const checkout = workflow({ name: 'checkout' })
+```typescript file=checkout.ts
+import { workflow } from '@lostgradient/weft';
+
+export type Order = {
+  payment: { token: string; amount: number };
+  items: string[];
+  email: string;
+  address: string;
+};
+
+// Your activities: plain async functions with typed inputs and outputs.
+declare const chargeCard: (input: { payment: Order['payment'] }) => Promise<{ receiptId: string }>;
+declare const reserveInventory: (input: { items: string[] }) => Promise<void>;
+declare const sendConfirmation: (input: {
+  email: string;
+  receiptId: string;
+}) => Promise<{ messageId: string }>;
+declare const scheduleShipping: (input: { address: string }) => Promise<{ trackingNumber: string }>;
+
+export const checkout = workflow({ name: 'checkout' })
   .activities({ chargeCard, reserveInventory, sendConfirmation, scheduleShipping })
   .execute(async function* (ctx, order: Order) {
     const charge = yield* ctx.run('chargeCard', { payment: order.payment });
@@ -210,8 +232,12 @@ If `scheduleShipping` fails, `sendConfirmation`'s result is recorded in the pare
 
 Sleeps survive process restarts. Signals pause workflows for seconds, days, or weeks at no cost—the checkpoint just sits in storage.
 
-```typescript partial
-const approvalSignal = signal<{ approved: boolean }>('approval');
+```typescript file=approval.ts
+import { Engine, MemoryStorage, signal, workflow } from '@lostgradient/weft';
+
+declare const ship: (input: { orderId: string }) => Promise<void>;
+
+export const approvalSignal = signal<{ approved: boolean }>('approval');
 
 const approval = workflow({ name: 'approval' })
   .activities({ ship })
@@ -227,6 +253,11 @@ const approval = workflow({ name: 'approval' })
     return { orderId: input.orderId, status: 'shipped' as const };
   });
 
+export const engine = await Engine.create({
+  storage: new MemoryStorage(),
+  workflows: { approval },
+});
+
 // From an HTTP handler, another workflow, or anywhere with engine access:
 const handle = await engine.start('approval', { orderId: 'order-123' });
 await engine.signal(handle.id, approvalSignal, { approved: true });
@@ -234,7 +265,9 @@ await engine.signal(handle.id, approvalSignal, { approved: true });
 
 For state that changes through synchronous updates, use `ctx.waitUntil(predicate, timeout?)` as a durable condition gate. It re-checks a pure predicate when `ctx.onUpdate()` handlers mutate workflow-local state, or when the optional timeout fires. It is inline-only because the predicate closure stays in the engine process; signals do not re-drive it because signals are pull-based messages consumed by `ctx.waitForSignal()`.
 
-```typescript partial
+```typescript
+import { update, workflow } from '@lostgradient/weft';
+
 const quorum = workflow({ name: 'quorum' })
   .updates({
     vote: update<void, number>('vote'),
@@ -255,7 +288,13 @@ const quorum = workflow({ name: 'quorum' })
 
 Workflow handles expose lifecycle events through `addEventListener`, and client handles can open a live tail for progress UIs or operators. `LocalClient` reads from the in-process engine stream; `HttpClient` defaults to the per-workflow `/v1/workflows/:id/watch` WebSocket channel when the runtime can carry authentication headers, and falls back to fetch-based SSE at `/v1/workflows/:id/events/sse` when it cannot. Both transports run history catch-up on connect and reconnect, so `addEventListener`, `client.tail(id)`, and `handle.tail()` are push-based rather than a polling loop. JSON-RPC clients can subscribe over WebSocket with `weft.workflows.subscribe` for one workflow or `weft.events.subscribe` for the fleet-wide event feed. Client code that receives a workflow id from another process can call `client.getHandle(id)` to re-attach a `ClientHandle` or get `null` when the run does not exist.
 
-```typescript partial
+```typescript
+import type { HttpClient } from '@lostgradient/weft';
+import type { Order } from './checkout.ts';
+
+declare const client: HttpClient;
+declare const order: Order;
+
 const handle = await client.start('checkout', order);
 const tail = handle.tail();
 
@@ -272,12 +311,14 @@ The tail is single-consumer and stops on terminal workflow events or `tail.close
 
 Retried webhooks and queue deliveries should not double-start workflows. Pass a stable `idempotencyKey` to `engine.start()` to make every retry return a handle for the same run. Use `engine.startOrSignal()` when the first event should create the workflow and later events should signal the existing non-terminal run. The call returns `{ handle, outcome }`, where `outcome` is `'started'` for the caller that created the run and `'signalled'` for callers that delivered to, or converged onto, an existing run.
 
-```typescript partial
+```typescript
+import { engine } from './approval.ts';
+
 const { handle, outcome } = await engine.startOrSignal(
   'approval',
   { orderId: 'order-123' },
-  { name: 'payment', payload: { status: 'succeeded' } },
-  { idempotencyKey: 'payment-webhook-order-123' },
+  { name: 'approval', payload: { approved: true } },
+  { idempotencyKey: 'approval-webhook-order-123' },
 );
 
 console.log(handle.id, outcome); // outcome is 'started' or 'signalled'
@@ -361,7 +402,9 @@ Every attempt is durably marked `attempting` _before_ the adapter is called, so 
 
 Attach indexed metadata to a workflow at runtime, then list and filter on it.
 
-```typescript partial
+```typescript
+import { Engine, MemoryStorage, workflow } from '@lostgradient/weft';
+
 const order = workflow({ name: 'order' })
   .searchAttributes({
     customerId: { type: 'string' },
@@ -373,6 +416,8 @@ const order = workflow({ name: 'order' })
     // ... work ...
     ctx.setAttribute('status', 'shipped');
   });
+
+await using engine = await Engine.create({ storage: new MemoryStorage(), workflows: { order } });
 
 const orders = await engine.list({
   attributes: [
@@ -459,13 +504,14 @@ For long-running workflows, `history.retentionWindow` can compact old event-log 
 
 `serve()` wraps `Bun.serve()` to expose your engine over HTTP and WebSocket with a versioned REST API.
 
-```typescript partial
+```typescript
 import { Engine } from '@lostgradient/weft';
 import { serve } from '@lostgradient/weft/server';
 import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+import { checkout } from './checkout.ts';
 
 const engine = new Engine({ storage: new SQLiteStorage('./weft.db') });
-engine.register(checkoutWorkflow);
+engine.register(checkout);
 
 await using server = serve({ engine, port: 7233 });
 // server.url is e.g. "http://0.0.0.0:7233"
@@ -478,7 +524,7 @@ Workflow and fleet event feeds resume from an opaque `Cursor` string. Treat a cu
 - `encodeCursor(sequence: number): Cursor` encodes a non-negative integer sequence and throws on a negative or non-integer input.
 - `decodeCursor(cursor: Cursor): number | null` returns the sequence, `-1` for the initial "before the first event" sentinel, or `null` when the cursor is malformed or outside the safe-integer range.
 
-```typescript partial
+```typescript
 import { decodeCursor, encodeCursor } from '@lostgradient/weft';
 
 decodeCursor(encodeCursor(42)); // 42
@@ -490,9 +536,11 @@ decodeCursor('garbage'); // null
 
 `serve({ auth })` accepts API keys, JWTs, and mutual TLS. Every operation except `weft.system.principal` requires an authorization scope, and the scope a caller holds comes from its credential: a JWT's `scope`, `scp`, and `permissions` claims, the `defaultApiKeyScopes` you give static API keys, or the principal your `resolveApiKeyPrincipal` returns.
 
-```typescript partial
+```typescript
+import { Engine, MemoryStorage } from '@lostgradient/weft';
 import { serve } from '@lostgradient/weft/server';
 
+await using engine = new Engine({ storage: new MemoryStorage() });
 await using server = serve({
   engine,
   port: 7233,
@@ -571,8 +619,13 @@ Weft ships no user interface. The console for its engine, with workflows, review
 
 Workers can connect to the server over WebSocket, pull tasks, execute activities, and report results back. The same activity code runs inline in development and remote in production—no API changes.
 
-```typescript partial
-import { RemoteWorker } from '@lostgradient/weft';
+```typescript
+import { RemoteWorker, type RemoteWorkerActivityFunction } from '@lostgradient/weft';
+
+// A remote activity receives its input as `unknown` off the wire; validate it before use.
+declare const chargeCard: RemoteWorkerActivityFunction;
+declare const reserveInventory: RemoteWorkerActivityFunction;
+declare const sendConfirmation: RemoteWorkerActivityFunction;
 
 const worker = new RemoteWorker({
   serverUrl: 'wss://weft.internal:7233',
@@ -624,15 +677,29 @@ Inside workflow code, `ctx.log` emits structured console records with `workflowI
 
 `TestEngine` swaps the production engine in tests and gives you a virtual clock. `engine.advanceTime('1 hour')` jumps timers forward without waiting; `engine.mock(activity, fake)` swaps in fake activity implementations with type-checked signatures, call recording, and per-call overrides.
 
-```typescript partial
+```typescript
+import { workflow } from '@lostgradient/weft';
 import { TestEngine } from '@lostgradient/weft/testing';
 import { expect, test } from 'bun:test';
+
+async function sendEmail(input: { to: string; template: string }): Promise<{ messageId: string }> {
+  throw new Error(`send ${input.template} to ${input.to} through your email provider`);
+}
+
+const onboardingWorkflow = workflow({ name: 'onboarding' })
+  .activities({ sendEmail })
+  .execute(async function* (ctx, input: { name: string }) {
+    yield* ctx.run('sendEmail', { to: input.name, template: 'welcome' });
+    yield* ctx.sleep('1 day');
+    yield* ctx.run('sendEmail', { to: input.name, template: 'follow-up' });
+    return { status: 'onboarded' as const };
+  });
 
 test('onboarding completes after a day', async () => {
   const engine = new TestEngine();
   engine.register(onboardingWorkflow);
 
-  const sendEmail = engine.mock(actualSendEmail, () => ({
+  const sendEmailMock = engine.mock(sendEmail, () => ({
     messageId: 'msg_test_1',
   }));
 
@@ -640,7 +707,7 @@ test('onboarding completes after a day', async () => {
   await engine.advanceTime('1 day');
 
   expect(await handle.result()).toEqual({ status: 'onboarded' });
-  expect(sendEmail.callCount).toBe(2);
+  expect(sendEmailMock.callCount).toBe(2);
 });
 ```
 
@@ -654,8 +721,10 @@ For chaos testing, `withChaos()` wraps activities with configurable transient fa
 
 Every error Weft throws extends `WeftError`, so a single `instanceof` check catches them all, and each carries a stable string `code` equal to its class name:
 
-```typescript partial
-import { isWeftError } from '@lostgradient/weft';
+```typescript
+import { Engine, MemoryStorage, isWeftError } from '@lostgradient/weft';
+
+await using engine = new Engine({ storage: new MemoryStorage() });
 
 try {
   await engine.start('checkout', { orderId: 'order-1' }, { id: 'order-1' });
@@ -720,7 +789,20 @@ The `bun` runtime version `1.3.13` or later is required.
 
 If generator syntax is unfamiliar, the same workflow can be written with `ctx.step()` calls and plain `async`/`await`:
 
-```typescript partial
+```typescript
+import {
+  Engine,
+  MemoryStorage,
+  compileStepWorkflow,
+  workflow,
+  type StepWorkflowContext,
+} from '@lostgradient/weft';
+
+declare const greet: (name: string) => Promise<string>;
+declare const notify: (greeting: string) => Promise<void>;
+
+await using engine = new Engine({ storage: new MemoryStorage() });
+
 const welcome = workflow({ name: 'welcome' }).execute(
   compileStepWorkflow(async (ctx: StepWorkflowContext, input: { name: string }) => {
     const greeting = await ctx.step('greet', () => greet(input.name));
