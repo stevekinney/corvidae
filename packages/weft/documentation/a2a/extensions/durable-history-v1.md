@@ -215,7 +215,7 @@ The extension adds no error codes. It produces these standard ones, each a JSON-
 
 | Code | When |
 | --- | --- |
-| `-32602` (invalid params) | `Last-Event-ID` is not well formed as a cursor of this server (any cursor the server issued, for any task, is accepted: C is the fleet-wide tail, so it is usually another task's event), or `tenant` differs from the mounted interface's tenant. ErrorInfo reason: the A2A standardized reason for invalid params. The server never guesses a resume point from a malformed cursor. |
+| `-32602` (invalid params) | `Last-Event-ID` is not well formed as a cursor of this server (any cursor the server issued is accepted, whatever it names: a client compares cursors for equality only and cannot tell which event a cursor belongs to), or `tenant` differs from the mounted interface's tenant. ErrorInfo reason: the A2A standardized reason for invalid params. The server never guesses a resume point from a malformed cursor. |
 | `-32001` (`TaskNotFoundError`) | The task does not exist, or the caller may not see it. Denial is indistinguishable from absence. |
 | `-32004` (`UnsupportedOperationError`) | The task is already in a terminal state and cannot be subscribed to (A2A 1.0.1 section 3.1.6). The client reads its final state with `GetTask`. |
 
