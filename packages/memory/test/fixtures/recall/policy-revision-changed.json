@@ -47,5 +47,6 @@
         "reason": "trust-below-minimum"
       }
     ]
-  }
+  },
+  "expectedRevision": "sha256:068dbb0956197ce3a91eae47d99b8046ba9a7d6cbf044e14a33feeac019de09f"
 }

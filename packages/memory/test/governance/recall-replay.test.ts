@@ -84,6 +84,29 @@ describe('recorded recall replays', () => {
     expect(replayed.passed).toBe(true);
   });
 
+  it('fails drift beside an expected difference, because the recording pins its revision', async () => {
+    const recorded = await recording('policy-revision-changed');
+    const drifted: RecallRecording = {
+      ...recorded,
+      records: recorded.records.map((record, index) =>
+        index === 1
+          ? { ...record, content: 'The user prefers an aisle seat near the front.' }
+          : record,
+      ),
+    };
+    const replay = await replayRecording(drifted);
+    expect(replay.passed).toBe(false);
+    const unpinned = await replayRecording({ ...recorded, expectedRevision: undefined });
+    expect(unpinned.passed).toBe(false);
+  });
+
+  it('never passes a recording that has no baseline to compare against', async () => {
+    const { manifest: _baseline, ...recorded } = await recording('exact-and-paraphrase');
+    const replay = await replayRecording(recorded);
+    expect(replay.differences).toEqual([]);
+    expect(replay.passed).toBe(false);
+  });
+
   it('reproduces the bundle revision when nothing changed', async () => {
     const recorded = await recording('exact-and-paraphrase');
     const replay = await replayRecording(recorded);

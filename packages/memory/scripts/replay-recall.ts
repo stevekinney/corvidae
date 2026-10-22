@@ -51,6 +51,12 @@ const recordingSchema = z.object({
   options: z.record(z.string(), z.unknown()).default({}),
   manifest: z.unknown().optional(),
   expectedDifferences: z.array(z.string()).default([]),
+  /**
+   * The bundle revision the replay must produce when `expectedDifferences` is
+   * not empty. Naming the differences alone would let other drift pass beside
+   * them, so a recording that expects differences pins the revision too.
+   */
+  expectedRevision: z.string().optional(),
 });
 
 /** One recording: what to store, what to recall, and the manifest the recall produced. */
@@ -61,7 +67,11 @@ export interface RecallReplay {
   readonly name: string;
   readonly manifest: MemoryEvidenceManifest;
   readonly differences: readonly MemoryRecallDifference[];
-  /** Whether the differences are exactly the ones the recording expects, by kind and in order. */
+  /**
+   * Whether the replay compared against a baseline and found exactly the
+   * differences the recording expects, by kind and in order, at the bundle
+   * revision it pins when it expects any.
+   */
   readonly passed: boolean;
 }
 
@@ -111,11 +121,18 @@ export async function replayRecording(input: RecallRecording): Promise<RecallRep
         ? []
         : compareMemoryEvidenceManifests(recording.manifest as MemoryEvidenceManifest, manifest);
     const kinds = differences.map((difference) => difference.kind);
+    const pinned =
+      recording.expectedDifferences.length === 0 ||
+      manifest.revision === recording.expectedRevision;
     return {
       name: recording.name,
       manifest,
       differences,
-      passed: kinds.join(',') === recording.expectedDifferences.join(','),
+      // A recording with no baseline proves nothing, so it never passes outside `--record`.
+      passed:
+        recording.manifest !== undefined &&
+        pinned &&
+        kinds.join(',') === recording.expectedDifferences.join(','),
     };
   } finally {
     await memory.close();
@@ -130,7 +147,7 @@ export function recordedBaseline(
   recording: RecallRecording,
   manifest: MemoryEvidenceManifest,
 ): RecallRecording {
-  const { expectedDifferences: _stale, ...baseline } = recording;
+  const { expectedDifferences: _stale, expectedRevision: _pinned, ...baseline } = recording;
   return { ...baseline, manifest };
 }
 
