@@ -98,7 +98,7 @@ bun scripts/chef/jev.ts decide --kind routine \
   --yes-no
 ```
 
-The answer is the probability of yes. At 0.85 or above, record the failure as shared and continue to the delivery boundary; below it, widen the control before deciding.
+The answer is the likelier side with that side's probability, and both probabilities are printed, so `no (p=0.98)` is a decision too. A `yes` at 0.85 or above records the failure as shared and continues to the delivery boundary; a `no` at 0.85 or above treats it as this change's blocker; below the threshold, widen the control before deciding.
 
 A choice owner decision: two designs for an exported surface, which is a one-way door.
 
