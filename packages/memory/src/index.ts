@@ -63,7 +63,7 @@ export type {
   MemoryPrincipalKind,
   MemoryProjection,
 } from './governance/authority';
-export type { MemoryEvidence } from './governance/evidence';
+export type { MemoryEvidence, MemoryEvidenceKind } from './governance/evidence';
 export type {
   CreateGovernedMemoryOptions,
   GovernedListOptions,
@@ -85,6 +85,15 @@ export type {
   MemoryLegalHoldResult,
   MemoryOperationResult,
   MemoryOperationStatus,
+  MemoryRecallCandidate,
+  MemoryRecallContradiction,
+  MemoryRecallExclusion,
+  MemoryRecallExclusionReason,
+  MemoryRecallFilterReport,
+  MemoryRecallFreshness,
+  MemoryRecallSpend,
+  MemoryRecallStageReport,
+  MemoryRecallStageScores,
   MemoryRecordLocator,
   MemoryRetentionCandidate,
   MemoryRetentionSweep,
@@ -146,6 +155,15 @@ export type {
   MemoryRecordSourceReference,
   RecordGovernance,
 } from './governance/record-governance';
+export type {
+  MemoryPolicyFilter,
+  MemoryRecallStopReason,
+  MemoryRetrievalBudgets,
+  MemoryRetrievalConstraints,
+  MemoryRetrievalPlan,
+  MemoryRetrievalPlanInput,
+  MemoryRetrievalStage,
+} from './governance/retrieval-plan';
 export type { MemoryGuardrailOptions, ScannedMemoryContent } from './guardrail';
 export type { MemoryHookOptions } from './hooks';
 export type {
@@ -235,10 +253,23 @@ export {
 } from './governance/authority';
 // Authority errors are public constructors.
 export { MemoryAuthorityError } from './governance/authority';
-export { MEMORY_EVIDENCE_PREAMBLE, renderMemoryEvidence } from './governance/evidence';
+export {
+  MEMORY_EVIDENCE_KINDS,
+  MEMORY_EVIDENCE_PREAMBLE,
+  renderMemoryEvidence,
+} from './governance/evidence';
 export { createGovernedMemory } from './governance/governed-memory';
 export { createGovernedMemoryTools } from './governance/governed-tools';
 export { createMemoryGovernanceLedger } from './governance/ledger';
+export {
+  DEFAULT_MEMORY_RETRIEVAL_BUDGETS,
+  DEFAULT_MEMORY_RETRIEVAL_PLAN,
+  MEMORY_POLICY_FILTERS,
+  MEMORY_RECALL_STOP_REASONS,
+  MEMORY_RETRIEVAL_STAGES,
+  MemoryRetrievalPlanError,
+  createMemoryRetrievalPlan,
+} from './governance/retrieval-plan';
 // The default governance key prefix is public for custom ledger storage.
 export { DEFAULT_MEMORY_GOVERNANCE_KEY_PREFIX } from './governance/ledger';
 export {
