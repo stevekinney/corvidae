@@ -30,9 +30,12 @@
  *
  * The wrapped command also gets two Turborepo defaults, each only when the caller has not set it.
  * `TURBO_CACHE_DIR` points at one cache inside the Git common directory, so a task one worktree ran
- * replays in every other worktree instead of each checkout starting cold. `TURBO_CONCURRENCY` scales
- * with the host's memory, one task per 16 GiB: a single type-check peaks near 5 GB, and Turborepo's
- * own default of ten such tasks at once exhausts even a 64 GB host. A stage that passes
+ * replays in every other worktree instead of each checkout starting cold. `TURBO_CONCURRENCY` is
+ * one task per 8 GiB of memory and per three processors, whichever allows fewer. Measured on
+ * 2026-10-22 with a forced validate at four tasks on a 12-core, 32 GB host: the largest task
+ * (Cinder's coverage run) peaked at 7.8 GB, all tasks together at 13.3 GB, and the load average
+ * reached 58. Processors bind before memory does, because a test task runs up to four Bun workers.
+ * Turborepo's own default of ten tasks at once oversubscribes both. A stage that passes
  * `--concurrency` itself still wins, since the flag overrides the variable.
  *
  * Usage: `bun scripts/run-exclusively.ts '<shell command>' [arguments...]`. Arguments reach the
@@ -52,7 +55,10 @@ export const ownerFileName = 'owner.json';
 export const heldLockTokenVariable = 'CORVIDAE_HOST_LOCK_TOKEN';
 
 /** Host memory budgeted to each concurrently running Turborepo task. */
-const memoryPerTurborepoTask = 16 * 1024 ** 3;
+const memoryPerTurborepoTask = 8 * 1024 ** 3;
+
+/** Processors budgeted to each concurrently running Turborepo task, which may run four Bun workers. */
+const processorsPerTurborepoTask = 3;
 
 /**
  * `environment` with the shared Turborepo cache and a memory-scaled task concurrency filled in
@@ -68,7 +74,10 @@ export function withTurborepoDefaults(
 ): Record<string, string | undefined> {
   const concurrency = Math.max(
     1,
-    Math.min(host.processors, Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask)),
+    Math.min(
+      Math.floor(host.processors / processorsPerTurborepoTask),
+      Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
+    ),
   );
   return {
     ...environment,
