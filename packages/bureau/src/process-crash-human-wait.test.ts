@@ -14,12 +14,15 @@
  * `child.exited`, the marker file, or a bounded condition poll with a tiny real
  * delay, because LMDB's completion callbacks starve under a zero-delay loop.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import {
+  createTemporaryDirectory,
+  removeTemporaryPath,
+} from '@lostgradient/testing/temporary-path';
 import { HumanWaitParkedEvent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -54,14 +57,14 @@ async function humanWaitScenario(
   scope: ScenarioScope,
   twoCalls: boolean,
 ): Promise<void> {
-  const directory = mkdtempSync(join(tmpdir(), `corvidae-process-crash-human-wait-${backend}-`));
+  const directory = createTemporaryDirectory(`corvidae-process-crash-human-wait-${backend}`);
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
   let recoverer: Bureau | undefined;
   // A hung scenario never reaches its `finally`, so what it owns is released from here.
   scope.onHang(async () => {
     await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
-    rmSync(directory, { recursive: true, force: true });
+    removeTemporaryPath(directory);
   });
 
   try {
@@ -161,7 +164,7 @@ async function humanWaitScenario(
   } finally {
     // allSettled never rejects, so the directory is always removed after shutdown.
     const reports = await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
-    rmSync(directory, { recursive: true, force: true });
+    removeTemporaryPath(directory);
     for (const report of reports) {
       expect(report.status).toBe('fulfilled');
       if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
