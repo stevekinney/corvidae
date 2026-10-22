@@ -1,4 +1,4 @@
-import { describe, expect } from 'bun:test';
+import { expect } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -95,7 +95,7 @@ function runCli(argv: string[]) {
   return run(argv, { checkout });
 }
 
-describe('createWorktree', () => {
+scenarios.describe('createWorktree', () => {
   scenarios.scenario('adds the worktree from origin/<default>, installs, and reports head', () => {
     const result = create();
     expect(result.path).toBe(join(roots.claude, 'alpha'));
@@ -185,7 +185,7 @@ describe('createWorktree', () => {
   });
 });
 
-describe('removeWorktree', () => {
+scenarios.describe('removeWorktree', () => {
   const remove = (name = 'alpha', keepRemote = false) =>
     removeWorktree({ configPath, provider: 'claude', name, keepRemote }, { checkout });
 
@@ -319,7 +319,27 @@ describe('removeWorktree', () => {
   });
 });
 
-describe('run', () => {
+scenarios.describe('removeWorktree with a busy worktree', () => {
+  const remove = (name = 'alpha', keepRemote = false) =>
+    removeWorktree({ configPath, provider: 'claude', name, keepRemote }, { checkout });
+
+  scenarios.scenario(
+    'refuses while a process has its working directory inside the worktree',
+    async () => {
+      const created = create();
+      const child = spawnWithHangGuard(['sleep', '30'], { cwd: join(created.path, 'src') });
+      children.push(child);
+      await Bun.sleep(150);
+      expect(() => remove()).toThrow(`${child.pid} sleep`);
+      expect(existsSync(created.path)).toBe(true);
+      child.kill();
+      await child.exited;
+      expect(remove().path).toBe(created.path);
+    },
+  );
+});
+
+scenarios.describe('run', () => {
   scenarios.scenario('create then remove through the command line', () => {
     const created = runCli([
       'create',
@@ -365,32 +385,6 @@ describe('run', () => {
     expect(() => runCli([])).toThrow(UsageError);
     expect(() => runCli(['create', '--config', configPath])).toThrow(UsageError);
   });
-});
-
-/**
- * Last on purpose. Observed on Bun 1.4.2: in every run of this file, and in none when this
- * scenario is removed, a command that starts about five seconds after the `sleep` child below was
- * spawned is killed with SIGTERM by something outside the test (the cause is not identified). A
- * scenario that ran after it would see a random `git` or `lsof` die, so nothing runs after it.
- */
-describe('removeWorktree with a busy worktree', () => {
-  const remove = (name = 'alpha', keepRemote = false) =>
-    removeWorktree({ configPath, provider: 'claude', name, keepRemote }, { checkout });
-
-  scenarios.scenario(
-    'refuses while a process has its working directory inside the worktree',
-    async () => {
-      const created = create();
-      const child = spawnWithHangGuard(['sleep', '30'], { cwd: join(created.path, 'src') });
-      children.push(child);
-      await Bun.sleep(150);
-      expect(() => remove()).toThrow(`${child.pid} sleep`);
-      expect(existsSync(created.path)).toBe(true);
-      child.kill();
-      await child.exited;
-      expect(remove().path).toBe(created.path);
-    },
-  );
 });
 
 await scenarios.settled();

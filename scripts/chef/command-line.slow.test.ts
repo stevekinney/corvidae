@@ -1,4 +1,4 @@
-import { describe, expect } from 'bun:test';
+import { expect } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -121,7 +121,7 @@ scenarios.scenario('mutation-check.ts exits 1 on a survivor and restores the fil
  * or real repository: an empty `PATH` hides `git`, `gh` and `security`, an unreachable proxy stops
  * a request that a fake key would otherwise send, and the rest fail on their own inputs.
  */
-describe('a non-zero result with --json goes to standard output', () => {
+scenarios.describe('a non-zero result with --json goes to standard output', () => {
   const hermetic = () => ({ PATH: '', HOME: sandbox, TMPDIR: sandbox });
 
   async function expectJsonFailure(
@@ -320,7 +320,7 @@ describe('a non-zero result with --json goes to standard output', () => {
   });
 });
 
-describe('review-boundary.ts and worktree-scope.ts reject bad usage with exit 2', () => {
+scenarios.describe('review-boundary.ts and worktree-scope.ts reject bad usage with exit 2', () => {
   for (const script of ['review-boundary.ts', 'worktree-scope.ts']) {
     scenarios.scenario(
       `${script}: an unknown option, a boolean-looking flag and a missing option`,

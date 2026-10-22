@@ -1,4 +1,4 @@
-import { describe, expect } from 'bun:test';
+import { expect } from 'bun:test';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -126,7 +126,7 @@ const scenarios = createScenarios({
   },
 });
 
-describe('normalizeConfiguration', () => {
+scenarios.describe('normalizeConfiguration', () => {
   scenarios.scenario('rejects absolute, empty, dot-dot, backslash, and root-wide paths', () => {
     for (const path of ['/etc', '', 'src/../x', 'src\\a', '.', './src', 'src//a', 'src/']) {
       expect(() => normalizeConfiguration(configurationFor([path]))).toThrow(UsageError);
@@ -158,7 +158,7 @@ describe('normalizeConfiguration', () => {
   });
 });
 
-describe('clean and dirty baselines', () => {
+scenarios.describe('clean and dirty baselines', () => {
   scenarios.scenario('a clean baseline with no changes verifies', () => {
     const before = captureScope(['src']);
     const report = verifyScope(['src'], before);
@@ -203,7 +203,7 @@ describe('clean and dirty baselines', () => {
   });
 });
 
-describe('in-scope and out-of-scope mutations', () => {
+scenarios.describe('in-scope and out-of-scope mutations', () => {
   scenarios.scenario('in-scope edits, additions, and deletions verify', () => {
     const before = captureScope(['src']);
     write('src/app.ts', 'edited');
@@ -271,7 +271,7 @@ describe('in-scope and out-of-scope mutations', () => {
   );
 });
 
-describe('ignored files, modes, and symlinks', () => {
+scenarios.describe('ignored files, modes, and symlinks', () => {
   scenarios.scenario('untracked ignored artifacts are skipped', () => {
     const before = captureScope(['src']);
     write('ignored/cache.bin', 'artifact');
@@ -318,7 +318,7 @@ describe('ignored files, modes, and symlinks', () => {
   });
 });
 
-describe('path names and staging', () => {
+scenarios.describe('path names and staging', () => {
   scenarios.scenario('names with spaces, tabs, and newlines parse unambiguously', () => {
     const awkward = [
       'outside/with space.txt',
@@ -342,7 +342,7 @@ describe('path names and staging', () => {
   });
 });
 
-describe('baseline identity', () => {
+scenarios.describe('baseline identity', () => {
   scenarios.scenario('a different allowed path set fails', () => {
     const before = captureScope(['src']);
     const report = verifyScope(['src', 'docs'], before);
@@ -402,7 +402,7 @@ describe('baseline identity', () => {
   );
 });
 
-describe('submodules and output handling', () => {
+scenarios.describe('submodules and output handling', () => {
   scenarios.scenario('a submodule gitlink is refused, never silently omitted', () => {
     git(
       worktree,
@@ -437,7 +437,7 @@ describe('submodules and output handling', () => {
   });
 });
 
-describe('command line contract', () => {
+scenarios.describe('command line contract', () => {
   function writeConfiguration(paths: string[]) {
     const path = join(sandbox, `configuration-${evidenceCounter++}.json`);
     writeFileSync(path, JSON.stringify(configurationFor(paths)));

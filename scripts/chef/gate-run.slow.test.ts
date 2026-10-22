@@ -1,4 +1,4 @@
-import { describe, expect } from 'bun:test';
+import { expect } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,7 +63,7 @@ function repositoryHead(): string {
   return defaultRunner(['git', 'rev-parse', 'HEAD'], { cwd: repository }).stdout.trim();
 }
 
-describe('runGate', () => {
+scenarios.describe('runGate', () => {
   scenarios.scenario(
     "writes head and load first, the output, and GATE_RC, and returns the gate's code",
     () => {
@@ -208,7 +208,7 @@ describe('runGate', () => {
   });
 });
 
-describe('runControl', () => {
+scenarios.describe('runControl', () => {
   function trees() {
     const candidate = join(sandbox, 'candidate');
     const base = join(sandbox, 'base');
@@ -297,7 +297,7 @@ describe('runControl', () => {
   });
 });
 
-describe('run', () => {
+scenarios.describe('run', () => {
   scenarios.scenario("run exits with the gate's code and prints a short line", () => {
     const log = join(sandbox, 'gate.log');
     const result = run([
