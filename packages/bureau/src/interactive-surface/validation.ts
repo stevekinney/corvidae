@@ -62,6 +62,18 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return prototype === Object.prototype || prototype === null;
 }
 
+/** A deep copy of a command, detached from the caller's objects; fails unless it is plain data. */
+export function detach(value: Record<string, unknown>): Record<string, unknown> {
+  let copy: unknown;
+  try {
+    copy = structuredClone(value);
+  } catch {
+    fail('the command must be plain JSON data');
+  }
+  if (!isPlainObject(copy)) fail('the command must be an object');
+  return copy;
+}
+
 /** Fails on any key of `value` outside `allowed`. */
 export function assertKnownFields(
   value: Record<string, unknown>,
@@ -150,7 +162,7 @@ export function readAudience(value: unknown): readonly string[] {
 
 // ── Schemas ─────────────────────────────────────────────────────────
 
-/** Subschema positions that hold a map of property names to schemas. */
+/** Keywords whose value is a map of names to subschemas. */
 const SCHEMA_MAPS: ReadonlySet<string> = new Set([
   'properties',
   'patternProperties',
@@ -159,10 +171,30 @@ const SCHEMA_MAPS: ReadonlySet<string> = new Set([
   'dependentSchemas',
 ]);
 
-/** Keywords whose value is data, not a schema, and is not searched. */
-const DATA_KEYWORDS: ReadonlySet<string> = new Set(['const', 'enum', 'default', 'examples']);
+/** Keywords whose value is a subschema, or a list of subschemas. */
+const SUBSCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
+  'additionalProperties',
+  'unevaluatedProperties',
+  'propertyNames',
+  'items',
+  'prefixItems',
+  'additionalItems',
+  'unevaluatedItems',
+  'contains',
+  'not',
+  'if',
+  'then',
+  'else',
+  'allOf',
+  'anyOf',
+  'oneOf',
+]);
 
-/** Whether a schema or any subschema uses `pattern` or `patternProperties`. */
+/**
+ * Whether a schema or any subschema uses `pattern` or `patternProperties`.
+ * Only real subschema positions are searched, so an annotation that happens
+ * to hold a `pattern` key is not mistaken for a schema.
+ */
 function declaresPattern(schema: unknown): boolean {
   if (Array.isArray(schema)) return schema.some(declaresPattern);
   if (!isPlainObject(schema)) return false;
@@ -170,10 +202,9 @@ function declaresPattern(schema: unknown): boolean {
     return true;
   }
   for (const [keyword, value] of Object.entries(schema)) {
-    if (DATA_KEYWORDS.has(keyword)) continue;
     if (SCHEMA_MAPS.has(keyword) && isPlainObject(value)) {
       if (Object.values(value).some(declaresPattern)) return true;
-    } else if (typeof value === 'object' && declaresPattern(value)) {
+    } else if (SUBSCHEMA_KEYWORDS.has(keyword) && declaresPattern(value)) {
       return true;
     }
   }
@@ -187,13 +218,19 @@ function declaresPattern(schema: unknown): boolean {
  */
 export class InteractiveSurfaceSchemaCompiler {
   readonly #ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
+  /** Compiled validators, most recently used last, bounded so unique schemas cannot grow the heap. */
   readonly #cache = new Map<string, ValidateFunction>();
+  readonly #capacity = 256;
 
   /** Compiles `schema`, or fails naming `where`. */
   compile(schema: InteractiveSurfaceJsonObject, where: string): ValidateFunction {
     const key = JSON.stringify(schema);
     const cached = this.#cache.get(key);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      this.#cache.delete(key);
+      this.#cache.set(key, cached);
+      return cached;
+    }
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
     // A schema's regular expressions run on Bureau's event loop when a value is
     // admitted, and an untrusted author can write one that backtracks for
@@ -213,6 +250,13 @@ export class InteractiveSurfaceSchemaCompiler {
     if (Reflect.get(validate, '$async') === true)
       fail(`${where} must not be an asynchronous ($async) schema`);
     this.#cache.set(key, validate);
+    if (this.#cache.size > this.#capacity) {
+      const [oldestKey, oldest] = this.#cache.entries().next().value ?? [];
+      if (oldestKey !== undefined && oldest !== undefined) {
+        this.#cache.delete(oldestKey);
+        this.#ajv.removeSchema(oldest.schema);
+      }
+    }
     return validate;
   }
 

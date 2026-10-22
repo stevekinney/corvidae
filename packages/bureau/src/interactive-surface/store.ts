@@ -61,6 +61,7 @@ import {
   InteractiveSurfaceValidationError,
   isPlainObject,
   readActions,
+  detach,
   readAudience,
   readIdentifier,
   readJsonValue,
@@ -370,6 +371,7 @@ export function createInteractiveSurfaces(
     next: StoredSurface,
     kind: string,
     payload: unknown,
+    advancesRevision = true,
   ): Promise<string> {
     const key = surfaceKey(taskId, surfaceId);
     const conditions: ConditionalBatchCondition[] = [
@@ -389,7 +391,8 @@ export function createInteractiveSurfaces(
       if ((await store.get(key)) !== expected) throw new LostRace();
       throw error;
     }
-    await writeCursor(next.surface, cursor);
+    // Only an event that committed a revision names that revision's cursor.
+    if (advancesRevision) await writeCursor(next.surface, cursor);
     return cursor;
   }
 
@@ -599,19 +602,22 @@ export function createInteractiveSurfaces(
   function readCommandBase(command: unknown, type: string, extra: readonly string[]) {
     if (!isPlainObject(command))
       throw new InteractiveSurfaceValidationError('the command must be an object');
+    // Detach from the caller's objects, so content cannot change between being
+    // checked here and being committed after the awaits below.
+    const record = detach(command);
     assertKnownFields(
-      command,
+      record,
       ['type', 'contractVersion', 'commandId', 'taskId', ...extra],
       'the command',
     );
-    if (command['type'] !== type) {
+    if (record['type'] !== type) {
       throw new InteractiveSurfaceValidationError(`type must be "${type}"`);
     }
-    assertContractVersion(command['contractVersion']);
+    assertContractVersion(record['contractVersion']);
     return {
-      record: command,
-      commandId: readIdentifier(command['commandId'], 'commandId'),
-      taskId: readIdentifier(command['taskId'], 'taskId'),
+      record,
+      commandId: readIdentifier(record['commandId'], 'commandId'),
+      taskId: readIdentifier(record['taskId'], 'taskId'),
     };
   }
 
@@ -641,23 +647,25 @@ export function createInteractiveSurfaces(
         'classification',
       ]);
       const surfaceId = readIdentifier(record['surfaceId'], 'surfaceId');
+      // Authorize before the costly checks (schema compilation) below.
+      const task = await reachTask(taskId, authorization);
+      if (isRejection(task)) return task;
+      if (!mayChange(task, authorization)) return rejection('not-found');
       const representation = readRepresentation(record['representation'], schemas);
       const data = record['data'] === undefined ? null : readJsonValue(record['data'], 'data');
       const summary = readSummary(record['summary']);
       const actions = readActions(record['actions'], schemas);
       const audience = readAudience(record['audience']);
-      const classification = record['classification'] ?? 'standard';
+      const classification =
+        record['classification'] === undefined ? 'standard' : record['classification'];
       if (classification !== 'standard' && classification !== 'sensitive') {
         throw new InteractiveSurfaceValidationError(
           'classification must be "standard" or "sensitive"',
         );
       }
       assertWithinPayloadLimit({ representation, data, summary, actions }, maxPayloadBytes);
-      const digest = digestOf(command);
+      const digest = digestOf(record);
 
-      const task = await reachTask(taskId, authorization);
-      if (isRejection(task)) return task;
-      if (!mayChange(task, authorization)) return rejection('not-found');
       assertOwnContinuations(actions, taskId, task);
       // Watch before committing, so a settlement after this point freezes the new surface.
       watch(taskId);
@@ -702,33 +710,9 @@ export function createInteractiveSurfaces(
           INTERACTIVE_SURFACE_EVENT_KINDS.created,
           { contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION, commandId, surface },
         );
-        // Reconcile with the task as it is now. A settlement or deletion that
-        // ran while this create committed may have scanned the task's surfaces
-        // before this one existed, so this create handles its own surface
-        // directly rather than relying on a settlement already cached.
-        const after = await options.task(taskId);
-        if (after === undefined) {
-          // The task was deleted: its surfaces go with it.
-          await store.delete(surfaceKey(taskId, surfaceId));
-          await store.delete(cursorKey(taskId, surfaceId));
-          return rejection('not-found', 'the task was deleted while the surface was being created');
-        }
-        if (after.settled !== undefined) {
-          await freezeOne(
-            taskId,
-            surfaceId,
-            after.settled === 'canceled' ? 'cancelled' : 'task-ended',
-            `task-settled:${taskId}`,
-          );
-          const reconciled = await load(taskId, surfaceId);
-          // The create committed, so it is accepted; the surface it reports is frozen.
-          return accepted(
-            commandId,
-            await withCursor(reconciled?.stored.surface ?? { ...surface, eventCursor: cursor }),
-            false,
-            1,
-          );
-        }
+        // Liveness is enforced when a surface is read, not here: a task that
+        // settled while this create committed freezes the surface on its next
+        // read (see `current`), and a deleted task's surfaces are unreachable.
         return accepted(commandId, { ...surface, eventCursor: cursor }, false);
       });
     });
@@ -750,6 +734,10 @@ export function createInteractiveSurfaces(
         'actions',
       ]);
       const surfaceId = readIdentifier(record['surfaceId'], 'surfaceId');
+      // Authorize before the costly checks (schema compilation) below.
+      const task = await reachTask(taskId, authorization);
+      if (isRejection(task)) return task;
+      if (!mayChange(task, authorization)) return rejection('not-found');
       const baseRevision = record['baseRevision'];
       if (
         typeof baseRevision !== 'number' ||
@@ -771,11 +759,8 @@ export function createInteractiveSurfaces(
       if (Object.keys(changes).length === 0) {
         throw new InteractiveSurfaceValidationError('an update must change something');
       }
-      const digest = digestOf(command);
+      const digest = digestOf(record);
 
-      const task = await reachTask(taskId, authorization);
-      if (isRejection(task)) return task;
-      if (!mayChange(task, authorization)) return rejection('not-found');
       if (changes.actions !== undefined) assertOwnContinuations(changes.actions, taskId, task);
 
       return retrying(async () => {
@@ -894,7 +879,7 @@ export function createInteractiveSurfaces(
       }
       const actionName = readIdentifier(record['action'], 'action');
       const value = record['value'] === undefined ? null : readJsonValue(record['value'], 'value');
-      const digest = digestOf(request);
+      const digest = digestOf(record);
 
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
@@ -980,6 +965,7 @@ export function createInteractiveSurfaces(
               ? { valueDigest: digestOf(value) }
               : { value: value satisfies InteractiveSurfaceJsonValue }),
           },
+          false,
         );
         return admission;
       });
@@ -1002,7 +988,7 @@ export function createInteractiveSurfaces(
       if (reason !== 'completed' && reason !== 'dismissed') {
         throw new InteractiveSurfaceValidationError('reason must be "completed" or "dismissed"');
       }
-      const digest = digestOf(command);
+      const digest = digestOf(record);
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
@@ -1151,11 +1137,10 @@ export function createInteractiveSurfaces(
     settlement: Promise<CleanupAcknowledgement>,
   ): Promise<void> {
     const acknowledgement = await settlement;
-    if (acknowledgement.status === 'failed') {
-      // A later read freezes what this pass could not, so the next wait starts over.
-      settlements.delete(taskId);
-      options.onFreezeError?.(taskId, acknowledgement.error);
-    }
+    // Only a settlement in flight is remembered: a later one scans the task's
+    // surfaces again, so a surface created after this scan is frozen too.
+    settlements.delete(taskId);
+    if (acknowledgement.status === 'failed') options.onFreezeError?.(taskId, acknowledgement.error);
     const waiters = settlementWaiters.get(taskId);
     settlementWaiters.delete(taskId);
     for (const resolve of waiters ?? []) resolve(acknowledgement);
@@ -1174,15 +1159,19 @@ export function createInteractiveSurfaces(
     waitOptions?: { readonly signal?: AbortSignal | undefined },
   ): Promise<CleanupAcknowledgement> {
     const pending = settlements.get(taskId);
-    if (pending !== undefined) return pending;
+    if (pending !== undefined) await pending;
     const surfaceIds = await surfaceIdsOf(taskId);
     if (surfaceIds.length === 0) return { status: 'not-required' };
     const task = await options.task(taskId);
     if (task === undefined) return { status: 'not-required' };
     if (task.settled !== undefined) return settleTask(taskId, task.settled);
     // A surface created before a restart has no watcher yet; nothing would
-    // settle this wait without one.
+    // settle this wait without one. Read the task again once it is watched, so
+    // a settlement between the read above and the watch is not missed.
     watch(taskId);
+    const again = await options.task(taskId);
+    if (again === undefined) return { status: 'not-required' };
+    if (again.settled !== undefined) return settleTask(taskId, again.settled);
     const signal = waitOptions?.signal;
     return new Promise<CleanupAcknowledgement>((resolve) => {
       if (signal?.aborted === true) {

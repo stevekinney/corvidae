@@ -721,7 +721,7 @@ describe('review fixes', () => {
     expect(replay.outcome === 'accepted' && replay.surface.revision).toBe(3);
   });
 
-  it('reports a surface created while its task settled as frozen, not open', async () => {
+  it('freezes on its next read a surface created while its task settled', async () => {
     const runtime = createManualRuntimeServices();
     const storage = new MemoryStorage();
     let reads = 0;
@@ -739,13 +739,13 @@ describe('review fixes', () => {
 
     const receipt = await surfaces.create(createCommand());
 
-    // The create committed, so it is accepted, reporting the surface already frozen.
-    expect(receipt).toMatchObject({
-      outcome: 'accepted',
-      committedRevision: 1,
-      surface: { state: 'closed', liveness: 'frozen', closeResult: { reason: 'cancelled' } },
+    // The create committed, so it is accepted; the ended task freezes the
+    // surface when it is next read.
+    expect(receipt).toMatchObject({ outcome: 'accepted', committedRevision: 1 });
+    expect(await snapshotOf(surfaces)).toMatchObject({
+      liveness: 'frozen',
+      closeResult: { reason: 'cancelled' },
     });
-    expect(await snapshotOf(surfaces)).toMatchObject({ liveness: 'frozen' });
   });
 
   it('refuses an asynchronous schema and CSP entries that are not origins', async () => {
@@ -880,31 +880,50 @@ describe('review fixes', () => {
     expect(await evidence).toEqual({ status: 'completed' });
   });
 
-  it('freezes a surface created after its task’s settlement already ran, and drops one whose task was deleted', async () => {
+  it('never shows an open surface of a task whose settlement already ran, or of a deleted task', async () => {
     const runtime = createManualRuntimeServices();
     const storage = new MemoryStorage();
-    const states: (InteractiveSurfaceTask | undefined)[] = [];
+    const live = { owner: OWNER, contextId: 'session-1' };
+    const task: { current: InteractiveSurfaceTask | undefined } = { current: live };
     const surfaces = createInteractiveSurfaces({
       storage,
       history: createDurableEventHistory(storage, runtime),
-      task: async () => states.shift(),
+      task: async () => task.current,
       now: () => runtime.clock.now(),
     });
-    const live = { owner: OWNER, contextId: 'session-1' };
-    // The settlement ran before this surface existed, and is cached as not-required.
+    // The settlement ran before this surface existed.
     await surfaces.settleTask(TASK, 'canceled');
+    await surfaces.create(createCommand());
+    task.current = { ...live, settled: 'canceled' };
 
-    states.push(live, { ...live, settled: 'canceled' });
-    const frozen = await surfaces.create(createCommand());
-    states.push(live, undefined);
-    const orphan = await surfaces.create(createCommand({ commandId: 'c2', surfaceId: 'orphan' }));
+    expect(await snapshotOf(surfaces)).toMatchObject({ liveness: 'frozen' });
+    expect(await surfaces.closed(TASK)).toEqual({ status: 'completed' });
 
-    expect(frozen).toMatchObject({ outcome: 'accepted', surface: { liveness: 'frozen' } });
-    expect(orphan).toMatchObject({ outcome: 'rejected', reason: 'not-found' });
-    states.push(live);
-    expect(await surfaces.snapshot({ ...snapshotQuery, surfaceId: 'orphan' })).toMatchObject({
-      reason: 'not-found',
-    });
+    task.current = undefined;
+    expect(await surfaces.snapshot(snapshotQuery)).toMatchObject({ reason: 'not-found' });
+  });
+
+  it('rejects a null classification, keeps content apart from the caller, and ignores annotation patterns', async () => {
+    const { surfaces } = harness();
+    const nullClassification = await surfaces.create(
+      createCommand({ classification: null as unknown as 'standard' }),
+    );
+    const data = { reason: 'kept' };
+    const pending = surfaces.create(
+      createCommand({
+        commandId: 'create-2',
+        data,
+        representation: {
+          kind: 'input-form',
+          schema: { type: 'object', 'x-ui': { pattern: 'compact' } },
+        },
+      }),
+    );
+    data.reason = 'changed after the call';
+    const receipt = await pending;
+
+    expect(nullClassification).toMatchObject({ reason: 'invalid' });
+    expect(receipt).toMatchObject({ outcome: 'accepted', surface: { data: { reason: 'kept' } } });
   });
 
   it('refuses a regular-expression keyword in a surface schema, but not a property named pattern', async () => {
