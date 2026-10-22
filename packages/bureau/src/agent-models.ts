@@ -15,11 +15,7 @@
  * @module agent-models
  */
 
-import {
-  type BackendDescriptor,
-  readGenerationProfile,
-  type RunnableAgent,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, readGenerationProfile } from '@lostgradient/operative';
 
 import type { AgentFileProblem } from './agent-file';
 import {
@@ -99,7 +95,7 @@ export function describeAgentModels(
       restricts: true,
     };
   }
-  const profile = readGenerationProfile(agent as RunnableAgent);
+  const profile = readGenerationProfile(agent);
   const [only] = profile.descriptors;
   const attached = profile.descriptors.length === 1 && only !== undefined ? choiceOf(only) : null;
   if (profile.mode === 'selectable') {

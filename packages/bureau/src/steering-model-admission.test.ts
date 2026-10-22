@@ -7,6 +7,7 @@ import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForRunState } from './test';
 import {
@@ -59,7 +60,7 @@ async function openBureau(
           tools: { noop: noopTool },
           allowedCandidates: options.allowed,
         });
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     agents: { picker },
     stopWhen: stopWhen.noToolCalls(),
     storage: options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
@@ -70,10 +71,10 @@ async function openBureau(
   return bureau;
 }
 
-async function startRun(bureau: Bureau<never>, sessionId?: string) {
+async function startRun(bureau: Bureau<AgentDefinitions>, sessionId?: string) {
   const run = await bureau.createRun({
     message: 'go',
-    agentName: 'picker' as never,
+    agentName: 'picker',
     principal: 'alice',
     ...(sessionId === undefined ? {} : { sessionId }),
   });
@@ -101,7 +102,7 @@ describe('admission checks the model against the agent', () => {
   it('rejects a catalog model the agent does not allow with model-not-allowed, and a model the catalog lacks with policy-denied', async () => {
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({ generate: stepped.generate });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
     const outside = await steer(bureau, run.sessionId, 'outside', GPT_4_1.model);
@@ -121,7 +122,7 @@ describe('admission checks the model against the agent', () => {
   it('admits a model the agent allows and changes desired state only then', async () => {
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({ generate: stepped.generate });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
     const before = await bureau.getSessionSteering(run.sessionId);
 
@@ -140,7 +141,7 @@ describe('admission checks the model against the agent', () => {
   it('decides the same way for an in-process bureau with no durable store', async () => {
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({ generate: stepped.generate, durable: false });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
     const outside = await steer(bureau, run.sessionId, 'outside', GPT_4_1.model);
@@ -154,7 +155,7 @@ describe('admission checks the model against the agent', () => {
     cleanups.push(() => removeTemporaryPath(path));
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({ generate: stepped.generate, path });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
     const first = await steer(bureau, run.sessionId, 'outside', GPT_4_1.model);
@@ -188,7 +189,7 @@ describe('admission checks the model against the agent', () => {
       catalog: twinModelCatalog(),
       allowed: [OPUS_5_5],
     });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
     const wrongProvider = await steer(
@@ -218,7 +219,7 @@ describe('admission checks the model against the agent', () => {
   it('rejects a provider-qualified override whose provider does not serve the model', async () => {
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({ generate: stepped.generate });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
     const outcome = await steer(bureau, run.sessionId, 'mismatch', OPUS_5.model, 'openai');
@@ -231,7 +232,7 @@ describe('admission checks the model against the agent', () => {
 describe('an idle session takes a model override', () => {
   it('admits it as accepted, where pause is still session-terminal', async () => {
     const bureau = await openBureau();
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await waitForRunState(bureau, run.id);
 
     const model = await steer(bureau, run.sessionId, 'idle-model', OPUS_5.model, OPUS_5.provider);
@@ -247,7 +248,7 @@ describe('an idle session takes a model override', () => {
 
   it('still keeps a model the agent does not allow out of an idle session', async () => {
     const bureau = await openBureau();
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await waitForRunState(bureau, run.id);
 
     const outcome = await steer(bureau, run.sessionId, 'idle-outside', GPT_4_1.model);
@@ -260,7 +261,7 @@ describe('a switched model reaches the provider call', () => {
   it('is used from the live run’s next step and by the session’s later runs', async () => {
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({ generate: stepped.generate });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
     const outcome = await steer(bureau, run.sessionId, 'switch', OPUS_5.model, OPUS_5.provider);
@@ -268,7 +269,7 @@ describe('a switched model reaches the provider call', () => {
     stepped.releaseFirstStep();
     await waitForRunState(bureau, run.id);
 
-    const second = await startRun(bureau as never, run.sessionId);
+    const second = await startRun(bureau, run.sessionId);
     await waitForRunState(bureau, second.id);
 
     // Step 0 of the first run was already running; its next step and both of the second run's use the override.
@@ -285,7 +286,7 @@ describe('a switched model reaches the provider call', () => {
     cleanups.push(() => removeTemporaryPath(path));
     const first = createSteppedGenerate();
     const bureau = await openBureau({ generate: first.generate, path });
-    const run = await startRun(bureau as never);
+    const run = await startRun(bureau);
     await first.firstStepEntered;
     await steer(bureau, run.sessionId, 'switch', OPUS_5.model, OPUS_5.provider);
     first.releaseFirstStep();
@@ -295,7 +296,7 @@ describe('a switched model reaches the provider call', () => {
     const second = createSteppedGenerate();
     second.releaseFirstStep();
     const restarted = await openBureau({ generate: second.generate, path });
-    const resumed = await startRun(restarted as never, run.sessionId);
+    const resumed = await startRun(restarted, run.sessionId);
     await waitForRunState(restarted, resumed.id);
 
     expect(second.observed[0]).toEqual({ model: 'claude-opus-5', provider: 'anthropic' });

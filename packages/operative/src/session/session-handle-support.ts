@@ -38,7 +38,7 @@ export function historyThroughMessage(
   const index = history.ids.indexOf(messageId);
   if (index < 0) throw new ForkThroughMessageError(session.id, messageId);
   const ids = history.ids.slice(0, index + 1);
-  const messages: ConversationHistory['messages'] = {};
+  const messages: Record<string, ConversationHistory['messages'][string]> = {};
   for (const id of ids) {
     const message = history.messages[id];
     if (message !== undefined) messages[id] = message;

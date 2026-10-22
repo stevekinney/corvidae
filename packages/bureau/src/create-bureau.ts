@@ -180,7 +180,6 @@ import {
 import { createChildTopologyStore } from './child-topology-store';
 import {
   type CreatedRunSummary,
-  createCommandLedger,
   createRunCreationLedger,
   BureauLedgerConflictError,
   digestCommandPayload,
@@ -407,9 +406,8 @@ import {
 import { allowsModelOverride, describeAgentModels } from './agent-models';
 import {
   assertBranchPoint,
-  FORK_LEDGER_KEY_PREFIX,
+  createForkLedger,
   FORK_OPERATION_VERSION,
-  type ForkLedgerClaim,
   type ForkSessionRequest,
   type ForkSessionResult,
   SessionForkRefusedError,
@@ -13306,12 +13304,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * returns the original result and creates nothing more. It keeps its entries in this Bureau's
    * store, or in memory for an ephemeral one, under a key prefix of its own.
    */
-  const forkLedger = createCommandLedger<ForkLedgerClaim, ForkSessionResult>({
-    kv: runtime.kv ?? textValueStore(new MemoryStorage()),
-    keyPrefix: FORK_LEDGER_KEY_PREFIX,
-    clock: runtimeServices.clock,
-    nextConflictId: () => runtimeServices.identifiers.next('command-ledger-conflict'),
-  });
+  const forkLedger = createForkLedger(runtime.kv, runtimeServices);
   /** Fork attempts this process is running, by ledger identity, so a concurrent retry waits for one. */
   const inFlightForks = new Map<string, { digest: string; result: Promise<ForkSessionResult> }>();
 
@@ -13377,10 +13370,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           const live = listPendingReviews()
             .filter((review) => review.kind === 'tool-approval' && review.runId === runId)
             .map((review) => review.id);
-          const durable = (await tasks.get(runId))?.openWaits
+          const view = await tasks.get(runId);
+          const durable = (view?.openWaits ?? [])
             .filter((wait) => wait.kind === 'tool-approval')
             .map((wait) => wait.reviewId);
-          return [...new Set([...live, ...(durable ?? [])])];
+          return [...new Set([...live, ...durable])];
         },
       });
     }
@@ -13434,11 +13428,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       gate = steeringGates.get(sessionId);
     } else {
       try {
-        gate = (
-          await enqueueSteering(sessionId, () =>
-            catchUpSteering(kv, sessionId, session.incarnation),
-          )
-        ).gate;
+        const cursor = await enqueueSteering(sessionId, () =>
+          catchUpSteering(kv, sessionId, session.incarnation),
+        );
+        gate = cursor.gate;
       } catch (error) {
         // A session deleted while its log was read has no steering to report.
         const afterFailure = await runtime.sessionStore?.load(sessionId);

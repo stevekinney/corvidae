@@ -130,7 +130,7 @@ export const contextsForkOperation = defineOperation<
       }
       return {
         contextId: result.contextId,
-        carriedOverride: carried === null ? null : projectSteeringOutcome(carried as never),
+        carriedOverride: carried === null ? null : projectSteeringOutcome(carried),
       };
     } catch (error) {
       if (error instanceof SessionForkRefusedError) throw faultForRefusal(error);

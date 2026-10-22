@@ -27,7 +27,7 @@ function modelCommand(
     },
     requestedAt: '2026-10-22T00:00:00.000Z',
     ...extra,
-  } as ImplementedSteeringCommand;
+  };
 }
 
 describe('a model override that names its provider', () => {

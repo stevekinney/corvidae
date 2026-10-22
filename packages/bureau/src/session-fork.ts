@@ -17,12 +17,12 @@
  * @module session-fork
  */
 
-import {
-  type AgentSession,
-  parseAssistantMessageIdentifier,
-  type SessionHandle,
-} from '@lostgradient/operative';
+import { type AgentSession, parseAssistantMessageIdentifier } from '@lostgradient/operative';
 
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+
+import { type CommandLedger, createCommandLedger } from './command-ledger';
 import type { SteeringCommandAdmissionOutcome } from './steering';
 import { belongsToIncarnation, type TaskRecord } from './task-registry';
 
@@ -137,7 +137,8 @@ export async function assertBranchPoint(
   if (final !== throughMessageId) {
     return refuse('not-a-branch-point', 'Only the final assistant reply of a run can be branched from.');
   }
-  if ((await evidence.pendingApprovals(runId)).length > 0) {
+  const approvals = await evidence.pendingApprovals(runId);
+  if (approvals.length > 0) {
     return refuse('branch-with-pending-approval', 'The run still has a tool approval waiting.');
   }
   const status = record.settled?.status;
@@ -169,5 +170,18 @@ export async function assertBranchPoint(
   }
 }
 
-/** The handle verb a fork uses, named so the Bureau method reads plainly. */
-export type ForkHandle = Pick<SessionHandle, 'fork'>;
+/**
+ * The fork command ledger over `kv`, or over memory for a Bureau with no store: a retry then
+ * lasts as long as the process does.
+ */
+export function createForkLedger(
+  kv: ConditionalTextValueStore | undefined,
+  services: Pick<RuntimeServices, 'clock' | 'identifiers'>,
+): CommandLedger<ForkLedgerClaim, ForkSessionResult> {
+  return createCommandLedger<ForkLedgerClaim, ForkSessionResult>({
+    kv: kv ?? textValueStore(new MemoryStorage()),
+    keyPrefix: FORK_LEDGER_KEY_PREFIX,
+    clock: services.clock,
+    nextConflictId: () => services.identifiers.next('command-ledger-conflict'),
+  });
+}

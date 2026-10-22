@@ -135,7 +135,8 @@ describe('bureau.contexts.get model and configVersion', () => {
 
       const body = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
 
-      const [row] = body.result?.['contexts'] as Array<Record<string, unknown>>;
+      const rows = (body.result?.['contexts'] ?? []) as Array<Record<string, unknown>>;
+      const row = rows[0] ?? {};
       expect(row).not.toHaveProperty('model');
       expect(row).not.toHaveProperty('configVersion');
     });

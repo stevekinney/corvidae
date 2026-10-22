@@ -65,7 +65,7 @@ export const agentsModelsOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: ({ input, host }) => {
+  invoke: async ({ input, host }) => {
     const described = host.agentModels.describe(input.agentName);
     if (described === undefined) throw resourceNotFound('agent', input.agentName);
     return {

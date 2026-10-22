@@ -26,12 +26,12 @@ import { SESSION_OWNER_METADATA_KEY } from './session-owner';
 
 const SUMMARY_INDEX_KEY = 'agent-session:summary-index';
 
-function sessionWith(id: string, metadata: Record<string, never | string | number> = {}) {
+function sessionWith(id: string, metadata: Record<string, string | number> = {}) {
   return createAgentSession({
     id,
     agentName: 'fork-agent',
     conversationHistory: createConversationHistory(),
-    metadata: metadata as never,
+    metadata: metadata,
     runs: [],
   });
 }
@@ -204,8 +204,10 @@ describe('session.fork() through a message', () => {
       [SESSION_PARENT_METADATA_KEY]: 'source',
       [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: ids[1]!,
     });
-    expect((await store.load('source'))?.conversationHistory.ids).toEqual(ids);
-    expect((await store.list({ owner: 'alice' })).find((row) => row.id === forked.id)).toMatchObject({
+    const parent = await store.load('source');
+    expect(parent?.conversationHistory.ids).toEqual(ids);
+    const rows = await store.list({ owner: 'alice' });
+    expect(rows.find((row) => row.id === forked.id)).toMatchObject({
       parentContextId: 'source',
       forkedFromMessageId: ids[1]!,
       messageCount: 2,
@@ -217,8 +219,10 @@ describe('session.fork() through a message', () => {
 
     const forked = await handle.fork({ throughMessageId: ids[3]!, owner: 'bob' });
 
-    expect((await store.load(forked.id))?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('bob');
-    expect((await store.list({ owner: 'bob' })).map((row) => row.id)).toEqual([forked.id]);
+    const stored = await store.load(forked.id);
+    expect(stored?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('bob');
+    const owned = await store.list({ owner: 'bob' });
+    expect(owned.map((row) => row.id)).toEqual([forked.id]);
   });
 
   it('creates the fork under the identifier it is given', async () => {
@@ -234,12 +238,14 @@ describe('session.fork() through a message', () => {
     const { store, handle, ids } = await source();
     const options = { throughMessageId: ids[1]!, id: 'planned-id', owner: 'alice' };
     await handle.fork(options);
-    const before = (await store.list({})).length;
+    const listedBefore = await store.list({});
+    const before = listedBefore.length;
 
     const again = await handle.fork(options);
 
     expect(again.id).toBe('planned-id');
-    expect((await store.list({})).length).toBe(before);
+    const listedAfter = await store.list({});
+    expect(listedAfter.length).toBe(before);
   });
 
   it('refuses an identifier a different session already holds, and changes nothing', async () => {
@@ -253,20 +259,21 @@ describe('session.fork() through a message', () => {
     await expect(handle.fork({ throughMessageId: ids[3]!, id: 'planned-id' })).rejects.toBeInstanceOf(
       ForkIdentifierInUseError,
     );
-    expect((await store.load('planned-id'))?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(
-      ids[1]!,
-    );
+    const kept = await store.load('planned-id');
+    expect(kept?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(ids[1]);
   });
 
   it('refuses a message the session does not hold, and creates nothing', async () => {
     const { store, handle } = await source();
-    const before = (await store.list({})).length;
+    const listedBefore = await store.list({});
+    const before = listedBefore.length;
 
     await expect(handle.fork({ throughMessageId: 'no-such-message' })).rejects.toBeInstanceOf(
       ForkThroughMessageError,
     );
 
-    expect((await store.list({})).length).toBe(before);
+    const listedAfter = await store.list({});
+    expect(listedAfter.length).toBe(before);
   });
 
   it('refuses a fork that names both a run and a message', async () => {
@@ -282,6 +289,7 @@ describe('session.fork() through a message', () => {
 
     const forked = await handle.fork();
 
-    expect((await store.load(forked.id))?.metadata).toEqual({ [SESSION_OWNER_METADATA_KEY]: 'alice' });
+    const stored = await store.load(forked.id);
+    expect(stored?.metadata).toEqual({ [SESSION_OWNER_METADATA_KEY]: 'alice' });
   });
 });

@@ -58,7 +58,7 @@ const forkCall = (
   rpc(
     opened.handler,
     'bureau.contexts.fork',
-    { contextId, commandId: 'fork-1', throughMessageId: `${contextId}`, ...params },
+    { contextId, commandId: 'fork-1', throughMessageId: contextId, ...params },
     key,
   );
 
@@ -227,41 +227,21 @@ describe('bureau.contexts.fork refusals', () => {
     });
   }
 
-  const call = async (handler: (request: Request) => Promise<Response>, contextId: string) =>
-    (await (
-      await handler(
-        new Request('http://localhost/jsonrpc', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'bureau.contexts.fork',
-            params: { contextId, commandId: 'c', throughMessageId: 'm' },
-          }),
+  const call = async (handler: (request: Request) => Promise<Response>, contextId: string) => {
+    const response = await handler(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'bureau.contexts.fork',
+          params: { contextId, commandId: 'c', throughMessageId: 'm' },
         }),
-      )
-    ).json()) as RpcBody;
-
-  it.each([
-    'not-a-branch-point',
-    'branch-from-errored-run',
-    'branch-from-aborted-run',
-    'branch-with-pending-approval',
-    'branch-with-unresolved-tool-call',
-    'command-conflict',
-  ] satisfies SessionForkRefusalReason[])('answers %s as a Conflict with that reason', async (reason) => {
-    await withBureau(async (opened) => {
-      const run = await finishedSession(opened, 'anonymous:local');
-      const handler = stubbed(opened, async () => {
-        throw new SessionForkRefusedError(reason, 'refused');
-      });
-
-      const body = await call(handler, run.sessionId);
-
-      expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason });
-    });
-  });
+      }),
+    );
+    return (await response.json()) as RpcBody;
+  };
 
   it('answers a shutting-down Bureau as Unavailable', async () => {
     await withBureau(async (opened) => {

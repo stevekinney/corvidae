@@ -9,6 +9,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import { createConversationHistory, Conversation } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import {
   createCommandLedger,
@@ -62,7 +63,7 @@ function twoStepAgent(behavior: Behavior = 'complete') {
 async function openBureau(
   options: { agent?: ReturnType<typeof twoStepAgent>; path?: string } = {},
 ) {
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     agents: { agent: options.agent ?? twoStepAgent() },
     stopWhen: stopWhen.noToolCalls(),
     storage:
@@ -75,10 +76,10 @@ async function openBureau(
 
 const ALICE = 'alice';
 
-async function completedSession(bureau: Bureau<never>, sessionId?: string, message = 'go') {
+async function completedSession(bureau: Bureau<AgentDefinitions>, sessionId?: string, message = 'go') {
   const run = await bureau.createRun({
     message,
-    agentName: 'agent' as never,
+    agentName: 'agent',
     principal: ALICE,
     ...(sessionId === undefined ? {} : { sessionId }),
   });
@@ -102,7 +103,7 @@ const fork = (
   owner = ALICE,
 ) => bureau.forkSession(sessionId, { owner, commandId, throughMessageId });
 
-async function refusalOf(pending: Promise<unknown>): Promise<SessionForkRefusalReason | string> {
+async function refusalOf(pending: Promise<unknown>): Promise<string> {
   const error = await pending.then(
     () => undefined,
     (thrown: unknown) => thrown,
@@ -111,13 +112,14 @@ async function refusalOf(pending: Promise<unknown>): Promise<SessionForkRefusalR
   return error.reason;
 }
 
-async function sessionCount(bureau: Bureau<never>): Promise<number> {
-  return (await bureau.listSessions({ limit: 100 })).length;
+async function sessionCount(bureau: Bureau<AgentDefinitions>): Promise<number> {
+  const sessions = await bureau.listSessions({ limit: 100 });
+  return sessions.length;
 }
 
 describe('a fork after a completed reply', () => {
   it('shares the history through that reply, leaves the parent alone, and is owned by the caller', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const parentBefore = await bureau.getSession(run.sessionId);
 
@@ -133,7 +135,7 @@ describe('a fork after a completed reply', () => {
   });
 
   it('records the lineage and lists the fork for its owner before it has a run', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
 
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
@@ -147,7 +149,7 @@ describe('a fork after a completed reply', () => {
   });
 
   it('never lets a message of a later run into the fork', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const first = await completedSession(bureau);
     const second = await completedSession(bureau, first.sessionId, 'and again');
 
@@ -162,7 +164,7 @@ describe('a fork after a completed reply', () => {
   });
 
   it('can be run on: the fork continues from the shared history', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
 
@@ -177,7 +179,7 @@ describe('a fork after a completed reply', () => {
 
 describe('the command identifier', () => {
   it('answers an exact retry with the original result and creates nothing more', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const first = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
     const count = await sessionCount(bureau);
@@ -189,7 +191,7 @@ describe('the command identifier', () => {
   });
 
   it('answers the same command with another message as a conflict, and creates nothing', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const second = await completedSession(bureau, run.sessionId, 'again');
     await fork(bureau, run.sessionId, finalAssistantOf(run.id));
@@ -204,12 +206,12 @@ describe('the command identifier', () => {
   it('answers an exact retry after a restart with the original result, forking once', async () => {
     const path = createTemporaryPath('fork-restart', '.sqlite');
     cleanups.push(() => removeTemporaryPath(path));
-    const bureau = (await openBureau({ path })) as Bureau<never>;
+    const bureau = (await openBureau({ path }));
     const run = await completedSession(bureau);
     const first = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
     await bureau.dispose();
 
-    const restarted = (await openBureau({ path })) as Bureau<never>;
+    const restarted = (await openBureau({ path }));
     const retry = await fork(restarted, run.sessionId, finalAssistantOf(run.id));
 
     expect(retry).toEqual(first);
@@ -219,7 +221,7 @@ describe('the command identifier', () => {
 
 describe('a message that is not a branch point', () => {
   it('refuses a message the history does not hold, and one of another session, creating nothing', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const other = await completedSession(bureau);
     const count = await sessionCount(bureau);
@@ -234,7 +236,7 @@ describe('a message that is not a branch point', () => {
   });
 
   it('refuses a message that is not an assistant step: a user message, a result row, an earlier step', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const session = await bureau.getSession(run.sessionId);
     const ids = session!.conversationHistory.ids;
@@ -255,7 +257,7 @@ describe('a message that is not a branch point', () => {
   });
 
   it('refuses an assistant step whose run has no task record, as not a branch point', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     await bureau.tasks.remove(run.id);
 
@@ -265,7 +267,7 @@ describe('a message that is not a branch point', () => {
   });
 
   it('refuses an assistant step whose run belongs to another context', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     const stranger = await completedSession(bureau);
     // A row that names the other session's run sits in this session's history.
@@ -280,12 +282,12 @@ describe('a message that is not a branch point', () => {
   });
 
   it('refuses the final message of a run that errored, and of one that was aborted', async () => {
-    const failing = (await openBureau({ agent: twoStepAgent('fail-second-step') })) as Bureau<never>;
+    const failing = (await openBureau({ agent: twoStepAgent('fail-second-step') }));
     const errored = await completedSession(failing);
-    const holding = (await openBureau({ agent: twoStepAgent('hold-second-step') })) as Bureau<never>;
+    const holding = (await openBureau({ agent: twoStepAgent('hold-second-step') }));
     const run = await holding.createRun({
       message: 'go',
-      agentName: 'agent' as never,
+      agentName: 'agent',
       principal: ALICE,
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -304,7 +306,7 @@ describe('a message that is not a branch point', () => {
 
   it('refuses a fork while the run still has a pending approval', async () => {
     const charges: number[] = [];
-    const bureau = (await createBureau({
+    const bureau = (await createBureau<AgentDefinitions>({
       agents: {},
       generate: async () => ({
         content: 'charging',
@@ -314,7 +316,7 @@ describe('a message that is not a branch point', () => {
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       storage: { type: 'memory' },
       durableExecution: true,
-    })) as Bureau<never>;
+    }));
     cleanups.push(() => bureau.dispose());
     const run = await bureau.createRun({ message: 'go', principal: ALICE });
     await waitForRunState(bureau, run.id);
@@ -326,7 +328,7 @@ describe('a message that is not a branch point', () => {
   });
 
   it('refuses a fork when the final assistant message has a tool call with no result', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const runId = 'run-crafted';
     const conversation = new Conversation(createConversationHistory());
     conversation.appendMessages({ role: 'user', content: 'go', id: 'user-1' } as never);
@@ -381,9 +383,10 @@ describe('the parent’s model choice', () => {
     });
 
   it('is admitted on the fork as <commandId>:model, and the outcome is returned beside the contextId', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
-    expect((await steer(bureau, run.sessionId, OPUS_5)).outcome).toBe('accepted');
+    const switched = await steer(bureau, run.sessionId, OPUS_5);
+    expect(switched.outcome).toBe('accepted');
 
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id), 'fork-9');
 
@@ -396,7 +399,8 @@ describe('the parent’s model choice', () => {
       configVersion: 1,
     });
     // The parent keeps its own, and an exact retry returns the same pair.
-    expect((await bureau.getSessionSteering(run.sessionId))?.model).toEqual({
+    const parentSteering = await bureau.getSessionSteering(run.sessionId);
+    expect(parentSteering?.model).toEqual({
       provider: 'anthropic',
       model: 'claude-opus-5',
     });
@@ -404,17 +408,18 @@ describe('the parent’s model choice', () => {
   });
 
   it('carries nothing when the parent was never switched', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
 
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
 
     expect(result.carriedOverride).toBeNull();
-    expect((await bureau.getSessionSteering(result.contextId))?.model).toBeNull();
+    const forkSteering = await bureau.getSessionSteering(result.contextId);
+    expect(forkSteering?.model).toBeNull();
   });
 
   it('survives a crash after the ledger recorded the contextId and before the fork existed', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     await steer(bureau, run.sessionId, OPUS_5);
     // The first attempt claimed the command, naming the contextId, and died.
@@ -439,11 +444,12 @@ describe('the parent’s model choice', () => {
 
     expect(result.contextId).toBe('planned-fork');
     expect(await sessionCount(bureau)).toBe(2);
-    expect((await bureau.getSessionSteering('planned-fork'))?.model?.model).toBe('claude-opus-5');
+    const planned = await bureau.getSessionSteering('planned-fork');
+    expect(planned?.model?.model).toBe('claude-opus-5');
   });
 
   it('survives a crash after the fork existed and before the override was admitted, forking once', async () => {
-    const bureau = (await openBureau()) as Bureau<never>;
+    const bureau = (await openBureau());
     const run = await completedSession(bureau);
     await steer(bureau, run.sessionId, OPUS_5);
     const ledger = createCommandLedger({
@@ -474,7 +480,8 @@ describe('the parent’s model choice', () => {
 
     expect(result.contextId).toBe('planned-fork');
     expect(await sessionCount(bureau)).toBe(count);
-    expect((await bureau.getSessionSteering('planned-fork'))?.model?.model).toBe('claude-opus-5');
+    const planned = await bureau.getSessionSteering('planned-fork');
+    expect(planned?.model?.model).toBe('claude-opus-5');
     expect(await fork(bureau, run.sessionId, finalAssistantOf(run.id), 'crash-2')).toEqual(result);
   });
 });
@@ -510,7 +517,8 @@ describe('a file agent’s fork', () => {
 
   it('carries the parent’s model override to the fork', async () => {
     const { harness, run } = await startPicker();
-    expect((await switchTo(harness, run.sessionId)).outcome).toBe('accepted');
+    const switched = await switchTo(harness, run.sessionId);
+    expect(switched.outcome).toBe('accepted');
 
     const result = await harness.bureau.forkSession(run.sessionId, {
       owner: ALICE,
@@ -519,7 +527,8 @@ describe('a file agent’s fork', () => {
     });
 
     expect(result.carriedOverride).toMatchObject({ outcome: 'accepted' });
-    expect((await harness.bureau.getSessionSteering(result.contextId))?.model).toEqual({
+    const carried = await harness.bureau.getSessionSteering(result.contextId);
+    expect(carried?.model).toEqual({
       provider: 'anthropic',
       model: 'claude-opus-5',
     });
@@ -543,7 +552,8 @@ describe('a file agent’s fork', () => {
       outcome: 'rejected',
       failure: { reason: 'model-not-allowed' },
     });
-    expect((await harness.bureau.getSessionSteering(result.contextId))?.model).toBeNull();
+    const afterRefusal = await harness.bureau.getSessionSteering(result.contextId);
+    expect(afterRefusal?.model).toBeNull();
     expect(await harness.bureau.forkSession(run.sessionId, args)).toEqual(result);
   });
 });

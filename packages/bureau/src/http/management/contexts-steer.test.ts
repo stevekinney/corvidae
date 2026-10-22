@@ -216,21 +216,21 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
     });
   }
 
-  const call = async (handler: (request: Request) => Promise<Response>, contextId: string) =>
-    (await (
-      await handler(
-        new Request('http://localhost/jsonrpc', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'bureau.contexts.steer',
-            params: { contextId, commandId: 'c', override: OPUS_5 },
-          }),
+  const call = async (handler: (request: Request) => Promise<Response>, contextId: string) => {
+    const response = await handler(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'bureau.contexts.steer',
+          params: { contextId, commandId: 'c', override: OPUS_5 },
         }),
-      )
-    ).json()) as RpcBody;
+      }),
+    );
+    return (await response.json()) as RpcBody;
+  };
 
   it('answers unsupported-capability as data, with its reason', async () => {
     await withBureau(async (opened) => {

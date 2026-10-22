@@ -174,7 +174,8 @@ describe('a file agent with a models list', () => {
     const outcome = await steer(harness, run.sessionId, 'unusable', GPT_4_1);
 
     expect(outcome.outcome === 'rejected' && outcome.failure.reason).toBe('model-not-allowed');
-    expect((await harness.bureau.getSessionSteering(run.sessionId))?.model).toBeNull();
+    const steering = await harness.bureau.getSessionSteering(run.sessionId);
+    expect(steering?.model).toBeNull();
   });
 });
 
@@ -190,7 +191,8 @@ describe('an override that can no longer be used', () => {
     );
     const first = await runPicker(harness);
     await waitForRunState(harness.bureau, first.id);
-    expect((await steer(harness, first.sessionId, 'switch', GPT_4_1)).outcome).toBe('accepted');
+    const switched = await steer(harness, first.sessionId, 'switch', GPT_4_1);
+    expect(switched.outcome).toBe('accepted');
     const callsBefore = resolver.calls.length;
 
     // A person edits the file by hand, and the model it listed is no longer in it.

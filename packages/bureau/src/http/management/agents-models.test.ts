@@ -90,7 +90,7 @@ describe('bureau.agents.models for a code-defined agent', () => {
         selector: 'unavailable',
       },
     });
-    const served = await serve({ agents: { ...agents(), everything } as never });
+    const served = await serve({ agents: { ...agents(), everything } });
 
     const { result } = await modelsOf(served, 'everything');
 
