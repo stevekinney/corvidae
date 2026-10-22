@@ -326,6 +326,7 @@ import {
   adoptRestoredScheduledFire,
   committedFireApprovalIds,
   committedFireReviewIds,
+  committedFireReviews,
   endContinuingScheduledFire,
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
@@ -685,6 +686,18 @@ function closingStatusOfRound(
 ): string | undefined {
   return closesReviewRound(record, reviewId, round) ? record.type.split('.').pop() : undefined;
 }
+/**
+ * What closing a canceled fire's review needs to know to find the closing's records (COR-1622): the
+ * review's id and kind, its run, and the round it stood at (`0` for a human wait). Not the review
+ * itself, which only a record that is to be written needs in full.
+ */
+type CanceledReviewTarget = {
+  readonly id: string;
+  readonly runId: string;
+  readonly kind: 'tool-approval' | 'human-wait';
+  readonly round: number;
+};
+
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
 
 /**
@@ -2521,6 +2534,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // run may take a moment to produce its next action. This set is the
   // authoritative "already handled" marker so a resolved review disappears
   // from the queue immediately, and is never accidentally resolved twice.
+  // COR-1622: the expiry sweep's own timer. Declared ahead of the id sets whose additions check
+  // whether it is still needed, so no order of construction can read it before it exists.
+  // `RuntimeTimeoutHandle` is opaque, so a flag tracks whether the timer is armed.
+  let lazyExpirySweepTimer: RuntimeTimeoutHandle;
+  let lazyExpirySweepArmed = false;
+  let lazyExpirySweepPass: Promise<void> | undefined;
   const resolvedReviewIds = new NotifyingReviewIdSet(() => stopLazyExpirySweepWhenNoneHeld());
   const resolvingReviewIds = new Set<string>();
   const reviewResolutionCleanupPending = new Map<
@@ -4519,10 +4538,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       keyValueStore: Boolean(runtime.kv),
       activeAuditRetention: Boolean(options.auditRetention && options.auditRetention !== 'forever'),
     }) && options.durableBackgroundTasks !== 'manual';
-  // `RuntimeTimeoutHandle` is opaque, so a flag tracks whether the timer is armed.
-  let lazyExpirySweepTimer: RuntimeTimeoutHandle;
-  let lazyExpirySweepArmed = false;
-  let lazyExpirySweepPass: Promise<void> | undefined;
 
   /**
    * Whether this process holds a tool approval, of a live run or a restored one, counting an
@@ -5672,7 +5687,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * a round's record closes that round alone; `superseded` is not terminal. The whole trail of the
    * run is read, a page at a time. Without an audit trail there is nothing to read.
    */
-  async function terminalAuditStatusOf(review: PendingReview): Promise<string | undefined> {
+  async function terminalAuditStatusOf(review: CanceledReviewTarget): Promise<string | undefined> {
     if (auditTrailInstance === undefined) return undefined;
     const round = review.kind === 'tool-approval' ? review.round : undefined;
     let after: { timestampMs: number; sequence: number } | undefined;
@@ -5698,14 +5713,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * asynchronously, so they are waited for first. A history written before the key existed is not
    * found here, and a Bureau with no history has none to be missing it.
    */
-  async function canceledRecordedInHistory(review: PendingReview): Promise<boolean> {
+  async function canceledRecordedInHistory(review: CanceledReviewTarget): Promise<boolean> {
     if (eventHistoryInstance === undefined) return true;
     const owner = { kind: 'run', id: review.runId } as const;
     await durableEventProducerInstance?.waitForActiveWrites(owner);
     return eventHistoryInstance.wasRecorded(
       owner,
       'review.canceled',
-      reviewCanceledDedupeKey(review.id, review.kind === 'tool-approval' ? review.round : 0),
+      reviewCanceledDedupeKey(review.id, review.round),
     );
   }
 
@@ -5725,12 +5740,38 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   function closeCanceledFireReview(
     review: PendingReview,
     principal: string,
-    // COR-1622: the history is already known to hold the review's `review.canceled` (read at boot),
-    // so only its audit half is checked, and an event written before the deduplication key existed
-    // is not written again.
     known: { readonly historyHoldsCancel?: boolean } = {},
   ): Promise<void> {
-    const key = `${review.id}:${review.kind === 'tool-approval' ? review.round : 0}`;
+    return closeCanceledReviewTarget(
+      {
+        id: review.id,
+        runId: review.runId,
+        kind: review.kind,
+        round: review.kind === 'tool-approval' ? review.round : 0,
+      },
+      principal,
+      () => review,
+      known,
+    );
+  }
+
+  /**
+   * COR-1622 — closes a canceled review by what finding its records needs, and builds the review
+   * (`full`) only when its audit record is to be written. A review that cannot be built is not
+   * written from a guess: nothing is written, and the closing fails to be reported and retried at
+   * the next boot.
+   *
+   * The history is already known to hold the review's `review.canceled` when `known` says so (read
+   * at boot), so only its audit half is checked, and an event written before the deduplication key
+   * existed is not written again.
+   */
+  function closeCanceledReviewTarget(
+    target: CanceledReviewTarget,
+    principal: string,
+    full: () => PendingReview | undefined,
+    known: { readonly historyHoldsCancel?: boolean } = {},
+  ): Promise<void> {
+    const key = `${target.id}:${target.round}`;
     const inFlight = closingCanceledReviews.get(key);
     if (inFlight !== undefined) return inFlight;
     const closing = (async () => {
@@ -5738,19 +5779,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // that is missing (the history append failed, or the process died between them), so each is
       // checked on its own and only the missing one is written. A round another status closed is
       // left as it was decided.
-      const status = await terminalAuditStatusOf(review);
+      const status = await terminalAuditStatusOf(target);
       if (status !== undefined && status !== 'canceled') return;
       const auditMissing = status === undefined;
-      if (
-        !auditMissing &&
-        (known.historyHoldsCancel === true || (await canceledRecordedInHistory(review)))
-      ) {
+      const historyHoldsCancel =
+        known.historyHoldsCancel === true || (await canceledRecordedInHistory(target));
+      if (!auditMissing && historyHoldsCancel) return;
+      const review = auditMissing ? full() : undefined;
+      if (review !== undefined) {
+        await recordReviewStatusTransition(review, 'canceled', principal, {
+          audit: true,
+          dispatch: known.historyHoldsCancel !== true,
+        });
         return;
       }
-      await recordReviewStatusTransition(review, 'canceled', principal, {
-        audit: auditMissing,
-        dispatch: known.historyHoldsCancel !== true,
-      });
+      // Without an audit trail there is no record to build a review for.
+      if (auditMissing && auditTrailInstance !== undefined) {
+        throw new Error(
+          `Review "${target.id}" cannot be rebuilt from what the fire committed, so its canceled record is not written`,
+        );
+      }
+      // Only the history event is missing, and it needs no more than the review's identity.
+      await fireReviewSeeds.pending(target.runId);
+      emitter.dispatch(
+        new ReviewCanceledEvent(target.id, target.runId, principal, target.kind, target.round),
+      );
     })().finally(() => {
       closingCanceledReviews.delete(key);
     });
@@ -5784,6 +5837,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const record = await tasks.record(runId);
     const durable = runtime.durable;
     if (record === undefined || record.kind !== 'schedule-fire' || durable === undefined) return;
+    const failures: string[] = [];
+    // The fire's committed steps, read strictly: they are the only description of a canceled
+    // review that is left (its session left with the cancel). A step that cannot be read could
+    // name the wrong review, so it describes nothing, and a record that needs it is not written.
+    let committed: ReturnType<typeof committedFireReviews> | undefined;
+    let outstanding: ReturnType<typeof countCheckpointParks>['outstanding'];
+    try {
+      const steps = await durable.checkpointStore.loadSteps(runId, { strict: true });
+      committed = committedFireReviews(runId, steps);
+      outstanding = countCheckpointParks(steps).outstanding;
+    } catch (error) {
+      failures.push(`its checkpoint could not be read strictly: ${serializeUnknownError(error)}`);
+    }
     const base = {
       runId,
       sessionId: record.contextId,
@@ -5792,67 +5858,53 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ageMilliseconds: 0,
       status: 'pending',
     } as const;
-    const waitPrefix = `human-wait:${runId}:`;
-    const reviewOf = (id: string, round: number): PendingReview => {
-      if (!id.startsWith(waitPrefix)) {
-        return {
-          ...base,
-          kind: 'tool-approval',
-          id,
-          // Only the call this id names is known: the approval itself left with its session.
-          approval: { callId: id.slice(`approval:${runId}:`.length) } as unknown as Extract<
-            PendingReview,
-            { kind: 'tool-approval' }
-          >['approval'],
-          round,
-        };
-      }
-      const rest = id.slice(waitPrefix.length);
-      return {
-        ...base,
-        kind: 'human-wait',
-        id,
-        signalName: rest.slice(0, rest.lastIndexOf(':')),
-        prompt: undefined,
-      };
+    /** The review the checkpoint committed under `id`, as the live revoke would have built it. */
+    const rebuild = (target: CanceledReviewTarget): PendingReview | undefined => {
+      const described = committed?.get(target.id);
+      if (described === undefined || described.kind !== target.kind) return undefined;
+      return described.kind === 'tool-approval'
+        ? {
+            ...base,
+            kind: 'tool-approval',
+            id: target.id,
+            approval: described.approval,
+            round: target.round,
+          }
+        : {
+            ...base,
+            kind: 'human-wait',
+            id: target.id,
+            signalName: described.signalName,
+            prompt: described.prompt,
+          };
     };
-    const candidates = new Map<string, PendingReview>();
+    const kindOf = (id: string): CanceledReviewTarget['kind'] =>
+      id.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
+    const candidates = new Map<string, CanceledReviewTarget>();
     // The candidates whose history already holds a `review.canceled`: their audit half is what may
     // be missing.
     const canceledInHistory = new Set<string>();
-    const failures: string[] = [];
     try {
       const history = await readFireReviewHistory(runId);
       for (const [id, { round, canceled }] of history.open) {
-        candidates.set(id, reviewOf(id, round));
+        const kind = kindOf(id);
+        candidates.set(id, { id, runId, kind, round: kind === 'human-wait' ? 0 : round });
         if (canceled) canceledInHistory.add(id);
       }
     } catch (error) {
       failures.push(`its history could not be read: ${serializeUnknownError(error)}`);
     }
-    try {
-      const outstanding = countCheckpointParks(
-        await durable.checkpointStore.loadSteps(runId, { strict: true }),
-      ).outstanding;
-      if (outstanding !== undefined) {
-        const id = `${waitPrefix}${outstanding.signalName}:${outstanding.ordinal}`;
-        if (!candidates.has(id)) {
-          candidates.set(id, {
-            ...reviewOf(id, 0),
-            ...(outstanding.prompt === undefined ? {} : { prompt: outstanding.prompt }),
-          });
-        }
-      }
-    } catch (error) {
-      failures.push(`its checkpoint could not be read strictly: ${serializeUnknownError(error)}`);
+    if (outstanding !== undefined) {
+      const id = `human-wait:${runId}:${outstanding.signalName}:${outstanding.ordinal}`;
+      if (!candidates.has(id)) candidates.set(id, { id, runId, kind: 'human-wait', round: 0 });
     }
-    for (const review of candidates.values()) {
+    for (const target of candidates.values()) {
       try {
-        await closeCanceledFireReview(review, 'system:run-abort', {
-          historyHoldsCancel: canceledInHistory.has(review.id),
+        await closeCanceledReviewTarget(target, 'system:run-abort', () => rebuild(target), {
+          historyHoldsCancel: canceledInHistory.has(target.id),
         });
       } catch (error) {
-        failures.push(`review "${review.id}" could not be closed: ${serializeUnknownError(error)}`);
+        failures.push(`review "${target.id}" could not be closed: ${serializeUnknownError(error)}`);
       }
     }
     if (failures.length > 0) {

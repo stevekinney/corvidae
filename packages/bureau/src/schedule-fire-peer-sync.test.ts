@@ -752,6 +752,36 @@ describe('a task stream whose notification fails after the review is dropped', (
   });
 });
 
+describe('the grace of an approval that may not have reached the session yet', () => {
+  it('counts its exact end as ended, and a moment before it as too young to tell', async () => {
+    // A clock that stands still until the test moves it, so the grace ends at an exact time.
+    const base = createDefaultRuntimeServices();
+    const clock = { now: base.clock.now() };
+    const runtime = {
+      ...base,
+      clock: { now: () => clock.now, nowISO: () => new Date(clock.now).toISOString() },
+    };
+    const requestedAt = clock.now;
+    const { holder, peer, fireId } = await holderAndPeer(
+      { holder: approvalToolbox([]), peer: approvalToolbox([]) },
+      'peer-sync-grace-boundary',
+      (storage) => storage,
+      { runtime, durableOwnership: { ...OWNERSHIP, workflowClaimTtlMs: 600_000 } },
+    );
+    // The holder hears nothing of the peer's expiry: only a read of durable state can drop it.
+    fireReviewFollowerOf(holder).unfollow(fireId);
+    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+
+    clock.now = requestedAt + 29_999;
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(reviewsOf(holder, fireId)).toHaveLength(1);
+
+    clock.now = requestedAt + 30_000;
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(reviewsOf(holder, fireId)).toHaveLength(0);
+  });
+});
+
 describe('a Bureau that shuts down', () => {
   it('stops following the fires it held, so no subscription outlives it', async () => {
     const { holder, fireId } = await holderAndPeer(

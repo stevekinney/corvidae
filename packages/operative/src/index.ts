@@ -544,7 +544,9 @@ export * from './scheduler/index';
 export {
   countHumanWaitParks,
   humanWaitParkSignalNames,
+  humanWaitParks,
   parkedSignalName,
+  type HumanWaitPark,
 } from './human-wait-parks';
 export {
   assistantMessageIdentifier,

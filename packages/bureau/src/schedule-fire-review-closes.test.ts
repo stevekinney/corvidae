@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 
 import { createDurableEventHistory } from './durable-event-history';
+import { projectReview } from './http/bureau-reviews-operations';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
   approvalToolbox,
@@ -27,7 +28,7 @@ import {
   reviewOf,
   storedText,
 } from './schedule-fire-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau, PendingReview, PendingToolApprovalReview } from './types';
 
 const harness = createScheduleFireHarness();
 
@@ -407,6 +408,15 @@ describe('a canceled fire’s closes, retried at boot', () => {
     ).toHaveLength(1);
     const kinds = await historyKinds(restarted, fireId);
     expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
+    // The record written at boot carries the wait's real prompt, and reads back as a review.
+    const [record] = await auditRecordsOf(
+      restarted,
+      fireId,
+      'review.human-wait.canceled',
+      review.id,
+    );
+    expectRecordOf(record!, review);
+    expect(await projects(restarted, review.id)).toBe('ok');
   });
 
   it('writes the history event that failed once after the audit record committed, and no second audit record', async () => {
@@ -512,6 +522,34 @@ describe('a canceled fire’s closes, retried at boot', () => {
   });
 });
 
+/**
+ * Expects a repaired canceled record to describe the review as it stood before the cancel: every
+ * field the live review had, but its times and status, and `canceled` as the status.
+ */
+function expectRecordOf(record: { readonly detail: unknown }, live: PendingReview): void {
+  const detail = record.detail as { review: Record<string, unknown> };
+  const {
+    requestedAt: _liveRequestedAt,
+    ageMilliseconds: _liveAge,
+    status: _liveStatus,
+    ...expected
+  } = live;
+  const { requestedAt: _requestedAt, ageMilliseconds: _age, status, ...actual } = detail.review;
+  expect(actual).toEqual(expected);
+  expect(status).toBe('canceled');
+}
+
+/** Whether the review projects for `bureau.reviews.get`, as a record read back must. */
+async function projects(bureau: Bureau, reviewId: string): Promise<string> {
+  const fetched = await bureau.getReview(reviewId);
+  try {
+    projectReview(fetched as never);
+    return 'ok';
+  } catch (error) {
+    return `threw: ${(error as Error).message}`;
+  }
+}
+
 /** A fire whose first step asks to charge a card, and whose next step runs until it is aborted. */
 const continuing: GenerateFunction = async (context) => {
   if (context.step === 0) {
@@ -575,6 +613,65 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     ).toHaveLength(1);
     const kinds = await historyKinds(restarted, fireId);
     expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
+    // The record written at boot describes the approval as it was, and reads back as one.
+    const [record] = await auditRecordsOf(
+      restarted,
+      fireId,
+      'review.tool-approval.canceled',
+      review.id,
+    );
+    expectRecordOf(record!, review);
+    expect(await projects(restarted, review.id)).toBe('ok');
+  });
+
+  it('writes nothing for an approval whose checkpoint cannot be read, reports it, and writes it at a later boot', async () => {
+    const path = harness.nextDatabasePath();
+    const failing = failingWriteOnce('audit-dedupe:v1:review.canceled');
+    const first = await openApproving(path, (storage) => failing.wrap(storage));
+    const { fireId } = await fireOnce(first, OWNER.alice, 'closes-approval-unreadable');
+    const review = await reviewOf(first, fireId);
+    void first.durableEngine()?.cancel(fireId);
+    await pollUntil(async () => {
+      const kinds = await historyKinds(first, fireId);
+      return kinds.includes('review.canceled') ? true : undefined;
+    }, 'the history close');
+    await pollUntil(
+      async () => ((await taskStatus(first, fireId)) === 'canceled' ? true : undefined),
+      'the task to settle',
+    );
+    await first.dispose();
+
+    // The checkpoint cannot be read at the next boot, so the approval cannot be described: no
+    // record is written from a guess, and the boot says so.
+    const unreadable = { on: true };
+    const diagnostics: string[] = [];
+    const second = await harness.open({
+      generate: continuing,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopWhen.noToolCalls(),
+      storage: await harness.sqliteStorage(path, (storage) => unreadableSteps(storage, unreadable)),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    await pollUntil(
+      () =>
+        diagnostics.some((message) => message.includes(fireId) && message.includes('next boot'))
+          ? true
+          : undefined,
+      'the boot to report the review it could not write',
+    );
+    await sleep(300);
+    expect(
+      await auditRecordsOf(second, fireId, 'review.tool-approval.canceled', review.id),
+    ).toEqual([]);
+    await second.dispose();
+
+    unreadable.on = false;
+    const third = await openApproving(path);
+    const records = await pollUntil(async () => {
+      const found = await auditRecordsOf(third, fireId, 'review.tool-approval.canceled', review.id);
+      return found.length > 0 ? found : undefined;
+    }, 'the later boot to write the audit record');
+    expectRecordOf(records[0]!, review);
   });
 
   it('writes no canceled record for a request a replay superseded and never committed', async () => {
@@ -613,49 +710,48 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
   });
 
-  it('repairs a re-gated approval at the round the supersession paired with a decision led to', async () => {
+  it('repairs a re-gated approval at the round a supersession paired with a decision led to', async () => {
     const path = harness.nextDatabasePath();
-    const first = await openWaiting(path);
+    const first = await openApproving(path);
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-regated');
-    await reviewOf(first, fireId);
+    const review = (await reviewOf(first, fireId)) as PendingToolApprovalReview;
     void first.durableEngine()?.cancel(fireId);
     await pollUntil(
       async () => ((await taskStatus(first, fireId)) === 'canceled' ? true : undefined),
       'the task to settle',
     );
-    // An approval that was re-gated once: the supersession, then the decision of the round it
-    // left, and then nothing else, so round 1 is the pending one when the fire is canceled.
-    const regated = `approval:${fireId}:regated-call`;
+    // The approval had been re-gated once before the cancel: the supersession, then the decision
+    // of the round it left, so round 1 was the pending one, and only round 0 has a close.
     const writer = createDurableEventHistory(
       await harness.sqliteStorage(path),
       createManualRuntimeServices(),
     );
     const owner = { kind: 'run', id: fireId } as const;
-    const payload = { reviewId: regated, runId: fireId, principal: 'p', kind: 'tool-approval' };
-    await writer.record(owner, 'review.requested', payload);
+    const payload = {
+      reviewId: review.id,
+      runId: fireId,
+      principal: 'p',
+      kind: 'tool-approval',
+    };
     await writer.record(owner, 'review.superseded', payload);
     await writer.record(owner, 'review.approved', payload);
     await writer.dispose();
     await first.dispose();
 
-    const restarted = await openWaiting(path);
-    await pollUntil(async () => {
+    const restarted = await openApproving(path);
+    const rounds = await pollUntil(async () => {
       const records = await auditRecordsOf(
         restarted,
         fireId,
         'review.tool-approval.canceled',
-        regated,
+        review.id,
       );
-      return records.length > 0 ? records : undefined;
-    }, 'the next boot to close the re-gated approval');
+      const found = records.map(
+        (record) => (record.detail as { review: { round: number } }).review.round,
+      );
+      return found.includes(1) ? found : undefined;
+    }, 'the next boot to close the re-gated approval at its round');
 
-    const [record] = await auditRecordsOf(
-      restarted,
-      fireId,
-      'review.tool-approval.canceled',
-      regated,
-    );
-    const detail = record?.detail as { review: { round: number } } | undefined;
-    expect(detail?.review.round).toBe(1);
+    expect(rounds.toSorted((left, right) => left - right)).toEqual([0, 1]);
   });
 });

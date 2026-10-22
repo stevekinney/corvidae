@@ -13,7 +13,7 @@
  * @module scheduled-fire-review-state
  */
 
-import { humanWaitParkSignalNames, type JSONValue } from '@lostgradient/operative';
+import { humanWaitParks, humanWaitParkSignalNames, type JSONValue } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
 import type { BureauToolbox } from './runtime-composition';
@@ -261,6 +261,57 @@ export function committedFireReviewIds(
   for (const step of steps) {
     for (const signalName of humanWaitParkSignalNames(step.results)) {
       committed.add(`human-wait:${runId}:${signalName}:${ordinal}`);
+      ordinal += 1;
+    }
+  }
+  return committed;
+}
+
+/** What a fire's checkpoint says of one review it committed (COR-1622). */
+export type CommittedFireReview =
+  | { readonly kind: 'tool-approval'; readonly approval: ToolApproval }
+  | {
+      readonly kind: 'human-wait';
+      readonly signalName: string;
+      readonly prompt: string | undefined;
+    };
+
+/**
+ * The reviews a fire's checkpoint commits, by review id, with what the checkpoint holds of each: a
+ * tool approval's `pendingApproval` as the step recorded it, and a human wait's signal and the
+ * prompt it asked with. The same steps, and the same ordinal rule, as {@link committedFireReviewIds},
+ * so a review rebuilt from it is the review the id names. A review only the checkpoint can describe
+ * (its session left with the cancel) is rebuilt from here, or not at all.
+ */
+export function committedFireReviews(
+  runId: string,
+  steps: readonly {
+    readonly results: readonly {
+      readonly outcome: string;
+      readonly pendingApproval?: unknown;
+      readonly toolName: string;
+      readonly result: unknown;
+    }[];
+  }[],
+): Map<string, CommittedFireReview> {
+  const committed = new Map<string, CommittedFireReview>();
+  let ordinal = 0;
+  for (const step of steps) {
+    for (const result of step.results) {
+      if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
+      const callId = (result.pendingApproval as { callId?: unknown }).callId;
+      if (typeof callId !== 'string') continue;
+      committed.set(`approval:${runId}:${callId}`, {
+        kind: 'tool-approval',
+        approval: result.pendingApproval as ToolApproval,
+      });
+    }
+    for (const park of humanWaitParks(step.results)) {
+      committed.set(`human-wait:${runId}:${park.signalName}:${ordinal}`, {
+        kind: 'human-wait',
+        signalName: park.signalName,
+        prompt: park.prompt,
+      });
       ordinal += 1;
     }
   }
