@@ -109,7 +109,7 @@ describe('orphan-timer recovery that loses its condition', () => {
 
 // `updateSchedule` takes no caller conditions (`ScheduleUpdateOptions` has no `extraConditions`),
 // so it has no such boundary to refuse at.
-describe('a caller condition on a key Weft reserves', () => {
+describe('a caller condition or operation on a key Weft reserves', () => {
   const transitions = {
     pause: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
       engine.pauseSchedule(SCHEDULE_ID, options),
@@ -142,6 +142,49 @@ describe('a caller condition on a key Weft reserves', () => {
       expect(await shared.get(KEYS.schedule(SCHEDULE_ID))).toEqual(before);
     });
   }
+
+  for (const [name, run] of Object.entries(transitions)) {
+    for (const type of ['put', 'delete'] as const) {
+      it(`is refused by ${name} when an additional operation ${type}s the schedule key`, async () => {
+        const { shared, engineA } = await openEngines();
+        if (name === 'resume') await engineA.pauseSchedule(SCHEDULE_ID);
+        const before = await shared.get(KEYS.schedule(SCHEDULE_ID));
+        const operation =
+          type === 'put'
+            ? ({ type, key: KEYS.schedule(SCHEDULE_ID), value: new Uint8Array([1]) } as const)
+            : ({ type, key: KEYS.schedule(SCHEDULE_ID) } as const);
+
+        const error = await rejectionOf(run(engineA, { additionalOperations: [operation] }));
+
+        expect(error).toBeInstanceOf(ScheduleReservedKeyError);
+        expect(error).toMatchObject({ key: KEYS.schedule(SCHEDULE_ID) });
+        expect(await shared.get(KEYS.schedule(SCHEDULE_ID))).toEqual(before);
+      });
+    }
+  }
+
+  it('refuses an additional operation on any key Weft reserves, and still commits one on the caller own key', async () => {
+    const { shared, engineA } = await openEngines();
+
+    const error = await rejectionOf(
+      engineA.pauseSchedule(SCHEDULE_ID, {
+        additionalOperations: [
+          { type: 'put', key: 'wf:some-workflow', value: new Uint8Array([1]) },
+        ],
+      }),
+    );
+    expect(error).toBeInstanceOf(ScheduleReservedKeyError);
+    expect(await shared.get('wf:some-workflow')).toBeNull();
+
+    await engineA.pauseSchedule(SCHEDULE_ID, {
+      additionalOperations: [
+        { type: 'put', key: 'app:projection:paused', value: new Uint8Array([1]) },
+      ],
+    });
+    expect(await shared.get('app:projection:paused')).toEqual(new Uint8Array([1]));
+    const { status } = await stateOf(shared);
+    expect(status).toBe('paused');
+  });
 
   it('still lets a condition on the caller own key through, and reports its loss as the caller error', async () => {
     const { shared, engineA } = await openEngines();
