@@ -493,7 +493,7 @@ describe('buildWorkerManifestFromRegistry', () => {
     expect(after).not.toBe(before);
   });
 
-  it('keeps a .uses() activity out of the hashed scoped activities, matching the registry identity', async () => {
+  it('keeps a .uses() activity out of the hashed scoped activities and the worker activity table, matching the registry identity', async () => {
     engine = createEngine();
     const greet = activity({
       name: 'greet',
@@ -518,7 +518,8 @@ describe('buildWorkerManifestFromRegistry', () => {
     const worker = manifest.workflows['welcome'];
     expect(worker?.contractHash).toBe(registered!.contractHash);
     expect(worker?.workflowRevision).toBe(registered!.revision);
-    expect(Object.keys(worker?.activities ?? {})).toEqual(['greet']);
+    // Not implemented by this worker for `welcome`, so `weft worker verify` sees no extra activity.
+    expect(Object.keys(worker?.activities ?? {})).toEqual([]);
   });
 
   it('defaults sdkVersion and protocolVersion, and accepts explicit overrides', async () => {
