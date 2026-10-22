@@ -275,12 +275,20 @@ function admissionDiagnostic(
  * trusted than its least trusted source. The writer learns only the outcome;
  * which detector fired, and why, is recorded as a protected diagnostic.
  */
+/** The context a write runs in: one whose notifications carry the write's correlation. */
+function correlated(context: GovernanceContext, options: GovernedWriteOptions): GovernanceContext {
+  const { correlation } = options;
+  if (correlation === undefined) return context;
+  return { ...context, recordEvent: (event) => context.recordEvent(event, correlation) };
+}
+
 export async function admitWrite(
-  context: GovernanceContext,
+  governance: GovernanceContext,
   authority: MemoryAuthority,
   content: string,
   options: GovernedWriteOptions,
 ): Promise<MemoryWriteReceipt> {
+  const context = correlated(governance, options);
   const operationId = context.operationId();
   const policy = context.policy();
   const allowed = await context.authorize(authority, 'write', ownPrivateResource(authority), {

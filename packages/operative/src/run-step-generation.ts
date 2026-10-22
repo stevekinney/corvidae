@@ -66,6 +66,8 @@ export interface GenerationResult {
   streamedRowId: string | undefined;
   stepSkipped: boolean;
   generateDurationMilliseconds: number | undefined;
+  /** The epoch the producing attempt sealed; a retried step reports its last attempt's. */
+  contextEpochId: string | undefined;
 }
 
 export async function executeGeneration(
@@ -92,6 +94,7 @@ export async function executeGeneration(
   let response: GenerateResponse = undefined!;
   let streamedRowId: string | undefined;
   let stepRetryCount = 0;
+  let contextEpochId: string | undefined;
   let shouldRetryStep: boolean;
   let stepSkipped = false;
   // AB-302: hoisted out of the generate block below so `GenerateCompletedEvent`
@@ -273,6 +276,7 @@ export async function executeGeneration(
           toolNames: generateContext.toolbox.tools().map((tool) => tool.name),
           consumer: { runId: deps.runId, step, attempt: stepRetryCount },
         });
+        contextEpochId = sealedEpoch?.epochId;
 
         // AB-68: record the configuration this call is issued under. Read
         // from the gate rather than re-planning — `prepareStep` already
@@ -539,7 +543,7 @@ export async function executeGeneration(
     }
   } while (shouldRetryStep);
 
-  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds };
+  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds, contextEpochId };
 }
 
 /**

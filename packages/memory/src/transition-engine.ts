@@ -1,6 +1,7 @@
 import type { EvidenceProjectionStorage } from './evidence-projection-storage';
 import { MemoryEvidenceValidationError } from './evidence-schema';
 import type {
+  MemoryCorrelation,
   TransitionEvent,
   TransitionEventSink,
   TransitionSourceReference,
@@ -57,6 +58,11 @@ export interface CreateTransitionEngineOptions {
 export interface SubmitTransitionOptions {
   /** Aborting before the batch call ends the submission as `canceled`; after it, the commit stands. */
   readonly signal?: AbortSignal;
+  /**
+   * The run, session, and context epoch this attempt belongs to. Every event of
+   * the attempt carries it; it is not part of the proposal or its digest.
+   */
+  readonly correlation?: MemoryCorrelation;
 }
 
 export interface TransitionEngine {
@@ -199,6 +205,7 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
     const { proposal, digest } = snapshotTransitionProposal(raw);
     const { tenantId, operationId, authority } = proposal;
     const signal = submitOptions?.signal;
+    const correlation = submitOptions?.correlation;
     // A call, not a property read, so no narrowing hides a signal that aborts between awaits.
     const isAborted = (): boolean => signal?.aborted === true;
     const requestedAt = now();
@@ -217,6 +224,7 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
           principal: { kind: authority.principal.kind, id: authority.principal.id },
           ownerId: authority.ownerId,
           at: eventAt,
+          ...(correlation === undefined ? {} : { correlation }),
           ...event,
         } as TransitionEvent);
       } catch {

@@ -9,6 +9,7 @@ import {
   MemoryRecordVersionConflictError,
 } from '../memory-record-storage';
 import type { TextSearchProvider } from '../text-search-provider';
+import type { MemoryCorrelation } from '../transition-events';
 import type { MemoryAuthority, MemoryOperation } from './authority';
 import type {
   MemoryDeletionPropagation,
@@ -154,7 +155,8 @@ export interface GovernanceContext {
    */
   activateDerivation(resolved: ResolvedRecord): Promise<RecordGovernance | undefined>;
   attribution(authority: MemoryAuthority, operationId: string): MemoryAttribution;
-  recordEvent(event: GovernanceEventInput): Promise<void>;
+  /** Appends an event to the ledger and notifies `onEvent`, with `correlation` on the notification only. */
+  recordEvent(event: GovernanceEventInput, correlation?: MemoryCorrelation): Promise<void>;
   authorize(
     authority: MemoryAuthority,
     operation: MemoryOperation,
@@ -331,7 +333,7 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
       });
     },
 
-    async recordEvent(event) {
+    async recordEvent(event, correlation) {
       const stored: MemoryGovernanceEvent = {
         ...event,
         id: runtime.identifiers.next('memory-event'),
@@ -352,6 +354,7 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
               principalId: event.attribution.principal.id,
               projection: event.attribution.projection,
             }),
+        ...(correlation === undefined ? {} : { correlation }),
       });
     },
 
