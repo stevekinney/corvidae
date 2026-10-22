@@ -277,7 +277,7 @@ import { createMCP, toMcpTools, fromMcpTools } from 'armorer';
 OpenAI Agents SDK integration with tool gating:
 
 ```typescript
-import { toOpenAIAgentTools, createOpenAIToolGate } from 'armorer';
+import { toOpenAIAgentTools, createOpenAIToolGate } from 'armorer/open-ai/agents';
 ```
 
 ### Other Utilities
