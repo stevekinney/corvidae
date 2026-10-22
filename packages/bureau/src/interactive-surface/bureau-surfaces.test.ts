@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
+import { rejectionOf } from '../testing/promise-outcome.test-support';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import type { Bureau } from '../types';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './types';
@@ -173,7 +174,9 @@ describe('interactive surfaces on a Bureau', () => {
         throw new Error('storage unavailable');
       });
 
-      await expect(bureau.deleteRun(taskId)).rejects.toThrow('storage unavailable');
+      expect(await rejectionOf(bureau.deleteRun(taskId))).toMatchObject({
+        message: 'storage unavailable',
+      });
       expect(await bureau.getRun(taskId)).toBeDefined();
 
       Reflect.set(surfaces, 'removeTask', removeTask);
