@@ -60,19 +60,29 @@ async function withFetch<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
 }
 
 describe('the task operations', () => {
-  test('list asks for a page with the filters, and parses the tasks and the next offset', async () => {
-    const stub = answering({ tasks: [TASK], nextOffset: 50 });
+  test('list asks for a page with the filters, and parses the tasks and the next page token', async () => {
+    const stub = answering({ tasks: [TASK], nextPageToken: 'token-2' });
     const page = await withFetch(stub.fetch, () =>
-      listTasks({ contextId: 'session-1', agentName: 'assistant', status: 'working', offset: 50 }),
+      listTasks({
+        contextId: 'session-1',
+        agentName: 'assistant',
+        status: 'working',
+        pageToken: 'token-1',
+      }),
     );
     expect(stub.calls).toEqual([
       {
         url: '/bureau/jsonrpc',
         method: 'bureau.tasks.list',
-        params: { contextId: 'session-1', agentName: 'assistant', status: 'working', offset: 50 },
+        params: {
+          contextId: 'session-1',
+          agentName: 'assistant',
+          status: 'working',
+          pageToken: 'token-1',
+        },
       },
     ]);
-    expect(page.nextOffset).toBe(50);
+    expect(page.nextPageToken).toBe('token-2');
     expect(page.tasks[0]?.id).toBe('run-1');
   });
 
