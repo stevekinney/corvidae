@@ -537,4 +537,27 @@ describe('McpApp review fixes', () => {
     );
     expect(frame.getAttribute('srcdoc') ?? '').toContain("connect-src 'none'");
   });
+
+  test("keeps the caller's container dimensions beside the component's height cap", async () => {
+    const view = await mountApp({
+      hostContext: { containerDimensions: { width: 480, maxWidth: 640 } },
+      maxHeight: 300,
+    });
+    await handshake(view.source);
+    expect(responseTo(1)?.result).toMatchObject({
+      hostContext: { containerDimensions: { width: 480, maxWidth: 640, maxHeight: 300 } },
+    });
+  });
+
+  test('remounts the frame when the effective permissions change', async () => {
+    const view = await mountLive({
+      loadResource: async () => ({ html: '<p>camera</p>', ui: { permissions: { camera: {} } } }),
+    });
+    expect(view.frame.hasAttribute('allow')).toBe(false);
+    await view.update({ grantedPermissions: { camera: {} } });
+    const remounted = document.querySelector('iframe[allow="camera"]');
+    expect(remounted).not.toBeNull();
+    expect(remounted).not.toBe(view.frame);
+    view.destroy();
+  });
 });

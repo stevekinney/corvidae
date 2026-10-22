@@ -23,7 +23,7 @@
   const appHtml = `<body>
 <h1>Weather app</h1>
 <p>Permissions: <output id="permissions">pending</output></p>
-<p>Network: <output id="network">pending</output></p>
+<p>Network: <output id="network">pending</output> <button id="probe" type="button">Probe network</button></p>
 <p>Tool input: <output id="tool-input">pending</output></p>
 <button id="call" type="button">Call get_weather</button>
 <p>Tool result: <output id="tool-result">none</output></p>
@@ -56,10 +56,14 @@
     show('permissions', JSON.stringify(permissions));
     parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*');
   });
-  fetch('https://example.com/forecast').then(
-    () => show('network', 'reached'),
-    () => show('network', 'blocked'),
-  );
+  // The network probe runs on demand: the browser logs the CSP block it causes as a console
+  // error, which the visual sweep of this fixture treats as a failure.
+  document.getElementById('probe').addEventListener('click', () => {
+    fetch('https://example.com/forecast').then(
+      () => show('network', 'reached'),
+      () => show('network', 'blocked'),
+    );
+  });
   document.getElementById('navigate').addEventListener('click', () => {
     location.replace('about:blank');
   });

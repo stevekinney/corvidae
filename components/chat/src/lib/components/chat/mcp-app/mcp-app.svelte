@@ -53,7 +53,8 @@
       ...hostContext,
       displayMode: 'inline',
       availableDisplayModes: ['inline'],
-      containerDimensions: { maxHeight },
+      // The caller's dimensions stand; only the height cap is the component's.
+      containerDimensions: { ...hostContext?.containerDimensions, maxHeight },
     };
   }
 
@@ -188,16 +189,20 @@
   {#if failed}
     <p class="mcp-app-error" role="alert">This app could not be loaded.</p>
   {:else if resource !== undefined}
-    <iframe
-      bind:this={frame}
-      class="mcp-app-frame"
-      sandbox="allow-scripts"
-      srcdoc={buildMcpAppDocument(resource.html, resource.ui?.csp)}
-      allow={allow === '' ? undefined : allow}
-      {title}
-      aria-label={title}
-      style:height={height === undefined ? undefined : `${height}px`}
-    ></iframe>
+    <!-- A change to the effective permissions remounts the frame, so the app reinitializes
+         against capabilities that match its `allow` attribute. -->
+    {#key allow}
+      <iframe
+        bind:this={frame}
+        class="mcp-app-frame"
+        sandbox="allow-scripts"
+        srcdoc={buildMcpAppDocument(resource.html, resource.ui?.csp)}
+        allow={allow === '' ? undefined : allow}
+        {title}
+        aria-label={title}
+        style:height={height === undefined ? undefined : `${height}px`}
+      ></iframe>
+    {/key}
   {/if}
 </div>
 

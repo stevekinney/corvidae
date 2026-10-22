@@ -31,6 +31,7 @@ test.describe('McpApp host', () => {
     await expect(app.locator('#permissions')).toHaveText('{}');
 
     // No direct network path: the deny-all CSP blocks the app's own fetch.
+    await app.getByRole('button', { name: 'Probe network' }).click();
     await expect(app.locator('#network')).toHaveText('blocked');
 
     // Tool-call round trip, through the host callback only.
