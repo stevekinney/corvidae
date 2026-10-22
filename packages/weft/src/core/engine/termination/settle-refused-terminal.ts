@@ -50,7 +50,9 @@ export function engineHoldsRun(
   workflowId: string,
   run: TerminatedRun,
 ): boolean {
-  return run.attempt !== undefined && currentExecutionAttempt(internals, workflowId) === run.attempt;
+  return (
+    run.attempt !== undefined && currentExecutionAttempt(internals, workflowId) === run.attempt
+  );
 }
 
 export function captureTerminatedRun(
