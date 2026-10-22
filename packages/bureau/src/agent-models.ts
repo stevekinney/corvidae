@@ -22,7 +22,11 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentFileProblem } from './agent-file';
-import { readFileAgentBinding, resolveModelDescriptor } from './agent-file-catalog';
+import {
+  allowedDescriptorsOfFileAgent,
+  readFileAgentBinding,
+  resolveModelDescriptor,
+} from './agent-file-catalog';
 
 /** One model a session can be switched to, named the way a `model` override names it. */
 export interface AgentModelChoice {
@@ -73,24 +77,6 @@ function distinct(choices: readonly AgentModelChoice[]): AgentModelChoice[] {
     seen.add(key);
     return true;
   });
-}
-
-/**
- * The catalog rows a file agent allows: the rows its `models` entries name, in the order listed
- * and without repeats, or every row that is not retired when it lists none. An entry the catalog
- * does not hold is left out; it is not an error.
- */
-export function allowedDescriptorsOfFileAgent(
-  models: readonly string[] | undefined,
-  descriptors: readonly BackendDescriptor[],
-): BackendDescriptor[] {
-  if (models === undefined) return descriptors.filter((row) => row.lifecycle !== 'retired');
-  const rows: BackendDescriptor[] = [];
-  for (const entry of models) {
-    const resolved = resolveModelDescriptor(entry, descriptors);
-    if (isDescriptor(resolved) && !rows.includes(resolved)) rows.push(resolved);
-  }
-  return rows;
 }
 
 /**

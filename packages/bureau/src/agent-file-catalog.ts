@@ -59,6 +59,7 @@ import {
   parseAgentFile,
 } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
+import { createFileAgentGenerate } from './file-agent-generate';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileWriter,
@@ -244,6 +245,24 @@ export function resolveModelDescriptor(
   );
 }
 
+/**
+ * The catalog rows a file agent allows: the rows its `models` entries name, in the order listed
+ * and without repeats, or every row that is not retired when it lists none. An entry the catalog
+ * does not hold is left out; it is not an error.
+ */
+export function allowedDescriptorsOfFileAgent(
+  models: readonly string[] | undefined,
+  descriptors: readonly BackendDescriptor[],
+): BackendDescriptor[] {
+  if (models === undefined) return descriptors.filter((row) => row.lifecycle !== 'retired');
+  const rows: BackendDescriptor[] = [];
+  for (const entry of models) {
+    const resolved = resolveModelDescriptor(entry, descriptors);
+    if (!isProblem(resolved) && !rows.includes(resolved)) rows.push(resolved);
+  }
+  return rows;
+}
+
 function isProblem(value: BackendDescriptor | AgentFileProblem): value is AgentFileProblem {
   return 'code' in value && 'message' in value && !('provider' in value);
 }
@@ -359,7 +378,22 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       runtime: options.runtime,
       name: id,
       ...(revision === undefined ? {} : { revision }),
-      generate: options.resolveGenerate(descriptor),
+      // COR-1559: a file agent is selectable. Its generate picks each step's model from that
+      // step's steering, and its profile offers the models the file allows against the catalog now.
+      generate: createFileAgentGenerate({
+        defaultGenerate: options.resolveGenerate(descriptor),
+        defaultDescriptor: descriptor,
+        allowed: () =>
+          allowedDescriptorsOfFileAgent(
+            definition.models,
+            options.modelCatalog.catalog().descriptors,
+          ),
+        resolveGenerate: options.resolveGenerate,
+      }),
+      allowedCandidates: allowedDescriptorsOfFileAgent(
+        definition.models,
+        options.modelCatalog.catalog().descriptors,
+      ).map((row) => ({ provider: row.provider, model: row.model })),
       ...(definition.description === null ? {} : { description: definition.description }),
       ...(definition.skills.length === 0 ? {} : { skillDescriptors: definition.skills }),
       ...(instructions === '' ? {} : { instructions }),
