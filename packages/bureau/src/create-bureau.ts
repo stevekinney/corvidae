@@ -6024,7 +6024,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function retryCanceledFireCloses(): Promise<void> {
     for (let offset = 0; ;) {
-      const page = await tasks.list({ status: 'canceled', limit: 100, offset });
+      const page = await tasks.enumerate({ status: 'canceled', limit: 100, offset });
       for (const view of page.tasks) await closeOpenReviewsOfCanceledFire(view.id);
       if (page.nextOffset === null) break;
       offset = page.nextOffset;
@@ -11282,6 +11282,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * Resolves how many tasks it removed.
    */
   async function retainTasks(): Promise<number> {
+    // COR-1304 — the expired `bureau.tasks.list` snapshots go with every pass, whatever the
+    // retention, and are deleted by key alone. A failure here never stops task retention.
+    try {
+      await tasks.expireListings();
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Expired task-listing snapshots could not be deleted: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
     const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
     if (retention === 'forever') return 0;
     const cutoff = runtimeServices.clock.now() - retention.olderThan;
