@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 
-import { dateTimeForControl, elementId, iconLabel, matchesPattern } from './node-helpers.ts';
+import type { A2uiEvaluationContext } from './functions.ts';
+import {
+  dateTimeForControl,
+  elementId,
+  evaluationContext,
+  failingCheck,
+  iconLabel,
+  matchesPattern,
+  runAction,
+  toJsonValue,
+} from './node-helpers.ts';
 import type { A2uiRenderContext } from './render-context.ts';
 
 describe('node helpers', () => {
@@ -38,5 +48,72 @@ describe('node helpers', () => {
       elementId(context, 'field-description', ''),
     );
     expect(elementId(context, 'pick', '', 'one')).not.toBe(elementId(context, 'pick-one', ''));
+  });
+
+  test('failingCheck returns the first failing check’s message and skips malformed checks', () => {
+    const evaluation: A2uiEvaluationContext = {
+      read: () => undefined,
+      scope: '',
+      report: () => {},
+    };
+    expect(failingCheck('not a list', evaluation)).toBeUndefined();
+    expect(
+      failingCheck(
+        [null, { condition: true, message: 'fine' }, { condition: false, message: 'Not yet' }],
+        evaluation,
+      ),
+    ).toBe('Not yet');
+    expect(failingCheck([{ condition: true, message: 'fine' }], evaluation)).toBeUndefined();
+  });
+
+  test('runAction runs a function call as a user-activated evaluation', () => {
+    const opened: string[] = [];
+    const reports: string[] = [];
+    const evaluation: A2uiEvaluationContext = {
+      read: () => undefined,
+      scope: '',
+      report: (message) => reports.push(message),
+      openUrl: (url) => opened.push(url),
+      baseUrl: 'https://app.example.test/',
+    };
+    const context = { surfaceId: 's', dispatch: () => {} } as unknown as A2uiRenderContext;
+    const component = { id: 'go', component: 'Button' };
+
+    runAction(
+      { functionCall: { call: 'openUrl', args: { url: '/help' } } },
+      component,
+      context,
+      evaluation,
+    );
+    runAction({ functionCall: { call: 42 } }, component, context, evaluation);
+    runAction(null, component, context, evaluation);
+
+    expect(opened).toEqual(['https://app.example.test/help']);
+    expect(reports).toEqual([]);
+  });
+
+  test('toJsonValue keeps JSON and turns everything else into null', () => {
+    expect(toJsonValue(Number.NaN)).toBeNull();
+    expect(toJsonValue(3)).toBe(3);
+    expect(toJsonValue([1, undefined, 'a'])).toEqual([1, null, 'a']);
+    expect(toJsonValue(JSON.parse('{"a":1,"__proto__":{"x":1},"b":{"c":true}}'))).toEqual({
+      a: 1,
+      b: { c: true },
+    });
+    expect(toJsonValue(() => {})).toBeNull();
+  });
+
+  test('evaluationContext reads the model and reports function errors for its component', () => {
+    const reports: unknown[][] = [];
+    const context = {
+      model: { get: (pointer: string) => (pointer === '/name' ? 'Ada' : undefined) },
+      locale: 'en-US',
+      report: (...args: unknown[]) => reports.push(args),
+    } as unknown as A2uiRenderContext;
+    const evaluation = evaluationContext(context, 'field', '');
+
+    expect(evaluation.read('/name')).toBe('Ada');
+    evaluation.report('bad call');
+    expect(reports).toEqual([['function-error', 'field', 'bad call']]);
   });
 });
