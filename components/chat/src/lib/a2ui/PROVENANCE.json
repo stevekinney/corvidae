@@ -1,0 +1,55 @@
+{
+  "repository": "https://github.com/a2ui-project/a2ui",
+  "commit": "c07134caf2f63e3356c4439d248afc9eb04f310e",
+  "note": "Vendored byte-for-byte from A2UI's closed v0.9.1 specification: the basic catalog, and the examples that together use every one of its components. Upstream keeps the v0_9 path in the catalog's $id. Re-vendor by fetching the same paths from a new commit and updating this file deliberately.",
+  "files": {
+    "basic-catalog.schema.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/catalog.json",
+      "sha256": "8cc94d0a482e67048f9fc989964ca5da56fe42f531d919315a508989fb22e13e"
+    },
+    "examples/00_complex-layout.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/00_complex-layout.json",
+      "sha256": "ed212b67775521aca4b9843549ebeafc187531ce3744c9d23c6ff05e3fef4eeb"
+    },
+    "examples/00_interactive-button.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/00_interactive-button.json",
+      "sha256": "19d990117be8d66ffed20d5bb21127c9d153f90b8e3b2670f80c72d34aad0fb5"
+    },
+    "examples/01_flight-status.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/01_flight-status.json",
+      "sha256": "bb0ce059e5d5c3bf021b8decf59112fbcbeb93a143849c2a1558ca54b725c9b4"
+    },
+    "examples/06_music-player.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/06_music-player.json",
+      "sha256": "6700fd8abdbaa218f5f230b35eb5d707ea60466fc28cc05a5bcf25f46a946b54"
+    },
+    "examples/07_task-card.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/07_task-card.json",
+      "sha256": "29ae6e7f298f9d417bfd14f1803c57a98169434481ab1e1d23a193073f6d97a2"
+    },
+    "examples/19_software-purchase.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/19_software-purchase.json",
+      "sha256": "58b7c877904f1b9dcaaaf15167a41acf1764b27dd5f4eb7344be64bad9991841"
+    },
+    "examples/24_recipe-card.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/24_recipe-card.json",
+      "sha256": "76ad922b8645e6318f6d9feae22356161e31a9b3bd357cdeffad96e3f636c154"
+    },
+    "examples/26_podcast-episode.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/26_podcast-episode.json",
+      "sha256": "532c82d91aac256a869f6ab868d732e3fa95e833378e343dbc2073d90445a172"
+    },
+    "examples/29_movie-card.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/29_movie-card.json",
+      "sha256": "0b5a43cf9cd914ccf2684710f8705f3bf2f7bd9ee60c5e3dc8e091345a9c6a81"
+    },
+    "examples/34_child-list-template.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/34_child-list-template.json",
+      "sha256": "9e79e4057e05fb097ddd96c2f5b328984eee7dd567218d3f67b2f8f67da064a2"
+    },
+    "examples/36_modal.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/examples/36_modal.json",
+      "sha256": "4f58e348baf10a79fbe86ccae785684454cadb109ecc54d4f600d95fef1ff17a"
+    }
+  }
+}

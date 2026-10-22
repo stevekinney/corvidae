@@ -1,0 +1,398 @@
+/// <reference lib="dom" />
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import { setupHappyDom } from '@lostgradient/testing';
+
+import { A2UI_COMPONENT_TARGETS, A2UI_ENUM_MAPPINGS } from './catalog-mapping.ts';
+import { A2uiDataModel } from './data-model.svelte.ts';
+import { A2UI_ICONS } from './icon-names.ts';
+import type { A2uiAction, A2uiComponent, A2uiDiagnostic, A2uiJsonValue } from './types.ts';
+
+setupHappyDom();
+
+const { render, cleanup, fireEvent, screen } = await import('@testing-library/svelte');
+const { default: A2uiSurface } = await import('./a2ui-surface.svelte');
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
+
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+type CatalogSchema = {
+  components: Record<
+    string,
+    { allOf: { properties?: Record<string, { enum?: string[]; oneOf?: { enum?: string[] }[] }> }[] }
+  >;
+};
+
+const catalog = (await Bun.file(
+  new URL('./basic-catalog.schema.json', import.meta.url),
+).json()) as CatalogSchema;
+
+function catalogProperties(component: string) {
+  const entry = catalog.components[component];
+  if (entry === undefined) throw new Error(`no ${component} in the catalog`);
+  return Object.assign({}, ...entry.allOf.map((part) => part.properties ?? {})) as Record<
+    string,
+    { enum?: string[]; oneOf?: { enum?: string[] }[] }
+  >;
+}
+
+type Example = { messages: Record<string, unknown>[] };
+
+/** The components and data model an example's messages leave a surface with. */
+async function loadExample(
+  file: string,
+): Promise<{ components: A2uiComponent[]; dataModel: A2uiJsonValue }> {
+  const example = (await Bun.file(
+    new URL(`./examples/${file}`, import.meta.url),
+  ).json()) as Example;
+  const byId = new Map<string, A2uiComponent>();
+  const model = new A2uiDataModel({});
+  for (const message of example.messages) {
+    const update = message['updateComponents'] as { components: A2uiComponent[] } | undefined;
+    for (const component of update?.components ?? []) byId.set(component.id, component);
+    const data = message['updateDataModel'] as { path?: string; value?: A2uiJsonValue } | undefined;
+    if (data !== undefined) model.set(data.path ?? '/', data.value ?? null);
+  }
+  return { components: [...byId.values()], dataModel: model.snapshot() };
+}
+
+describe('the catalog mapping', () => {
+  test('maps every basic-catalog component and nothing else', () => {
+    expect(Object.keys(A2UI_COMPONENT_TARGETS).toSorted()).toEqual(
+      Object.keys(catalog.components).toSorted(),
+    );
+  });
+
+  test('lists every enumerated property value the vendored catalog allows', () => {
+    const missing: string[] = [];
+    for (const component of Object.keys(catalog.components)) {
+      for (const [property, schema] of Object.entries(catalogProperties(component))) {
+        if (schema.enum === undefined || property === 'component') continue;
+        const mapping = (A2UI_ENUM_MAPPINGS as Record<string, Record<string, { values: object }>>)[
+          component
+        ]?.[property];
+        for (const value of schema.enum) {
+          if (mapping === undefined || !Object.hasOwn(mapping.values, value)) {
+            missing.push(`${component}.${property}=${value}`);
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('lists every icon name the vendored catalog allows', () => {
+    const names = catalogProperties('Icon')['name']?.oneOf?.[0]?.enum ?? [];
+    expect(Object.keys(A2UI_ICONS).toSorted()).toEqual([...names].toSorted());
+  });
+});
+
+const EXAMPLE_FOR: Record<string, string> = {
+  Text: '00_complex-layout.json',
+  Image: '06_music-player.json',
+  Icon: '07_task-card.json',
+  Video: '29_movie-card.json',
+  AudioPlayer: '26_podcast-episode.json',
+  Row: '00_complex-layout.json',
+  Column: '00_complex-layout.json',
+  List: '34_child-list-template.json',
+  Card: '01_flight-status.json',
+  Tabs: '24_recipe-card.json',
+  Divider: '01_flight-status.json',
+  Modal: '36_modal.json',
+  Button: '00_interactive-button.json',
+  TextField: '00_complex-layout.json',
+  CheckBox: '07_task-card.json',
+  ChoicePicker: '19_software-purchase.json',
+  Slider: '06_music-player.json',
+  DateTimeInput: '07_task-card.json',
+};
+
+describe('rendering the vendored examples', () => {
+  for (const [type, file] of Object.entries(EXAMPLE_FOR)) {
+    test(`renders ${type} from ${file}`, async () => {
+      const { components, dataModel } = await loadExample(file);
+      const diagnostics: A2uiDiagnostic[] = [];
+      const { container } = render(A2uiSurface, {
+        props: {
+          surfaceId: 'example',
+          components,
+          dataModel,
+          resolveAssetUrl: async (url: string) => url,
+          onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+        },
+      });
+      await flush();
+      await flush();
+
+      // Content inside a Modal renders once its trigger opens it, outside the container.
+      if (container.querySelector(`[data-a2ui-component="${type}"]`) === null) {
+        for (const trigger of container.querySelectorAll('.a2ui-modal-trigger button')) {
+          await fireEvent.click(trigger);
+        }
+        await flush();
+        await flush();
+      }
+      const nodes = document.querySelectorAll(`[data-a2ui-component="${type}"]`);
+      expect(nodes.length).toBeGreaterThan(0);
+      const rendered = [...nodes].some((node) => node.childElementCount > 0);
+      expect(rendered).toBe(true);
+      const structural = diagnostics.filter((diagnostic) =>
+        ['unsupported-component', 'missing-component', 'component-cycle'].includes(diagnostic.code),
+      );
+      expect(structural).toEqual([]);
+    });
+  }
+});
+
+describe('data binding', () => {
+  const formComponents: A2uiComponent[] = [
+    { id: 'root', component: 'Column', children: ['field', 'echo', 'list'] },
+    { id: 'field', component: 'TextField', label: 'Name', value: { path: '/form/name' } },
+    { id: 'echo', component: 'Text', text: { path: '/form/name' }, variant: 'h2' },
+    { id: 'list', component: 'List', children: { componentId: 'row', path: '/people' } },
+    { id: 'row', component: 'Text', text: { path: 'name' }, variant: 'h3' },
+  ];
+
+  test('an input writes its bound path at once, and every binding to it updates', async () => {
+    const changes: A2uiJsonValue[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'form',
+        components: formComponents,
+        dataModel: { form: { name: 'Ada' }, people: [{ name: 'Grace' }, { name: 'Alan' }] },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+
+    const input = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(input.value).toBe('Ada');
+    await fireEvent.input(input, { target: { value: 'Ada Lovelace' } });
+    await flush();
+
+    expect(container.querySelector('[data-a2ui-id="echo"]')?.textContent).toBe('Ada Lovelace');
+    expect(changes.at(-1)).toMatchObject({ form: { name: 'Ada Lovelace' } });
+  });
+
+  test('a template resolves relative paths against each item, and follows a new model', async () => {
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'form',
+        components: formComponents,
+        dataModel: { form: { name: '' }, people: [{ name: 'Grace' }, { name: 'Alan' }] },
+      },
+    });
+    await flush();
+    const rows = () =>
+      [...view.container.querySelectorAll('[data-a2ui-id="row"]')].map((node) => node.textContent);
+    expect(rows()).toEqual(['Grace', 'Alan']);
+
+    await view.rerender({ dataModel: { form: { name: '' }, people: [{ name: 'Barbara' }] } });
+    await flush();
+
+    expect(rows()).toEqual(['Barbara']);
+  });
+});
+
+describe('diagnostics', () => {
+  test('a component outside the basic catalog renders nothing and is reported once', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const components: A2uiComponent[] = [
+      { id: 'root', component: 'Column', children: ['script', 'note'] },
+      { id: 'script', component: 'Script', source: 'alert(1)' },
+      { id: 'note', component: 'Text', text: '<img src=x onerror=alert(1)>', variant: 'h1' },
+    ];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'unsafe',
+        components,
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+    await view.rerender({ components: [...components] });
+    await flush();
+
+    expect(view.container.querySelector('[data-a2ui-id="script"]')).toBeNull();
+    expect(view.container.querySelector('img')).toBeNull();
+    expect(diagnostics.filter((entry) => entry.code === 'unsupported-component')).toEqual([
+      {
+        code: 'unsupported-component',
+        componentId: 'script',
+        message: '"Script" is not in the A2UI basic catalog',
+      },
+    ]);
+  });
+
+  test('an unmapped enumerated value falls back to its default and is reported', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'values',
+        components: [
+          { id: 'root', component: 'Row', justify: 'diagonal', children: ['icon'] },
+          { id: 'icon', component: 'Icon', name: 'starHalf' },
+        ],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(diagnostics.map((entry) => entry.code).toSorted()).toEqual([
+      'unknown-icon',
+      'unsupported-value',
+    ]);
+  });
+});
+
+describe('actions', () => {
+  test('a Button sends its event with the context resolved when it is pressed', async () => {
+    const actions: A2uiAction[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'actions',
+        components: [
+          { id: 'root', component: 'Column', children: ['field', 'submit'] },
+          { id: 'field', component: 'TextField', label: 'Email', value: { path: '/email' } },
+          {
+            id: 'submit',
+            component: 'Button',
+            child: 'submit-label',
+            variant: 'primary',
+            action: {
+              event: {
+                name: 'submit_form',
+                context: { email: { path: '/email' }, source: 'form' },
+              },
+            },
+          },
+          { id: 'submit-label', component: 'Text', text: 'Submit' },
+        ],
+        dataModel: { email: 'old@example.com' },
+        onAction: (action: A2uiAction) => actions.push(action),
+      },
+    });
+    await flush();
+
+    await fireEvent.input(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      name: 'submit_form',
+      surfaceId: 'actions',
+      sourceComponentId: 'submit',
+      context: { email: 'new@example.com', source: 'form' },
+    });
+    expect(Number.isNaN(Date.parse(actions[0]?.timestamp ?? ''))).toBe(false);
+  });
+
+  test('a failing check disables its Button', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'checks',
+        components: [
+          {
+            id: 'root',
+            component: 'Button',
+            child: 'label',
+            action: { event: { name: 'go' } },
+            checks: [
+              {
+                condition: { call: 'required', args: { value: { path: '/terms' } } },
+                message: 'Accept the terms',
+              },
+            ],
+          },
+          { id: 'label', component: 'Text', text: 'Go' },
+        ],
+        dataModel: { terms: '' },
+      },
+    });
+    await flush();
+
+    expect((screen.getByRole('button', { name: 'Go' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('assets', () => {
+  test('every asset URL goes through the resolver, and its object URL is released on unmount', async () => {
+    const resolved: string[] = [];
+    const revoked: string[] = [];
+    const originalRevoke = URL.revokeObjectURL;
+    URL.revokeObjectURL = (url: string) => {
+      revoked.push(url);
+    };
+    try {
+      const view = render(A2uiSurface, {
+        props: {
+          surfaceId: 'media',
+          components: [
+            { id: 'root', component: 'Column', children: ['image', 'video', 'audio'] },
+            {
+              id: 'image',
+              component: 'Image',
+              url: 'https://assets.test/a.png',
+              description: 'A chart',
+            },
+            { id: 'video', component: 'Video', url: 'https://assets.test/b.mp4' },
+            {
+              id: 'audio',
+              component: 'AudioPlayer',
+              url: 'https://assets.test/c.mp3',
+              description: 'Episode',
+            },
+          ],
+          resolveAssetUrl: async (url: string) => {
+            resolved.push(url);
+            return URL.createObjectURL(new Blob([url]));
+          },
+          releaseAssetUrl: (url: string) => URL.revokeObjectURL(url),
+        },
+      });
+      await flush();
+      await flush();
+
+      expect(resolved.toSorted()).toEqual([
+        'https://assets.test/a.png',
+        'https://assets.test/b.mp4',
+        'https://assets.test/c.mp3',
+      ]);
+      const sources = [...view.container.querySelectorAll('img, video, audio')].map(
+        (element) => element.getAttribute('src') ?? '',
+      );
+      expect(sources).toHaveLength(3);
+      for (const source of sources) expect(source.startsWith('blob:')).toBe(true);
+
+      view.unmount();
+      expect(revoked.toSorted()).toEqual(sources.toSorted());
+    } finally {
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
+
+describe('Modal', () => {
+  test('opens from its trigger and has a close affordance', async () => {
+    const { components, dataModel } = await loadExample('36_modal.json');
+    render(A2uiSurface, { props: { surfaceId: 'modal', components, dataModel } });
+    await flush();
+
+    const triggers = screen.getAllByRole('button');
+    const trigger = triggers[0];
+    if (trigger === undefined) throw new Error('no trigger button');
+    await fireEvent.click(trigger);
+    await flush();
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).not.toBeNull();
+    expect(screen.getByRole('button', { name: /close/i })).not.toBeNull();
+  });
+});
