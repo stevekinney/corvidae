@@ -39,7 +39,7 @@ export function createBureauInteractiveSurfaces(
     task: async (taskId) => {
       const record = await tasks.record(taskId);
       if (record === undefined) return undefined;
-      return { owner: record.owner, settled: record.settled?.status };
+      return { owner: record.owner, settled: record.settled?.status, contextId: record.contextId };
     },
     now: options.now,
     watchTask: (taskId, listener) => {

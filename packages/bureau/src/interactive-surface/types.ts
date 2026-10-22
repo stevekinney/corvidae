@@ -391,7 +391,12 @@ export interface InteractiveSurfaceAcceptance {
   readonly contractVersion: InteractiveSurfaceContractVersion;
   readonly outcome: 'accepted';
   readonly commandId: string;
-  /** The surface as the command left it. */
+  /** The revision this command committed. On a replay, the original commit's revision. */
+  readonly committedRevision: number;
+  /**
+   * The surface as it stands now: as the command left it, or, on a replay, as
+   * later commands have left it since.
+   */
   readonly surface: InteractiveSurface;
   /** `true` when this is an exact retry answered from the original commit. */
   readonly replayed: boolean;

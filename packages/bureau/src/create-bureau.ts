@@ -11306,7 +11306,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // fire's task, which is the last thing that could name it.
     let removed = await tasks.expire(cutoff, bound, async (record) => {
       // COR-1631: a task's surfaces stay readable until its retention ends, and end with it.
-      await surfaces?.removeTask(record.taskId);
+      // A failure is diagnosed and must not keep a fire's own cleanup below from running.
+      await surfaces?.removeTask(record.taskId).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'interactive-surfaces',
+          message: `[bureau] Could not remove the surfaces of expired task "${record.taskId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
       if (record.kind !== 'schedule-fire') return;
       await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
     });
@@ -16720,6 +16728,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // COR-1481 — the settlement and cleanup writes of tasks whose runs have just ended land
           // before the storage they write to is closed.
           await tasks.flush();
+          // COR-1631 — so do the freezes of the surfaces those settlements started.
+          await surfaces?.flush();
 
           emitter.dispatch(new BureauDisposedEvent());
           storeSubscription.unsubscribe();

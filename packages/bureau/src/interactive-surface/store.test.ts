@@ -26,7 +26,11 @@ const formSchema = {
   required: ['reason'],
 } as const;
 
-function harness(tasks: Record<string, InteractiveSurfaceTask> = { [TASK]: { owner: OWNER } }) {
+function harness(
+  tasks: Record<string, InteractiveSurfaceTask> = {
+    [TASK]: { owner: OWNER, contextId: 'session-1' },
+  },
+) {
   const runtime = createManualRuntimeServices();
   const storage = new MemoryStorage();
   const history = createDurableEventHistory(storage, runtime);
@@ -50,7 +54,7 @@ function harness(tasks: Record<string, InteractiveSurfaceTask> = { [TASK]: { own
     table.set(taskId, { ...task, settled: status });
     settledListeners.get(taskId)?.(status);
   }
-  return { surfaces, events, settle, table };
+  return { surfaces, events, settle, table, storage };
 }
 
 function createCommand(
@@ -216,7 +220,7 @@ describe('creating a surface', () => {
     const surfaces = createInteractiveSurfaces({
       storage,
       history: createDurableEventHistory(storage, runtime),
-      task: async () => ({ owner: OWNER }),
+      task: async () => ({ owner: OWNER, contextId: 'session-1' }),
       now: () => runtime.clock.now(),
       maxPayloadBytes: 512,
     });
@@ -359,8 +363,8 @@ describe('updating a surface', () => {
 describe('ownership and audience', () => {
   it('hides a surface from a child, a sibling, and an unrelated principal', async () => {
     const { surfaces } = harness({
-      [TASK]: { owner: OWNER },
-      'agent-run-sibling': { owner: OWNER },
+      [TASK]: { owner: OWNER, contextId: 'session-1' },
+      'agent-run-sibling': { owner: OWNER, contextId: 'session-1' },
     });
     await surfaces.create(createCommand());
 
@@ -579,7 +583,9 @@ describe('closing, cancellation, and cleanup', () => {
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
-    const task: { current: InteractiveSurfaceTask } = { current: { owner: OWNER } };
+    const task: { current: InteractiveSurfaceTask } = {
+      current: { owner: OWNER, contextId: 'session-1' },
+    };
     const surfaces = createInteractiveSurfaces({
       storage,
       history: createDurableEventHistory(storage, runtime),
@@ -587,7 +593,7 @@ describe('closing, cancellation, and cleanup', () => {
       now: () => runtime.clock.now(),
     });
     await surfaces.create(createCommand());
-    task.current = { owner: OWNER, settled: 'canceled' };
+    task.current = { owner: OWNER, contextId: 'session-1', settled: 'canceled' };
     writable.value = false;
 
     const outcome = await surfaces.act(actionRequest()).then(
@@ -601,7 +607,7 @@ describe('closing, cancellation, and cleanup', () => {
   it('freezes a surface whose task ended unseen when it is next read', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());
-    table.set(TASK, { owner: OWNER, settled: 'completed' });
+    table.set(TASK, { owner: OWNER, contextId: 'session-1', settled: 'completed' });
 
     expect(await snapshotOf(surfaces)).toMatchObject({
       liveness: 'frozen',
@@ -632,5 +638,181 @@ describe('closing, cancellation, and cleanup', () => {
     await surfaces.removeTask(TASK);
 
     expect(await surfaces.snapshot(snapshotQuery)).toMatchObject({ reason: 'not-found' });
+  });
+});
+
+describe('review fixes', () => {
+  const mcpApp = {
+    kind: 'mcp-app',
+    resourceUri: 'ui://reviews/pending',
+    mimeType: 'text/html;profile=mcp-app',
+    contentDigest: `sha256:${'c'.repeat(64)}`,
+    instanceId: 'instance-1',
+    csp: { connectDomains: [], resourceDomains: [] },
+    permissions: {},
+  } as const;
+
+  it('refuses a continuation of another task’s review or session', async () => {
+    const { surfaces, events } = harness();
+    const otherReview = await surfaces.create(
+      createCommand({
+        actions: [
+          {
+            name: 'approve',
+            intent: 'approve',
+            continuation: { type: 'review', reviewId: 'approval:agent-run-2:call-1' },
+          },
+        ],
+      }),
+    );
+    const otherSession = await surfaces.create(
+      createCommand({
+        commandId: 'create-2',
+        actions: [
+          {
+            name: 'submit',
+            intent: 'submit',
+            continuation: { type: 'signal', sessionId: 'session-2', signalName: 'reason' },
+          },
+        ],
+      }),
+    );
+
+    expect(otherReview).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    expect(otherSession).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    expect(await events()).toHaveLength(0);
+  });
+
+  it('requires an untrusted MCP App action to name its instance', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(
+      createCommand({
+        representation: mcpApp,
+        actions: [
+          {
+            name: 'approve',
+            intent: 'approve',
+            continuation: { type: 'review', reviewId: 'approval:agent-run-1:call-1' },
+          },
+        ],
+      }),
+    );
+    const request = actionRequest({ action: 'approve', value: undefined });
+
+    expect(await surfaces.act(request, { principal: OWNER })).toMatchObject({
+      reason: 'stale-instance',
+    });
+    expect(
+      await surfaces.act(request, { principal: OWNER, instanceId: 'instance-1' }),
+    ).toMatchObject({ outcome: 'accepted' });
+  });
+
+  it('names the original commit’s revision on a replay after later changes', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+    await surfaces.update(updateCommand());
+    await surfaces.update(
+      updateCommand({ commandId: 'update-2', baseRevision: 2, data: { reason: 'b' } }),
+    );
+
+    const replay = await surfaces.update(updateCommand());
+
+    expect(replay).toMatchObject({ outcome: 'accepted', replayed: true, committedRevision: 2 });
+    expect(replay.outcome === 'accepted' && replay.surface.revision).toBe(3);
+  });
+
+  it('closes a surface created while its task settled, instead of accepting it open', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    let reads = 0;
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async () => {
+        reads += 1;
+        return reads === 1
+          ? { owner: OWNER, contextId: 'session-1' }
+          : { owner: OWNER, contextId: 'session-1', settled: 'canceled' };
+      },
+      now: () => runtime.clock.now(),
+    });
+
+    expect(await surfaces.create(createCommand())).toMatchObject({ reason: 'closed' });
+    const read = await snapshotOf(surfaces);
+    expect(read).toMatchObject({ liveness: 'frozen', closeResult: { reason: 'cancelled' } });
+  });
+
+  it('refuses an asynchronous schema and CSP entries that are not origins', async () => {
+    const { surfaces } = harness();
+    const asynchronous = await surfaces.create(
+      createCommand({
+        representation: { kind: 'input-form', schema: { type: 'object', $async: true } },
+      }),
+    );
+    const receipts = await Promise.all(
+      [
+        'https://user:pass@example.test',
+        'https://example.test?query',
+        'https://example.test/path',
+        'javascript:alert(1)',
+      ].map((origin, index) =>
+        surfaces.create(
+          createCommand({
+            commandId: `csp-${index}`,
+            surfaceId: `csp-${index}`,
+            representation: { ...mcpApp, csp: { connectDomains: [origin], resourceDomains: [] } },
+            actions: [],
+          }),
+        ),
+      ),
+    );
+
+    expect(asynchronous).toMatchObject({ reason: 'invalid' });
+    for (const receipt of receipts) expect(receipt).toMatchObject({ reason: 'invalid' });
+  });
+
+  it('advances the content revisions when a close clears the content', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+
+    const closed = await surfaces.close({
+      type: 'surface.close',
+      contractVersion: version,
+      commandId: 'close-1',
+      taskId: TASK,
+      surfaceId: 'reason-form',
+      reason: 'completed',
+    });
+
+    expect(closed).toMatchObject({
+      surface: { revision: 2, componentRevision: 2, dataRevision: 2 },
+    });
+  });
+
+  it('never stores an action’s value in the surface record, and still replays it', async () => {
+    const { surfaces, storage } = harness();
+    await surfaces.create(createCommand({ classification: 'sensitive' }));
+    const request = actionRequest({ value: { reason: 'account 12345' } });
+    await surfaces.act(request);
+
+    const stored: string[] = [];
+    for await (const [, bytes] of storage.scan('bureau-surface:v1:')) {
+      stored.push(new TextDecoder().decode(bytes));
+    }
+    expect(stored.join('\n')).not.toContain('account 12345');
+    expect(await surfaces.act(request)).toMatchObject({
+      replayed: true,
+      value: { reason: 'account 12345' },
+    });
+  });
+
+  it('flushes the settlement freezes in flight', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+
+    void surfaces.settleTask(TASK, 'failed');
+    await surfaces.flush();
+
+    expect(await snapshotOf(surfaces)).toMatchObject({ closeResult: { reason: 'task-ended' } });
   });
 });

@@ -39,15 +39,15 @@ The cleanup acknowledgement a task's surfaces report reuses Operative's `Cleanup
 
 The representation union is closed: `input-form`, `a2ui`, and `mcp-app`, discriminated by `kind`. It grows only with a new contract version. Each kind keeps its own validation and security metadata beside the shared lifecycle fields.
 
-- **`input-form`** is the native kind, which every host must render. Its `schema` is a JSON Schema 2020-12 schema of an object; the schema must compile, may not declare `$id`, and has no `format` assertion (the 2020-12 default). `submitLabel` optionally names the submit control. `@lostgradient/chat` renders it with Cinder's `SchemaForm`.
+- **`input-form`** is the native kind, which every host must render. Its `schema` is a JSON Schema 2020-12 schema of an object; the schema must compile, may not declare `$id` or `$async` (admission validates synchronously), and has no `format` assertion (the 2020-12 default). `submitLabel` optionally names the submit control. `@lostgradient/chat` renders it with Cinder's `SchemaForm`.
 - **`a2ui`** is an A2UI surface, experimental, pinned to A2UI `v0.9.1` by `specificationVersion`. It carries the `catalogId` its components come from, the `components` list as A2UI's `updateComponents` carries it (one has the id `root`, and ids are unique), and an optional `theme`. Bureau checks this shape; it does not validate the components against their catalog (see [Design](#design)).
-- **`mcp-app`** is an MCP App: its `ui://` `resourceUri`, the `text/html;profile=mcp-app` `mimeType`, the `contentDigest` of the resource's bytes (`sha256:` and 64 lowercase hex digits), the `instanceId` of the app instance this revision shows, its `csp` (`connectDomains`, `resourceDomains`, and optionally `frameDomains` and `baseUriDomains`, each a list of origins), its `permissions` (`camera`, `microphone`, `geolocation`, `clipboardWrite`; an absent one is denied), and optionally the `toolName` whose result it presents. Bureau applies no narrower guard than this: the host's sandbox contains the app.
+- **`mcp-app`** is an MCP App: its `ui://` `resourceUri`, the `text/html;profile=mcp-app` `mimeType`, the `contentDigest` of the resource's bytes (`sha256:` and 64 lowercase hex digits), the `instanceId` of the app instance this revision shows, its `csp` (`connectDomains`, `resourceDomains`, and optionally `frameDomains` and `baseUriDomains`, each a list of origins: a scheme of `https`, `http`, `wss`, or `ws`, a host, and an optional port, with no path, query, fragment, or credentials), its `permissions` (`camera`, `microphone`, `geolocation`, `clipboardWrite`; an absent one is denied), and optionally the `toolName` whose result it presents. Bureau applies no narrower guard than this: the host's sandbox contains the app.
 
 An update may replace the representation, but not change its kind.
 
 ## Actions
 
-An action continues the surface's own task, and nothing else. Its `intent` is one of four:
+An action continues the surface's own task, and nothing else. Its `intent` is one of four, and its continuation must name the surface's own task: a review whose identifier names the task's run (`approval:<taskId>:…` or `human-wait:<taskId>:…`), or a signal to the task's own session. A create or update naming any other is `invalid`, because a surface's author may be the model, and the receipt's continuation is what the caller dispatches.
 
 | Intent             | Continuation                                | Continued by           |
 | ------------------ | ------------------------------------------- | ---------------------- |
@@ -56,11 +56,11 @@ An action continues the surface's own task, and nothing else. Its `intent` is on
 
 Each action in the catalog has a unique `name`, its `intent`, its `continuation`, an optional `label`, and an optional `valueSchema`. An action's value must satisfy its `valueSchema`; on an `input-form` surface, an `answer` or `submit` action without one takes the form's own schema; any other action without one takes no value. Management-plane commands are never reachable from a surface: there is no intent for them.
 
-A renderer is never trusted. An action arrives as a command and is admitted only when the surface is open, the caller may act on it, the `revision` the renderer showed is the surface's current revision, the action is in the catalog, the value satisfies its schema, and, for an `mcp-app`, the request comes from the instance the surface shows. Anything else is denied and commits nothing.
+A renderer is never trusted. An action arrives as a command and is admitted only when the surface is open, the caller may act on it, the `revision` the renderer showed is the surface's current revision, the action is in the catalog, the value satisfies its schema, and, for an `mcp-app`, the request comes from the instance the surface shows: a caller that states a principal must also state the `instanceId`, and it must be the one the surface shows. Anything else is denied and commits nothing.
 
 ## Commands and receipts
 
-Every command carries `contractVersion`, a `type`, the `taskId`, and a `commandId`, the caller's idempotency key. An exact retry, the same `commandId` with the same content, returns its original receipt with `replayed: true` and commits nothing; the same `commandId` with other content is rejected as a `conflict`. A surface remembers its 64 most recent commands for this.
+Every command carries `contractVersion`, a `type`, the `taskId`, and a `commandId`, the caller's idempotency key. An exact retry, the same `commandId` with the same content, returns an acceptance with `replayed: true` and commits nothing; its `committedRevision` is the revision the original command committed, and its `surface` is the surface as it stands now, which later commands may have changed; the same `commandId` with other content is rejected as a `conflict`. A surface remembers its 64 most recent commands for this.
 
 | Command (`type`) | Receipt | Runtime in v1 |
 | --- | --- | --- |
@@ -180,7 +180,7 @@ A surface's accessibility is its renderer's: Bureau renders nothing. An `input-f
 
 A surface's author may be author code or the model, and Bureau validates every proposal from either as untrusted content: unknown fields are errors, every schema must compile, and the payload is capped. A surface must carry no secret; its content is recorded in the task's history and shown to its owner and audience.
 
-A `sensitive` surface keeps its action values out of the history: `surface.action.admitted` records the value's SHA-256 digest instead, and the admission receipt still carries the value to the caller that continues the task. The surface's own content is recorded as for any surface. A rejection's `detail` explains the refusal and never echoes a secret.
+A `sensitive` surface keeps its action values out of the history: `surface.action.admitted` records the value's SHA-256 digest instead, and the admission receipt still carries the value to the caller that continues the task. No surface's state record stores an action value at all: an exact retry of an action carries the same value, which its digest proves, so the replay answers with the retry's own value. The surface's own content is recorded as for any surface. A rejection's `detail` explains the refusal and never echoes a secret.
 
 ## Mapping
 

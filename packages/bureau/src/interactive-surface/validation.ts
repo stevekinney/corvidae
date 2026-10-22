@@ -151,6 +151,17 @@ export function readAudience(value: unknown): readonly string[] {
 // ── Schemas ─────────────────────────────────────────────────────────
 
 /**
+ * Whether a schema anywhere declares `$async`, which makes Ajv validate
+ * asynchronously; admission validates synchronously, so such a schema is refused.
+ */
+function declaresAsync(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(declaresAsync);
+  if (!isPlainObject(value)) return false;
+  if (Object.hasOwn(value, '$async')) return true;
+  return Object.values(value).some(declaresAsync);
+}
+
+/**
  * Compiles and caches JSON Schema 2020-12 validators. Unknown keywords are
  * allowed (authors annotate their schemas), and `format` is not asserted,
  * which JSON Schema 2020-12 also makes the default.
@@ -165,6 +176,7 @@ export class InteractiveSurfaceSchemaCompiler {
     const cached = this.#cache.get(key);
     if (cached !== undefined) return cached;
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
+    if (declaresAsync(schema)) fail(`${where} must not declare $async`);
     let validate: ValidateFunction;
     try {
       validate = this.#ajv.compile(schema);
@@ -236,10 +248,20 @@ function readA2ui(value: Record<string, unknown>): InteractiveSurfaceRepresentat
   };
 }
 
+const ORIGIN_PROTOCOLS: ReadonlySet<string> = new Set(['https:', 'http:', 'wss:', 'ws:']);
+
+/** A list of origins: a scheme, host, and optional port, and nothing else. */
 function readOrigins(value: unknown, where: string): readonly string[] {
   const origins = readStringList(value, where);
   for (const origin of origins) {
-    if (!/^(https?|wss?):\/\/[^/\s]+$/.test(origin)) fail(`${where} must hold only origins`);
+    const parsed = URL.canParse(origin) ? new URL(origin) : undefined;
+    if (
+      parsed === undefined ||
+      !ORIGIN_PROTOCOLS.has(parsed.protocol) ||
+      parsed.origin !== origin
+    ) {
+      fail(`${where} must hold only origins, such as "https://example.com"`);
+    }
   }
   return origins;
 }

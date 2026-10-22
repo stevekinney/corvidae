@@ -46,6 +46,8 @@ function surfacesOf(bureau: Bureau<AgentDefinitions>) {
 }
 
 async function createForm(bureau: Bureau<AgentDefinitions>, taskId: string) {
+  const record = await bureau.tasks.record(taskId);
+  if (record === undefined) throw new Error('the task has a record');
   return surfacesOf(bureau).create(
     {
       type: 'surface.create',
@@ -62,7 +64,7 @@ async function createForm(bureau: Bureau<AgentDefinitions>, taskId: string) {
         {
           name: 'submit',
           intent: 'submit',
-          continuation: { type: 'signal', sessionId: 'session-1', signalName: 'window' },
+          continuation: { type: 'signal', sessionId: record.contextId, signalName: 'window' },
         },
       ],
     },

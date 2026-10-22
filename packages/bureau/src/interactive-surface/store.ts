@@ -37,6 +37,7 @@ import {
   type InteractiveSurface,
   type InteractiveSurfaceAcceptance,
   type InteractiveSurfaceActionAdmission,
+  type InteractiveSurfaceActionDefinition,
   type InteractiveSurfaceActionReceipt,
   type InteractiveSurfaceActionRequest,
   type InteractiveSurfaceAuthorization,
@@ -91,6 +92,8 @@ export interface InteractiveSurfaceTask {
   readonly owner: string;
   /** How the task ended, once it has. */
   readonly settled?: 'completed' | 'failed' | 'canceled' | undefined;
+  /** The session the task runs in, which a `signal` continuation must name. */
+  readonly contextId?: string | undefined;
 }
 
 /** Options for {@link createInteractiveSurfaces}. */
@@ -177,6 +180,8 @@ export interface InteractiveSurfaces {
   ): Promise<CleanupAcknowledgement>;
   /** Deletes every record of a task's surfaces, as the task's retention ends. */
   removeTask(taskId: string): Promise<void>;
+  /** Resolves once every settlement freeze now in flight has landed (or failed). Shutdown awaits it. */
+  flush(): Promise<void>;
 }
 
 /** A command the surface remembers, so an exact retry returns its original receipt. */
@@ -185,8 +190,12 @@ interface RememberedCommand {
   readonly digest: string;
   /** The surface revision the command produced, or was admitted against. */
   readonly revision: number;
-  /** For an admitted action, its admission. */
-  readonly admission?: InteractiveSurfaceActionAdmission | undefined;
+  /**
+   * For an admitted action, its admission without the value: the projection
+   * never stores an action's value (a sensitive surface's least of all), and
+   * an exact retry carries the same value, which its digest proves.
+   */
+  readonly admission?: Omit<InteractiveSurfaceActionAdmission, 'value'> | undefined;
 }
 
 /** The projection record, as stored. */
@@ -255,6 +264,41 @@ function remember(
   entry: RememberedCommand,
 ): readonly RememberedCommand[] {
   return [...commands, entry].slice(-REMEMBERED_COMMANDS);
+}
+
+function withoutValue(
+  admission: InteractiveSurfaceActionAdmission,
+): Omit<InteractiveSurfaceActionAdmission, 'value'> {
+  const { value: _value, ...rest } = admission;
+  return rest;
+}
+
+/**
+ * Fails unless every action continues this task: a review named for this
+ * task's run, or a signal to this task's own session. A surface's author may
+ * be the model, so a continuation naming another task is refused here rather
+ * than handed to the caller to dispatch.
+ */
+function assertOwnContinuations(
+  actions: readonly InteractiveSurfaceActionDefinition[],
+  taskId: string,
+  task: InteractiveSurfaceTask,
+): void {
+  for (const action of actions) {
+    const continuation = action.continuation;
+    if (continuation.type === 'review') {
+      const [kind, runId] = continuation.reviewId.split(':');
+      if ((kind !== 'approval' && kind !== 'human-wait') || runId !== taskId) {
+        throw new InteractiveSurfaceValidationError(
+          `action "${action.name}" continues a review of another task`,
+        );
+      }
+    } else if (task.contextId === undefined || continuation.sessionId !== task.contextId) {
+      throw new InteractiveSurfaceValidationError(
+        `action "${action.name}" signals a session that is not this task's`,
+      );
+    }
+  }
 }
 
 /** Thrown inside a commit when the projection moved; the caller re-reads. */
@@ -500,11 +544,13 @@ export function createInteractiveSurfaces(
     commandId: string,
     surface: InteractiveSurface,
     replayed: boolean,
+    committedRevision: number = surface.revision,
   ): InteractiveSurfaceAcceptance {
     return {
       contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
       outcome: 'accepted',
       commandId,
+      committedRevision,
       surface,
       replayed,
     };
@@ -521,7 +567,7 @@ export function createInteractiveSurfaces(
     if (seen.digest !== digest) {
       return rejection('conflict', `commandId "${commandId}" was used for a different command`);
     }
-    return accepted(commandId, await withCursor(stored.surface), true);
+    return accepted(commandId, await withCursor(stored.surface), true, seen.revision);
   }
 
   /** Runs `attempt` until it does not lose a race, or the attempt budget is spent. */
@@ -609,6 +655,9 @@ export function createInteractiveSurfaces(
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
+      assertOwnContinuations(actions, taskId, task);
+      // Watch before committing, so a settlement after this point freezes the new surface.
+      watch(taskId);
 
       return retrying(async () => {
         const existing = await load(taskId, surfaceId);
@@ -650,7 +699,13 @@ export function createInteractiveSurfaces(
           INTERACTIVE_SURFACE_EVENT_KINDS.created,
           { contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION, commandId, surface },
         );
-        watch(taskId);
+        // A task that settled while the surface was being created has already
+        // announced its settlement, so freeze what was just committed now.
+        const after = await options.task(taskId);
+        if (after?.settled !== undefined) {
+          await settleTask(taskId, after.settled);
+          return rejection('closed', 'the task ended while the surface was being created');
+        }
         return accepted(commandId, { ...surface, eventCursor: cursor }, false);
       });
     });
@@ -698,6 +753,7 @@ export function createInteractiveSurfaces(
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
+      if (changes.actions !== undefined) assertOwnContinuations(changes.actions, taskId, task);
 
       return retrying(async () => {
         const loaded = await current(task, taskId, surfaceId);
@@ -818,17 +874,20 @@ export function createInteractiveSurfaces(
               `commandId "${commandId}" was used for a different command`,
             );
           }
-          return { ...seen.admission, replayed: true };
+          return { ...seen.admission, value, replayed: true };
         }
         const surface = loaded.stored.surface;
         if (surface.state === 'closed') return rejection('closed', 'the surface is closed');
         if (surface.revision !== revision) {
           return rejection('stale-revision', undefined, surface.revision);
         }
+        // An untrusted caller (one that states a principal) acting on an MCP App
+        // must say which app instance it is, and it must be the one shown.
         if (
           surface.representation?.kind === 'mcp-app' &&
-          authorization.instanceId !== undefined &&
-          authorization.instanceId !== surface.representation.instanceId
+          (authorization.instanceId === undefined
+            ? authorization.principal !== undefined
+            : authorization.instanceId !== surface.representation.instanceId)
         ) {
           return rejection('stale-instance', 'the app instance is not the one the surface shows');
         }
@@ -863,7 +922,12 @@ export function createInteractiveSurfaces(
           loaded.text,
           {
             ...loaded.stored,
-            commands: remember(loaded.stored.commands, { commandId, digest, revision, admission }),
+            commands: remember(loaded.stored.commands, {
+              commandId,
+              digest,
+              revision,
+              admission: withoutValue(admission),
+            }),
           },
           INTERACTIVE_SURFACE_EVENT_KINDS.actionAdmitted,
           {
@@ -920,6 +984,8 @@ export function createInteractiveSurfaces(
           data: null,
           actions: [],
           revision,
+          componentRevision: revision,
+          dataRevision: revision,
           state: 'closed',
           liveness: 'torn-down',
           closeResult: { reason, closedAt: at },
@@ -1103,5 +1169,21 @@ export function createInteractiveSurfaces(
     await store.deletePrefix(surfacePrefix(taskId));
   }
 
-  return { create, update, snapshot, act, close, abort, cleanup, settleTask, closed, removeTask };
+  async function flush(): Promise<void> {
+    await Promise.allSettled(settlements.values());
+  }
+
+  return {
+    create,
+    update,
+    snapshot,
+    act,
+    close,
+    abort,
+    cleanup,
+    settleTask,
+    closed,
+    removeTask,
+    flush,
+  };
 }
