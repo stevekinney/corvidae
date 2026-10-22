@@ -236,6 +236,88 @@ describe('a start that has not been held', () => {
   });
 });
 
+describe('the revision a run started at (COR-1584)', () => {
+  it('is kept on the run’s reference, with the hash it belongs to', async () => {
+    const { store } = setup();
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', revision: 2, definition: definition('one') },
+      'run-1',
+    );
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', revision: 4, definition: definition('one') },
+      'run-2',
+    );
+
+    expect((await store.reference('run-1'))?.revision).toBe(2);
+    expect((await store.reference('run-2'))?.revision).toBe(4);
+  });
+
+  it('is absent from a reference written without one, which still reads', async () => {
+    const { backing, store } = setup();
+    await backing.set(
+      `${AGENT_RUN_REFERENCE_KEY_PREFIX}run-old`,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'helper',
+        hash: 'aa',
+        startedAt: '2026-10-01T00:00:00.000Z',
+      }),
+    );
+
+    const reference = await store.reference('run-old');
+
+    expect(reference).toMatchObject({ id: 'helper', hash: 'aa' });
+    expect(reference?.revision).toBeUndefined();
+    expect((await store.unsettledReferences()).map((entry) => entry.runId)).toEqual(['run-old']);
+  });
+
+  it.each([0, -1, 1.5, '2', null])('is dropped from a reference that holds %p', async (stored) => {
+    const { backing, store } = setup();
+    await backing.set(
+      `${AGENT_RUN_REFERENCE_KEY_PREFIX}run-odd`,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'helper',
+        hash: 'aa',
+        startedAt: '2026-10-01T00:00:00.000Z',
+        revision: stored,
+      }),
+    );
+
+    const reference = await store.reference('run-odd');
+
+    expect(reference).toMatchObject({ id: 'helper', hash: 'aa' });
+    expect(reference?.revision).toBeUndefined();
+  });
+
+  it('is written by a hold of the same snapshot at another revision, keeping the start and the settlement', async () => {
+    const { clock, store } = setup();
+    await store.recordRun({ id: 'helper', hash: 'aa', definition: definition('one') }, 'run-1');
+    await store.settleRun('run-1');
+    const before = await store.reference('run-1');
+    clock.now += DAY;
+
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', revision: 3, definition: definition('one') },
+      'run-1',
+    );
+
+    expect(await store.reference('run-1')).toEqual({ ...before, revision: 3 });
+  });
+
+  it('is not erased by a hold that names none', async () => {
+    const { store } = setup();
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', revision: 3, definition: definition('one') },
+      'run-1',
+    );
+
+    await store.recordRun({ id: 'helper', hash: 'aa', definition: definition('one') }, 'run-1');
+
+    expect((await store.reference('run-1'))?.revision).toBe(3);
+  });
+});
+
 describe('reading references', () => {
   it('lists the references that have not settled, and settles one at a stated time', async () => {
     const { store } = setup();

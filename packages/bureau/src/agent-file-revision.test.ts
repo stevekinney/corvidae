@@ -338,6 +338,63 @@ describe('two catalogs on one store', () => {
   });
 });
 
+describe('a catalog that missed an intermediate edit', () => {
+  /**
+   * Two catalogs on one store and one directory. `behind` has scanned version one; `ahead` then
+   * sees version two and version one again, so the record holds revision 3 for the very content
+   * `behind` already has.
+   */
+  async function missedAnEdit() {
+    const directory = sharedDirectory();
+    const revisionStore = newStore();
+    const diagnostics: string[] = [];
+    const diagnose = (message: string) => diagnostics.push(message);
+    const behind = await start({ directory, revisionStore, diagnose });
+    const ahead = await start({ directory, revisionStore, diagnose });
+    await behind.put('helper.md', versionOne);
+    await behind.catalog.refresh();
+    await ahead.catalog.refresh();
+    await ahead.put('helper.md', versionTwo);
+    await ahead.catalog.refresh();
+    await ahead.put('helper.md', versionOne);
+    await ahead.catalog.refresh();
+    expect(revisionOf(ahead)).toBe(3);
+    expect(revisionOf(behind)).toBe(1);
+    return { behind, ahead, revisionStore, diagnostics };
+  }
+
+  it('reports the record’s revision on its next scan, though the content is the one it already has', async () => {
+    const { behind, revisionStore, diagnostics } = await missedAnEdit();
+
+    await behind.catalog.refresh();
+
+    expect(revisionOf(behind)).toBe(3);
+    expect(profileRevisionOf(behind)).toBe(3);
+    expect(await recordedRevisionOf(revisionStore)).toBe(3);
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('tells its listeners, because a revision-only change is a change', async () => {
+    const { behind } = await missedAnEdit();
+    const changes: string[][] = [];
+    behind.catalog.onChange((change) => changes.push([...change.changed]));
+
+    await behind.catalog.refresh();
+
+    expect(changes).toEqual([['helper']]);
+  });
+
+  it('does not tell its listeners when a scan finds the revision where it was', async () => {
+    const { ahead } = await missedAnEdit();
+    const changes: string[][] = [];
+    ahead.catalog.onChange((change) => changes.push([...change.changed]));
+
+    await ahead.catalog.refresh();
+
+    expect(changes).toEqual([]);
+  });
+});
+
 describe('a revision record that cannot be read or written', () => {
   /** A store that fails the way `mode` says while `failing.value` is true. */
   function failingStore(mode: 'read' | 'write' | 'malformed') {
@@ -417,6 +474,64 @@ describe('a revision record that cannot be read or written', () => {
       expect(diagnostics).toHaveLength(1);
     },
   );
+
+  it.each(['read', 'write', 'malformed'] as const)(
+    'reports a store that stays down once per file, not once per scan (%s)',
+    async (mode) => {
+      const { store, failing } = failingStore(mode);
+      failing.value = true;
+      const diagnostics: string[] = [];
+      const fixture = await start({
+        revisionStore: store,
+        diagnose: (message) => diagnostics.push(message),
+      });
+      await fixture.put('helper.md', versionOne);
+      await fixture.put('other.md', versionTwo);
+
+      await fixture.catalog.refresh();
+      await fixture.catalog.refresh();
+      await fixture.catalog.refresh();
+
+      expect(diagnostics).toHaveLength(2);
+      expect(diagnostics.some((message) => message.includes('"helper"'))).toBe(true);
+      expect(diagnostics.some((message) => message.includes('"other"'))).toBe(true);
+    },
+  );
+
+  it('reports again when the file changes while the store is still down', async () => {
+    const { store, failing } = failingStore('read');
+    failing.value = true;
+    const diagnostics: string[] = [];
+    const fixture = await start({
+      revisionStore: store,
+      diagnose: (message) => diagnostics.push(message),
+    });
+    await fixture.put('helper.md', versionOne);
+    await fixture.catalog.refresh();
+    await fixture.put('helper.md', versionTwo);
+    await fixture.catalog.refresh();
+    await fixture.catalog.refresh();
+
+    expect(diagnostics).toHaveLength(2);
+  });
+
+  it('reports a new failure after the store recovered in between', async () => {
+    const { store, failing } = failingStore('read');
+    failing.value = true;
+    const diagnostics: string[] = [];
+    const fixture = await start({
+      revisionStore: store,
+      diagnose: (message) => diagnostics.push(message),
+    });
+    await fixture.put('helper.md', versionOne);
+    await fixture.catalog.refresh();
+    failing.value = false;
+    await fixture.catalog.refresh();
+    failing.value = true;
+    await fixture.catalog.refresh();
+
+    expect(diagnostics).toHaveLength(2);
+  });
 
   it('never makes the agent invalid', async () => {
     const { store, failing } = failingStore('read');
