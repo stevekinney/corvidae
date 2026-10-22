@@ -92,6 +92,24 @@ describe('laneProblems', () => {
     expect(laneProblems('w', { test: 'bun ../../scripts/bun-test-junit.ts' }, false)).toEqual([]);
   });
 
+  test('judges the root workspace by test:self and test:self:slow, not by its turbo fan-out', () => {
+    const fanOut = { test: 'turbo run test:self test', 'test:slow': 'turbo run test:slow' };
+    expect(laneProblems('.', fanOut, true)).toHaveLength(2);
+    expect(
+      laneProblems(
+        '.',
+        {
+          ...fanOut,
+          'test:self': "bun scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+          'test:self:slow': 'bun test ./scripts/chef/*.slow.test.ts',
+        },
+        true,
+      ),
+    ).toEqual([]);
+    // A root with no slow files needs neither script.
+    expect(laneProblems('.', fanOut, false)).toEqual([]);
+  });
+
   test('accepts the playground runner, which splits lanes by file name itself', () => {
     expect(
       laneProblems(

@@ -192,7 +192,11 @@ export function laneProblems(
   hasSlowFiles: boolean,
 ): string[] {
   const problems: string[] = [];
-  const test = scripts['test'] ?? '';
+  // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`, and
+  // its slow lane is `test:self:slow` (`test:slow` is the fan-out that runs every lane).
+  const isRoot = workspace === '.';
+  const test = (isRoot && hasSlowFiles ? scripts['test:self'] : scripts['test']) ?? '';
+  const slowScript = isRoot ? 'test:self:slow' : 'test:slow';
   // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`.
   if (workspace !== '.' && test !== '' && !WRAPPER_NAMES.some((name) => test.includes(name))) {
     problems.push(
@@ -209,8 +213,10 @@ export function laneProblems(
       `${workspace}: has ${SLOW_LANE_SUFFIX} files but its test script does not ignore them with --path-ignore-patterns`,
     );
   }
-  if (scripts['test:slow'] === undefined) {
-    problems.push(`${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no test:slow script`);
+  if (scripts[slowScript] === undefined) {
+    problems.push(
+      `${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no ${slowScript} script`,
+    );
   }
   const coverage = scripts['test:coverage'] ?? '';
   const runsBunTest =
