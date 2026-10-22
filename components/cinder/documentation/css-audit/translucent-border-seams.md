@@ -21,9 +21,9 @@ Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heav
 
 | Tier | Alpha | Job | Gate |
 | --- | --- | --- | --- |
-| `--cinder-border-muted` | 10% | Interior dividers: row and cell rules, tab-list rules, the Divider component | Perceptible (1.1:1) and below `border.control` |
-| `--cinder-border` | 20% | Container outer edges: Card, Modal, Drawer, Popover, Feed log, DataTable, PayloadInspector, StatisticGroup, Toast, Sidebar, PageHeader | Perceptible (1.4:1) and below `border.control` |
-| `--cinder-border-strong` | 32% | Emphasized structure, the secondary Button edge, and button-like chips at rest | Perceptible (1.4:1) and below `border.control` |
+| `--cinder-border-muted` | 5% | Interior dividers: row and cell rules, tab-list rules, the Divider component | Perceptible (1.1:1) and below `border.control` |
+| `--cinder-border` | 9% | Container outer edges: Card, Modal, Drawer, Popover, Feed log, DataTable, PayloadInspector, StatisticGroup, Toast, Sidebar, PageHeader | Perceptible (1.4:1) and below `border.control` |
+| `--cinder-border-strong` | 15% | Emphasized structure: containers and dividers that need more weight than `border` | Perceptible (1.4:1) and below `border.control` |
 | `--cinder-border-control` | 48% | Control boundaries: text fields (through `--cinder-control-border`), the Checkbox and Radio box, and any indicator that is the only outline of something interactive | WCAG 1.4.11, 3:1 on all four surfaces in both themes |
 | `--cinder-border-control-hover` | 58% | The hovered control boundary, and anything that used `border.strong` as a control hover | WCAG 1.4.11 |
 
@@ -32,7 +32,7 @@ Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heav
 ### Choosing a tier
 
 - Is it the only visible outline of something interactive (a text field, a check or radio box, a slider tick, a resize handle, a drop placeholder, a legend toggle, a dropzone)? Use `--cinder-border-control`, or the control frame (`--cinder-control-border`) for a text-entry control, and hover to `--cinder-border-control-hover`.
-- Is it a button-like chip whose label already says what it is (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, the Feed resume pill, dashed "add" buttons)? Rest on `--cinder-border-strong` and hover to `--cinder-border-control`.
+- Is it a bordered button, or a button-like chip (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, toggle chips, dashed "add" buttons)? It is a control, so it rests on `--cinder-border-control` (the secondary Button through `--cinder-button-border`). The structural tiers are faint enough after COR-1552 that `--cinder-border-strong` no longer clears 3:1 on a button edge.
 - Is it the outer edge of a container? Use `--cinder-border`.
 - Is it a rule between siblings inside a container, a table rule, or a tab-list rule? Use `--cinder-border-muted`.
 - Is it tinted by a status? Use `--cinder-status-*-border`, never `--cinder-status-*-solid`; an active or racing accent edge uses `--cinder-accent-border`. The one exception is the invalid control edge, which reaches the danger fill through `--cinder-control-border-invalid` because on an invalid field it is the control boundary and has to keep clearing 3:1.

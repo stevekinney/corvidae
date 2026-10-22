@@ -41,10 +41,13 @@ function expectColor(arm: 'light' | 'dark', [property, components, alpha]: Expec
   expect(actual?.alpha, `${property} (${arm}) alpha`).toEqual(alpha);
 }
 
+// The three white tiers have chroma 0, so their hue paints nothing. It is 255 rather than the
+// issue's 0 because `hue-travel.test.ts` fails any OKLCH mix whose operands are more than 40° apart,
+// and the hover and pressed washes mix these tiers toward the accent at hue 272.
 const LIGHT_VALUES: readonly ExpectedColor[] = [
-  ['--cinder-surface-canvas', [0.995, 0, 0]],
-  ['--cinder-surface', [0.998, 0, 0]],
-  ['--cinder-surface-raised', [1, 0, 0]],
+  ['--cinder-surface-canvas', [0.995, 0, 255]],
+  ['--cinder-surface', [0.998, 0, 255]],
+  ['--cinder-surface-raised', [1, 0, 255]],
   ['--cinder-surface-inset', [0.96, 0.008, 270]],
   ['--cinder-accent-solid', [0.52, 0.24, 272]],
   ['--cinder-status-success-solid', [0.6, 0.174, 148]],
