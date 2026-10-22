@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isSignalIdWithinByteLimit } from '../../core/signal-id.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';
+import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import { isOperationFault } from './operation-helpers.ts';
 import {
   createSingleWorkflowControlOperation,
@@ -41,6 +42,7 @@ export const signalWorkflowOperation = createSingleWorkflowControlOperation({
   outputSchema: signalWorkflowOutput,
   producibleFaults: ['NotFound'],
   requiredEngineMethods: ['signal'],
+  mapErrorToFault: ({ error }) => standardSchemaValidationFault(error),
   invoke: async ({ input, engine }): Promise<SignalWorkflowOutput> => {
     await engine.signal(
       input.workflowId,

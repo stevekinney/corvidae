@@ -17,6 +17,7 @@ import { type WorkflowHandle } from '../handles.ts';
 import type { Engine } from '../index.ts';
 import type { EngineInternals } from '../internals.ts';
 import { createDelayedStartTimerEntry } from '../operations-time.ts';
+import { validateInboundPayload } from '../payload-validation.ts';
 import { resolveAndReservePinnedExecutableRegistration } from '../pinned-schedule-revision.ts';
 import { selectPersistedWorkflowStartHeaders } from '../state-utilities.ts';
 import { buildWorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
@@ -316,6 +317,7 @@ export async function startWorkflow(
       resolvedRevision,
     } = await resolveAndReserveStartRegistration(internals, type, revisionOverride, callbacks);
     inFlightRevision = reservedRevision;
+    await validateInboundPayload(internals, 'start', registration.inputSchema, input);
     const workflowConcurrency = registration.concurrency;
     const revision =
       resolveCachedStartRevision(internals, type, resolvedRevision) ??
