@@ -122,11 +122,23 @@ export type InteractiveSurfaceActionIntent = 'answer' | 'submit' | 'approve' | '
 
 /**
  * How an admitted action continues its task: through the review it decides
- * (`resolveReview`), for `approve` and `deny`, or through the signal it sends
- * the task's session (`signalSession`), for `answer` and `submit`.
+ * (`resolveReview`), or through the signal it sends the task's session
+ * (`signalSession`). `approve` and `deny` decide a review. `answer` and
+ * `submit` send a signal, or answer a held `human-wait` review with the
+ * action's value as its payload, which is how a run with no session (a
+ * `bureau.run()` catalog run) is answered.
  */
 export type InteractiveSurfaceContinuation =
-  | { readonly type: 'review'; readonly reviewId: string }
+  | {
+      readonly type: 'review';
+      readonly reviewId: string;
+      /**
+       * The approval round the surface shows. A re-gated tool approval keeps
+       * its id and advances its round, so the adapter refuses an admission
+       * whose round is no longer the review's current one.
+       */
+      readonly round?: number | undefined;
+    }
   | { readonly type: 'signal'; readonly sessionId: string; readonly signalName: string };
 
 /** One action a surface offers. */

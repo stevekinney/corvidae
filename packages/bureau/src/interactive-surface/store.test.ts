@@ -1042,6 +1042,67 @@ describe('closing, cancellation, and cleanup', () => {
     expect(flushed).toBe(true);
   });
 
+  it('carries an approval round through admission, and lets a form answer a held human wait', async () => {
+    const { surfaces } = harness();
+    const approval = await surfaces.create(
+      createCommand({
+        commandId: 'approval',
+        surfaceId: 'approval',
+        actions: [
+          {
+            name: 'approve',
+            intent: 'approve',
+            continuation: { type: 'review', reviewId: 'approval:agent-run-1:call-1', round: 1 },
+          },
+        ],
+      }),
+    );
+    expect(approval).toMatchObject({ outcome: 'accepted' });
+    const admitted = await surfaces.act(
+      actionRequest({
+        commandId: 'act-approve',
+        surfaceId: 'approval',
+        action: 'approve',
+        value: undefined,
+      }),
+    );
+    expect(admitted).toMatchObject({
+      outcome: 'accepted',
+      continuation: { type: 'review', reviewId: 'approval:agent-run-1:call-1', round: 1 },
+    });
+
+    const answer = await surfaces.create(
+      createCommand({
+        commandId: 'answer',
+        surfaceId: 'answer',
+        actions: [
+          {
+            name: 'submit',
+            intent: 'submit',
+            continuation: { type: 'review', reviewId: 'human-wait:agent-run-1:reason:0' },
+          },
+        ],
+      }),
+    );
+    expect(answer).toMatchObject({ outcome: 'accepted' });
+    // A form may not decide a tool approval with its value.
+    expect(
+      await surfaces.create(
+        createCommand({
+          commandId: 'misused',
+          surfaceId: 'misused',
+          actions: [
+            {
+              name: 'submit',
+              intent: 'submit',
+              continuation: { type: 'review', reviewId: 'approval:agent-run-1:call-1' },
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ reason: 'invalid' });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

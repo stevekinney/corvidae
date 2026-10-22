@@ -474,13 +474,31 @@ function readAction(
   let readContinuation: InteractiveSurfaceActionDefinition['continuation'];
   if (decides) {
     if (continuation['type'] !== 'review') fail(`${where}: an ${intent} action continues a review`);
-    assertKnownFields(continuation, ['type', 'reviewId'], `${where}.continuation`);
+    assertKnownFields(continuation, ['type', 'reviewId', 'round'], `${where}.continuation`);
+    const round = continuation['round'];
+    if (
+      round !== undefined &&
+      (typeof round !== 'number' || !Number.isSafeInteger(round) || round < 0)
+    ) {
+      fail(`${where}.continuation.round must be a non-negative integer`);
+    }
     readContinuation = {
       type: 'review',
       reviewId: readIdentifier(continuation['reviewId'], `${where}.continuation.reviewId`),
+      ...(round === undefined ? {} : { round }),
     };
+  } else if (continuation['type'] === 'review') {
+    // An answer delivers its value as a held human wait's payload; it never decides an approval.
+    assertKnownFields(continuation, ['type', 'reviewId'], `${where}.continuation`);
+    const reviewId = readIdentifier(continuation['reviewId'], `${where}.continuation.reviewId`);
+    if (!reviewId.startsWith('human-wait:')) {
+      fail(`${where}: an ${intent} action continues a signal or a human-wait review`);
+    }
+    readContinuation = { type: 'review', reviewId };
   } else {
-    if (continuation['type'] !== 'signal') fail(`${where}: an ${intent} action continues a signal`);
+    if (continuation['type'] !== 'signal') {
+      fail(`${where}: an ${intent} action continues a signal or a human-wait review`);
+    }
     assertKnownFields(continuation, ['type', 'sessionId', 'signalName'], `${where}.continuation`);
     readContinuation = {
       type: 'signal',

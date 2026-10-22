@@ -49,10 +49,13 @@ An update may replace the representation, but not change its kind.
 
 An action continues the surface's own task, and nothing else. Its `intent` is one of four, and its continuation must name the surface's own task: a review whose identifier names the task's run (`approval:<taskId>:…` or `human-wait:<taskId>:…`), or a signal to the task's own session. A create or update naming any other is `invalid`, because a surface's author may be the model, and the receipt's continuation is what the caller dispatches. A run id and a wait's signal name can both hold colons, so a review id's text cannot say which run it belongs to. Bureau decides from the reviews it holds: the review must be one the task holds open (one this process lists, or a wait derived from the run's durable state) when the surface is created or its actions change.
 
-| Intent             | Continuation                                | Continued by           |
-| ------------------ | ------------------------------------------- | ---------------------- |
-| `approve`, `deny`  | `{ type: 'review', reviewId }`              | `bureau.resolveReview` |
+| Intent | Continuation | Continued by |
+| --- | --- | --- |
+| `approve`, `deny` | `{ type: 'review', reviewId, round? }` | `bureau.resolveReview` |
 | `answer`, `submit` | `{ type: 'signal', sessionId, signalName }` | `bureau.signalSession` |
+| `answer`, `submit` | `{ type: 'review', reviewId }` for a held `human-wait:` review | `bureau.resolveReview` (`approve`, with the value as `payload`) |
+
+A tool approval that is re-gated keeps its id and advances its round, so a decision may carry the `round` its surface shows. The adapter that continues an admitted decision refuses it when that round is no longer the review's current one. A run with no session, such as a `bureau.run()` catalog run, is answered through its held `human-wait` review rather than a session signal.
 
 Each action in the catalog has a unique `name`, its `intent`, its `continuation`, an optional `label`, and an optional `valueSchema`. An action's value must satisfy its `valueSchema`; on an `input-form` surface, an `answer` or `submit` action without one takes the form's own schema; any other action without one takes no value. Management-plane commands are never reachable from a surface: there is no intent for them.
 
