@@ -95,6 +95,8 @@ export type ChatMessagePartsRendererProps = {
   /** Called when the user resolves an action-required approval. */
   onApprovalResolve?:
     ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
+  /** Called with the schema-valid value when the user submits a requested-input form. */
+  onInputSubmit?: ((toolCallId: string, value: unknown) => void | Promise<void>) | undefined;
   /** Whether the reasoning block for this message is expanded. */
   reasoningExpanded?: boolean | undefined;
   /** Called when the reasoning disclosure toggle is activated. */
