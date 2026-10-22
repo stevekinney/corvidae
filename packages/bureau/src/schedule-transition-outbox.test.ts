@@ -291,4 +291,23 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     await close(bureau);
     expect(await pendingKeys(fixture)).toEqual([]);
   });
+
+  it('records overlapping drains of one schedule once each, in commit order', async () => {
+    const fixture = newFixture();
+    const bureau = await open(fixture);
+    const scheduleId = await createSchedule(bureau);
+    const dispatched: string[] = [];
+    for (const type of ['schedule.paused', 'schedule.resumed'] as const) {
+      bureau.addEventListener(type, () => dispatched.push(type));
+    }
+    await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
+
+    await Promise.all([bureau.runDurableMaintenance(), bureau.resumeSchedule(scheduleId)]);
+
+    expect(await transitionKinds(bureau, scheduleId)).toEqual([
+      'schedule.paused',
+      'schedule.resumed',
+    ]);
+    expect(dispatched).toEqual(['schedule.paused', 'schedule.resumed']);
+  });
 });

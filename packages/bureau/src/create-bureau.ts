@@ -16285,23 +16285,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     key: string,
     transition: PendingScheduleTransition,
   ): Promise<void> {
-    // The live drain and a maintenance pass can reach the same key; the writes would deduplicate,
-    // but the live event would be dispatched twice.
-    if (scheduleTransitionsRecording.has(key)) return;
-    scheduleTransitionsRecording.add(key);
-    try {
-      // A scan's snapshot can be stale: another drain may have recorded and removed the key since.
-      if ((await runtime.durable!.engine.storage.get(key)) === null) return;
-      await writeScheduleTransition(key, transition);
-    } finally {
-      scheduleTransitionsRecording.delete(key);
-    }
-  }
-
-  async function writeScheduleTransition(
-    key: string,
-    transition: PendingScheduleTransition,
-  ): Promise<void> {
+    // A scan's snapshot can be stale: another process's drain may have recorded and removed the
+    // key since.
+    if ((await runtime.durable!.engine.storage.get(key)) === null) return;
     const { kind, scheduleId, committedAtMs } = transition;
     await eventHistoryInstance?.record(
       { kind: 'schedule', id: scheduleId },
@@ -16337,8 +16323,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
-  /** COR-194 — the pending schedule transitions this process is recording now. */
-  const scheduleTransitionsRecording = new Set<string>();
+  /**
+   * COR-194 — every drain this process runs, chained, so no two overlap: two drains of the same
+   * schedule at once could record its transitions out of order, or one twice.
+   */
+  let scheduleTransitionDrains: Promise<void> = Promise.resolve();
 
   /**
    * COR-194 — records every schedule transition still pending under `prefix` (every schedule's,
@@ -16348,9 +16337,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * later pass, so its history is never written out of order. A record this build cannot read is
    * reported and kept, since a build that can may read it later.
    */
-  async function recordPendingScheduleTransitions(
+  function recordPendingScheduleTransitions(
     prefix: string = SCHEDULE_TRANSITION_KEY_PREFIX,
   ): Promise<void> {
+    const drain = scheduleTransitionDrains.then(() => drainScheduleTransitions(prefix));
+    // The chain carries on past a failed drain; the caller still sees the failure.
+    scheduleTransitionDrains = drain.catch(() => undefined);
+    return drain;
+  }
+
+  async function drainScheduleTransitions(prefix: string): Promise<void> {
     const durable = runtime.durable;
     if (!durable) return;
     const pending: Array<[string, Uint8Array]> = [];
