@@ -54,18 +54,27 @@ describe('ConnectionIndicator', () => {
     expect(label?.textContent?.trim()).toBe(expectedLabel);
   });
 
-  test('each status renders a distinct icon', () => {
+  test('every non-live status renders a distinct icon, and live renders the dot and no icon', () => {
     const seenIconMarkup = new Set<string>();
 
-    for (const status of ALL_STATUSES) {
+    for (const status of ALL_STATUSES.filter((candidate) => candidate !== 'live')) {
       const { container } = render(ConnectionIndicator, { status });
       const icon = container.querySelector('.cinder-connection-indicator__icon svg');
-      expect(icon).not.toBeNull();
+      expect(icon, `${status} icon`).not.toBeNull();
+      expect(container.querySelector('.cinder-connection-indicator__dot')).toBeNull();
       const markup = icon?.outerHTML ?? '';
       expect(seenIconMarkup.has(markup)).toBe(false);
       seenIconMarkup.add(markup);
       cleanup();
     }
+
+    const { container } = render(ConnectionIndicator, { status: 'live' });
+    expect(container.querySelector('.cinder-connection-indicator__dot')).not.toBeNull();
+    expect(container.querySelector('.cinder-connection-indicator__icon')).toBeNull();
+    // The label still names the state, so dropping the glyph does not leave color alone to carry it.
+    expect(
+      container.querySelector('.cinder-connection-indicator__label')?.textContent?.trim(),
+    ).toBe('Live');
   });
 
   test('root has role="status" with a computed accessible name', () => {
@@ -168,26 +177,24 @@ describe('ConnectionIndicator', () => {
     expect(container.querySelector('.cinder-connection-indicator__attempt')).toBeNull();
   });
 
-  test('polling differs from live in icon, label, and data-cinder-status', () => {
+  test('polling differs from live in glyph, label, and data-cinder-status', () => {
     const { container: liveContainer } = render(ConnectionIndicator, { status: 'live' });
-    const liveIcon = liveContainer.querySelector(
-      '.cinder-connection-indicator__icon svg',
-    )?.outerHTML;
+    const liveIcon = liveContainer.querySelector('.cinder-connection-indicator__icon');
     const liveLabel = liveContainer
       .querySelector('.cinder-connection-indicator__label')
       ?.textContent?.trim();
     cleanup();
 
     const { container: pollingContainer } = render(ConnectionIndicator, { status: 'polling' });
-    const pollingIcon = pollingContainer.querySelector(
-      '.cinder-connection-indicator__icon svg',
-    )?.outerHTML;
+    const pollingIcon = pollingContainer.querySelector('.cinder-connection-indicator__icon svg');
     const pollingLabel = pollingContainer
       .querySelector('.cinder-connection-indicator__label')
       ?.textContent?.trim();
     const pollingRoot = pollingContainer.querySelector('.cinder-connection-indicator');
 
-    expect(pollingIcon).not.toBe(liveIcon);
+    // Live is the pulsing dot alone; polling keeps its icon and has no dot.
+    expect(liveIcon).toBeNull();
+    expect(pollingIcon).not.toBeNull();
     expect(pollingLabel).not.toBe(liveLabel);
     expect(pollingRoot?.getAttribute('data-cinder-status')).toBe('polling');
     expect(pollingContainer.querySelector('.cinder-connection-indicator__dot')).toBeNull();

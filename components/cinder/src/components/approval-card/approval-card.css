@@ -99,15 +99,15 @@
   }
 
   .cinder-approval-card__risk-icon[data-cinder-risk='low'] {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
 
   .cinder-approval-card__risk-icon[data-cinder-risk='medium'] {
-    color: var(--cinder-status-warning-solid);
+    color: var(--cinder-status-warning-text);
   }
 
   .cinder-approval-card__risk-icon[data-cinder-risk='high'] {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 
   .cinder-approval-card__risk-icon:focus-visible {

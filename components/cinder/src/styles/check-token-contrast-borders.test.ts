@@ -52,9 +52,11 @@ describe('border-on-surface contrast', () => {
   //
   // Faint borders are decorative hairlines and only need to stay distinguishable.
   const FAINT_BORDER = 1.1;
-  // Every structural tier must stay perceptible; muted, the interior hairline,
-  // sits at the faint floor, the others at the decorative one.
-  const STRUCTURAL_FLOORS = { 'border.muted': 1.1, border: 1.4, 'border.strong': 1.4 } as const;
+  // Every structural tier must stay perceptible, each at its own floor. COR-1552 moved the tiers to
+  // 5%, 9% and 15% of the ink, and these sit just under the lowest ratio each measures on any
+  // surface in either arm (dark: 1.067, 1.143, 1.308), so a regression below the weight the owner
+  // chose still fails.
+  const STRUCTURAL_FLOORS = { 'border.muted': 1.06, border: 1.14, 'border.strong': 1.3 } as const;
   const surfaces = { inset: surfaceInset, bg, surface, raised: surfaceRaised } as const;
   const structuralTiers = {
     'border.muted': borderMuted,

@@ -97,17 +97,17 @@
   }
 
   .stat-added {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
     font-weight: var(--cinder-font-medium);
   }
 
   .stat-removed {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
     font-weight: var(--cinder-font-medium);
   }
 
   .stat-modified {
-    color: var(--cinder-status-warning-solid);
+    color: var(--cinder-status-warning-text);
     font-weight: var(--cinder-font-medium);
   }
 

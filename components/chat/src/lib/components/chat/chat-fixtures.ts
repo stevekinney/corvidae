@@ -32,4 +32,17 @@ export default [
       { action: 'click', target: { testId: 'open-lightbox' } },
     ],
   },
+  {
+    // An empty composer, whose send button is disabled, above one holding a draft.
+    name: 'composer-send',
+    host: './chat-composer.fixture.svelte',
+    props: { drafts: true },
+    category: 'visual-contract',
+  },
+  {
+    name: 'composer-stop',
+    host: './chat-composer.fixture.svelte',
+    props: { streaming: true },
+    category: 'visual-contract',
+  },
 ];
