@@ -9,6 +9,7 @@ import {
   type GenerateContext,
   type GenerateFunction,
   stopWhen,
+  ToolSettledBubbleEvent,
   type Toolbox,
 } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
@@ -77,7 +78,7 @@ function activateThenPing(
 
 /** What a conversation recorded for one tool call. */
 function resultOf(
-  messages: ReturnType<typeof getMessages>,
+  messages: ReadonlyArray<ReturnType<typeof getMessages>[number]>,
   callId: string,
 ): { outcome: string; code?: string; content: unknown } | undefined {
   const message = messages.find((candidate) => candidate.toolResult?.callId === callId);
@@ -111,7 +112,8 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
     expect(recorded).toEqual({ outcome: 'error', code: 'SKILL_TOOL_DENIED', content: REFUSAL });
     expect(executions).toEqual([]);
     const settled = await pollUntil(async () => {
-      const records = await bureau.auditTrail.query({ runId: run.id, type: 'tool.settled' });
+      const records =
+        (await bureau.auditTrail?.query({ runId: run.id, type: 'tool.settled' })) ?? [];
       return records.find((record) => JSON.stringify(record.detail).includes('ping-1'));
     }, 'the refused call to be audited as settled');
     expect(JSON.stringify(settled.detail)).toContain('error');
@@ -131,7 +133,7 @@ describe('a createAgent agent narrowed by createAgentSkills (COR-1628)', () => {
     const run = agent.run('activate, then ping');
     const settled: Array<[string, string]> = [];
     for await (const event of run) {
-      if (event.type === 'tool.settled') settled.push([event.toolCallId, event.status]);
+      if (event instanceof ToolSettledBubbleEvent) settled.push([event.toolCallId, event.status]);
     }
 
     const result = await run.result();

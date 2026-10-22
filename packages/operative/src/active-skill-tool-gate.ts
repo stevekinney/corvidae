@@ -22,7 +22,7 @@ type DurableOperationKey =
 /** The refusal for `toolName`, shaped like Armorer's own policy denial. */
 function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult {
   const callId =
-    call.id !== undefined && call.id.length > 0 ? call.id : createToolCall(toolName).id;
+    call.id !== undefined && call.id.length > 0 ? call.id : createToolCall(toolName, {}).id;
   const message = `Tool "${toolName}" is not available: the active skills' allowed-tools exclude it.`;
   return {
     callId,

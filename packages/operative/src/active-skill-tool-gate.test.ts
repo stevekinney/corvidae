@@ -3,7 +3,7 @@
  * tool the active skills' `allowed-tools` exclude is refused with `SKILL_TOOL_DENIED` before the
  * tool runs, and the run continues.
  */
-import type { ToolExecutionResult } from 'armorer';
+import type { AnyToolbox, ToolExecutionResult } from 'armorer';
 import { createTool, createToolbox } from 'armorer';
 import type { ToolCall, ToolPolicy } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
@@ -22,8 +22,8 @@ const REFUSAL = (name: string) =>
 interface Harness {
   readonly executed: string[];
   readonly policy: { current: ToolPolicy | undefined };
-  readonly toolbox: ReturnType<typeof createToolbox>;
-  readonly gated: ReturnType<typeof withActiveSkillToolPolicy>;
+  readonly toolbox: AnyToolbox;
+  readonly gated: AnyToolbox;
 }
 
 /** `search` and `write` record their runs; `activate_skill` narrows the policy to `search`. */
@@ -232,7 +232,7 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
 
     expect(first.map((result) => result.outcome)).toEqual(['success', 'success']);
     expect(executed).toEqual(['activate_skill', 'write']);
-    expect(policy.current).toEqual({ allowList: ['search'] });
+    expect({ ...policy }.current).toEqual({ allowList: ['search'] });
 
     const next = await gated.execute({ id: 'call-write-2', name: 'write', arguments: {} });
 
