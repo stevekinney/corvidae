@@ -1,24 +1,10 @@
 {
   "schemaVersion": 2,
   "componentScope": "all",
-  "renderedSourceSha": "b27af48e34201a5677f050cefb2aad54106ce6fc",
+  "renderedSourceSha": "39d820c8ac1897ab2111d32c93de1fac9fd5c2a9",
   "playwrightVersion": "1.63.0",
   "osCodename": "jammy",
   "architecture": "arm64",
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
-  "suiteExitCode": 0,
-  "componentRenders": {
-    "audio-player": {
-      "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
-      "suiteExitCode": 1
-    },
-    "text": {
-      "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
-      "suiteExitCode": 1
-    },
-    "video-player": {
-      "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
-      "suiteExitCode": 1
-    }
-  }
+  "suiteExitCode": 0
 }
