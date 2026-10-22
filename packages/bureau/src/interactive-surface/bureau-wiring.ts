@@ -17,7 +17,7 @@ export interface BureauInteractiveSurfacesOptions {
   readonly storage: Storage | undefined;
   /** The Bureau's durable history, or `undefined` when it keeps none. */
   readonly history: DurableEventHistory | undefined;
-  readonly tasks: Pick<TaskRegistry, 'record' | 'get' | 'onSettled'>;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'onSettled'>;
   /** Epoch milliseconds. */
   readonly now: () => number;
   readonly diagnose: DiagnosticSink;
@@ -37,14 +37,15 @@ export function createBureauInteractiveSurfaces(
     storage,
     history,
     task: async (taskId) => {
-      const [record, view] = await Promise.all([tasks.record(taskId), tasks.get(taskId)]);
-      if (record === undefined) return undefined;
-      // The view, not the raw settlement: a task whose run ended with a review
-      // still open reads as `input-required`, and its surfaces stay live.
-      const status = view?.status;
+      // One snapshot: the view carries the owner, the session, and liveness. A
+      // task whose run ended with a review still open reads as `input-required`,
+      // not settled, so its surfaces stay live until the review closes.
+      const view = await tasks.get(taskId);
+      if (view === undefined) return undefined;
+      const status = view.status;
       const settled =
         status === 'completed' || status === 'failed' || status === 'canceled' ? status : undefined;
-      return { owner: record.owner, settled, contextId: record.contextId };
+      return { owner: view.owner, settled, contextId: view.contextId };
     },
     now: options.now,
     watchTask: (taskId, listener) => {

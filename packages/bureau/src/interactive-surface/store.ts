@@ -1152,6 +1152,9 @@ export function createInteractiveSurfaces(
     const task = await options.task(taskId);
     if (task === undefined) return { status: 'not-required' };
     if (task.settled !== undefined) return settleTask(taskId, task.settled);
+    // A surface created before a restart has no watcher yet; nothing would
+    // settle this wait without one.
+    watch(taskId);
     const signal = waitOptions?.signal;
     return new Promise<CleanupAcknowledgement>((resolve) => {
       if (signal?.aborted === true) {

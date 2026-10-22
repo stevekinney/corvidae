@@ -3,27 +3,16 @@ import { MemoryStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from '../durable-event-history';
-import type { TaskRecord, TaskRegistry, TaskView } from '../task-registry';
+import type { TaskRegistry, TaskView } from '../task-registry';
 import { createBureauInteractiveSurfaces } from './bureau-wiring';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './types';
 
 const TASK = 'agent-run-1';
 
-function registry(status: TaskView['status']): Pick<TaskRegistry, 'record' | 'get' | 'onSettled'> {
-  const record = {
-    taskId: TASK,
-    contextId: 'session-1',
-    owner: 'api-key:alice',
-    settled: {
-      status: 'completed',
-      at: '2026-10-22T00:00:00.000Z',
-      finishReason: null,
-      message: null,
-    },
-  } as const satisfies Partial<TaskRecord>;
+function registry(status: TaskView['status']): Pick<TaskRegistry, 'get' | 'onSettled'> {
+  const view = { id: TASK, contextId: 'session-1', owner: 'api-key:alice', status };
   return {
-    record: async () => record as unknown as TaskRecord,
-    get: async () => ({ status }) as unknown as TaskView,
+    get: async () => view as unknown as TaskView,
     onSettled: () => () => undefined,
   };
 }

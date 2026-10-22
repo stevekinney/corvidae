@@ -151,17 +151,6 @@ export function readAudience(value: unknown): readonly string[] {
 // ── Schemas ─────────────────────────────────────────────────────────
 
 /**
- * Whether a schema anywhere declares `$async`, which makes Ajv validate
- * asynchronously; admission validates synchronously, so such a schema is refused.
- */
-function declaresAsync(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(declaresAsync);
-  if (!isPlainObject(value)) return false;
-  if (Object.hasOwn(value, '$async')) return true;
-  return Object.values(value).some(declaresAsync);
-}
-
-/**
  * Compiles and caches JSON Schema 2020-12 validators. Unknown keywords are
  * allowed (authors annotate their schemas), and `format` is not asserted,
  * which JSON Schema 2020-12 also makes the default.
@@ -176,7 +165,6 @@ export class InteractiveSurfaceSchemaCompiler {
     const cached = this.#cache.get(key);
     if (cached !== undefined) return cached;
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
-    if (declaresAsync(schema)) fail(`${where} must not declare $async`);
     let validate: ValidateFunction;
     try {
       validate = this.#ajv.compile(schema);
@@ -185,6 +173,9 @@ export class InteractiveSurfaceSchemaCompiler {
         `${where} is not a valid JSON Schema: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    // An asynchronous schema validates to a Promise; admission validates synchronously.
+    if (Reflect.get(validate, '$async') === true)
+      fail(`${where} must not be an asynchronous ($async) schema`);
     this.#cache.set(key, validate);
     return validate;
   }
@@ -254,12 +245,11 @@ const ORIGIN_PROTOCOLS: ReadonlySet<string> = new Set(['https:', 'http:', 'wss:'
 function readOrigins(value: unknown, where: string): readonly string[] {
   const origins = readStringList(value, where);
   for (const origin of origins) {
-    const parsed = URL.canParse(origin) ? new URL(origin) : undefined;
-    if (
-      parsed === undefined ||
-      !ORIGIN_PROTOCOLS.has(parsed.protocol) ||
-      parsed.origin !== origin
-    ) {
+    // The shape first (no path, query, or fragment), then the parse (a real
+    // host and port, no credentials); default ports and letter case are allowed.
+    const shaped = /^[a-z][a-z0-9+.-]*:\/\/[^/?#@\s]+$/i.test(origin);
+    const parsed = shaped && URL.canParse(origin) ? new URL(origin) : undefined;
+    if (parsed === undefined || !ORIGIN_PROTOCOLS.has(parsed.protocol)) {
       fail(`${where} must hold only origins, such as "https://example.com"`);
     }
   }

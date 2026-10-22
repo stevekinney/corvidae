@@ -821,4 +821,62 @@ describe('review fixes', () => {
 
     expect(await snapshotOf(surfaces)).toMatchObject({ closeResult: { reason: 'task-ended' } });
   });
+
+  it('accepts origins with a default port or capital letters, and a property named $async', async () => {
+    const { surfaces } = harness();
+    const app = await surfaces.create(
+      createCommand({
+        surfaceId: 'app',
+        representation: {
+          ...mcpApp,
+          csp: {
+            connectDomains: ['https://example.com:443', 'HTTPS://Example.com'],
+            resourceDomains: [],
+          },
+        },
+        actions: [],
+      }),
+    );
+    const form = await surfaces.create(
+      createCommand({
+        commandId: 'create-2',
+        surfaceId: 'form',
+        representation: {
+          kind: 'input-form',
+          schema: { type: 'object', properties: { $async: { type: 'boolean' } } },
+        },
+      }),
+    );
+
+    expect(app).toMatchObject({ outcome: 'accepted' });
+    expect(form).toMatchObject({ outcome: 'accepted' });
+  });
+
+  it('resolves a cleanup wait for a surface created before a restart', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const task: { current: InteractiveSurfaceTask } = {
+      current: { owner: OWNER, contextId: 'session-1' },
+    };
+    const listeners: ((status: 'completed' | 'failed' | 'canceled') => void)[] = [];
+    const open = () =>
+      createInteractiveSurfaces({
+        storage,
+        history,
+        task: async () => task.current,
+        now: () => runtime.clock.now(),
+        watchTask: (_taskId, listener) => listeners.push(listener),
+      });
+    await open().create(createCommand());
+    listeners.length = 0;
+
+    const restarted = open();
+    const evidence = restarted.closed(TASK);
+    await Promise.resolve();
+    task.current = { ...task.current, settled: 'canceled' };
+    for (const listener of listeners) listener('canceled');
+
+    expect(await evidence).toEqual({ status: 'completed' });
+  });
 });
