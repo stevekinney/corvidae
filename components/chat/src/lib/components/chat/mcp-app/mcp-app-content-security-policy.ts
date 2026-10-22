@@ -9,8 +9,12 @@ const DECLARED_SOURCE =
   /^(?:https?|wss?):\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::(?:\d{1,5}|\*))?(?:\/[^\s;,'"]*)?$/;
 
 /** Keeps the declared origins that are well-formed CSP sources and drops the rest. */
-export function sanitizeDeclaredSources(sources: readonly string[] | undefined): string[] {
-  return (sources ?? []).filter((source) => DECLARED_SOURCE.test(source));
+export function sanitizeDeclaredSources(sources: unknown): string[] {
+  // Server-supplied metadata: anything but an array of strings declares nothing.
+  if (!Array.isArray(sources)) return [];
+  return sources.filter(
+    (source): source is string => typeof source === 'string' && DECLARED_SOURCE.test(source),
+  );
 }
 
 function directive(name: string, values: readonly string[]): string {

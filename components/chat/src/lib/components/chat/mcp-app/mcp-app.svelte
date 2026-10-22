@@ -31,9 +31,15 @@
   let resource = $state<McpAppResource>();
   let failed = $state(false);
   let frame = $state<HTMLIFrameElement>();
-  let height = $state<number>();
+  // The height the app last reported; the frame never exceeds `maxHeight`, even when it shrinks.
+  let reportedHeight = $state<number>();
+  const height = $derived(
+    reportedHeight === undefined ? undefined : Math.min(reportedHeight, maxHeight),
+  );
   let bridge: McpAppBridge | undefined;
-  let initialized = false;
+  let initialized = $state(false);
+  // The one `ui/notifications/tool-input` a connection may send, once input is known.
+  let toolInputSent = false;
 
   const permissions = $derived(
     resolveMcpAppPermissions(resource?.ui?.permissions, grantedPermissions),
@@ -41,12 +47,13 @@
   const allow = $derived(buildAllowAttribute(permissions));
 
   function effectiveHostContext(): McpUiHostContext {
+    // The component renders inline only, so the display fields are its own, not the caller's.
     return {
+      platform: 'web',
+      ...hostContext,
       displayMode: 'inline',
       availableDisplayModes: ['inline'],
-      platform: 'web',
       containerDimensions: { maxHeight },
-      ...hostContext,
     };
   }
 
@@ -62,7 +69,7 @@
     untrack(() => {
       resource = undefined;
       failed = false;
-      height = undefined;
+      reportedHeight = undefined;
     });
     void (async () => {
       try {
@@ -77,12 +84,13 @@
     return () => controller.abort();
   });
 
-  // Connect the bridge, then navigate the iframe. The bridge listens before the document exists,
-  // so the app's first message cannot be missed. Closing it removes the window listener.
+  // The frame is inserted with its `srcdoc`, so it loads exactly one document. The bridge is
+  // connected when the frame mounts, before that document's scripts run, so the app's first
+  // message cannot be missed. Closing it removes the window listener.
   $effect(() => {
     const element = frame;
     const loaded = resource;
-    if (element === undefined || loaded === undefined) return;
+    if (element == null || loaded === undefined) return;
     const frameWindow = element.contentWindow;
     if (frameWindow === null) {
       failed = true;
@@ -95,49 +103,81 @@
         csp: loaded.ui?.csp,
         permissions,
         hostContext: effectiveHostContext(),
-        onToolCall,
+        // Read the current prop on every call, so a replaced handler takes effect.
+        onToolCall:
+          onToolCall === undefined
+            ? undefined
+            : (params, callOptions) => {
+                if (onToolCall === undefined) throw new Error('No tool-call handler.');
+                return onToolCall(params, callOptions);
+              },
         onSizeChange: (next) => {
-          height = Math.min(next, maxHeight);
+          reportedHeight = next;
         },
         onInitialized: () => {
           initialized = true;
-          if (toolInput !== undefined) connection.sendToolInput(toolInput).catch(report);
-          if (toolResult !== undefined) connection.sendToolResult(toolResult).catch(report);
         },
         onRequestTeardown: () => onRequestTeardown?.(),
       }),
     );
     bridge = connection;
+    toolInputSent = false;
     let active = true;
+    // The app document is the `srcdoc` this component wrote, under its CSP. A second load means
+    // the app navigated its frame to a document without that CSP, so the bridge stops trusting it.
+    let documentLoaded = false;
+    const onFrameLoad = (): void => {
+      if (!documentLoaded) {
+        documentLoaded = true;
+        return;
+      }
+      connection.close();
+      bridge = undefined;
+      initialized = false;
+      failed = true;
+      report(new Error('The MCP App navigated away from its document.'));
+    };
+    element.addEventListener('load', onFrameLoad);
     void (async () => {
       try {
         await connection.connect();
-        if (active) element.srcdoc = buildMcpAppDocument(loaded.html, loaded.ui?.csp);
       } catch (error) {
+        if (!active) return;
         failed = true;
         report(error);
       }
     })();
     return () => {
       active = false;
+      element.removeEventListener('load', onFrameLoad);
       initialized = false;
       bridge = undefined;
       connection.close();
     };
   });
 
-  // Forward later changes to a running app.
+  // Tool input, then results, go to an initialized app only; input may arrive after the
+  // handshake, and the protocol sends it once, before any result.
   $effect(() => {
-    const next = toolResult;
-    if (next !== undefined && initialized) bridge?.sendToolResult(next).catch(report);
+    const input = toolInput;
+    const result = toolResult;
+    if (!initialized) return;
+    untrack(() => {
+      if (input !== undefined && !toolInputSent) {
+        toolInputSent = true;
+        bridge?.sendToolInput(input).catch(report);
+      }
+      if (result !== undefined && toolInputSent) bridge?.sendToolResult(result).catch(report);
+    });
   });
 
+  // Host context changes reach the app only after `ui/notifications/initialized`; until then
+  // the handshake's own context stands, and the first run after it sends any difference.
   $effect(() => {
-    const next = hostContext;
+    void hostContext;
     void maxHeight;
-    if (next !== undefined || initialized) {
-      untrack(() => bridge?.setHostContext(effectiveHostContext()));
-    }
+    if (!initialized) return;
+    untrack(() => bridge?.setHostContext(effectiveHostContext()));
   });
 </script>
 
@@ -152,6 +192,7 @@
       bind:this={frame}
       class="mcp-app-frame"
       sandbox="allow-scripts"
+      srcdoc={buildMcpAppDocument(resource.html, resource.ui?.csp)}
       allow={allow === '' ? undefined : allow}
       {title}
       aria-label={title}

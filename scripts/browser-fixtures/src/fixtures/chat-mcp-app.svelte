@@ -27,6 +27,7 @@
 <p>Tool input: <output id="tool-input">pending</output></p>
 <button id="call" type="button">Call get_weather</button>
 <p>Tool result: <output id="tool-result">none</output></p>
+<button id="navigate" type="button">Navigate away</button>
 <script>
   const show = (id, text) => { document.getElementById(id).textContent = text; };
   const pending = new Map();
@@ -59,6 +60,9 @@
     () => show('network', 'reached'),
     () => show('network', 'blocked'),
   );
+  document.getElementById('navigate').addEventListener('click', () => {
+    location.replace('about:blank');
+  });
   document.getElementById('call').addEventListener('click', async () => {
     const response = await request('tools/call', {
       name: 'get_weather',

@@ -68,10 +68,6 @@ export type McpAppBridge = {
   close(): void;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * Creates the host half of the `@modelcontextprotocol/ext-apps` protocol for one iframe, on
  * the library's {@link AppBridge} with no MCP client attached. The only handler that reaches
@@ -113,13 +109,8 @@ export function createMcpAppBridge(options: McpAppBridgeOptions): McpAppBridge {
 
   const onToolCall = options.onToolCall;
   if (onToolCall !== undefined) {
+    // The SDK validates `params` against the `tools/call` schema before this runs.
     bridge.oncalltool = async (params, extra) => {
-      if (!isRecord(params) || typeof params.name !== 'string' || params.name === '') {
-        throw new TypeError('tools/call requires a tool name.');
-      }
-      if (params.arguments !== undefined && !isRecord(params.arguments)) {
-        throw new TypeError('tools/call arguments must be an object.');
-      }
       const controller = new AbortController();
       pending.add(controller);
       extra.mcpReq.signal.addEventListener('abort', () => controller.abort(), { once: true });

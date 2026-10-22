@@ -13,6 +13,9 @@ import {
   test,
 } from 'bun:test';
 
+import { flushSync, mount, unmount } from 'svelte';
+
+import { createLiveProps } from './mcp-app-test-fixture.svelte.ts';
 import McpApp from './mcp-app.svelte';
 import type { McpAppProps, McpAppResource, McpAppToolCallHandler } from './mcp-app.types.ts';
 
@@ -92,6 +95,38 @@ async function mountApp(overrides: Partial<McpAppProps> = {}, resource = RESOURC
   const frame = view.container.querySelector('iframe');
   if (frame === null) throw new Error('The MCP App iframe did not render.');
   return { ...view, frame, source: frameWindowOf(frame) };
+}
+
+/**
+ * Mounts with a `$state` props object, so a test can change props in place (Testing Library's
+ * `rerender` remounts the component under Svelte 5).
+ */
+async function mountLive(overrides: Partial<McpAppProps> = {}) {
+  const props = createLiveProps({
+    resourceUri: 'ui://weather/forecast',
+    loadResource: async () => RESOURCE,
+    ...overrides,
+  });
+  const target = document.createElement('div');
+  document.body.append(target);
+  const instance = mount(McpApp, { target, props });
+  await settle();
+  const frame = target.querySelector('iframe');
+  if (frame === null) throw new Error('The MCP App iframe did not render.');
+  const update = async (next: Partial<McpAppProps>) => {
+    Object.assign(props, next);
+    flushSync();
+    await settle();
+  };
+  return {
+    frame,
+    source: frameWindowOf(frame),
+    update,
+    destroy: () => {
+      void unmount(instance);
+      target.remove();
+    },
+  };
 }
 
 /** Plays the app: posts a JSON-RPC message to the host from the iframe's window. */
@@ -425,5 +460,81 @@ describe('McpApp teardown', () => {
     await settle();
     expect(add.mock.calls.filter(([type]) => type === 'message')).toHaveLength(0);
     add.mockRestore();
+  });
+});
+
+describe('McpApp review fixes', () => {
+  test('sends tool input that arrives after the handshake, once, before any result', async () => {
+    const view = await mountLive();
+    await handshake(view.source);
+    await view.update({ toolResult: { content: [{ type: 'text', text: 'early' }] } });
+    await settle();
+    expect(framePayloads.some((message) => message.method === 'ui/notifications/tool-result')).toBe(
+      false,
+    );
+    await view.update({ toolInput: { arguments: { city: 'Lisbon' } } });
+    await settle();
+    const methods = framePayloads.map((message) => message.method).filter(Boolean);
+    expect(methods.filter((method) => method === 'ui/notifications/tool-input')).toHaveLength(1);
+    expect(methods.indexOf('ui/notifications/tool-input')).toBeLessThan(
+      methods.indexOf('ui/notifications/tool-result'),
+    );
+  });
+
+  test('calls the current onToolCall after the prop is replaced', async () => {
+    const first = mock<McpAppToolCallHandler>(async () => ({ content: [] }));
+    const second = mock<McpAppToolCallHandler>(async () => ({ content: [] }));
+    const view = await mountLive({ onToolCall: first });
+    await handshake(view.source);
+    await view.update({ onToolCall: second });
+    fromApp(view.source, { id: 60, method: 'tools/call', params: { name: 'get_weather' } });
+    await settle();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  test('sends host-context changes only after the app is initialized', async () => {
+    const view = await mountLive({ hostContext: { theme: 'light' } });
+    await view.update({ hostContext: { theme: 'dark' } });
+    await settle();
+    const changed = () =>
+      framePayloads.filter((message) => message.method === 'ui/notifications/host-context-changed');
+    expect(changed()).toHaveLength(0);
+    await handshake(view.source);
+    await view.update({ hostContext: { theme: 'light' } });
+    await settle();
+    expect(changed().length).toBeGreaterThan(0);
+  });
+
+  test('keeps the display fields inline whatever the caller passes', async () => {
+    const view = await mountApp({
+      hostContext: { displayMode: 'fullscreen', availableDisplayModes: ['fullscreen'] },
+    });
+    await handshake(view.source);
+    expect(responseTo(1)?.result).toMatchObject({
+      hostContext: { displayMode: 'inline', availableDisplayModes: ['inline'] },
+    });
+  });
+
+  test('re-clamps the frame when maxHeight shrinks', async () => {
+    const view = await mountLive({ maxHeight: 600 });
+    await handshake(view.source);
+    fromApp(view.source, { method: 'ui/notifications/size-changed', params: { height: 500 } });
+    await settle();
+    expect(view.frame.style.height).toBe('500px');
+    await view.update({ maxHeight: 300 });
+    await settle();
+    expect(view.frame.style.height).toBe('300px');
+  });
+
+  test('treats malformed declared CSP sources as declaring nothing', async () => {
+    const { frame } = await mountApp(
+      {},
+      {
+        html: '<p>x</p>',
+        ui: { csp: { connectDomains: 'https://example.com' as unknown as string[] } },
+      },
+    );
+    expect(frame.getAttribute('srcdoc') ?? '').toContain("connect-src 'none'");
   });
 });

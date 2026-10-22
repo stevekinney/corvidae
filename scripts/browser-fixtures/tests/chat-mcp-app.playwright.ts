@@ -51,4 +51,17 @@ test.describe('McpApp host', () => {
     expect(cspErrors.length).toBeGreaterThan(0);
     expect(consoleErrors.filter((text) => !cspErrors.includes(text))).toEqual([]);
   });
+
+  test('stops trusting an app that navigates its frame away from its document', async ({
+    page,
+  }) => {
+    await page.goto(fixtureRoute('chat-mcp-app'), { waitUntil: 'load' });
+    const app = page.frameLocator('iframe[title="Weather app"]');
+    await expect(app.locator('#permissions')).toHaveText('{}');
+    await expect(page.getByTestId('message-listeners')).toHaveText('1');
+    await app.getByRole('button', { name: 'Navigate away' }).click();
+    await expect(page.getByRole('alert')).toHaveText('This app could not be loaded.');
+    await expect(page.locator('iframe[title="Weather app"]')).toHaveCount(0);
+    await expect(page.getByTestId('message-listeners')).toHaveText('0');
+  });
 });
