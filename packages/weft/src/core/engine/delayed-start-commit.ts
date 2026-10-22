@@ -13,13 +13,16 @@ import { buildTimerBatchOperations } from '../scheduler.ts';
 import type { TimerEntry, WorkflowState } from '../types.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
-import { recordLaunchPending } from './local-execution.ts';
+import { recordLaunchPending, type PendingLaunch } from './local-execution.ts';
 import type { TimeOperationCallbacks } from './time-operation-callbacks.ts';
 import { commitWithWorkflowClaimFold, prepareWorkflowClaimFold } from './workflow-claim-fold.ts';
 import {
   refreshWorkflowVisibilityMaintenance,
   visibilityIndexOperations,
 } from './workflow-visibility-maintenance.ts';
+
+/** The running state a delayed start committed, and the launching marker recorded with it (none on the fenced branch, which holds no claim). */
+export type CommittedDelayedStart = { state: WorkflowState; launch: PendingLaunch | undefined };
 
 export async function commitDelayedStartRunning(
   internals: EngineInternals,
@@ -30,7 +33,7 @@ export async function commitDelayedStartRunning(
     executionDeadline: number | undefined;
     resolvedRevision: string | undefined;
   },
-): Promise<WorkflowState | null> {
+): Promise<CommittedDelayedStart | null> {
   const { now, executionDeadline, resolvedRevision } = launch;
 
   const latestState = await callbacks.loadWorkflowState(entry.workflowId);
@@ -97,17 +100,21 @@ export async function commitDelayedStartRunning(
   // this workflow and the scheduler continue its sweep undisturbed.
   const claimFold = await prepareWorkflowClaimFold(internals, entry.workflowId);
   if (claimFold) {
+    let marker: PendingLaunch | undefined;
     const result = await commitWithWorkflowClaimFold(
       internals,
       claimFold,
       operations,
       [],
       'delayed-start workflow claim acquisition',
+      // Held and launching in the turn the fold is recorded: a reclaim that lists this fire's own
+      // claim never sees it held without the marker (COR-1625).
+      () => {
+        marker = recordLaunchPending(internals, entry.workflowId);
+      },
     );
     if (result.status !== 'committed') return null;
-    // Held and launching from this turn: a reclaim that lists this fire's own claim defers.
-    recordLaunchPending(internals, entry.workflowId);
-    return nextRunningState;
+    return { state: nextRunningState, launch: marker };
   }
 
   // Fence the delayed-start pending→running transition on the lease epoch: a
@@ -124,5 +131,5 @@ export async function commitDelayedStartRunning(
     () =>
       new Error(`Delayed-start transition for workflow "${entry.workflowId}" lost its CAS race.`),
   );
-  return nextRunningState;
+  return { state: nextRunningState, launch: undefined };
 }

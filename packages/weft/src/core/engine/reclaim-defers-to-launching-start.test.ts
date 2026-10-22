@@ -14,7 +14,7 @@
  * Scheduling is `'manual'`, so a queued launch stays queued until the test flushes it, and the
  * reclaim pass is driven by hand, so the listing can be held across the fire's commit.
  */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
@@ -346,7 +346,24 @@ describe('a delayed start that stops short of its launch', () => {
     clock.now = START_AT;
 
     storage.failReadOf = KEYS.terminalCleanupNeeded(WORKFLOW_ID);
-    await engine.scheduler.tick(clock.now).catch(() => undefined);
+    // The scheduler reports a timer callback that threw on the console, after `tick()` has
+    // resolved; the injected fault is expected, so it is captured and asserted rather than left in
+    // the test output. The spy stays until the fire has reported and let the run go.
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    let reported: string | undefined;
+    try {
+      await engine.scheduler.tick(clock.now);
+      await waitForCondition(() => consoleError.mock.calls.length === 1, {
+        label: 'the scheduler reports the failed fire',
+      });
+      reported = String(consoleError.mock.calls[0]?.[0]);
+      await waitForCondition(() => registry.currentEpoch(WORKFLOW_ID) === null, {
+        label: 'the fire lets the run go',
+      });
+    } finally {
+      consoleError.mockRestore();
+    }
+    expect(reported).toContain('Timer callback failed');
     expect(storage.readReadFailures).toBe(1);
     expect(probe.runs).toBe(0);
     // The marker is settled and the folded claim released: the run is running and ownerless.
@@ -426,5 +443,147 @@ describe('a delayed start that stops short of its launch', () => {
     });
     expect(probe.runs).toBe(0);
     expect(internals.inlineStrategy!.hasGenerator(WORKFLOW_ID)).toBe(false);
+  });
+});
+
+describe('a delayed start that stops short while a same-id replacement lands', () => {
+  it('lets go of only its own marker and claim, and the replacement drives once', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    const resolver = createResolver(() => ({ status: 'unavailable', reason: 'gone' }));
+    resolver.release();
+    await using engine = await createInlineEngine(storage, clock, {
+      resolveWorkflowServices: resolver.option,
+    });
+    const internals = getInternals(engine);
+    const registry = internals.workflowClaimRegistry!;
+    const probe = probeFor(storage);
+    probe.hold = Promise.withResolvers<void>();
+    const events = countEvents(engine);
+    await engine.start('counted', null, {
+      id: WORKFLOW_ID,
+      startAt: START_AT,
+      services: { owner: 'delayed' },
+    });
+    internals.workflowServices.delete(WORKFLOW_ID);
+    clock.now = START_AT;
+
+    // The services-unavailable failure commits `failed` and releases the fold's claim, then awaits
+    // its cleanup. A same-id `start-new` replacement lands in that window: it folds the next epoch
+    // and queues its launch, so it holds the id's claim and marker when the old fire's `finally`
+    // runs. Modelled by starting the replacement right after the first release of the id resolves.
+    const originalRelease = registry.release.bind(registry);
+    let replaced = false;
+    registry.release = async (workflowId, expectedEpoch) => {
+      const result = await originalRelease(workflowId, expectedEpoch);
+      if (!replaced && workflowId === WORKFLOW_ID) {
+        replaced = true;
+        await engine.start('counted', null, { id: WORKFLOW_ID, onTerminalConflict: 'start-new' });
+      }
+      return result;
+    };
+    await engine.scheduler.tick(clock.now);
+    const replacementEpoch = registry.currentEpoch(WORKFLOW_ID);
+    expect(replacementEpoch).toBe(2);
+    // The old fire let go of its own record only: the replacement's claim, marker and queued start
+    // are intact.
+    expect(await observeWindow(engine)).toEqual({
+      launching: true,
+      queued: true,
+      status: 'pending',
+    });
+    expect(await storage.get(KEYS.workflowOwnerHolder(WORKFLOW_ID))).not.toBeNull();
+
+    // This engine's next reclaim pass finds the id held and queued under its claim, and defers; the
+    // flush then drives the replacement once.
+    const pass = await internals.workflowClaimRenewalTask!.runOnce();
+    expect(pass.reclaim).toMatchObject({ status: 'completed' });
+    await engine.flushInlineLaunches();
+    await waitForCondition(() => probe.runs >= 1, { label: 'the replacement runs' });
+    await letOtherDrivesStart();
+    probe.hold.resolve();
+    expect(await engine.getHandle(WORKFLOW_ID).result()).toBe('ran');
+    expect(probe.runs).toBe(1);
+    expect(events).toEqual({ started: 1, resumed: 0 });
+    expect(registry.currentEpoch(WORKFLOW_ID)).toBeNull();
+  });
+});
+
+describe('a prepared start that stops short of its launch', () => {
+  it('fails the run, settles the marker, and releases the claim when the failure commits', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    const resolver = createResolver(() => ({ status: 'unavailable', reason: 'gone' }));
+    resolver.release();
+    await using engine = await createInlineEngine(storage, clock, {
+      resolveWorkflowServices: resolver.option,
+    });
+    const internals = getInternals(engine);
+    const probe = probeFor(storage);
+    const prepared = await engine.prepare('counted', null, {
+      id: WORKFLOW_ID,
+      services: { owner: 'prepared' },
+    });
+    internals.workflowServices.delete(WORKFLOW_ID);
+    const outcome = await prepared.launch().then(
+      () => 'resolved',
+      (error: Error) => error.message,
+    );
+    await engine.flushInlineLaunches();
+    expect(outcome).toContain('could not be re-provided');
+    expect(await statusOf(storage)).toBe('failed');
+    expect(internals.inlineStrategy!.hasGenerator(WORKFLOW_ID)).toBe(false);
+    expect(probe.runs).toBe(0);
+    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBeNull();
+  });
+
+  it('lets the run go when the failure commit faults, and the next reclaim pass fails it', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    const resolver = createResolver(() => ({ status: 'unavailable', reason: 'gone' }));
+    resolver.release();
+    await using engine = await createInlineEngine(storage, clock, {
+      resolveWorkflowServices: resolver.option,
+    });
+    const internals = getInternals(engine);
+    const probe = probeFor(storage);
+    const prepared = await engine.prepare('counted', null, {
+      id: WORKFLOW_ID,
+      services: { owner: 'prepared' },
+    });
+    internals.workflowServices.delete(WORKFLOW_ID);
+    storage.failNextFailedWrite = true;
+    const outcome = await prepared.launch().then(
+      () => 'resolved',
+      (error: Error) => error.message,
+    );
+    expect(outcome).not.toBe('resolved');
+    expect(storage.failedWriteFaults).toBe(1);
+    expect(await statusOf(storage)).toBe('running');
+    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBeNull();
+
+    const pass = await internals.workflowClaimRenewalTask!.runOnce();
+    expect(pass.reclaim).toMatchObject(RECLAIMED);
+    await waitForCondition(async () => (await statusOf(storage)) === 'failed', {
+      label: 'the next pass fails the run',
+    });
+    expect(probe.runs).toBe(0);
+  });
+
+  it('settles its marker once a worker has the run', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    await using engine = await createWorkerEngine(storage, clock);
+    const internals = getInternals(engine);
+    const events = countEvents(engine);
+    const prepared = await engine.prepare('simple', null, { id: WORKFLOW_ID });
+    const handle = await prepared.launch();
+    const launchingAfterTheLaunch =
+      internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID);
+    expect(await handle.result()).toEqual({ input: null, computed: 42 });
+    expect(events.started).toBe(1);
+    expect(launchingAfterTheLaunch).toBe(false);
   });
 });

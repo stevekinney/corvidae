@@ -63,6 +63,7 @@ import {
   letGoOfPendingLaunch,
   recordLaunchPending,
   settleLaunchPending,
+  type PendingLaunch,
 } from '../local-execution.ts';
 import { validateInboundPayload } from '../payload-validation.ts';
 import { selectPersistedWorkflowStartHeaders } from '../state-utilities.ts';
@@ -391,15 +392,16 @@ export async function launchPreparedWorkflow(
     // From the commit to the launch the run is held and launching (COR-1625). The marker is handed
     // to the inline queue by the enqueue, settled once a worker has the run, and otherwise let go of.
     let handedOver = false;
+    let launch: PendingLaunch | undefined;
     try {
-      const runningState = await runSerializedWorkflowStateWrite(
-        internals,
-        context.workflowId,
-        () => commitPendingToRunning(internals, context.workflowId, executionDeadline, now),
+      const committed = await runSerializedWorkflowStateWrite(internals, context.workflowId, () =>
+        commitPendingToRunning(internals, context.workflowId, executionDeadline, now),
       );
-      if (!runningState) {
+      if (!committed) {
         throw new Error(`Cannot launch workflow "${context.workflowId}": it is no longer pending.`);
       }
+      const runningState = committed.state;
+      launch = committed.launch;
 
       const servicesUnavailable = await reprovideRecoveredServices(
         internals,
@@ -439,7 +441,7 @@ export async function launchPreparedWorkflow(
       if (internals.inlineStrategy === null) settleLaunchPending(internals, context.workflowId);
       return handle;
     } finally {
-      if (!handedOver) await letGoOfPendingLaunch(internals, context.workflowId);
+      if (!handedOver) await letGoOfPendingLaunch(internals, launch);
     }
   } finally {
     releasePreparedWorkflowReservation(internals, context);
@@ -475,7 +477,7 @@ async function commitPendingToRunning(
   workflowId: string,
   executionDeadline: number | undefined,
   now: number,
-): Promise<WorkflowState | null> {
+): Promise<{ state: WorkflowState; launch: PendingLaunch } | null> {
   const latestState = await loadWorkflowState(internals, workflowId);
   if (!latestState || latestState.status !== 'pending') {
     return null;
@@ -520,8 +522,7 @@ async function commitPendingToRunning(
     () => new Error(`Launch transition for workflow "${workflowId}" lost its CAS race.`),
   );
   // Running and launching from this turn: a reclaim that lists this run's claim defers (COR-1625).
-  recordLaunchPending(internals, workflowId);
-  return nextRunningState;
+  return { state: nextRunningState, launch: recordLaunchPending(internals, workflowId) };
 }
 
 /**

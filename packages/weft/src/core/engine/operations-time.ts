@@ -11,7 +11,11 @@ import type { EngineInternals } from './internals.ts';
 import { resolveDelayedStartRegistrationOrFail } from './lifecycle/delayed-start-registration.ts';
 import { reprovideRecoveredServices } from './lifecycle/recovered-services.ts';
 import { ensureDelayedStartClaimAndCleanupBeforeFailure } from './lifecycle/standalone-claim-acquire.ts';
-import { handOverPendingLaunch, letGoOfPendingLaunch } from './local-execution.ts';
+import {
+  handOverPendingLaunch,
+  letGoOfPendingLaunch,
+  type PendingLaunch,
+} from './local-execution.ts';
 import { registerSleepResolver } from './sleep-resolver-registration.ts';
 import {
   acknowledgeSupersededSleepTimers,
@@ -198,17 +202,20 @@ export async function startDelayedWorkflow(
   // From the fold to the launch the run is held and launching (COR-1625). The marker is handed to
   // the inline queue by the enqueue, settled once a worker has the run, and otherwise let go of.
   let handedOver = false;
+  let launch: PendingLaunch | undefined;
   try {
-    const runningState = await callbacks.runSerializedWorkflowStateWrite(entry.workflowId, () =>
+    const committed = await callbacks.runSerializedWorkflowStateWrite(entry.workflowId, () =>
       commitDelayedStartRunning(internals, entry, callbacks, {
         now,
         executionDeadline,
         resolvedRevision,
       }),
     );
-    if (!runningState) {
+    if (!committed) {
       return;
     }
+    const runningState = committed.state;
+    launch = committed.launch;
 
     // A delayed-start workflow that crashed `pending` before its timer fired loses
     // its in-memory services on recovery (fires in a fresh process). Re-provide
@@ -261,7 +268,7 @@ export async function startDelayedWorkflow(
     handedOver = true;
     handOverPendingLaunch(internals, entry.workflowId);
   } finally {
-    if (!handedOver) await letGoOfPendingLaunch(internals, entry.workflowId);
+    if (!handedOver) await letGoOfPendingLaunch(internals, launch);
   }
 }
 
