@@ -549,6 +549,36 @@ describe('McpApp review fixes', () => {
     });
   });
 
+  test('sends a tool result again only when the result changes', async () => {
+    const result = { content: [{ type: 'text' as const, text: 'sunny' }] };
+    const view = await mountLive({
+      toolInput: { arguments: { city: 'Lisbon' } },
+      toolResult: result,
+    });
+    await handshake(view.source);
+    await settle();
+    await view.update({ toolInput: { arguments: { city: 'Porto' } } });
+    await settle();
+    const results = () =>
+      framePayloads.filter((message) => message.method === 'ui/notifications/tool-result');
+    expect(results()).toHaveLength(1);
+    await view.update({ toolResult: { content: [{ type: 'text', text: 'rain' }] } });
+    await settle();
+    expect(results()).toHaveLength(2);
+  });
+
+  test('remounts the frame when a tool-call handler is supplied or removed', async () => {
+    const view = await mountLive();
+    await view.update({ onToolCall: async () => ({ content: [] }) });
+    expect(view.frame.isConnected).toBe(false);
+    view.destroy();
+  });
+
+  test('never lets the minimum height exceed maxHeight', async () => {
+    const { frame } = await mountApp({ maxHeight: 80 });
+    expect(frame.style.minHeight).toBe('80px');
+  });
+
   test('remounts the frame when the effective permissions change', async () => {
     const view = await mountLive({
       loadResource: async () => ({ html: '<p>camera</p>', ui: { permissions: { camera: {} } } }),

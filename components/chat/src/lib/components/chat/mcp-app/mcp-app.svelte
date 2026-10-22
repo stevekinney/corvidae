@@ -40,11 +40,16 @@
   let initialized = $state(false);
   // The one `ui/notifications/tool-input` a connection may send, once input is known.
   let toolInputSent = false;
+  // The result a connection last sent, so an input-only update does not resend it.
+  let sentToolResult: McpAppProps['toolResult'];
 
   const permissions = $derived(
     resolveMcpAppPermissions(resource?.ui?.permissions, grantedPermissions),
   );
   const allow = $derived(buildAllowAttribute(permissions));
+  // The frame remounts when its permissions or its tool-call capability change, because the
+  // app learns both only in its handshake.
+  const frameKey = $derived(`${allow}|${onToolCall === undefined ? 'no-tools' : 'tools'}`);
 
   function effectiveHostContext(): McpUiHostContext {
     // The component renders inline only, so the display fields are its own, not the caller's.
@@ -123,6 +128,7 @@
     );
     bridge = connection;
     toolInputSent = false;
+    sentToolResult = undefined;
     let active = true;
     // The app document is the `srcdoc` this component wrote, under its CSP. A second load means
     // the app navigated its frame to a document without that CSP, so the bridge stops trusting it.
@@ -168,7 +174,10 @@
         toolInputSent = true;
         bridge?.sendToolInput(input).catch(report);
       }
-      if (result !== undefined && toolInputSent) bridge?.sendToolResult(result).catch(report);
+      if (result !== undefined && toolInputSent && result !== sentToolResult) {
+        sentToolResult = result;
+        bridge?.sendToolResult(result).catch(report);
+      }
     });
   });
 
@@ -189,9 +198,9 @@
   {#if failed}
     <p class="mcp-app-error" role="alert">This app could not be loaded.</p>
   {:else if resource !== undefined}
-    <!-- A change to the effective permissions remounts the frame, so the app reinitializes
-         against capabilities that match its `allow` attribute. -->
-    {#key allow}
+    <!-- A change to the effective permissions or the tool-call capability remounts the frame, so
+         the app reinitializes against capabilities that match what the host now offers. -->
+    {#key frameKey}
       <iframe
         bind:this={frame}
         class="mcp-app-frame"
@@ -201,6 +210,7 @@
         {title}
         aria-label={title}
         style:height={height === undefined ? undefined : `${height}px`}
+        style:min-height={`${Math.min(120, maxHeight)}px`}
       ></iframe>
     {/key}
   {/if}
@@ -214,7 +224,6 @@
   .mcp-app-frame {
     display: block;
     width: 100%;
-    min-height: 120px;
     border: none;
     background: transparent;
   }
