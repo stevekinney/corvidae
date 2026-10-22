@@ -1,10 +1,16 @@
 /**
  * The route table: Chat is the home screen, sessions live under `/chat/:sessionId`, runs moved
  * from `/workflows` to `/runs`, and `/workflows` is the catalog of definitions.
+ *
+ * These tests check the table's wiring and never import a route's component. Importing one
+ * compiles its Svelte source and everything it pulls in, which costs seconds per route under load
+ * and grows with every route. Compilation stays covered by `typecheck` (`svelte-check`) and by
+ * `scripts/build.slow.test.ts`, which bundles `index.html` and follows every route's lazy import.
  */
 import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import { agentEditPath, agentPath } from '../lib/agent-paths.ts';
 import {
@@ -19,22 +25,38 @@ import {
   workflowRunsPath,
   workflowTypePath,
 } from '../lib/workflow-type-paths.ts';
-import { routes } from './routes.ts';
+import { type RouteDefinition, routes } from './routes.ts';
 import { VIEW_NAMES } from './views.ts';
 
 const sourceRoot = join(import.meta.dir, '..');
+/** The directory `routes.ts` lives in, which its relative import specifiers resolve against. */
+const routesDirectory = import.meta.dir;
 
-/** The component a pattern's route loads. */
-async function componentOf(pattern: string): Promise<unknown> {
-  const route = routes.find((candidate) => candidate.pattern === pattern);
-  if (route === undefined) throw new Error(`No route has the pattern ${pattern}.`);
-  const loaded = await route.load();
-  return loaded.default;
+/**
+ * The `.svelte` file a route's `load` imports, as an absolute path. It reads the specifier out of
+ * the function's source rather than calling it, so nothing is compiled. A `load` that does not
+ * contain exactly one string-literal `import()` is a wiring this test cannot read, and fails.
+ */
+function componentPathOfRoute(route: RouteDefinition): string {
+  const specifiers = [...route.load.toString().matchAll(/\bimport\(\s*(["'`])([^"'`]+)\1\s*\)/g)];
+  if (specifiers.length !== 1) {
+    throw new Error(
+      `The route ${route.pattern} must load its component with one literal import(), found ${specifiers.length}.`,
+    );
+  }
+  return resolve(routesDirectory, specifiers[0]![2]!);
 }
 
-async function defaultOf(load: Promise<{ default: unknown }>): Promise<unknown> {
-  const loaded = await load;
-  return loaded.default;
+/** The component file a pattern's route loads. */
+function componentPathOf(pattern: string): string {
+  const route = routes.find((candidate) => candidate.pattern === pattern);
+  if (route === undefined) throw new Error(`No route has the pattern ${pattern}.`);
+  return componentPathOfRoute(route);
+}
+
+/** An absolute path for a source-relative specifier, spelled as the route table spells it. */
+function sourcePath(specifier: string): string {
+  return resolve(routesDirectory, specifier);
 }
 
 describe('the route table', () => {
@@ -43,22 +65,22 @@ describe('the route table', () => {
     for (const route of routes) expect(VIEW_NAMES).toContain(route.view as never);
   });
 
-  test('loads a component for every route that renders, and names a path for the one that redirects', async () => {
+  test('loads a component file that exists for every route that renders, and names a path for the one that redirects', () => {
     for (const route of routes) {
       if (route.redirect !== undefined) continue;
-      const loaded = await route.load();
-      expect(loaded.default, route.pattern).toBeDefined();
+      const path = componentPathOfRoute(route);
+      expect(path, route.pattern).toEndWith('.svelte');
+      expect(existsSync(path), `${route.pattern} loads ${path}`).toBe(true);
     }
     expect(
       routes.filter((route) => route.redirect !== undefined).map((route) => route.pattern),
     ).toEqual(['/']);
   });
 
-  test('gives the route that redirects a component too, which the outlet never mounts', async () => {
+  test('gives the route that redirects a component file too, which the outlet never mounts', () => {
     const home = routes.find((route) => route.redirect !== undefined);
     expect(home?.pattern).toBe('/');
-    const loaded = await home?.load();
-    expect(loaded?.default).toBeDefined();
+    expect(existsSync(componentPathOfRoute(home!))).toBe(true);
   });
 
   test('registers /chat/new before /chat/:sessionId, because the first match wins', () => {
@@ -92,19 +114,19 @@ describe('the route table', () => {
     });
   });
 
-  test('puts the runs list and one run at /runs and /runs/:id', async () => {
+  test('puts the runs list and one run at /runs and /runs/:id', () => {
     expect(matchRoute('/runs')?.pattern).toBe('/runs');
     expect(matchRoute('/runs/run-1')).toEqual({ pattern: '/runs/:id', params: { id: 'run-1' } });
-    const runsComponent = await defaultOf(import('../routes/workflows/index.svelte'));
+    const runsComponent = sourcePath('../routes/workflows/index.svelte');
     for (const pattern of ['/runs', '/runs/:id']) {
-      expect(await componentOf(pattern), pattern).toBe(runsComponent);
+      expect(componentPathOf(pattern), pattern).toBe(runsComponent);
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe('runs');
     }
   });
 
-  test('serves the Workflows area at /workflows and under /workflows/:type, apart from the runs list', async () => {
-    const runsComponent = await defaultOf(import('../routes/workflows/index.svelte'));
-    const area = await defaultOf(import('../routes/workflow-definitions/index.svelte'));
+  test('serves the Workflows area at /workflows and under /workflows/:type, apart from the runs list', () => {
+    const runsComponent = sourcePath('../routes/workflows/index.svelte');
+    const area = sourcePath('../routes/workflow-definitions/index.svelte');
     expect(matchRoute('/workflows')?.pattern).toBe('/workflows');
     expect(matchRoute('/workflows/invoice')).toEqual({
       pattern: '/workflows/:type',
@@ -124,7 +146,7 @@ describe('the route table', () => {
       '/workflows/:type/runs',
       '/workflows/:type/edit',
     ]) {
-      const loaded = await componentOf(pattern);
+      const loaded = componentPathOf(pattern);
       expect(loaded, pattern).toBe(area);
       expect(loaded, pattern).not.toBe(runsComponent);
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
@@ -166,10 +188,10 @@ describe('the Tasks routes', () => {
     }
   });
 
-  test('load one component, which both routes render', async () => {
-    const page = await defaultOf(import('../routes/tasks/index.svelte'));
-    expect(await componentOf('/tasks')).toBe(page);
-    expect(await componentOf('/tasks/:id')).toBe(page);
+  test('load one component, which both routes render', () => {
+    const page = sourcePath('../routes/tasks/index.svelte');
+    expect(componentPathOf('/tasks')).toBe(page);
+    expect(componentPathOf('/tasks/:id')).toBe(page);
   });
 });
 
@@ -196,10 +218,10 @@ describe('the agent editor’s routes', () => {
     }
   });
 
-  test('load one component, which both routes render', async () => {
-    const editor = await defaultOf(import('../routes/agent-editor/index.svelte'));
-    expect(await componentOf('/agents/new')).toBe(editor);
-    expect(await componentOf('/agents/:id/edit')).toBe(editor);
+  test('load one component, which both routes render', () => {
+    const editor = sourcePath('../routes/agent-editor/index.svelte');
+    expect(componentPathOf('/agents/new')).toBe(editor);
+    expect(componentPathOf('/agents/:id/edit')).toBe(editor);
   });
 });
 
@@ -237,7 +259,7 @@ describe('a link to a run', () => {
 });
 
 describe('the routes for schedules and goals', () => {
-  test('put the schedules list at /schedules and one schedule at /schedules/:id, both in the schedules view', async () => {
+  test('put the schedules list at /schedules and one schedule at /schedules/:id, both in the schedules view', () => {
     expect(matchRoute('/schedules')).toEqual({ pattern: '/schedules', params: {} });
     expect(matchRoute('/schedules/nightly-rollup')).toEqual({
       pattern: '/schedules/:id',
@@ -248,7 +270,7 @@ describe('the routes for schedules and goals', () => {
         'schedules',
       );
     }
-    expect(await componentOf('/schedules/:id')).toBe(await componentOf('/schedules'));
+    expect(componentPathOf('/schedules/:id')).toBe(componentPathOf('/schedules'));
   });
 
   test('keep /goals as a route in its own view, and out of the sidebar', async () => {
@@ -259,9 +281,8 @@ describe('the routes for schedules and goals', () => {
     expect(sidebar).not.toContain('/goals');
   });
 
-  test('read /audit as the audit trail, not a placeholder', async () => {
-    const audit = await defaultOf(import('../routes/audit/index.svelte'));
-    expect(await componentOf('/audit')).toBe(audit);
+  test('read /audit as the audit trail, not a placeholder', () => {
+    expect(componentPathOf('/audit')).toBe(sourcePath('../routes/audit/index.svelte'));
   });
 });
 
