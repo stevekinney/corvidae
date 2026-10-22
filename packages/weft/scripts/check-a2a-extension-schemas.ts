@@ -231,12 +231,20 @@ export function checkSpecifications(inputs: readonly SpecificationInput[]): stri
   return inputs.flatMap((input) => checkSpecification(input));
 }
 
-/** Runs the check over the real specifications and prints the outcome; returns the exit code. */
-export async function runCli(): Promise<number> {
-  const directory = join(import.meta.dir, '..', 'documentation', 'a2a', 'extensions');
+/** Reads one specification's Markdown by file name. */
+export type SpecificationReader = (name: string) => Promise<string>;
+
+const SPECIFICATION_DIRECTORY = join(import.meta.dir, '..', 'documentation', 'a2a', 'extensions');
+
+/** Reads a specification from `documentation/a2a/extensions/`. */
+export const readSpecification: SpecificationReader = (name) =>
+  Bun.file(join(SPECIFICATION_DIRECTORY, name)).text();
+
+/** Runs the check over the specifications and prints the outcome; returns the exit code. */
+export async function runCli(read: SpecificationReader = readSpecification): Promise<number> {
   const inputs: SpecificationInput[] = [];
   for (const name of EXTENSION_SPECIFICATIONS) {
-    inputs.push({ name, text: await Bun.file(join(directory, name)).text() });
+    inputs.push({ name, text: await read(name) });
   }
   const problems = checkSpecifications(inputs);
   if (problems.length > 0) {
@@ -250,6 +258,4 @@ export async function runCli(): Promise<number> {
   return 0;
 }
 
-if (import.meta.main) {
-  process.exit(await runCli());
-}
+if (import.meta.main) process.exit(await runCli());

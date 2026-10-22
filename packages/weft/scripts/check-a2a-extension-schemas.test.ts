@@ -45,6 +45,52 @@ describe('check-a2a-extension-schemas', () => {
     }
   });
 
+  it('exits one and names each problem when a specification fails', async () => {
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (line: string): void => {
+      errors.push(line);
+    };
+    try {
+      expect(await runCli(async () => 'no schemas here')).toBe(1);
+    } finally {
+      console.error = originalError;
+    }
+    expect(errors[0]).toBe('A2A extension specification check failed:');
+    expect(errors.some((line) => line.includes('never states its URI'))).toBe(true);
+  });
+
+  it('reports a malformed marker, JSON that does not parse, a duplicate schema, and a relative pointer', () => {
+    const malformed = '<!-- schema: -->';
+    const badSchema = `<!-- schema: broken -->\n\n${fence('{not json')}`;
+    const duplicate = `<!-- schema: metadata -->\n\n${fence(SCHEMA)}`;
+    const badExample = `<!-- example: metadata at /a -->\n\n${fence('{not json')}`;
+    const relative = `<!-- example: metadata at a -->\n\n${fence('{"a":{"cursor":"c"}}')}`;
+    const throughScalar = `<!-- example: metadata at /a/cursor/deeper -->\n\n${fence('{"a":{"cursor":"c"}}')}`;
+    const unclosed = '<!-- example: metadata at /a -->\n\n```json\n{}';
+
+    const problems = checkSpecification(
+      specification(
+        GOOD_SCHEMA,
+        GOOD_EXAMPLE,
+        malformed,
+        badSchema,
+        duplicate,
+        badExample,
+        relative,
+        throughScalar,
+        unclosed,
+      ),
+    ).join('\n');
+
+    expect(problems).toContain('malformed marker');
+    expect(problems).toContain('schema "broken" (line');
+    expect(problems).toContain('is not valid JSON');
+    expect(problems).toContain('duplicates an earlier schema name');
+    expect(problems).toContain('resolves to nothing');
+    expect(problems).toContain('never closed');
+  });
+
   it('rejects a cleanup example whose state contradicts its acknowledgement', async () => {
     const directory = join(import.meta.dir, '..', 'documentation', 'a2a', 'extensions');
     const text = await Bun.file(join(directory, 'cleanup-v1.md')).text();
