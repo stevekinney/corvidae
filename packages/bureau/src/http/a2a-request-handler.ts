@@ -1,0 +1,771 @@
+/**
+ * Bureau's `A2ARequestHandler` for one published agent (COR-903): A2A 1.0.1's methods over the
+ * Bureau's runs, tasks, and reviews, served by the kit's `createA2AHandler` (`a2a-mount.ts`).
+ *
+ * It implements the interface directly rather than extending the SDK's `DefaultRequestHandler`,
+ * because a task is a Bureau run created through the run-creation ledger, not an executor's
+ * events on an in-memory bus. So it also does what `DefaultRequestHandler` would have done with
+ * a request's extensions: it activates only the extensions the card declares.
+ *
+ * ## Sends
+ *
+ * A message without a `taskId` creates a task: a run of this agent in the message's `contextId`
+ * (a session the caller owns), or in a new one. A message with a `taskId` continues that task by
+ * the path its state names: an answer to a human wait or a decision on an approval
+ * (`bureau.tasks.respond`, through the management plane as the caller), or session input to a
+ * task that is still working (delivered at the run's next step boundary, COR-1476).
+ *
+ * Every send is idempotent on the caller, this agent, the A2A version (normalized to
+ * Major.Minor by the kit), the `messageId`, and, for a continuation, the task: the binding is
+ * resolved before any other check, so an exact retry returns the original task even after the
+ * task finished or the agent was withdrawn, and the same `messageId` with a different payload is
+ * refused with `-32602`. Without `configuration.returnImmediately` a send waits until the task
+ * is terminal or waits on its requester.
+ *
+ * ## Scope
+ *
+ * Every lookup is the caller's own and this agent's: a task another owner holds, or another
+ * agent ran, reads exactly as a missing one, and `ListTasks` stays caller-scoped even for a
+ * principal holding an operator scope.
+ *
+ * @module a2a-request-handler
+ */
+
+import {
+  type AgentCard,
+  type CancelTaskRequest,
+  type DeleteTaskPushNotificationConfigRequest,
+  type GetExtendedAgentCardRequest,
+  type GetTaskPushNotificationConfigRequest,
+  type GetTaskRequest,
+  type ListTaskPushNotificationConfigsRequest,
+  type ListTaskPushNotificationConfigsResponse,
+  type ListTasksRequest,
+  type ListTasksResponse,
+  Message,
+  Role,
+  type SendMessageRequest,
+  type StreamResponse,
+  type SubscribeToTaskRequest,
+  Task,
+  type TaskPushNotificationConfig,
+  TaskState,
+} from '@a2a-js/sdk';
+import {
+  ContentTypeNotSupportedError,
+  PushNotificationNotSupportedError,
+  RequestMalformedError,
+  TaskNotCancelableError,
+  TaskNotFoundError,
+  UnsupportedOperationError,
+} from '@a2a-js/sdk/errors';
+import {
+  type A2ARequestHandler,
+  type ServerCallContext,
+  STATE_HEADERS_KEY,
+  type User,
+} from '@a2a-js/sdk/server';
+import type { Principal } from '@lostgradient/weft';
+import { requestSignalOf } from '@lostgradient/weft/a2a';
+
+import {
+  BureauLedgerConflictError,
+  type CommandLedger,
+  type CommandLedgerIdentity,
+  canonicalJson,
+  digestCommandPayload,
+} from '../command-ledger.ts';
+import { BureauError } from '../create-bureau.ts';
+import { TaskListingTokenError } from '../task-list-snapshots.ts';
+import type { TaskRegistry, TaskView } from '../task-registry.ts';
+import type { Bureau } from '../types.ts';
+import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, DECLARED_EXTENSIONS } from './a2a-agent-card.ts';
+import type { A2ATaskRecords, A2AWireMessage } from './a2a-task-record.ts';
+import {
+  agentMessage,
+  bureauStateOf,
+  CLEANUP_EXTENSION_URI,
+  isSettled,
+  isTerminal,
+  projectTask,
+  type ProjectionShape,
+  replyMessageId,
+} from './a2a-task-projection.ts';
+import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
+import { ownerOfPrincipal } from './owner-predicate.ts';
+
+/** The version of the A2A send command's contract, part of every ledger identity. */
+export const A2A_SEND_OPERATION_VERSION = 'bureau.a2a.send.v1';
+
+/** The key prefix of the A2A send ledger, disjoint from every other command ledger's. */
+export const A2A_SEND_LEDGER_KEY_PREFIX = 'command-ledger:a2a-send:v1';
+
+/** The metadata key a continuation names the human wait it answers with. */
+export const SIGNAL_NAME_METADATA_KEY = 'signalName';
+
+/** The metadata key a continuation to a working task names its delivery mode with. */
+export const DELIVERY_MODE_METADATA_KEY = 'deliveryMode';
+
+/** The metadata key of a request's correlation identifier, outside every extension namespace. */
+export const CORRELATION_ID_METADATA_KEY = 'correlationId';
+
+/** The message-metadata key whose presence activates A2UI's extension (A2UI v0.9.1). */
+export const A2UI_CLIENT_CAPABILITIES_METADATA_KEY = 'a2uiClientCapabilities';
+
+/** The A2UI-only alias of the `A2A-Extensions` header (A2UI v0.9.1). */
+const A2UI_EXTENSIONS_HEADER = 'x-a2a-extensions';
+
+/** The most history a listed task carries in its snapshot; a page trims it further. */
+const LISTED_HISTORY_LIMIT = 100;
+
+/** How long a blocking send waits between reads of a task no event has announced. */
+const SETTLE_POLL_MS = 1_000;
+
+/** What a send's ledger entry claims: nothing beyond the binding itself. */
+export type A2ASendClaim = Record<string, never>;
+
+/** What a completed send's ledger entry holds: the task it created or continued. */
+export type A2ASendResult = { readonly taskId: string };
+
+/** The ledger A2A sends record their bindings in. */
+export type A2ASendLedger = CommandLedger<A2ASendClaim, A2ASendResult>;
+
+/** The SDK `User` a Bureau A2A request carries: the principal the handler authenticated. */
+export class BureauA2AUser implements User {
+  readonly principal: Principal;
+
+  constructor(principal: Principal) {
+    this.principal = principal;
+  }
+
+  get isAuthenticated(): boolean {
+    return this.principal.method !== 'unauthenticated';
+  }
+
+  get userName(): string {
+    return ownerOfPrincipal(this.principal) ?? '';
+  }
+}
+
+/** The part of a Bureau the request handler reads. */
+export type A2ABureau = Pick<
+  Bureau,
+  'createRun' | 'getRun' | 'getOwner' | 'submitSessionInput' | 'eventHistory'
+> & {
+  readonly tasks: Pick<
+    TaskRegistry,
+    'get' | 'record' | 'cancel' | 'list' | 'onSettled' | 'onChanged'
+  >;
+};
+
+/** What {@link createBureauA2ARequestHandler} needs. */
+export type BureauA2ARequestHandlerOptions = {
+  /** The agent this handler serves: every task it reads or creates is this agent's. */
+  readonly agentName: string;
+  readonly card: () => AgentCard;
+  readonly bureau: A2ABureau;
+  readonly records: A2ATaskRecords;
+  readonly ledger: A2ASendLedger;
+  /** Answers a task's open wait as `principal`: `bureau.tasks.respond`'s own body. */
+  readonly respond: (principal: Principal, input: TasksRespondInput) => Promise<unknown>;
+  /** How long a cancel waits for the run's cleanup to acknowledge before it answers. */
+  readonly cancelWaitMilliseconds?: number;
+};
+
+type Owner = string;
+
+function invalid(message: string): RequestMalformedError {
+  return new RequestMalformedError(message);
+}
+
+function taskNotFound(taskId: string): TaskNotFoundError {
+  return new TaskNotFoundError(`Task '${taskId}' was not found.`);
+}
+
+function userOf(context: ServerCallContext | undefined): BureauA2AUser {
+  const user = context?.user;
+  if (!(user instanceof BureauA2AUser)) {
+    throw new UnsupportedOperationError('This request did not arrive through a Bureau A2A mount.');
+  }
+  return user;
+}
+
+function ownerOf(context: ServerCallContext | undefined): Owner {
+  const owner = ownerOfPrincipal(userOf(context).principal);
+  // The mount refuses a principal that can own nothing before the handler runs.
+  if (owner === undefined) throw new UnsupportedOperationError('This caller can own no task.');
+  return owner;
+}
+
+function headerOf(context: ServerCallContext | undefined, name: string): string | undefined {
+  const headers = context?.state.get(STATE_HEADERS_KEY) as Record<string, string> | undefined;
+  return headers?.[name];
+}
+
+/**
+ * The extensions a request activates: the ones it requested that the card declares, plus A2UI's
+ * when its own alias header or `metadata.a2uiClientCapabilities` asks for it. Each is recorded on
+ * the context, so the kit echoes it in the response's `A2A-Extensions` header.
+ */
+function activate(context: ServerCallContext | undefined, message?: Message): ReadonlySet<string> {
+  const activated = new Set<string>();
+  for (const uri of context?.requestedExtensions ?? []) {
+    if (DECLARED_EXTENSIONS.has(uri)) activated.add(uri);
+  }
+  const alias = headerOf(context, A2UI_EXTENSIONS_HEADER) ?? '';
+  if (alias.split(',').some((entry) => entry.trim() === A2UI_EXTENSION_URI)) {
+    activated.add(A2UI_EXTENSION_URI);
+  }
+  if (message?.metadata?.[A2UI_CLIENT_CAPABILITIES_METADATA_KEY] !== undefined) {
+    activated.add(A2UI_EXTENSION_URI);
+  }
+  for (const uri of activated) context?.addActivatedExtension(uri);
+  return activated;
+}
+
+/** A message's text parts, joined with a newline. */
+function textOf(message: Message): string {
+  return message.parts
+    .flatMap((part) => (part.content?.$case === 'text' ? [part.content.value] : []))
+    .join('\n');
+}
+
+/** A message's first data part, or `undefined`. */
+function dataOf(message: Message): unknown {
+  for (const part of message.parts) {
+    if (part.content?.$case === 'data') return part.content.value;
+  }
+  return undefined;
+}
+
+function requireMessage(params: SendMessageRequest): Message {
+  const message = params.message;
+  if (message === undefined || message.messageId === '') {
+    throw invalid('message.messageId is required.');
+  }
+  if (message.parts.length === 0) throw invalid('message.parts must hold at least one part.');
+  if (message.role !== Role.ROLE_USER)
+    throw invalid('An inbound message must have role ROLE_USER.');
+  for (const part of message.parts) {
+    if (part.mediaType !== '' && !A2A_INPUT_MODES.includes(part.mediaType)) {
+      throw new ContentTypeNotSupportedError(
+        `Media type '${part.mediaType}' is not supported; this agent accepts ${A2A_INPUT_MODES.join(', ')}.`,
+      );
+    }
+    const kind = part.content?.$case;
+    if (kind !== 'text' && kind !== 'data') {
+      throw new ContentTypeNotSupportedError(
+        `A ${kind ?? 'empty'} part is not supported; this agent reads text and data parts.`,
+      );
+    }
+  }
+  return message;
+}
+
+/**
+ * The digest a send's binding compares: the canonical message without its correlation
+ * identifier or the fields of extensions the request did not activate, the work-affecting part
+ * of its configuration (`acceptedOutputModes` as a set; `historyLength` and `returnImmediately`
+ * are response controls), and the activated extensions.
+ */
+function digestOf(params: SendMessageRequest, message: Message, activated: ReadonlySet<string>) {
+  const wire = Message.toJSON(message) as Record<string, unknown>;
+  const metadata = { ...(wire['metadata'] as Record<string, unknown> | undefined) };
+  delete metadata[CORRELATION_ID_METADATA_KEY];
+  for (const uri of DECLARED_EXTENSIONS) if (!activated.has(uri)) delete metadata[uri];
+  const outputModes = [...new Set(params.configuration?.acceptedOutputModes ?? [])].toSorted();
+  const configuration = params.configuration?.taskPushNotificationConfig;
+  return digestCommandPayload({
+    request: canonicalJson({
+      message: { ...wire, metadata },
+      acceptedOutputModes: outputModes,
+      taskPushNotificationConfig:
+        configuration === undefined ? null : (JSON.parse(JSON.stringify(configuration)) as unknown),
+      extensions: [...activated].toSorted(),
+    }),
+  });
+}
+
+/** A message as the task's history keeps it: its wire form, bound to the task. */
+function historyEntryOf(message: Message, taskId: string, contextId: string): A2AWireMessage {
+  return Message.toJSON({ ...message, taskId, contextId }) as A2AWireMessage;
+}
+
+/** Creates the request handler that serves one published agent. */
+export function createBureauA2ARequestHandler(
+  options: BureauA2ARequestHandlerOptions,
+): A2ARequestHandler {
+  const { agentName, bureau, records, ledger } = options;
+  const cancelWait = options.cancelWaitMilliseconds ?? 0;
+
+  /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
+  async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
+    if (taskId === '') throw invalid('A task id is required.');
+    const view = await bureau.tasks.get(taskId);
+    if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
+      throw taskNotFound(taskId);
+    }
+    return view;
+  }
+
+  /** The agent's reply on a completed task: from the live run, its settlement, or its history. */
+  async function replyOf(view: TaskView): Promise<string | undefined> {
+    if (view.status !== 'completed') return undefined;
+    const run = bureau.getRun(view.id);
+    const final = run?.stepDetails.findLast((step) => step.final);
+    if (final !== undefined) return final.content;
+    const record = await bureau.tasks.record(view.id);
+    if (record?.settled?.answer !== undefined) return record.settled.answer.text;
+    let since: string | undefined;
+    let content: string | undefined;
+    for (;;) {
+      const page = await bureau.eventHistory(
+        { kind: 'run', id: view.id },
+        { ...(since === undefined ? {} : { since }), limit: 200 },
+      );
+      if (!('events' in page)) break;
+      for (const event of page.events) {
+        if (event.kind !== 'run.completed') continue;
+        const payload = event.payload as { content?: unknown } | undefined;
+        if (typeof payload?.content === 'string') content = payload.content;
+      }
+      if (!page.hasMore) break;
+      since = page.nextCursor ?? page.events.at(-1)?.cursor;
+      if (since === undefined) break;
+    }
+    return content;
+  }
+
+  /** The task as one response shows it, folding a completed task's reply into its history once. */
+  async function respondWith(view: TaskView, shape: ProjectionShape): Promise<Task> {
+    const reply = await replyOf(view);
+    let record = await records.read(view.id);
+    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded) {
+      record = await records.update(view.id, (current) =>
+        current.replyRecorded
+          ? undefined
+          : {
+              ...current,
+              replyRecorded: true,
+              history:
+                reply === undefined || reply === ''
+                  ? current.history
+                  : [
+                      ...current.history,
+                      Message.toJSON(
+                        agentMessage(view, replyMessageId(view.id), reply),
+                      ) as A2AWireMessage,
+                    ],
+            },
+      );
+    }
+    const stored = await bureau.tasks.record(view.id);
+    return projectTask(
+      { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
+      shape,
+    );
+  }
+
+  /** Waits until the task is terminal or waits on its requester, or the request ends. */
+  async function settledView(taskId: string, signal: AbortSignal | undefined): Promise<TaskView> {
+    let wake: (() => void) | undefined;
+    const notify = () => wake?.();
+    const stopSettled = bureau.tasks.onSettled(taskId, notify);
+    const stopChanged = bureau.tasks.onChanged(taskId, notify);
+    signal?.addEventListener('abort', notify, { once: true });
+    try {
+      for (;;) {
+        const view = await bureau.tasks.get(taskId);
+        if (view === undefined) throw taskNotFound(taskId);
+        if (isSettled(view.status) || signal?.aborted === true) return view;
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, SETTLE_POLL_MS);
+          wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+      }
+    } finally {
+      stopSettled();
+      stopChanged();
+      signal?.removeEventListener('abort', notify);
+    }
+  }
+
+  async function createTask(message: Message, owner: Owner, version: string): Promise<string> {
+    if (message.contextId !== '') {
+      const contextOwner = await bureau.getOwner({ kind: 'session', id: message.contextId });
+      // A context another caller owns is answered as if it did not exist, before anything loads it.
+      if (contextOwner !== undefined && contextOwner !== owner) {
+        throw new TaskNotFoundError(`Context '${message.contextId}' was not found.`);
+      }
+    }
+    for (const referenced of message.referenceTaskIds) {
+      const view = await bureau.tasks.get(referenced);
+      if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
+        throw invalid(
+          `referenceTaskIds names '${referenced}', which is not your task on this agent.`,
+        );
+      }
+    }
+    const text = textOf(message);
+    if (text === '') throw invalid('A message that starts a task must hold a text part.');
+    let run;
+    try {
+      run = await bureau.createRun({
+        agentName,
+        principal: owner,
+        message: text,
+        ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
+        runCreationRequestId: `a2a:${version}:${message.messageId}`,
+      });
+    } catch (error) {
+      if (error instanceof BureauLedgerConflictError) {
+        throw invalid(
+          `messageId '${message.messageId}' was already used with a different payload.`,
+        );
+      }
+      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
+        throw new TaskNotFoundError(error.message);
+      }
+      if (error instanceof BureauError && error.code === 'BAD_REQUEST')
+        throw invalid(error.message);
+      throw error;
+    }
+    await records.create({
+      recordVersion: 1,
+      taskId: run.id,
+      contextId: run.sessionId,
+      history: [historyEntryOf(message, run.id, run.sessionId)],
+      replyRecorded: false,
+    });
+    return run.id;
+  }
+
+  /** The continuation's checks that run before anything is admitted. */
+  async function checkContinuation(message: Message, owner: Owner): Promise<TaskView> {
+    const view = await ownTask(message.taskId, owner);
+    const record = await records.read(view.id);
+    const recordedContext = record?.contextId ?? view.contextId;
+    if (message.contextId !== '' && message.contextId !== recordedContext) {
+      throw invalid(
+        `contextId '${message.contextId}' is not the context of task '${view.id}' (${recordedContext}).`,
+      );
+    }
+    if (isTerminal(view.status)) {
+      throw new UnsupportedOperationError(
+        `Task '${view.id}' is ${view.status}, so it accepts no further message.`,
+      );
+    }
+    return view;
+  }
+
+  async function continueTask(
+    message: Message,
+    view: TaskView,
+    owner: Owner,
+    principal: Principal,
+  ): Promise<void> {
+    if (view.status === 'input-required') {
+      const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
+      const decision = data?.decision;
+      if (
+        decision !== undefined &&
+        decision !== 'approve' &&
+        decision !== 'deny' &&
+        decision !== 'reject'
+      ) {
+        throw invalid('decision must be "approve", "deny", or "reject".');
+      }
+      const reason = typeof data?.reason === 'string' ? data.reason : undefined;
+      if (decision === 'reject' && (reason ?? '').trim() === '') {
+        throw invalid('A reject decision requires a reason.');
+      }
+      const signalName = message.metadata?.[SIGNAL_NAME_METADATA_KEY];
+      const text = textOf(message);
+      if (decision === undefined && text === '') {
+        throw invalid('An answer needs a text part, or a data part with a decision.');
+      }
+      const input = tasksRespondInput.safeParse({
+        taskId: view.id,
+        messageId: message.messageId,
+        ...(decision === undefined ? { answer: text } : { decision }),
+        ...(reason === undefined ? {} : { reason }),
+        ...(typeof signalName === 'string' ? { signalName } : {}),
+      });
+      if (!input.success)
+        throw invalid(input.error.issues[0]?.message ?? 'The answer is not valid.');
+      try {
+        await options.respond(principal, input.data);
+      } catch (error) {
+        const fault = error as { code?: unknown; message?: unknown } | null;
+        if (typeof fault?.code !== 'string') throw error;
+        if (fault.code === 'NotFound') throw taskNotFound(view.id);
+        throw invalid(
+          typeof fault.message === 'string' ? fault.message : 'The answer was refused.',
+        );
+      }
+    } else {
+      const mode = message.metadata?.[DELIVERY_MODE_METADATA_KEY] ?? 'queue';
+      if (mode !== 'queue' && mode !== 'steer') {
+        throw invalid('metadata.deliveryMode must be "queue" or "steer".');
+      }
+      const text = textOf(message);
+      if (text === '') throw invalid('A message to a working task needs a text part.');
+      const outcome = await bureau.submitSessionInput(view.contextId, {
+        id: message.messageId,
+        principal: owner,
+        deliveryMode: mode,
+        payload: text,
+      });
+      if (outcome.outcome === 'not-found') throw taskNotFound(view.id);
+      if (outcome.outcome === 'conflict') {
+        throw invalid(
+          `messageId '${message.messageId}' was already used with a different payload.`,
+        );
+      }
+      if (outcome.outcome === 'session-terminal') {
+        throw new UnsupportedOperationError(`Task '${view.id}' accepts no further message.`);
+      }
+      if (outcome.outcome !== 'admitted' && outcome.outcome !== 'replayed') {
+        throw new UnsupportedOperationError(
+          `The message could not be admitted (${outcome.outcome}).`,
+        );
+      }
+    }
+    await records.update(view.id, (current) => {
+      const entry = historyEntryOf(message, view.id, view.contextId);
+      const already = current.history.some((held) => held['messageId'] === message.messageId);
+      return already ? undefined : { ...current, history: [...current.history, entry] };
+    });
+  }
+
+  async function send(
+    params: SendMessageRequest,
+    context: ServerCallContext | undefined,
+  ): Promise<Task> {
+    const user = userOf(context);
+    const owner = ownerOf(context);
+    const message = requireMessage(params);
+    const activated = activate(context, message);
+    const version = context?.requestedVersion ?? '1.0';
+    const continuing = message.taskId !== '';
+    const identity: CommandLedgerIdentity = {
+      callerId: owner,
+      target: continuing ? `task:${message.taskId}` : `agent:${agentName}`,
+      requestId: message.messageId,
+      operationVersion: `${A2A_SEND_OPERATION_VERSION}/${version}`,
+    };
+    const digest = digestOf(params, message, activated);
+    const shape: ProjectionShape = {
+      historyLength: params.configuration?.historyLength,
+      includeArtifacts: true,
+      activated,
+    };
+    const answer = async (taskId: string): Promise<Task> => {
+      const view =
+        params.configuration?.returnImmediately === true
+          ? await bureau.tasks.get(taskId)
+          : await settledView(taskId, requestSignalOf(context as ServerCallContext));
+      if (view === undefined) throw taskNotFound(taskId);
+      return respondWith(view, shape);
+    };
+
+    // The caller's own binding first: an exact retry is owed its task whatever has changed since.
+    const located = await ledger.locate(identity);
+    if (located.state === 'retained' && located.entry.state === 'completed') {
+      if (located.entry.payloadDigest !== digest) {
+        throw invalid(
+          `messageId '${message.messageId}' was already used with a different payload.`,
+        );
+      }
+      return answer(located.entry.result.taskId);
+    }
+
+    if (params.configuration?.taskPushNotificationConfig !== undefined) {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
+      );
+    }
+    const continued = continuing ? await checkContinuation(message, owner) : undefined;
+
+    let claimed;
+    try {
+      claimed = await ledger.claim(identity, digest, {});
+    } catch (error) {
+      if (error instanceof BureauLedgerConflictError) {
+        throw invalid(
+          `messageId '${message.messageId}' was already used with a different payload.`,
+        );
+      }
+      throw error;
+    }
+    if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
+      return answer(claimed.entry.result.taskId);
+    }
+    const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
+    let taskId: string;
+    try {
+      if (continued === undefined) {
+        taskId = await createTask(message, owner, version);
+      } else {
+        await continueTask(message, continued, owner, user.principal);
+        taskId = continued.id;
+      }
+    } catch (error) {
+      // Refused before anything was admitted: a retry may claim the binding afresh.
+      if (claimed.outcome === 'claimed') await ledger.release(entry).catch(() => undefined);
+      throw error;
+    }
+    await ledger.complete(entry, { taskId });
+    return answer(taskId);
+  }
+
+  return {
+    async getAgentCard() {
+      return options.card();
+    },
+
+    async getAuthenticatedExtendedAgentCard(_params: GetExtendedAgentCardRequest) {
+      throw new UnsupportedOperationError('This agent declares no extended Agent Card.');
+    },
+
+    async sendMessage(params, context) {
+      return send(params, context);
+    },
+
+    // eslint-disable-next-line require-yield -- streaming is not declared yet, so this only refuses.
+    async *sendMessageStream(_params: SendMessageRequest): AsyncGenerator<StreamResponse> {
+      throw new UnsupportedOperationError('This agent does not declare streaming.');
+    },
+
+    async getTask(params: GetTaskRequest, context) {
+      const owner = ownerOf(context);
+      const activated = activate(context);
+      const view = await ownTask(params.id, owner);
+      return respondWith(view, {
+        historyLength: params.historyLength,
+        includeArtifacts: true,
+        activated,
+      });
+    },
+
+    async cancelTask(params: CancelTaskRequest, context) {
+      const owner = ownerOf(context);
+      const activated = activate(context);
+      const view = await ownTask(params.id, owner);
+      if (isTerminal(view.status)) {
+        throw new TaskNotCancelableError(`Task '${view.id}' is ${view.status}.`);
+      }
+      const outcome = await bureau.tasks.cancel(view.id, cancelWait);
+      if (outcome === undefined) throw taskNotFound(view.id);
+      if (outcome.reason === 'already-terminal') {
+        throw new TaskNotCancelableError(`Task '${view.id}' finished before it could be canceled.`);
+      }
+      const current = (await bureau.tasks.get(view.id)) ?? view;
+      return respondWith(current, { includeArtifacts: true, activated });
+    },
+
+    async listTasks(params: ListTasksRequest, context): Promise<ListTasksResponse> {
+      const owner = ownerOf(context);
+      const activated = activate(context);
+      const pageSize = params.pageSize ?? 50;
+      if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+        throw invalid('pageSize must be an integer from 1 to 100.');
+      }
+      const status =
+        params.status === TaskState.TASK_STATE_UNSPECIFIED
+          ? undefined
+          : bureauStateOf(params.status);
+      if (params.status !== TaskState.TASK_STATE_UNSPECIFIED && status === undefined) {
+        // A state no Bureau task reaches (`REJECTED`, `AUTH_REQUIRED`) matches nothing.
+        return { tasks: [], nextPageToken: '', pageSize, totalSize: 0 };
+      }
+      // The snapshot holds each task's widest view (history capped, artifacts and cleanup
+      // included), so a later page answers from it whatever trimming that page asks for.
+      const widest: ProjectionShape = {
+        historyLength: LISTED_HISTORY_LIMIT,
+        includeArtifacts: true,
+        activated: new Set([CLEANUP_EXTENSION_URI]),
+      };
+      let page;
+      try {
+        page = await bureau.tasks.list({
+          principal: owner,
+          owner,
+          agentName,
+          ...(params.contextId === '' ? {} : { contextId: params.contextId }),
+          ...(status === undefined ? {} : { status }),
+          ...(params.statusTimestampAfter === undefined
+            ? {}
+            : { statusTimestampAfter: params.statusTimestampAfter }),
+          limit: pageSize,
+          ...(params.pageToken === '' ? {} : { pageToken: params.pageToken }),
+          project: async (view) => Task.toJSON(await respondWith(view, widest)),
+        });
+      } catch (error) {
+        if (error instanceof TaskListingTokenError) throw invalid(error.message);
+        throw error;
+      }
+      const tasks = page.tasks.map((stored) => {
+        const task = Task.fromJSON(stored);
+        const history =
+          params.historyLength === undefined
+            ? task.history
+            : params.historyLength <= 0
+              ? []
+              : task.history.slice(-params.historyLength);
+        return {
+          ...task,
+          history,
+          artifacts: params.includeArtifacts === true ? task.artifacts : [],
+          metadata: activated.has(CLEANUP_EXTENSION_URI) ? task.metadata : undefined,
+        };
+      });
+      return {
+        tasks,
+        nextPageToken: page.nextPageToken ?? '',
+        pageSize,
+        totalSize: page.totalSize,
+      };
+    },
+
+    async createTaskPushNotificationConfig(
+      _params: TaskPushNotificationConfig,
+    ): Promise<TaskPushNotificationConfig> {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
+      );
+    },
+
+    async getTaskPushNotificationConfig(
+      _params: GetTaskPushNotificationConfigRequest,
+    ): Promise<TaskPushNotificationConfig> {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
+      );
+    },
+
+    async listTaskPushNotificationConfigs(
+      _params: ListTaskPushNotificationConfigsRequest,
+    ): Promise<ListTaskPushNotificationConfigsResponse> {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
+      );
+    },
+
+    async deleteTaskPushNotificationConfig(
+      _params: DeleteTaskPushNotificationConfigRequest,
+    ): Promise<void> {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
+      );
+    },
+
+    // eslint-disable-next-line require-yield -- streaming is not declared yet, so this only refuses.
+    async *resubscribe(_params: SubscribeToTaskRequest): AsyncGenerator<StreamResponse> {
+      throw new UnsupportedOperationError('This agent does not declare streaming.');
+    },
+  };
+}

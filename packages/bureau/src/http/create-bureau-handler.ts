@@ -25,6 +25,7 @@ import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
+  type ConditionalTextValueStore,
   createOperationHandler,
   createOperationHandlerAuthenticator,
   getPrincipalOperation,
@@ -36,7 +37,12 @@ import {
   textValueStore,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/weft';
-import { readGenerationProfile, type RunEventsOperationHost } from '@lostgradient/operative';
+import {
+  type AgentSkillDescriptor,
+  readGenerationProfile,
+  type RunEventsOperationHost,
+} from '@lostgradient/operative';
+import { type A2ASigningOptions, securitySchemesFromAuthConfig } from '@lostgradient/weft/a2a';
 
 import {
   type BureauEventsOperationHost,
@@ -48,9 +54,17 @@ import {
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
-import { createCommandLedger } from '../command-ledger.ts';
+import { type CommandLedger, createCommandLedger } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
+import { createBureauA2AMount } from './a2a-mount.ts';
+import {
+  A2A_SEND_LEDGER_KEY_PREFIX,
+  type A2ASendClaim,
+  type A2ASendLedger,
+  type A2ASendResult,
+} from './a2a-request-handler.ts';
+import { createA2ATaskRecords } from './a2a-task-record.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -128,6 +142,7 @@ import {
 } from './management/tasks-operations.ts';
 import {
   type BureauTasksRespondOperationHost,
+  respondToTask,
   TASKS_RESPOND_LEDGER_KEY_PREFIX,
   tasksRespondOperation,
   type TasksRespondClaim,
@@ -194,6 +209,7 @@ export type BureauHandlerSource = Pick<
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
   | 'assets'
+  | 'addEventListener'
 > & {
   readonly agents: {
     has(name: string): boolean;
@@ -247,10 +263,28 @@ export type BureauHandlerOptions = {
    * published by its own `published` frontmatter, which `bureau.agents.definitions.publish`
    * and `withdraw` set, and is never named here.
    *
-   * `bureau.agents.list`, `bureau.deployment.get`, and the AG-UI mount read the publication
-   * on every request. The adapters that will serve an Agent Card (A2A) mount later.
+   * `bureau.agents.list`, `bureau.deployment.get`, the AG-UI mount, and the A2A mount read the
+   * publication on every request.
    */
   readonly publish?: readonly string[];
+  /**
+   * The handler's public URL, which mounts A2A 1.0.1 (`a2a-mount.ts`): every published agent is
+   * served at `<publicUrl>/a2a/<catalog-name>`, its public Agent Card at
+   * `<publicUrl>/a2a/<catalog-name>/.well-known/agent-card.json`. It is the only source of the
+   * card's interface URL: nothing is derived from a request. An absolute `http` or `https` URL
+   * with no query or fragment. Omitted, A2A is not mounted.
+   */
+  readonly publicUrl?: string;
+  /**
+   * Base of the A2A discovery URLs (a signed card's `jku`), when discovery is served from another
+   * listener. Defaults to `publicUrl`, and needs it.
+   */
+  readonly discoveryUrl?: string;
+  /**
+   * Signs every published agent's Agent Card and serves its public key at
+   * `<path>/.well-known/jwks.json` (the kit's option shape). Needs `publicUrl`.
+   */
+  readonly signing?: A2ASigningOptions;
   /**
    * How a caller proves who it is. API-key authentication only in v1, and only
    * through `resolveApiKeyPrincipal`: a `jwt` or `mtls` configuration throws at
@@ -319,6 +353,9 @@ const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set(Object.keys(AG_UI_OPTION
 
 const OPTION_NAMES: ReadonlySet<string> = new Set([
   'publish',
+  'publicUrl',
+  'discoveryUrl',
+  'signing',
   'authentication',
   'unauthenticatedAccess',
   'mounts',
@@ -421,6 +458,33 @@ function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions):
         'both depend on one. Configure storage and `durableExecution` on createBureau',
     );
   }
+}
+
+function assertA2AUrl(name: string, value: unknown): void {
+  let parsed: URL | undefined;
+  try {
+    parsed = typeof value === 'string' ? new URL(value) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  if (
+    parsed === undefined ||
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    fail(`${name} must be an absolute http or https URL with no query or fragment`);
+  }
+}
+
+function assertA2A(options: BureauHandlerOptions): void {
+  if (options.publicUrl === undefined) {
+    if (options.discoveryUrl !== undefined) fail('discoveryUrl needs publicUrl, which mounts A2A');
+    if (options.signing !== undefined) fail('signing needs publicUrl, which mounts A2A');
+    return;
+  }
+  assertA2AUrl('publicUrl', options.publicUrl);
+  if (options.discoveryUrl !== undefined) assertA2AUrl('discoveryUrl', options.discoveryUrl);
 }
 
 function assertAssets(bureau: BureauHandlerSource): void {
@@ -623,17 +687,81 @@ function createPublication(
   };
 }
 
+/**
+ * The A2A mount: one interface per published agent. A task's A2A record leaves with its task:
+ * the mount deletes it when the run leaves the store (`run.removed`).
+ */
+function createA2AMount(
+  bureau: BureauHandlerSource,
+  options: BureauHandlerOptions,
+  host: BureauHandlerHost,
+): OperationHandlerMount {
+  const publish = options.publish ?? [];
+  const kv = bureau.kv ?? textValueStore(new MemoryStorage());
+  const records = createA2ATaskRecords(kv);
+  bureau.addEventListener('run.removed', (event) => {
+    void records.remove(event.runId).catch(() => undefined);
+  });
+  const ledger: A2ASendLedger = createPrunedLedger<A2ASendClaim, A2ASendResult>(
+    kv,
+    A2A_SEND_LEDGER_KEY_PREFIX,
+    'a2a-send-conflict',
+  );
+  return createBureauA2AMount({
+    publicUrl: options.publicUrl as string,
+    ...(options.discoveryUrl === undefined ? {} : { discoveryUrl: options.discoveryUrl }),
+    ...(options.signing === undefined ? {} : { signing: options.signing }),
+    bureau,
+    publication: createPublication(bureau, publish),
+    describe: (agentName) => {
+      const described = publishedAgentsOf(bureau, publish).find(
+        (agent) => agent.name === agentName,
+      );
+      const agent = bureau.agents.find(agentName) as
+        { readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined } | undefined;
+      if (described === undefined || agent === undefined) return undefined;
+      return {
+        catalogName: agentName,
+        displayName: described.displayName,
+        description: described.description ?? undefined,
+        definitionRevision: described.definitionRevision,
+        skillDescriptors: agent.skillDescriptors,
+      };
+    },
+    security:
+      options.authentication === undefined
+        ? undefined
+        : securitySchemesFromAuthConfig(options.authentication),
+    records,
+    ledger,
+    respond: (principal, input) => respondToTask(host, principal, input),
+  });
+}
+
 /** How often the respond ledger drops its expired bindings, at most. */
 const RESPOND_LEDGER_PRUNE_INTERVAL_MS = 3_600_000;
 
 function createRespondLedger(bureau: BureauHandlerSource): TasksRespondLedger {
-  const runtime = createDefaultRuntimeServices();
-  const ledger = createCommandLedger<TasksRespondClaim, TasksRespondResult>({
+  return createPrunedLedger<TasksRespondClaim, TasksRespondResult>(
     // An ephemeral Bureau keeps the ledger in memory: a receipt then lives as long as the process does.
-    kv: bureau.kv ?? textValueStore(new MemoryStorage()),
-    keyPrefix: TASKS_RESPOND_LEDGER_KEY_PREFIX,
+    bureau.kv ?? textValueStore(new MemoryStorage()),
+    TASKS_RESPOND_LEDGER_KEY_PREFIX,
+    'respond-conflict',
+  );
+}
+
+/** A command ledger that drops its expired bindings at most once an hour, on a claim. */
+function createPrunedLedger<Claim, Result>(
+  kv: ConditionalTextValueStore,
+  keyPrefix: string,
+  conflictIdPrefix: string,
+): CommandLedger<Claim, Result> {
+  const runtime = createDefaultRuntimeServices();
+  const ledger = createCommandLedger<Claim, Result>({
+    kv,
+    keyPrefix,
     clock: runtime.clock,
-    nextConflictId: () => runtime.identifiers.next('respond-conflict'),
+    nextConflictId: () => runtime.identifiers.next(conflictIdPrefix),
   });
   let prunedAt = runtime.clock.now();
   return {
@@ -753,6 +881,7 @@ export function createBureauHandler(
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertPublish(bureau, options.publish);
   assertAgUi(bureau, options);
+  assertA2A(options);
   assertAssets(bureau);
   assertMaxRequestBodyBytes(options.maxRequestBodyBytes);
   assertBureauId(bureau);
@@ -785,6 +914,7 @@ export function createBureauHandler(
               options.agUi,
             ),
           ]),
+      ...(options.publicUrl === undefined ? [] : [createA2AMount(bureau, options, host)]),
       ...(options.mounts ?? []),
     ],
     // Whether a route authenticates is decided by `authentication` alone, so the

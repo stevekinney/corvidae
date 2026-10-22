@@ -16,6 +16,7 @@
     "test:slow": "bun test .slow.test.ts"
   },
   "dependencies": {
+    "@a2a-js/sdk": "catalog:",
     "@ag-ui/core": "catalog:",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
