@@ -84,6 +84,8 @@ export type FollowTaskOptions = {
   readonly replyOf: (view: TaskView) => Promise<string | undefined>;
   readonly timers: RuntimeTimers;
   readonly signal: AbortSignal | undefined;
+  /** How many events the stream holds for a reader that has fallen behind. */
+  readonly buffer?: number | undefined;
 };
 
 type Gap = { readonly requestedCursor: string; readonly firstRetainedCursor: string };
@@ -339,7 +341,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   if (isTerminal(snapshotView.status) || signal?.aborted === true) return;
 
   const queue = createQueue<{ event: StreamResponse; cursor?: string; ends?: boolean }>(
-    A2A_STREAM_BUFFER,
+    options.buffer ?? A2A_STREAM_BUFFER,
   );
   let lastStatus = snapshotView.status;
   const stops: Array<() => void> = [];
@@ -462,13 +464,14 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
       (event) => {
         if (event.kind === DURABLE_HISTORY_GAP_KIND) {
           // Retention passed the next cursor: close rather than skip, and the client reconnects.
-          queue.end();
+          // The close waits its turn, so an earlier event still being mapped is sent first.
+          mapping = chained(mapping, async () => queue.end());
           return;
         }
         const element = projector.project(event);
         if (element === undefined) return;
         if (element.kind === 'task.removed') {
-          queue.end();
+          mapping = chained(mapping, async () => queue.end());
           return;
         }
         if (element.kind !== 'task.status') return;
