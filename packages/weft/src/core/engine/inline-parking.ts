@@ -1,8 +1,6 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { hasExposedAccessors, hasUpdateHandlers } from '../context/context-presence.ts';
 import type { WorkerOutboundMessage, WorkflowState } from '../types.ts';
-import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
-import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
 import { beginInFlightOperation, endInFlightOperation } from './in-flight-operation.ts';
 import type { EngineInternals } from './internals.ts';
 import {
@@ -16,10 +14,21 @@ import {
   rejectSleepTimerAcknowledgements,
 } from './sleep-timer-acknowledgements.ts';
 import {
+  endRunAfterFailedWrite,
+  endRunAfterStrategyError,
+  isTerminalWaiterPending,
+  settleUnsettledTerminalMessage,
+  terminalWriteOf,
+} from './terminal-run-exit.ts';
+import {
   completeWorkflow as completeWorkflowFromTermination,
   failWorkflow as failWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
+import {
+  captureTerminatedRun,
+  type TerminatedRun,
+} from './termination/settle-refused-terminal.ts';
 
 export type ParkedWorkflowResumeDisposition = 'resumable' | 'terminal-or-missing' | 'corrupt';
 
@@ -193,6 +202,7 @@ async function dispatchStrategyMessage(
   internals: EngineInternals,
   message: WorkerOutboundMessage,
   callbacks: InlineParkingCallbacks,
+  run: TerminatedRun,
 ): Promise<void> {
   switch (message.type) {
     case 'completed':
@@ -250,14 +260,19 @@ async function dispatchStrategyMessage(
         }
 
         if (operation.type === 'wait-signal' && internals.inlineStrategy === null) {
+          // The worker's wait-signal loop runs detached from this message, so its rejection ends
+          // the run from here, bound to the run the message was dispatched for (`run`): by the
+          // time the loop fails, the id may be another run's.
           void callbacks.processOperation(message.workflowId, operation).catch((error: unknown) => {
             const failedError = error instanceof Error ? error : new Error(String(error));
-            return failWorkflowFromTermination(
+            return endRunAfterFailedWrite(
               internals,
               message.workflowId,
+              callbacks,
               failedError,
-              callbacks.createTerminationCallbacks(),
-              'system',
+              'checkpoint',
+              run,
+              failedError,
             );
           });
           break;
@@ -279,34 +294,46 @@ export async function handleStrategyMessage(
   message: WorkerOutboundMessage,
   callbacks: InlineParkingCallbacks,
 ): Promise<void> {
+  const terminalWrite = terminalWriteOf(message);
+  // The run this message belongs to, as it stands before anything awaits: a terminal commit
+  // releases what identifies it, and a checkpoint write is retried for most of a second, during
+  // which a cancel and a `start-new` replacement, or a relaunch, can put another run under the id.
+  // Every exit below ends this run and no other (see `terminal-run-exit.ts`).
+  const run = captureTerminatedRun(internals, message.workflowId);
   try {
-    await dispatchStrategyMessage(internals, message, callbacks);
+    await dispatchStrategyMessage(internals, message, callbacks, run);
+    // A terminal message that returned with its run's waiter still pending did not settle it.
+    if (terminalWrite !== undefined && isTerminalWaiterPending(internals, message.workflowId, run)) {
+      await settleUnsettledTerminalMessage(internals, message.workflowId, callbacks, run);
+    }
   } catch (error) {
     rejectSleepTimerAcknowledgements(internals, message.workflowId, error);
-    // The inline strategy contains a handler's rejection so one workflow's
-    // failure cannot take down the engine, and recovery runs only at boot, so
-    // what is left alone here stays un-driven until the next restart. A storage
-    // failure is left that way on purpose: the workflow stays `running` durably
-    // and the next boot's recovery retries it.
+    // The inline strategy contains a handler's rejection so one workflow's failure cannot take
+    // down the engine, and recovery runs only at boot, so what is left alone here stays un-driven
+    // until the next restart. Every error below therefore ends the run here instead; see
+    // `endRunAfterFailedWrite` for how, and for the one case that stays `running` durably.
     //
-    // A checkpoint that cannot be encoded is not retryable, since the same
-    // state fails on every resume, so left alone it would stay `running` with
-    // `result()` pending forever. Fail the workflow with the cause instead.
+    // A storage write the engine needs (the checkpoint batch, or a terminal `wf:` write) that
+    // storage refused on every attempt is a `CheckpointCommitFailedError`: the write already
+    // retried, five attempts over 750 ms. Any other error out of a terminal message ends the run
+    // the same way, because the terminal write is the last thing that can settle it.
     //
-    // A checkpoint commit that lost its compare-and-swap race means another
-    // engine over the same store already advanced this workflow and owns its
-    // durable state. `commitCheckpoint` already abandoned the run where it
-    // detected the loss (this engine stops driving it and settles its local
-    // handle); all that is left is to write nothing: failing the workflow here
-    // would overwrite the winner.
-    if (error instanceof WorkflowCheckpointConflictError) return;
-    if (!(error instanceof CheckpointEncodingError)) throw error;
-    await failWorkflowFromTermination(
+    // A checkpoint that cannot be encoded is not retryable, since the same state fails on every
+    // resume, so left alone it would stay `running` with `result()` pending forever. Fail the
+    // workflow with the cause instead.
+    //
+    // A checkpoint commit that lost its compare-and-swap race means another engine over the same
+    // store already advanced this workflow and owns its durable state. `commitCheckpoint` already
+    // abandoned the run where it detected the loss (this engine stops driving it and settles its
+    // local handle); all that is left is to write nothing: failing the workflow here would
+    // overwrite the winner.
+    await endRunAfterStrategyError(
       internals,
       message.workflowId,
+      callbacks,
       error,
-      callbacks.createTerminationCallbacks(),
-      'system',
+      terminalWrite,
+      run,
     );
   }
 }

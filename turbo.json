@@ -69,6 +69,11 @@
         "scripts/browser-fixtures/tsconfig*.json"
       ]
     },
+    "//#test:self:slow": {
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "outputs": [],
+      "inputs": ["$TURBO_DEFAULT$"]
+    },
     "//#test:browser-fixtures": {
       "dependsOn": ["@lostgradient/browser-fixtures#transit"],
       "env": ["CODEX_CI", "TMPDIR"],

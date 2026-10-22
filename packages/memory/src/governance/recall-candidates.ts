@@ -154,8 +154,10 @@ function historicalAdmitted(plan: MemoryRetrievalPlan, candidate: RecallCandidat
   if (invalidatedAt === undefined) return true;
   const { asOf, includeHistorical } = plan.constraints;
   // `asOf` belongs to the temporal filter: a plan without that stage ignores it.
+  // History that was asked for stays eligible whatever `asOf` says.
+  if (includeHistorical) return true;
   if (asOf !== undefined && plan.stages.includes('temporal-filter')) return invalidatedAt > asOf;
-  return includeHistorical;
+  return false;
 }
 
 /** The constraint stage that excludes `candidate`, if one does. */
