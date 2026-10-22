@@ -10,6 +10,7 @@
 import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { type Storage } from '@lostgradient/weft';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
+import { getMessages } from 'conversationalist';
 
 import type { BureauError } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -50,6 +51,24 @@ const approve = (bureau: Bureau, id: string) =>
 
 async function refusalOf(bureau: Bureau, id: string): Promise<BureauError> {
   return (await rejectionOf(approve(bureau, id))) as BureauError;
+}
+
+/**
+ * What the session recorded for the replayed step's call: COR-1628 refuses a call the run's skill
+ * policy does not permit before the call reaches its approval, so the refusal is the call's result.
+ */
+async function recordedResultCode(
+  bureau: Bureau,
+  sessionId: string,
+  callId: string,
+): Promise<string | undefined> {
+  return pollUntil(async () => {
+    const session = await bureau.getSession(sessionId);
+    if (session === undefined) return undefined;
+    return getMessages(session.conversationHistory).find(
+      (message) => message.toolResult?.callId === callId,
+    )?.toolResult?.error?.code;
+  }, `the result of ${callId} to be recorded`);
 }
 
 /** Rewrites the skill snapshot a session holds on disk, in its body and in the summary index. */
@@ -324,12 +343,9 @@ describe('a fire replayed after its process died in a step', () => {
 
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
-    // The call reaches its approval, and the approval is refused: the policy is unverified.
-    const listed = restarted.listPendingReviews().filter((review) => review.runId === fireId);
-    expect(listed).toHaveLength(1);
-    const refusal = await refusalOf(restarted, listed[0]!.id);
-    expect(refusal.code).toBe('CONFLICT');
-    expect(refusal.message).toContain('could not be verified');
+    // The call is refused before it reaches an approval, because the policy is unverified.
+    expect(restarted.listPendingReviews().filter((review) => review.runId === fireId)).toEqual([]);
+    expect(await recordedResultCode(restarted, SESSION, 'charge-Y')).toBe('SKILL_TOOL_DENIED');
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
     expect(held.some((records) => Array.isArray(records) && records.length === 1)).toBe(true);
@@ -350,12 +366,9 @@ describe('a fire replayed after its process died in a step', () => {
 
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
-    // The call reaches its approval, and the approval is refused: the policy is unverified.
-    const listed = restarted.listPendingReviews().filter((review) => review.runId === fireId);
-    expect(listed).toHaveLength(1);
-    const refusal = await refusalOf(restarted, listed[0]!.id);
-    expect(refusal.code).toBe('CONFLICT');
-    expect(refusal.message).toContain('could not be verified');
+    // The call is refused before it reaches an approval, because the policy is unverified.
+    expect(restarted.listPendingReviews().filter((review) => review.runId === fireId)).toEqual([]);
+    expect(await recordedResultCode(restarted, SESSION, 'charge-Y')).toBe('SKILL_TOOL_DENIED');
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
     expect(held.some((records) => Array.isArray(records) && records.length === 1)).toBe(true);
@@ -394,17 +407,21 @@ describe('a fire replayed after its process died in a step', () => {
     expect(charges).toEqual([4242]);
   });
 
-  it('is offered no tool, and its approval is refused, when this Bureau has no skills to enforce the stored ones', async () => {
+  it('is offered no tool, and its call is refused, when this Bureau has no skills to enforce the stored ones', async () => {
     const catalog = await skillCatalogOnDisk('charge-card, deactivate_skill');
     const { path, fireId, life } = await fireDyingInStepOne(catalog);
     const charges: number[] = [];
     const offered: string[] = [];
     const restarted = await replay(catalog, path, life, charges, undefined, offered, false);
-    const listed = await reviewOf(restarted, fireId);
 
-    const refusal = await refusalOf(restarted, listed.id);
+    await pollUntil(
+      async () => ((await durableStatus(restarted, fireId)) === 'completed' ? true : undefined),
+      'the replayed fire to complete',
+    );
 
-    expect(refusal.code).toBe('CONFLICT');
+    // The call is refused before it reaches an approval: this Bureau cannot enforce the skills.
+    expect(restarted.listPendingReviews().filter((review) => review.runId === fireId)).toEqual([]);
+    expect(await recordedResultCode(restarted, SESSION, 'charge-Y')).toBe('SKILL_TOOL_DENIED');
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
   });
@@ -466,11 +483,11 @@ describe('a session run reattached after its process died in a step', () => {
 
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
-    const listed = restarted.listPendingReviews().filter((review) => review.runId === run.id);
-    expect(listed).toHaveLength(1);
-    const refusal = await refusalOf(restarted, listed[0]!.id);
-    expect(refusal.code).toBe('CONFLICT');
-    expect(refusal.message).toContain('could not be verified');
+    // The call is refused before it reaches an approval, because the policy is unverified.
+    expect(restarted.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
+    expect(await recordedResultCode(restarted, run.sessionId, 'charge-Y')).toBe(
+      'SKILL_TOOL_DENIED',
+    );
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
     expect(held.some((records) => records === 'not records')).toBe(true);
@@ -511,11 +528,11 @@ describe('a session run reattached after its process died in a step', () => {
 
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
-    const listed = restarted.listPendingReviews().filter((review) => review.runId === run.id);
-    expect(listed).toHaveLength(1);
-    const refusal = await refusalOf(restarted, listed[0]!.id);
-    expect(refusal.code).toBe('CONFLICT');
-    expect(refusal.message).toContain('could not be verified');
+    // The call is refused before it reaches an approval, because the policy is unverified.
+    expect(restarted.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
+    expect(await recordedResultCode(restarted, run.sessionId, 'charge-Y')).toBe(
+      'SKILL_TOOL_DENIED',
+    );
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
     expect(held.some((records) => Array.isArray(records) && records.length === 1)).toBe(true);

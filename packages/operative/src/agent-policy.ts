@@ -12,6 +12,7 @@
 import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
 
+import { createGatedExecute } from './active-skill-tool-gate';
 import type { ToolPolicy } from './create-policy-enforcement-hook';
 import { createPolicyEnforcementHook } from './create-policy-enforcement-hook';
 import { createGuardrails } from './guardrails/create-guardrails';
@@ -84,26 +85,50 @@ export function resolveAgentGuardrails(
 }
 
 /**
- * COR-1228 — narrows the tools a model sees to an active skill's
- * `allowed-tools`.
+ * COR-1228, COR-1628 — narrows a toolbox to an active skill's `allowed-tools`, as a filter and as
+ * an execution gate.
  *
- * A filter, not a per-call gate: `ToolPolicy` removes a tool before the model
- * learns it exists, and the per-call gate stays
- * `createHeadlessPermissionPolicyHooks`. The policy is read live on every
- * `tools()` call because the active set changes as the model activates and
- * deactivates skills, and a proxy keeps the toolbox's emitter, approval wiring
- * and request context untouched.
+ * The filter: `ToolPolicy` removes a tool from `tools()` before the model learns it exists. The
+ * policy is read live on every `tools()` call because the active set changes as the model
+ * activates and deactivates skills, and a proxy keeps the toolbox's emitter, approval wiring and
+ * request context untouched.
+ *
+ * The gate: `execute` refuses a call to any tool `tools()` hides, so a model that names a tool it
+ * was shown before a skill narrowed the set, or one it guesses, does not get it run. A call is
+ * judged by the tool it reaches (by name, by id, or by the fuzzy name resolution a toolbox with
+ * `resolution` applies), so a near-miss name cannot bypass the gate. A name nothing resolves to is
+ * left to the toolbox's own `NOT_FOUND`. The refusal is a `ToolExecutionResult` with
+ * `outcome: 'error'`, `errorCategory: 'permission'` and an error coded `SKILL_TOOL_DENIED`, so the
+ * conversation keeps a result for every call and the run continues; under `errorMode: 'failFast'`
+ * it throws that `ToolError` before any call of the batch runs, as Armorer does for a policy
+ * denial. The visible set is read once per `execute` call, so a batch runs under the policy the
+ * model was shown when it generated the step. Allowed calls reach the underlying `execute` in
+ * their original order, and a function `durableOperationKey` receives each call's index in the
+ * original batch, so a refusal never changes another call's key. The per-call gate for the agent's
+ * static `permissions` stays `createHeadlessPermissionPolicyHooks`.
  */
 export function withActiveSkillToolPolicy(
   toolbox: AnyToolbox,
   getActiveSkillToolPolicy: () => ToolPolicy | undefined,
 ): AnyToolbox {
   const filterTools = createPolicyEnforcementHook({ getActiveSkillToolPolicy });
+  const visibleTools = () => filterTools([...toolbox.tools()]);
 
   return new Proxy(toolbox, {
     get(target, property, receiver) {
       if (property === 'tools') {
-        return () => filterTools([...target.tools()]);
+        return visibleTools;
+      }
+      if (property === 'execute') {
+        const execute = Reflect.get(target, property, receiver) as (
+          calls: unknown,
+          options?: unknown,
+        ) => Promise<unknown>;
+        return createGatedExecute(
+          target,
+          (calls, options) => Reflect.apply(execute, receiver, [calls, options]),
+          visibleTools,
+        );
       }
       return Reflect.get(target, property, receiver) as unknown;
     },

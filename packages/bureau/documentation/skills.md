@@ -257,7 +257,7 @@ A skill-enabled run follows this sequence:
 - The agent calls `activate_skill` when one catalog entry matches the task. The client verifies the bundle's digest against the revision before admitting anything.
 - Active instructions are re-rendered from the client on **every** step, as a `<skill_content>` block, rather than left in the transcript. That is what makes them survive a compaction strategy that rewrote the whole history: they were never part of the history it summarized.
 - If the skill ships resources, the agent can call `load_skill_resource`.
-- An active skill's `allowed-tools` narrows the run's tool set. It can only remove tools, never add one the run did not already have.
+- An active skill's `allowed-tools` narrows the run's tool set. It can only remove tools, never add one the run did not already have. A call to an excluded tool is refused with `SKILL_TOOL_DENIED` and the run continues: the refusal is the call's tool result, so the model sees it on the next step. The tool never runs, and that includes a call that reaches it by id or by a near-miss name. List `deactivate_skill` and `load_skill_resource` in a skill's `allowed-tools` as well: a skill that leaves them out cannot be deactivated, and cannot load its own resources, for the rest of the run.
 
 `@lostgradient/bureau` composes exactly this, and adds what the client cannot see: run and session correlation on every lifecycle event, the deployment's admission policy, the guardrail pipeline skill content is scanned through, and a durable snapshot of the activation records so a recovered run can re-validate what it had rather than losing it.
 
