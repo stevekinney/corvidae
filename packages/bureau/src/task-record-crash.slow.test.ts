@@ -159,7 +159,7 @@ const outcomes = {
           agentName: 'asker',
           contextId: 'crash-context',
         });
-        const inContext = await bureau.tasks.list({
+        const inContext = await bureau.tasks.enumerate({
           contextId: 'crash-context',
           limit: 10,
           offset: 0,

@@ -466,7 +466,7 @@ describe('the fence around a context being deleted', () => {
       expect((refused as BureauError).code).toBe('NOT_FOUND');
       expect(opened.bureau.listRuns()).toEqual([]);
       expect(await opened.bureau.getSession('overtaken')).toBeUndefined();
-      const tasks = await opened.bureau.tasks.list({ limit: 50, offset: 0 });
+      const tasks = await opened.bureau.tasks.enumerate({ limit: 50, offset: 0 });
       expect(tasks.tasks).toEqual([]);
     } finally {
       await opened.dispose();
