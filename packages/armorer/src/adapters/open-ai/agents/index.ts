@@ -1,5 +1,6 @@
 import type { Tool, ToolExecutionResult } from '../../../index';
 import { isTool } from '../../../is-tool';
+import { textOfToolResultParts, toolResultParts } from '../../tool-result-parts';
 
 type ToolboxLike = {
   tools: () => readonly Tool[];
@@ -276,7 +277,9 @@ function formatToolResult(result: ToolExecutionResult): unknown {
     const message = result.error?.message ?? stringifyResult(result.content);
     throw new Error(message);
   }
-
+  // A result with parts reaches the agent as its text, in order; a media part is refused.
+  const parts = toolResultParts(result);
+  if (parts !== undefined) return textOfToolResultParts('The OpenAI Agents adapter', parts);
   return result.result;
 }
 

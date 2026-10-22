@@ -93,3 +93,21 @@ test('every --cinder-* token in Weft UI source is one Cinder defines', async () 
   }
   expect(undefinedReferences).toEqual([]);
 });
+
+/**
+ * Interborough looks right on Cinder's defaults (COR-1552). A `--cinder-*` custom property
+ * declared anywhere in the app's CSS or Svelte source is a token override, which is exactly what
+ * retuning Cinder itself replaced. Reading a token with `var()` is the supported use and is not a
+ * declaration, so this matches only a name followed by a colon.
+ */
+test('no file under src declares a --cinder-* custom property', async () => {
+  const uiSource = fileURLToPath(new URL('../src/', import.meta.url));
+  const declarations: string[] = [];
+  for await (const file of new Bun.Glob('**/*.{css,svelte}').scan(uiSource)) {
+    const text = await Bun.file(join(uiSource, file)).text();
+    for (const match of text.matchAll(/--cinder-[a-z0-9-]+\s*:/g)) {
+      declarations.push(`${file}: ${match[0]}`);
+    }
+  }
+  expect(declarations).toEqual([]);
+});

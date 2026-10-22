@@ -1,4 +1,5 @@
 import type {
+  RedactedMediaPart,
   JSONValue as SharedJSONValue,
   ToolAction as SharedToolAction,
   ToolActionInput as SharedToolActionInput,
@@ -14,6 +15,7 @@ import type {
   ToolErrorInput as SharedToolErrorInput,
   ToolResult as SharedToolResult,
   ToolResultInput as SharedToolResultInput,
+  TextContent,
 } from './protocol';
 
 import type { ApprovalBindingPayload } from './approval-binding';
@@ -80,6 +82,15 @@ export type TypedToolExecutionResult<TReturn> = ToolExecutionResult & {
 };
 
 export type ToolResultLike = ToolResultInput | ToolExecutionResult;
+
+/**
+ * A {@link ToolExecutionResult} as an event shows it (COR-792): its `parts` hold text as it is and
+ * media as a {@link RedactedMediaPart}, with type, size, and identity but never bytes, and a
+ * `toolContent` raw `result` is redacted the same way.
+ */
+export type RedactedToolExecutionResult = Omit<ToolExecutionResult, 'parts'> & {
+  parts?: Array<TextContent | RedactedMediaPart>;
+};
 
 export type PolicyPauseTier = 'capability' | 'registry' | 'tool';
 

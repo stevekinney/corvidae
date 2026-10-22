@@ -127,8 +127,9 @@ function defaultFingerprint(
       if (includeResults) {
         const result = results.find((r) => r.callId === call.id);
         if (result) {
-          const raw =
-            typeof result.content === 'string' ? result.content : JSON.stringify(result.content);
+          // A result with parts answers through them, so they are what tells two results apart.
+          const payload = result.parts ?? result.content;
+          const raw = typeof payload === 'string' ? payload : JSON.stringify(payload);
           const preview = raw.slice(0, 100);
           fp += `:${preview}`;
         }

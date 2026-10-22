@@ -1,6 +1,11 @@
 import { ConversationalistError } from '../errors';
 import { readMediaBody } from '../media-body';
-import { isMediaContent, type MediaContent, type MultiModalContent } from '../multi-modal';
+import {
+  isMediaContent,
+  type MediaContent,
+  type MultiModalContent,
+  type ToolResultPart,
+} from '../multi-modal';
 import type { JSONValue, MessageInput, MessagePlugin } from '../types';
 
 /**
@@ -188,6 +193,20 @@ export function createPIIRedactionPlugin(options: PIIRedactionOptions = {}): Mes
         toolResult: {
           ...result.toolResult,
           content: redactJSONValue(result.toolResult.content, redact),
+        },
+      };
+    }
+
+    // A tool result's parts are payload too: their text and media fields are redacted alike.
+    const parts = result.toolResult?.parts;
+    if (result.toolResult !== undefined && parts !== undefined) {
+      result = {
+        ...result,
+        toolResult: {
+          ...result.toolResult,
+          parts: parts.map(
+            (part, index) => redactContentPart(part, redact, index) as ToolResultPart,
+          ),
         },
       };
     }
