@@ -11,6 +11,7 @@ import {
   parkingUntilAborted,
 } from './management/management-fixtures.test-support.ts';
 import { A2UI_EXTENSION_URI } from './a2a-agent-card.ts';
+import { inclusiveBoundary, LISTED_HISTORY_BYTES } from './a2a-request-handler.ts';
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
 
 const PUBLIC_URL = 'http://localhost';
@@ -1085,6 +1086,30 @@ describe('the second review pass', () => {
       );
       await opened.bureau.tasks.cancel(immediate.body.result.task.id, 0);
       await blocking;
+    });
+  });
+});
+
+describe('the third review pass', () => {
+  it('reads statusTimestampAfter inclusively at any precision', () => {
+    const at = Date.parse('2026-01-01T00:00:00.000Z');
+    expect(inclusiveBoundary('2026-01-01T00:00:00.000Z')).toBe(at - 1);
+    expect(inclusiveBoundary('2026-01-01T00:00:00Z')).toBe(at - 1);
+    expect(inclusiveBoundary('2026-01-01T00:00:00.000000Z')).toBe(at - 1);
+    // A task at .000Z lies before .0005Z, so the bound stays on that millisecond.
+    expect(inclusiveBoundary('2026-01-01T00:00:00.0005Z')).toBe(at);
+  });
+
+  it('bounds a listed task’s history in bytes, whatever the messages hold', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const task = await sendForTask(opened, 'asker', { message: message('x'.repeat(300_000)) });
+
+      const listed = await call(opened, 'asker', 'ListTasks', {});
+      const read = await call(opened, 'asker', 'GetTask', { id: task.id });
+
+      const entry = listed.body.result.tasks.find((candidate: Json) => candidate.id === task.id);
+      expect(JSON.stringify(entry).length).toBeLessThan(LISTED_HISTORY_BYTES);
+      expect(read.body.result.history.length).toBeGreaterThan(0);
     });
   });
 });

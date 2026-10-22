@@ -309,6 +309,39 @@ function historyEntryOf(message: Message, taskId: string, contextId: string): A2
   return Message.toJSON({ ...message, taskId, contextId }) as A2AWireMessage;
 }
 
+/**
+ * The strict lower bound, in epoch milliseconds, that admits exactly the tasks at or after
+ * `timestamp` (A2A's filter is inclusive; the listing's is strict). Status timestamps have
+ * millisecond resolution, so a whole-millisecond instant moves back one millisecond, and an
+ * instant with a sub-millisecond part stays on its millisecond, which lies before it.
+ */
+export function inclusiveBoundary(timestamp: string): number {
+  const milliseconds = Date.parse(timestamp);
+  const fraction = /\.(\d+)/.exec(timestamp)?.[1] ?? '';
+  return /[1-9]/.test(fraction.slice(3)) ? milliseconds : milliseconds - 1;
+}
+
+/** The most serialized bytes a listed task's history keeps in a listing snapshot. */
+export const LISTED_HISTORY_BYTES = 256 * 1024;
+
+/**
+ * A listed task with its history trimmed, oldest first, to {@link LISTED_HISTORY_BYTES}, so one
+ * task's entry stays well within a snapshot window however large its messages are.
+ */
+function boundedTask(task: unknown): unknown {
+  const record = task as { history?: unknown[] };
+  const history = record.history ?? [];
+  let kept = history.length;
+  let bytes = 0;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    bytes += new TextEncoder().encode(JSON.stringify(history[index])).byteLength;
+    if (bytes > LISTED_HISTORY_BYTES) break;
+    kept = index;
+  }
+  if (bytes <= LISTED_HISTORY_BYTES) return task;
+  return { ...record, history: history.slice(kept) };
+}
+
 /** Creates the request handler that serves one published agent. */
 export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
@@ -832,12 +865,12 @@ export function createBureauA2ARequestHandler(
             ? {}
             : {
                 statusTimestampAfter: new Date(
-                  Date.parse(params.statusTimestampAfter) - 1,
+                  inclusiveBoundary(params.statusTimestampAfter),
                 ).toISOString(),
               }),
           limit: pageSize,
           ...(params.pageToken === '' ? {} : { pageToken: params.pageToken }),
-          project: async (view) => Task.toJSON(await respondWith(view, widest)),
+          project: async (view) => boundedTask(Task.toJSON(await respondWith(view, widest))),
         });
       } catch (error) {
         if (error instanceof TaskListingTokenError) throw invalid(error.message);
