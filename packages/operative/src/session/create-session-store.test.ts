@@ -96,7 +96,7 @@ function withForcedGetOrder(backing: BackingStore, slowKey: string, fastKey: str
 
 function summaryIndexPayload(id: string): string {
   return JSON.stringify({
-    formatVersion: 2,
+    formatVersion: 3,
     summaries: {
       [id]: {
         id,
@@ -104,6 +104,8 @@ function summaryIndexPayload(id: string): string {
         title: null,
         lastMessagePreview: null,
         owner: 'anonymous:local',
+        parentContextId: null,
+        forkedFromMessageId: null,
         messageCount: 0,
         createdAt: '2025-01-01T00:00:00.000Z',
         updatedAt: '2025-01-01T00:00:00.000Z',
@@ -862,7 +864,7 @@ describe('createSessionStore', () => {
 
     expect(await store.list()).toEqual([]);
     expect(await rawStore.get(SUMMARY_INDEX_KEY)).toBe(
-      JSON.stringify({ formatVersion: 2, summaries: {} }),
+      JSON.stringify({ formatVersion: 3, summaries: {} }),
     );
 
     const retained = makeSession({ id: 'after-orphan-repair' });
@@ -988,7 +990,7 @@ describe('createSessionStore', () => {
     await rawStore.set(
       SUMMARY_INDEX_KEY,
       JSON.stringify({
-        formatVersion: 2,
+        formatVersion: 3,
         summaries: {
           [session.id]: {
             id: session.id,
@@ -996,6 +998,8 @@ describe('createSessionStore', () => {
             title: null,
             lastMessagePreview: null,
             owner: 'anonymous:local',
+            parentContextId: null,
+            forkedFromMessageId: null,
             messageCount: 0,
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
@@ -2822,8 +2826,8 @@ describe('session summaries carry a title, a last-message preview and an owner (
     const rewritten = JSON.parse((await rawStore.get(SUMMARY_INDEX_KEY))!) as {
       formatVersion: number;
     };
-    expect(rewritten.formatVersion).toBe(2);
-    // And it is rebuilt once: a second list reads the version 2 index as it stands.
+    expect(rewritten.formatVersion).toBe(3);
+    // And it is rebuilt once: a second list reads the current index as it stands.
     const second = await store.list();
     expect(second[0]).toEqual(summary);
   });
