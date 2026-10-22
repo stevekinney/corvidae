@@ -125,7 +125,10 @@ function waitBeforeRetry(internals: EngineInternals, milliseconds: number): Prom
 }
 
 /** The test-only replacements for the wait before a retry, per engine; see {@link holdStorageWriteRetryWaitsForTesting}. */
-const retryWaitsForTesting = new WeakMap<EngineInternals, (milliseconds: number) => Promise<void>>();
+const retryWaitsForTesting = new WeakMap<
+  EngineInternals,
+  (milliseconds: number) => Promise<void>
+>();
 
 /**
  * Replace the wait before each further attempt of `internals`' refused writes with `wait`, which is
