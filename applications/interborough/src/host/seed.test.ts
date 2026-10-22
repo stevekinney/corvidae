@@ -43,17 +43,19 @@ afterEach(async () => {
 });
 
 describe('the seeded agents', () => {
-  test('are the four the host defines, and the host publishes all but internal', async () => {
+  test('are the five the host defines, and the host publishes all but internal', async () => {
     const host = await start();
     for (const name of SEEDED_AGENT_NAMES) expect(host.bureau.agents.has(name)).toBe(true);
     expect([...SEEDED_AGENT_NAMES].toSorted()).toEqual([
       'assistant',
+      'echo',
       'internal',
       'request-human-input',
       'tool-runner',
     ]);
     expect([...PUBLISHED_AGENT_NAMES].toSorted()).toEqual([
       'assistant',
+      'echo',
       'request-human-input',
       'tool-runner',
     ]);
@@ -91,6 +93,16 @@ describe('the seeded agents', () => {
     );
     const internal = await host.bureau.run('internal', 'Hello').result();
     expect(internal.content).toBe('Internal bookkeeping is done. This reply is scripted.');
+  });
+
+  test('echo repeats the last user message it received, quotes and all, and says so when it has none', async () => {
+    const host = await start();
+    const quoted = '> first excerpt\n\n> second\n> excerpt\n\nWhy does that matter?';
+    const echoed = await host.bureau.run('echo', quoted).result();
+    expect(echoed.content).toBe(quoted);
+    // A second turn on the same agent repeats that turn's message, not the first one.
+    const again = await host.bureau.run('echo', 'Another message').result();
+    expect(again.content).toBe('Another message');
   });
 
   test('request-human-input, dispatched without a session, parks and resumes by its run id', async () => {

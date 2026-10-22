@@ -103,6 +103,7 @@ describe('extra agents', () => {
       .toSorted(([left], [right]) => left.localeCompare(right));
     expect(listed).toEqual([
       ['assistant', 'code', 'published'],
+      ['echo', 'code', 'published'],
       ['extra', 'code', 'published'],
       ['internal', 'code', 'unpublished'],
       ['request-human-input', 'code', 'published'],
