@@ -237,6 +237,9 @@
     'DateTimeInput',
     'Modal',
     'Tabs',
+    // Both players render their own play and seek controls.
+    'AudioPlayer',
+    'Video',
   ]);
 
   /** Whether `childId`'s subtree holds a control, reported once when it does. */
@@ -496,6 +499,10 @@
         bind:open={modalOpen}
         title={triggerName(triggerComponent) || 'Dialog'}
         triggerRef={modalTrigger}
+        {...optional(
+          'describedById',
+          accessibleDescription === undefined ? undefined : descriptionId,
+        )}
       >
         {@render child(prop('content'))}
       </Modal>

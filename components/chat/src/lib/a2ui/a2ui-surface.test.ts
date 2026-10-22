@@ -853,4 +853,36 @@ describe('review fixes', () => {
     await flush();
     expect(screen.getByRole('dialog')).not.toBeNull();
   });
+
+  test('a Button never wraps a media player, and a Modal is described by its description', async () => {
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'players',
+        components: [
+          { id: 'root', component: 'Column', children: ['play', 'modal'] },
+          { id: 'play', component: 'Button', child: 'clip', action: { event: { name: 'x' } } },
+          { id: 'clip', component: 'AudioPlayer', url: 'https://example.test/a.mp3' },
+          {
+            id: 'modal',
+            component: 'Modal',
+            trigger: 'more',
+            content: 'body',
+            accessibility: { description: 'Read before you continue' },
+          },
+          { id: 'more', component: 'Text', text: 'More' },
+          { id: 'body', component: 'Text', text: 'Details', variant: 'h2' },
+        ],
+      },
+    });
+    await flush();
+
+    expect(container.querySelector('[data-a2ui-id="play"] > button')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    await flush();
+    const dialog = screen.getByRole('dialog');
+    const described = (dialog.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(described.map((id) => document.getElementById(id)?.textContent)).toContain(
+      'Read before you continue',
+    );
+  });
 });
