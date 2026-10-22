@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   dateTimeForControl,
+  displayTimeZone,
   elementId,
   iconLabel,
   matchesPattern,
@@ -19,6 +20,23 @@ describe('node helpers', () => {
     // A zoned value is shown in local time (UTC under the test runner).
     expect(dateTimeForControl('2025-12-15T17:00:00Z', 'minute')).toBe('2025-12-15T17:00');
     expect(dateTimeForControl('not a date', 'day')).toBeUndefined();
+  });
+
+  test('dateTimeForControl shows a zoned value in the time zone it is given', () => {
+    const zoned = '2025-12-15T17:00:00Z';
+    expect(dateTimeForControl(zoned, 'minute', 'America/New_York')).toBe('2025-12-15T12:00');
+    expect(dateTimeForControl(zoned, 'minute', 'Asia/Tokyo')).toBe('2025-12-16T02:00');
+    expect(dateTimeForControl(zoned, 'time', 'Asia/Tokyo')).toBe('02:00');
+    expect(dateTimeForControl(zoned, 'day', 'UTC')).toBe('2025-12-15');
+    // A value without a zone is a wall-clock time, so no zone moves it.
+    expect(dateTimeForControl('2025-12-15T17:30', 'minute', 'Asia/Tokyo')).toBe('2025-12-15T17:30');
+  });
+
+  test('displayTimeZone shows UTC until the surface mounts, unless the host names a zone', () => {
+    expect(displayTimeZone(undefined, false)).toBe('UTC');
+    expect(displayTimeZone(undefined, true)).toBeUndefined();
+    expect(displayTimeZone('Asia/Tokyo', false)).toBe('Asia/Tokyo');
+    expect(displayTimeZone('Asia/Tokyo', true)).toBe('Asia/Tokyo');
   });
 
   test('plainText keeps intraword underscores, as CommonMark does', () => {

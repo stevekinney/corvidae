@@ -782,12 +782,13 @@
           label={nameOr(text('label'), dateTimeLabel(kind))}
           {...describedBy}
           bind:value={
-            () => dateTimeForControl(value, 'time') ?? '', (next) => setLocal('value', next)
+            () => dateTimeForControl(value, 'time', context.timeZone) ?? '',
+            (next) => setLocal('value', next)
           }
           {...optional(
             'error',
             checkMessage ??
-              (timeOutOfRange(value, text('min'), text('max'))
+              (timeOutOfRange(value, text('min'), text('max'), context.timeZone)
                 ? 'The time is outside the allowed range.'
                 : undefined),
           )}
@@ -802,9 +803,9 @@
           {...optional('min', text('min') || undefined)}
           {...optional('max', text('max') || undefined)}
           bind:value={
-            () => dateTimeForControl(value, kind.granularity),
+            () => dateTimeForControl(value, kind.granularity, context.timeZone),
             (next) => {
-              if (next !== dateTimeForControl(value, kind.granularity))
+              if (next !== dateTimeForControl(value, kind.granularity, context.timeZone))
                 setLocal('value', next ?? '');
             }
           }

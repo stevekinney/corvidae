@@ -1061,4 +1061,35 @@ describe('control fixes', () => {
     expect(screen.getByRole('tab', { name: 'Tab 1' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Panel 1')).not.toBeNull();
   });
+
+  test('a DateTimeInput shows a zoned value in the surface’s time zone', async () => {
+    const components: A2uiComponent[] = [
+      {
+        id: 'root',
+        component: 'DateTimeInput',
+        label: 'When',
+        enableDate: true,
+        enableTime: true,
+        value: '2025-12-15T17:00:00Z',
+      },
+    ];
+    const view = render(A2uiSurface, {
+      props: { surfaceId: 'zoned', components, timeZone: 'Asia/Tokyo' },
+    });
+    await flush();
+    expect((screen.getByLabelText('When') as HTMLInputElement).value).toBe('2025-12-16T02:00');
+
+    view.unmount();
+    const original = process.env['TZ'];
+    process.env['TZ'] = 'America/Los_Angeles';
+    try {
+      // Without a zone from the host, the mounted surface shows the runtime's.
+      render(A2uiSurface, { props: { surfaceId: 'runtime', components } });
+      await flush();
+      expect((screen.getByLabelText('When') as HTMLInputElement).value).toBe('2025-12-15T09:00');
+    } finally {
+      if (original === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = original;
+    }
+  });
 });
