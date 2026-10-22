@@ -47,7 +47,12 @@ export function createBureauInteractiveSurfaces(
       const status = view.status;
       const settled =
         status === 'completed' || status === 'failed' || status === 'canceled' ? status : undefined;
-      return { owner: view.owner, settled, contextId: view.contextId };
+      return {
+        owner: view.owner,
+        settled,
+        contextId: view.contextId,
+        generation: view.createdAt,
+      };
     },
     now: options.now,
     reviewIdsOf: options.reviewIdsOf,

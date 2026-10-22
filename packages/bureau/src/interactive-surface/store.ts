@@ -95,6 +95,11 @@ export interface InteractiveSurfaceTask {
   readonly settled?: 'completed' | 'failed' | 'canceled' | undefined;
   /** The session the task runs in, which a `signal` continuation must name. */
   readonly contextId?: string | undefined;
+  /**
+   * Tells reuses of one task id apart: a session deleted and recreated under
+   * its id reuses its run ids. A removal fences only its own generation.
+   */
+  readonly generation?: string | undefined;
 }
 
 /** Options for {@link createInteractiveSurfaces}. */
@@ -259,8 +264,8 @@ function digestOf(value: unknown): string {
  * so removing the prefix keeps it, and every commit is conditioned on its
  * absence: a command checked before the removal cannot write after it.
  */
-function removedKey(taskId: string): string {
-  return `bureau-removed-surfaces:v1:${encodeStorageKeyComponent(taskId)}`;
+function removedKey(taskId: string, generation: string): string {
+  return `bureau-removed-surfaces:v1:${encodeStorageKeyComponent(taskId)}:${encodeStorageKeyComponent(generation)}`;
 }
 
 function surfacePrefix(taskId: string): string {
@@ -483,9 +488,13 @@ export function createInteractiveSurfaces(
     advancesRevision = true,
   ): Promise<string> {
     const key = surfaceKey(taskId, surfaceId);
+    // The fence of the task's current generation: a reused task id is a new task.
+    const owner = await options.task(taskId);
+    if (owner === undefined) throw new TaskRemoved();
+    const fence = removedKey(taskId, owner.generation ?? '');
     const conditions: ConditionalBatchCondition[] = [
       { key, expectedValue: expected === null ? null : new TextEncoder().encode(expected) },
-      { key: removedKey(taskId), expectedValue: null },
+      { key: fence, expectedValue: null },
     ];
     const operations: BatchOperation[] = [
       { type: 'put', key, value: new TextEncoder().encode(JSON.stringify(next)) },
@@ -498,7 +507,7 @@ export function createInteractiveSurfaces(
       });
       cursor = envelope.cursor;
     } catch (error: unknown) {
-      if ((await store.get(removedKey(taskId))) !== null) throw new TaskRemoved();
+      if ((await store.get(fence)) !== null) throw new TaskRemoved();
       if ((await store.get(key)) !== expected) throw new LostRace();
       throw error;
     }
@@ -1364,11 +1373,18 @@ export function createInteractiveSurfaces(
   }
 
   async function removeTask(taskId: string): Promise<void> {
-    settlements.delete(taskId);
+    // A settlement in flight stays tracked, so `flush` still drains it, and is
+    // awaited before the surfaces it is freezing go away.
+    await settlements.get(taskId);
     watched.delete(taskId);
     // The marker first: a command already past its checks then fails its commit.
-    await store.set(removedKey(taskId), '1');
+    const task = await options.task(taskId);
+    await store.set(removedKey(taskId, task?.generation ?? ''), '1');
     await store.deletePrefix(surfacePrefix(taskId));
+    // A wait for this task's cleanup has nothing left to wait for.
+    const waiters = settlementWaiters.get(taskId);
+    settlementWaiters.delete(taskId);
+    for (const resolve of waiters ?? []) resolve({ status: 'not-required' });
   }
 
   async function flush(): Promise<void> {

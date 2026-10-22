@@ -231,7 +231,9 @@ export class InteractiveSurfaceSchemaCompiler {
     try {
       validate = this.#ajv.compile(schema);
     } catch (error: unknown) {
+      // Ajv caches a schema as compiling begins; a rejected one must not stay.
       for (const ref of nestedIds()) this.#ajv.removeSchema(ref);
+      this.#ajv.removeSchema(schema);
       // A schema's regular expressions run on Bureau's event loop when a value
       // is admitted, and an untrusted author can write one that backtracks for
       // seconds, so v1 refuses them.
@@ -249,8 +251,10 @@ export class InteractiveSurfaceSchemaCompiler {
       fail(`${where} must not declare $id`);
     }
     // An asynchronous schema validates to a Promise; admission validates synchronously.
-    if (Reflect.get(validate, '$async') === true)
+    if (Reflect.get(validate, '$async') === true) {
+      this.#ajv.removeSchema(schema);
       fail(`${where} must not be an asynchronous ($async) schema`);
+    }
     this.#cache.set(key, validate);
     if (this.#cache.size > this.#capacity) {
       const [oldestKey, oldest] = this.#cache.entries().next().value ?? [];

@@ -991,6 +991,57 @@ describe('closing, cancellation, and cleanup', () => {
     ).toMatchObject({ outcome: 'accepted' });
   });
 
+  it('lets a task id reused by a new incarnation create surfaces after the old one was removed', async () => {
+    const { surfaces, table } = harness({
+      [TASK]: { owner: OWNER, contextId: 'session-1', generation: 'one' },
+    });
+    await surfaces.create(createCommand());
+    await surfaces.removeTask(TASK);
+    expect(await surfaces.create(createCommand({ commandId: 'again' }))).toMatchObject({
+      reason: 'not-found',
+    });
+
+    table.set(TASK, { owner: OWNER, contextId: 'session-1', generation: 'two' });
+    expect(await surfaces.create(createCommand({ commandId: 'reborn' }))).toMatchObject({
+      outcome: 'accepted',
+    });
+  });
+
+  it('releases a cleanup wait when the task is removed', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+    const waiting = surfaces.closed(TASK);
+    await surfaces.removeTask(TASK);
+
+    expect(await waiting).toEqual({ status: 'not-required' });
+  });
+
+  it('keeps a settlement in flight visible to flush when the task is removed', async () => {
+    const { surfaces, storage, settle } = harness();
+    await surfaces.create(createCommand());
+    const gate = Promise.withResolvers<void>();
+    const keys = storage.keys.bind(storage);
+    Reflect.set(storage, 'keys', (prefix: string, options?: unknown) => {
+      const source = keys(prefix, options as never);
+      return (async function* () {
+        await gate.promise;
+        yield* source;
+      })();
+    });
+    settle(TASK, 'completed');
+    const removing = surfaces.removeTask(TASK);
+    let flushed = false;
+    const flushing = surfaces.flush().then(() => {
+      flushed = true;
+    });
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    expect(flushed).toBe(false);
+
+    gate.resolve();
+    await Promise.all([removing, flushing]);
+    expect(flushed).toBe(true);
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());
