@@ -10,13 +10,10 @@
 import { describe, expect, it } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { decode } from '../codec/api.ts';
-import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../engine.ts';
+import { Engine } from '../engine.ts';
 import { WorkflowFailedEvent } from '../events.ts';
-import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { abandonedExecutionAttemptCount } from './execution-attempts.ts';
@@ -24,64 +21,20 @@ import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 import { EngineDeposedError } from './lease-errors.ts';
 import {
-  createRefusingStorage,
   putsCheckpoint,
   putsWorkflowStatus,
   touchesEventLog,
-  type RefusingStorage,
 } from './storage-write-refusal.test-support.ts';
+import {
+  ATTEMPTS,
+  failsAfterSignal,
+  readState,
+  type Run,
+  startParked,
+  statusOf,
+  steps,
+} from './storage-write-retry.test-support.ts';
 import { STORAGE_WRITE_RETRY_DELAYS_MS } from './termination/terminal-fence.ts';
-
-const NO_WAIT = [0, 0, 0, 0];
-const ATTEMPTS = NO_WAIT.length + 1;
-
-const steps = workflow({ name: 'retry-steps' }).execute(async function* (ctx: WorkflowContext) {
-  const go = yield* ctx.waitForSignal<string>('go');
-  const first = yield* ctx.run(() => 'a');
-  const second = yield* ctx.run(() => 'b');
-  return [go, first, second].join(':');
-});
-
-const failsAfterSignal = workflow({ name: 'retry-fails' }).execute(async function* (
-  ctx: WorkflowContext,
-) {
-  yield* ctx.waitForSignal<string>('go');
-  throw new Error('the workflow body failed');
-});
-
-type Run = {
-  readonly engine: Engine;
-  readonly refusing: RefusingStorage;
-  readonly workflowId: string;
-  readonly result: Promise<unknown>;
-};
-
-/** Start `definition` over a refusing storage and park it on its signal, then arm the storage. */
-async function startParked(
-  definition: typeof steps | typeof failsAfterSignal,
-  workflowId: string,
-  options: { readonly delays?: readonly number[] } = {},
-): Promise<Run> {
-  const refusing = createRefusingStorage(new MemoryStorage());
-  const engine = new Engine({ storage: refusing.storage });
-  engine.register(definition as typeof steps);
-  getInternals(engine).storageWriteRetryDelaysForTesting = options.delays ?? NO_WAIT;
-  const handle = await engine.start(definition.name, null, { id: workflowId });
-  const result = handle.result();
-  void result.catch(() => {});
-  await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
-  refusing.arm();
-  return { engine, refusing, workflowId, result };
-}
-
-async function readState(refusing: RefusingStorage, workflowId: string): Promise<WorkflowState> {
-  return decode((await refusing.base.get(KEYS.workflow(workflowId)))!) as WorkflowState;
-}
-
-async function statusOf(refusing: RefusingStorage, workflowId: string): Promise<string> {
-  const state = await readState(refusing, workflowId);
-  return state.status;
-}
 
 describe('the retry bound', () => {
   it('waits 50, 100, 200 and 400 ms between five attempts by default', () => {

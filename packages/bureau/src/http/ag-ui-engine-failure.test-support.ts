@@ -28,10 +28,18 @@ export function keysOf(name: string, args: readonly unknown[]): string[] {
   return (operations ?? []).map((operation) => operation.key);
 }
 
-/** A memory storage that, once told to, refuses every write whose key starts with a prefix. */
-export function refusingStorage() {
+/** What a refused write throws unless a test names its own text. */
+export const REFUSED_STORAGE_MESSAGE = 'This storage write is refused.';
+
+/**
+ * A memory storage that, once told to, refuses every write whose key starts with a prefix, or
+ * every write whose keys satisfy a predicate. A refused write throws `message`, which a test
+ * gives a distinctive text so it can check that the text never reaches a client.
+ */
+export function refusingStorage(options: { readonly message?: string } = {}) {
   const storage = new MemoryStorage();
-  let refusedPrefix: string | undefined;
+  let refuses: ((keys: readonly string[]) => boolean) | undefined;
+  let landFirst = false;
   let refused = 0;
   const proxy = new Proxy(storage, {
     get(target, property, receiver) {
@@ -42,12 +50,15 @@ export function refusingStorage() {
         (member as (...rest: unknown[]) => unknown).apply(target, args);
       if (!WRITES.has(name)) return call.bind(null);
       return async (...args: unknown[]) => {
-        if (
-          refusedPrefix !== undefined &&
-          keysOf(name, args).some((key) => key.startsWith(refusedPrefix!))
-        ) {
+        if (refuses?.(keysOf(name, args)) === true) {
           refused += 1;
-          throw new Error('This storage write is refused.');
+          if (landFirst) {
+            // The first matching write is applied and then reported as failed, as a storage whose
+            // acknowledgement was lost does; every later one is refused outright.
+            landFirst = false;
+            await call(...args);
+          }
+          throw new Error(options.message ?? REFUSED_STORAGE_MESSAGE);
         }
         return call(...args);
       };
@@ -55,24 +66,43 @@ export function refusingStorage() {
   });
   return {
     storage: proxy as unknown as Storage,
+    /** Refuse every write whose key starts with `prefix`. */
     refuseWritesUnder(prefix: string) {
-      refusedPrefix = prefix;
+      refuses = (keys) => keys.some((key) => key.startsWith(prefix));
+    },
+    /**
+     * Refuse every write that touches a key `matches` accepts. With `landFirst`, the first such
+     * write is applied before it is reported as failed.
+     */
+    refuseWritesMatching(
+      matches: (key: string) => boolean,
+      refusal: { readonly landFirst?: boolean } = {},
+    ) {
+      refuses = (keys) => keys.some(matches);
+      landFirst = refusal.landFirst ?? false;
     },
     /** Stop refusing, so a later run on the same storage writes normally. */
     lift() {
-      refusedPrefix = undefined;
+      refuses = undefined;
     },
+    /** How many writes were refused so far, those that landed before failing included. */
     refused: () => refused,
   };
 }
 
+/** A scripted model step that replies with `content` and calls no tool. */
 export const say = (content: string): ScriptedGenerateStep => ({
   kind: 'respond',
   response: { content, toolCalls: [] },
 });
 
+/** A Bureau opened by {@link openBureau}, with the handler that serves its AG-UI mount. */
 export type Opened = Awaited<ReturnType<typeof openBureau>>;
 
+/**
+ * Open a durable Bureau over `storage`, with one agent, `assistant`, running `generate`, and serve
+ * it through the AG-UI mount without authentication.
+ */
 export async function openBureau(options: {
   readonly generate: GenerateFunction;
   readonly storage: Storage;

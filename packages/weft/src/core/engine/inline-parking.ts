@@ -5,6 +5,7 @@ import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts
 import { abandonWorkflowAfterCheckpointConflict } from './checkpoint-conflict-abandon.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
+import { bootstrapWorkflowResultResolver } from './handle-result.ts';
 import { beginInFlightOperation, endInFlightOperation } from './in-flight-operation.ts';
 import type { EngineInternals } from './internals.ts';
 import {
@@ -290,6 +291,7 @@ async function failRunOrAbandon(
       callbacks.createTerminationCallbacks(),
       'system',
     );
+    await settleFromTerminalRecord(internals, workflowId, error);
   } catch (failureError) {
     if (
       !(failureError instanceof CheckpointCommitFailedError) ||
@@ -299,6 +301,24 @@ async function failRunOrAbandon(
     }
     abandonWorkflowAfterCheckpointConflict(internals, failureError);
   }
+}
+
+/**
+ * A completion whose write landed but whose retries were all refused leaves the durable record
+ * `completed` while the failure that follows has nothing to write, since the record is already
+ * terminal. `result()` would then never settle in this process, which is what the retry exists to
+ * prevent. When the stored record is terminal, settle the waiter from that stored outcome, the one
+ * a `result()` requested later reads too. A record still `running` leaves the waiter pending.
+ */
+async function settleFromTerminalRecord(
+  internals: EngineInternals,
+  workflowId: string,
+  error: Error,
+): Promise<void> {
+  if (!(error instanceof CheckpointCommitFailedError) || error.write !== 'completion') return;
+  const waiter = internals.resultResolvers.get(workflowId);
+  if (waiter === undefined) return;
+  await bootstrapWorkflowResultResolver(internals, workflowId, waiter);
 }
 
 export async function handleStrategyMessage(

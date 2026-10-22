@@ -17,6 +17,10 @@ export type RefusedStorageWrite = 'checkpoint' | 'completion' | 'failure';
  * with it; the durable record stays `running` and the next boot recovers it from its last
  * committed checkpoint.
  *
+ * The message is a fixed sentence naming the workflow, the write and the attempt count. The storage
+ * adapter's own error, which can name tables, constraints or paths, is only on `cause`, so the
+ * message can reach clients as a run's error.
+ *
  * Like `CheckpointEncodingError` it is neither exported from the package root nor registered
  * in `WeftErrorCode`, so the public error vocabulary does not change.
  */
@@ -41,12 +45,12 @@ export class CheckpointCommitFailedError extends WeftError<'CheckpointCommitFail
       readonly workflowExecutionToken: string | undefined;
     },
   ) {
+    // A fixed sentence: the storage adapter's own text can name tables, constraints or paths, and
+    // this message reaches clients as a run's error. It stays on `cause`, for the operator.
     super(
       'CheckpointCommitFailedError',
       `Workflow "${workflowId}" ${options.write} write was refused by storage on all ` +
-        `${String(options.attempts)} attempts: ${
-          options.cause instanceof Error ? options.cause.message : String(options.cause)
-        }`,
+        `${String(options.attempts)} attempts.`,
       { cause: options.cause },
     );
     this.workflowId = workflowId;

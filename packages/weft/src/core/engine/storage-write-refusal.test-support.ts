@@ -4,7 +4,12 @@
  * so a run can start and reach a known point first, and records every write attempt it sees once
  * armed, so a test asserts attempt counts from the storage's side and not from the engine's.
  */
-import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
+import {
+  KEYS,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+} from '../../storage/interface.ts';
 import type { MemoryStorage } from '../../storage/memory.ts';
 import { decode } from '../codec/api.ts';
 import type { WorkflowState } from '../types.ts';
@@ -14,6 +19,10 @@ const WRITE_METHODS = new Set(['put', 'delete', 'batch', 'conditionalBatch']);
 /** How a matching write is handled: refused outright, or applied and then reported as failed. */
 export type WriteRefusalMode = 'refuse' | 'land-then-throw';
 
+/**
+ * One rule of a {@link RefusingStorage}: which writes it handles, what it does to them, and how
+ * many it handles before it lets the rest through.
+ */
 export type WriteRefusal = {
   /** Which writes the rule applies to, judged on the write's operations. */
   readonly matches: (operations: readonly BatchOperation[]) => boolean;
@@ -22,15 +31,28 @@ export type WriteRefusal = {
   readonly error?: () => Error;
   /** How many matching writes the rule handles before it lets them through. Default: all. */
   readonly times?: number;
+  /**
+   * Runs when the rule handles a write, before the write is applied or refused, and the write waits
+   * for it. A test uses it to hold an attempt in flight, or to make another writer's change at the
+   * moment an attempt fails.
+   */
+  readonly before?: () => void | Promise<void>;
 };
 
+/** One write attempt a {@link RefusingStorage} saw while armed, as the storage received it. */
 export type WriteAttempt = {
   readonly method: string;
   readonly operations: readonly BatchOperation[];
+  /** The conditions of a `conditionalBatch` attempt; `undefined` for any other method. */
+  readonly conditions: readonly ConditionalBatchCondition[] | undefined;
   /** What the storage did with the attempt. */
   readonly outcome: 'refused' | 'land-then-throw' | 'passed';
 };
 
+/**
+ * A {@link MemoryStorage} that refuses chosen writes and reads and records every write attempt, so
+ * a test can assert what the engine sent, in what order, and under which conditions.
+ */
 export type RefusingStorage = {
   readonly storage: Storage;
   /** The real store underneath, which a recovering engine reads with the refusals lifted. */
@@ -39,6 +61,8 @@ export type RefusingStorage = {
   arm(): void;
   /** Add a rule; the first rule that matches a write and still has uses left handles it. */
   refuse(rule: WriteRefusal): void;
+  /** Refuse the next `times` reads of `key`, as a storage that cannot answer reads does. */
+  refuseReads(key: string, times: number): void;
   /** Stop refusing, as a recovering engine over the same storage would find it. */
   disarm(): void;
   /** Every write attempt seen while armed, in order. */
@@ -52,6 +76,7 @@ export type RefusingStorage = {
   attemptsMatching(matches: (operations: readonly BatchOperation[]) => boolean): WriteAttempt[];
 };
 
+/** The operations one storage write call carries, whichever method it is. */
 function operationsOf(method: string, args: readonly unknown[]): BatchOperation[] {
   if (method === 'put')
     return [{ type: 'put', key: String(args[0]), value: args[1] as Uint8Array }];
@@ -95,13 +120,18 @@ export function putsWorkflowStatus(
     );
 }
 
-/** The error a refused write throws. */
+/** The error text a refused write throws. */
 export const REFUSED_WRITE_MESSAGE = 'This storage write is refused.';
 
+/** The error text a refused read throws. */
+export const REFUSED_READ_MESSAGE = 'This storage read is refused.';
+
+/** Wrap `base` in a {@link RefusingStorage}, disarmed until `arm()` is called. */
 export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
   const rules: Array<WriteRefusal & { remaining: number }> = [];
   const attempts: WriteAttempt[] = [];
   const attemptWaiters: Array<{ settled: () => boolean; resolve: () => void }> = [];
+  const readRefusals = new Map<string, number>();
   let armed = false;
 
   const record = (attempt: WriteAttempt): void => {
@@ -118,23 +148,36 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
       const method = String(property);
       const call = (...args: unknown[]): unknown =>
         (member as (...rest: unknown[]) => unknown).apply(target, args);
+      if (method === 'get') {
+        return async (...args: unknown[]) => {
+          const remaining = armed ? (readRefusals.get(String(args[0])) ?? 0) : 0;
+          if (remaining > 0) {
+            readRefusals.set(String(args[0]), remaining - 1);
+            throw new Error(REFUSED_READ_MESSAGE);
+          }
+          return call(...args);
+        };
+      }
       if (!WRITE_METHODS.has(method)) return call.bind(null);
       return async (...args: unknown[]) => {
         if (!armed) return call(...args);
         const operations = operationsOf(method, args);
+        const conditions =
+          method === 'conditionalBatch' ? (args[0] as ConditionalBatchCondition[]) : undefined;
         const rule = rules.find(
           (candidate) => candidate.remaining > 0 && candidate.matches(operations),
         );
         if (rule === undefined) {
-          record({ method, operations, outcome: 'passed' });
+          record({ method, operations, conditions, outcome: 'passed' });
           return call(...args);
         }
         rule.remaining -= 1;
+        await rule.before?.();
         if (rule.mode === 'land-then-throw') {
-          record({ method, operations, outcome: 'land-then-throw' });
+          record({ method, operations, conditions, outcome: 'land-then-throw' });
           await call(...args);
         } else {
-          record({ method, operations, outcome: 'refused' });
+          record({ method, operations, conditions, outcome: 'refused' });
         }
         throw rule.error?.() ?? new Error(REFUSED_WRITE_MESSAGE);
       };
@@ -149,6 +192,9 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
     },
     disarm: () => {
       armed = false;
+    },
+    refuseReads: (key, times) => {
+      readRefusals.set(key, times);
     },
     refuse: (rule) => {
       rules.push({ ...rule, remaining: rule.times ?? Number.POSITIVE_INFINITY });

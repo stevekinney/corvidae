@@ -27,6 +27,9 @@ import {
 } from './ag-ui-engine-failure.test-support.ts';
 import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
 
+/** Text no client may ever see: the storage adapter's own, which can name tables and paths. */
+const ADAPTER_TEXT = 'relation "wf_secret_table" violates a constraint at /var/db/store';
+
 type Moment = 'after the step is released' | 'after the model fails';
 
 /** The script each moment runs: held at `hold`, then either a reply or a failing model. */
@@ -44,7 +47,7 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
       for (const withFollowUp of [true, false]) {
         it(`ends the stream, run record, and session as error when ${prefix} writes are refused ${moment}, ${withFollowUp ? 'with' : 'without'} a follow-up`, async () => {
           const generate = createScriptedGenerate(scriptFor(moment));
-          const refusing = refusingStorage();
+          const refusing = refusingStorage({ message: ADAPTER_TEXT });
           const opened = await openBureau({ generate, storage: refusing.storage });
           const { bureau, handler } = opened;
           const stream = await startStream(opened);
@@ -78,6 +81,11 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
             expect(bureau.listRuns()[0]?.status).toBe('error');
             const session = await bureau.getSession('thread-1');
             expect(session?.metadata['lastRunStatus']).toBe('error');
+            // The storage adapter's text stays in the operator's logs: no client-facing record
+            // (the stream, the saved session, the run record) carries it.
+            expect(JSON.stringify(stream.received)).not.toContain('wf_secret_table');
+            expect(JSON.stringify(session?.metadata)).not.toContain('wf_secret_table');
+            expect(JSON.stringify(bureau.listRuns())).not.toContain('wf_secret_table');
 
             // The thread takes a new message once storage accepts writes again.
             refusing.lift();
@@ -103,4 +111,37 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
       }
     }
   }
+});
+
+describe('a completion that landed and then met refused retries (COR-1626)', () => {
+  it('ends the stream with the stored outcome, not at the deadline', async () => {
+    const generate = createScriptedGenerate([{ kind: 'block', barrier: 'hold' }, say('Done.')]);
+    const refusing = refusingStorage({ message: ADAPTER_TEXT });
+    const opened = await openBureau({ generate, storage: refusing.storage });
+    const { bureau } = opened;
+    const stream = await startStream(opened);
+    try {
+      await stream.until(EventType.STEP_STARTED);
+      await generate.reached('hold');
+      // The next write of a workflow record lands and is reported as failed; every later one is
+      // refused. The workflow record is the one key `wf:<id>` has no suffix on.
+      refusing.refuseWritesMatching((key) => /^wf:[^:]+$/.test(key), { landFirst: true });
+      generate.release('hold');
+
+      await stream.rest();
+
+      expect(refusing.refused()).toBeGreaterThan(0);
+      const last = stream.received.at(-1);
+      expect(last?.event.type).toBe(EventType.RUN_FINISHED);
+      expect(last?.event).not.toMatchObject({ code: 'STREAM_DEADLINE' });
+      const runId = bureau.listRuns()[0]!.id;
+      await bureau.whenRunRecorded(runId);
+      expect(bureau.listRuns()[0]?.status).toBe('completed');
+      const session = await bureau.getSession('thread-1');
+      expect(session?.metadata['lastRunStatus']).toBe('completed');
+    } finally {
+      await stream.cancel().catch(() => undefined);
+      await bureau.dispose();
+    }
+  });
 });
