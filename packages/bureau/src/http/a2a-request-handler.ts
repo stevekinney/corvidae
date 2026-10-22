@@ -65,6 +65,7 @@ import {
   STATE_HEADERS_KEY,
   type User,
 } from '@a2a-js/sdk/server';
+import { createDefaultRuntimeServices, type RuntimeTimers } from '@lostgradient/lifecycle';
 import type { Principal } from '@lostgradient/weft';
 import { requestSignalOf } from '@lostgradient/weft/a2a';
 
@@ -168,6 +169,8 @@ export type BureauA2ARequestHandlerOptions = {
   readonly ledger: A2ASendLedger;
   /** Answers a task's open wait as `principal`: `bureau.tasks.respond`'s own body. */
   readonly respond: (principal: Principal, input: TasksRespondInput) => Promise<unknown>;
+  /** The timers a blocking send's safety-net poll runs on. Defaults to the process's own. */
+  readonly timers?: RuntimeTimers | undefined;
   /** How long a cancel waits for the run's cleanup to acknowledge before it answers. */
   readonly cancelWaitMilliseconds?: number;
 };
@@ -297,6 +300,9 @@ export function createBureauA2ARequestHandler(
 ): A2ARequestHandler {
   const { agentName, bureau, records, ledger } = options;
   const cancelWait = options.cancelWaitMilliseconds ?? 0;
+  const timers = options.timers ?? createDefaultRuntimeServices().timers;
+  /** Sends being answered in this process, by binding: an identical send waits for the first. */
+  const inFlight = new Map<string, Promise<Task>>();
 
   /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
   async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
@@ -366,22 +372,33 @@ export function createBureauA2ARequestHandler(
     );
   }
 
-  /** Waits until the task is terminal or waits on its requester, or the request ends. */
+  /**
+   * Waits until the task is terminal or waits on its requester, or the request ends. The task's
+   * own events wake it; a slow poll is only the safety net. An event that arrives while the task
+   * is being read is not lost: it marks the read stale, and the task is read again at once.
+   */
   async function settledView(taskId: string, signal: AbortSignal | undefined): Promise<TaskView> {
+    let changed = false;
     let wake: (() => void) | undefined;
-    const notify = () => wake?.();
+    const notify = () => {
+      changed = true;
+      wake?.();
+    };
     const stopSettled = bureau.tasks.onSettled(taskId, notify);
     const stopChanged = bureau.tasks.onChanged(taskId, notify);
     signal?.addEventListener('abort', notify, { once: true });
     try {
       for (;;) {
+        changed = false;
         const view = await bureau.tasks.get(taskId);
         if (view === undefined) throw taskNotFound(taskId);
         if (isSettled(view.status) || signal?.aborted === true) return view;
+        if (changed) continue;
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, SETTLE_POLL_MS);
+          const timer = timers.setTimeout(resolve, SETTLE_POLL_MS);
           wake = () => {
-            clearTimeout(timer);
+            wake = undefined;
+            timers.clearTimeout(timer);
             resolve();
           };
         });
@@ -541,7 +558,7 @@ export function createBureauA2ARequestHandler(
     });
   }
 
-  async function send(
+  async function admit(
     params: SendMessageRequest,
     context: ServerCallContext | undefined,
   ): Promise<Task> {
@@ -632,7 +649,29 @@ export function createBureauA2ARequestHandler(
     },
 
     async sendMessage(params, context) {
-      return send(params, context);
+      // A send that arrives while one with the same binding is being answered waits for it, so
+      // the second never reaches the run-creation ledger while the first holds its claim; it is
+      // then answered on its own, as an exact retry or a conflict.
+      const message = params.message;
+      if (message === undefined) return admit(params, context);
+      const key = [
+        ownerOf(context),
+        message.taskId,
+        message.messageId,
+        context?.requestedVersion ?? '1.0',
+      ].join('\u0000');
+      const running = inFlight.get(key);
+      if (running !== undefined) {
+        await running.catch(() => undefined);
+        return admit(params, context);
+      }
+      const attempt = admit(params, context);
+      inFlight.set(key, attempt);
+      try {
+        return await attempt;
+      } finally {
+        if (inFlight.get(key) === attempt) inFlight.delete(key);
+      }
     },
 
     // eslint-disable-next-line require-yield -- streaming is not declared yet, so this only refuses.
@@ -670,9 +709,17 @@ export function createBureauA2ARequestHandler(
     async listTasks(params: ListTasksRequest, context): Promise<ListTasksResponse> {
       const owner = ownerOf(context);
       const activated = activate(context);
-      const pageSize = params.pageSize ?? 50;
+      // proto3 reads an unset `pageSize` as 0, which means the default.
+      const pageSize =
+        params.pageSize === undefined || params.pageSize === 0 ? 50 : params.pageSize;
       if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
         throw invalid('pageSize must be an integer from 1 to 100.');
+      }
+      if (
+        params.statusTimestampAfter !== undefined &&
+        Number.isNaN(Date.parse(params.statusTimestampAfter))
+      ) {
+        throw invalid('statusTimestampAfter must be an ISO 8601 timestamp.');
       }
       const status =
         params.status === TaskState.TASK_STATE_UNSPECIFIED

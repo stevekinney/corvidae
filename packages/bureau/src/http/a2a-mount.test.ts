@@ -1,3 +1,4 @@
+import { AgentCard, verifyAgentCardSignature } from '@a2a-js/sdk';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
@@ -44,7 +45,11 @@ function parksThenAnswers(signalName = 'human-response'): GenerateFunction {
 async function withA2A<T>(
   agents: Record<string, GenerateFunction>,
   body: (opened: OpenedBureau) => Promise<T>,
-  options: { humanInput?: boolean; publish?: readonly string[] } = {},
+  options: {
+    humanInput?: boolean;
+    publish?: readonly string[];
+    handlerOptions?: NonNullable<Parameters<typeof openBureau>[0]>['handlerOptions'];
+  } = {},
 ): Promise<T> {
   const opened = await openBureau({
     agents: Object.fromEntries(
@@ -55,7 +60,7 @@ async function withA2A<T>(
     ),
     publish: options.publish ?? Object.keys(agents),
     ...(options.humanInput === true ? { humanInput: true } : {}),
-    handlerOptions: { publicUrl: PUBLIC_URL },
+    handlerOptions: { publicUrl: PUBLIC_URL, ...options.handlerOptions },
   });
   try {
     return await body(opened);
@@ -798,6 +803,122 @@ describe('A2A authentication', () => {
       expect([apiKey.status, bearer.status, none.status, basic.status]).toEqual([
         200, 200, 401, 401,
       ]);
+    });
+  });
+});
+
+describe('signed Agent Cards', () => {
+  async function signingKey(): Promise<CryptoKey> {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+      'sign',
+      'verify',
+    ]);
+    return pair.privateKey;
+  }
+
+  it('signs each agent’s card, with its own JWKS under discoveryUrl that verifies it', async () => {
+    const signing = { privateKey: await signingKey(), kid: 'card-key-1', alg: 'ES256' as const };
+    await withA2A(
+      { asker: answering('a'), writer: answering('w') },
+      async (opened) => {
+        for (const name of ['asker', 'writer']) {
+          const response = await opened.handler(
+            new Request(`http://localhost/a2a/${name}/.well-known/agent-card.json`),
+          );
+          const card = AgentCard.fromJSON(await response.json());
+          const header: Json = JSON.parse(
+            Buffer.from(card.signatures[0]?.protected ?? '', 'base64url').toString('utf8'),
+          );
+          const jku = `http://discovery.localhost/a2a/${name}/.well-known/jwks.json`;
+          expect(header).toEqual({ alg: 'ES256', kid: 'card-key-1', typ: 'JOSE', jku });
+          expect(card.supportedInterfaces[0]?.url).toBe(`${PUBLIC_URL}/a2a/${name}`);
+
+          const verify = verifyAgentCardSignature(async (kid) => {
+            const jwks = await opened.handler(
+              new Request(`http://localhost/a2a/${name}/.well-known/jwks.json`),
+            );
+            expect(jwks.status).toBe(200);
+            const set: { keys: JsonWebKey[] } = await jwks.json();
+            const key = set.keys.find((candidate: Json) => candidate.kid === kid);
+            if (key === undefined) throw new Error(`no key ${kid}`);
+            return key;
+          });
+          await verify(card);
+        }
+      },
+      { handlerOptions: { signing, discoveryUrl: 'http://discovery.localhost' } },
+    );
+  });
+
+  it('has no signature and no JWKS route without signing', async () => {
+    await withA2A({ asker: answering('a') }, async (opened) => {
+      const response = await opened.handler(
+        new Request('http://localhost/a2a/asker/.well-known/agent-card.json'),
+      );
+      const card: Json = await response.json();
+      const jwks = await opened.handler(
+        new Request('http://localhost/a2a/asker/.well-known/jwks.json'),
+      );
+
+      expect(card.signatures ?? []).toEqual([]);
+      expect(jwks.status).toBe(404);
+    });
+  });
+});
+
+describe('what part 1 does not serve, and ListTasks input', () => {
+  it('answers SendStreamingMessage and SubscribeToTask with -32004, since streaming is not declared', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const response = await opened.handler(
+        new Request('http://localhost/a2a/asker', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'A2A-Version': '1.0',
+            'X-API-Key': 'alice-key',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'SendStreamingMessage',
+            params: { message: message('stream') },
+          }),
+        }),
+      );
+      const streamed: Json = await response.json();
+      const subscribed = await call(opened, 'asker', 'SubscribeToTask', { id: 'any' });
+
+      expect(streamed.error.code).toBe(-32004);
+      expect(subscribed.body.error.code).toBe(-32004);
+    });
+  });
+
+  it('refuses a statusTimestampAfter that is not a timestamp, and reads pageSize 0 as the default', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      await send(opened, 'asker', { message: message('one') });
+
+      const bad = await call(opened, 'asker', 'ListTasks', { statusTimestampAfter: 'yesterday' });
+      const unset = await call(opened, 'asker', 'ListTasks', { pageSize: 0 });
+
+      expect(bad.body.error.code).toBe(-32602);
+      expect(unset.body.result.pageSize).toBe(50);
+      expect(unset.body.result.tasks).toHaveLength(1);
+    });
+  });
+});
+
+describe('two identical sends at once', () => {
+  it('create one task and answer both with it', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const same = message('at once');
+
+      const [first, second] = await Promise.all([
+        sendForTask(opened, 'asker', { message: same }),
+        sendForTask(opened, 'asker', { message: same }),
+      ]);
+
+      expect(first.id).toBe(second.id);
+      expect(opened.bureau.listRuns()).toHaveLength(1);
     });
   });
 });

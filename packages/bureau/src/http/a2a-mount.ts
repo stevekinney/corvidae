@@ -117,6 +117,10 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       if (agentName === '' || !options.publication.includes(agentName)) return notFound();
       const handler = handlerOf(agentName);
       if (handler === undefined) return notFound();
+      // Without signing there is no key to publish; the kit would read the path as JSON-RPC.
+      if (options.signing === undefined && pathname.endsWith('/.well-known/jwks.json')) {
+        return notFound();
+      }
       if (!PUBLIC_ROUTE.test(pathname)) {
         if (ownerOfPrincipal(context.principal) === undefined) {
           return Response.json(
