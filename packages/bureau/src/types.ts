@@ -100,6 +100,7 @@ import type { BureauGoals } from './goal-types';
 import type { ModelCatalogService } from './model-catalog-refresh';
 import type { BureauModelPolicyOptions, PlanSelectionRequest } from './model-policy';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
+import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
   SessionSteeringState,
   SteeringCommandAdmissionOutcome,
@@ -1899,6 +1900,26 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * hold. It does not authorize the caller: that is the caller's to do, as for `getSession`.
    */
   getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined>;
+
+  /**
+   * Branches a session after a completed agent reply (COR-1560): a new session, owned by
+   * `request.owner`, whose history is the parent's through `throughMessageId`, which must be the
+   * final assistant message of a run that ended `completed` in this session, with no tool approval
+   * pending and no tool call left without a result. The parent is unchanged. The new session
+   * records where it came from (`SessionSummary.parentContextId`, `forkedFromMessageId`) and keeps
+   * the parent's model choice: its latest `model` override is admitted on the fork as
+   * `<commandId>:model`, and that outcome is returned beside the new `contextId`; a refusal of it
+   * leaves the fork in place, on the agent's default.
+   *
+   * `commandId` is recorded in the durable command ledger (COR-424): an exact retry, even after a
+   * restart, returns the original result and creates nothing more, and a crash between the steps
+   * never forks twice. The same `commandId` with another `throughMessageId` throws a
+   * {@link SessionForkRefusedError} with reason `command-conflict`; a message that is not a branch
+   * point throws one naming why, and nothing is created. It does not authorize the caller: that is
+   * the caller's to do, as for `getSession`. Throws a `BureauError` `CONFLICT` when Bureau is
+   * shutting down.
+   */
+  forkSession(sessionId: string, request: ForkSessionRequest): Promise<ForkSessionResult>;
 
   /**
    * Synchronous, constant capability discovery for the three session verbs

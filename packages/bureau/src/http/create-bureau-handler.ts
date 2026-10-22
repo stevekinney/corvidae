@@ -67,6 +67,10 @@ import {
   contextsInputOperation,
 } from './management/contexts-input-operation.ts';
 import {
+  type BureauContextsForkOperationHost,
+  contextsForkOperation,
+} from './management/contexts-fork-operation.ts';
+import {
   type BureauContextsSteerOperationHost,
   contextsSteerOperation,
 } from './management/contexts-steer-operation.ts';
@@ -157,6 +161,7 @@ export type BureauHandlerSource = Pick<
   | 'getSession'
   | 'getSessionSteering'
   | 'submitSteeringCommand'
+  | 'forkSession'
   | 'deleteSession'
   | 'listSessions'
   | 'sessionStore'
@@ -222,6 +227,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsOperationHost &
   BureauContextsInputOperationHost &
   BureauContextsSteerOperationHost &
+  BureauContextsForkOperationHost &
   BureauAgentModelsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
@@ -475,6 +481,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsDeleteOperation,
   contextsInputOperation,
   contextsSteerOperation,
+  contextsForkOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),

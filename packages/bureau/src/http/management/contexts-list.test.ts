@@ -370,11 +370,13 @@ describe('bureau.contexts.get', () => {
         'agentName',
         'configVersion',
         'createdAt',
+        'forkedFromMessageId',
         'id',
         'lastMessagePreview',
         'messageCount',
         'model',
         'owner',
+        'parentContextId',
         'title',
         'updatedAt',
       ]);

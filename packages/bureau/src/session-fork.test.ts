@@ -44,7 +44,7 @@ function twoStepAgent(behavior: Behavior = 'complete') {
       const history = context.conversation.current;
       const last = history.messages[history.ids.at(-1) ?? ''];
       if (last?.toolResult === undefined) {
-        return { content: 'thinking', toolCalls: [{ id: 'c1', name: 'noop', arguments: {} }] };
+        return { content: 'thinking', toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }] };
       }
       if (behavior === 'fail-second-step') throw new Error('the model failed');
       if (behavior === 'hold-second-step') {
@@ -83,6 +83,12 @@ async function completedSession(bureau: Bureau<never>, sessionId?: string, messa
     ...(sessionId === undefined ? {} : { sessionId }),
   });
   await waitForRunState(bureau, run.id);
+  // The run's messages reach the stored session just after the run settles.
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const stored = await bureau.getSession(run.sessionId);
+    if (stored?.conversationHistory.ids.includes(`${run.id}:step:1`)) break;
+    await Bun.sleep(10);
+  }
   return run;
 }
 
@@ -237,8 +243,8 @@ describe('a message that is not a branch point', () => {
     expect(ids[0]).toBeDefined();
     for (const [index, id] of [
       ids[0]!,
-      `${run.id}:step:0:result:c1`,
-      `${run.id}:step:0:call:c1`,
+      `${run.id}:step:0:result:c-1`,
+      `${run.id}:step:0:call:c-1`,
       `${run.id}:step:0`,
     ].entries()) {
       expect(await refusalOf(fork(bureau, run.sessionId, id, `c-${index}`))).toBe(
@@ -328,7 +334,7 @@ describe('a message that is not a branch point', () => {
     conversation.appendMessages({
       role: 'tool-call',
       content: '',
-      id: `${runId}:step:0:call:c1`,
+      id: `${runId}:step:0:call:c-1`,
       toolCall: { id: 'c1', name: 'noop', arguments: {} },
     } as never);
     const session = createAgentSession({

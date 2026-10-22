@@ -174,6 +174,10 @@ export const contextSummarySchema = z.object({
   agentName: z.string(),
   title: z.string().nullable(),
   lastMessagePreview: z.string().nullable(),
+  /** The context this one was branched from (`bureau.contexts.fork`), or `null`. */
+  parentContextId: z.string().nullable(),
+  /** The message of the parent this one was branched at, or `null`. */
+  forkedFromMessageId: z.string().nullable(),
   messageCount: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -202,6 +206,8 @@ function projectContext(
     agentName: summary.agentName,
     title: summary.title,
     lastMessagePreview: summary.lastMessagePreview,
+    parentContextId: summary.parentContextId,
+    forkedFromMessageId: summary.forkedFromMessageId,
     messageCount: summary.messageCount,
     createdAt: summary.createdAt,
     updatedAt: summary.updatedAt,

@@ -89,6 +89,7 @@ export function resourceNotFound(
     | 'agent'
     | 'workflow'
     | 'run'
+    | 'message'
     | 'schedule'
     | 'goal'
     | 'asset'

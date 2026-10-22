@@ -28,7 +28,7 @@ const agent = createAgent({
     const history = context.conversation.current;
     const last = history.messages[history.ids.at(-1) ?? ''];
     if (last?.toolResult === undefined) {
-      return { content: 'thinking', toolCalls: [{ id: 'c1', name: 'noop', arguments: {} }] };
+      return { content: 'thinking', toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }] };
     }
     return { content: 'the answer', toolCalls: [] };
   },
