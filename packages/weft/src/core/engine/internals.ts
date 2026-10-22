@@ -339,6 +339,8 @@ export interface EngineInternals {
    * that window and run `recoverAll()` against it. Unset in production, where nothing waits.
    */
   reclaimReplayGateForTesting?: (workflowId: string) => Promise<void>;
+  /** Test-only replacement for `STORAGE_WRITE_RETRY_DELAYS_MS`, the waits between a refused write's attempts. */
+  storageWriteRetryDelaysForTesting?: readonly number[];
   /**
    * The active per-workflow claim-renewal task for `ownership: 'workflow-lease'`;
    * `null` under `'none'`/`'lease'` and until `#bootstrapOwnershipIfConfigured`
