@@ -21,6 +21,7 @@ import { KEYS } from '../../storage/interface.ts';
 import { decode, encode } from '../codec/api.ts';
 import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';
+import { createTerminationCallbacks } from './callback-creators-core.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
 import { abandonedExecutionAttemptCount, retireExecutionAttempt } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
@@ -29,6 +30,7 @@ import { putsWorkflowStatus } from './storage-write-refusal.test-support.ts';
 import {
   failsAfterSignal,
   startParked,
+  startParkedUnobserved,
   steps,
   type Run,
 } from './storage-write-retry.test-support.ts';
@@ -298,6 +300,60 @@ describe('every exit from a terminal write settles the run', () => {
   }
 });
 
+describe('a result() first asked for while the engine is ending the run', () => {
+  it('settles from the record another writer left, though it was not registered when the run ended', async () => {
+    const id = 'asked-during-the-window';
+    const run = await startParkedUnobserved(steps, id);
+    await using engine = run.engine;
+    const asked = Promise.withResolvers<Promise<unknown>>();
+    const other = otherWriterChanges(run as Run, id, (record) => {
+      record.status = 'completed';
+      record.result = ANOTHER_WRITERS_RESULT;
+    });
+    run.refusing.refuse({
+      matches: terminalPut(id, 'completion'),
+      times: 1,
+      before: async () => {
+        // The first result() for the run arrives after the terminal message was taken up, while
+        // the record still says running; then another writer ends the run.
+        const result = new WorkflowHandle(id, getInternals(engine).engine).result();
+        void result.catch(() => {});
+        asked.resolve(result);
+        await other.before();
+      },
+    });
+
+    await engine.signal(id, 'go', 'x');
+    const result = await asked.promise;
+
+    expect(await settlementOf(result)).toEqual({ kind: 'value', value: ANOTHER_WRITERS_RESULT });
+    expect(getInternals(engine).resultResolvers.has(id)).toBe(false);
+  });
+});
+
+describe('a run settled from an unstamped record, under the default ownership', () => {
+  it('announces the run this engine held, since nothing stamps a terminal write here', async () => {
+    const id = 'unstamped-record';
+    const run = await startParked(steps, id);
+    await using engine = run.engine;
+    const completions: unknown[] = [];
+    engine.addEventListener(WorkflowCompletedEvent.type, (event) => completions.push(event));
+    const other = otherWriterChanges(run, id, (record) => {
+      record.status = 'completed';
+      record.result = ANOTHER_WRITERS_RESULT;
+    });
+    run.refusing.refuse({ matches: terminalPut(id, 'completion'), times: 1, before: other.before });
+
+    await engine.signal(id, 'go', 'x');
+
+    expect(await settlementOf(run.result)).toEqual({
+      kind: 'value',
+      value: ANOTHER_WRITERS_RESULT,
+    });
+    expect(completions).toHaveLength(1);
+  });
+});
+
 describe("a run settled from a record another writer left, under ownership: 'workflow-lease'", () => {
   /** Another writer ends the run with a completed record, which `committedBy` may stamp. */
   async function settledFromLookAlike(
@@ -428,8 +484,51 @@ describe('the exits that need the engine in a particular state', () => {
 
     const settlement = await settlementOf(run.result);
     expect(settlement).toMatchObject({ kind: 'rejection' });
-    expect((settlement as { error: unknown }).error).toBeInstanceOf(CheckpointCommitFailedError);
+    const error = (settlement as { error: unknown }).error;
+    expect(error).toBeInstanceOf(CheckpointCommitFailedError);
+    // An error no code classified carries no count, so the message states none rather than a wrong one.
+    expect((error as CheckpointCommitFailedError).message).toBe(
+      `Workflow "${id}" failure write was not committed.`,
+    );
     expect(internals.resultResolvers.get(id)).not.toBe(waiter);
+    expect(internals.resultResolvers.has(id)).toBe(false);
+  });
+
+  it('settles the waiter from the record when failing the run finds it already ended', async () => {
+    const id = 'failing-finds-it-ended';
+    const run = await startParked(steps, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const captured = captureTerminatedRun(internals, id);
+    // The stored-record check reads the run still running. Before the failure write reads it,
+    // another writer ends it, so failing the run writes nothing and settles nothing itself.
+    const base = run.refusing.base;
+    const read = base.get.bind(base);
+    let reads = 0;
+    base.get = async (key: string) => {
+      if (key === KEYS.workflow(id) && ++reads === 2) {
+        const record = decode((await read(key))!) as WorkflowState;
+        record.status = 'completed';
+        record.result = ANOTHER_WRITERS_RESULT;
+        await base.put(key, encode(record));
+      }
+      return read(key);
+    };
+
+    await endRunAfterFailedWrite(
+      internals,
+      id,
+      { createTerminationCallbacks: () => createTerminationCallbacks(engine) },
+      new Error('the completion write failed'),
+      'completion',
+      undefined,
+      captured,
+    );
+
+    expect(await settlementOf(run.result)).toEqual({
+      kind: 'value',
+      value: ANOTHER_WRITERS_RESULT,
+    });
     expect(internals.resultResolvers.has(id)).toBe(false);
   });
 

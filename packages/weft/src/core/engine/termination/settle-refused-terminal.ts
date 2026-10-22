@@ -82,6 +82,30 @@ export async function settleTerminatedRunAfterRefusal(
   waiter.reject(new Error(`Workflow "${workflowId}" was replaced by a newer run before it ended.`));
 }
 
+/**
+ * The result waiter that belongs to `run`: the one captured with it, or, when the run had none
+ * then, one a `result()` registered since, while the engine was still ending the run. A waiter
+ * bound to another run, such as a replacement's, never counts, and neither does an unbound one,
+ * since this engine held the run and binds every waiter it creates for it (COR-1626).
+ */
+export function waiterForRun(
+  internals: EngineInternals,
+  workflowId: string,
+  run: TerminatedRun,
+): WorkflowResultWaiter | undefined {
+  if (run.waiter !== undefined) return run.waiter;
+  const registered = internals.resultResolvers.get(workflowId);
+  if (
+    registered === undefined ||
+    !registered.boundToRun ||
+    run.workflowExecutionToken === undefined ||
+    registered.workflowExecutionToken !== run.workflowExecutionToken
+  ) {
+    return undefined;
+  }
+  return registered;
+}
+
 function settleFromState(
   waiter: WorkflowResultWaiter,
   state: NonNullable<Awaited<ReturnType<typeof loadWorkflowState>>>,
@@ -122,9 +146,13 @@ export type StoredRecordSettlement =
  * engine still holds for the run is released, which a terminal commit of its own would have done:
  * the checkpoint, the execution attempt and the event-log head, and the ownership claim.
  *
- * The run's completed or failed event is dispatched only when the stored record carries this
- * engine's own terminal stamp, the one thing that says this engine wrote it; a run another engine
- * ended is announced by that engine. A record that is not terminal, or cannot be read, leaves
+ * The run's completed or failed event is dispatched when the stored record carries this engine's
+ * own terminal stamp, or carries no stamp at all and this engine held the run: only
+ * `workflow-lease` ownership stamps a terminal write, so under any other ownership the run this
+ * engine was driving is announced here, and the events are local to the process, so another
+ * engine's announcement cannot double it. A run another engine stamped is announced by that
+ * engine. The waiter is the one {@link waiterForRun} finds, so a `result()` first asked for while
+ * the run was being ended settles too. A record that is not terminal, or cannot be read, leaves
  * everything as it was for the caller to decide, and a record of another run is never settled as
  * this run's outcome.
  */
@@ -134,7 +162,7 @@ export async function settleRunFromStoredRecord(
   callbacks: TerminationCallbacks,
   run: TerminatedRun,
 ): Promise<StoredRecordSettlement> {
-  const waiter = run.waiter;
+  const waiter = waiterForRun(internals, workflowId, run);
   if (waiter !== undefined && pendingTerminalSettlementFor(internals, workflowId, waiter)) {
     return 'open';
   }
@@ -159,7 +187,7 @@ export async function settleRunFromStoredRecord(
   // `result()` must not observe the run ended while the claim it holds is still held.
   releaseHeldRun(internals, workflowId, callbacks, run);
   await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, run.claimEpoch);
-  announceOwnTerminalWrite(internals, workflowId, callbacks, state);
+  announceOwnTerminalWrite(internals, workflowId, callbacks, state, run);
   if (waiter !== undefined) {
     settleFromState(waiter, state);
     releaseWaiterEntry(internals, workflowId, waiter);
@@ -184,15 +212,21 @@ function releaseHeldRun(
   }
 }
 
-/** Dispatch the completed or failed event for a record this engine's own write ended. */
+/**
+ * Dispatch the completed or failed event for a record this engine ended: one that carries its own
+ * terminal stamp, or, under an ownership that stamps nothing, one for the run it held.
+ */
 function announceOwnTerminalWrite(
   internals: EngineInternals,
   workflowId: string,
   callbacks: TerminationCallbacks,
   state: NonNullable<Awaited<ReturnType<typeof loadWorkflowState>>>,
+  run: TerminatedRun,
 ): void {
   const engineId = internals.workflowClaimRegistry?.engineId;
-  if (engineId === undefined || state.terminalCommittedBy !== engineId) return;
+  const stampedHere = engineId !== undefined && state.terminalCommittedBy === engineId;
+  const unstampedAndHeld = state.terminalCommittedBy === undefined && run.held;
+  if (!stampedHere && !unstampedAndHeld) return;
   let event: WorkflowCompletedEvent | WorkflowFailedEvent;
   if (state.status === 'completed') {
     event = new WorkflowCompletedEvent(

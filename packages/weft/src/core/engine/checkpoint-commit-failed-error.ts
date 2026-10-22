@@ -17,8 +17,9 @@ export type RefusedStorageWrite = 'checkpoint' | 'completion' | 'failure';
  * with it; the durable record stays `running` and the next boot recovers it from its last
  * committed checkpoint.
  *
- * The message is a fixed sentence naming the workflow, the write and the attempt count (a write
- * refused on every attempt, or one that could not be committed for another reason). The storage
+ * The message is a fixed sentence naming the workflow, the write and, when the engine counted
+ * them, the attempts (a write refused on every attempt; an error no code classified carries no
+ * count, so the message states none rather than a wrong one). The storage
  * adapter's own error, which can name tables, constraints or paths, is only on `cause`, so the
  * message can reach clients as a run's error.
  *
@@ -29,8 +30,11 @@ export class CheckpointCommitFailedError extends WeftError<'CheckpointCommitFail
   readonly workflowId: string;
   /** The write the engine gave up on. */
   readonly write: RefusedStorageWrite;
-  /** How many times the engine attempted the write, the first attempt included. */
-  readonly attempts: number;
+  /**
+   * How many times the engine attempted the write, the first attempt included; `undefined` when
+   * the write failed for a reason the engine did not count, such as an error no code classified.
+   */
+  readonly attempts: number | undefined;
   /**
    * The execution token of the generation whose write was refused, captured with the write so an
    * abandonment is scoped to that generation, as `WorkflowCheckpointConflictError`'s is.
@@ -41,7 +45,7 @@ export class CheckpointCommitFailedError extends WeftError<'CheckpointCommitFail
     workflowId: string,
     options: {
       readonly write: RefusedStorageWrite;
-      readonly attempts: number;
+      readonly attempts?: number;
       readonly cause: unknown;
       readonly workflowExecutionToken: string | undefined;
     },
@@ -50,8 +54,10 @@ export class CheckpointCommitFailedError extends WeftError<'CheckpointCommitFail
     // this message reaches clients as a run's error. It stays on `cause`, for the operator.
     super(
       'CheckpointCommitFailedError',
-      `Workflow "${workflowId}" ${options.write} write was not committed after ` +
-        `${String(options.attempts)} ${options.attempts === 1 ? 'attempt' : 'attempts'}.`,
+      `Workflow "${workflowId}" ${options.write} write was not committed` +
+        (options.attempts === undefined
+          ? '.'
+          : ` after ${String(options.attempts)} ${options.attempts === 1 ? 'attempt' : 'attempts'}.`),
       { cause: options.cause },
     );
     this.workflowId = workflowId;

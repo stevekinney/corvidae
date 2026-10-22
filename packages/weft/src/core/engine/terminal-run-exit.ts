@@ -24,6 +24,7 @@ import {
   captureTerminatedRun,
   settleRunFromStoredRecord,
   type TerminatedRun,
+  waiterForRun,
 } from './termination/settle-refused-terminal.ts';
 
 /** What the terminal path needs of the engine's callbacks. */
@@ -72,7 +73,8 @@ export function isTerminalWaiterPending(
   workflowId: string,
   run: TerminatedRun,
 ): boolean {
-  return run.waiter !== undefined && internals.resultResolvers.get(workflowId) === run.waiter;
+  const waiter = waiterForRun(internals, workflowId, run);
+  return waiter !== undefined && internals.resultResolvers.get(workflowId) === waiter;
 }
 
 /**
@@ -100,7 +102,6 @@ function commitFailureOf(
     ? cause
     : new CheckpointCommitFailedError(workflowId, {
         write,
-        attempts: 1,
         cause,
         workflowExecutionToken: run.workflowExecutionToken,
       });
@@ -120,7 +121,7 @@ function abandonRun(
 ): void {
   abandonWorkflowAfterCheckpointConflict(internals, failure);
   const waiter = internals.resultResolvers.get(workflowId);
-  if (waiter !== undefined && waiter === run.waiter) {
+  if (waiter !== undefined && waiter === waiterForRun(internals, workflowId, run)) {
     internals.resultResolvers.delete(workflowId);
     waiter.reject(failure);
   }
@@ -159,7 +160,7 @@ export async function endRunAfterFailedWrite(
   if (write === 'failure') return abandonRun(internals, workflowId, failure, run);
   try {
     await failWorkflow(internals, workflowId, failWith ?? failure, termination, 'system');
-    if (internals.resultResolvers.get(workflowId) === run.waiter) {
+    if (internals.resultResolvers.get(workflowId) === waiterForRun(internals, workflowId, run)) {
       await settleRunFromStoredRecord(internals, workflowId, termination, run);
     }
   } catch (failureError) {

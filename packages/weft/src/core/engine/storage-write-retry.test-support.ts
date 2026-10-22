@@ -59,6 +59,31 @@ export async function startParked(
     readonly ownership?: 'lease' | 'workflow-lease';
   } = {},
 ): Promise<Run> {
+  const { observed, ...run } = await openParked(definition, workflowId, options, true);
+  return { ...run, result: observed! };
+}
+
+/**
+ * {@link startParked} without asking for the run's result, for a test whose first `result()` is
+ * asked for later, while the engine is already ending the run.
+ */
+export async function startParkedUnobserved(
+  definition: typeof steps | typeof failsAfterSignal,
+  workflowId: string,
+): Promise<Omit<Run, 'result'>> {
+  const { observed: _none, ...run } = await openParked(definition, workflowId, {}, false);
+  return run;
+}
+
+async function openParked(
+  definition: typeof steps | typeof failsAfterSignal,
+  workflowId: string,
+  options: {
+    readonly delays?: readonly number[];
+    readonly ownership?: 'lease' | 'workflow-lease';
+  },
+  observe: boolean,
+): Promise<Omit<Run, 'result'> & { readonly observed: Promise<unknown> | undefined }> {
   const refusing = createRefusingStorage(new MemoryStorage());
   const engine: Engine =
     options.ownership !== undefined
@@ -71,11 +96,11 @@ export async function startParked(
   if (options.ownership === undefined) engine.register(definition as typeof steps);
   getInternals(engine).storageWriteRetryDelaysForTesting = options.delays ?? NO_WAIT;
   const handle = await engine.start(definition.name, null, { id: workflowId });
-  const result = handle.result();
-  void result.catch(() => {});
+  const observed = observe ? handle.result() : undefined;
+  void observed?.catch(() => {});
   await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
   refusing.arm();
-  return { engine, refusing, workflowId, result };
+  return { engine, refusing, workflowId, observed };
 }
 
 /** The workflow record `workflowId` holds in the real store, decoded. */
