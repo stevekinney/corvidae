@@ -114,3 +114,30 @@ describe('recoverAll() and a run the reclaim drive completed after the preflight
     expect(await statusOf(storage, LATER_ID)).toBe('pending');
   });
 });
+
+describe("recoverAll() and a run cancelled between the resume's two reads", () => {
+  it('counts a run cancelled during its own recovery hook as ended, and returns every later handle', async () => {
+    const storage = new MemoryStorage();
+    const probe = probeFor(storage);
+    await strandWorkflow(storage, () => START_NOW, HELD_ID, true);
+    const previousOwner = await createEngine(storage, () => START_NOW);
+    await previousOwner.start('counted', null, { id: LATER_ID, startAt: START_NOW + 3_600_000 });
+
+    const now = START_NOW + EXPIRED_AFTER_MS;
+    await using engine = await createEngine(storage, () => now);
+
+    // The hook runs after the resume's first read saw `running`, so the cancel lands before the
+    // serialized section's re-read (`resume-body.ts`), which is the second site that throws.
+    const handles = await engine.recoverAll({
+      onRecoveredWorkflow: async (info) => {
+        if (info.workflowId !== HELD_ID) return;
+        await engine.cancel(HELD_ID);
+      },
+    });
+    await engine.flushInlineLaunches();
+
+    expect(handles.map((handle) => handle.id)).toEqual([LATER_ID]);
+    expect(await statusOf(storage, HELD_ID)).toBe('cancelled');
+    expect(probe.runs).toBe(0);
+  });
+});
