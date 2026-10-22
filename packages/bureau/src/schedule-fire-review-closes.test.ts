@@ -655,6 +655,7 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
       'review.tool-approval.canceled',
       regated,
     );
-    expect((record?.detail as { review: { round: number } }).review.round).toBe(1);
+    const detail = record?.detail as { review: { round: number } } | undefined;
+    expect(detail?.review.round).toBe(1);
   });
 });
