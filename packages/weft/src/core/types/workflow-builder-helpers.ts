@@ -402,9 +402,10 @@ export type QueryMap = Record<string, { readonly name: string }>;
  * The map a chain method produces when a builder already carries entries, as a
  * builder from `createWorkflowFactory(...).workflow()` does: the builder's
  * existing entries plus the ones the call adds. A fresh `workflow({ name })`
- * builder carries `{}`, so `MergeMaps<{}, T>` is exactly `T`. When either side
- * is a wide `Record<string, ...>` map, the two are intersected, so every entry
- * the builder carries at runtime stays typed.
+ * builder carries `{}`, so `MergeMaps<{}, T>` is exactly `T`. When one side is
+ * a wide `Record<string, ...>` map, the two are intersected, so the other
+ * side's known entries keep their types. When both are wide, neither has known
+ * names, and the result is a wide map of either side's entry type.
  *
  * @example
  * ```ts
@@ -415,17 +416,22 @@ export type QueryMap = Record<string, { readonly name: string }>;
  * void merged;
  * ```
  */
-export type MergeMaps<TBase, TAdded> = string extends keyof TBase | keyof TAdded
-  ? // A wide map has no known names to merge by key, so intersect: neither
-    // side's index signature or known entries can discard the other's.
-    TBase & TAdded
-  : {
-      [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
-        ? TAdded[K]
-        : K extends keyof TBase
-          ? TBase[K]
-          : never;
-    };
+export type MergeMaps<TBase, TAdded> = string extends keyof TBase
+  ? string extends keyof TAdded
+    ? // Both wide: neither has known names, and intersecting the two index
+      // signatures would intersect unrelated entry types, so widen to either.
+      Record<string, TBase[keyof TBase] | TAdded[keyof TAdded]>
+    : TBase & TAdded
+  : string extends keyof TAdded
+    ? // One wide: intersect, so the other side's known entries keep their types.
+      TBase & TAdded
+    : {
+        [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
+          ? TAdded[K]
+          : K extends keyof TBase
+            ? TBase[K]
+            : never;
+      };
 
 /**
  * Constraint a chain method intersects with its argument so that an entry

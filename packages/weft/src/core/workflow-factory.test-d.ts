@@ -26,6 +26,12 @@ const _check_merge_wide: Equals<
   MergeMaps<Record<string, 1>, { b: 2 }>,
   Record<string, 1> & { b: 2 }
 > = true;
+// Both wide: a wide map of either side's value, not an intersection of the two.
+const _check_merge_both_wide: Equals<
+  MergeMaps<Record<string, 1>, Record<string, 2>>,
+  Record<string, 1 | 2>
+> = true;
+void _check_merge_both_wide;
 void _check_merge_identity;
 void _check_merge_union;
 void _check_merge_wide;
@@ -155,6 +161,22 @@ createWorkflowFactory({ activities: wideShared, signals: wideSharedSignals })
     const _check_wide_shared_approval: Equals<typeof approval, { approverId: string }> = true;
     void _check_wide_shared_approval;
     return shouted;
+  });
+
+// Both wide with different entry types: each name runs with either side's
+// arguments and result, never an unsatisfiable intersection of them.
+declare const wideNumbers: Record<string, (value: number) => Promise<number>>;
+createWorkflowFactory({ activities: wideShared })
+  .workflow({ name: 'both-wide' })
+  .activities(wideNumbers)
+  .execute(async function* (ctx) {
+    const fromShared = yield* ctx.run('greet', 'Ada');
+    const fromLocal = yield* ctx.run('double', 2);
+    const _check_both_wide_shared: Equals<typeof fromShared, string | number> = true;
+    const _check_both_wide_local: Equals<typeof fromLocal, string | number> = true;
+    void _check_both_wide_shared;
+    void _check_both_wide_local;
+    return 0;
   });
 
 // ---------------------------------------------------------------------------
