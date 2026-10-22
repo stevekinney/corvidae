@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { queryTools, type ToolQuery, type ToolQueryInput } from '../core/registry';
+import { searchTools, type ToolQueryCriteria, type ToolQueryInput } from '../core/registry';
+import {
+  awaitQueryEmbeddingInfo,
+  awaitToolEmbeddings,
+  getRegistryEmbedder,
+} from '../core/registry/embeddings';
 import { createTool } from '../create-tool';
 import type { Tool } from '../is-tool';
 
@@ -149,31 +154,37 @@ export function createSearchTool(
     tags: ['utility', 'search', 'readonly', ...additionalTags],
     metadata: { readOnly: true },
     async execute({ query, limit: queryLimit, tags }): Promise<SearchToolsResult[]> {
-      const criteria: ToolQuery & { select?: 'tool' } = {
-        text: { query, mode: 'fuzzy' },
-        limit: queryLimit ?? defaultLimit,
-        ...(tags?.length ? { tags: { any: tags } } : {}),
-      };
-
-      const queryInput =
+      const available =
         typeof toolbox.getAvailable === 'function'
-          ? await toolbox.getAvailable()
-          : (toolbox as unknown as ToolQueryInput);
-      const results = await Promise.resolve(queryTools(queryInput, criteria));
+          ? new Set(await toolbox.getAvailable())
+          : undefined;
+      const embedder = getRegistryEmbedder(toolbox);
+      if (embedder) {
+        // `searchTools` is synchronous, so resolve asynchronous embeddings before it reads them.
+        await Promise.all([
+          awaitQueryEmbeddingInfo(embedder, query),
+          ...toolbox.tools().map((candidate) => awaitToolEmbeddings(candidate)),
+        ]);
+      }
+      const text = { query, mode: 'fuzzy' } as const;
+      const filter: ToolQueryCriteria = {
+        text,
+        ...(tags?.length ? { tags: { any: tags } } : {}),
+        ...(available ? { predicate: (candidate) => available.has(candidate as Tool) } : {}),
+      };
+      // Search the toolbox itself rather than a tool array, so its embedder and embedding index apply.
+      const matches = searchTools(toolbox as unknown as ToolQueryInput, {
+        filter,
+        rank: { text, ...(tags?.length ? { tags } : {}) },
+        limit: queryLimit ?? defaultLimit,
+      });
 
-      return results.map((matchedTool, index) => ({
+      return matches.map(({ tool: matchedTool, score, reasons }) => ({
         name: matchedTool.identity.name,
         description: matchedTool.display.description,
         ...(matchedTool.tags?.length ? { tags: matchedTool.tags } : {}),
-        score: Math.max(0, 1 - index * 0.1),
-        ...(explain
-          ? {
-              reasons: [
-                ...(query.trim().length ? [`text:${query.trim()}`] : []),
-                ...(tags?.length ? tags.map((tag) => `tag:${tag}`) : []),
-              ],
-            }
-          : {}),
+        score,
+        ...(explain ? { reasons } : {}),
       }));
     },
   });
