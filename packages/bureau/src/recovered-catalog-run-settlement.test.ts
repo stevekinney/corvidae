@@ -274,7 +274,7 @@ describe('a recovered child run', () => {
     // Let the settlement the run's end published reach its subscribers.
     await second.tasks.idle();
     expect(await second.tasks.record('agent-run-child')).toBeUndefined();
-    const listed = await second.tasks.list({ limit: 50, offset: 0 });
+    const listed = await second.tasks.enumerate({ limit: 50, offset: 0 });
     expect(listed.tasks.map((task) => task.id)).not.toContain('agent-run-child');
   });
 });
