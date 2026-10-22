@@ -581,17 +581,11 @@ The scope each operation requires:
 
 Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller reaches only `weft.system.principal`: every other operation in this table requires a scope, and the two workflow event feeds refuse a caller that holds neither `events:read` nor `streams:read`. Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
 
-### MCP Over HTTP and Its Session Token
+### MCP Over HTTP
 
-`/mcp` serves the Model Context Protocol over Streamable HTTP, and it authenticates exactly as the rest of the server does. An MCP session is created by `initialize`, and every later request names it in `Mcp-Session-Id`. That id appears in proxy and access logs, so it is not a credential on its own. The creating client also receives a per-session `Mcp-Session-Token` in the `initialize` response, and only there.
+`/mcp` serves the Model Context Protocol through the official MCP SDK (`@modelcontextprotocol/server`), and it authenticates exactly as the rest of the server does. A client that negotiates protocol 2026-07-28 is served on the SDK's modern lane, where every request carries its own protocol envelope. A 2025-era client that opens with `initialize` is served on the SDK's stateless legacy lane, in `2025-11-25` or the older revision it asked for when the SDK still supports it. Both lanes answer one POST at a time from the same server factory, so they list the same tools and resources.
 
-Whether a continuation needs that token depends on how the session's principal was built:
-
-- A caller whose credential names it distinctly (a JWT with a `sub`, or an API key whose subject comes from `resolveApiKeyPrincipal`) re-presents the credential on every request, which is enough. No token is needed.
-- A static API key (`auth.apiKeys`) maps every key to one shared subject, so the principal cannot tell key A from key B. The session is bound to the SHA-256 digest of the key that created it, kept in process memory and never logged. A continuation is admitted when it presents the same key (`X-API-Key`, or the bearer token) or the `Mcp-Session-Token`. A different static key holding only the session id gets `403`.
-- Mutual TLS callers, `unauthenticated-local` (a `serve()` with no `auth`), and anonymous callers share their principal with every caller of the same kind. `serve()` admits a verified client certificate without deriving a subject from it, so every mTLS caller is the shared `mtls-caller`, and Weft cannot see the certificate on a `Request` to bind a session to it. Their sessions require `Mcp-Session-Token` on every continuation.
-
-A spec-compliant MCP client, such as the official SDK, sends no `Mcp-Session-Token`. Over HTTP it therefore works with a static API key, or with a credential that is not shared, such as a JWT or a per-key principal. Against a server with no `auth`, or one that authenticates with mTLS, use a client that echoes the token, or connect over stdio, which has no shared HTTP session to protect.
+Neither lane keeps a session. There is no `Mcp-Session-Id`, and `GET` and `DELETE` on `/mcp` answer `405`. Every request is authenticated on its own credential, so a caller can never continue another caller's exchange. Two consequences follow for 2025-era clients over HTTP: they cannot subscribe to resource updates, and a `notifications/cancelled` cannot reach a call that another request is running. A 2026-07-28 client subscribes through `subscriptions/listen`, and cancels a call by closing its request, which cancels the workflow the tool started. Over stdio (`weft-mcp`), the SDK pins one server instance for the connection, so a 2025-era stdio client subscribes with `resources/subscribe` and cancels with `notifications/cancelled`.
 
 ### Extra Routes
 
