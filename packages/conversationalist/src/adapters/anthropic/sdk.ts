@@ -18,6 +18,10 @@ import type {
   ToAnthropicMessagesOptions,
 } from './types';
 
+/**
+ * An Anthropic conversation typed with the official SDK's request shapes, ready to spread into
+ * `messages.create`, plus the lineage of each media part it delivered.
+ */
 export interface AnthropicSdkConversation {
   system?: string | TextBlockParam[];
   messages: MessageParam[];
