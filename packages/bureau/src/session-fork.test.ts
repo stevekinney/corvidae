@@ -136,7 +136,7 @@ async function claimFork(
   const ledger = createForkLedger(bureau.kv, {
     clock: { now: () => Date.now(), nowISO: () => new Date().toISOString() },
     identifiers: { next: () => crypto.randomUUID() },
-  } as never);
+  });
   await ledger.claim(
     {
       callerId: ALICE,
@@ -727,7 +727,8 @@ describe('a parent whose model a policy profile chose', () => {
       outcome: 'rejected',
       failure: { reason: 'policy-denied' },
     });
-    expect((await bureau.getSession(result.contextId))?.id).toBe('planned-fork');
+    const created = await bureau.getSession(result.contextId);
+    expect(created?.id).toBe('planned-fork');
   });
 
   it('reads a claim written before it could name a policy as an explicit override', async () => {
@@ -744,7 +745,8 @@ describe('a parent whose model a policy profile chose', () => {
       outcome: 'rejected',
       failure: { reason: 'model-not-allowed' },
     });
-    expect((await bureau.getSession(result.contextId))?.id).toBe('planned-fork');
+    const created = await bureau.getSession(result.contextId);
+    expect(created?.id).toBe('planned-fork');
   });
 });
 
