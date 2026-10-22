@@ -36,7 +36,7 @@ function conversationOf(rows: readonly Row[]): ConversationHistory {
         },
       ]),
     ),
-  } as ConversationHistory;
+  };
 }
 
 function ids(rows: readonly Row[], runActive: boolean): string[] {
