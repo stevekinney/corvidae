@@ -2400,8 +2400,8 @@ export class Engine<
   }
   async getSchedule(scheduleId: string): Promise<ScheduleSummary | null> {
     const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
-    const state = await loadScheduleState(getInternals(this), normalizedScheduleId);
-    return state ? toScheduleSummary(state) : null;
+    const loaded = await loadScheduleState(getInternals(this), normalizedScheduleId);
+    return loaded ? toScheduleSummary(loaded.state) : null;
   }
   async listSchedules(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary>> {
     return listSchedulesFromInternals(getInternals(this), filter);

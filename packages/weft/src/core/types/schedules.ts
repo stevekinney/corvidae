@@ -186,9 +186,11 @@ export type ScheduleUpdateOptions = Pick<
 > & {
   /**
    * Apply the update only if the schedule's {@link ScheduleMetadata.revision} is still this
-   * value. The comparison is made inside the schedule's serialized write, so of two concurrent
-   * changes carrying the same `expectedRevision` exactly one applies and the other rejects with
-   * {@link ScheduleStaleRevisionError}. Omitted, the update applies whatever the revision is.
+   * value. The comparison is made inside the schedule's serialized write, and the write is
+   * conditioned on the exact bytes it read, so of two concurrent changes carrying the same
+   * `expectedRevision`, from this engine or from another sharing the store, exactly one applies and
+   * the other rejects with {@link ScheduleStaleRevisionError}. Omitted, the update applies whatever
+   * the revision is.
    */
   expectedRevision?: number;
 };
@@ -247,7 +249,9 @@ export interface ScheduleTransitionOptions {
    * Apply the transition only if the schedule's {@link ScheduleMetadata.revision} is still this
    * value. The comparison is made inside the schedule's serialized write, before the transition
    * decides whether it changes anything, so a caller holding a stale view is refused even when
-   * the call would have been a no-op. A mismatch rejects with
+   * the call would have been a no-op. The write is conditioned on the exact bytes the comparison
+   * read, so of two transitions naming the same revision, from this engine or another sharing the
+   * store, exactly one commits. A mismatch rejects with
    * {@link ScheduleStaleRevisionError} and writes nothing, the caller's
    * `additionalOperations` included. Omitted, the transition applies whatever the revision is.
    */

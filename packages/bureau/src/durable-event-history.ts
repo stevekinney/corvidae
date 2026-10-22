@@ -53,6 +53,12 @@
  * under the fired run's own `{ kind: 'run', id: runId }` owner — never
  * under `'schedule'`, so a schedule's own durable page never carries a fire.
  *
+ * Widened again by COR-1594: `schedule.fire.settled` is recorded once under the same fired run's
+ * `{ kind: 'run', id: runId }` owner when the fire's settlement has been written to the task
+ * registry, so a `bureau.tasks.events` stream served by another process sharing the stores learns
+ * that the fire is over. It is recorded by `createBureau` from the registry's settlement, not
+ * from the action stream; its shape, owner, and deduplication are in `schedule-fire-settled-event.ts`.
+ *
  * Widened again by AB-224, 2026-09-04: the seven `review.*` lifecycle
  * events (`approved`/`denied`/`rejected`/`expired`/`revoked`/`canceled`/
  * `superseded`, AB-87/AB-46's `ReviewStatus` vocabulary minus the

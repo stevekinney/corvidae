@@ -20,7 +20,12 @@ import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { runIsolatedScheduleStateOperation } from './schedule-state-operations.ts';
 import type { RefreshedScheduleState, ScheduleCallbacks } from './schedules.ts';
 import { clearScheduleCurrentWorkflow } from './state-utilities.ts';
-import { loadScheduleState, writeScheduleState } from './storage-io.ts';
+import {
+  loadScheduleState,
+  ScheduleReadConditionLostError,
+  scheduleReadConditions,
+  writeScheduleState,
+} from './storage-io.ts';
 import { isValidScheduleIdentifier } from './validation/schedule.ts';
 
 /**
@@ -143,27 +148,40 @@ export async function handleScheduledWorkflowTerminal(
   // COR-1482: the schedule record is read and written inside the schedule's serialized write, so
   // what this handler changes is applied to the schedule as it is now, never to a copy loaded
   // before a pause, an update, or a cancel committed.
+  //
+  // COR-1594: that serialization is per process, so the write is conditioned on the bytes it was
+  // decided from. One that loses them read a schedule another process has since changed (a pause,
+  // an update), so the schedule is read again and the clearing is applied to it as it is now.
   await runIsolatedScheduleStateOperation(internals, scheduleId, async () => {
-    const state = await loadScheduleState(internals, scheduleId);
-    if (!state || state.currentWorkflowId !== workflowId) {
-      await deleteTransientScheduleRunMetadata(internals, workflowId);
-      return;
+    for (;;) {
+      const loaded = await loadScheduleState(internals, scheduleId);
+      if (!loaded || loaded.state.currentWorkflowId !== workflowId) {
+        await deleteTransientScheduleRunMetadata(internals, workflowId);
+        return;
+      }
+      const { state } = loaded;
+      const now = internals.options.getNow();
+      const clearedState: ScheduleState = {
+        ...clearScheduleCurrentWorkflow(state),
+        updatedAt: now,
+      };
+      // Queue entries are accepted work. Keep draining them even if a later update
+      // changes overlap; the new policy governs only future occurrences.
+      if (clearedState.status === 'active' && clearedState.queuedRuns.length > 0) {
+        await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
+        return;
+      }
+      try {
+        await writeScheduleState(internals, clearedState, {
+          includeTimer: false,
+          additionalOperations: [{ type: 'delete', key: KEYS.scheduleRun(workflowId) }],
+          extraConditions: scheduleReadConditions(internals, scheduleId, loaded),
+        });
+        return;
+      } catch (error) {
+        if (!(error instanceof ScheduleReadConditionLostError)) throw error;
+      }
     }
-    const now = internals.options.getNow();
-    const clearedState: ScheduleState = {
-      ...clearScheduleCurrentWorkflow(state),
-      updatedAt: now,
-    };
-    // Queue entries are accepted work. Keep draining them even if a later update
-    // changes overlap; the new policy governs only future occurrences.
-    if (clearedState.status === 'active' && clearedState.queuedRuns.length > 0) {
-      await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
-      return;
-    }
-    await writeScheduleState(internals, clearedState, {
-      includeTimer: false,
-      additionalOperations: [{ type: 'delete', key: KEYS.scheduleRun(workflowId) }],
-    });
   });
 }
 

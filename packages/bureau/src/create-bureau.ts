@@ -369,6 +369,11 @@ import {
   REVIEW_SUPERSEDED_EVENT_KIND,
   TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
+import {
+  SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+  scheduleFireSettledDedupeKey,
+  type ScheduleFireSettledPayload,
+} from './schedule-fire-settled-event';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
@@ -4101,6 +4106,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kv: runtime.kv,
     clock: runtimeServices.clock,
     identifiers: runtimeServices.identifiers,
+    // COR-1594: the end of a fire reaches a stream another process serves through the fire's
+    // durable history. A Bureau with no persistent storage has none, and no second process.
+    onFireSettled: async (record) => {
+      if (eventHistoryInstance === undefined || record.settled === undefined) return;
+      const payload: ScheduleFireSettledPayload = {
+        runId: record.taskId,
+        status: record.settled.status,
+      };
+      await eventHistoryInstance.record(
+        { kind: 'run', id: record.taskId },
+        SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+        payload,
+        { dedupeKey: scheduleFireSettledDedupeKey(record.taskId) },
+      );
+    },
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
     host: {

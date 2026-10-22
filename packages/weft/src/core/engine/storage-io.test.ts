@@ -16,6 +16,8 @@ import {
   loadWorkflowResult,
   loadWorkflowStartHeaders,
   requireScheduleState,
+  ScheduleReadConditionLostError,
+  scheduleReadConditions,
   writeScheduleState,
 } from './storage-io.ts';
 import { decodeEpoch } from './workflow-claim-codec.ts';
@@ -150,10 +152,15 @@ describe('storage I/O helpers', () => {
       encodeWorkflowStartHeaders(headers),
     );
 
-    expect(await loadScheduleState({ storage } as never, scheduleState.id)).toEqual(scheduleState);
-    expect(await requireScheduleState({ storage } as never, scheduleState.id)).toEqual(
-      scheduleState,
-    );
+    const storedBytes = (await storage.get(KEYS.schedule(scheduleState.id)))!;
+    expect(await loadScheduleState({ storage } as never, scheduleState.id)).toEqual({
+      state: scheduleState,
+      bytes: storedBytes,
+    });
+    expect(await requireScheduleState({ storage } as never, scheduleState.id)).toEqual({
+      state: scheduleState,
+      bytes: storedBytes,
+    });
     expect(
       await throwingRejectionOf(requireScheduleState({ storage } as never, 'missing-schedule')),
     ).toThrow('Schedule "missing-schedule" not found');
@@ -213,6 +220,60 @@ describe('storage I/O helpers', () => {
 
     expect(rejection).toBeInstanceOf(Error);
     expect((rejection as Error).message).toBe('typed revision-unavailable error');
+  });
+
+  // COR-1594: the schedule's own condition is the writer's to retry, not the caller's typed error.
+  it('reports a lost condition on the schedule key as ScheduleReadConditionLostError, ahead of the caller typed error', async () => {
+    const storage = new MemoryStorage();
+    const scheduleState = createScheduleState({ id: 'schedule-read-condition' });
+    await storage.put(KEYS.schedule(scheduleState.id), encode(scheduleState));
+    const internals = createCommitInternals(storage, 'none');
+    const loaded = await loadScheduleState(internals, scheduleState.id);
+    await storage.put(
+      KEYS.schedule(scheduleState.id),
+      encode({ ...scheduleState, updatedAt: scheduleState.updatedAt + 1 }),
+    );
+
+    const rejection = await writeScheduleState(
+      internals,
+      { ...scheduleState, revision: 2 },
+      {
+        extraConditions: [
+          { key: 'catalog-entry:checkout:rev-c', expectedValue: encode('was') },
+          ...scheduleReadConditions(internals, scheduleState.id, loaded!),
+        ],
+        onExtraConditionsLost: () => new Error('typed revision-unavailable error'),
+      },
+    ).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(ScheduleReadConditionLostError);
+    expect((await loadScheduleState(internals, scheduleState.id))?.state.revision).toBe(
+      scheduleState.revision,
+    );
+  });
+
+  it('writes when the schedule key still holds the bytes it was read as, and resolves with the bytes it wrote', async () => {
+    const storage = new MemoryStorage();
+    const scheduleState = createScheduleState({ id: 'schedule-read-condition-held' });
+    await storage.put(KEYS.schedule(scheduleState.id), encode(scheduleState));
+    const internals = createCommitInternals(storage, 'none');
+    const loaded = await loadScheduleState(internals, scheduleState.id);
+    const next = { ...scheduleState, revision: scheduleState.revision + 1 };
+
+    const written = await writeScheduleState(internals, next, {
+      extraConditions: scheduleReadConditions(internals, scheduleState.id, loaded!),
+    });
+
+    expect(written).toEqual(encode(next));
+    expect(await storage.get(KEYS.schedule(scheduleState.id))).toEqual(written);
+  });
+
+  it('drops the schedule condition on a storage that cannot condition a write', () => {
+    const storage = new MemoryStorage();
+    storage.capabilities = () => ({ ...MemoryStorage.prototype.capabilities.call(storage), conditionalBatch: false });
+    expect(
+      scheduleReadConditions(createCommitInternals(storage, 'none'), 'any', { bytes: encode(1) }),
+    ).toEqual([]);
   });
 
   it('falls back to the generic lost-precondition error when no extra condition itself disagrees on re-read', async () => {

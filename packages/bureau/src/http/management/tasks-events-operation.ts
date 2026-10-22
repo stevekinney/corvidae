@@ -40,6 +40,7 @@ import {
 import { z } from 'zod';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
+import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from '../../schedule-fire-settled-event.ts';
 import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
@@ -362,6 +363,7 @@ function followScheduleFire(
         };
   let unsubscribe: (() => void) | undefined;
   let unsubscribeChanged: (() => void) | undefined;
+  let historySubscription: { unsubscribe(): void } | undefined;
   let ended = false;
   /**
    * The status the stream last told, so a change is told once (COR-1596). A stream that resumes
@@ -376,6 +378,7 @@ function followScheduleFire(
     ended = true;
     unsubscribe?.();
     unsubscribeChanged?.();
+    historySubscription?.unsubscribe();
     queue.push({
       kind: 'task.status',
       taskId,
@@ -439,14 +442,31 @@ function followScheduleFire(
         unsubscribeChanged = host.tasks.onChanged(taskId, tellChange);
         // A review another process closes reaches `onChanged` through the Bureau's own history
         // subscription (COR-1621), which every process keeps whether or not a stream is open, so
-        // this stream opens none of its own.
-        const latest = await host.tasks.get(taskId);
-        if (latest !== undefined && isTerminalStatus(latest.status)) {
-          const latestRecord = await host.tasks.record(taskId);
-          finish(latest, latestRecord?.settled);
-        } else if (latest !== undefined) {
-          tellChange(latest);
-        }
+        // this stream opens none of its own for that.
+        const readAgain = async (): Promise<void> => {
+          const latest = await host.tasks.get(taskId);
+          if (latest !== undefined && isTerminalStatus(latest.status)) {
+            const latestRecord = await host.tasks.record(taskId);
+            finish(latest, latestRecord?.settled);
+          } else if (latest !== undefined) {
+            tellChange(latest);
+          }
+        };
+        // The end of a fire another process settles reaches `onSettled` of no listener here. That
+        // process records it in the fire's durable history once the settlement is written
+        // (COR-1594), so the history is followed too, and `onSettled` stays the fast path for a
+        // fire settled by this process. A Bureau with no persistent storage has no second process,
+        // and its subscription never delivers. The history is replayed from its start, so an end
+        // recorded before this point is read, and a repeat of one already read is a no-op.
+        historySubscription = host.taskHistory.subscribeEventHistory(
+          { kind: 'run', id: taskId },
+          (event) => {
+            if (event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND) {
+              readAgain().catch((error: unknown) => queue.fail(error));
+            }
+          },
+        );
+        await readAgain();
       })().catch((error: unknown) => queue.fail(error));
       return {
         async *[Symbol.asyncIterator]() {
@@ -463,6 +483,7 @@ function followScheduleFire(
         ended = true;
         unsubscribe?.();
         unsubscribeChanged?.();
+        historySubscription?.unsubscribe();
         queue.end();
       },
     },

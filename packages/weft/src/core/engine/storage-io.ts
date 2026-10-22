@@ -306,25 +306,61 @@ export async function commitExternalTerminalWorkflowStateOperations(
   }
 }
 
-/** Load and decode persisted schedule state by schedule ID. */
+/** A schedule's decoded state with the exact bytes it was decoded from. */
+export type LoadedScheduleState = {
+  readonly state: ScheduleState;
+  /** The stored value of the schedule key, which a later write is conditioned on. */
+  readonly bytes: Uint8Array;
+};
+
+/** Load and decode persisted schedule state by schedule ID, with the bytes it was read from. */
 export async function loadScheduleState(
   internals: EngineInternals,
   scheduleId: string,
-): Promise<ScheduleState | null> {
+): Promise<LoadedScheduleState | null> {
   const bytes = await internals.storage.get(KEYS.schedule(scheduleId));
-  return bytes ? decodeScheduleState(bytes) : null;
+  if (!bytes) return null;
+  const state = decodeScheduleState(bytes);
+  return state === null ? null : { state, bytes };
 }
 
-/** Load a schedule state. */
+/** Load a schedule state, with the bytes it was read from. */
 export async function requireScheduleState(
   internals: EngineInternals,
   scheduleId: string,
-): Promise<ScheduleState> {
-  const state = await loadScheduleState(internals, scheduleId);
-  if (!state) {
+): Promise<LoadedScheduleState> {
+  const loaded = await loadScheduleState(internals, scheduleId);
+  if (!loaded) {
     throw new Error(`Schedule "${scheduleId}" not found`);
   }
-  return state;
+  return loaded;
+}
+
+/**
+ * Thrown by {@link writeScheduleState} when the schedule key no longer holds the bytes the writer
+ * read, so nothing was written (COR-1594). The writer re-reads and decides again: this is the
+ * loss of the compare-and-swap on the schedule itself, never of a caller-supplied condition,
+ * which is reported through `onExtraConditionsLost`.
+ */
+export class ScheduleReadConditionLostError extends Error {
+  constructor(readonly scheduleId: string) {
+    super(`Schedule "${scheduleId}" changed after it was read.`);
+    this.name = 'ScheduleReadConditionLostError';
+  }
+}
+
+/**
+ * The condition that makes a schedule write conditional on the bytes it was decided from
+ * (COR-1594), for `writeScheduleState`'s `extraConditions`. Empty on a storage without
+ * `conditionalBatch`, which cannot be shared between processes either.
+ */
+export function scheduleReadConditions(
+  internals: EngineInternals,
+  scheduleId: string,
+  loaded: Pick<LoadedScheduleState, 'bytes'>,
+): ConditionalBatchCondition[] {
+  if (!internals.storage.capabilities().conditionalBatch) return [];
+  return [{ key: KEYS.schedule(scheduleId), expectedValue: loaded.bytes }];
 }
 
 function buildPreviousScheduleTimerDeleteOperations(
@@ -383,8 +419,14 @@ function buildScheduleTimerReplacementOperations(
  * supplies the thrown error instead of this function's own generic
  * lost-precondition error, so the caller sees an actionable, typed failure
  * (e.g. `WorkflowRevisionUnavailableError`) rather than a bare "lost its
- * precondition" message. Every existing caller passes neither option and gets
- * byte-for-byte the pre-WFT-20 commit shape.
+ * precondition" message. A write that passes neither option and no schedule read
+ * condition (a create) gets byte-for-byte the pre-WFT-20 commit shape.
+ *
+ * COR-1594: a read-then-write adds {@link scheduleReadConditions} to `extraConditions`, which makes
+ * the write conditional on the schedule key's exact stored bytes. When that condition is the one
+ * lost, this throws {@link ScheduleReadConditionLostError} and not `onExtraConditionsLost`, which
+ * speaks only for the caller's own conditions: the writer re-reads and decides again. Resolves
+ * with the bytes written, which the next write of the same writer is conditioned on.
  */
 export async function writeScheduleState(
   internals: EngineInternals,
@@ -396,10 +438,9 @@ export async function writeScheduleState(
     extraConditions?: ConditionalBatchCondition[];
     onExtraConditionsLost?: () => Error;
   },
-): Promise<void> {
-  const operations: BatchOperation[] = [
-    { type: 'put', key: KEYS.schedule(state.id), value: encode(state) },
-  ];
+): Promise<Uint8Array> {
+  const bytes = encode(state);
+  const operations: BatchOperation[] = [{ type: 'put', key: KEYS.schedule(state.id), value: bytes }];
 
   const includeTimer = options?.includeTimer ?? state.status === 'active';
   operations.push(
@@ -421,7 +462,7 @@ export async function writeScheduleState(
       extraConditions,
       options?.onExtraConditionsLost,
     );
-    return;
+    return bytes;
   }
 
   await commitFencedEngineWrite(
@@ -431,6 +472,7 @@ export async function writeScheduleState(
     [],
     () => new Error(`Schedule state commit for schedule "${state.id}" lost its precondition.`),
   );
+  return bytes;
 }
 
 /**
@@ -457,9 +499,17 @@ async function commitScheduleStateWithExtraConditions(
   if (committed) {
     return;
   }
-  for (const condition of extraConditions) {
+  // The schedule's own condition is judged first: it is the writer's to retry, and a caller's
+  // typed error must not stand in for it.
+  const scheduleKey = KEYS.schedule(state.id);
+  const ordered = [
+    ...extraConditions.filter((condition) => condition.key === scheduleKey),
+    ...extraConditions.filter((condition) => condition.key !== scheduleKey),
+  ];
+  for (const condition of ordered) {
     const currentValue = await internals.storage.get(condition.key);
     if (!storageValuesEqual(currentValue, condition.expectedValue)) {
+      if (condition.key === scheduleKey) throw new ScheduleReadConditionLostError(state.id);
       throw (
         onExtraConditionsLost?.() ??
         new Error(`Schedule state commit for schedule "${state.id}" lost its precondition.`)

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
 import type { BatchOperation, Storage } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import type { Engine } from '../engine.ts';
 import type { ScheduleState } from '../types.ts';
@@ -164,7 +164,7 @@ describe('two engines naming the same expectedRevision', () => {
       const hold = a.holdScheduleWrite();
 
       const loser = transition.run(engineA, before);
-      const rejection = throwingRejectionOf(loser);
+      const rejection = rejectionOf(loser);
       await hold.reached;
       await transition.run(engineB, before);
       hold.release();
@@ -217,7 +217,7 @@ async function tickB(clock: { now: number }, engineB: Engine, shared: Storage) {
 
 describe('a timer tick on one engine while another changes the schedule', () => {
   it('does not write the schedule back to active after a pause', async () => {
-    const { clock, shared, a, b, engineA, engineB } = await openEngines();
+    const { clock, shared, b, engineA, engineB } = await openEngines();
     const hold = b.holdScheduleWrite();
 
     const ticking = tickB(clock, engineB, shared);

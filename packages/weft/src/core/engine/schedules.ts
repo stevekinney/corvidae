@@ -30,7 +30,11 @@ import {
   matchesScheduleFilter,
   paginateScheduleSummaries,
 } from './state-utilities.ts';
-import { writeScheduleState } from './storage-io.ts';
+import {
+  ScheduleReadConditionLostError,
+  scheduleReadConditions,
+  writeScheduleState,
+} from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
   coerceExpectedScheduleRevision,
@@ -175,7 +179,15 @@ export async function recoverOrphanedScheduleTimers(internals: EngineInternals):
 
     if (await hasCurrentScheduleTimer(internals, state)) continue;
 
-    await writeScheduleState(internals, state);
+    // COR-1594: written back only if the schedule still holds the bytes the scan read. One that
+    // changed meanwhile belongs to whatever changed it, which arms its own timer.
+    try {
+      await writeScheduleState(internals, state, {
+        extraConditions: scheduleReadConditions(internals, state.id, { bytes: value }),
+      });
+    } catch (error) {
+      if (!(error instanceof ScheduleReadConditionLostError)) throw error;
+    }
   }
 }
 
@@ -214,6 +226,17 @@ export function toScheduleSummary(state: ScheduleState): ScheduleSummary {
 }
 
 /**
+ * What a timer cancel is conditioned on: the schedule bytes the transition decided from, so a
+ * transition that read a schedule another process has since changed removes no timer that
+ * process armed (COR-1594). `undefined` when the storage cannot condition a write.
+ */
+function timerConditions(
+  readConditions: ConditionalBatchCondition[],
+): ConditionalBatchCondition[] | undefined {
+  return readConditions.length > 0 ? readConditions : undefined;
+}
+
+/**
  * Project a caller-supplied {@link ScheduleTransitionOptions} onto the subset
  * of {@link writeScheduleState}'s options it forwards to. Built with
  * conditional spreads — rather than `{ additionalOperations:
@@ -222,18 +245,20 @@ export function toScheduleSummary(state: ScheduleState): ScheduleSummary {
  * does not itself include `undefined`; omitting an absent key entirely is the
  * only way to pass an "unset" option through untyped.
  */
-function scheduleTransitionWriteOptions(options: ScheduleTransitionOptions | undefined): {
+function scheduleTransitionWriteOptions(
+  options: ScheduleTransitionOptions | undefined,
+  readConditions: ConditionalBatchCondition[],
+): {
   additionalOperations?: BatchOperation[];
   extraConditions?: ConditionalBatchCondition[];
   onExtraConditionsLost?: () => Error;
 } {
+  const extraConditions = [...readConditions, ...(options?.extraConditions ?? [])];
   return {
     ...(options?.additionalOperations !== undefined && {
       additionalOperations: options.additionalOperations,
     }),
-    ...(options?.extraConditions !== undefined && {
-      extraConditions: options.extraConditions,
-    }),
+    ...(extraConditions.length > 0 && { extraConditions }),
     ...(options?.onExtraConditionsLost !== undefined && {
       onExtraConditionsLost: options.onExtraConditionsLost,
     }),
@@ -251,6 +276,11 @@ function scheduleTransitionWriteOptions(options: ScheduleTransitionOptions | und
  * callback and `updateSchedule` do, so `options.expectedRevision` is compared against the state
  * the write is made from. A pause counts as a change to the schedule (`revision` goes up by one)
  * only when the schedule was active.
+ *
+ * COR-1594: the write is also conditioned on the exact bytes the transition read, so the
+ * one-winner rule for `expectedRevision` holds across engine processes that share a store, not
+ * only within one: of two transitions naming the same revision, the one whose write loses re-reads
+ * and is refused with {@link ScheduleStaleRevisionError}. See {@link runScheduleTransition}.
  */
 export async function pauseSchedule(
   internals: EngineInternals,
@@ -259,11 +289,12 @@ export async function pauseSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
     if (state.status !== 'active') return;
     await internals.scheduler.cancel(
       createScheduleTimerId(normalizedScheduleId),
       normalizedScheduleId,
+      timerConditions(readConditions),
     );
     const now = internals.options.getNow();
     const updatedState: ScheduleState = {
@@ -276,7 +307,7 @@ export async function pauseSchedule(
     };
     await writeScheduleState(internals, updatedState, {
       includeTimer: false,
-      ...scheduleTransitionWriteOptions(options),
+      ...scheduleTransitionWriteOptions(options, readConditions),
     });
   });
 }
@@ -289,7 +320,7 @@ export async function resumeSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
     if (state.status === 'cancelled') {
       throw new Error(
         `Schedule "${normalizedScheduleId}" has been cancelled and cannot be resumed`,
@@ -305,7 +336,7 @@ export async function resumeSchedule(
       nextFireAt: getNextScheduleOccurrence(state, now),
     };
     await writeScheduleState(internals, updatedState, {
-      ...scheduleTransitionWriteOptions(options),
+      ...scheduleTransitionWriteOptions(options, readConditions),
     });
   });
 }
@@ -322,11 +353,12 @@ export async function cancelSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
     if (state.status === 'active') {
       await internals.scheduler.cancel(
         createScheduleTimerId(normalizedScheduleId),
         normalizedScheduleId,
+        timerConditions(readConditions),
       );
     }
     const updatedState: ScheduleState = {
@@ -339,7 +371,7 @@ export async function cancelSchedule(
     };
     await writeScheduleState(internals, updatedState, {
       includeTimer: false,
-      ...scheduleTransitionWriteOptions(options),
+      ...scheduleTransitionWriteOptions(options, readConditions),
     });
   });
 }
@@ -354,7 +386,7 @@ export async function updateSchedule(
   const normalizedSpec = normalizeScheduleSpec(newSpec);
   const normalizedOptions = normalizeScheduleUpdateOptions(options);
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
     const now = internals.options.getNow();
     // Replace the cadence wholesale so switching kinds (cron <-> interval) never
     // leaves a stale field behind. Interval cadence re-anchors at the update time.
@@ -413,10 +445,19 @@ export async function updateSchedule(
           ? null
           : getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
     };
+    const pinnedWriteOptions = await buildPinnedRevisionWriteOptions(
+      internals,
+      state.workflowType,
+      pinnedRevision,
+    );
+    const extraConditions = [...readConditions, ...(pinnedWriteOptions?.extraConditions ?? [])];
     await writeScheduleState(internals, updatedState, {
       includeTimer: state.status === 'active',
       replaceTimerFrom: state,
-      ...(await buildPinnedRevisionWriteOptions(internals, state.workflowType, pinnedRevision)),
+      ...(extraConditions.length > 0 && { extraConditions }),
+      ...(pinnedWriteOptions !== undefined && {
+        onExtraConditionsLost: pinnedWriteOptions.onExtraConditionsLost,
+      }),
     });
   });
 }

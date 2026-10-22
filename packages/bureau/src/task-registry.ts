@@ -386,6 +386,13 @@ export interface CreateTaskRegistryOptions {
   readonly identifiers: RuntimeIdentifiers;
   readonly host: TaskRegistryHost;
   readonly diagnose: (message: string, cause?: unknown) => void;
+  /**
+   * Told, after {@link TaskRegistry.recordSettled} has written the settlement and announced it
+   * here, of each schedule fire it settled (COR-1594). The Bureau records the fire's end in the
+   * durable history from here, which is how a stream another process serves learns of it. A
+   * rejection is diagnosed, never thrown into the settlement.
+   */
+  readonly onFireSettled?: ((record: TaskRecord) => Promise<void>) | undefined;
 }
 
 /** The task state a settled run maps to. */
@@ -863,6 +870,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async recordSettled(taskId, settlement) {
+      const captured: { settled?: TaskRecord } = {};
       const recorded = await track(
         update(taskId, (record) => {
           // A task has more than one writer of its settlement (the action that ended the run,
@@ -874,10 +882,22 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               ? (settlement.answer ?? record.settled?.answer)
               : undefined;
           const { answer: _ignored, ...rest } = settlement;
-          return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
+          const next: TaskRecord = {
+            ...record,
+            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+          };
+          captured.settled = next;
+          return next;
         }),
       );
       if (recorded) await announceSettled(taskId);
+      if (recorded && captured.settled?.kind === 'schedule-fire' && options.onFireSettled) {
+        try {
+          await options.onFireSettled(captured.settled);
+        } catch (error) {
+          diagnose(`Could not record in the history how schedule fire "${taskId}" ended`, error);
+        }
+      }
       return recorded;
     },
 
