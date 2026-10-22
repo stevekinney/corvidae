@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/tasks`: the caller's tasks, newest first, a page at a time (`bureau.tasks.list`). The filters
+   * `/tasks`: the caller's tasks, most recently changed first, a page at a time (`bureau.tasks.list`). The filters
    * are the address's (`?agent=`, `?status=`, `?session=`), so a link from a chat session lands on
    * its tasks and a filtered list can be shared. Each task links to its page and to its session.
    * The view frame has settled that the caller has a task at all, so an empty list here is a
@@ -40,9 +40,12 @@
     () => ({
       queryKey: queryKeys.bureauTasks.list(filter),
       queryFn: ({ pageParam, signal }) =>
-        listTasks({ ...filter, limit: PAGE_SIZE, offset: pageParam }, { signal }),
-      initialPageParam: 0,
-      getNextPageParam: (last) => last.nextOffset ?? undefined,
+        listTasks(
+          { ...filter, limit: PAGE_SIZE, ...(pageParam === '' ? {} : { pageToken: pageParam }) },
+          { signal },
+        ),
+      initialPageParam: '',
+      getNextPageParam: (last) => last.nextPageToken ?? undefined,
       // The list is kept current while it is open, as `/reviews` is. A background refetch of an
       // infinite query reads every loaded page again, so a person who paged keeps their place.
       refetchInterval: REVIEW_POLL_MILLISECONDS,
@@ -51,8 +54,8 @@
     undefined,
   );
 
-  // A task created while the pages are being read moves the next page's offset onto a row the last
-  // page ended with, so the pages are joined with each task once.
+  // Each page after the first reads the listing as the first page saw it, so a task appears once;
+  // the pages are still joined by id, as every paged list here is.
   const rows = $derived(
     combinePages(
       tasks.data?.pages,

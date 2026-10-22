@@ -70,7 +70,8 @@ export type TaskView = z.infer<typeof taskViewSchema>;
 
 const taskPageSchema = z.object({
   tasks: z.array(taskViewSchema),
-  nextOffset: z.number().nullable(),
+  /** Opaque; `null` when the listing has no more tasks. */
+  nextPageToken: z.string().nullable(),
 });
 
 export type TaskPage = z.infer<typeof taskPageSchema>;
@@ -84,9 +85,12 @@ export type TaskFilter = {
 
 type Options = { readonly signal?: AbortSignal };
 
-/** One page of tasks, newest first (`bureau.tasks.list`). */
+/**
+ * One page of tasks, most recently changed first (`bureau.tasks.list`). The first page's
+ * `nextPageToken` names the listing as it stood then, so later pages neither repeat nor skip a task.
+ */
 export async function listTasks(
-  input: TaskFilter & { readonly limit?: number; readonly offset?: number } = {},
+  input: TaskFilter & { readonly limit?: number; readonly pageToken?: string } = {},
   options?: Options,
 ): Promise<TaskPage> {
   return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));

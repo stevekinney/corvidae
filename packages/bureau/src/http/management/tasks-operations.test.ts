@@ -1,5 +1,5 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { CleanupAcknowledgement } from '@lostgradient/operative';
+import { type CleanupAcknowledgement, createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
@@ -16,6 +16,7 @@ import {
   OWNER,
   type OpenedBureau,
   openBureau,
+  parkingUntilAborted,
   rpc,
 } from './management-fixtures.test-support.ts';
 
@@ -47,11 +48,12 @@ function tasksOf(body: Awaited<ReturnType<typeof rpc>>): Task[] {
 async function startRun(
   opened: OpenedBureau,
   principal: string,
-  options: { message?: string; sessionId?: string } = {},
+  options: { message?: string; sessionId?: string; agentName?: string } = {},
 ) {
   const run = await opened.bureau.createRun({
     message: options.message ?? 'work',
     principal,
+    ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
   });
   await waitForCondition(
@@ -59,6 +61,25 @@ async function startRun(
     `run ${run.id} never started`,
   );
   return run;
+}
+
+/** Writes task records straight to the registry, one millisecond apart: a listing reads only them. */
+function createTaskRecords(opened: OpenedBureau) {
+  let at = Date.parse('2026-10-22T00:00:00.000Z');
+  return {
+    async admit(taskId: string, owner: string): Promise<void> {
+      at += 1;
+      await opened.bureau.tasks.recordAdmission({
+        taskId,
+        contextId: `context-${taskId}`,
+        incarnation: '',
+        agentName: 'asker',
+        owner,
+        message: undefined,
+        createdAt: new Date(at).toISOString(),
+      });
+    },
+  };
 }
 
 describe('bureau.tasks.list', () => {
@@ -77,7 +98,7 @@ describe('bureau.tasks.list', () => {
           .toSorted(),
       ).toEqual([first.id, second.id].toSorted());
       expect(tasksOf(alice).every((task) => task.owner === OWNER.alice)).toBe(true);
-      expect(alice.result?.['nextOffset']).toBeNull();
+      expect(alice.result?.['nextPageToken']).toBeNull();
       // The write scope does not imply the read scope.
       expect(tasksOf(writer)).toEqual([]);
     });
@@ -98,58 +119,121 @@ describe('bureau.tasks.list', () => {
     });
   });
 
-  it('filters by agent name and status, and pages with nextOffset', async () => {
-    await withBureau({}, async (opened) => {
-      const ids: string[] = [];
-      for (let index = 0; index < 3; index += 1) {
-        const started = await startRun(opened, OWNER.alice);
-        ids.push(started.id);
-      }
+  it('filters by agent name and status, and pages with nextPageToken', async () => {
+    await withBureau(
+      { agents: { asker: createAgent({ generate: parkingUntilAborted }) } },
+      async (opened) => {
+        const ids: string[] = [];
+        for (let index = 0; index < 3; index += 1) {
+          const started = await startRun(opened, OWNER.alice, { agentName: 'asker' });
+          ids.push(started.id);
+        }
 
-      const firstPage = await rpc(opened.handler, 'bureau.tasks.list', { limit: 2 }, 'alice-key');
-      const secondPage = await rpc(
-        opened.handler,
-        'bureau.tasks.list',
-        { limit: 2, offset: 2 },
-        'alice-key',
-      );
-      const working = await rpc(
-        opened.handler,
-        'bureau.tasks.list',
-        { status: 'working' },
-        'alice-key',
-      );
-      const completed = await rpc(
-        opened.handler,
-        'bureau.tasks.list',
-        { status: 'completed' },
-        'alice-key',
-      );
-      const named = await rpc(
-        opened.handler,
-        'bureau.tasks.list',
-        { agentName: 'bureau' },
-        'alice-key',
-      );
-      const other = await rpc(
-        opened.handler,
-        'bureau.tasks.list',
-        { agentName: 'someone-else' },
-        'alice-key',
-      );
+        const firstPage = await rpc(opened.handler, 'bureau.tasks.list', { limit: 2 }, 'alice-key');
+        const secondPage = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { limit: 2, pageToken: firstPage.result?.['nextPageToken'] },
+          'alice-key',
+        );
+        const working = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { status: 'working' },
+          'alice-key',
+        );
+        const completed = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { status: 'completed' },
+          'alice-key',
+        );
+        const named = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { agentName: 'asker' },
+          'alice-key',
+        );
+        const other = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { agentName: 'someone-else' },
+          'alice-key',
+        );
 
-      expect(tasksOf(firstPage)).toHaveLength(2);
-      expect(firstPage.result?.['nextOffset']).toBe(2);
-      expect(tasksOf(secondPage)).toHaveLength(1);
-      expect(secondPage.result?.['nextOffset']).toBeNull();
-      expect(
-        [...tasksOf(firstPage), ...tasksOf(secondPage)].map((task) => task.id).toSorted(),
-      ).toEqual(ids.toSorted());
-      expect(tasksOf(working)).toHaveLength(3);
-      expect(tasksOf(completed)).toEqual([]);
-      expect(tasksOf(named)).toHaveLength(3);
-      expect(tasksOf(other)).toEqual([]);
-    });
+        expect(tasksOf(firstPage)).toHaveLength(2);
+        expect(typeof firstPage.result?.['nextPageToken']).toBe('string');
+        expect(tasksOf(secondPage)).toHaveLength(1);
+        expect(secondPage.result?.['nextPageToken']).toBeNull();
+        expect([...tasksOf(firstPage), ...tasksOf(secondPage)].map((task) => task.id)).toEqual(
+          ids.toReversed(),
+        );
+        expect(tasksOf(working)).toHaveLength(3);
+        expect(tasksOf(completed)).toEqual([]);
+        expect(tasksOf(named)).toHaveLength(3);
+        expect(tasksOf(other)).toEqual([]);
+      },
+    );
+  });
+
+  it('answers at most 50 tasks when the limit is omitted, and never another principal’s', async () => {
+    await withBureau(
+      { agents: { asker: createAgent({ generate: parkingUntilAborted }) } },
+      async (opened) => {
+        const records = createTaskRecords(opened);
+        for (let index = 0; index < 51; index += 1)
+          await records.admit(`alice-${index}`, OWNER.alice);
+        await records.admit('bob-0', OWNER.bob);
+
+        const firstPage = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
+        const secondPage = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { pageToken: firstPage.result?.['nextPageToken'] },
+          'alice-key',
+        );
+
+        expect(tasksOf(firstPage)).toHaveLength(50);
+        expect(tasksOf(secondPage)).toHaveLength(1);
+        expect(secondPage.result?.['nextPageToken']).toBeNull();
+        const listed = [...tasksOf(firstPage), ...tasksOf(secondPage)];
+        expect(listed.every((task) => task.owner === OWNER.alice)).toBe(true);
+        expect(new Set(listed.map((task) => task.id)).size).toBe(51);
+      },
+    );
+  });
+
+  it('answers InvalidParams to an offset, a token that is not one, and another principal’s token', async () => {
+    await withBureau(
+      { agents: { asker: createAgent({ generate: parkingUntilAborted }) } },
+      async (opened) => {
+        const records = createTaskRecords(opened);
+        for (let index = 0; index < 3; index += 1)
+          await records.admit(`alice-${index}`, OWNER.alice);
+        const firstPage = await rpc(opened.handler, 'bureau.tasks.list', { limit: 1 }, 'alice-key');
+        const pageToken = firstPage.result?.['nextPageToken'];
+
+        const offset = await rpc(opened.handler, 'bureau.tasks.list', { offset: 1 }, 'alice-key');
+        const malformed = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { pageToken: 'not-a-token' },
+          'alice-key',
+        );
+        const stolen = await rpc(opened.handler, 'bureau.tasks.list', { pageToken }, 'bob-key');
+        const otherFilter = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { pageToken, status: 'working' },
+          'alice-key',
+        );
+
+        for (const body of [offset, malformed, stolen, otherFilter]) {
+          expect(body.error?.data?.httpStatus).toBe(400);
+        }
+        expect(JSON.stringify(otherFilter.error)).toContain('page-token-filters');
+      },
+    );
   });
 
   it('returns only the tasks of the named context, each carrying that contextId', async () => {

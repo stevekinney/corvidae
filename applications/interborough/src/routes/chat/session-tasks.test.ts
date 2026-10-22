@@ -48,7 +48,7 @@ describe('the tasks of a chat session', () => {
 
     stub.on('bureau.tasks.list', () => ({
       tasks: [taskFixture({ id: 'run-1' }), taskFixture({ id: 'run-2' })],
-      nextOffset: null,
+      nextPageToken: null,
     }));
     await view.rerender({
       page: SessionTasks,
@@ -66,7 +66,6 @@ describe('the tasks of a chat session', () => {
     expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 0,
     });
 
     await fireEvent.click(getByRole('button', { name: 'Load more' }));
@@ -74,7 +73,7 @@ describe('the tasks of a chat session', () => {
     expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 50,
+      pageToken: '50',
     });
     expect(queryByRole('button', { name: 'Load more' })).toBeNull();
   });
@@ -91,8 +90,9 @@ describe('the tasks of a chat session', () => {
     } as never);
     await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
 
-    // A run starts in the session: the list is newest first, so every row moves down one place and
-    // offset 50 now begins with the row the first page ended with.
+    // A run starts in the session. The stub's token is a position in the live list, unlike the
+    // Bureau's snapshot, so the next page begins with the row the first page ended with; the
+    // pages are joined by id all the same.
     world.tasks = [taskFixture({ id: 'run-new', contextId: 'session-1' }), ...world.tasks];
     await fireEvent.click(getByRole('button', { name: 'Load more' }));
 
@@ -114,7 +114,6 @@ describe('the tasks of a chat session', () => {
     expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 0,
     });
     const links = [...container.querySelectorAll<HTMLAnchorElement>('li a')];
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
