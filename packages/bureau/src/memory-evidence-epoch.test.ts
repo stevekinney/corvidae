@@ -317,6 +317,45 @@ describe('the recall hook at step 0 (COR-771)', () => {
   });
 });
 
+describe('the recall hook during a policy change (COR-771)', () => {
+  it('recalls again when the policy changes while recall runs, so it never appends a stale bundle', async () => {
+    const memory = governedMemory();
+    await seed(memory);
+    let calls = 0;
+    const racing: GovernedMemory = {
+      ...memory,
+      get policyRevision() {
+        return memory.policyRevision;
+      },
+      recallForModel: async (...parameters) => {
+        calls += 1;
+        const bundle = await memory.recallForModel(...parameters);
+        // The policy moves after the first recall took its snapshot.
+        if (calls === 1) await activateNextPolicy(memory);
+        return bundle;
+      },
+    };
+    const hook = createMemoryRecallHook(
+      racing,
+      createRunMemoryAuthority(requestContext, {
+        runId: 'run-1',
+        tenantId: 'tenant-a',
+        ownerId: 'owner-a',
+      }),
+      { collection: 'scout', sessionId: 'session-1' },
+    );
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Which automobile?');
+    await hook({ step: 0, conversation });
+
+    expect(calls).toBe(2);
+    const [row] = conversation.getMessages().filter((message) => message.role === 'system');
+    expect(row?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY]).toMatchObject({
+      policyRevision: 'governance:2',
+    });
+  });
+});
+
 describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
   async function recover(changePolicyWhileParked: boolean) {
     const memory = governedMemory();

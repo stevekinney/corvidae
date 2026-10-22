@@ -1300,11 +1300,18 @@ export function createMemoryRecallHook(
       return;
     }
 
-    const bundle = await memory.recallForModel(authority, query, {
-      collection: target.collection,
-      limit: 5,
-      contextId: authority.principal.id,
-    });
+    const recall = () =>
+      memory.recallForModel(authority, query, {
+        collection: target.collection,
+        limit: 5,
+        contextId: authority.principal.id,
+      });
+    // A policy change that lands while recall runs leaves the bundle admitted
+    // under the old policy, so it is recalled once more; if the policy moves
+    // again, nothing is appended rather than evidence no current policy admitted.
+    let bundle = await recall();
+    if (bundle.policyRevision !== memory.policyRevision) bundle = await recall();
+    if (bundle.policyRevision !== memory.policyRevision) return;
     appendMemoryEvidence(context.conversation, target, bundle);
   };
 }

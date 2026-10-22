@@ -52,11 +52,13 @@ const recordingSchema = z.object({
   manifest: z.unknown().optional(),
   expectedDifferences: z.array(z.string()).default([]),
   /**
-   * The bundle revision the replay must produce when `expectedDifferences` is
+   * The whole manifest the replay must produce when `expectedDifferences` is
    * not empty. Naming the differences alone would let other drift pass beside
-   * them, so a recording that expects differences pins the revision too.
+   * them, and no single field (the revision leaves out the stop reason, for
+   * one) covers everything, so a recording that expects differences pins the
+   * entire replayed manifest.
    */
-  expectedRevision: z.string().optional(),
+  expectedManifest: z.unknown().optional(),
 });
 
 /** One recording: what to store, what to recall, and the manifest the recall produced. */
@@ -123,7 +125,7 @@ export async function replayRecording(input: RecallRecording): Promise<RecallRep
     const kinds = differences.map((difference) => difference.kind);
     const pinned =
       recording.expectedDifferences.length === 0 ||
-      manifest.revision === recording.expectedRevision;
+      Bun.deepEquals(manifest, recording.expectedManifest, true);
     return {
       name: recording.name,
       manifest,
@@ -147,7 +149,7 @@ export function recordedBaseline(
   recording: RecallRecording,
   manifest: MemoryEvidenceManifest,
 ): RecallRecording {
-  const { expectedDifferences: _stale, expectedRevision: _pinned, ...baseline } = recording;
+  const { expectedDifferences: _stale, expectedManifest: _pinned, ...baseline } = recording;
   return { ...baseline, manifest };
 }
 

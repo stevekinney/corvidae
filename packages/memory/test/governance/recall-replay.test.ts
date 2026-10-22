@@ -96,8 +96,18 @@ describe('recorded recall replays', () => {
     };
     const replay = await replayRecording(drifted);
     expect(replay.passed).toBe(false);
-    const unpinned = await replayRecording({ ...recorded, expectedRevision: undefined });
+    const unpinned = await replayRecording({ ...recorded, expectedManifest: undefined });
     expect(unpinned.passed).toBe(false);
+  });
+
+  it('fails a different stop reason beside an expected one, which the revision alone cannot see', async () => {
+    const recorded = await recording('policy-revision-changed');
+    const pinned = recorded.expectedManifest as MemoryEvidenceManifest;
+    const replay = await replayRecording({
+      ...recorded,
+      expectedManifest: { ...pinned, stopReason: 'canceled' },
+    });
+    expect(replay.passed).toBe(false);
   });
 
   it('never passes a recording that has no baseline to compare against', async () => {
