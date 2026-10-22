@@ -19,10 +19,10 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { decode, encode } from '../codec/api.ts';
-import { WorkflowCompletedEvent } from '../events.ts';
+import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
-import { abandonedExecutionAttemptCount } from './execution-attempts.ts';
+import { abandonedExecutionAttemptCount, retireExecutionAttempt } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 import { putsWorkflowStatus } from './storage-write-refusal.test-support.ts';
@@ -32,6 +32,12 @@ import {
   steps,
   type Run,
 } from './storage-write-retry.test-support.ts';
+import { endRunAfterFailedWrite } from './terminal-run-exit.ts';
+import type { TerminationCallbacks } from './termination.ts';
+import {
+  captureTerminatedRun,
+  settleRunFromStoredRecord,
+} from './termination/settle-refused-terminal.ts';
 
 type Kind = 'completion' | 'failure';
 
@@ -294,32 +300,40 @@ describe('every exit from a terminal write settles the run', () => {
 
 describe("a run settled from a record another writer left, under ownership: 'workflow-lease'", () => {
   /** Another writer ends the run with a completed record, which `committedBy` may stamp. */
-  async function settledFromLookAlike(id: string, committedBy: (own: string) => string) {
+  async function settledFromLookAlike(
+    id: string,
+    committedBy: (own: string) => string,
+    ending: 'completed' | 'failed' | 'cancelled' = 'completed',
+  ) {
     const run = await startParked(steps, id, { ownership: 'workflow-lease' });
     const internals = getInternals(run.engine);
     const registry = internals.workflowClaimRegistry!;
     const completions: unknown[] = [];
+    const failures: unknown[] = [];
     run.engine.addEventListener(WorkflowCompletedEvent.type, (event) => completions.push(event));
+    run.engine.addEventListener(WorkflowFailedEvent.type, (event) => failures.push(event));
     expect(registry.currentEpoch(id)).not.toBeNull();
     const other = otherWriterChanges(run, id, (record) => {
-      record.status = 'completed';
+      record.status = ending;
       record.result = ANOTHER_WRITERS_RESULT;
+      record.error = 'ended elsewhere';
       record.terminalCommittedBy = committedBy(registry.engineId);
     });
     run.refusing.refuse({ matches: terminalPut(id, 'completion'), times: 1, before: other.before });
     await run.engine.signal(id, 'go', 'x');
-    expect(await run.result).toBe(ANOTHER_WRITERS_RESULT);
-    return { run, internals, registry, completions, bytes: other.bytes() };
+    const settlement = await settlementOf(run.result);
+    return { run, internals, registry, completions, failures, settlement, bytes: other.bytes() };
   }
 
   it('releases the ownership claim and what the run held, and announces its own write', async () => {
     const id = 'own-stamp';
-    const { run, internals, registry, completions, bytes } = await settledFromLookAlike(
+    const { run, internals, registry, completions, settlement, bytes } = await settledFromLookAlike(
       id,
       (own) => own,
     );
     await using engine = run.engine;
 
+    expect(settlement).toEqual({ kind: 'value', value: ANOTHER_WRITERS_RESULT });
     expect(registry.currentEpoch(id)).toBeNull();
     expect(internals.checkpoints.has(id)).toBe(false);
     expect(completions).toHaveLength(1);
@@ -329,15 +343,120 @@ describe("a run settled from a record another writer left, under ownership: 'wor
 
   it('announces nothing for a run another engine ended, and still releases the claim', async () => {
     const id = 'other-stamp';
-    const { run, internals, registry, completions } = await settledFromLookAlike(
+    const { run, internals, registry, completions, settlement } = await settledFromLookAlike(
       id,
       () => 'another-engine',
     );
     await using engine = run.engine;
 
+    expect(settlement).toEqual({ kind: 'value', value: ANOTHER_WRITERS_RESULT });
     expect(registry.currentEpoch(id)).toBeNull();
     expect(internals.checkpoints.has(id)).toBe(false);
     expect(completions).toEqual([]);
     expect(engine).toBeDefined();
+  });
+});
+
+describe("a run another writer ended otherwise, under ownership: 'workflow-lease'", () => {
+  it('announces a failed record this engine wrote as a failure', async () => {
+    const id = 'own-failed-record';
+    const run = await startParked(steps, id, { ownership: 'workflow-lease' });
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const failures: unknown[] = [];
+    engine.addEventListener(WorkflowFailedEvent.type, (event) => failures.push(event));
+    const other = otherWriterChanges(run, id, (record) => {
+      record.status = 'failed';
+      record.error = 'ended elsewhere';
+      record.terminalCommittedBy = internals.workflowClaimRegistry!.engineId;
+    });
+    run.refusing.refuse({ matches: terminalPut(id, 'completion'), times: 1, before: other.before });
+
+    await engine.signal(id, 'go', 'x');
+
+    expect(await settlementOf(run.result)).toMatchObject({
+      kind: 'rejection',
+      error: { message: 'ended elsewhere' },
+    });
+    expect(failures).toHaveLength(1);
+  });
+
+  it('announces nothing for a cancelled record, which the cancel announced', async () => {
+    const id = 'own-cancelled-record';
+    const run = await startParked(steps, id, { ownership: 'workflow-lease' });
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const events: unknown[] = [];
+    engine.addEventListener(WorkflowCompletedEvent.type, (event) => events.push(event));
+    engine.addEventListener(WorkflowFailedEvent.type, (event) => events.push(event));
+    const other = otherWriterChanges(run, id, (record) => {
+      record.status = 'cancelled';
+      record.terminalCommittedBy = internals.workflowClaimRegistry!.engineId;
+    });
+    run.refusing.refuse({ matches: terminalPut(id, 'completion'), times: 1, before: other.before });
+
+    await engine.signal(id, 'go', 'x');
+
+    expect(await settlementOf(run.result)).toMatchObject({
+      kind: 'rejection',
+      error: { message: 'Workflow cancelled' },
+    });
+    expect(events).toEqual([]);
+  });
+});
+
+describe('the exits that need the engine in a particular state', () => {
+  it('rejects the waiter itself when the engine holds no attempt for the run to abandon', async () => {
+    const id = 'no-attempt';
+    const run = await startParked(failsAfterSignal, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const waiter = internals.resultResolvers.get(id)!;
+    // The run as it stood when the engine held no attempt for it, so there is nothing to mark.
+    const captured = { ...captureTerminatedRun(internals, id), held: false };
+    retireExecutionAttempt(internals, id);
+
+    await endRunAfterFailedWrite(
+      internals,
+      id,
+      { createTerminationCallbacks: () => ({}) as TerminationCallbacks },
+      new Error('the failure write failed'),
+      'failure',
+      undefined,
+      captured,
+    );
+
+    const settlement = await settlementOf(run.result);
+    expect(settlement).toMatchObject({ kind: 'rejection' });
+    expect((settlement as { error: unknown }).error).toBeInstanceOf(CheckpointCommitFailedError);
+    expect(internals.resultResolvers.get(id)).not.toBe(waiter);
+    expect(internals.resultResolvers.has(id)).toBe(false);
+  });
+
+  it('leaves a waiter a terminated run is holding back for its in-flight activity', async () => {
+    const id = 'held-for-activity';
+    const run = await startParked(steps, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const waiter = internals.resultResolvers.get(id)!;
+    const captured = captureTerminatedRun(internals, id);
+    internals.pendingTerminalSettlements.add({
+      workflowId: id,
+      workflowExecutionToken: captured.workflowExecutionToken,
+      terminalError: new Error('held'),
+      turn: Promise.resolve(),
+      waiter,
+    } as never);
+
+    const outcome = await settleRunFromStoredRecord(
+      internals,
+      id,
+      {} as TerminationCallbacks,
+      captured,
+    );
+
+    expect(outcome).toBe('open');
+    expect(internals.resultResolvers.get(id)).toBe(waiter);
+    internals.pendingTerminalSettlements.clear();
   });
 });
