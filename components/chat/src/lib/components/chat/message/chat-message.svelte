@@ -71,6 +71,8 @@
     /** Called when the user resolves an action-required approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
+    /** Called with the schema-valid value when the user submits a requested-input form. */
+    onInputSubmit?: ((toolCallId: string, value: unknown) => void | Promise<void>) | undefined;
     toolCallPresentation?: import('../utilities/types.ts').ToolCallPresentation | undefined;
     /**
      * Reasoning text to surface as a collapsible block before the body.
@@ -158,6 +160,7 @@
     approvalStates,
     approvalResolutionInFlightIds,
     onApprovalResolve,
+    onInputSubmit,
     toolCallPresentation,
     reasoning,
     entries,
@@ -496,6 +499,7 @@
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
           {onApprovalResolve}
+          {onInputSubmit}
           {reasoningExpanded}
           {onreasoning}
           {stepsExpanded}
