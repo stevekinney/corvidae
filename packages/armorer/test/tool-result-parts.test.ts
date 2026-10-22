@@ -64,6 +64,7 @@ describe('tool-result parts contract', () => {
     expect(() =>
       toolContent([{ type: 'image', source: { kind: 'remote-url' } } as unknown as ToolResultPart]),
     ).toThrow(/part 0 is invalid: source.url must be a string/);
+    expect(() => toolContent([])).toThrow(/must not be empty/);
     expect(() =>
       assertToolResultParts([{ type: 'thinking', thinking: 'x', signature: 'y' }]),
     ).toThrow(/"thinking" is not a tool-result part type/);

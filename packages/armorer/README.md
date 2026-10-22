@@ -119,7 +119,7 @@ export const chart = createTool({
 });
 ```
 
-`toolContent` validates the parts' shape, and the value it returns is plain JSON, so a cached or persisted copy is recognized again after a JSON round trip: an idempotent replay returns the same parts. Inline bytes are only a hand-off format. Operative admits them as managed assets before a result reaches the conversation, and every Armorer and Operative event shows a media part through `redactToolResultPart` (its type, MIME type, size, and asset identity), never its bytes. Over MCP, `fromMcpTools` turns a result's non-text blocks into these parts and `toMcpTools` turns parts back into the same blocks; see the MCP guide.
+`toolContent` validates the parts' shape, and the value it returns is plain JSON, so a cached or persisted copy is recognized again after a JSON round trip: an idempotent replay returns the same parts. Inline bytes are only a hand-off format. Operative admits them as managed assets before a result reaches the conversation or its step events, and the events that fire before admission (Armorer's tool and toolbox lifecycle events and Operative's `tool.settled`) show a media part through `redactToolResultPart`: its type, MIME type, size, and asset identity, never its bytes. Over MCP, `fromMcpTools` turns a result's non-text blocks into these parts and `toMcpTools` turns parts back into the same blocks; see the MCP guide.
 
 ## Embedding vectors
 

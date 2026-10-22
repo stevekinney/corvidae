@@ -128,13 +128,15 @@ function partProblem(part: unknown): string | undefined {
 }
 
 /**
- * Checks the shape of a tool result's parts: an array of text parts and media
+ * Checks the shape of a tool result's parts: a non-empty array of text parts and media
  * parts whose `source` names one of the nine content source kinds with its
  * required fields. MIME-type and payload checks belong to the conversation
  * schema, which validates stored parts in one place.
  */
 export function assertToolResultParts(value: unknown): asserts value is ToolResultPart[] {
   if (!Array.isArray(value)) throw new TypeError('Tool result parts must be an array.');
+  // An empty list is not a model-facing answer; a result without parts carries only `content`.
+  if (value.length === 0) throw new TypeError('Tool result parts must not be empty.');
   value.forEach((part: unknown, index) => {
     const problem = partProblem(part);
     if (problem !== undefined) {

@@ -327,10 +327,7 @@ export function subagentToolContent(result: {
   readonly parts: readonly MultiModalContent[];
 }): ToolContent {
   const media = result.parts.filter(isMediaContent);
-  return toolContent([
-    ...(result.content === '' ? [] : [{ type: 'text' as const, text: result.content }]),
-    ...media,
-  ]);
+  return toolContent([{ type: 'text', text: result.content }, ...media]);
 }
 
 /**

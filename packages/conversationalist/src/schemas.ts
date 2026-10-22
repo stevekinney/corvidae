@@ -410,7 +410,7 @@ export const toolResultSchema = z
     callId: z.string(),
     outcome: z.enum(['success', 'error', 'action_required']),
     content: jsonValueSchema,
-    parts: z.array(toolResultPartSchema).optional(),
+    parts: z.array(toolResultPartSchema).min(1).optional(),
     error: toolErrorSchema.optional(),
     action: toolActionSchema.optional(),
     inputDigest: z.string().optional(),

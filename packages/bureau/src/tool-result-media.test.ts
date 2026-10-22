@@ -108,6 +108,11 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
       .getMessages()
       .find((message) => message.role === 'tool-result');
     expect(replayed?.toolResult?.parts?.[1]).toMatchObject({ source: { kind: 'managed-asset' } });
+    // ...and the run's resolver has projected that part to the asset's bytes for the provider.
+    expect(second?.resolvedSources?.get(`${replayed?.id}:1`)).toMatchObject({
+      outcome: 'resolved',
+      source: { kind: 'inline', data: snapshotBase64 },
+    });
 
     // Neither the conversation nor the audit trail holds the bytes.
     expect(JSON.stringify(result.conversation.current)).not.toContain(snapshotBase64);
