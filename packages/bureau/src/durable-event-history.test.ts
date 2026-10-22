@@ -3319,6 +3319,29 @@ describe('createDurableEventProducer()', () => {
     await producer.dispose();
   });
 
+  it('records a schedule transition the outbox replays once, dated when it committed (COR-194)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchSchedulePaused } = createFakeBureauEventSurface();
+    const history = createDurableEventHistory(await createMemoryStorage(), runtime);
+    const producer = createDurableEventProducer(bureau, history, runtime);
+    const owner: DurableEventOwner = { kind: 'schedule', id: 'sched-1' };
+    const record = { dedupeKey: 'bureau-schedule-transition:sched-1:1', committedAtMs: 42 };
+
+    dispatchSchedulePaused(new SchedulePausedEvent('sched-1', record));
+    await producer.waitForActiveWrites(owner);
+    dispatchSchedulePaused(new SchedulePausedEvent('sched-1', record));
+    await producer.waitForActiveWrites(owner);
+
+    const page = await history.page(owner);
+    if ('outcome' in page) throw new Error('expected a page, got a gap');
+    expect(page.events.map((event) => [event.kind, event.emittedAtMs])).toEqual([
+      ['schedule.paused', 42],
+    ]);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
   it('records schedule.resumed under the schedule owner (AB-320)', async () => {
     const runtime = createManualRuntimeServices();
     const { bureau, dispatchScheduleResumed } = createFakeBureauEventSurface();
