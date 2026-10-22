@@ -11,7 +11,8 @@
     },
     "lint": {
       "outputs": [],
-      "dependsOn": ["transit"]
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-documentation-coverage.ts"]
     },
     "lint:fix": {
       "cache": false
@@ -165,6 +166,7 @@
       "dependsOn": ["transit"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
