@@ -829,9 +829,15 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
           : undefined,
       'the boot to report the round it could not write',
     );
-    const rounds = (
-      await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id)
-    ).map((record) => (record.detail as { review: { round: number } }).review.round);
+    const records = await auditRecordsOf(
+      restarted,
+      fireId,
+      'review.tool-approval.canceled',
+      review.id,
+    );
+    const rounds = records.map(
+      (record) => (record.detail as { review: { round: number } }).review.round,
+    );
     expect(rounds).toEqual([0]);
     await restarted.dispose();
   });
