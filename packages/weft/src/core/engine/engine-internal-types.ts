@@ -16,6 +16,7 @@ import type {
   SearchAttributeSchema,
   SignalDefinition,
   UpdateDefinition,
+  UsedActivityDefinition,
   WorkflowConcurrencyOptions,
   WorkflowFunction,
   WorkflowTimelineEntry,
@@ -45,6 +46,8 @@ export interface RegistrationEntry {
   signals?: Readonly<Record<string, Readonly<SignalDefinition<unknown>>>>;
   updates?: Readonly<Record<string, Readonly<UpdateDefinition<unknown>>>>;
   queries?: Readonly<Record<string, Readonly<QueryDefinition<unknown>>>>;
+  /** Engine-provided activities the workflow declared with `.uses()`, keyed by name. */
+  uses?: Readonly<Record<string, UsedActivityDefinition>>;
   searchAttributes?: SearchAttributeSchema;
   retention?: NormalizedRetentionPolicy;
   concurrency?: WorkflowConcurrencyOptions;

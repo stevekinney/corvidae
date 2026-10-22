@@ -1,5 +1,6 @@
 import { KEYS } from '../../storage/interface.ts';
 import type { InlineExecutionStrategy } from '../inline-execution-strategy.ts';
+import { assertLiveWorkflowMessageDeclared } from './declared-messages.ts';
 import type { EngineInternals } from './internals.ts';
 import { validateMessageInput } from './payload-validation.ts';
 import { decodeWorkflowState, isTerminalWorkflowStatus } from './validation.ts';
@@ -166,6 +167,7 @@ export async function query(
   if (name === 'activityProgress') {
     return internals.heartbeatDetails.get(workflowId);
   }
+  assertLiveWorkflowMessageDeclared(internals, 'query', workflowId, name);
 
   const inlineStrategy = internals.inlineStrategy;
   if (!inlineStrategy) {
