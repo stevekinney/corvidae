@@ -107,6 +107,20 @@ This is a deliberate difference from `@lostgradient/editor`'s `DiffViewer`, whos
 `createChatSessionController` can be driven by an [AG-UI](https://docs.ag-ui.com) 1.0 event stream without changing the native chat wire. `createAGUIChatTransport` returns a chat session transport that maps each event onto the version 3 wire, and `mapAGUIEventsToChatStream` is the same mapping over any iterable of events.
 
 ```ts
+import {
+  createAGUIChatTransport,
+  createChatSessionController,
+  type ConversationHistory,
+} from '@lostgradient/chat';
+
+declare function getConversation(): ConversationHistory;
+declare function setConversation(conversation: ConversationHistory): void;
+// Your agent endpoint, yielding AG-UI 1.0 events for this conversation.
+declare function runAgent(
+  conversation: ConversationHistory,
+  signal: AbortSignal,
+): AsyncIterable<unknown>;
+
 const controller = createChatSessionController({
   executionOwner: 'server',
   getConversation,

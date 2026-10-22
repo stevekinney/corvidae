@@ -73,7 +73,11 @@ Renewal emits no fleet event. It is liveness evidence, not a state transition: t
 
 Each pass is bounded: it walks the command keyspace in pages of `maintenanceBatchSize`, up to a fixed number of pages per call, and carries its cursor forward to the next call when the cap cuts it short. It returns a `MailboxMaintenanceReport` with `released`, `reclaimed`, `deadLettered`, `cancelled`, and `retired` counts.
 
-```typescript partial
+```typescript
+import type { Mailbox } from '@lostgradient/weft';
+
+declare const mailbox: Mailbox;
+
 const report = await mailbox.runMaintenance();
 console.log(report.reclaimed); // expired leases returned to the delivery index
 ```

@@ -25,22 +25,82 @@ pip install chromadb
 chroma run --path ./chroma-data
 ```
 
+## The Chroma Client Members These Examples Use
+
+The examples below import Chroma's client from a local `chroma.ts` that declares only the members they call, so they type-check without `chromadb` installed. In your project, import the same names from `'chromadb'` instead.
+
+```typescript file=chroma.ts
+export type ChromaMetadata = Record<string, string | number | boolean>;
+export type ChromaWhere = Record<string, unknown>;
+
+export interface ChromaEmbeddingFunction {
+  generate(texts: string[]): Promise<number[][]>;
+}
+
+export interface ChromaCollection {
+  add(records: {
+    ids: string[];
+    embeddings?: number[][];
+    documents?: string[];
+    metadatas?: ChromaMetadata[];
+  }): Promise<void>;
+  delete(filter: { ids?: string[]; where?: ChromaWhere }): Promise<void>;
+  query(args: {
+    queryEmbeddings: number[][];
+    nResults?: number;
+    where?: ChromaWhere | undefined;
+    whereDocument?: Record<string, unknown>;
+  }): Promise<{ ids: string[][]; metadatas: (ChromaMetadata | null)[][] }>;
+  get(): Promise<{ ids: string[]; metadatas: (ChromaMetadata | null)[] }>;
+  count(): Promise<number>;
+}
+
+export interface ChromaClient {
+  getOrCreateCollection(options: {
+    name: string;
+    metadata?: ChromaMetadata;
+    embeddingFunction?: ChromaEmbeddingFunction;
+  }): Promise<ChromaCollection>;
+}
+
+export declare const ChromaClient: new (options?: {
+  path?: string;
+  auth?: { provider: 'token'; credentials: string };
+}) => ChromaClient;
+
+export declare const OpenAIEmbeddingFunction: new (options: {
+  openai_api_key: string;
+  openai_model: string;
+}) => ChromaEmbeddingFunction;
+
+export declare const CohereEmbeddingFunction: new (options: {
+  cohere_api_key: string;
+  model: string;
+}) => ChromaEmbeddingFunction;
+
+export declare const HuggingFaceEmbeddingServerFunction: new (options: {
+  url: string;
+}) => ChromaEmbeddingFunction;
+```
+
 ## Basic Chroma Integration
 
 Here's a simple example using Chroma's embedded mode:
 
-```typescript
-import { createToolbox, createTool, type Tool } from 'armorer';
-import { ChromaClient } from 'chromadb';
+```typescript file=basic.ts
+import { createToolbox, type Tool } from 'armorer';
 import OpenAI from 'openai';
-import { z } from 'zod';
+import { ChromaClient } from './chroma.ts';
+
+// Your tools
+declare const tools: readonly Tool[];
 
 // Initialize clients
-const chroma = new ChromaClient();
+export const chroma = new ChromaClient();
 const openai = new OpenAI();
 
 // Embedding function for Toolbox
-async function embed(texts: string[]): Promise<number[][]> {
+export async function embed(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const response = await openai.embeddings.create({
@@ -52,10 +112,10 @@ async function embed(texts: string[]): Promise<number[][]> {
 }
 
 // Create toolbox with embedding support
-const toolbox = createToolbox([], { embed });
+export const toolbox = createToolbox(tools, { embed });
 
 // Create or get a collection for tools
-const collection = await chroma.getOrCreateCollection({
+export const collection = await chroma.getOrCreateCollection({
   name: 'toolbox_tools',
   metadata: { description: 'Toolbox tool embeddings' },
 });
@@ -66,10 +126,12 @@ const collection = await chroma.getOrCreateCollection({
 Chroma supports built-in embedding functions, which simplifies the setup:
 
 ```typescript
-import { ChromaClient, OpenAIEmbeddingFunction } from 'chromadb';
+import { ChromaClient, OpenAIEmbeddingFunction } from './chroma.ts';
+
+const chroma = new ChromaClient();
 
 const embedder = new OpenAIEmbeddingFunction({
-  openai_api_key: process.env.OPENAI_API_KEY!,
+  openai_api_key: process.env['OPENAI_API_KEY']!,
   openai_model: 'text-embedding-3-small',
 });
 
@@ -88,12 +150,12 @@ await collection.add({
 
 ## Syncing Tools to Chroma
 
-Register an event listener to automatically sync tools to Chroma:
+Index the toolbox's tools in Chroma once the toolbox is built:
 
 ```typescript
-toolbox.addEventListener('registered', async (event) => {
-  const tool = event.detail;
+import { collection, embed, toolbox } from './basic.ts';
 
+for (const tool of toolbox.tools()) {
   // Prepare documents for each searchable field
   const fields = [
     { field: 'name', text: tool.name },
@@ -124,7 +186,7 @@ toolbox.addEventListener('registered', async (event) => {
       tags: JSON.stringify(tool.tags ?? []),
     })),
   });
-});
+}
 ```
 
 ## Semantic Search with Chroma
@@ -132,9 +194,13 @@ toolbox.addEventListener('registered', async (event) => {
 Chroma's query API makes semantic search straightforward:
 
 ```typescript
+import type { Tool } from 'armorer';
+import { collection, embed, toolbox } from './basic.ts';
+
 async function searchTools(query: string, limit = 5): Promise<Tool[]> {
   // Generate embedding for the query
   const [queryEmbedding] = await embed([query]);
+  if (!queryEmbedding) return [];
 
   // Query Chroma
   const results = await collection.query({
@@ -146,9 +212,9 @@ async function searchTools(query: string, limit = 5): Promise<Tool[]> {
   const seen = new Set<string>();
   const tools: Tool[] = [];
 
-  for (const metadata of results.metadatas?.[0] ?? []) {
-    const toolName = metadata?.toolName as string;
-    if (toolName && !seen.has(toolName)) {
+  for (const metadata of results.metadatas[0] ?? []) {
+    const toolName = metadata?.['toolName'];
+    if (typeof toolName === 'string' && !seen.has(toolName)) {
       seen.add(toolName);
       const tool = toolbox.getTool(toolName);
       if (tool) {
@@ -166,12 +232,11 @@ async function searchTools(query: string, limit = 5): Promise<Tool[]> {
 
 Here's a complete, production-ready example:
 
-```typescript
-import { createToolbox, createTool, type Tool } from 'armorer';
-import { queryTools } from 'armorer';
-import { ChromaClient, type Collection } from 'chromadb';
+```typescript file=registry.ts
+import { createToolbox, createTool, queryTools, type Tool, type ToolQuery } from 'armorer';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { ChromaClient, type ChromaCollection, type ChromaMetadata } from './chroma.ts';
 
 // Configuration
 const COLLECTION_NAME = 'toolbox_tools';
@@ -192,6 +257,18 @@ async function embed(texts: string[]): Promise<number[][]> {
   return response.data.map((item) => item.embedding);
 }
 
+// Read the distinct tool names from a Chroma result, in rank order
+function toolNamesFrom(metadatas: readonly (ChromaMetadata | null)[]): string[] {
+  const names = new Set<string>();
+  for (const metadata of metadatas) {
+    const toolName = metadata?.['toolName'];
+    if (typeof toolName === 'string') {
+      names.add(toolName);
+    }
+  }
+  return Array.from(names);
+}
+
 export type ChromaToolRegistryOptions = {
   /** Chroma server URL. If not provided, uses embedded mode. */
   chromaUrl?: string;
@@ -201,7 +278,10 @@ export type ChromaToolRegistryOptions = {
   persistPath?: string;
 };
 
-export async function createChromaToolRegistry(options: ChromaToolRegistryOptions = {}) {
+export async function createChromaToolRegistry(
+  tools: readonly Tool[],
+  options: ChromaToolRegistryOptions = {},
+) {
   // Connect to Chroma
   const chroma = options.chromaUrl
     ? new ChromaClient({ path: options.chromaUrl })
@@ -216,15 +296,14 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
     },
   });
 
-  const toolbox = createToolbox([], { embed });
+  const toolbox = createToolbox(tools, { embed });
 
-  // Sync tools to Chroma on registration
-  toolbox.addEventListener('registered', async (event) => {
-    const tool = event.detail;
+  // Index the toolbox's tools in Chroma
+  for (const tool of toolbox.tools()) {
     await syncToolToChroma(collection, tool);
-  });
+  }
 
-  async function syncToolToChroma(col: Collection, tool: Tool): Promise<void> {
+  async function syncToolToChroma(col: ChromaCollection, tool: Tool): Promise<void> {
     const fields = [
       { field: 'name', text: tool.name },
       { field: 'description', text: tool.description },
@@ -256,39 +335,34 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
     });
   }
 
+  // Map ranked tool names back to the toolbox's tools
+  function toolsNamed(names: readonly string[], limit: number): Tool[] {
+    return names
+      .map((name) => toolbox.getTool(name))
+      .filter((t): t is Tool => t !== undefined)
+      .slice(0, limit);
+  }
+
+  /**
+   * Semantic search for tools
+   */
+  async function search(query: string, limit = 10): Promise<Tool[]> {
+    const [queryEmbedding] = await embed([query]);
+    if (!queryEmbedding) return [];
+
+    const results = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: limit * 3,
+    });
+
+    return toolsNamed(toolNamesFrom(results.metadatas[0] ?? []), limit);
+  }
+
   return {
     toolbox,
     chroma,
     collection,
-
-    /**
-     * Semantic search for tools
-     */
-    async search(query: string, limit = 10): Promise<Tool[]> {
-      const [queryEmbedding] = await embed([query]);
-
-      const results = await collection.query({
-        queryEmbeddings: [queryEmbedding],
-        nResults: limit * 3,
-      });
-
-      const seen = new Set<string>();
-      const tools: Tool[] = [];
-
-      for (const metadata of results.metadatas?.[0] ?? []) {
-        const toolName = metadata?.toolName as string;
-        if (toolName && !seen.has(toolName)) {
-          seen.add(toolName);
-          const tool = toolbox.getTool(toolName);
-          if (tool) {
-            tools.push(tool);
-          }
-          if (tools.length >= limit) break;
-        }
-      }
-
-      return tools;
-    },
+    search,
 
     /**
      * Search with Chroma metadata filtering
@@ -302,6 +376,7 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
       limit = 10,
     ): Promise<Tool[]> {
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
 
       // Build Chroma where clause
       const whereConditions: Record<string, unknown>[] = [];
@@ -315,7 +390,7 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
       }
 
       const whereClause =
-        whereConditions.length > 1 ? { $and: whereConditions } : (whereConditions[0] ?? undefined);
+        whereConditions.length > 1 ? { $and: whereConditions } : whereConditions[0];
 
       const results = await collection.query({
         queryEmbeddings: [queryEmbedding],
@@ -323,22 +398,7 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
         where: whereClause,
       });
 
-      const seen = new Set<string>();
-      const tools: Tool[] = [];
-
-      for (const metadata of results.metadatas?.[0] ?? []) {
-        const toolName = metadata?.toolName as string;
-        if (toolName && !seen.has(toolName)) {
-          seen.add(toolName);
-          const tool = toolbox.getTool(toolName);
-          if (tool) {
-            tools.push(tool);
-          }
-          if (tools.length >= limit) break;
-        }
-      }
-
-      return tools;
+      return toolsNamed(toolNamesFrom(results.metadatas[0] ?? []), limit);
     },
 
     /**
@@ -350,6 +410,7 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
       limit = 10,
     ): Promise<Tool[]> {
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
 
       const results = await collection.query({
         queryEmbeddings: [queryEmbedding],
@@ -357,22 +418,7 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
         whereDocument: { $contains: documentFilter },
       });
 
-      const seen = new Set<string>();
-      const tools: Tool[] = [];
-
-      for (const metadata of results.metadatas?.[0] ?? []) {
-        const toolName = metadata?.toolName as string;
-        if (toolName && !seen.has(toolName)) {
-          seen.add(toolName);
-          const tool = toolbox.getTool(toolName);
-          if (tool) {
-            tools.push(tool);
-          }
-          if (tools.length >= limit) break;
-        }
-      }
-
-      return tools;
+      return toolsNamed(toolNamesFrom(results.metadatas[0] ?? []), limit);
     },
 
     /**
@@ -380,13 +426,11 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
      */
     async hybridSearch(
       query: string,
-      toolboxFilter?: {
-        tags?: { any?: string[]; all?: string[]; none?: string[] };
-        metadata?: { eq?: Record<string, unknown> };
-      },
+      toolboxFilter?: Pick<ToolQuery, 'tags' | 'metadata'>,
       limit = 10,
     ): Promise<Tool[]> {
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
 
       // Get semantic candidates from Chroma
       const results = await collection.query({
@@ -394,28 +438,14 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
         nResults: 50, // Get more for filtering
       });
 
-      const candidates = new Set<string>();
-      for (const metadata of results.metadatas?.[0] ?? []) {
-        const toolName = metadata?.toolName as string;
-        if (toolName) {
-          candidates.add(toolName);
-        }
-      }
-
       // Get tools and apply Toolbox filters
-      const tools = Array.from(candidates)
-        .map((name) => toolbox.getTool(name))
-        .filter((t): t is Tool => t !== undefined);
+      const candidates = toolsNamed(toolNamesFrom(results.metadatas[0] ?? []), Infinity);
 
       if (!toolboxFilter) {
-        return tools.slice(0, limit);
+        return candidates.slice(0, limit);
       }
 
-      return queryTools(tools, {
-        tags: toolboxFilter.tags,
-        metadata: toolboxFilter.metadata ? { eq: toolboxFilter.metadata.eq } : undefined,
-        limit,
-      });
+      return queryTools(candidates, { ...toolboxFilter, limit });
     },
 
     /**
@@ -426,9 +456,8 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
       if (!tool) return [];
 
       // Use the tool's description as the query
-      return this.search(tool.description, limit + 1).then((results) =>
-        results.filter((t) => t.name !== toolName).slice(0, limit),
-      );
+      const results = await search(tool.description, limit + 1);
+      return results.filter((t) => t.name !== toolName).slice(0, limit);
     },
 
     /**
@@ -462,9 +491,8 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
     async stats(): Promise<{ toolCount: number; documentCount: number }> {
       const count = await collection.count();
       const data = await collection.get();
-      const toolNames = new Set(data.metadatas?.map((m) => m?.toolName as string));
       return {
-        toolCount: toolNames.size,
+        toolCount: toolNamesFrom(data.metadatas).length,
         documentCount: count,
       };
     },
@@ -473,89 +501,80 @@ export async function createChromaToolRegistry(options: ChromaToolRegistryOption
 
 // Usage example
 async function main() {
-  const { toolbox, search, hybridSearch, findSimilar } = await createChromaToolRegistry();
-
-  // Register tools
-  createTool(
-    {
-      name: 'send-email',
-      description: 'Send an email message to one or more recipients',
-      input: z.object({
-        to: z.array(z.string().email()),
-        subject: z.string(),
-        body: z.string(),
-      }),
-      tags: ['communication', 'email', 'messaging'],
-      metadata: { category: 'communication', priority: 'high' },
-      async execute({ to, subject, body }) {
-        console.log(`Sending email to ${to.join(', ')}`);
-        return { sent: true, recipients: to.length };
-      },
+  // Define tools
+  const sendEmail = createTool({
+    name: 'send-email',
+    description: 'Send an email message to one or more recipients',
+    input: z.object({
+      to: z.array(z.string().email()),
+      subject: z.string(),
+      body: z.string(),
+    }),
+    tags: ['communication', 'email', 'messaging'],
+    metadata: { category: 'communication', priority: 'high' },
+    async execute({ to, subject, body }) {
+      console.log(`Sending email to ${to.join(', ')}`);
+      return { sent: true, recipients: to.length };
     },
-    toolbox,
-  );
+  });
 
-  createTool(
-    {
-      name: 'send-slack-message',
-      description: 'Post a message to a Slack channel or user',
-      input: z.object({
-        channel: z.string(),
-        message: z.string(),
-        threadTs: z.string().optional(),
-      }),
-      tags: ['communication', 'slack', 'messaging'],
-      metadata: { category: 'communication', priority: 'medium' },
-      async execute({ channel, message }) {
-        console.log(`Posting to Slack: ${channel}`);
-        return { posted: true };
-      },
+  const sendSlackMessage = createTool({
+    name: 'send-slack-message',
+    description: 'Post a message to a Slack channel or user',
+    input: z.object({
+      channel: z.string(),
+      message: z.string(),
+      threadTs: z.string().optional(),
+    }),
+    tags: ['communication', 'slack', 'messaging'],
+    metadata: { category: 'communication', priority: 'medium' },
+    async execute({ channel, message }) {
+      console.log(`Posting to Slack: ${channel}`);
+      return { posted: true };
     },
-    toolbox,
-  );
+  });
 
-  createTool(
-    {
-      name: 'create-jira-ticket',
-      description: 'Create a new issue or ticket in Jira',
-      input: z.object({
-        project: z.string(),
-        summary: z.string(),
-        description: z.string(),
-        issueType: z.enum(['bug', 'story', 'task']),
-      }),
-      tags: ['project-management', 'jira', 'tickets'],
-      metadata: { category: 'productivity', priority: 'medium' },
-      async execute({ project, summary }) {
-        console.log(`Creating Jira ticket in ${project}`);
-        return { created: true, key: 'PROJ-123' };
-      },
+  const createJiraTicket = createTool({
+    name: 'create-jira-ticket',
+    description: 'Create a new issue or ticket in Jira',
+    input: z.object({
+      project: z.string(),
+      summary: z.string(),
+      description: z.string(),
+      issueType: z.enum(['bug', 'story', 'task']),
+    }),
+    tags: ['project-management', 'jira', 'tickets'],
+    metadata: { category: 'productivity', priority: 'medium' },
+    async execute({ project, summary }) {
+      console.log(`Creating Jira ticket in ${project}`);
+      return { created: true, key: 'PROJ-123' };
     },
-    toolbox,
-  );
+  });
 
-  createTool(
-    {
-      name: 'schedule-meeting',
-      description: 'Create a calendar event and send invites to attendees',
-      input: z.object({
-        title: z.string(),
-        startTime: z.string().datetime(),
-        duration: z.number(),
-        attendees: z.array(z.string().email()),
-      }),
-      tags: ['calendar', 'scheduling', 'meetings'],
-      metadata: { category: 'productivity', priority: 'high' },
-      async execute({ title }) {
-        console.log(`Scheduling: ${title}`);
-        return { scheduled: true };
-      },
+  const scheduleMeeting = createTool({
+    name: 'schedule-meeting',
+    description: 'Create a calendar event and send invites to attendees',
+    input: z.object({
+      title: z.string(),
+      startTime: z.string().datetime(),
+      duration: z.number(),
+      attendees: z.array(z.string().email()),
+    }),
+    tags: ['calendar', 'scheduling', 'meetings'],
+    metadata: { category: 'productivity', priority: 'high' },
+    async execute({ title }) {
+      console.log(`Scheduling: ${title}`);
+      return { scheduled: true };
     },
-    toolbox,
-  );
+  });
 
-  // Wait for embeddings to be generated
-  await new Promise((resolve) => setTimeout(resolve, 1500));
+  // Resolves once every tool is indexed in Chroma
+  const { search, hybridSearch, findSimilar } = await createChromaToolRegistry([
+    sendEmail,
+    sendSlackMessage,
+    createJiraTicket,
+    scheduleMeeting,
+  ]);
 
   // Semantic search
   console.log('\n--- Semantic Search: "notify the team" ---');
@@ -606,8 +625,13 @@ main().catch(console.error);
 For production or multi-process access, run Chroma as a standalone server:
 
 ```typescript
+import type { Tool } from 'armorer';
+import { createChromaToolRegistry } from './registry.ts';
+
+declare const tools: readonly Tool[];
+
 // Connect to Chroma server
-const { toolbox, search } = await createChromaToolRegistry({
+const { toolbox, search } = await createChromaToolRegistry(tools, {
   chromaUrl: 'http://localhost:8000',
 });
 ```
@@ -635,13 +659,13 @@ volumes:
 ### Authenticated Client
 
 ```typescript
-import { ChromaClient } from 'chromadb';
+import { ChromaClient } from './chroma.ts';
 
 const chroma = new ChromaClient({
   path: 'http://localhost:8000',
   auth: {
     provider: 'token',
-    credentials: process.env.CHROMA_AUTH_TOKEN,
+    credentials: process.env['CHROMA_AUTH_TOKEN']!,
   },
 });
 ```
@@ -656,17 +680,19 @@ import {
   OpenAIEmbeddingFunction,
   CohereEmbeddingFunction,
   HuggingFaceEmbeddingServerFunction,
-} from 'chromadb';
+} from './chroma.ts';
+
+const chroma = new ChromaClient();
 
 // OpenAI
 const openaiEmbedder = new OpenAIEmbeddingFunction({
-  openai_api_key: process.env.OPENAI_API_KEY!,
+  openai_api_key: process.env['OPENAI_API_KEY']!,
   openai_model: 'text-embedding-3-small',
 });
 
 // Cohere
 const cohereEmbedder = new CohereEmbeddingFunction({
-  cohere_api_key: process.env.COHERE_API_KEY!,
+  cohere_api_key: process.env['COHERE_API_KEY']!,
   model: 'embed-english-v3.0',
 });
 
@@ -721,6 +747,10 @@ Choose Chroma when:
 5. **Server mode for production**: Run Chroma as a server for multi-process access and persistence.
 
 ```typescript
+import { ChromaClient } from './chroma.ts';
+
+const chroma = new ChromaClient();
+
 // Configure HNSW for better search quality
 const collection = await chroma.getOrCreateCollection({
   name: 'toolbox_tools',

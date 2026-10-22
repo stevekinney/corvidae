@@ -2,10 +2,10 @@
 
 Track all tool executions for compliance and debugging.
 
-```typescript
-import { createToolbox } from 'armorer';
+```typescript file=audit-trails.ts
+import { createMiddleware, createToolbox } from 'armorer';
 
-interface AuditEntry {
+export interface AuditEntry {
   timestamp: number;
   toolName: string;
   params: unknown;
@@ -16,7 +16,7 @@ interface AuditEntry {
   durationMs: number;
 }
 
-class AuditLog {
+export class AuditLog {
   private entries: AuditEntry[] = [];
 
   log(entry: AuditEntry): void {
@@ -83,7 +83,7 @@ function createAuditMiddleware(auditLog: AuditLog) {
 // Usage
 const auditLog = new AuditLog();
 
-const toolbox = createToolbox([], {
+export const toolbox = createToolbox([], {
   middleware: [createAuditMiddleware(auditLog)],
   context: {
     userId: 'user-123',
@@ -102,20 +102,21 @@ const exportedLog = auditLog.export();
 ## Audit Trail with Events
 
 ```typescript
+import { AuditLog, toolbox, type AuditEntry } from './audit-trails.ts';
+
 // Use toolbox events for audit trail
 const auditLog = new AuditLog();
 
 toolbox.addEventListener('tool.started', (event) => {
-  const { toolName, toolCall } = event.detail;
-  console.log(`[AUDIT] Started: ${toolName}`);
+  console.log(`[AUDIT] Started: ${event.toolCall.name}`);
 });
 
 toolbox.addEventListener('tool.finished', (event) => {
-  const { toolName, toolCall, result, error, status, durationMs } = event.detail;
+  const { toolCall, result, error, status, durationMs } = event;
 
   auditLog.log({
     timestamp: Date.now(),
-    toolName,
+    toolName: toolCall.name,
     params: toolCall.arguments,
     result: status === 'success' ? result : undefined,
     error: error ? (error instanceof Error ? error.message : String(error)) : undefined,

@@ -9,40 +9,74 @@ For a dedicated guide to tool and registry event streams, see [Eventing](eventin
 ### Registration
 
 ```typescript
-const toolbox = createToolbox();
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
 
-// Register individual tools
-toolbox.register(tool1);
-toolbox.register(tool2, tool3);
+const echo = createTool({
+  name: 'echo',
+  description: 'Echo a value',
+  input: z.object({ value: z.string() }),
+  async execute({ value }) {
+    return value;
+  },
+});
 
-// Or register configurations directly
-toolbox.register(tool1.configuration, tool2.configuration);
+const reverse = createTool({
+  name: 'reverse',
+  description: 'Reverse a value',
+  input: z.object({ value: z.string() }),
+  async execute({ value }) {
+    return [...value].reverse().join('');
+  },
+});
+
+// Register tools when the toolbox is created
+const toolbox = createToolbox([echo, reverse]);
 
 // Or initialize with tool configurations
-const toolbox = createToolbox([tool1.configuration, tool2.configuration]);
+const fromConfigurations = createToolbox([echo.configuration, reverse.configuration]);
 
-// Or create + register in one step
-const registered = toolbox.createTool({
-  name: 'quick-tool',
-  description: 'Registered on creation',
+// Toolboxes are immutable: extend() returns a new toolbox with the extra tools
+const shout = createTool({
+  name: 'shout',
+  description: 'Upper-case a value',
   input: z.object({ value: z.string() }),
   async execute({ value }) {
     return value.toUpperCase();
   },
 });
+const extended = toolbox.extend(shout);
 ```
 
-Tool configurations also support lazy execute functions (import from `armorer`):
+Tool configurations also support lazy execute functions (import from `armorer`). Put the heavy implementation in its own module:
+
+```typescript file=lazy-configuration.ts
+import { z } from 'zod';
+
+// A plain configuration's execute receives its arguments as `unknown`, so the
+// module narrows them itself.
+const input = z.object({ id: z.string() });
+
+export async function execute(params: unknown): Promise<string> {
+  const { id } = input.parse(params);
+  return `loaded ${id}`;
+}
+```
+
+Then load it on first use:
 
 ```typescript
-import { lazy } from 'armorer';
+import { createToolbox, lazy } from 'armorer';
+import { z } from 'zod';
 
-toolbox.register({
-  name: 'lazy-configuration',
-  description: 'Loads on first use',
-  input: z.object({ id: z.string() }),
-  execute: lazy(() => import('./tools/lazy-configuration').then((mod) => mod.execute)),
-});
+const toolbox = createToolbox([
+  {
+    name: 'lazy-configuration',
+    description: 'Loads on first use',
+    input: z.object({ id: z.string() }),
+    execute: lazy(async () => (await import('./lazy-configuration.ts')).execute),
+  },
+]);
 ```
 
 Tool configurations and `createTool()` are consistent: if `input` is omitted, Toolbox defaults it to `z.object({})` for no-params tools.
@@ -52,6 +86,11 @@ Tool configurations and `createTool()` are consistent: if `input` is omitted, To
 Add `availability` to a tool when it depends on a platform or runtime capability:
 
 ```typescript
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+
+declare function readKeychain(service: string): Promise<string>;
+
 const macosTool = createTool({
   name: 'read-keychain',
   description: 'Read a macOS Keychain item',
@@ -76,6 +115,11 @@ Availability is for platform and runtime capability checks. Do not use it to hid
 ### Execution
 
 ```typescript
+import type { AnyToolbox, ToolCallInput } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+declare const calls: ToolCallInput[];
+
 // Execute a single tool call
 const result = await toolbox.execute({
   id: 'call-id',
@@ -92,7 +136,7 @@ const results = await toolbox.execute([
 
 // Execute with AbortSignal support
 const controller = new AbortController();
-const results = await toolbox.execute(calls, { signal: controller.signal });
+const abortable = await toolbox.execute(calls, { signal: controller.signal });
 
 // Streaming mode: preserve async-iterable tool output
 const streamed = await toolbox.execute(
@@ -107,18 +151,22 @@ for await (const chunk of streamed.stream!) {
 When executing multiple tool calls, they are executed in parallel using `Promise.all()`. The return value is an array of `ToolResult` objects in the same order as the input calls. You can listen to events from individual tools using `toolbox.addEventListener`:
 
 ```typescript
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 // Listen for progress events from any tool during parallel execution
 toolbox.addEventListener('progress', (event) => {
-  console.log(`Tool ${event.detail.tool.identity.name}: ${event.detail.percent}%`);
+  console.log(`Tool ${event.tool.identity.name}: ${event.percent}%`);
 });
 
 // Listen for execution events
 toolbox.addEventListener('execute-start', (event) => {
-  console.log(`Starting: ${event.detail.tool.identity.name}`);
+  console.log(`Starting: ${event.tool.identity.name}`);
 });
 
 toolbox.addEventListener('execute-success', (event) => {
-  console.log(`Completed: ${event.detail.tool.identity.name}`, event.detail.result);
+  console.log(`Completed: ${event.tool.identity.name}`, event.result);
 });
 ```
 
@@ -182,21 +230,34 @@ import { createMockTool, createTestRegistry } from 'armorer';
 const weatherMock = createMockTool({ name: 'get_weather' });
 weatherMock.mockResolve({ temp: 72 });
 
-const toolbox = createTestRegistry();
-toolbox.register(weatherMock);
+const toolbox = createTestRegistry([weatherMock]);
 
 // Execute your agent logic using the test registry
 // ...
 
 // Assert on execution history
-console.log(toolbox.history[0].call.name); // 'get_weather'
+console.log(toolbox.history[0]?.call.name); // 'get_weather'
 console.log(weatherMock.calls.length); // 1
 ```
 
 ### Querying Tools
 
 ```typescript
-import { queryTools } from 'armorer';
+import { createTool, createToolbox, queryTools } from 'armorer';
+import { z } from 'zod';
+
+const toolbox = createToolbox([
+  createTool({
+    name: 'get-weather',
+    description: 'Get current weather for a city',
+    input: z.object({ city: z.string() }),
+    tags: ['weather', 'api'],
+    metadata: { tier: 'premium', capabilities: ['read'], score: 7, owner: 'team-weather' },
+    async execute({ city }) {
+      return { city, temperature: 72 };
+    },
+  }),
+]);
 
 // Query by tag (OR match)
 const mathTools = queryTools(toolbox, { tags: { any: ['math'] } });
@@ -208,7 +269,7 @@ const fastMath = queryTools(toolbox, { tags: { all: ['math', 'fast'] } });
 const safeTools = queryTools(toolbox, { tags: { none: ['destructive', 'dangerous'] } });
 
 // Query by text (name, description, tags, schema keys, metadata keys)
-const tools = queryTools(toolbox, { text: 'weather' });
+const weatherTools = queryTools(toolbox, { text: 'weather' });
 
 // Fuzzy text with field scoping
 const fuzzy = queryTools(toolbox, {
@@ -233,7 +294,7 @@ const ranged = queryTools(toolbox, { metadata: { range: { score: { min: 5 } } } 
 const owned = queryTools(toolbox, { metadata: { contains: { owner: 'team-' } } });
 
 // Custom predicate
-const tools = queryTools(toolbox, { predicate: (tool) => tool.tags?.includes('api') });
+const apiTools = queryTools(toolbox, { predicate: (tool) => tool.tags?.includes('api') ?? false });
 
 // Boolean groups + pagination + selection
 const summaries = queryTools(toolbox, {
@@ -281,14 +342,19 @@ Provide an embedder to `createToolbox` to enrich text queries with semantic matc
 
 The embedder is called with a list of texts and must return a same-length list of numeric vectors; mismatched or invalid vectors are ignored. Embeddings are cached per tool and can be recomputed with `reindexSearchIndex`.
 
-```typescript
-const toolbox = createToolbox([], {
+```typescript file=embedded-toolbox.ts
+import { createToolbox } from 'armorer';
+
+declare const embeddingsClient: { embed(texts: string[]): Promise<number[][]> };
+
+export const toolbox = createToolbox([], {
   embed: async (texts) => embeddingsClient.embed(texts),
 });
 ```
 
 ```typescript
 import { reindexSearchIndex } from 'armorer';
+import { toolbox } from './embedded-toolbox.ts';
 
 reindexSearchIndex(toolbox);
 ```
@@ -319,7 +385,8 @@ This is useful when working with functions that accept multiple types and you ne
 You can transform tool configurations during registration using middleware. Middleware functions receive a tool configuration and return a (possibly modified) configuration. Middleware is applied in order before the tool is built.
 
 ```typescript
-import { createToolbox, createMiddleware } from 'armorer';
+import { createTool, createToolbox, createMiddleware } from 'armorer';
+import { z } from 'zod';
 
 // Create middleware to add metadata
 const addSourceMetadata = createMiddleware((configuration) => ({
@@ -335,12 +402,19 @@ const validateConfiguration = createMiddleware((configuration) => {
   return configuration;
 });
 
-const toolbox = createToolbox([], {
-  middleware: [validateConfiguration, addSourceMetadata],
+const myTool = createTool({
+  name: 'my-tool',
+  description: 'An example tool',
+  input: z.object({}),
+  async execute() {
+    return 'ok';
+  },
 });
 
 // All registered tools will have the middleware applied
-toolbox.register(myTool);
+const toolbox = createToolbox([myTool], {
+  middleware: [validateConfiguration, addSourceMetadata],
+});
 ```
 
 Common middleware patterns:
@@ -357,6 +431,10 @@ Middleware must be synchronous when deserializing from `SerializedToolbox`. The 
 When deserializing a toolbox (loading from JSON), tool configurations may not have execute functions. Use `getTool()` to provide execute functions dynamically. The resolver can be synchronous or async (for lazy imports).
 
 ```typescript
+import { createToolbox, type SerializedToolbox } from 'armorer';
+
+declare const serializedConfigurations: SerializedToolbox;
+
 const toolbox = createToolbox(serializedConfigurations, {
   getTool: async (configuration) => {
     // Resolve execute lazily by tool name.
@@ -368,71 +446,58 @@ const toolbox = createToolbox(serializedConfigurations, {
 
 If `getTool()` cannot resolve a function (or resolves to a non-function), executing that tool returns an error with the tool name and resolver hint.
 
-#### Pre-computed Embeddings in Metadata
+#### Pre-computed Embeddings
 
-You can also store pre-computed embeddings directly on tool metadata to skip embedding computation during registration. This is useful when you already have embeddings from another source or want to pre-compute them offline.
+`registerToolEmbeddings(tool, vectors)` attaches vectors you computed offline (for example, in a build step) to a tool. The keys are text query fields (`name`, `description`, `tags`, `schemaKeys`, `metadataKeys`); other keys and non-numeric vectors are ignored.
 
 ```typescript
+import { createTool, registerToolEmbeddings } from 'armorer';
+import { z } from 'zod';
+
 const tool = createTool({
   name: 'pre-embedded-tool',
   description: 'A tool with pre-computed embeddings',
   input: z.object({ input: z.string() }),
-  metadata: {
-    // Store embeddings as an array of EmbeddingEntry objects
-    embeddings: [
-      { field: 'name', text: 'pre-embedded-tool', vector: [0.1, 0.2, ...], magnitude: 1.0 },
-      { field: 'description', text: 'A tool with pre-computed embeddings', vector: [0.3, 0.4, ...], magnitude: 1.0 },
-    ],
-    // Or as a single embedding property (alternative format)
-    embedding: {
-      name: [0.1, 0.2, ...],
-      description: [0.3, 0.4, ...],
-    },
-  },
   async execute({ input }) {
     return input.toUpperCase();
   },
 });
 
-// When registering with a toolbox that has an embedder,
-// tools with pre-computed embeddings will skip embedding computation
-const toolbox = createToolbox([tool], {
-  embed: async (texts) => {
-    // This won't be called for tools that already have embeddings in metadata
-    return embeddingsClient.embed(texts);
-  },
+registerToolEmbeddings(tool, {
+  name: [0.1, 0.2, 0.3],
+  description: [0.3, 0.4, 0.5],
 });
 ```
 
-The toolbox will automatically detect and use embeddings from `metadata.embeddings` (array format) or `metadata.embedding` (object format) if present, avoiding redundant embedding computation.
+The toolbox does not read embeddings from tool metadata. Vectors attach to the tool instance you pass: a toolbox builds its own tool from each entry (`toolbox.getTool(name)` returns it), and a toolbox created with `embed` computes and stores vectors for every tool it registers, replacing any registered earlier. Query text is always embedded with the toolbox's `embed`, so pre-computed vectors must come from the same model.
 
 ### Registry Events
 
 For complete eventing patterns (including observables and async iterators), see [Eventing](eventing.md).
 
 ```typescript
-toolbox.addEventListener('registered', (event) => {
-  console.log('Registered:', event.detail.name);
-});
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
 
 toolbox.addEventListener('call', (event) => {
-  console.log('Calling:', event.detail.call.name);
+  console.log('Calling:', event.call.name);
 });
 
 toolbox.addEventListener('complete', (event) => {
-  console.log('Completed:', event.detail.result);
+  console.log('Completed:', event.result);
 });
 
 toolbox.addEventListener('error', (event) => {
-  console.error('Error:', event.detail.result.error);
+  console.error('Error:', event.result.error);
 });
 
 toolbox.addEventListener('search', (event) => {
-  console.log('Search results:', event.detail.results);
+  console.log('Search results:', event.results);
 });
 
 toolbox.addEventListener('status:update', (event) => {
-  console.log(`${event.detail.name}: ${event.detail.status}`);
+  console.log(`${event.name}: ${event.status}`);
 });
 ```
 
@@ -443,21 +508,25 @@ Pass shared context to all registered tools:
 For a complete guide to context sources and `withContext`, see [Context and withContext](context.md).
 
 ```typescript
-const toolbox = createToolbox([], {
-  context: {
-    userId: 'user-123',
-    sessionId: 'session-456',
-  },
-});
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
 
-toolbox.register({
+const contextAware = createTool({
   name: 'context-aware',
   description: 'A tool that uses context',
   input: z.object({}),
   async execute(_params, context) {
-    // Access context.userId and context.sessionId
-    console.log('User:', context.userId);
+    // Toolbox context values are merged into the tool context at execution time
+    const { userId } = context as typeof context & { userId: string };
+    console.log('User:', userId);
     return 'ok';
+  },
+});
+
+const toolbox = createToolbox([contextAware], {
+  context: {
+    userId: 'user-123',
+    sessionId: 'session-456',
   },
 });
 ```
@@ -467,6 +536,10 @@ toolbox.register({
 `toolbox.inspect()` returns a snapshot of the registry for logging, diagnostics, or UI inventory screens. It reports counts plus a list of tool inspections. Detail levels control how much schema and metadata information is included: `summary` returns only name/description/tags, `standard` (default) adds schema keys and metadata flags, and `full` adds a simplified schema shape for each tool. Inspection is side-effect free and returns copies so you can safely log or mutate the output.
 
 ```typescript
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const inspection = toolbox.inspect(); // 'standard' detail level
 const summary = toolbox.inspect('summary'); // Less detail
 const full = toolbox.inspect('full'); // Full schema shapes
@@ -478,6 +551,10 @@ console.log(inspection.tools); // Array of tool inspections
 Example shape (standard detail):
 
 ```typescript
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const inspection = toolbox.inspect();
 
 console.log(inspection.counts); // { total, withTags, withMetadata }
@@ -494,6 +571,10 @@ console.log(inspection.tools[0]);
 ### Serialization
 
 ```typescript
+import { createToolbox, type AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 // Export for storage/transmission
 const serialized = toolbox.toJSON();
 
@@ -508,7 +589,10 @@ const restored = createToolbox(serialized);
 Use `.extend()` for immutable composition from an existing toolbox:
 
 ```typescript
-import { createToolbox } from 'armorer';
+import { createToolbox, type Tool } from 'armorer';
+
+declare const addTool: Tool, subtractTool: Tool, formatTool: Tool, parseTool: Tool;
+declare const auditTool: Tool;
 
 const base = createToolbox([addTool, subtractTool], {
   context: { workspaceId: 'ws-1' },
@@ -529,7 +613,9 @@ const merged = base.extend(adminToolbox);
 Use `combineToolboxes(...)` when merging many toolboxes at once:
 
 ```typescript
-import { combineToolboxes } from 'armorer';
+import { combineToolboxes, type AnyToolbox } from 'armorer';
+
+declare const mathToolbox: AnyToolbox, stringToolbox: AnyToolbox, adminToolbox: AnyToolbox;
 
 const combined = combineToolboxes(mathToolbox, stringToolbox, adminToolbox);
 console.log(combined.tools()); // All tools from all inputs
@@ -540,5 +626,3 @@ Behavior for both `.extend(toolbox)` and `combineToolboxes(...)`:
 - Tools are copied via `toJSON()` into a new toolbox
 - If multiple toolboxes define the same tool name, the **last** one wins
 - Contexts are shallow-merged in input order (last one wins on key collisions)
-
-`combineToolbox(...)` remains available as a compatibility alias but is deprecated in favor of `combineToolboxes(...)`.

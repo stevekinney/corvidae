@@ -61,6 +61,12 @@ A file that cannot be used is listed by `bureau.workflows.list()` with `state: '
 ## Wiring it in
 
 ```ts
+import { createBureau } from '@lostgradient/bureau';
+import type { BackendDescriptor, GenerateFunction, StandaloneAgent } from '@lostgradient/operative';
+
+declare const writer: StandaloneAgent;
+declare function resolveAgentGenerate(descriptor: BackendDescriptor): GenerateFunction;
+
 const bureau = await createBureau({
   agents: { writer },
   agentDirectory: '/home/me/.interborough/agents',
