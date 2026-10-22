@@ -22,6 +22,10 @@ import { createDeferred, waitForCondition } from '../../testing/fake-timers.test
 import { workflow, type EngineOptions, type WorkflowServicesResolution } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
+import {
+  hasQueuedInlineWorkflowStart,
+  hasQueuedOrLaunchingInlineWorkflowStart,
+} from './local-execution.ts';
 import { countingWorkflow, letOtherDrivesStart, probeFor } from './reclaim-race.test-support.ts';
 import { decodeWorkflowState } from './validation.ts';
 import type { WorkflowClaimRenewalPassResult } from './workflow-claim-renewal-task.ts';
@@ -198,8 +202,8 @@ async function observeWindow(engine: AnyEngine) {
   const internals = getInternals(engine);
   const state = await engine.get(WORKFLOW_ID);
   return {
-    launching: internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID),
-    queued: internals.queuedInlineWorkflowStartIds.has(WORKFLOW_ID),
+    launching: hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID),
+    queued: hasQueuedInlineWorkflowStart(internals, WORKFLOW_ID),
     status: state?.status,
   };
 }
@@ -277,8 +281,7 @@ describe('a reclaim that lists a delayed start between its fold and its launch',
     storage.releaseHeldRead();
     await fire;
     // A worker never enqueues, so the launch settles the marker itself once the worker has the run.
-    const launchingAfterTheFire =
-      internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID);
+    const launchingAfterTheFire = hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID);
     expect(await engine.getHandle(WORKFLOW_ID).result()).toEqual({ input: null, computed: 42 });
     // The fire started the run once; the reclaim replayed nothing.
     expect(events).toEqual({ started: 1, resumed: 0 });
@@ -367,7 +370,7 @@ describe('a delayed start that stops short of its launch', () => {
     expect(storage.readReadFailures).toBe(1);
     expect(probe.runs).toBe(0);
     // The marker is settled and the folded claim released: the run is running and ownerless.
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(registry.currentEpoch(WORKFLOW_ID)).toBeNull();
     expect(await storage.get(KEYS.workflowOwnerHolder(WORKFLOW_ID))).toBeNull();
     expect(await statusOf(storage)).toBe('running');
@@ -403,7 +406,7 @@ describe('a delayed start that stops short of its launch', () => {
     expect(internals.inlineStrategy!.hasGenerator(WORKFLOW_ID)).toBe(false);
     expect(probe.runs).toBe(0);
     // The failure released the claim with the run; the marker is settled with it.
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBeNull();
   });
 
@@ -431,7 +434,7 @@ describe('a delayed start that stops short of its launch', () => {
     expect(storage.failedWriteFaults).toBe(1);
     expect(await statusOf(storage)).toBe('running');
     // The marker is settled and the folded claim released, so the run is not hidden from the scan.
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(registry.currentEpoch(WORKFLOW_ID)).toBeNull();
 
     // The next pass acquires the ownerless run and reaches the replay, which fails it for its
@@ -580,7 +583,7 @@ describe('a prepared start that stops short of its launch', () => {
     expect(await statusOf(storage)).toBe('failed');
     expect(internals.inlineStrategy!.hasGenerator(WORKFLOW_ID)).toBe(false);
     expect(probe.runs).toBe(0);
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBeNull();
   });
 
@@ -607,7 +610,7 @@ describe('a prepared start that stops short of its launch', () => {
     expect(outcome).not.toBe('resolved');
     expect(storage.failedWriteFaults).toBe(1);
     expect(await statusOf(storage)).toBe('running');
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBeNull();
 
     const pass = await internals.workflowClaimRenewalTask!.runOnce();
@@ -626,10 +629,69 @@ describe('a prepared start that stops short of its launch', () => {
     const events = countEvents(engine);
     const prepared = await engine.prepare('simple', null, { id: WORKFLOW_ID });
     const handle = await prepared.launch();
-    const launchingAfterTheLaunch =
-      internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID);
+    const launchingAfterTheLaunch = hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID);
     expect(await handle.result()).toEqual({ input: null, computed: 42 });
     expect(events.started).toBe(1);
     expect(launchingAfterTheLaunch).toBe(false);
+  });
+});
+
+describe('an old queued start whose flush is in flight when a same-id replacement launches', () => {
+  it("leaves the replacement's record alone: it reads running, stays launching, and drives once", async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    const resolver = createResolver(() => ({ status: 'available', services: { owner: 'again' } }));
+    await using engine = await createInlineEngine(storage, clock, {
+      resolveWorkflowServices: resolver.option,
+    });
+    const internals = getInternals(engine);
+    const probe = probeFor(storage);
+    probe.hold = Promise.withResolvers<void>();
+
+    // The old run starts and its inline launch is queued; its flush is held at its first state
+    // read, past the point where the queue drained it.
+    await engine.start('counted', null, { id: WORKFLOW_ID });
+    storage.holdReadOf = KEYS.workflow(WORKFLOW_ID);
+    const flush = engine.flushInlineLaunches();
+    await storage.reachedHeldRead.promise;
+
+    // While that flush is held the old run is cancelled (the drop of a queued start finds nothing,
+    // since the flush already drained it), and a same-id prepared replacement launches and is
+    // held in its window at the re-provision. A reclaim listing predates the replacement.
+    await engine.cancel(WORKFLOW_ID);
+    const listing = await holdReclaimListing(engine, storage);
+    const prepared = await engine.prepare('counted', null, {
+      id: WORKFLOW_ID,
+      onTerminalConflict: 'start-new',
+      services: { owner: 'replacement' },
+    });
+    internals.workflowServices.delete(WORKFLOW_ID);
+    const launching = prepared.launch();
+    await resolver.reached;
+    const windowBeforeTheOldFlushSettled = await observeWindow(engine);
+
+    // The old flush resumes, finds the run is not its generation, and settles only its own record.
+    storage.releaseHeldRead();
+    await flush;
+    const windowAfterTheOldFlushSettled = await observeWindow(engine);
+
+    // The reclaim reaches the replacement while it is held, and leaves it to its launch.
+    listing.release();
+    await letOtherDrivesStart();
+    const runsBeforeTheLaunch = probe.runs;
+
+    resolver.release();
+    const handle = await launching;
+    const result = await listing.pass;
+    await engine.flushInlineLaunches();
+    await waitForCondition(() => probe.runs >= 1, { label: 'the replacement runs' });
+    await letOtherDrivesStart();
+    probe.hold.resolve();
+    expect(await handle.result()).toBe('ran');
+    expect(windowBeforeTheOldFlushSettled).toEqual(LAUNCHING_WINDOW);
+    expect(windowAfterTheOldFlushSettled).toEqual(LAUNCHING_WINDOW);
+    expect(runsBeforeTheLaunch).toBe(0);
+    expect(result.reclaim).toMatchObject(RECLAIMED);
+    expect(probe.runs).toBe(1);
   });
 });

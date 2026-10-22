@@ -2,8 +2,9 @@
  * What this engine holds in memory for a workflow's execution, read from the things that own it.
  *
  * An inline start is queued and launched by `inline-launch-queue.ts`, which records its progress
- * here: the two membership indexes on `EngineInternals` (queued; queued or launching) and, beside
- * them, what the start recorded about itself. A reclaim that meets a run whose launch is
+ * here as one record per start ({@link PendingLaunch}), the only state kept for a queued or
+ * launching start; what used to be two membership indexes on `EngineInternals` is derived from the
+ * record's existence and phase. A reclaim that meets a run whose launch is
  * queued or in flight under the claim it holds neither counts it as driven nor drives it a second
  * time, nor waits for it: it leaves the run to the flush (`defersToQueuedInlineWorkflowStart`).
  *
@@ -20,12 +21,19 @@
 import type { EngineInternals } from './internals.ts';
 
 /**
- * What one queued or launching inline start, or one launching delayed or prepared start, recorded
- * about itself: the claim epoch it was enqueued or committed under (`null` under no per-workflow
- * claim). One object per recording, so a launch that lets go of its own record can tell it from a
- * record a later start of the same id made.
+ * What one start recorded about itself while it is queued or launching, and the only state the
+ * engine keeps for a start in either phase. `queued` is an inline start waiting for the flush;
+ * `launching` is a flush that started, or a delayed or prepared start between its commit and its
+ * launch. The record carries the claim epoch the start was enqueued or committed under (`null`
+ * under no per-workflow claim). One object per start: every transition takes the record its start
+ * made and acts only while that record is still the id's current one, so a start never moves or
+ * settles a record a later start of the same id made (COR-1625).
  */
-export type PendingLaunch = { readonly workflowId: string; readonly claimEpoch: number | null };
+export type PendingLaunch = {
+  readonly workflowId: string;
+  readonly claimEpoch: number | null;
+  phase: 'queued' | 'launching';
+};
 
 /** The current record of each queued or launching start, by workflow id. Held beside the engine. */
 const pendingLaunches = new WeakMap<EngineInternals, Map<string, PendingLaunch>>();
@@ -39,78 +47,87 @@ function pendingLaunchesOf(internals: EngineInternals): Map<string, PendingLaunc
   return launches;
 }
 
-function recordPendingLaunch(internals: EngineInternals, workflowId: string): PendingLaunch {
+function currentPendingLaunch(
+  internals: EngineInternals,
+  workflowId: string,
+): PendingLaunch | undefined {
+  return pendingLaunches.get(internals)?.get(workflowId);
+}
+
+/** Whether `launch` is still the current record under its id: the one test every transition makes. */
+function isCurrent(internals: EngineInternals, launch: PendingLaunch): boolean {
+  return currentPendingLaunch(internals, launch.workflowId) === launch;
+}
+
+function recordPendingLaunch(
+  internals: EngineInternals,
+  workflowId: string,
+  phase: PendingLaunch['phase'],
+): PendingLaunch {
   const launch: PendingLaunch = {
     workflowId,
     claimEpoch: internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null,
+    phase,
   };
   pendingLaunchesOf(internals).set(workflowId, launch);
   return launch;
 }
 
-/** An inline start of the workflow is queued under the claim held now; its launch has not run. */
+/** Settle `launch`, if it is still the id's current record. */
+function settleOwnPendingLaunch(internals: EngineInternals, launch: PendingLaunch): void {
+  if (isCurrent(internals, launch)) pendingLaunches.get(internals)?.delete(launch.workflowId);
+}
+
+/**
+ * An inline start of the workflow is queued under the claim held now; its launch has not run.
+ * Returns the record, which the queue entry keeps for its later transitions. A delayed or prepared
+ * launch that enqueues records anew here, and that new record replaces its launching one: the
+ * hand-over.
+ */
 export function recordInlineWorkflowStartQueued(
   internals: EngineInternals,
   workflowId: string,
-): void {
-  internals.queuedInlineWorkflowStartIds.add(workflowId);
-  internals.queuedOrLaunchingInlineWorkflowStartIds.add(workflowId);
-  recordPendingLaunch(internals, workflowId);
+): PendingLaunch {
+  return recordPendingLaunch(internals, workflowId, 'queued');
 }
 
-/** The queued start's launch is about to start the generator: it is no longer queued, still launching. */
+/** The queued start's launch is about to start the generator: no longer queued, still launching. */
 export function recordInlineWorkflowStartLaunching(
   internals: EngineInternals,
-  workflowId: string,
+  launch: PendingLaunch,
 ): void {
-  internals.queuedInlineWorkflowStartIds.delete(workflowId);
+  if (isCurrent(internals, launch)) launch.phase = 'launching';
 }
 
-/** The launch of the workflow's queued start is over: it started the generator, skipped the run, was discarded, or threw. */
-export function settleInlineWorkflowStart(internals: EngineInternals, workflowId: string): void {
-  internals.queuedInlineWorkflowStartIds.delete(workflowId);
-  internals.queuedOrLaunchingInlineWorkflowStartIds.delete(workflowId);
-  pendingLaunches.get(internals)?.delete(workflowId);
+/** The launch of the queued start is over: it started the generator, skipped the run, was discarded, or threw. */
+export function settleInlineWorkflowStart(internals: EngineInternals, launch: PendingLaunch): void {
+  settleOwnPendingLaunch(internals, launch);
 }
 
-/** Forget every queued or launching inline start, as a synchronous disposal discards them all. */
+/** Forget every queued or launching start, as a synchronous disposal discards them all. */
 export function settleEveryInlineWorkflowStart(internals: EngineInternals): void {
-  internals.queuedInlineWorkflowStartIds.clear();
-  internals.queuedOrLaunchingInlineWorkflowStartIds.clear();
   pendingLaunches.get(internals)?.clear();
 }
 
 /**
  * A delayed or prepared start holds the claim it folded or committed under, and is launching: from
  * its `running` commit to its launch it awaits a re-provision and reads, and in that window it is
- * neither queued nor live. The marker records it as launching under that claim, so a reclaim
- * defers to it ({@link defersToQueuedInlineWorkflowStart}) instead of replaying beside it. It adds
- * the id to `queuedOrLaunchingInlineWorkflowStartIds` only, never to `queuedInlineWorkflowStartIds`,
- * so `engine.get()` keeps reporting `running`. An inline launch hands the marker over to the queue
- * (`recordInlineWorkflowStartQueued` records anew under the same id); a worker launch settles it
- * once the worker has its run; a launch that stops short lets the run go
- * ({@link letGoOfPendingLaunch}). Returns what it recorded, which only that launch may let go of.
+ * neither queued nor live. The record marks it as launching under that claim, so a reclaim defers
+ * to it ({@link defersToQueuedInlineWorkflowStart}) instead of replaying beside it, while
+ * `engine.get()` keeps reporting `running`, since only a `queued` record reads as pending. An inline
+ * launch hands the record over to the queue (`recordInlineWorkflowStartQueued` records anew under
+ * the same id); a worker launch settles it once the worker has its run; a launch that stops short
+ * lets the run go ({@link letGoOfPendingLaunch}). Returns what it recorded, which only that launch
+ * may hand over or let go of.
  */
 export function recordLaunchPending(internals: EngineInternals, workflowId: string): PendingLaunch {
-  internals.queuedOrLaunchingInlineWorkflowStartIds.add(workflowId);
-  return recordPendingLaunch(internals, workflowId);
+  return recordPendingLaunch(internals, workflowId, 'launching');
 }
 
 /**
- * Settles the launch's own marker. Every settlement goes through its record, never through the id
- * alone, so a launch never settles a record a later start of the same id made.
- */
-function settleOwnPendingLaunch(internals: EngineInternals, launch: PendingLaunch): void {
-  const launches = pendingLaunches.get(internals);
-  if (launches?.get(launch.workflowId) !== launch) return;
-  internals.queuedOrLaunchingInlineWorkflowStartIds.delete(launch.workflowId);
-  launches.delete(launch.workflowId);
-}
-
-/**
- * The launching start launched. An inline launch has queued its start, which took the marker over
+ * The launching start launched. An inline launch has queued its start, which took the record over
  * under the same id, so the queue now owns it; a worker launch has handed the run to the worker,
- * which never enqueues, so its own marker is settled here. A `start-new` replacement that recorded
+ * which never enqueues, so its own record is settled here. A `start-new` replacement that recorded
  * its marker while this launch awaited keeps that marker.
  */
 export function handOverPendingLaunch(
@@ -122,12 +139,12 @@ export function handOverPendingLaunch(
   }
 }
 
-/** Whether `launch` is still the record under its id, and the id was not handed to the queue. */
+/**
+ * Whether `launch` is still the current record, in the launching phase: a queued start's failure is
+ * the flush's to handle (`letGoOfFailedQueuedStart`), never this let-go's.
+ */
 function stillHoldsPendingLaunch(internals: EngineInternals, launch: PendingLaunch): boolean {
-  return (
-    pendingLaunches.get(internals)?.get(launch.workflowId) === launch &&
-    !internals.queuedInlineWorkflowStartIds.has(launch.workflowId)
-  );
+  return isCurrent(internals, launch) && launch.phase === 'launching';
 }
 
 /**
@@ -160,18 +177,13 @@ export async function letGoOfPendingLaunch(
 }
 
 /**
- * Whether the workflow's queued or launching inline start was enqueued under a claim this engine
- * no longer holds: the claim was lost and taken back since, so the start's checkpoint may be behind
- * the run's durable one. The flush discards such a start, and a reclaim does not defer to it.
+ * Whether the start was enqueued or committed under a claim this engine no longer holds: the claim
+ * was lost and taken back since, so the start's checkpoint may be behind the run's durable one. The
+ * flush discards such a start, and a reclaim does not defer to it.
  */
-export function isQueuedInlineWorkflowStartStale(
-  internals: EngineInternals,
-  workflowId: string,
-): boolean {
-  const launch = pendingLaunches.get(internals)?.get(workflowId);
+export function isPendingLaunchStale(internals: EngineInternals, launch: PendingLaunch): boolean {
   return (
-    launch !== undefined &&
-    launch.claimEpoch !== (internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null)
+    launch.claimEpoch !== (internals.workflowClaimRegistry?.currentEpoch(launch.workflowId) ?? null)
   );
 }
 
@@ -189,10 +201,8 @@ export function defersToQueuedInlineWorkflowStart(
   internals: EngineInternals,
   workflowId: string,
 ): boolean {
-  return (
-    internals.queuedOrLaunchingInlineWorkflowStartIds.has(workflowId) &&
-    !isQueuedInlineWorkflowStartStale(internals, workflowId)
-  );
+  const launch = currentPendingLaunch(internals, workflowId);
+  return launch !== undefined && !isPendingLaunchStale(internals, launch);
 }
 
 /** Whether the inline strategy holds a live execution of the workflow: a context, a turn, or a park. */
@@ -221,20 +231,20 @@ export function holdsWorkflowExecution(internals: EngineInternals, workflowId: s
   return internals.checkpoints.has(workflowId);
 }
 
-/** Whether an inline start of the workflow is queued and its launch has not run. */
+/** Whether an inline start of the workflow is queued and its launch has not run: its record is `queued`. */
 export function hasQueuedInlineWorkflowStart(
   internals: EngineInternals,
   workflowId: string,
 ): boolean {
-  return internals.queuedInlineWorkflowStartIds.has(workflowId);
+  return currentPendingLaunch(internals, workflowId)?.phase === 'queued';
 }
 
-/** Whether an inline start of the workflow is queued, or its launch is in flight. */
+/** Whether a start of the workflow is queued or launching: a record exists. */
 export function hasQueuedOrLaunchingInlineWorkflowStart(
   internals: EngineInternals,
   workflowId: string,
 ): boolean {
-  return internals.queuedOrLaunchingInlineWorkflowStartIds.has(workflowId);
+  return currentPendingLaunch(internals, workflowId) !== undefined;
 }
 
 function workflowStatusCanRetainLocalOwnership(workflowStatus: string): boolean {
