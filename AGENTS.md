@@ -60,6 +60,17 @@ This software is pre-1.0 and still being prototyped, so the goal is to move fast
 - Never copy `.env`, credentials, `node_modules`, caches, generated artifacts, or other ignored local state between worktrees. Do not add `.worktreeinclude` unless a specific non-secret ignored file is required.
 - Preserve unrelated worktrees and their branches. Remove only a clean worktree created by the current task after its branch is merged or retired.
 
+### Parallel runs
+
+A run that delivers several issues at once is limited by this host's lock and processors, and its cost follows each agent's context more than its model. On 2026-10-22, five long-lived sessions spent about 15% of a week's usage over about seven hours and merged ten issues. Most of that time went to queued full validates and repeated review rounds. These rules apply to every coordinator, `chef` included, and every brief a coordinator writes must state them:
+
+- Run at most three agent sessions or implementation workers at once on this host, counting every session that edits or tests this repository.
+- Give each issue, or each small cluster of issues that share files, its own fresh session with a compact brief: the issue, its acceptance criteria, the files, the commands, and the decisions already made. Do not keep one long-lived session per stream. A session whose context passes about 250K tokens hands off to a fresh one with a brief, instead of carrying on.
+- Implement with an economical coding model (Claude Sonnet, or the Codex equivalent) when the interfaces are known and the issue has tests. Reserve stronger models for review, one-way doors, and defects that survived two corrections.
+- Gate each pull request as "Gate on local checks" describes: `bun run check`, run shared, plus one review fix pass. A session queues at most one full `validate` at a time, and only for an exception.
+- Take exactly one review fix pass. After it, answer a new comment with a one-line reason and resolve it, unless it names a regression the fixes introduced or a serious defect on a one-way door. A comment the bot re-reports gets no new answer.
+- Report spend at every batch boundary: tokens per merged pull request, and the share of the plan's usage. When tokens per merged pull request double from the run's earlier batches, stop dispatching and ask the owner.
+
 ## Dev Container
 
 `.devcontainer/` is a local development environment in which `bun run validate` passes from a fresh checkout with nothing on the host but Docker. It is not CI: nothing builds, runs, or publishes it automatically. Its image is Debian 13 (`oven/bun`) with the workspace's pinned Bun, PostgreSQL 17's `initdb` and `pg_ctl` on `PATH`, Node.js 24 and its `npm` (Weft's native SQLite suite runs under a real Node), node-gyp's compiler toolchain (two native dependencies build from source on linux/arm64), Playwright's Chromium and headless shell in the `bun` user's default Playwright cache (Turborepo's strict environment mode would drop a `PLAYWRIGHT_BROWSERS_PATH`) with their system libraries, and Git; it copies nothing from the checkout, so `.env`, credentials, and caches never enter it, and it has no `.dockerignore` because its build context is `.devcontainer/` alone. `scripts/dev-container.test.ts` keeps its Bun tag equal to `packageManager` and its Playwright version equal to the `playwright-core` that `bun.lock` resolves.

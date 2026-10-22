@@ -32,6 +32,23 @@ const sourceReferenceSchema = z.discriminatedUnion('kind', [
 ]);
 export type TransitionSourceReference = z.infer<typeof sourceReferenceSchema>;
 
+/**
+ * Which run, session, and effective-context epoch an operation belongs to.
+ * It describes the attempt, not the change, so it never enters a proposal's
+ * digest or a receipt: a recovering run reconciles to the same receipt, and
+ * its events carry the recovering run's correlation.
+ */
+export const memoryCorrelationSchema = z
+  .object({
+    runId: nonEmpty.optional(),
+    sessionId: nonEmpty.optional(),
+    contextEpochId: nonEmpty.optional(),
+  })
+  .strict();
+
+/** A run, session, and context-epoch correlation; see {@link memoryCorrelationSchema}. */
+export type MemoryCorrelation = z.infer<typeof memoryCorrelationSchema>;
+
 const eventBase = {
   /** The causal identifier: the proposal's operation id. Every event carries it. */
   operationId: nonEmpty,
@@ -40,6 +57,8 @@ const eventBase = {
   principal: z.object({ kind: z.enum(MEMORY_PRINCIPAL_KINDS), id: nonEmpty }).strict(),
   ownerId: nonEmpty,
   at: epochMilliseconds,
+  /** Present when the submission named the run, session, or epoch it came from. */
+  correlation: memoryCorrelationSchema.optional(),
 };
 
 /**

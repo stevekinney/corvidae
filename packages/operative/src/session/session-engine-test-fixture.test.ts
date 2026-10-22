@@ -23,4 +23,23 @@ describe('session engine test fixture', () => {
     expect(await handle.result()).toBe('recovered');
     expect(resultCalls).toBe(2);
   });
+
+  it('runs a configured start behavior at the prepared handle’s launch, not at prepare (COR-297)', async () => {
+    const started: string[] = [];
+    const engine = createSessionEngine({
+      start: async (_type, _input, options) => {
+        started.push(options.id);
+        return { id: options.id, result: () => Promise.resolve('launched') };
+      },
+    });
+
+    const prepared = await engine.prepare('agentRun', {}, { id: 'prepared-run' });
+    expect(prepared.id).toBe('prepared-run');
+    expect(started).toEqual([]);
+
+    const handle = await prepared.launch();
+    expect(started).toEqual(['prepared-run']);
+    expect(await handle.result()).toBe('launched');
+    await prepared.abandon();
+  });
 });

@@ -19,6 +19,7 @@ import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradien
 import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
   type BatchOperation,
+  decode,
   resolveStorage,
   type Storage,
   textValueStore,
@@ -77,18 +78,22 @@ async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boole
 interface PendingWrite {
   readonly key: string;
   readonly text: string;
+  readonly value: Uint8Array;
 }
 
 const decoder = new TextDecoder();
 
 function writesOf(verb: string, args: readonly unknown[]): PendingWrite[] {
   if (verb === 'put') {
-    return [{ key: args[0] as string, text: decoder.decode(args[1] as Uint8Array) }];
+    const value = args[1] as Uint8Array;
+    return [{ key: args[0] as string, text: decoder.decode(value), value }];
   }
   const operations = verb === 'batch' ? args[0] : verb === 'conditionalBatch' ? args[1] : undefined;
   if (!Array.isArray(operations)) return [];
   return (operations as BatchOperation[]).flatMap((operation) =>
-    operation.type === 'put' ? [{ key: operation.key, text: decoder.decode(operation.value) }] : [],
+    operation.type === 'put'
+      ? [{ key: operation.key, text: decoder.decode(operation.value), value: operation.value }]
+      : [],
   );
 }
 
@@ -139,21 +144,41 @@ function crashOnWrite(
   storage: Storage,
   trigger: (write: PendingWrite) => boolean,
   point: CrashPoint,
+  landsFirst?: (write: PendingWrite) => boolean,
 ): CrashingStorage {
   let crashed = false;
+  let crashing = false;
   let discarded = false;
   const held: (() => void)[] = [];
+  let resolveLanded: () => void = () => {};
+  const landed =
+    landsFirst === undefined
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          resolveLanded = resolve;
+        });
   const wrapped = new Proxy(storage, {
     get(target, property, receiver) {
       const value: unknown = Reflect.get(target, property, receiver);
       if (typeof value !== 'function') return value;
       if (!WRITE_VERBS.has(property)) return value.bind(target);
       return async (...args: unknown[]) => {
-        if (!crashed && writesOf(String(property), args).some(trigger)) {
+        const writes = writesOf(String(property), args);
+        if (!crashed && !crashing && writes.some(trigger)) {
+          // The process dies here, but only once a write that must precede the crash has landed;
+          // other writes go through meanwhile.
+          crashing = true;
+          const written =
+            point === 'after-write' ? await Reflect.apply(value, target, args) : undefined;
+          await landed;
           crashed = true;
-          if (point === 'after-write') return Reflect.apply(value, target, args);
+          if (point === 'after-write') return written;
         }
-        if (!crashed) return Reflect.apply(value, target, args);
+        if (!crashed) {
+          const written: unknown = await Reflect.apply(value, target, args);
+          if (landsFirst !== undefined && writes.some(landsFirst)) resolveLanded();
+          return written;
+        }
         if (discarded) throw new ProcessCrashedError();
         return new Promise((_resolve, reject) => {
           held.push(() => reject(new ProcessCrashedError()));
@@ -169,6 +194,23 @@ function crashOnWrite(
       for (const settle of held.splice(0)) settle();
     },
   };
+}
+
+/**
+ * COR-297 — the write that launches the run: its workflow record moving from `pending` to
+ * `running`. `createRun` acknowledges a run once `prepare()` commits it, before it launches, so a
+ * scenario about a run that has started work waits for this write before its process dies.
+ */
+function runLaunched(write: PendingWrite): boolean {
+  if (!write.key.startsWith('wf:')) return false;
+  try {
+    const record = decode(write.value);
+    return (
+      typeof record === 'object' && record !== null && Reflect.get(record, 'status') === 'running'
+    );
+  } catch {
+    return false;
+  }
 }
 
 function ledgerWriteIn(state: 'pending' | 'completed'): (write: PendingWrite) => boolean {
@@ -208,7 +250,11 @@ interface Scenario {
   readonly storageB: Storage;
   readonly ledger: CommandLedger<RunCreationClaim, RunCreationLedgerResult>;
   /** The failing process's handle, which dies at the first write matching `trigger`. */
-  crashOn(trigger: (write: PendingWrite) => boolean, point: CrashPoint): CrashingStorage;
+  crashOn(
+    trigger: (write: PendingWrite) => boolean,
+    point: CrashPoint,
+    landsFirst?: (write: PendingWrite) => boolean,
+  ): CrashingStorage;
   boot(storage: Storage, generate: GenerateFunction): Promise<Bureau>;
 }
 
@@ -243,8 +289,8 @@ async function withScenario(
         clock: runtime.clock,
         nextConflictId: () => runtime.identifiers.next('conflict'),
       }),
-      crashOn(trigger, point) {
-        const crash = crashOnWrite(storageA, trigger, point);
+      crashOn(trigger, point, landsFirst) {
+        const crash = crashOnWrite(storageA, trigger, point, landsFirst);
         crashes.push(crash);
         return crash;
       },
@@ -357,7 +403,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
     await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
       // The run is durably started, but the process dies before the ledger
       // records it: the entry stays pending and names a run the engine has.
-      const crash = crashOn(ledgerWriteIn('completed'), 'before-write');
+      const crash = crashOn(ledgerWriteIn('completed'), 'before-write', runLaunched);
       const bureauA = await boot(crash.storage, heldGenerate().generate);
       bureauA.createRun(REQUEST).catch(() => {});
       expect(await pollUntil(() => crash.crashed())).toBe(true);
@@ -400,11 +446,45 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
     });
   });
 
+  it('after-prepare-before-launch: recovery cancels the run that never launched, and the retry receives its aborted receipt (COR-297)', async () => {
+    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+      // `createRun` acknowledges a run once `prepare()` commits it. The process dies as the ledger
+      // records that, before the run launches: its record stays `pending`, and its session says
+      // it is running.
+      const crash = crashOn(ledgerWriteIn('completed'), 'before-write');
+      const bureauA = await boot(crash.storage, heldGenerate().generate);
+      bureauA.createRun(REQUEST).catch(() => {});
+      expect(await pollUntil(() => crash.crashed())).toBe(true);
+      const pending = await ledger.read(IDENTITY);
+      if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
+      const { runId } = pending.claim;
+
+      const generateB = heldGenerate();
+      const bureauB = await boot(storageB, generateB.generate);
+      const retry = await bureauB.createRun(REQUEST);
+
+      const receipt = {
+        runId,
+        requestId: 'request-1',
+        createdAt: pending.claimedAt,
+        status: 'aborted',
+      };
+      expect(retry).toMatchObject({ id: runId, status: 'aborted', receipt });
+      expect(await durableStatus(bureauB, runId)).toBe('cancelled');
+      expect(generateB.calls()).toBe(0);
+      expect(await ledger.read(IDENTITY)).toMatchObject({
+        state: 'completed',
+        claim: pending.claim,
+        result: { receipt },
+      });
+    });
+  });
+
   it('after-effect-before-ack: the run executed once and the retry receives the original receipt', async () => {
     await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
       // The process dies as the ledger records the run, before the caller
       // hears back: the acknowledgement `createRun` resolves with is lost.
-      const crash = crashOn(ledgerWriteIn('completed'), 'after-write');
+      const crash = crashOn(ledgerWriteIn('completed'), 'after-write', runLaunched);
       const bureauA = await boot(crash.storage, heldGenerate().generate);
       const unacknowledged = await bureauA.createRun(REQUEST);
       expect(crash.crashed()).toBe(true);

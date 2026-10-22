@@ -423,8 +423,13 @@ export type {
   TransitionEngineHook,
   TransitionEngineHookContext,
 } from './transition-engine';
-export { TRANSITION_EVENT_KINDS, transitionEventSchema } from './transition-events';
+export {
+  TRANSITION_EVENT_KINDS,
+  memoryCorrelationSchema,
+  transitionEventSchema,
+} from './transition-events';
 export type {
+  MemoryCorrelation,
   TransitionEvent,
   TransitionEventSink,
   TransitionSourceReference,

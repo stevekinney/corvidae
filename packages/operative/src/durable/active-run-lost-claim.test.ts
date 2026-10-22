@@ -11,6 +11,7 @@ import {
   RunCompletedEvent,
   RunErrorEvent,
 } from '../events';
+import { withTwoPhaseStart } from '../test/durable-engine';
 import type { RunOptions } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
@@ -79,10 +80,10 @@ function engineThat(
   runId: string,
   settlement: Settlement = {},
 ): RegistryAgnosticEngine {
-  return {
+  return withTwoPhaseStart({
     start: async () => ({ id: runId, result: () => settle(runId, settlement) }),
     lostWorkflowClaim: (handle: { id: string }) => lostClaim && handle.id === runId,
-  } as unknown as RegistryAgnosticEngine;
+  }) as unknown as RegistryAgnosticEngine;
 }
 
 function startFreshRun(lostClaim: boolean, runId: string, settlement: Settlement = {}) {

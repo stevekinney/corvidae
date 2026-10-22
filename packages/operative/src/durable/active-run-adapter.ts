@@ -48,6 +48,12 @@ export interface DurableActiveRunOptions {
   options: RunOptions;
   prompt?: SessionInputPayload | undefined;
   emitter?: OperativeEventEmitter | undefined;
+  /**
+   * Receives the run's `DurableRunDeps` (the exact object Weft hands back as
+   * `ctx.services`) immediately before `engine.prepare` commits the run, so
+   * before the `onRunStart` hook runs and whether or not it then fails
+   * (COR-297). A throw rejects `durablyStarted` and nothing is prepared.
+   */
   onServices?: ((services: DurableRunDeps) => void) | undefined;
   livenessClock?: StallWatchdogClock | undefined;
   livenessOwner?: string | undefined;
