@@ -16,7 +16,7 @@ import type {
 } from './governed-memory-types';
 import { evictionContext } from './governed-reads';
 import { quarantineRecord } from './governed-transitions';
-import { admitWrite, withdrawAdmitted } from './governed-writes';
+import { admitWrite, correlated, withdrawAdmitted } from './governed-writes';
 import { resolveTenantPolicy } from './policy';
 import { decideMemoryAccess } from './predicate';
 import { retentionExpiry } from './retention';
@@ -179,8 +179,9 @@ async function supersede(
   // withdraws the successor it admitted.
   const stamped = await context.invalidate(located.resolved, write.recordId!);
   if (stamped !== 'stamped') {
+    // The withdrawal belongs to the same correlated write as the admission it undoes.
     await withdrawAdmitted(
-      context,
+      correlated(context, request.successor) ?? context,
       authority,
       operationId,
       context.scope(authority.tenantId, 'private', authority.ownerId, options.collection),

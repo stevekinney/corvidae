@@ -549,5 +549,6 @@ export async function runStep(
     messageId,
     materializedToolCalls,
     results,
+    contextEpochId: generation.contextEpochId,
   });
 }

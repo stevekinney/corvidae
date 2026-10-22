@@ -11,6 +11,7 @@ import {
   RunCompletedEvent,
   RunErrorEvent,
 } from '../events';
+import { withTwoPhaseStart } from '../test/durable-engine';
 import type { RunOptions } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
@@ -52,9 +53,9 @@ const forbiddenCheckpointStore = {
 describe('a run whose engine lost a checkpoint compare-and-swap', () => {
   it('resolves a fresh run quietly, fires no terminal lifecycle, and classifies it unreachable', async () => {
     const conflict = new WorkflowCheckpointConflictError('durable-checkpoint-conflict');
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({ result: () => Promise.reject(conflict) }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
     const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
     const terminalEvents = observeTerminalLifecycle(emitter);
 
