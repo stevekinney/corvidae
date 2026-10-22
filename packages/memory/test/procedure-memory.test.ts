@@ -97,8 +97,9 @@ function validator(outcome: 'passed' | 'failed' = 'passed'): ProcedureValidator 
   };
 }
 
-const review = (approved: boolean): ProcedureReviewDecision => ({
+const review = (approved: boolean, requestDigest = 'unset'): ProcedureReviewDecision => ({
   reviewId: 'review-1',
+  requestDigest,
   reviewer: { kind: 'user', id: 'reviewer-1' },
   approved,
   decidedAt: FIXED_AT + 10,
@@ -233,10 +234,32 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       });
       expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toBeUndefined();
 
-      const declined = await promote(candidate, { validator: validator(), review: review(false) });
+      if (pending.status !== 'pending-review') throw new Error('pending');
+      const { requestDigest } = pending.request;
+      const declined = await promote(candidate, {
+        validator: validator(),
+        review: review(false, requestDigest),
+      });
       expect(declined).toMatchObject({ status: 'refused', reason: 'review-declined' });
 
-      const approved = await promote(candidate, { validator: validator(), review: review(true) });
+      // An approval decided for another request never carries over.
+      const elsewhere = await promote(candidate, {
+        validator: validator(),
+        review: review(true, 'sha256:another-request'),
+      });
+      expect(elsewhere).toMatchObject({ status: 'refused', reason: 'review-mismatch' });
+      const otherFixture = await promote(candidate, {
+        validator: {
+          ...validator(),
+          validate: async () => ({ outcome: 'passed', fixture: 'other fixture', evidence: 'ok' }),
+        },
+        review: review(true, requestDigest),
+      });
+      expect(otherFixture).toMatchObject({ status: 'refused', reason: 'review-mismatch' });
+      const approved = await promote(candidate, {
+        validator: validator(),
+        review: review(true, requestDigest),
+      });
       expect(approved.status).toBe('promoted');
       const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
       expect(stored?.payload).toMatchObject({
@@ -247,7 +270,12 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
 
     it('refuses a hand-written high-impact procedure that skipped review, at the engine', async () => {
       const candidate = await candidateFrom(1, 0, { scope: 'high-impact' });
-      const promotion = await promote(candidate, { validator: validator(), review: review(true) });
+      const pending = await promote(candidate, { validator: validator() });
+      if (pending.status !== 'pending-review') throw new Error('pending');
+      const promotion = await promote(candidate, {
+        validator: validator(),
+        review: review(true, pending.request.requestDigest),
+      });
       expect(promotion.status).toBe('promoted');
       const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
       if (stored?.kind !== 'procedure' || !('version' in stored.payload)) throw new Error('v2');
@@ -329,6 +357,26 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       expect(revoked.outcome).toBe('committed');
       const promotion = await promote(candidate, { validator: validator() });
       expect(promotion).toMatchObject({ status: 'refused', reason: 'episode-withdrawn' });
+    });
+
+    it('refuses to retire anything but a procedure', async () => {
+      await candidateFrom(1);
+      harness.clock.advance(1000);
+      const error = await rejectionOf(
+        retireProcedure({
+          engine: harness.engine,
+          authority,
+          namespace: NAMESPACE,
+          procedure: { id: 'episode-0', revision: 1 },
+          operationId: 'retire-1',
+          change: 'revoke',
+          reason: 'not-a-procedure',
+        }),
+      );
+      expect(error).toBeInstanceOf(ProcedureLifecycleError);
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'episode-0')).toMatchObject({
+        status: 'active',
+      });
     });
 
     it('refuses to record an outcome against anything but a procedure', async () => {

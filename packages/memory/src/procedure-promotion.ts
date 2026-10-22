@@ -43,6 +43,12 @@ export interface ProcedureValidator {
 /** A human reviewer's decision on a high-impact promotion. */
 export interface ProcedureReviewDecision {
   readonly reviewId: string;
+  /**
+   * The `requestDigest` of the exact {@link ProcedureReviewRequest} decided. A
+   * decision for another procedure, operation, candidate, or fixture does not
+   * match, so an approval cannot be carried over to anything it did not see.
+   */
+  readonly requestDigest: string;
   /** A person: a `user` or `governance` principal. Any other kind is refused. */
   readonly reviewer: MemoryPrincipal;
   readonly approved: boolean;
@@ -83,6 +89,10 @@ export interface ProcedureReviewRequest {
   readonly sideEffects: readonly string[];
   readonly validator: { readonly name: string; readonly revision: string };
   readonly fixtureDigest: string;
+  /** Digest of the frozen candidate the request is for. */
+  readonly candidateDigest: string;
+  /** Digest of everything above; a decision names it to say which request it decides. */
+  readonly requestDigest: string;
 }
 
 /**
@@ -90,7 +100,8 @@ export interface ProcedureReviewRequest {
  *
  * - `refused`: nothing was written. `unvalidated` when no validator ran (a
  *   success count is not validation), `validation-failed` when it failed,
- *   `review-declined` or `review-not-human` for the review gate,
+ *   `review-declined`, `review-not-human`, or `review-mismatch` (a decision
+ *   for another request) for the review gate,
  *   `episode-withdrawn` when an episode the candidate rests on is no longer
  *   current, and `wrong-tenant` when the candidate was extracted for another
  *   tenant than the authority's.
@@ -108,6 +119,7 @@ export type ProcedurePromotion =
         | 'validation-failed'
         | 'review-declined'
         | 'review-not-human'
+        | 'review-mismatch'
         | 'episode-withdrawn'
         | 'wrong-tenant';
       readonly detail: string;
@@ -265,18 +277,23 @@ function reviewGate(
 ): ProcedurePromotion | undefined {
   if (candidate.draft.scope !== 'high-impact') return undefined;
   const { review } = options;
-  if (review === undefined) {
+  const unsigned = {
+    procedureId: options.id,
+    operationId: options.operationId,
+    title: candidate.draft.title,
+    scope: 'high-impact' as const,
+    sideEffects: candidate.draft.sideEffects,
+    validator: { name: validator.name, revision: validator.revision },
+    fixtureDigest: digestOfText(run.fixture),
+    candidateDigest: digestOfText(JSON.stringify(candidate)),
+  };
+  const request = { ...unsigned, requestDigest: digestOfText(JSON.stringify(unsigned)) };
+  if (review === undefined) return { status: 'pending-review', request };
+  if (review.requestDigest !== request.requestDigest) {
     return {
-      status: 'pending-review',
-      request: {
-        procedureId: options.id,
-        operationId: options.operationId,
-        title: candidate.draft.title,
-        scope: 'high-impact',
-        sideEffects: candidate.draft.sideEffects,
-        validator: { name: validator.name, revision: validator.revision },
-        fixtureDigest: digestOfText(run.fixture),
-      },
+      status: 'refused',
+      reason: 'review-mismatch',
+      detail: `Review ${review.reviewId} decided another request than this promotion's.`,
     };
   }
   return review.approved

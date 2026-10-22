@@ -47,6 +47,28 @@ export class ProcedureLifecycleError extends Error {
   }
 }
 
+/** Every lifecycle helper acts on procedures only; any other projection is refused before a write. */
+async function assertProcedure(
+  engine: TransitionEngine,
+  tenantId: string,
+  namespace: string,
+  procedure: ProjectionReference,
+): Promise<void> {
+  const target = await engine.storage.getProjectionRevision(
+    tenantId,
+    namespace,
+    procedure.id,
+    procedure.revision,
+  );
+  if (target?.kind !== 'procedure') {
+    throw new ProcedureLifecycleError({
+      outcome: 'rejected',
+      reason: 'projection-not-found',
+      detail: `${namespace}/${procedure.id}@${procedure.revision} is not a procedure revision.`,
+    });
+  }
+}
+
 async function submitAll(
   engine: TransitionEngine,
   proposals: Parameters<TransitionEngine['submit']>[0][],
@@ -75,19 +97,7 @@ export async function recordProcedureOutcome(
 ): Promise<ProcedureOutcomeRecord> {
   const { authority, engine, namespace } = options;
   const { at } = options;
-  const target = await engine.storage.getProjectionRevision(
-    authority.tenantId,
-    namespace,
-    options.procedure.id,
-    options.procedure.revision,
-  );
-  if (target?.kind !== 'procedure') {
-    throw new ProcedureLifecycleError({
-      outcome: 'rejected',
-      reason: 'projection-not-found',
-      detail: `${namespace}/${options.procedure.id}@${options.procedure.revision} is not a procedure revision.`,
-    });
-  }
+  await assertProcedure(engine, authority.tenantId, namespace, options.procedure);
   const text = JSON.stringify({
     procedure: `${namespace}/${options.procedure.id}@${options.procedure.revision}`,
     outcome: options.outcome,
@@ -191,9 +201,14 @@ export interface RetireProcedureOptions {
   readonly reason: string;
 }
 
-/** Quarantines or revokes a procedure through an ordinary `revise-projection` transition. */
+/**
+ * Quarantines or revokes a procedure through an ordinary `revise-projection`
+ * transition. Throws {@link ProcedureLifecycleError} when the reference names
+ * anything but a procedure revision, before anything is written.
+ */
 export async function retireProcedure(options: RetireProcedureOptions): Promise<TransitionResult> {
   const { authority } = options;
+  await assertProcedure(options.engine, authority.tenantId, options.namespace, options.procedure);
   const prefix = options.change === 'quarantine' ? 'quarantined' : 'revoked';
   return options.engine.submit({
     kind: 'revise-projection',
