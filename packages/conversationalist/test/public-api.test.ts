@@ -111,6 +111,12 @@ describe('root public API', () => {
     expect(sdk.toAnthropicMessagesForSdk).toBeFunction();
   });
 
+  it('declares the Anthropic SDK entry point the README and mirror publish', () => {
+    const manifest = JSON.parse(readFileSync(resolve(import.meta.dir, '../package.json'), 'utf8'));
+
+    expect(manifest.exports['./adapters/anthropic/sdk']).toBe('./src/adapters/anthropic/sdk.ts');
+  });
+
   it('rejects a payload whose shape does not match the selected provider', async () => {
     const payload = { contents: [] };
 

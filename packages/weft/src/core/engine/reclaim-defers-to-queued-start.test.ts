@@ -28,6 +28,10 @@ import { currentExecutionAttempt } from './execution-attempts.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { resumeStoredWorkflow } from './lifecycle/resume.ts';
+import {
+  hasQueuedInlineWorkflowStart,
+  hasQueuedOrLaunchingInlineWorkflowStart,
+} from './local-execution.ts';
 import { countingWorkflow, letOtherDrivesStart, probeFor } from './reclaim-race.test-support.ts';
 import type { WorkflowClaimRenewalPassResult } from './workflow-claim-renewal-task.ts';
 
@@ -111,7 +115,7 @@ async function listQueuedStartInReclaimPass(
 
   await engine.start('counted', null, { id: WORKFLOW_ID });
   expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).not.toBeNull();
-  expect(internals.queuedInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(true);
+  expect(hasQueuedInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(true);
   await beforeRelease();
   holderScanGate.resolve();
   return { pass };
@@ -131,7 +135,7 @@ describe('a reclaim that meets a start whose inline launch is still queued', () 
     expect(result.reclaim).toMatchObject(RECLAIMED);
     await letOtherDrivesStart();
     expect(probe.runs).toBe(0);
-    expect(internals.queuedInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(true);
+    expect(hasQueuedInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(true);
 
     await engine.flushInlineLaunches();
     await waitForCondition(() => probe.runs === 1, { label: 'the queued launch drives the run' });
@@ -194,7 +198,7 @@ describe('a reclaim that meets a start whose inline launch is still queued', () 
     // The flush discards the stale start instead of launching its enqueue-time checkpoint beside
     // the replay's generator.
     await engine.flushInlineLaunches();
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(internals.inlineStrategy!.hasGenerator(WORKFLOW_ID)).toBe(true);
     probe.hold.resolve();
     expect(await engine.getHandle(WORKFLOW_ID).result()).toBe('ran');
@@ -222,7 +226,7 @@ describe("a reclaim's replay that meets a start whose inline launch is still que
       { forceReplayFromStorage: true, skipIfLaunchedUnderClaimEpoch: claimEpoch },
     );
     expect(internals.resumesAwaitingAdoption.has(WORKFLOW_ID)).toBe(false);
-    expect(internals.queuedInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(true);
+    expect(hasQueuedInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(true);
     expect(probe.runs).toBe(0);
 
     await engine.flushInlineLaunches();
@@ -254,7 +258,7 @@ describe('a queued inline launch that fails before its generator exists', () => 
     // what the reclaim scan looks for.
     expect(internals.checkpoints.has(WORKFLOW_ID)).toBe(false);
     expect(currentExecutionAttempt(internals, WORKFLOW_ID)).toBeUndefined();
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has(WORKFLOW_ID)).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
     expect(registry.currentEpoch(WORKFLOW_ID)).toBeNull();
     expect(await storage.get(KEYS.workflowOwnerHolder(WORKFLOW_ID))).toBeNull();
 

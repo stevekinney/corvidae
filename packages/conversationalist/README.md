@@ -24,7 +24,7 @@ Public conversation values are deeply frozen when they enter the runtime. `curre
 
 ## Workspace usage
 
-Declare `"conversationalist": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `conversationalist`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+Declare `"conversationalist": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `conversationalist` and, for consumers that also depend on `@anthropic-ai/sdk`, from `conversationalist/adapters/anthropic/sdk`; the consumer compiles it. Shared external versions come from the root Bun catalog.
 
 ## Host Support
 
@@ -842,8 +842,12 @@ const updated = appendAnthropicMessages(history, payload);
 **Key exports:** `toAnthropicMessages`, `fromAnthropicMessages`, `appendAnthropicMessages`, `anthropicConversationAdapter`. Type exports: `AnthropicConversation`, `AnthropicExport`, `AnthropicMessage`, `AnthropicContentBlock`, `AnthropicTextBlock`, `AnthropicToolUseBlock`, `AnthropicToolResultBlock`, `AnthropicImageBlock`, `AnthropicImageSource`, `AnthropicBase64ImageSource`, `AnthropicUrlImageSource`.
 
 ```typescript
+import type { ConversationHistory } from 'conversationalist';
 import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
 
+declare const history: ConversationHistory;
+
+// sdkPayload.system and sdkPayload.messages use @anthropic-ai/sdk's MessageParam shapes
 const sdkPayload = toAnthropicMessagesForSdk(history);
 ```
 

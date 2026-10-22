@@ -3,7 +3,8 @@
   "description": "A TypeScript library for managing AI conversation state",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./adapters/anthropic/sdk": "./src/adapters/anthropic/sdk.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-documentation-coverage.ts",

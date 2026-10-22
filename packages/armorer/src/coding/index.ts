@@ -48,6 +48,7 @@ export type {
   RootJail,
 };
 
+/** Options for {@link createCodingTools} and {@link createCodingToolbox}. */
 export interface CreateCodingToolsOptions {
   /** Directory all coding tools are jailed to. Must exist. */
   root: string;
@@ -56,6 +57,7 @@ export interface CreateCodingToolsOptions {
   glob?: Omit<CreateGlobToolOptions, 'jail'>;
 }
 
+/** The three coding tools {@link createCodingTools} returns, and the jail they share. */
 export interface CodingTools {
   jail: RootJail;
   readFile: Tool;

@@ -9,6 +9,7 @@ export const DEFAULT_READ_FILE_MAX_LINES = 2000;
 /** Default cap, in bytes, on how much of a file is read off disk. */
 export const DEFAULT_READ_FILE_MAX_BYTES = 262_144; // 256 KiB
 
+/** Options for {@link createReadFileTool}. */
 export interface CreateReadFileToolOptions {
   /** Root jail all read paths are resolved against. */
   jail: RootJail;
@@ -20,8 +21,10 @@ export interface CreateReadFileToolOptions {
   maxBytes?: number;
 }
 
+/** Why a `read-file` result was cut short: the `maxBytes` read cap, or the requested line window. */
 export type ReadFileTruncatedReason = 'byte-cap' | 'line-limit';
 
+/** The `read-file` tool's result: one line window of a file and whether either cap truncated it. */
 export interface ReadFileResult {
   path: string;
   content: string;
