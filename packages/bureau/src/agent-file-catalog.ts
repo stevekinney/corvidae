@@ -444,8 +444,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * this catalog itself last recorded, the scan may be that stale reading, and writing would record
    * a revert that never happened. The write is deferred once for that record: the revision is kept
    * for this scan, and the next scan decides (a stale reading does not repeat, and a genuine revert
-   * the peer never saw is written then). A record
- that cannot be read or written leaves the last known
+   * the peer never saw is written then). A record that cannot be read or written leaves the last known
    * revision, or 1, and the next scan tries again; the failure is reported when it is new (the
    * first after a success, or at a different hash), not on every scan that finds the store still
    * down.

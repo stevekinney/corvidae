@@ -15,6 +15,7 @@ import {
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { hashAgentFileBytes } from './agent-file';
 import { AGENT_REVISION_KEY_PREFIX } from './agent-revision-store';
 import {
   type AgentFileFixture,
@@ -284,6 +285,8 @@ describe('a deleted file', () => {
 
     const restarted = await start({ directory, revisionStore });
     await restarted.put('helper.md', validAgentFile('Version three.\n'));
+    // A catalog that has recorded nothing defers once against a record for other content.
+    await restarted.catalog.refresh();
     await restarted.catalog.refresh();
 
     expect(revisionOf(restarted)).toBe(3);
@@ -492,6 +495,87 @@ describe('a scan that read the file just before a peer’s edit', () => {
 
     expect(revisionOf(left)).toBe(3);
     expect(await recordedRevisionOf(revisionStore)).toBe(3);
+  });
+});
+
+describe('a catalog that has recorded nothing yet', () => {
+  const hashOf = (text: string) => hashAgentFileBytes(new TextEncoder().encode(text));
+
+  it('adopts the record a peer wrote just before its first settle, and writes no revert', async () => {
+    const inner = newStore();
+    const key = `${AGENT_REVISION_KEY_PREFIX}helper`;
+    let peerWrote = false;
+    // The peer saw version two and recorded it after this catalog read the file (version one) and
+    // before this catalog's settle read the record.
+    const store: ConditionalTextValueStore = {
+      ...inner,
+      async get(requested) {
+        if (requested === key && !peerWrote) {
+          peerWrote = true;
+          await inner.set(key, JSON.stringify({ revision: 2, hash: hashOf(versionTwo) }));
+        }
+        return inner.get(requested);
+      },
+    };
+    const fixture = await start({ revisionStore: store });
+    await fixture.put('helper.md', versionOne);
+
+    await fixture.catalog.refresh();
+
+    expect(await recordedRevisionOf(inner)).toBe(2);
+    expect(revisionOf(fixture)).toBe(2);
+    // The file now is what the peer recorded.
+    await fixture.put('helper.md', versionTwo);
+    await fixture.catalog.refresh();
+    expect(await recordedRevisionOf(inner)).toBe(2);
+    expect(revisionOf(fixture)).toBe(2);
+  });
+
+  it('writes a change made while the Bureau was down on its second scan', async () => {
+    const directory = sharedDirectory();
+    const revisionStore = newStore();
+    const before = await start({ directory, revisionStore });
+    await before.put('helper.md', versionOne);
+    await before.catalog.refresh();
+    await before.dispose();
+    fixtures.splice(fixtures.indexOf(before), 1);
+    const restarted = await start({ directory, revisionStore });
+    await restarted.put('helper.md', versionTwo);
+
+    await restarted.catalog.refresh();
+    expect(revisionOf(restarted)).toBe(1);
+    expect(await recordedRevisionOf(revisionStore)).toBe(1);
+    await restarted.catalog.refresh();
+
+    expect(revisionOf(restarted)).toBe(2);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
+  });
+});
+
+describe('a record that a third writer alternates between two hashes', () => {
+  it('is deferred against once per hash, then written, not deferred on every alternation', async () => {
+    const revisionStore = newStore();
+    const fixture = await start({ revisionStore });
+    await fixture.put('helper.md', versionOne);
+    await fixture.catalog.refresh();
+    const key = `${AGENT_REVISION_KEY_PREFIX}helper`;
+    const hexOf = (character: string) => character.repeat(64);
+    const listed: Array<number | undefined> = [];
+
+    for (const [revision, hash] of [
+      [5, hexOf('c')],
+      [6, hexOf('d')],
+      [7, hexOf('c')],
+    ] as const) {
+      await revisionStore.set(key, JSON.stringify({ revision, hash }));
+      await fixture.catalog.refresh();
+      listed.push(revisionOf(fixture));
+    }
+
+    // The first two records each buy one deferral, and the catalog keeps its revision. The third
+    // is a record it has already deferred against, so it writes the file's own content over it.
+    expect(listed).toEqual([1, 1, 8]);
+    expect(await recordedRevisionOf(revisionStore)).toBe(8);
   });
 });
 
