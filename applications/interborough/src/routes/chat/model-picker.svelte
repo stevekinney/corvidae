@@ -13,8 +13,10 @@
    *   read again so the page agrees with the Bureau.
    * - Refused because the session changed since it was read: the session is read again and the
    *   picker shows the model it has now.
-   * - Any other refusal, or a fault: the previous selection comes back. Each says why in its own
-   *   words (`CHAT_COPY.modelPicker`).
+   * - Any other refusal: the previous selection comes back. Each says why in its own words
+   *   (`CHAT_COPY.modelPicker`).
+   * - A fault: nobody knows whether the Bureau took the switch, so the session is read again and
+   *   the picker shows the model it has now.
    *
    * A command keeps its identifier until the Bureau answers it, so a retry after a fault is the same
    * command and the Bureau does not apply it twice (`pending-command-key.ts`).
@@ -154,8 +156,10 @@
       }
       pending = undefined;
     } catch {
-      // Nobody knows whether the Bureau took it, so the command keeps its identifier for a retry.
+      // Nobody knows whether the Bureau took it, so the command keeps its identifier for a retry,
+      // and the session is read again to show the model it has now.
       notice = COPY.fault;
+      await reload();
       pending = undefined;
     } finally {
       busy = false;

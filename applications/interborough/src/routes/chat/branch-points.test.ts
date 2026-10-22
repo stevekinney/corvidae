@@ -8,7 +8,7 @@ import { branchPointIds } from './branch-points.ts';
 
 type Row = {
   readonly id: string;
-  readonly role: 'user' | 'assistant' | 'tool-use' | 'tool-result';
+  readonly role: 'user' | 'assistant' | 'tool-call' | 'tool-result';
   readonly hidden?: true;
 };
 
@@ -55,7 +55,7 @@ describe('the messages that offer a branch', () => {
     expect(ids(rows, false)).toEqual(['a1', 'a2']);
   });
 
-  test('leave out the last agent message while a run is going, which has not finished', () => {
+  test('offer no message while a run is going, which has not finished its reply', () => {
     const rows: Row[] = [
       { id: 'u1', role: 'user' },
       { id: 'a1', role: 'assistant' },
@@ -63,7 +63,7 @@ describe('the messages that offer a branch', () => {
       { id: 'a2', role: 'assistant' },
     ];
 
-    expect(ids(rows, true)).toEqual(['a1']);
+    expect(ids(rows, true)).toEqual([]);
   });
 
   test('leave out an agent message a tool result follows, which is a step of a turn and not its end', () => {
@@ -92,5 +92,76 @@ describe('the messages that offer a branch', () => {
 
     expect(ids(rows, false)).toEqual(['a1']);
     expect(ids(rows, true)).toEqual([]);
+  });
+
+  test('leave out a tool-call row, which a step that calls a tool is made of', () => {
+    const rows: Row[] = [
+      { id: 'u1', role: 'user' },
+      { id: 'a1', role: 'tool-call' },
+      { id: 'r1', role: 'tool-result' },
+      { id: 'u2', role: 'user' },
+      { id: 'a2', role: 'assistant' },
+    ];
+
+    expect(ids(rows, false)).toEqual(['a2']);
+  });
+});
+
+describe('the messages of a run the Bureau names step by step', () => {
+  test('offer only the last reply of a run a follow-up was delivered to, not the earlier reply it interrupted', () => {
+    const rows: Row[] = [
+      { id: 'u1', role: 'user' },
+      { id: 'run-1:step:0', role: 'assistant' },
+      { id: 'follow-up', role: 'user' },
+      { id: 'run-1:step:1', role: 'assistant' },
+    ];
+
+    expect(ids(rows, false)).toEqual(['run-1:step:1']);
+  });
+
+  test('offer the last reply of each completed run', () => {
+    const rows: Row[] = [
+      { id: 'u1', role: 'user' },
+      { id: 'run-1:step:0', role: 'assistant' },
+      { id: 'u2', role: 'user' },
+      { id: 'run-2:step:0', role: 'assistant' },
+      { id: 'run-2:step:1', role: 'assistant' },
+    ];
+
+    expect(ids(rows, false)).toEqual(['run-1:step:0', 'run-2:step:1']);
+  });
+
+  test('offer no row of the run that is going, even when a follow-up row follows its reply', () => {
+    const rows: Row[] = [
+      { id: 'u1', role: 'user' },
+      { id: 'run-1:step:0', role: 'assistant' },
+      { id: 'follow-up', role: 'user' },
+    ];
+
+    expect(ids(rows, true)).toEqual([]);
+    expect(ids(rows, false)).toEqual(['run-1:step:0']);
+  });
+
+  test('offer nothing while a run is going, whichever run a row belongs to', () => {
+    const rows: Row[] = [
+      { id: 'u1', role: 'user' },
+      { id: 'run-1:step:0', role: 'assistant' },
+      { id: 'u2', role: 'user' },
+      { id: 'conversation-2-x', role: 'assistant' },
+      { id: 'follow-up', role: 'user' },
+    ];
+
+    expect(ids(rows, true)).toEqual([]);
+  });
+
+  test('do not offer a step that a tool result of its run follows', () => {
+    const rows: Row[] = [
+      { id: 'u1', role: 'user' },
+      { id: 'run-1:step:0', role: 'assistant' },
+      { id: 'run-1:step:0:result:call-1', role: 'tool-result' },
+      { id: 'run-1:step:1', role: 'assistant' },
+    ];
+
+    expect(ids(rows, false)).toEqual(['run-1:step:1']);
   });
 });

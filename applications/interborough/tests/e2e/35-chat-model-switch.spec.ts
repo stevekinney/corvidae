@@ -51,6 +51,9 @@ for (const viewport of VIEWPORTS) {
     // Switching takes effect from the next message, which names the new model.
     await picker(page).selectOption({ label: HAIKU.model });
     await expect(picker(page).locator('option:checked')).toHaveText(HAIKU.model);
+    // The picker is enabled again once the Bureau has taken the switch, which is when the next
+    // message is guaranteed to run on the new model.
+    await expect(picker(page)).toBeEnabled();
     await send(page, 'And now?');
     await expect(replies).toHaveCount(2);
     await expect(replies.last()).toContainText(modelSwitcherReply(HAIKU.model));

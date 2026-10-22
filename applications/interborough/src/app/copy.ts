@@ -550,8 +550,8 @@ export const CHAT_COPY = {
     unsupportedCapability: 'This agent cannot be switched to another model.',
     /** Anything else the Bureau answered without switching, such as a Bureau that is closing. */
     notSwitched: 'The model was not changed. The chat keeps its current model.',
-    /** The request itself failed, so nobody knows whether the Bureau took it. */
-    fault: 'The model could not be changed. The chat keeps its current model.',
+    /** The request itself failed, so nobody knows whether the Bureau took it; the chat is read again. */
+    fault: 'The model may not have been changed. Showing the model the chat uses now.',
   },
   /** Branching a chat from one of an agent's replies. */
   branch: {

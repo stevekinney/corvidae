@@ -2,8 +2,10 @@
  * The model picker in a session's composer, over a stubbed Bureau: which models it lists and shows,
  * when it is hidden, and what each way a switch can end does to the selection and what it says.
  */
+import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import {
@@ -11,6 +13,7 @@ import {
   StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ModelPicker from './model-picker.svelte';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -63,6 +66,7 @@ function mount(
   } = {},
 ) {
   const reloads: number[] = [];
+  const client = createQueryClient();
   const pageProps = (session: {
     current?: Session['current'] | undefined;
     revision?: number | undefined;
@@ -85,12 +89,29 @@ function mount(
       return true;
     });
   const view = render(QueryPage, {
-    props: pageProps({
-      current: 'current' in props ? props.current : null,
-      revision: 'revision' in props ? props.revision : 3,
-    }),
+    props: {
+      ...pageProps({
+        current: 'current' in props ? props.current : null,
+        revision: 'revision' in props ? props.revision : 3,
+      }),
+      client,
+    },
   } as never);
-  return { ...view, reloads };
+  return { ...view, reloads, client };
+}
+
+/**
+ * Waits until the answer to `bureau.agents.models` has reached the page, and the page has drawn what
+ * it made of it. Without this, a test of what the picker does not show passes before the list has
+ * arrived, whatever the picker does with it.
+ */
+async function modelsAnswered(client: QueryClient): Promise<void> {
+  await waitFor(() =>
+    expect(client.getQueryData(queryKeys.agents.models('model-switcher')) === undefined).toBe(
+      false,
+    ),
+  );
+  await tick();
 }
 
 function picker(container: HTMLElement): HTMLSelectElement {
@@ -139,19 +160,22 @@ describe('which models the picker offers', () => {
     });
   });
 
-  test('is hidden when the agent allows one model, and when it allows none', async () => {
-    const served = serve({ models: [SONNET] });
-    const one = mount();
-    await waitFor(() => expect(served.callsTo('bureau.agents.models')).toHaveLength(1));
-    // The list has been read and holds one model, which is no choice.
-    await waitFor(() => expect(one.container.querySelector('select') === null).toBe(true));
-    cleanup();
-    stub?.restore();
+  test('is hidden when the agent allows one model', async () => {
+    serve({ models: [SONNET] });
+    const { container, client } = mount();
 
-    const empty = serve({ models: [], defaultModel: null });
-    const none = mount();
-    await waitFor(() => expect(empty.callsTo('bureau.agents.models')).toHaveLength(1));
-    await waitFor(() => expect(none.container.querySelector('select') === null).toBe(true));
+    await modelsAnswered(client);
+
+    expect(container.querySelector('select') === null).toBe(true);
+  });
+
+  test('is hidden when the agent allows none', async () => {
+    serve({ models: [], defaultModel: null });
+    const { container, client } = mount();
+
+    await modelsAnswered(client);
+
+    expect(container.querySelector('select') === null).toBe(true);
   });
 
   test('shows a session’s model that the agent no longer lists, so the picker never shows another', async () => {
@@ -299,20 +323,43 @@ describe('choosing a model', () => {
     });
   }
 
-  test('restores the previous selection and says so when the request fails', async () => {
+  test('reads the session again when the request fails, and shows the model it has then, which the switch may have reached', async () => {
     serve({
       steer: () => {
         throw new StubFault('Unavailable', 503, 'The Bureau is not answering.');
       },
     });
-    const { container, reloads, findByText } = mount();
+    const { container, reloads, findByText } = mount({
+      afterReload: { current: HAIKU_NAME, revision: 4 },
+    });
     await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
 
     await chooseModel(container, 'claude-haiku-4-5');
 
     expect(await findByText(COPY.fault)).not.toBeNull();
+    expect(COPY.fault).not.toContain('keeps');
+    await waitFor(() => expect(reloads).toHaveLength(1));
+    // The Bureau had taken the switch before the answer was lost, and the picker shows it.
+    await waitFor(() => expect(picker(container).disabled).toBe(false));
+    expect(shownModel(container)).toBe('claude-haiku-4-5');
+  });
+
+  test('shows the previous model after a failed request when the session still has it', async () => {
+    serve({
+      steer: () => {
+        throw new StubFault('Unavailable', 503, 'The Bureau is not answering.');
+      },
+    });
+    const { container, reloads, findByText } = mount({
+      afterReload: { current: SONNET_NAME, revision: 3 },
+    });
+    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+
+    await chooseModel(container, 'claude-haiku-4-5');
+
+    expect(await findByText(COPY.fault)).not.toBeNull();
+    await waitFor(() => expect(reloads).toHaveLength(1));
     await waitFor(() => expect(shownModel(container)).toBe('claude-sonnet-5'));
-    expect(reloads).toHaveLength(0);
   });
 
   test('retries a command that failed under the same identifier, so the Bureau never applies it twice', async () => {

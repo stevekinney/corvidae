@@ -184,9 +184,13 @@
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
       router.navigate(chatSessionPath(branchId));
     } catch (error) {
-      // A refusal is the Bureau's answer, so the next attempt is a new command. A fault is not
-      // known to have failed, so the retry keeps its identifier.
-      if (forkRefusalReason(error) !== undefined) branchCommands.confirmed();
+      // A conflict is the Bureau's final answer for that command, so the next attempt is a new one.
+      // Any other fault, a Bureau that was shutting down included, may have come after the Bureau
+      // created the branch, so the retry keeps its identifier and finds it.
+      const reason = forkRefusalReason(error);
+      if (reason !== undefined && Object.hasOwn(CHAT_COPY.branch.refused, reason)) {
+        branchCommands.confirmed();
+      }
       branchFailure = branchFailureText(error);
     } finally {
       branching = false;

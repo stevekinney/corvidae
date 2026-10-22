@@ -75,7 +75,7 @@ describe('where a branch came from', () => {
 
     await waitFor(() => expect(container.textContent).toContain(CHAT_COPY.branch.parentDeleted));
     expect(container.textContent).toContain(CHAT_COPY.branch.branchedFrom);
-    expect(queryByRole('link')).toBeNull();
+    expect(queryByRole('link') === null).toBe(true);
   });
 
   test('still links to the parent when it could not be read for another reason', async () => {

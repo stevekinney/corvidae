@@ -5,9 +5,11 @@
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -56,13 +58,35 @@ function serve(
   return served;
 }
 
-const mount = () =>
-  render(QueryPage, {
+function mount() {
+  const client = createQueryClient();
+  const view = render(QueryPage, {
     props: {
       page: ChatConversation,
       pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
+      client,
     },
   } as never);
+  return { ...view, client };
+}
+
+/**
+ * Each agent reply on screen that has text, by its text, and whether it offers Branch from here. A
+ * reply still being written has no text yet and is left out.
+ */
+function branchOffers(container: HTMLElement): Array<readonly [string, boolean]> {
+  const offers: Array<readonly [string, boolean]> = [];
+  for (const row of container.querySelectorAll('[data-message-role="assistant"]')) {
+    const text = row.querySelector('p')?.textContent ?? '';
+    if (text === '') continue;
+    // The message's actions sit beside its article, under the element that holds both.
+    const offered = [...(row.parentElement?.querySelectorAll('button') ?? [])].some(
+      (button) => button.textContent?.trim() === CHAT_COPY.branch.action,
+    );
+    offers.push([text, offered]);
+  }
+  return offers;
+}
 
 const BRANCH = { name: CHAT_COPY.branch.action };
 
@@ -73,7 +97,76 @@ describe('Branch from here', () => {
     await findByText('Second answer');
 
     const buttons = await findAllByRole('button', BRANCH);
-    expect(buttons).toHaveLength(2);
+    expect(buttons.length).toBe(2);
+  });
+
+  test('is offered on the last reply of each completed run, and on none of the earlier steps of a run a follow-up was delivered to', async () => {
+    serve([
+      { id: 'u1', role: 'user', content: 'Start the work' },
+      { id: 'run-1:step:0', role: 'assistant', content: 'Early reply' },
+      { id: 'u2', role: 'user', content: 'Also this' },
+      { id: 'run-1:step:1', role: 'assistant', content: 'Last reply of the first run' },
+      { id: 'u3', role: 'user', content: 'Another question' },
+      { id: 'run-2:step:0', role: 'assistant', content: 'Reply of the second run' },
+    ]);
+    const { container, findByText } = mount();
+    await findByText('Reply of the second run');
+
+    await waitFor(() => expect(branchOffers(container).some(([, offered]) => offered)).toBe(true));
+    expect(branchOffers(container)).toEqual([
+      ['Early reply', false],
+      ['Last reply of the first run', true],
+      ['Reply of the second run', true],
+    ]);
+  });
+
+  test('is offered on no reply of the run that is going, which a follow-up row follows', async () => {
+    // The page joins a run that is still going: its stream restores the transcript and stays open.
+    const served = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.agents.models': () => ({ selectable: true, models: [], default: null }),
+        'bureau.contexts.get': () => CONTEXT,
+        'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
+      },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (!url.includes('/threads/')) return undefined;
+        const frames = [
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+          {
+            type: 'MESSAGES_SNAPSHOT',
+            messages: [
+              { id: 'u1', role: 'user', content: 'Start the work' },
+              { id: 'run-1:step:0', role: 'assistant', content: 'Early reply' },
+              { id: 'u2', role: 'user', content: 'Also this' },
+            ],
+          },
+        ];
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const frame of frames) {
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`));
+              }
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+      },
+    );
+    restore = served.restore;
+    landAt('/chat/session-1');
+    const { container, findByText } = mount();
+    await findByText('Early reply');
+    // The run is going: Chat offers Stop.
+    await waitFor(() =>
+      expect(container.querySelector('[aria-label="Stop generating"]') === null).toBe(false),
+    );
+    await tick();
+
+    expect(branchOffers(container)).toEqual([['Early reply', false]]);
   });
 
   test('is offered on the last agent message of a session that has only one turn', async () => {
@@ -137,6 +230,67 @@ describe('Branch from here', () => {
       expect(router.pathname).toBe('/chat/session-1');
     });
   }
+});
+
+describe('the identifier of a branch', () => {
+  async function clickFirstBranch(mounted: ReturnType<typeof mount>): Promise<void> {
+    await mounted.findByText('Second answer');
+    const [first] = await mounted.findAllByRole('button', BRANCH);
+    if (first === undefined) throw new Error('The first reply offers no branch.');
+    await fireEvent.click(first);
+  }
+
+  test('is kept when the Bureau was shutting down, so a retry after a restart finds the branch it may have made', async () => {
+    const served = serve(TURNS, {
+      'bureau.contexts.fork': () => {
+        throw new StubFault('Unavailable', 503, 'The Bureau is shutting down.', {
+          reason: 'shutting-down',
+        });
+      },
+    });
+    const mounted = mount();
+    await clickFirstBranch(mounted);
+    await mounted.findByText(CHAT_COPY.branch.fault);
+    await waitFor(() =>
+      expect(mounted.queryAllByRole('button', BRANCH)[0]?.hasAttribute('disabled')).toBe(false),
+    );
+
+    const [again] = await mounted.findAllByRole('button', BRANCH);
+    if (again === undefined) throw new Error('The first reply offers no branch.');
+    await fireEvent.click(again);
+
+    await waitFor(() =>
+      expect(served.calls.filter((call) => call.method === 'bureau.contexts.fork').length).toBe(2),
+    );
+    const [first, second] = served.calls.filter((call) => call.method === 'bureau.contexts.fork');
+    expect(second?.params['commandId']).toBe(first?.params['commandId']);
+  });
+
+  test('is new after the Bureau refused the branch, because a conflict is its final answer', async () => {
+    const served = serve(TURNS, {
+      'bureau.contexts.fork': () => {
+        throw new StubFault('Conflict', 409, 'Not a branch point.', {
+          reason: 'not-a-branch-point',
+        });
+      },
+    });
+    const mounted = mount();
+    await clickFirstBranch(mounted);
+    await mounted.findByText(CHAT_COPY.branch.refused['not-a-branch-point']);
+    await waitFor(() =>
+      expect(mounted.queryAllByRole('button', BRANCH)[0]?.hasAttribute('disabled')).toBe(false),
+    );
+
+    const [again] = await mounted.findAllByRole('button', BRANCH);
+    if (again === undefined) throw new Error('The first reply offers no branch.');
+    await fireEvent.click(again);
+
+    await waitFor(() =>
+      expect(served.calls.filter((call) => call.method === 'bureau.contexts.fork').length).toBe(2),
+    );
+    const [first, second] = served.calls.filter((call) => call.method === 'bureau.contexts.fork');
+    expect(second?.params['commandId']).not.toBe(first?.params['commandId']);
+  });
 });
 
 describe('a refused branch', () => {
@@ -254,9 +408,21 @@ describe('the model picker in a session’s composer', () => {
   });
 
   test('is not there when the agent allows one model', async () => {
-    serve(TURNS);
-    const { container, findByText } = mount();
+    const only = {
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+      displayName: 'claude-sonnet-5',
+    };
+    serve(TURNS, {
+      'bureau.agents.models': () => ({ selectable: true, models: [only], default: only }),
+    });
+    const { container, client, findByText } = mount();
     await findByText('Second answer');
+    // The list has reached the page and the page has drawn it, and it holds one model.
+    await waitFor(() =>
+      expect(client.getQueryData(queryKeys.agents.models('assistant')) === undefined).toBe(false),
+    );
+    await tick();
 
     expect(container.querySelector('select') === null).toBe(true);
   });
