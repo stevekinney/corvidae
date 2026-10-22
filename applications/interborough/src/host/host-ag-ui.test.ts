@@ -123,6 +123,7 @@ describe('extra agents', () => {
       ['echo', 'code', 'published'],
       ['extra', 'code', 'published'],
       ['internal', 'code', 'unpublished'],
+      ['model-switcher', 'code', 'published'],
       ['request-human-input', 'code', 'published'],
       ['tool-runner', 'code', 'published'],
     ]);

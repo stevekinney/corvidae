@@ -4,6 +4,7 @@
  */
 import { Window } from 'happy-dom';
 
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 
@@ -13,6 +14,10 @@ export const CONTEXT = {
   agentName: 'assistant',
   title: 'Plan the week',
   lastMessagePreview: 'Sounds good.',
+  parentContextId: null,
+  forkedFromMessageId: null,
+  model: null,
+  configVersion: 0,
   messageCount: 2,
   createdAt: '2026-10-19T08:00:00.000Z',
   updatedAt: '2026-10-19T09:00:00.000Z',
@@ -52,11 +57,21 @@ export function bureau(
     const answer = answers[String(method)];
     if (answer === undefined)
       return Response.json({ error: `unexpected ${String(method)}` }, { status: 500 });
-    return Response.json({
-      jsonrpc: '2.0',
-      id: method,
-      result: answer(record),
-    });
+    try {
+      return Response.json({ jsonrpc: '2.0', id: method, result: answer(record) });
+    } catch (error) {
+      // A handler may fail as the Bureau does: a wire fault code, its status and its payload.
+      if (!(error instanceof StubFault)) throw error;
+      return Response.json({
+        jsonrpc: '2.0',
+        id: method,
+        error: {
+          code: -32000,
+          message: error.message,
+          data: { ...error.data, weftCode: error.weftCode, httpStatus: error.httpStatus },
+        },
+      });
+    }
   });
   return { calls, restore };
 }

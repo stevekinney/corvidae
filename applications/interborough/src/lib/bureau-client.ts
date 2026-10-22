@@ -22,6 +22,10 @@ export const chatContextSchema = z.object({
   agentName: z.string(),
   title: z.string().nullable(),
   lastMessagePreview: z.string().nullable(),
+  /** The session this one was branched from (`bureau.contexts.fork`), or `null`. */
+  parentContextId: z.string().nullable(),
+  /** The message of the parent this one was branched at, or `null`. */
+  forkedFromMessageId: z.string().nullable(),
   messageCount: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -29,6 +33,19 @@ export const chatContextSchema = z.object({
 });
 
 export type ChatContext = z.infer<typeof chatContextSchema>;
+
+/**
+ * One session as `bureau.contexts.get` shows it: the summary, and what its steering has settled on.
+ * `model` is the latest model the session was switched to, `null` before any, which means the
+ * agent's default; `configVersion` is the version a later `bureau.contexts.steer`'s
+ * `expectedRevision` is compared against.
+ */
+export const contextDetailSchema = chatContextSchema.extend({
+  model: z.object({ provider: z.string().nullable(), model: z.string() }).nullable(),
+  configVersion: z.number().int().nonnegative(),
+});
+
+export type ContextDetail = z.infer<typeof contextDetailSchema>;
 
 /** What `bureau.contexts.input` answers for an input it admitted. */
 const contextInputReceiptSchema = z.object({
@@ -78,12 +95,96 @@ export async function callBureau(
   return body['result'];
 }
 
-/** One session, with its agent and title. A session the caller cannot see is a not-found fault. */
+/** One session, with its agent, title and model. A session the caller cannot see is a not-found fault. */
 export async function getContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
-): Promise<ChatContext> {
-  return chatContextSchema.parse(await callBureau('bureau.contexts.get', { contextId }, options));
+): Promise<ContextDetail> {
+  return contextDetailSchema.parse(await callBureau('bureau.contexts.get', { contextId }, options));
+}
+
+/** One model an agent allows, named the way a model override names it. */
+const agentModelChoiceSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  displayName: z.string(),
+});
+
+export type AgentModelChoice = z.infer<typeof agentModelChoiceSchema>;
+
+const agentModelsSchema = z.object({
+  selectable: z.boolean(),
+  models: z.array(agentModelChoiceSchema),
+  /** The model the agent's next step uses with no override, or `null` when that is not known. */
+  default: agentModelChoiceSchema.pick({ provider: true, model: true }).nullable(),
+});
+
+export type AgentModels = z.infer<typeof agentModelsSchema>;
+
+/** The models a session of an agent may be switched to (`bureau.agents.models`). */
+export async function getAgentModels(
+  agentName: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<AgentModels> {
+  return agentModelsSchema.parse(await callBureau('bureau.agents.models', { agentName }, options));
+}
+
+/**
+ * What `bureau.contexts.steer` answers: Bureau's admission outcome, as data. A refusal is an
+ * outcome and not a fault; only a missing session or a malformed request is a fault. The reasons
+ * are read as the Bureau names them (`model-not-allowed`, `stale-revision`, and so on).
+ */
+const steerOutcomeSchema = z.discriminatedUnion('outcome', [
+  z.object({ outcome: z.literal('accepted') }),
+  z.object({ outcome: z.literal('replayed') }),
+  z.object({ outcome: z.literal('conflict') }),
+  z.object({ outcome: z.literal('rejected'), failure: z.object({ reason: z.string() }) }),
+  z.object({ outcome: z.literal('session-terminal') }),
+  z.object({ outcome: z.literal('unsupported-capability'), reason: z.string() }),
+]);
+
+export type SteerOutcome = z.infer<typeof steerOutcomeSchema>;
+
+/**
+ * Switches a session to another model its agent allows (`bureau.contexts.steer`). `commandId` is
+ * the caller's own identifier: an exact retry of it is a replay. `expectedRevision` is the
+ * `configVersion` the caller read.
+ */
+export async function steerContext(
+  input: {
+    readonly contextId: string;
+    readonly commandId: string;
+    readonly override: { readonly provider: string; readonly model: string };
+    readonly expectedRevision?: number;
+  },
+  options?: { readonly signal?: AbortSignal },
+): Promise<SteerOutcome> {
+  return steerOutcomeSchema.parse(await callBureau('bureau.contexts.steer', input, options));
+}
+
+/**
+ * Branches a session after one of its agent's replies (`bureau.contexts.fork`) and returns the new
+ * session's identifier. A refusal is a `Conflict` fault whose `data.reason` says why
+ * (`forkRefusalReason`).
+ */
+export async function forkContext(
+  input: {
+    readonly contextId: string;
+    readonly commandId: string;
+    readonly throughMessageId: string;
+  },
+  options?: { readonly signal?: AbortSignal },
+): Promise<string> {
+  return z
+    .object({ contextId: z.string() })
+    .parse(await callBureau('bureau.contexts.fork', input, options)).contextId;
+}
+
+/** Why a branch was refused: the `data.reason` of the fault, or `undefined` for any other fault. */
+export function forkRefusalReason(error: unknown): string | undefined {
+  if (!(error instanceof HttpClientError)) return undefined;
+  const reason = error.data?.['reason'];
+  return typeof reason === 'string' ? reason : undefined;
 }
 
 /** Sends an input to a session's run in flight (`bureau.contexts.input`, steer delivery). */
