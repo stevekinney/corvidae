@@ -346,9 +346,9 @@ describe('a delayed start that stops short of its launch', () => {
     clock.now = START_AT;
 
     storage.failReadOf = KEYS.terminalCleanupNeeded(WORKFLOW_ID);
-    // The scheduler reports a timer callback that threw on the console, after `tick()` has
-    // resolved; the injected fault is expected, so it is captured and asserted rather than left in
-    // the test output. The spy stays until the fire has reported and let the run go.
+    // The scheduler reports a timer callback that threw on the console. The injected fault is
+    // expected, so it is captured and asserted rather than left in the test output, and the spy
+    // stays until the fire has reported and let the run go.
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});
     let reported: string | undefined;
     try {
@@ -506,6 +506,52 @@ describe('a delayed start that stops short while a same-id replacement lands', (
     expect(probe.runs).toBe(1);
     expect(events).toEqual({ started: 1, resumed: 0 });
     expect(registry.currentEpoch(WORKFLOW_ID)).toBeNull();
+  });
+
+  it('keeps a prepared replacement claim, which then launches and drives once', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    const resolver = createResolver(() => ({ status: 'unavailable', reason: 'gone' }));
+    resolver.release();
+    await using engine = await createInlineEngine(storage, clock, {
+      resolveWorkflowServices: resolver.option,
+    });
+    const internals = getInternals(engine);
+    const registry = internals.workflowClaimRegistry!;
+    const probe = probeFor(storage);
+    await engine.start('counted', null, {
+      id: WORKFLOW_ID,
+      startAt: START_AT,
+      services: { owner: 'delayed' },
+    });
+    internals.workflowServices.delete(WORKFLOW_ID);
+    clock.now = START_AT;
+
+    // A prepared `start-new` replacement commits the next epoch in the same window and holds that
+    // claim until its `launch()`, with no launching record yet. The old fire's let-go must release
+    // only the epoch it recorded, or the replacement's own `launch()` finds itself deposed.
+    let prepared: Awaited<ReturnType<typeof engine.prepare>> | undefined;
+    const originalRelease = registry.release.bind(registry);
+    registry.release = async (workflowId, expectedEpoch) => {
+      const result = await originalRelease(workflowId, expectedEpoch);
+      if (prepared === undefined && workflowId === WORKFLOW_ID) {
+        prepared = await engine.prepare('counted', null, {
+          id: WORKFLOW_ID,
+          onTerminalConflict: 'start-new',
+        });
+      }
+      return result;
+    };
+    await engine.scheduler.tick(clock.now);
+    expect(registry.currentEpoch(WORKFLOW_ID)).toBe(2);
+    expect(await storage.get(KEYS.workflowOwnerHolder(WORKFLOW_ID))).not.toBeNull();
+
+    await prepared!.launch();
+    await engine.flushInlineLaunches();
+    await waitForCondition(() => probe.runs >= 1, { label: 'the replacement runs' });
+    await letOtherDrivesStart();
+    expect(await engine.getHandle(WORKFLOW_ID).result()).toBe('ran');
+    expect(probe.runs).toBe(1);
   });
 });
 
