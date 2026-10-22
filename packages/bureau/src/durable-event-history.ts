@@ -5,22 +5,23 @@
  * Every durable event Bureau records is appended to ONE shared, fleet-wide
  * `FleetEventFeed` built over `engine.storage` (the same backend the
  * durable-run engine already persists to — no second durable log). A
- * run's or a session's own history is a FILTER over that global stream,
+ * run's or a session's own history is a slice of that global stream,
  * never a separate storage partition: `FleetEventFeed`'s sequence is
- * fleet-global, not owner-scoped (verified — `FleetEventFeed.append`/
- * `replay` carry no per-owner cursor namespace, only the optional
- * `workflowId` field on the input/envelope), so `page()` walks the global
- * replay stream and keeps only the events whose encoded owner matches.
- * Sequence gaps between consecutive returned events are legal and expected
- * — another owner's events occupy the skipped sequence numbers.
+ * fleet-global, not owner-scoped (`FleetEventFeed.append`/`replay` carry
+ * no per-owner cursor namespace, only the optional `workflowId` field on
+ * the input/envelope). `page()` reads that slice through the feed's
+ * `fleet-event-by-workflow:` index (`replay({ workflowId })`, COR-280),
+ * which yields the same global-sequence envelopes and cursors as the full
+ * replay. Sequence gaps between consecutive returned events are legal and
+ * expected — another owner's events occupy the skipped sequence numbers.
  *
  * Owner-scoping convention (binding on every later reader/writer of this
  * store, per the 2026-09-03 coordinator ruling): `FleetEventInput.workflowId`
  * is a single opaque string, so a `DurableEventOwner` is encoded into it as
- * `${owner.kind}:${owner.id}` for exact-string-match filtering in `page()`.
+ * `${owner.kind}:${owner.id}`, the key `page()` reads the owner's index by.
  * The returned `DurableEventEnvelope.owner` is not re-parsed out of that
  * string — both `record()` and `page()` already know the owner
- * authoritatively (the argument just appended, or the filter that just
+ * authoritatively (the argument just appended, or the index that just
  * selected the record) — so it is attached directly rather than decoded a
  * second time from the very string that was used to select the record. A
  * grep of `packages/bureau` for every existing `FleetEventFeed` writer and
@@ -1036,9 +1037,10 @@ export function createDurableEventHistory(
    * `payload` — see {@link StoredDurableEventPayload.dedupeKey}), by
    * replaying the raw feed directly rather than going through `page()`
    * (which strips the wrapper down to the caller-visible payload before
-   * returning). `feed.replay()` resumes past any compacted retention floor
-   * on its own (its `fleet:gap` marker carries no `workflowId`, so this
-   * owner filter excludes it without any floor bookkeeping here) — closing
+   * returning). The owner-indexed `feed.replay({ workflowId })` resumes past
+   * any compacted retention floor on its own (its `fleet:gap` marker opens
+   * the replay, and the `kind` check drops it without any floor bookkeeping
+   * here) — closing
    * the same gap a per-page bounded scan would otherwise need to retry
    * across (Codex P2 review finding, PR #598, "Continue dedupe lookup from
    * the retention floor").
@@ -1053,9 +1055,11 @@ export function createDurableEventHistory(
     kind: string,
     dedupeKey: string,
   ): Promise<DurableEventEnvelope | undefined> {
-    const targetWorkflowId = encodeOwner(owner);
-    for await (const envelope of feed.replay()) {
-      if (envelope.workflowId !== targetWorkflowId || envelope.kind !== kind) continue;
+    // COR-280 — the owner's own index, not the whole fleet log. A retention
+    // `fleet:gap` opening the replay is dropped by the kind check, since no
+    // caller's `kind` is reserved.
+    for await (const envelope of feed.replay({ workflowId: encodeOwner(owner) })) {
+      if (envelope.kind !== kind) continue;
       if (!isStoredDurableEventPayload(envelope.payload)) continue;
       if (envelope.payload.dedupeKey !== dedupeKey) continue;
       try {
@@ -1165,7 +1169,6 @@ export function createDurableEventHistory(
       };
     }
 
-    const targetWorkflowId = encodeOwner(owner);
     const events: DurableEventEnvelope[] = [];
     let hasMore = false;
     // AB-389 — no read-side dedupe skip is needed here: record()'s own
@@ -1178,11 +1181,17 @@ export function createDurableEventHistory(
     // page() calls (Codex P1 review finding, PR #598, "Preserve dedupe
     // state across paginated history reads"); that is now moot for the
     // same reason.
-    for await (const envelope of feed.replay(since === undefined ? {} : { fromCursor: since })) {
+    // COR-280 — the owner's own `fleet-event-by-workflow:` index, so the
+    // read costs this owner's retained events rather than the whole fleet
+    // log's. No `limit` is passed: a skipped record must not spend one.
+    const workflowId = encodeOwner(owner);
+    for await (const envelope of feed.replay(
+      since === undefined ? { workflowId } : { workflowId, fromCursor: since },
+    )) {
       // Retention can advance the floor between the check above and this
       // replay. The replay then opens with its own `fleet:gap` envelope, which
-      // names no owner and would be skipped below: the reader would get an
-      // ordinary page that silently omits the history in between (COR-1477).
+      // names no owner: read as an ordinary event, the reader would get a page
+      // that silently omits the history in between (COR-1477).
       if (envelope.kind === 'fleet:gap') {
         const payload = envelope.payload;
         const firstRetainedSequence: unknown =
@@ -1196,7 +1205,6 @@ export function createDurableEventHistory(
         }
         return { outcome: 'gap', requestedCursor: since ?? '-1', firstRetainedSequence };
       }
-      if (envelope.workflowId !== targetWorkflowId) continue;
       // COR-718 — another incarnation's event, or one recorded for none, is
       // not this read's at all: left out before it is decoded, and never a
       // `limit` slot or a `hasMore`, like a corrupt record below.

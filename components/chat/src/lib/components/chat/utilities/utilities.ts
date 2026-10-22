@@ -18,6 +18,7 @@ import type {
   ToolApprovalMessagePart,
   ToolCallMessagePart,
   ToolCallPresentation,
+  ToolInputMessagePart,
   TranscriptEntryInfo,
 } from './types.ts';
 
@@ -389,6 +390,50 @@ function deriveToolApprovalPart(
 }
 
 /**
+ * Builds a {@link ToolInputMessagePart} from an `action_required` tool result
+ * whose action asks for input against a JSON Schema object. Returns `undefined`
+ * for any other result, including an input action without an object schema,
+ * which keeps the neutral tool-result presentation.
+ */
+function deriveToolInputPart(
+  messageId: string,
+  result: ToolResult,
+  context: MessagePartDerivationContext,
+): ToolInputMessagePart | undefined {
+  if (result.outcome !== 'action_required' || result.action?.type !== 'input') return undefined;
+  const schema: unknown = result.action.schema;
+  if (!isSchemaObject(schema)) return undefined;
+  return {
+    type: 'tool-input',
+    key: `${messageId}:tool-input:${result.callId}`,
+    toolCallId: result.callId,
+    toolName: context.toolCallPair?.call.name ?? result.callId,
+    message: result.action.message,
+    schema,
+  };
+}
+
+function isSchemaObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Builds the interactive part for an `action_required` tool result: an
+ * approval card for an approval action, a form for an input action with an
+ * object schema, and `undefined` otherwise.
+ */
+function deriveToolActionPart(
+  messageId: string,
+  result: ToolResult,
+  context: MessagePartDerivationContext,
+): ToolApprovalMessagePart | ToolInputMessagePart | undefined {
+  if (result.outcome === 'action_required' && result.action?.type === 'approval') {
+    return deriveToolApprovalPart(messageId, result, result.action, context);
+  }
+  return deriveToolInputPart(messageId, result, context);
+}
+
+/**
  * Derives the ordered render parts for a single message.
  *
  * This is the cinder-OWNED bridge from the compatible {@link Message} mirror to
@@ -442,17 +487,14 @@ export function deriveMessageParts(
   // text rendering the original showed for an unpaired tool-call message.
   //
   // When that pair's result is `action_required` with an action, ALSO emit a
-  // tool-approval part after the call card. In the common paired transcript the
+  // tool-approval or tool-input part after the call card. In the common paired transcript the
   // standalone `tool-result` row is folded into this card (the container hides
   // paired results), so without this the approval prompt would never render for
   // the call-plus-result shape — only for a rare standalone action_required
   // result. The card shows what is being called; the approval gates consent.
   if (message.role === 'tool-call' && message.toolCall && context.toolCallPair) {
     const result = context.toolCallPair.result;
-    const approvalPart =
-      result && result.outcome === 'action_required' && result.action?.type === 'approval'
-        ? deriveToolApprovalPart(message.id, result, result.action, context)
-        : undefined;
+    const actionPart = result ? deriveToolActionPart(message.id, result, context) : undefined;
     const toolCallPart: ToolCallMessagePart = context.toolCallPresentation
       ? {
           type: 'tool-call',
@@ -465,11 +507,12 @@ export function deriveMessageParts(
           key: `${message.id}:tool-call:${message.toolCall.id}`,
           pair: context.toolCallPair,
         };
-    return [...entryParts, toolCallPart, ...(approvalPart ? [approvalPart] : []), ...imageParts];
+    return [...entryParts, toolCallPart, ...(actionPart ? [actionPart] : []), ...imageParts];
   }
 
   // Tool-result body: when the outcome is `action_required` and an action is
-  // present, emit a `tool-approval` part instead of the plain `tool-result`
+  // present, emit a `tool-approval` part (or, for an input action with an
+  // object schema, a `tool-input` part) instead of the plain `tool-result`
   // part. The approval part carries the action, the tool call id (used to
   // look up the tool name from the paired tool-call), and the resolved
   // approval state from the container's approved/denied id sets. A plain
@@ -478,12 +521,9 @@ export function deriveMessageParts(
   // for non-approval results.
   if (message.role === 'tool-result' && message.toolResult) {
     const result = message.toolResult;
-    if (result.outcome === 'action_required' && result.action?.type === 'approval') {
-      return [
-        ...entryParts,
-        deriveToolApprovalPart(message.id, result, result.action, context),
-        ...imageParts,
-      ];
+    const actionPart = deriveToolActionPart(message.id, result, context);
+    if (actionPart) {
+      return [...entryParts, actionPart, ...imageParts];
     }
     return [
       ...entryParts,
