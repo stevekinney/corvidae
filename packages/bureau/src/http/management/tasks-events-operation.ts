@@ -477,17 +477,16 @@ function followScheduleFire(
             // client reconnects and a new subscription follows the history from its tail.
             onClosed: (cause) => {
               if (ended) return;
-              readAgain()
-                .then(() => {
-                  if (ended) return;
-                  queue.fail(
-                    new Error(
-                      `The history of task "${taskId}" can no longer be followed; reconnect to follow it again.`,
-                      { cause },
-                    ),
-                  );
-                })
-                .catch((error: unknown) => queue.fail(error));
+              void (async () => {
+                await readAgain();
+                if (ended) return;
+                queue.fail(
+                  new Error(
+                    `The history of task "${taskId}" can no longer be followed; reconnect to follow it again.`,
+                    { cause },
+                  ),
+                );
+              })().catch((error: unknown) => queue.fail(error));
             },
           },
         );
