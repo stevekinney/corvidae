@@ -168,7 +168,7 @@ function normalizedPathname(request: Request): string {
  * `/.well-known/*`, `/v1/metrics`, the workflow WebSocket streams, or any
  * remote-worker route; those need an `Engine` and stay behind `serve()`. A
  * catalog's own `mcpExposable` operations can be served as MCP tools by
- * mounting `createOperationMcpMount` from `@lostgradient/weft/mcp`. Rate limiting stays there too, since its key falls back
+ * mounting `createOperationMcpMount` from `@lostgradient/weft`. Rate limiting stays there too, since its key falls back
  * to the client address a fetch handler cannot see; put a limiter in front.
  *
  * A factory rather than a per-request function, so registry construction, CORS
