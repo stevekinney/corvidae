@@ -73,7 +73,7 @@ describe('bureau.agents.definitions.update', () => {
     expect(await readFile(ownerPath(served), 'utf8')).toContain('models:');
   });
 
-  it('keeps the list the file has when the definition omits models', async () => {
+  it('removes the list when the definition omits models, exactly as it removes tools', async () => {
     const served = await withListedAgent();
 
     const body = await callAs(served.local, 'bureau.agents.definitions.update', {
@@ -85,12 +85,14 @@ describe('bureau.agents.definitions.update', () => {
     expect(body.error).toBeUndefined();
     const read = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'researcher' });
     expect(read.result?.['definition']).toMatchObject({
-      models: [KNOWN_MODEL, OTHER_MODEL],
+      models: null,
+      tools: [],
       instructions: 'Now longer.\n',
     });
+    expect(await readFile(ownerPath(served), 'utf8')).not.toContain('models:');
   });
 
-  it('removes the list when the definition sends null', async () => {
+  it('removes the list when the definition sends null, as it does for a description', async () => {
     const served = await withListedAgent();
 
     const body = await callAs(served.local, 'bureau.agents.definitions.update', {
@@ -102,6 +104,26 @@ describe('bureau.agents.definitions.update', () => {
     expect(body.error).toBeUndefined();
     const read = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'researcher' });
     expect(read.result?.['definition']).toMatchObject({ models: null });
+  });
+
+  it('keeps the list when the definition sends it back, as a client that read it does', async () => {
+    const served = await withListedAgent();
+    const got = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'researcher' });
+    const definition = got.result?.['definition'] as Record<string, unknown>;
+    const { published: _published, ...sent } = definition;
+
+    const body = await callAs(served.local, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: served.hashOf('researcher'),
+      definition: { ...sent, description: 'Described.' },
+    });
+
+    expect(body.error).toBeUndefined();
+    const read = await callAs(served.local, 'bureau.agents.definitions.get', { id: 'researcher' });
+    expect(read.result?.['definition']).toMatchObject({
+      models: [KNOWN_MODEL, OTHER_MODEL],
+      description: 'Described.',
+    });
   });
 
   it.each([

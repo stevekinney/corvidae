@@ -45,7 +45,8 @@ const definitionSchema = z.object({
   model: z.string(),
   /**
    * The models a session of the agent may be switched to (COR-1559), or `null` when the file lists
-   * none. The editor never edits it: a save that omits it keeps the list the file has.
+   * none. The editor never edits it, but a save sends it back unchanged, as it does `skills`: an
+   * update that omits it removes the list.
    */
   models: z.array(z.string()).nullable().default(null),
   tools: z.array(z.string()),
@@ -112,8 +113,8 @@ export type AgentDefinitionInput = {
   readonly description: string | null;
   readonly model: string;
   /**
-   * The models a session may be switched to. Left out, an update keeps the list the file has;
-   * `null` removes it.
+   * The models a session may be switched to. Left out (or `null`), an update removes the list, as
+   * it does `tools`.
    */
   readonly models?: readonly string[] | null;
   readonly tools: readonly string[];
