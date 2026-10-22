@@ -1442,6 +1442,24 @@ describe('createAuditTrail', () => {
       trail.dispose();
     });
 
+    it('records a schedule transition the outbox replays once, dated when it committed (COR-194)', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const { bureau, emit } = createStubBureau();
+      const trail = createAuditTrail(bureau, kv);
+      const record = { dedupeKey: 'bureau-schedule-transition:schedule-1:1', committedAtMs: 42 };
+
+      emit(new ScheduleCancelledEvent('schedule-1', record));
+      await trail.query({ runId: 'schedule:schedule-1' });
+      emit(new ScheduleCancelledEvent('schedule-1', record));
+      const records = await trail.query({ runId: 'schedule:schedule-1' });
+
+      expect(records.map((each) => [each.type, each.timestampMs])).toEqual([
+        ['schedule.cancelled', 42],
+      ]);
+
+      trail.dispose();
+    });
+
     it('query({ runId }) waits for that owner\'s still-in-flight write, giving read-your-writes even against a KV whose set() resolves asynchronously (Codex P2 review finding, PR #566, "Wait for schedule audit writes before returning success")', async () => {
       const { kv, release, setCallCount } = createControllableKv();
       const { bureau, emit } = createStubBureau();

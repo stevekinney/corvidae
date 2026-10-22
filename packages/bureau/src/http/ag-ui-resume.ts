@@ -56,6 +56,7 @@ import {
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,
 } from './ag-ui-resume-messages.ts';
 import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
+import type { AnswerRow } from './ag-ui-messages.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { eventsResponse } from './ag-ui-sink.ts';
 import {
@@ -225,7 +226,7 @@ export function createResume(context: ResumeContext) {
     result: ResumeResult,
     fresh?: {
       readonly prelude?: () => Event[];
-      readonly answerRows?: ReadonlyArray<{ readonly id: string; readonly content: string }>;
+      readonly answerRows?: ReadonlyArray<AnswerRow>;
     },
   ): Response {
     if (readableAs === undefined) return acknowledgement(request);
@@ -266,8 +267,8 @@ export function createResume(context: ResumeContext) {
     request: ResumeRequest,
     reviews: ReadonlyMap<string, PendingReview>,
     delivered: (entry: ResumeEntry) => boolean,
-  ): Array<{ id: string; content: string }> {
-    const rows: Array<{ id: string; content: string }> = [];
+  ): AnswerRow[] {
+    const rows: AnswerRow[] = [];
     for (const entry of request.entries) {
       const review = reviews.get(entry.interruptId);
       if (review?.kind !== 'human-wait' || !delivered(entry)) continue;
@@ -395,7 +396,7 @@ export function createResume(context: ResumeContext) {
       }
       const answered = await running.work;
       if ('code' in answered) return context.refuse(answered.code, answered.message);
-      return streamFor(request, await request.readableAs(), answered.result);
+      return streamForRetry(request, await request.readableAs(), reviews, answered.result);
     }
     const work = settle(request, reviews, identity, digest, key);
     inFlight.set(key, { digest, work });
@@ -408,16 +409,9 @@ export function createResume(context: ResumeContext) {
     }
   }
 
-  /** The stream of an answer: a fresh one gets what the client has not seen, any other attaches to the run as it stands. */
-  async function streamForSettled(
-    request: ResumeRequest,
-    readableAs: string | undefined,
-    reviews: ReadonlyMap<string, PendingReview>,
-    { result, applied }: Settled,
-  ): Promise<Response> {
-    if (!applied) return streamFor(request, readableAs, result);
-    // Whether this attempt, or an attempt it took over, put the entry's answer to work.
-    const delivered = (entry: ResumeEntry): boolean =>
+  /** Whether an attempt, or an attempt it took over, put an entry's answer to work. */
+  function deliveredBy(result: ResumeResult): (entry: ResumeEntry) => boolean {
+    return (entry) =>
       result.recovered === true ||
       result.outcomes.some(
         (outcome) =>
@@ -425,6 +419,35 @@ export function createResume(context: ResumeContext) {
           (outcome.outcome === 'applied' ||
             (result.takenOver === true && outcome.outcome === 'no-op')),
       );
+  }
+
+  /**
+   * The stream of a retry, which attaches to the run as it stands: one that joined the attempt
+   * applying the answer, or found its command already completed. Such a stream can open before the
+   * run has appended its answer row, so it carries the rows the command's recorded result names,
+   * as the stream of the attempt itself does (the snapshot never adds a row the conversation holds).
+   */
+  function streamForRetry(
+    request: ResumeRequest,
+    readableAs: string | undefined,
+    reviews: ReadonlyMap<string, PendingReview>,
+    result: ResumeResult,
+  ): Response {
+    if (result.mode !== 'continued') return streamFor(request, readableAs, result);
+    return streamFor(request, readableAs, result, {
+      answerRows: answerRowsOf(request, reviews, deliveredBy(result)),
+    });
+  }
+
+  /** The stream of an answer: a fresh one gets what the client has not seen, any other attaches to the run as it stands. */
+  async function streamForSettled(
+    request: ResumeRequest,
+    readableAs: string | undefined,
+    reviews: ReadonlyMap<string, PendingReview>,
+    { result, applied }: Settled,
+  ): Promise<Response> {
+    if (!applied) return streamForRetry(request, readableAs, reviews, result);
+    const delivered = deliveredBy(result);
     if (result.mode === 'continued') {
       return streamFor(request, readableAs, result, {
         answerRows: answerRowsOf(request, reviews, delivered),
