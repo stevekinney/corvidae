@@ -48,7 +48,7 @@ import {
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
-import { createEchoAgents, ECHO_AGENT_NAME } from './echo-agent.ts';
+import { createEchoAgents, IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { createFireQuestionGenerate } from './fire-question.ts';
 import {
   createJourneyProviderResolver,
@@ -105,7 +105,7 @@ function createFixtureEngine() {
 let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // Two agents whose first step waits until a spec releases it (`barrier-agent.ts`), published
 // beside the seeded ones. Every chat case that needs a run still in progress uses them. A third,
-// the echo (`echo-agent.ts`), takes an attached image and sends it back. Two more, the text echoes
+// the image echo (`echo-agent.ts`), takes an attached image and sends it back. Two more, the text echoes
 // (`text-echo-agent.ts`), answer with what they were sent, so a memory spec can store a memory that
 // is its own. Two more again (`question-agents.ts`) ask the person more than one thing.
 const barrier = createBarrier();
@@ -122,7 +122,7 @@ const host = await startHost({
     published: [
       BARRIER_AGENT_NAME,
       BARRIER_SHORT_AGENT_NAME,
-      ECHO_AGENT_NAME,
+      IMAGE_ECHO_AGENT_NAME,
       TEXT_ECHO_AGENT_NAME,
       TEXT_ECHO_SOLO_AGENT_NAME,
       TWO_QUESTIONS_AGENT_NAME,
@@ -275,7 +275,12 @@ const journeyHost = await startHost({
       ...createEchoAgents(),
       ...createRecallAgents(),
     },
-    published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME, ECHO_AGENT_NAME, RECALL_AGENT_NAME],
+    published: [
+      BARRIER_AGENT_NAME,
+      BARRIER_SHORT_AGENT_NAME,
+      IMAGE_ECHO_AGENT_NAME,
+      RECALL_AGENT_NAME,
+    ],
   },
   environment: { INTERBOROUGH_HOME: journeyHome },
   resolveProviderGenerate: createJourneyProviderResolver(

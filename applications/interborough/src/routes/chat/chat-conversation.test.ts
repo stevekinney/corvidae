@@ -171,6 +171,85 @@ describe('a new chat', () => {
   });
 });
 
+describe('quoting an agent’s reply', () => {
+  /**
+   * Waits until the run is over, which is when Chat stops offering Stop. A message sent before that
+   * is a follow-up to the run in flight, and these tests are about the message that starts one. The
+   * wait asserts a boolean, not the element's absence: a failed `expect` on an element makes Bun
+   * print the whole DOM, which crashes Bun 1.4.2 (`scripts/check-wait-for-element-assertions.ts`).
+   */
+  async function settled(container: HTMLElement): Promise<void> {
+    await waitFor(() =>
+      expect(container.querySelector('[aria-label="Stop generating"]') === null).toBe(true),
+    );
+  }
+
+  /** A Bureau whose agent answers `reply`, recording the body of every run it is asked to start. */
+  function replying(
+    reply: string,
+    bodies: Array<{ messages: Array<{ role: string; content: unknown }> }>,
+  ) {
+    return bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT] }),
+        'bureau.contexts.get': () => ({ ...CONTEXT, id: 'thread-1', title: 'Quoting' }),
+        'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
+      },
+      (url, init) => {
+        if (!url.includes('/ag-ui/agents/')) return undefined;
+        const input = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+          threadId: string;
+          runId: string;
+          messages: Array<{ role: string; content: unknown }>;
+        };
+        bodies.push(input);
+        return sse([
+          { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId },
+          { type: 'TEXT_MESSAGE_START', messageId: `reply-${bodies.length}`, role: 'assistant' },
+          {
+            type: 'TEXT_MESSAGE_CONTENT',
+            messageId: `reply-${bodies.length}`,
+            delta: reply,
+          },
+          { type: 'TEXT_MESSAGE_END', messageId: `reply-${bodies.length}` },
+          {
+            type: 'RUN_FINISHED',
+            threadId: input.threadId,
+            runId: input.runId,
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    );
+  }
+
+  test('offers Quote on an agent’s reply, gathers the quote above the composer, and sends it as a block quote ahead of the typed text', async () => {
+    const bodies: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
+    restore = replying('The first item is alpha.', bodies).restore;
+    landAt('/chat/new?agent=assistant');
+    const { container, findByRole, findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+    await sendMessage(container, 'List the items');
+    await findByText('The first item is alpha.');
+    // The first run is over, so the next message starts a run of its own and is not a follow-up.
+    await settled(container);
+
+    await fireEvent.click(await findByRole('button', { name: 'Quote message' }));
+    const chips = await findByRole('list', { name: 'Quoted excerpts' });
+    expect(chips.textContent).toContain('The first item is alpha.');
+
+    await sendMessage(container, 'Why first?');
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    const sent = bodies[1]?.messages.findLast((message) => message.role === 'user');
+    expect(sent?.content).toBe('> The first item is alpha.\n\nWhy first?');
+  });
+});
+
 describe('an existing session', () => {
   test('shows its title and its agent once, and no agent chooser', async () => {
     const served = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
