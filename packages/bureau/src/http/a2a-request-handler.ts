@@ -204,6 +204,7 @@ export type A2ABureau = Pick<
   Bureau,
   | 'createRun'
   | 'getRun'
+  | 'getSession'
   | 'getOwner'
   | 'submitSessionInput'
   | 'eventHistory'
@@ -720,6 +721,17 @@ export function createBureauA2ARequestHandler(
       throw invalid(
         `contextId '${message.contextId}' is not the context of task '${view.id}' (${recordedContext}).`,
       );
+    }
+    // A context deleted and created again under the same id is a new one: a task of the earlier
+    // incarnation does not continue in it, whatever state the task is in.
+    const stored = await bureau.tasks.record(view.id);
+    if (stored !== undefined && stored.incarnation !== '') {
+      const session = await bureau.getSession(view.contextId);
+      if ((session?.incarnation ?? '') !== stored.incarnation) {
+        throw invalid(
+          `Task '${view.id}' belongs to an earlier incarnation of context '${view.contextId}', which was deleted.`,
+        );
+      }
     }
     if (isTerminal(view.status)) {
       throw new UnsupportedOperationError(

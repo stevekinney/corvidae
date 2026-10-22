@@ -1087,3 +1087,25 @@ describe('the third review pass', () => {
     });
   });
 });
+
+describe('a context deleted and created again', () => {
+  it('refuses a continuation of the earlier incarnation’s task with -32602, and lists only the new one', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const old = await sendForTask(opened, 'asker', {
+        message: message('first life', { contextId: 'ctx-reused' }),
+      });
+      await opened.bureau.deleteSession('ctx-reused');
+      const fresh = await sendForTask(opened, 'asker', {
+        message: message('second life', { contextId: 'ctx-reused' }),
+      });
+
+      const continued = await send(opened, 'asker', {
+        message: message('again', { taskId: old.id, contextId: 'ctx-reused' }),
+      });
+      const listed = await call(opened, 'asker', 'ListTasks', { contextId: 'ctx-reused' });
+
+      expect(continued.body.error.code).toBe(-32602);
+      expect(listed.body.result.tasks.map((task: Json) => task.id)).toEqual([fresh.id]);
+    });
+  });
+});
