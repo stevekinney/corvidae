@@ -1,4 +1,4 @@
-import type { Engine } from '../../core/engine.ts';
+import { UndeclaredWorkflowMessageError, type Engine } from '../../core/engine.ts';
 import type { WeftErrorCode } from '../../core/weft-error.ts';
 import type { Storage } from '../../storage/interface.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
@@ -97,6 +97,16 @@ export function unprocessableFault(message: string): OperationFault {
     message,
     data: { reason: message },
   };
+}
+
+/**
+ * The `Unprocessable` a signal, update, or query answers when the workflow
+ * declared messages of that kind and this name is not one of them, or
+ * `undefined` when `error` is not that rejection.
+ */
+export function undeclaredMessageFault(error: unknown): OperationFault | undefined {
+  if (!(error instanceof UndeclaredWorkflowMessageError)) return undefined;
+  return unprocessableFault(error.message);
 }
 
 export function engineFailureFault(message: string): OperationFault {

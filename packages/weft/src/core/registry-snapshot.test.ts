@@ -587,22 +587,24 @@ describe('buildRegistrySnapshot', () => {
     expect(serialized.activities['__proto__']).toBeDefined();
   });
 
-  it('omits activity tags from the snapshot (tags do not surface in codegen function types)', async () => {
-    // Documented contract: activity entries do not include `tags`. The codegen
-    // CLI (the primary consumer) emits activities as TypeScript function types,
-    // which have no place for tags. If the contract changes, this test will
-    // start failing and the type/comment can be updated together.
+  it('reports activity tags and idempotency as snapshot metadata', async () => {
+    // Tags and idempotency are catalog/operational metadata: they appear in the
+    // snapshot, never in a workflow's hashed contract.
     engine = createEngine();
     engine.register(
       activity({
         name: 'tagged',
         execute: async () => undefined,
         tags: ['observability', 'critical'],
+        idempotent: true,
       }),
     );
 
     const snapshot = await buildRegistrySnapshot(engine);
-    expect(snapshot.activities['tagged']).not.toHaveProperty('tags');
+    expect(snapshot.activities['tagged']).toMatchObject({
+      tags: ['observability', 'critical'],
+      idempotent: true,
+    });
   });
 
   it('folds a workflow-scoped activity schema into that workflow manifest’s contractHash and revision (WFT-6)', async () => {

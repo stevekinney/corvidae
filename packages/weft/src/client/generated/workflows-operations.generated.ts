@@ -112,7 +112,7 @@ export type WorkflowsOperationTypes = {
       readonly workflowId: string;
     };
     readonly output: unknown;
-    readonly faults: 'NotImplemented';
+    readonly faults: 'NotImplemented' | 'Unprocessable';
   };
   'weft.workflows.result.get': {
     readonly input: { readonly workflowId: string };

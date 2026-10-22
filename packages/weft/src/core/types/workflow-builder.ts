@@ -24,6 +24,8 @@ import type {
   QueryMap,
   SignalMap,
   UpdateMap,
+  UsedActivityDefinition,
+  UsesMapInput,
 } from './workflow-builder-helpers.ts';
 import type { WorkflowContext } from './workflow-context.ts';
 import type { WorkflowDefinition, WorkflowOperation } from './workflow-function.ts';
@@ -128,6 +130,7 @@ export interface BuilderState {
   readonly queries: boolean;
   readonly searchAttributes: boolean;
   readonly services?: boolean | undefined;
+  readonly uses?: boolean | undefined;
 }
 
 /**
@@ -150,6 +153,7 @@ export interface InitialBuilderState {
   readonly queries: false;
   readonly searchAttributes: false;
   readonly services?: false | undefined;
+  readonly uses?: false | undefined;
 }
 
 /**
@@ -167,14 +171,23 @@ export interface InitialBuilderState {
  * void _check;
  * ```
  */
-export type MarkBuilderState<
-  S extends BuilderState,
-  K extends keyof BuilderState,
-> = K extends 'services'
-  ? Omit<S, 'services'> & { readonly services: true }
+export type MarkBuilderState<S extends BuilderState, K extends keyof BuilderState> = K extends
+  'services' | 'uses'
+  ? Omit<S, K> & { readonly [P in K]: true }
   : {
       readonly [P in keyof S]: P extends K ? true : S[P];
     };
+
+/**
+ * Combine the activity tables `.activities()` and `.uses()` each contribute,
+ * in either call order. A builder that has not declared any activities yet
+ * carries `{}`, which is returned unchanged so a single declaration keeps its
+ * exact normalized type.
+ */
+type MergeActivities<
+  TExisting extends ActivityMap,
+  TAdded extends ActivityMap,
+> = keyof TExisting extends never ? TAdded : TExisting & TAdded;
 
 // ---------------------------------------------------------------------------
 // Engine name-conflict guard (used by Engine.register's type signature)
@@ -276,7 +289,7 @@ export interface WorkflowBuilder<
         map: TInput,
       ) => WorkflowBuilder<
         TName,
-        NormalizeActivities<TInput>,
+        MergeActivities<TActivities, NormalizeActivities<TInput>>,
         TSignals,
         TUpdates,
         TQueries,
@@ -286,11 +299,52 @@ export interface WorkflowBuilder<
       >;
 
   /**
+   * Declare the engine-provided activities this workflow calls with
+   * `ctx.run('name', input)`: activities registered on the engine through
+   * `Engine.create({ activities })` or `engine.register(activity)` rather than
+   * scoped to this workflow by `.activities()`. Each key must equal the
+   * activity's own `name`. The declaration puts the activity's schemas in the
+   * workflow's contract and links the workflow to the activity in the registry
+   * snapshot; dispatch still resolves the engine's registered implementation.
+   * A name declared in both `.activities()` and `.uses()` throws at
+   * `.execute()`. Calling `.uses` twice before `.execute()` is a type error and
+   * throws `WorkflowBuilderError` at runtime.
+   *
+   * @example
+   * ```ts
+   * import { activity, workflow } from '@lostgradient/weft';
+   * const greet = activity({ name: 'greet', execute: async (name: string) => `Hello, ${name}` });
+   * const welcome = workflow({ name: 'welcome' })
+   *   .uses({ greet })
+   *   .execute(async function* (ctx, input: string) {
+   *     return yield* ctx.run('greet', input);
+   *   });
+   * void welcome;
+   * ```
+   */
+  uses: TState['uses'] extends true
+    ? never
+    : <TInput extends UsesMapInput>(
+        map: TInput,
+      ) => WorkflowBuilder<
+        TName,
+        MergeActivities<TActivities, NormalizeActivities<TInput>>,
+        TSignals,
+        TUpdates,
+        TQueries,
+        TSearchAttributes,
+        MarkBuilderState<TState, 'uses'>,
+        TServices
+      >;
+
+  /**
    * Declare the signals this workflow accepts so `ctx.waitForSignal('name')`
-   * autocompletes and types the payload. Type-safety and introspection
-   * metadata only — `.signals` does not introduce new runtime gating on top
-   * of the existing dispatch path. Calling `.signals` twice before
-   * `.execute()` is a type error and throws `WorkflowBuilderError` at runtime.
+   * autocompletes and types the payload. Declaring signals closes the set:
+   * the engine rejects a signal under any other name with
+   * `UndeclaredWorkflowMessageError` before buffering it, while a workflow
+   * that declares no signals accepts any name. Calling `.signals` twice
+   * before `.execute()` is a type error and throws `WorkflowBuilderError` at
+   * runtime.
    *
    * @example
    * ```ts
@@ -320,9 +374,11 @@ export interface WorkflowBuilder<
 
   /**
    * Declare the request-response update handlers this workflow accepts.
-   * Type-safety and introspection metadata only — the update-dispatch path
-   * is unchanged. Calling `.updates` twice before `.execute()` is a type
-   * error and throws `WorkflowBuilderError` at runtime.
+   * Declaring updates closes the set: the engine rejects an update under any
+   * other name with `UndeclaredWorkflowMessageError` before dispatching or
+   * persisting it, while a workflow that declares no updates accepts any
+   * name. Calling `.updates` twice before `.execute()` is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -349,10 +405,12 @@ export interface WorkflowBuilder<
       >;
 
   /**
-   * Declare the read-only query handlers this workflow accepts. Type-safety
-   * and introspection metadata only — `.queries` does not introduce new
-   * runtime gating. Calling `.queries` twice before `.execute()` is a type
-   * error and throws `WorkflowBuilderError` at runtime.
+   * Declare the read-only query handlers this workflow accepts. Declaring
+   * queries closes the set: the engine running the workflow rejects a query
+   * under any other name with `UndeclaredWorkflowMessageError` (the built-in
+   * `activityProgress` query always answers), while a workflow that declares
+   * no queries accepts any name. Calling `.queries` twice before `.execute()`
+   * is a type error and throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -534,6 +592,8 @@ export interface BuiltWorkflowDefinition<
   TServices = unknown,
 > extends WorkflowDefinition<TInput, TOutput, TName, TServices> {
   readonly activities: Readonly<Record<string, Readonly<ActivityDefinition>>>;
+  /** Engine-provided activities declared with `.uses()`; present only when that map is non-empty. */
+  readonly uses?: Readonly<Record<string, UsedActivityDefinition>>;
   readonly signals: Readonly<Record<string, Readonly<SignalDefinition<unknown>>>>;
   readonly updates: Readonly<Record<string, Readonly<UpdateDefinition>>>;
   readonly queries: Readonly<Record<string, Readonly<QueryDefinition>>>;

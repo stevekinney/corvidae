@@ -10,7 +10,11 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import { assertOperationEngineMethods, isOperationFault } from './operation-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  isOperationFault,
+  undeclaredMessageFault,
+} from './operation-helpers.ts';
 
 const DEFAULT_UPDATE_TIMEOUT_MS = 30_000;
 
@@ -38,6 +42,8 @@ export type UpdateWorkflowOutput = z.infer<typeof updateWorkflowOutput>;
 /** Map an error from `submitCoordinatedUpdate` to the operation fault the update surfaces. */
 function toUpdateWorkflowFault(error: unknown): OperationFault {
   if (isOperationFault(error)) return error;
+  const undeclared = undeclaredMessageFault(error);
+  if (undeclared !== undefined) return undeclared;
   const schemaFault = standardSchemaValidationFault(error);
   if (schemaFault !== undefined) return schemaFault;
   if (error instanceof UpdateValidationError) {
@@ -82,7 +88,8 @@ export const updateWorkflowOperation = defineOperation({
     'Invoke a named update handler on a workflow and wait for its result. Requires the ' +
     'workflow `id` and the update `name`; `payload` is optional. Unlike signals, updates ' +
     'return the handler result synchronously. Faults with NotFound when the workflow is not ' +
-    'visible and InvalidParams when the payload exceeds the size limit. A Timeout fault carries ' +
+    'visible, InvalidParams when the payload exceeds the size limit, and Unprocessable when ' +
+    'the workflow declares its updates and this name is not one of them. A Timeout fault carries ' +
     'the `updateId` in its `data`: the update stays queued, and its answer is read later with ' +
     '`weft.updates.result.get` or listed by `weft.workflows.updates.list`.',
   destructive: true,
