@@ -98,7 +98,9 @@ describe('parkedHumanWait', () => {
 describe('a refused park request never counts as a park (COR-1578)', () => {
   it('counts an a-then-refused-b step as the one park of a one-call step', () => {
     expect(countHumanWaitParks([parked('a'), refused('b')])).toBe(1);
-    expect(countHumanWaitParks([parked('a'), refused('b')])).toBe(countHumanWaitParks([parked('a')]));
+    expect(countHumanWaitParks([parked('a'), refused('b')])).toBe(
+      countHumanWaitParks([parked('a')]),
+    );
     expect(humanWaitParkSignalNames([parked('a'), refused('b')])).toEqual(['a']);
     expect(humanWaitParks([refused('a')])).toEqual([]);
   });

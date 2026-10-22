@@ -7,22 +7,42 @@
  * answer appends is `<runId>:signal:<signalName>:<ordinal>`. There is one rule for
  * counting, here, and Bureau reads it from here: consecutive parked
  * `requestHumanInput` results of one step under the same signal name are one park,
- * and a different signal name starts the next.
+ * and a different signal name starts the next. A step now parks on at most one request, so a step
+ * written since COR-1578 holds at most one park; the rule stays for the checkpoints written before
+ * it, which can hold several. A refused request is not parked and counts for nothing.
  *
  * @module human-wait-parks
  */
 
 type ParkableResult = { readonly toolName?: string | undefined; readonly result?: unknown };
 
-/** The signal name a parked `requestHumanInput` result waits on, or `undefined` if it is not one. */
-export function parkedSignalName(result: ParkableResult): string | undefined {
+/** What a parked `requestHumanInput` result holds: the signal it waits on, and the prompt it asked with if any. */
+export type ParkedHumanWait = {
+  readonly signalName: string;
+  readonly prompt?: string | undefined;
+};
+
+/**
+ * The park a `requestHumanInput` result holds, or `undefined` if it holds none. A refused request
+ * (COR-1578) carries `parked: false` and so can never narrow as parked: this is the one place that
+ * decides what a parked result looks like, and the signal name, the park count and a review rebuilt
+ * from a checkpoint all read it from here.
+ */
+export function parkedHumanWait(result: ParkableResult): ParkedHumanWait | undefined {
   if (result.toolName !== 'requestHumanInput') return undefined;
   const value = result.result;
   if (typeof value !== 'object' || value === null) return undefined;
-  const candidate = value as { parked?: unknown; signalName?: unknown };
-  return candidate.parked === true && typeof candidate.signalName === 'string'
-    ? candidate.signalName
-    : undefined;
+  const candidate = value as { parked?: unknown; signalName?: unknown; prompt?: unknown };
+  if (candidate.parked !== true || typeof candidate.signalName !== 'string') return undefined;
+  return {
+    signalName: candidate.signalName,
+    ...(typeof candidate.prompt === 'string' ? { prompt: candidate.prompt } : {}),
+  };
+}
+
+/** The signal name a parked `requestHumanInput` result waits on, or `undefined` if it is not one. */
+export function parkedSignalName(result: ParkableResult): string | undefined {
+  return parkedHumanWait(result)?.signalName;
 }
 
 /** A park one step's results hold: the signal it waits on, and the prompt it asked with. */
@@ -41,16 +61,12 @@ export function humanWaitParks(results: ReadonlyArray<ParkableResult>): HumanWai
   const parks: HumanWaitPark[] = [];
   let previous: string | undefined;
   for (const result of results) {
-    const signalName = parkedSignalName(result);
-    if (signalName === undefined) continue;
-    if (previous !== signalName) {
-      const value = result.result as { prompt?: unknown };
-      parks.push({
-        signalName,
-        prompt: typeof value.prompt === 'string' ? value.prompt : undefined,
-      });
+    const park = parkedHumanWait(result);
+    if (park === undefined) continue;
+    if (previous !== park.signalName) {
+      parks.push({ signalName: park.signalName, prompt: park.prompt });
     }
-    previous = signalName;
+    previous = park.signalName;
   }
   return parks;
 }

@@ -13,7 +13,8 @@ const RUN = 'run-1';
 const parked = (signalName: string, prompt?: string) => ({
   outcome: 'success',
   toolName: 'requestHumanInput',
-  result: prompt === undefined ? { parked: true, signalName } : { parked: true, signalName, prompt },
+  result:
+    prompt === undefined ? { parked: true, signalName } : { parked: true, signalName, prompt },
 });
 
 const refusedHumanInput = (signalName: string, pendingSignal: string) => ({
@@ -74,7 +75,9 @@ describe('countCheckpointParks ignores a refused park request (COR-1578)', () =>
 });
 
 describe('a fire commits no review for a refused park request (COR-1578)', () => {
-  const steps = [{ results: [parked('a', 'Approve a?'), refusedHumanInput('b', 'a'), refusedWakeup] }];
+  const steps = [
+    { results: [parked('a', 'Approve a?'), refusedHumanInput('b', 'a'), refusedWakeup] },
+  ];
 
   it('names only the honored park in the committed review ids', () => {
     expect([...committedFireReviewIds(RUN, steps)]).toEqual([`human-wait:${RUN}:a:0`]);
@@ -82,10 +85,7 @@ describe('a fire commits no review for a refused park request (COR-1578)', () =>
 
   it('rebuilds only the honored park, with its prompt', () => {
     expect([...committedFireReviews(RUN, steps)]).toEqual([
-      [
-        `human-wait:${RUN}:a:0`,
-        { kind: 'human-wait', signalName: 'a', prompt: 'Approve a?' },
-      ],
+      [`human-wait:${RUN}:a:0`, { kind: 'human-wait', signalName: 'a', prompt: 'Approve a?' }],
     ]);
   });
 });
