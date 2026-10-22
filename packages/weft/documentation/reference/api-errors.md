@@ -151,6 +151,7 @@ The registered public vocabulary—every code `isWeftErrorCode` accepts—with t
 | `ActivityPerAttemptTimeoutError`            | `core/context/activity-schedule-to-close.ts`   |
 | `PayloadSizeExceededError`                  | `core/payload-size.ts`                         |
 | `StartOrSignalConflictError`                | `core/engine/errors.ts`                        |
+| `UndeclaredWorkflowMessageError`            | `core/engine/declared-messages.ts`             |
 | `WorkflowTeardownPendingError`              | `core/engine/errors.ts`                        |
 | `IdempotencyKeyPurgedError`                 | `core/engine/errors.ts`                        |
 | `WorkerManifestBuildError`                  | `worker/manifest/registry-contract-builder.ts` |

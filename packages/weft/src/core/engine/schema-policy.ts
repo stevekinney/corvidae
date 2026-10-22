@@ -142,13 +142,14 @@ type WorkflowMessageMaps = {
   readonly signals?: Readonly<Record<string, NamedSchemaFields>>;
   readonly updates?: Readonly<Record<string, NamedSchemaFields>>;
   readonly queries?: Readonly<Record<string, NamedSchemaFields>>;
+  readonly uses?: Readonly<Record<string, NamedSchemaFields>>;
 };
 
 /**
  * Every schema `definition` leaves undeclared, as dotted paths: its own input
  * and output, its finalizer's, each signal's input, each update's and
- * query's input and output, and each per-workflow activity's input and
- * output. A hand-rolled definition without the builder's message maps is
+ * query's input and output, and each per-workflow or `.uses()` activity's
+ * input and output. A hand-rolled definition without the builder's message maps is
  * checked for what it has.
  */
 export function collectMissingWorkflowSchemas(definition: WorkflowDefinition): string[] {
@@ -162,6 +163,7 @@ export function collectMissingWorkflowSchemas(definition: WorkflowDefinition): s
   collectNamed(missing, 'updates', maps.updates, BOTH, isUndeclared);
   collectNamed(missing, 'queries', maps.queries, BOTH, isUndeclared);
   collectNamed(missing, 'activities', maps.activities, BOTH, isUndeclared);
+  collectNamed(missing, 'uses', maps.uses, BOTH, isUndeclared);
   return missing;
 }
 

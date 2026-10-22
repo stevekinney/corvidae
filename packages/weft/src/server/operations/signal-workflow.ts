@@ -4,7 +4,7 @@ import { isSignalIdWithinByteLimit } from '../../core/signal-id.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';
 import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
-import { isOperationFault } from './operation-helpers.ts';
+import { isOperationFault, undeclaredMessageFault } from './operation-helpers.ts';
 import {
   createSingleWorkflowControlOperation,
   extractWorkflowIdFromPath,
@@ -34,15 +34,17 @@ export const signalWorkflowOperation = createSingleWorkflowControlOperation({
     'Deliver a named signal with an optional payload to a running workflow. Requires the ' +
     'workflow `id` and the signal `name`; `payload` is optional. Signals are fire-and-forget ' +
     'from the caller perspective and do not return a handler result. Faults with NotFound when ' +
-    'the workflow is not visible and InvalidParams when the payload exceeds the size limit.',
+    'the workflow is not visible, InvalidParams when the payload exceeds the size limit, and ' +
+    'Unprocessable when the workflow declares its signals and this name is not one of them.',
   destructive: true,
   scope: 'signals:write',
   tags: ['Signals'],
   inputSchema: signalWorkflowInput,
   outputSchema: signalWorkflowOutput,
-  producibleFaults: ['NotFound'],
+  producibleFaults: ['NotFound', 'Unprocessable'],
   requiredEngineMethods: ['signal'],
-  mapErrorToFault: ({ error }) => standardSchemaValidationFault(error),
+  mapErrorToFault: ({ error }) =>
+    undeclaredMessageFault(error) ?? standardSchemaValidationFault(error),
   invoke: async ({ input, engine }): Promise<SignalWorkflowOutput> => {
     await engine.signal(
       input.workflowId,
