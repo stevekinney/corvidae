@@ -126,14 +126,16 @@ describe('a peer stream whose history subscription is closed by a read fault', (
 
     fault.arm();
     await driveUntil(() => stream.ended, 'the peer stream to end');
-    const outcome = await stream.frames.then(
-      (frames) => ({ frames }),
-      (error: unknown) => ({ error }),
-    );
+    const frames = await stream.frames;
 
     expect(fault.failed).toBe(1);
-    // The client saw the snapshot, and then the stream closed without a terminal status.
-    const frames = 'frames' in outcome ? outcome.frames : [];
+    // The client saw the snapshot, and then the control plane's `Unavailable` fault, which tells
+    // it to reconnect, and no terminal status.
+    expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot', 'error']);
+    expect(frames[1]?.data).toMatchObject({
+      code: 'Unavailable',
+      data: { reason: 'history-unavailable' },
+    });
     expect(statusesOf(frames)).not.toContain('completed');
     gate.resolve();
   });

@@ -32,6 +32,15 @@ async function timerArmed(shared: Storage): Promise<boolean> {
   return tick !== null && index !== null;
 }
 
+const transitions = {
+  pause: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
+    engine.pauseSchedule(SCHEDULE_ID, options),
+  resume: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
+    engine.resumeSchedule(SCHEDULE_ID, options),
+  cancel: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
+    engine.cancelSchedule(SCHEDULE_ID, options),
+} as const;
+
 describe('orphan-timer recovery that loses its condition', () => {
   it('re-arms an active schedule whose current run ended on another engine meanwhile', async () => {
     const { clock, shared, b, engineA, engineB } = await openEngines();
@@ -110,15 +119,6 @@ describe('orphan-timer recovery that loses its condition', () => {
 // `updateSchedule` takes no caller conditions (`ScheduleUpdateOptions` has no `extraConditions`),
 // so it has no such boundary to refuse at.
 describe('a caller condition or operation on a key Weft reserves', () => {
-  const transitions = {
-    pause: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
-      engine.pauseSchedule(SCHEDULE_ID, options),
-    resume: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
-      engine.resumeSchedule(SCHEDULE_ID, options),
-    cancel: (engine: Awaited<ReturnType<typeof openEngines>>['engineA'], options: object) =>
-      engine.cancelSchedule(SCHEDULE_ID, options),
-  } as const;
-
   for (const [name, run] of Object.entries(transitions)) {
     it(`is refused by ${name} with a typed error, and nothing is written`, async () => {
       const { shared, a, engineA, engineB } = await openEngines();
@@ -201,6 +201,73 @@ describe('a caller condition or operation on a key Weft reserves', () => {
     const { status } = await stateOf(shared);
     expect(status).toBe('active');
   });
+});
+
+describe('a pause or cancel that a caller condition refuses', () => {
+  for (const name of ['pause', 'cancel'] as const) {
+    it(`${name}: leaves the schedule active with its timer, and it still fires`, async () => {
+      const { clock, shared, engineA } = await openEngines();
+      await shared.put('app:projection:flag', new Uint8Array([1]));
+      const before = await stateOf(shared);
+
+      const error = await rejectionOf(
+        (name === 'pause' ? engineA.pauseSchedule : engineA.cancelSchedule).call(
+          engineA,
+          SCHEDULE_ID,
+          {
+            extraConditions: [{ key: 'app:projection:flag', expectedValue: new Uint8Array([2]) }],
+            onExtraConditionsLost: () => new Error('the caller condition was lost'),
+          },
+        ),
+      );
+
+      expect(error).toMatchObject({ message: 'the caller condition was lost' });
+      expect(await stateOf(shared)).toEqual(before);
+      expect(await timerArmed(shared)).toBe(true);
+      await tickEngine(engineA, clock, before.nextFireAt!);
+      const { lastFireAt } = await stateOf(shared);
+      expect(lastFireAt).toBe(before.nextFireAt!);
+    });
+  }
+
+  it('still removes the timer when the transition commits', async () => {
+    const { shared, engineA } = await openEngines();
+
+    await engineA.pauseSchedule(SCHEDULE_ID);
+
+    expect(await timerArmed(shared)).toBe(false);
+    expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).toBeNull();
+  });
+});
+
+describe('the scheduler timer index is a key Weft reserves', () => {
+  const TIMER_INDEX = `timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`;
+
+  for (const [name, run] of Object.entries(transitions)) {
+    it(`${name} refuses a caller condition on it, and an operation that writes or deletes it`, async () => {
+      const { shared, engineA } = await openEngines();
+      if (name === 'resume') await engineA.pauseSchedule(SCHEDULE_ID);
+      const before = await shared.get(TIMER_INDEX);
+
+      const byCondition = await rejectionOf(
+        run(engineA, { extraConditions: [{ key: TIMER_INDEX, expectedValue: before }] }),
+      );
+      const byPut = await rejectionOf(
+        run(engineA, {
+          additionalOperations: [{ type: 'put', key: TIMER_INDEX, value: new Uint8Array([1]) }],
+        }),
+      );
+      const byDelete = await rejectionOf(
+        run(engineA, { additionalOperations: [{ type: 'delete', key: TIMER_INDEX }] }),
+      );
+
+      for (const error of [byCondition, byPut, byDelete]) {
+        expect(error).toBeInstanceOf(ScheduleReservedKeyError);
+        expect(error).toMatchObject({ key: TIMER_INDEX });
+      }
+      expect(await shared.get(TIMER_INDEX)).toEqual(before);
+    });
+  }
 });
 
 describe('the test storage that bounds a runaway retry', () => {
