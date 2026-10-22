@@ -28,17 +28,24 @@
   }: A2uiSurfaceProps = $props();
 
   const idPrefix = $props.id();
+  const reported = new Set<string>();
   const model = new A2uiDataModel(
     untrack(() => dataModel),
     (value) => onDataModelChange?.(value),
   );
 
-  // A new data model from the host (a server update) replaces the surface's copy.
+  // A new data model from the host (a server update) replaces the surface's
+  // copy, and so does a new surface: nothing one surface's user typed reaches
+  // another rendered in the same place.
   let seenDataModel = untrack(() => dataModel);
+  let seenSurfaceId = untrack(() => surfaceId);
   $effect.pre(() => {
     const next = dataModel;
-    if (next === seenDataModel) return;
+    const nextSurfaceId = surfaceId;
+    if (next === seenDataModel && nextSurfaceId === seenSurfaceId) return;
+    if (nextSurfaceId !== seenSurfaceId) reported.clear();
     seenDataModel = next;
+    seenSurfaceId = nextSurfaceId;
     model.replace(next);
   });
 
@@ -47,8 +54,6 @@
     for (const component of components) map.set(component.id, component);
     return map;
   });
-
-  const reported = new Set<string>();
 
   setA2uiRenderContext({
     get surfaceId() {
@@ -76,7 +81,10 @@
 
 <div class="a2ui-surface" data-a2ui-surface={surfaceId}>
   {#if byId.has('root')}
-    <A2uiNode id="root" scope="" ancestry={[]} />
+    <!-- Keyed by surface, so a new surface's nodes start without the last one's edits. -->
+    {#key surfaceId}
+      <A2uiNode id="root" scope="" ancestry={[]} />
+    {/key}
   {/if}
 </div>
 

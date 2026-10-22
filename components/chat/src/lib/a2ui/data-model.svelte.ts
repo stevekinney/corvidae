@@ -29,8 +29,10 @@ function plainCopy(value: A2uiJsonValue): A2uiJsonValue {
 const UNSAFE_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'prototype', 'constructor']);
 
 function childOf(container: Container, segment: string): A2uiJsonValue | undefined {
-  // Only own properties: a path must never walk into a prototype.
-  if (!Object.hasOwn(container, segment)) return undefined;
+  // Only own properties: a path must never walk into a prototype. `in` comes
+  // first because Svelte's state proxy tracks it, so a read of a key that is
+  // not there yet updates once a write adds it; `Object.hasOwn` is not tracked.
+  if (!(segment in container) || !Object.hasOwn(container, segment)) return undefined;
   return Array.isArray(container) ? container[Number(segment)] : container[segment];
 }
 

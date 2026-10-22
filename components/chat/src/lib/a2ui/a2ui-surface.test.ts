@@ -699,4 +699,48 @@ describe('review fixes', () => {
     );
     expect(screen.getByRole('img', { name: 'Favorite' })).not.toBeNull();
   });
+
+  test('an empty label still names its control, and an inherited icon name renders nothing', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'unnamed',
+        components: [
+          { id: 'root', component: 'Column', children: ['done', 'note', 'odd'] },
+          { id: 'done', component: 'CheckBox', label: '', value: false },
+          { id: 'note', component: 'TextField', label: '', value: '' },
+          { id: 'odd', component: 'Icon', name: '__defineGetter__' },
+        ],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(screen.getByRole('checkbox', { name: 'Checkbox' })).not.toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Text' })).not.toBeNull();
+    expect(container.querySelector('[data-a2ui-id="odd"] svg')).toBeNull();
+    expect(diagnostics.some((entry) => entry.code === 'unknown-icon')).toBe(true);
+  });
+
+  test('a new surfaceId starts from a fresh data model', async () => {
+    const components = [
+      { id: 'root', component: 'Column', children: ['name', 'echo'] },
+      { id: 'name', component: 'TextField', label: 'Name', value: { path: '/name' } },
+      { id: 'echo', component: 'Text', text: { path: '/name' }, variant: 'h2' },
+    ];
+    const { container, rerender } = render(A2uiSurface, {
+      props: { surfaceId: 'first', components },
+    });
+    await flush();
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Name' }), {
+      target: { value: 'Ada' },
+    });
+    await flush();
+    expect(container.querySelector('[data-a2ui-id="echo"]')?.textContent).toBe('Ada');
+
+    await rerender({ surfaceId: 'second', components });
+    await flush();
+
+    expect(container.querySelector('[data-a2ui-id="echo"]')?.textContent).toBe('');
+  });
 });

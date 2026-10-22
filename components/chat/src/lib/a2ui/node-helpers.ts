@@ -179,14 +179,24 @@ export function plainText(markdown: string): string {
 }
 
 /** An element id unique to a node instance (a template repeats component ids). */
-export function elementId(context: A2uiRenderContext, componentId: string, scope: string): string {
-  const raw = `${context.idPrefix}-${componentId}${scope === '' ? '' : `-${scope}`}`;
-  // Injective: every character outside [A-Za-z0-9-] becomes `_` and its code
-  // point, so two different ids never share an element id.
-  return raw.replace(
-    /[^A-Za-z0-9-]/g,
-    (character) => `_${character.codePointAt(0)?.toString(16)}_`,
-  );
+export function elementId(
+  context: A2uiRenderContext,
+  componentId: string,
+  scope: string,
+  part?: string,
+): string {
+  // Injective: each segment escapes every character outside [A-Za-z0-9] as `_`,
+  // its code point, and `_`, so `-` only ever separates segments, and no part
+  // of one component's id equals another component's id.
+  const segments = [context.idPrefix, componentId, scope, ...(part === undefined ? [] : [part])];
+  return segments
+    .map((segment) =>
+      segment.replace(
+        /[^A-Za-z0-9]/g,
+        (character) => `_${character.codePointAt(0)?.toString(16)}_`,
+      ),
+    )
+    .join('-');
 }
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;

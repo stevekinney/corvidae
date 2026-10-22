@@ -33,5 +33,10 @@ describe('node helpers', () => {
     );
     expect(new Set(ids).size).toBe(ids.length);
     expect(elementId(context, 'row', '/items/0')).not.toBe(elementId(context, 'row', '/items_0'));
+    // A part of one component's id never equals another component's id.
+    expect(elementId(context, 'field', '', 'description')).not.toBe(
+      elementId(context, 'field-description', ''),
+    );
+    expect(elementId(context, 'pick', '', 'one')).not.toBe(elementId(context, 'pick-one', ''));
   });
 });

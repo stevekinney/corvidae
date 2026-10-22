@@ -102,7 +102,7 @@
       context.report('component-cycle', id, `"${id}" contains itself`);
     } else if (problem === undefined && component?.component === 'Icon') {
       const name = resolveDynamicProp('name');
-      if (typeof name === 'string' && !A2UI_ICONS[name]) {
+      if (typeof name === 'string' && !(Object.hasOwn(A2UI_ICONS, name) && A2UI_ICONS[name])) {
         context.report('unknown-icon', id, `Cinder has no icon for "${name}"`);
       }
     } else if (problem === 'unsupported' && component !== undefined) {
@@ -179,7 +179,7 @@
   /** The explicit accessible name, which wins over any name inferred from content. */
   const accessibleName = $derived(accessibilityText('label'));
   const accessibleDescription = $derived(accessibilityText('description'));
-  const descriptionId = $derived(`${domId}-description`);
+  const descriptionId = $derived(elementId(context, id, scope, 'description'));
   /** Points a control at its explicit description, when it has one. */
   const describedBy = $derived(
     optional('aria-describedby', accessibleDescription === undefined ? undefined : descriptionId),
@@ -329,7 +329,10 @@
           <path d={(name as { svgPath: string }).svgPath} />
         </svg>
       {:else}
-        {@const Icon = typeof name === 'string' ? A2UI_ICONS[name] : undefined}
+        {@const Icon =
+          typeof name === 'string' && Object.hasOwn(A2UI_ICONS, name)
+            ? A2UI_ICONS[name]
+            : undefined}
         {#if Icon}
           {#if accessibleName === undefined}
             <Icon class="a2ui-icon" size={24} aria-hidden="true" />
@@ -473,7 +476,7 @@
       {#if control === 'textarea'}
         <Textarea
           id={domId}
-          label={nameOr(text('label'), '')}
+          label={nameOr(text('label'), 'Text')}
           {...describedBy}
           value={typeof value === 'string' ? value : ''}
           {...optional('error', error)}
@@ -484,7 +487,7 @@
       {:else if control === 'number-input'}
         <NumberInput
           id={domId}
-          label={nameOr(text('label'), '')}
+          label={nameOr(text('label'), 'Number')}
           {...describedBy}
           value={typeof value === 'number' ? value : (resolveNumber(value, evaluation) ?? null)}
           {...optional('error', error)}
@@ -496,7 +499,7 @@
         <Input
           id={domId}
           type={control === 'password' ? 'password' : 'text'}
-          label={nameOr(text('label'), '')}
+          label={nameOr(text('label'), 'Text')}
           {...describedBy}
           value={typeof value === 'string' ? value : ''}
           {...optional('error', error)}
@@ -507,7 +510,7 @@
     {:else if type === 'CheckBox'}
       <Checkbox
         id={domId}
-        label={nameOr(text('label'), '')}
+        label={nameOr(text('label'), 'Checkbox')}
         {...describedBy}
         checked={read('value') === true}
         {...optional('error', checkMessage)}
@@ -542,7 +545,7 @@
         >
           {#each options as option (option.value)}
             <Checkbox
-              id={`${domId}-${option.value}`}
+              id={elementId(context, id, scope, option.value)}
               label={option.label}
               checked={selected.includes(option.value)}
               onValueChange={(next: boolean) =>
@@ -577,7 +580,7 @@
         >
           {#each options as option (option.value)}
             <RadioGroup.Option
-              id={`${domId}-${option.value}`}
+              id={elementId(context, id, scope, option.value)}
               value={option.value}
               label={option.label}
             />
