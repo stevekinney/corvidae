@@ -43,7 +43,7 @@ import { holdsScope } from './tasks-operations.ts';
 export type BureauContextsOperationHost = BureauOwnershipHost & {
   readonly contexts: Pick<
     Bureau,
-    'getSession' | 'deleteSession' | 'getOwner' | 'lifecycle' | 'listSessions'
+    'getSession' | 'deleteSession' | 'getOwner' | 'lifecycle' | 'listSessions' | 'getSessionSteering'
   > & {
     readonly sessionStore: Bureau['sessionStore'];
   };
@@ -180,6 +180,18 @@ export const contextSummarySchema = z.object({
   activity: contextActivitySchema,
 });
 
+/**
+ * One context as `bureau.contexts.get` shows it: the summary, and what its steering has settled on
+ * (COR-1559). `model` is the latest admitted `model` override in the context's desired state,
+ * `null` before any, which means the agent's default; its `provider` is `null` for an override
+ * that named none. `configVersion` is the desired-state version a later command's
+ * `expectedRevision` is compared against.
+ */
+export const contextDetailSchema = contextSummarySchema.extend({
+  model: z.object({ provider: z.string().nullable(), model: z.string() }).nullable(),
+  configVersion: z.number().int().nonnegative(),
+});
+
 function projectContext(
   summary: SessionSummary,
   activity: ContextActivity | undefined,
@@ -275,18 +287,18 @@ const contextsGetInput = z.object({ contextId: z.string().min(1) });
 
 export const contextsGetOperation = defineOperation<
   typeof contextsGetInput,
-  typeof contextSummarySchema,
+  typeof contextDetailSchema,
   BureauContextsOperationHost
 >({
   name: 'bureau.contexts.get',
   mcpExposable: false,
   summary: 'Read one context',
   description:
-    'Returns the summary of one of the caller’s own contexts; a caller holding `bureau.contexts:read` reads any owner’s. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
+    'Returns the summary of one of the caller’s own contexts, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsGetInput,
-  outputSchema: contextSummarySchema,
+  outputSchema: contextDetailSchema,
   producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
   discoverable: true,
@@ -307,6 +319,13 @@ export const contextsGetOperation = defineOperation<
       [contextId],
       new Map([[contextId, session.incarnation]]),
     );
-    return projectContext(summarizeSession(session), activity.get(contextId));
+    // A context deleted while its steering was read is as missing as one that never was.
+    const steering = await host.contexts.getSessionSteering(contextId);
+    if (steering === undefined) throw resourceNotFound('context', contextId);
+    return {
+      ...projectContext(summarizeSession(session), activity.get(contextId)),
+      model: steering.model === null ? null : { ...steering.model },
+      configVersion: steering.configVersion,
+    };
   },
 });

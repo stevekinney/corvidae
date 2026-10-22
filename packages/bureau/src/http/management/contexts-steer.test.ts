@@ -234,7 +234,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
 
   it('answers unsupported-capability as data, with its reason', async () => {
     await withBureau(async (opened) => {
-      const run = await liveSession(opened);
+      const run = await liveSession(opened, 'anonymous:local');
       const handler = stubbed(opened, async () => ({
         outcome: 'unsupported-capability',
         reason: 'durable-steering-unavailable',
@@ -252,7 +252,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
 
   it('answers Bureau’s shutdown as rejected with shutting-down, not a fault', async () => {
     await withBureau(async (opened) => {
-      const run = await liveSession(opened);
+      const run = await liveSession(opened, 'anonymous:local');
       const handler = stubbed(opened, async () => {
         throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
       });
@@ -269,7 +269,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
 
   it('answers a not-found admission as a missing context', async () => {
     await withBureau(async (opened) => {
-      const run = await liveSession(opened);
+      const run = await liveSession(opened, 'anonymous:local');
       const handler = stubbed(opened, async () => ({ outcome: 'not-found' }));
 
       const body = await call(handler, run.sessionId);

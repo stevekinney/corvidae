@@ -161,8 +161,20 @@ const ASSET_PARAMETERS = {
   declaredByteLength: 1,
 } as const;
 
+/**
+ * What the steering and branching operations (COR-1559, COR-1560) need beside the context they name,
+ * a command identifier, a catalog model, and a message to branch from.
+ */
+const CONTEXT_COMMAND_PARAMETERS = {
+  commandId: 'command-1',
+  override: { provider: 'anthropic', model: 'claude-opus-5-5' },
+  throughMessageId: 'message-1',
+} as const;
+
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
+  // The one agent operation that names an agent and nothing else (COR-1559).
+  if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
@@ -656,6 +668,7 @@ describe('credentials', () => {
           bureauId: bureau.id,
           decision: 'approve',
           input: { id: 'input-1', payload: 'hello' },
+          ...CONTEXT_COMMAND_PARAMETERS,
           // The memory operations name the agent whose memory they read, and what to search or write.
           agentId: 'x',
           query: 'x',
@@ -758,6 +771,8 @@ describe('identifiers grant nothing', () => {
     return Object.keys(shape).filter(
       (key) =>
         key !== 'messageId' &&
+        key !== 'throughMessageId' &&
+        key !== 'commandId' &&
         key !== 'signalId' &&
         key !== 'callId' &&
         (key === 'id' || key.endsWith('Id')),
@@ -786,6 +801,7 @@ describe('identifiers grant nothing', () => {
               // is probed. Neither scope is held by `alice-key`, so every probe is `Forbidden`: the
               // two-owner proof for memory is `memory-operations.test.ts`.
               ...(operation.name.startsWith('bureau.memory.') ? MEMORY_PARAMETERS : {}),
+              ...CONTEXT_COMMAND_PARAMETERS,
               [parameter]: requested,
               decision: 'approve',
               input: { id: 'input-1', payload: 'hello' },
@@ -944,6 +960,7 @@ describe('transcripts stay inside the Bureau', () => {
           bureauId: bureau.id,
           decision: 'approve',
           input: { id: 'input-1', payload: 'hello' },
+          ...CONTEXT_COMMAND_PARAMETERS,
           // The memory operations name the agent whose memory they read, and what to search or write.
           agentId: 'x',
           query: 'x',

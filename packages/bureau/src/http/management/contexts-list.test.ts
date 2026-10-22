@@ -368,10 +368,12 @@ describe('bureau.contexts.get', () => {
       expect(Object.keys(body.result ?? {}).toSorted()).toEqual([
         'activity',
         'agentName',
+        'configVersion',
         'createdAt',
         'id',
         'lastMessagePreview',
         'messageCount',
+        'model',
         'owner',
         'title',
         'updatedAt',
