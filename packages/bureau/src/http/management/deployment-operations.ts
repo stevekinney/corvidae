@@ -147,7 +147,7 @@ const agentsListOutput = z.object({
       name: z.string(),
       displayName: z.string(),
       description: z.string().nullable(),
-      definitionRevision: z.number().int().nonnegative(),
+      definitionRevision: z.number().int().positive(),
       kind: z.enum(['code', 'file']),
       publishState: z.enum(['published', 'withdrawn', 'unpublished']),
       media: z

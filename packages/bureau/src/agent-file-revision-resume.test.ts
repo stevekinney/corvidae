@@ -53,9 +53,12 @@ function buildsOf(built: { mock: { calls: unknown[][] } }, name: string): Build[
 }
 
 function revisionBuiltFor(builds: readonly Build[], instructions: string): number[] {
-  return builds
-    .filter((build) => build.instructions === instructions)
-    .map((build) => build.revision ?? 0);
+  return (
+    builds
+      .filter((build) => build.instructions === instructions)
+      // An agent built with no revision reports 1, as `createAgent` defaults it.
+      .map((build) => build.revision ?? 1)
+  );
 }
 
 describe('a pending approval restored after a restart', () => {

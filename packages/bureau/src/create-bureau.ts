@@ -6620,7 +6620,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // COR-1584: the revision the run's own reference recorded. Only a reference written before
         // references named one falls back to the session's metadata, which names its latest run's.
         definitionRevision:
-          ownReference?.revision ?? sessionRecordedRevision(metadata, recordedHash),
+          ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
       },
     );
     if (resolution.status === 'resolved') return resolution.run;

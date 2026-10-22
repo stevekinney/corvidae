@@ -124,8 +124,12 @@ export interface FileAgentBinding {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
-  /** The definition revision the agent was built at; a run keeps it on its reference. */
-  readonly revision: number;
+  /**
+   * The definition revision the agent was built at, which a run keeps on its reference. Absent
+   * for an agent rebuilt from a snapshot for a run that recorded none, so that rebuilding does not
+   * record a revision 1 the run never had.
+   */
+  readonly definitionRevision?: number;
 }
 
 const fileAgentBindings = new WeakMap<object, FileAgentBinding>();
@@ -190,7 +194,8 @@ export interface AgentFileCatalog extends AgentFileWriter {
   /**
    * Rebuild the agent a run recorded, from its snapshot, resolving the model and tools afresh. The
    * agent reports `revision`, the definition revision the run recorded (a snapshot is keyed by
-   * content, so one snapshot can have been several revisions), or 1 when the caller has none.
+   * content, so one snapshot can have been several revisions), or 1 when the caller has none, in
+   * which case its binding records none either.
    */
   agentFromSnapshot(snapshot: AgentSnapshot, revision?: number): AnyRunnableAgent;
   /** Stop watching and wait for a scan in flight. */
@@ -264,6 +269,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   const recorded = new Map<string, AgentRevisionRecord>();
   /** The files whose record could not be read or written, by the hash they last failed at. */
   const failedAt = new Map<string, string>();
+  /** The files whose write was deferred, by the record's hash they were deferred against. */
+  const deferredAt = new Map<string, string>();
 
   function toListing(entry: FileEntry): AgentListing {
     const ready = entry.problem === undefined;
@@ -333,7 +340,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     hash: string,
     definition: AgentFileDefinition,
     descriptor: BackendDescriptor,
-    revision: number,
+    revision: number | undefined,
   ): AnyRunnableAgent {
     const tools: Record<string, Tool> = {};
     for (const name of definition.tools) tools[name] = options.tools[name] as Tool;
@@ -343,14 +350,19 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // mint a default instance and stamp its profile from the wall clock.
       runtime: options.runtime,
       name: id,
-      revision,
+      ...(revision === undefined ? {} : { revision }),
       generate: options.resolveGenerate(descriptor),
       ...(definition.description === null ? {} : { description: definition.description }),
       ...(definition.skills.length === 0 ? {} : { skillDescriptors: definition.skills }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
     }) as AnyRunnableAgent;
-    fileAgentBindings.set(agent, { id, hash, definition, revision });
+    fileAgentBindings.set(agent, {
+      id,
+      hash,
+      definition,
+      ...(revision === undefined ? {} : { definitionRevision: revision }),
+    });
     return agent;
   }
 
@@ -424,7 +436,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * authority, and another process on the same store may have raised it while this catalog was not
    * looking (a peer's edit and revert between two scans leaves this catalog's last-seen hash equal
    * to the file's while the record is two revisions on). Reading writes nothing when the record
-   * already describes `hash`. A record that cannot be read or written leaves the last known
+   * already describes `hash`.
+   *
+   * A catalog adopts the record freely but writes a new revision only from a reading it can trust
+   * is current. A scan reads the file, and settles it against the store later; a peer may edit and
+   * record the new content in between. If the record describes other content while `hash` is what
+   * this catalog itself last recorded, the scan may be that stale reading, and writing would record
+   * a revert that never happened. The write is deferred once for that record: the revision is kept
+   * for this scan, and the next scan decides (a stale reading does not repeat, and a genuine revert
+   * the peer never saw is written then). A record
+ that cannot be read or written leaves the last known
    * revision, or 1, and the next scan tries again; the failure is reported when it is new (the
    * first after a success, or at a different hash), not on every scan that finds the store still
    * down.
@@ -432,9 +453,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   async function revisionOf(id: string, hash: string): Promise<number> {
     const known = recorded.get(id);
     try {
-      const record = await revisions.advance(id, hash);
-      recorded.set(id, record);
+      const record = await revisions.advance(id, hash, {
+        defer: (current) => known?.hash === hash && deferredAt.get(id) !== current.hash,
+      });
       failedAt.delete(id);
+      if (record.hash !== hash) {
+        deferredAt.set(id, record.hash);
+        return known?.revision ?? 1;
+      }
+      deferredAt.delete(id);
+      recorded.set(id, record);
       return record.revision;
     } catch (error) {
       const kept = known?.revision ?? 1;
@@ -577,7 +605,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     onChange: directoryWatcher.onChange,
 
-    agentFromSnapshot(snapshot, revision = 1) {
+    agentFromSnapshot(snapshot, revision) {
       // Not `checkDeployment`: a run resumes as the file it began as even if a code agent has
       // since taken the name. Only what the agent needs to run is checked.
       const checked = checkResources(snapshot.definition);

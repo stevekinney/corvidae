@@ -59,8 +59,19 @@ export interface AgentRevisionStore {
    * Make the record for `id` describe `hash`, raising the revision if it described other content,
    * and resolve the record that results. Rejects when the store cannot be read or written, or the
    * record is not valid.
+   *
+   * `options.defer` is asked, with the record that stands, only when the write would otherwise be
+   * made: the record exists and describes other content. A caller that cannot be sure its reading
+   * of the file is still current answers `true`, nothing is written, and the record that stands
+   * (whose hash is not `hash`) is what resolves.
    */
-  advance(id: string, hash: string): Promise<AgentRevisionRecord>;
+  advance(id: string, hash: string, options?: AdvanceOptions): Promise<AgentRevisionRecord>;
+}
+
+/** What a caller may decide about a write {@link AgentRevisionStore.advance} is about to make. */
+export interface AdvanceOptions {
+  /** Answer `true` to write nothing now. Asked only when the record exists and differs. */
+  readonly defer?: ((current: AgentRevisionRecord) => boolean) | undefined;
 }
 
 export interface AgentRevisionStoreOptions {
@@ -120,7 +131,7 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
       return text === null ? undefined : parse(id, text);
     },
 
-    async advance(id, hash) {
+    async advance(id, hash, advanceOptions) {
       if (!HASH_PATTERN.test(hash)) {
         throw new Error(`The file hash given for agent "${id}" is not a SHA-256 in lowercase hex.`);
       }
@@ -130,6 +141,7 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
         const text = await readText(id);
         const current = text === null ? undefined : parse(id, text);
         if (current?.hash === hash) return current;
+        if (current !== undefined && advanceOptions?.defer?.(current) === true) return current;
         const next: AgentRevisionRecord = { revision: (current?.revision ?? 0) + 1, hash };
         if (!Number.isSafeInteger(next.revision)) {
           throw new Error(`The revision of agent "${id}" cannot be raised any further.`);
