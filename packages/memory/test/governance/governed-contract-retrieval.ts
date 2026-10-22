@@ -647,6 +647,37 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         expect(bundle.contradictions).toEqual([]);
       });
 
+      it('keeps requested history eligible even when asOf is later than its supersession', async () => {
+        const boston = await write('The user lives in Boston.');
+        await fixture.runtime.advance(DAY);
+        await fixture.memory.forget(principalA, {
+          mode: 'supersession',
+          locator: at(boston),
+          successor: {
+            content: 'The user lives in Denver.',
+            collection: 'notes',
+            source: 'conversation',
+          },
+        });
+        const bundle = await fixture.memory.recallForModel(principalA, 'which city', {
+          collection: 'notes',
+          plan: { constraints: { asOf: fixture.runtime.clock.now(), includeHistorical: true } },
+        });
+        expect(ids(bundle)).toContain(boston);
+      });
+
+      it('reports every selected stage on a bundle whose scoring failed', async () => {
+        await write('The user drives an electric automobile.');
+        const broken = fixture.restart({
+          embedder: () => {
+            throw new Error('embedder offline');
+          },
+        });
+        const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
+        expect(bundle.stopReason).toBe('failed');
+        expect(bundle.stages.map((stage) => stage.stage)).toContain('reformulation');
+      });
+
       it('runs the whole recall under the policy in force when it started', async () => {
         let memory: GovernedFixture['memory'] | undefined;
         const switching: InputDetector = {

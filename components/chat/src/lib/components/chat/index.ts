@@ -227,3 +227,21 @@ export type {
   MermaidRenderer,
   ResolvedChatArtifact,
 } from './artifact/index.ts';
+
+// MCP App host: a sandboxed iframe behind a host-mediated JSON-RPC postMessage bridge.
+export {
+  buildMcpAppContentSecurityPolicy,
+  buildMcpAppDocument,
+  createMcpAppBridge,
+  McpApp,
+  resolveMcpAppPermissions,
+  sanitizeDeclaredSources,
+} from './mcp-app/index.ts';
+export type {
+  McpAppBridge,
+  McpAppBridgeOptions,
+  McpAppProps,
+  McpAppResource,
+  McpAppResourceLoader,
+  McpAppToolCallHandler,
+} from './mcp-app/index.ts';

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Chef'
+  short_description: 'Orchestrate efficient agent teams through delivery'
+  default_prompt: 'Use $chef to plan and autonomously deliver this body of work with a team of agents, choosing models and effort before dispatch and recording evidence and improvements.'
