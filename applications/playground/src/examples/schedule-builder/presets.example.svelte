@@ -7,7 +7,8 @@
 <script lang="ts">
   import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
-  let value = $state<ScheduleValue>({ mode: 'cron', expression: '0 9 * * *' });
+  // Leave `value` unset: an omitted value opens Presets, where a cron value would open Cron.
+  let value = $state<ScheduleValue>();
 
   // Static, illustrative fire labels — no date library involved.
   function computeNextFires(current: ScheduleValue, count: number): ScheduleFire[] {
