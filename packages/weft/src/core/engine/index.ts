@@ -293,11 +293,12 @@ import {
 } from './reviews.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
+import { loadScheduleState } from './schedule-state-read.ts';
+import { recoverOrphanedScheduleTimers } from './schedule-timer-recovery.ts';
 import {
   cancelSchedule as cancelScheduleFromInternals,
   listSchedules as listSchedulesFromInternals,
   pauseSchedule as pauseScheduleFromInternals,
-  recoverOrphanedScheduleTimers,
   resumeSchedule as resumeScheduleFromInternals,
   schedule as scheduleFromInternals,
   toScheduleSummary,
@@ -319,11 +320,7 @@ import {
   type ResolveWorkflowSourceOptions,
 } from './source-resolution.ts';
 import { createWorkflowSourceRuntimeState } from './source-runtime-state.ts';
-import {
-  loadScheduleState,
-  loadWorkflowState,
-  runSerializedWorkflowStateWrite,
-} from './storage-io.ts';
+import { loadWorkflowState, runSerializedWorkflowStateWrite } from './storage-io.ts';
 import {
   feedOperationResult,
   getComposedWorkflowInterceptor,
@@ -443,6 +440,7 @@ export {
 } from './revision-errors.ts';
 export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
+export { ScheduleReservedKeyError } from './schedule-reserved-key-error.ts';
 export { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 export { DefinitionSchemaRequiredError } from './schema-policy.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
@@ -2399,8 +2397,8 @@ export class Engine<
   }
   async getSchedule(scheduleId: string): Promise<ScheduleSummary | null> {
     const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
-    const state = await loadScheduleState(getInternals(this), normalizedScheduleId);
-    return state ? toScheduleSummary(state) : null;
+    const loaded = await loadScheduleState(getInternals(this), normalizedScheduleId);
+    return loaded ? toScheduleSummary(loaded.state) : null;
   }
   async listSchedules(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary>> {
     return listSchedulesFromInternals(getInternals(this), filter);

@@ -84,6 +84,7 @@ export {
   PersistedDataCorruptError,
   PersistedDataIncompatibleError,
   ScheduleHandle,
+  ScheduleReservedKeyError,
   ScheduleStaleRevisionError,
   StartOrSignalConflictError,
   UndeclaredWorkflowMessageError,

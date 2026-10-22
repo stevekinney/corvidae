@@ -288,6 +288,7 @@ import {
   TASK_ARTIFACT_TEXT_LIMIT,
   TASK_STATUS_MESSAGE_LIMIT,
   type LiveTask,
+  type TaskRecord,
 } from './task-registry';
 import {
   ANONYMOUS_LOCAL_OWNER,
@@ -373,6 +374,11 @@ import {
   REVIEW_SUPERSEDED_EVENT_KIND,
   TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
+import {
+  SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+  scheduleFireSettledDedupeKey,
+  type ScheduleFireSettledPayload,
+} from './schedule-fire-settled-event';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
@@ -4177,6 +4183,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kv: runtime.kv,
     clock: runtimeServices.clock,
     identifiers: runtimeServices.identifiers,
+    // COR-1594: the end of a fire reaches a stream another process serves through the fire's
+    // durable history. A Bureau with no persistent storage has none, and no second process.
+    onFireSettled: appendFireSettledEvent,
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
     host: {
@@ -8634,6 +8643,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-1594 — records in the fire's durable history that its settlement is written, which is how a
+   * stream another process serves learns of the end. A rejected append is tried again, as a session
+   * persistence write is; one that still fails is diagnosed by the task registry, and the boot pass
+   * (`reconcileTaskRecords`) appends it at the next start. Idempotent: the append is deduplicated
+   * per fire, so a live end, a retry and the boot pass write one event between them.
+   */
+  async function appendFireSettledEvent(record: TaskRecord): Promise<void> {
+    if (eventHistoryInstance === undefined || record.settled === undefined) return;
+    const payload: ScheduleFireSettledPayload = {
+      runId: record.taskId,
+      status: record.settled.status,
+    };
+    const endedAt = Date.parse(record.settled.at);
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
+      try {
+        await eventHistoryInstance.record(
+          { kind: 'run', id: record.taskId },
+          SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+          payload,
+          {
+            dedupeKey: scheduleFireSettledDedupeKey(record.taskId),
+            // Dated where the fire ended, so a repair at a later boot does not move the end.
+            ...(Number.isFinite(endedAt) ? { emittedAtMs: endedAt } : {}),
+          },
+        );
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS) {
+          await sessionPersistenceSleep(sessionPersistenceRetryDelayMilliseconds);
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  /**
    * Boot-single-shot: called at most once per bureau, either immediately
    * during `createBureau()` or once from the deferred-authority-validator
    * path (never both — `durableRecoveryStarted` guards it). Resolves a
@@ -8712,6 +8759,49 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     for (const record of await tasks.unsettled()) {
       if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
+    }
+    // COR-1594: a fire whose settlement was written but whose history event never was, because its
+    // process died between the two, would leave a stream open on another process for ever. The
+    // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
+    // A read that fails here is reported and leaves the pass to the next boot, and the steps after
+    // it still run. It is a plain `try`, not a wrapped call, so the boot takes no extra turn.
+    if (eventHistoryInstance !== undefined) {
+      try {
+        // Event retention removes an event together with its deduplication marker, so a fire
+        // settled before its cutoff has neither, by design, and is not announced again at every
+        // boot. Under `'forever'` nothing is retired, so there is no bound.
+        const cutoff = eventRetentionCutoff();
+        for (const record of await tasks.settledFires()) {
+          if (cutoff !== undefined && Date.parse(record.settled?.at ?? '') < cutoff) continue;
+          const owner = { kind: 'run', id: record.taskId } as const;
+          if (
+            await eventHistoryInstance.wasRecorded(
+              owner,
+              SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+              scheduleFireSettledDedupeKey(record.taskId),
+            )
+          ) {
+            continue;
+          }
+          try {
+            await appendFireSettledEvent(record);
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'task-registry',
+              message: `[bureau] Could not record in the history how schedule fire "${record.taskId}" ended: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        }
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not announce the ends of settled schedule fires at boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
     }
     // COR-1622: the open closes of every canceled fire, settled or not.
     await retryCanceledFireCloses().catch((error: unknown) => {
@@ -11038,9 +11128,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function retainEventHistory(): Promise<void> {
     if (!eventHistoryInstance) return;
+    const cutoff = eventRetentionCutoff();
+    if (cutoff === undefined) return;
+    await eventHistoryInstance.retainBefore(cutoff);
+  }
+
+  /**
+   * The instant (epoch milliseconds) before which {@link BureauOptions.eventRetention} retires an
+   * event, or `undefined` when events are kept for ever.
+   */
+  function eventRetentionCutoff(): number | undefined {
     const retention = options.eventRetention ?? { olderThan: DEFAULT_EVENT_RETENTION_MS };
-    if (retention === 'forever') return;
-    await eventHistoryInstance.retainBefore(runtimeServices.clock.now() - retention.olderThan);
+    return retention === 'forever' ? undefined : runtimeServices.clock.now() - retention.olderThan;
   }
 
   /**

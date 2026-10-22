@@ -53,6 +53,12 @@
  * under the fired run's own `{ kind: 'run', id: runId }` owner — never
  * under `'schedule'`, so a schedule's own durable page never carries a fire.
  *
+ * Widened again by COR-1594: `schedule.fire.settled` is recorded once under the same fired run's
+ * `{ kind: 'run', id: runId }` owner when the fire's settlement has been written to the task
+ * registry, so a `bureau.tasks.events` stream served by another process sharing the stores learns
+ * that the fire is over. It is recorded by `createBureau` from the registry's settlement, not
+ * from the action stream; its shape, owner, and deduplication are in `schedule-fire-settled-event.ts`.
+ *
  * Widened again by AB-224, 2026-09-04: the seven `review.*` lifecycle
  * events (`approved`/`denied`/`rejected`/`expired`/`revoked`/`canceled`/
  * `superseded`, AB-87/AB-46's `ReviewStatus` vocabulary minus the
@@ -335,6 +341,20 @@ export interface DurableEventHistorySubscribeOptions {
    * (`DurableEventHistory.subscribeEventHistory`) does not read this field.
    */
   principal?: string | undefined;
+  /**
+   * COR-1594 — told once, with the error, when the subscription ends because of an error: the
+   * feed's replay or tail rejected (a storage fault), or a stored record could not be decoded. A
+   * subscription that ends this way delivers nothing more, and a subscriber that depends on it
+   * learns of that here instead of waiting for an event that cannot come. Not called when the
+   * subscriber ends the subscription itself (`unsubscribe()`, or aborting `signal`). A throw from
+   * the callback is reported to the diagnostic sink and otherwise ignored.
+   *
+   * It reports an error, and only an error. A subscription whose live buffer overflows also ends
+   * without the subscriber having asked, and that end is not reported: it needs a subscriber
+   * that cannot keep up with a feed it is not filtered from, and a subscription to one owner is
+   * filtered before it is buffered, so only that owner's own events and a gap count.
+   */
+  onClosed?: ((error: unknown) => void) | undefined;
 }
 
 /** Options for {@link DurableEventHistory.subscribeEventHistoryOfOwners}. */
@@ -1263,6 +1283,8 @@ export function createDurableEventHistory(
     void deliver();
 
     async function deliver(): Promise<void> {
+      // Set when the subscription ends because of an error, so `options.onClosed` is told of it.
+      let failure: { readonly error: unknown } | undefined;
       // The cursor of the last envelope handed to the listener, a gap event
       // included: what the subscriber has actually received, which is what a
       // gap must name. Not the position the feed has walked to, which counts
@@ -1310,6 +1332,7 @@ export function createDurableEventHistory(
               message: `[durable-event-history] Ending subscription for ${owner.kind}:${owner.id}: corrupt durable record.`,
               cause: error,
             });
+            failure = { error };
             return;
           }
           deliveredCursor = mapped.cursor;
@@ -1332,6 +1355,7 @@ export function createDurableEventHistory(
         // watermark/tail record, etc.) — not a clean unsubscribe/abort,
         // which weft's own generator returns from normally rather than
         // throwing.
+        failure = { error };
         diagnose({
           level: 'error',
           scope: 'durable-event-history',
@@ -1340,6 +1364,19 @@ export function createDurableEventHistory(
         });
       } finally {
         closed = true;
+        // A close the subscriber asked for is its own business; only an error close is reported.
+        if (failure !== undefined && !combinedSignal.aborted) {
+          try {
+            options?.onClosed?.(failure.error);
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[durable-event-history] onClosed threw for ${owner.kind}:${owner.id}:`,
+              cause: error,
+            });
+          }
+        }
       }
     }
 

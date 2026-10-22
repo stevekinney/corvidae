@@ -20,9 +20,9 @@ import {
 import { getWorkflowExecutionStartedAt } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
+import { isScheduleReadCondition, ScheduleReadConditionLostError } from './schedule-state-read.ts';
 import { createScheduleTimerId, decodeWorkflowStartHeaders } from './state-utilities.ts';
 import { decodeWorkflowState } from './validation.ts';
-import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
   buildWorkflowClaimExternalTerminalRotationTransition,
   type WorkflowClaimTransitionFragment,
@@ -306,27 +306,6 @@ export async function commitExternalTerminalWorkflowStateOperations(
   }
 }
 
-/** Load and decode persisted schedule state by schedule ID. */
-export async function loadScheduleState(
-  internals: EngineInternals,
-  scheduleId: string,
-): Promise<ScheduleState | null> {
-  const bytes = await internals.storage.get(KEYS.schedule(scheduleId));
-  return bytes ? decodeScheduleState(bytes) : null;
-}
-
-/** Load a schedule state. */
-export async function requireScheduleState(
-  internals: EngineInternals,
-  scheduleId: string,
-): Promise<ScheduleState> {
-  const state = await loadScheduleState(internals, scheduleId);
-  if (!state) {
-    throw new Error(`Schedule "${scheduleId}" not found`);
-  }
-  return state;
-}
-
 function buildPreviousScheduleTimerDeleteOperations(
   previousState: ScheduleState | undefined,
 ): BatchOperation[] {
@@ -383,8 +362,14 @@ function buildScheduleTimerReplacementOperations(
  * supplies the thrown error instead of this function's own generic
  * lost-precondition error, so the caller sees an actionable, typed failure
  * (e.g. `WorkflowRevisionUnavailableError`) rather than a bare "lost its
- * precondition" message. Every existing caller passes neither option and gets
- * byte-for-byte the pre-WFT-20 commit shape.
+ * precondition" message. A write that passes neither option and no schedule read
+ * condition (a create) gets byte-for-byte the pre-WFT-20 commit shape.
+ *
+ * COR-1594: a read-then-write adds {@link scheduleReadConditions} to `extraConditions`, which makes
+ * the write conditional on the schedule key's exact stored bytes. When that condition is the one
+ * lost, this throws {@link ScheduleReadConditionLostError} and not `onExtraConditionsLost`, which
+ * speaks only for the caller's own conditions: the writer re-reads and decides again. Resolves
+ * with the bytes written, which the next write of the same writer is conditioned on.
  */
 export async function writeScheduleState(
   internals: EngineInternals,
@@ -396,9 +381,10 @@ export async function writeScheduleState(
     extraConditions?: ConditionalBatchCondition[];
     onExtraConditionsLost?: () => Error;
   },
-): Promise<void> {
+): Promise<Uint8Array> {
+  const bytes = encode(state);
   const operations: BatchOperation[] = [
-    { type: 'put', key: KEYS.schedule(state.id), value: encode(state) },
+    { type: 'put', key: KEYS.schedule(state.id), value: bytes },
   ];
 
   const includeTimer = options?.includeTimer ?? state.status === 'active';
@@ -421,7 +407,7 @@ export async function writeScheduleState(
       extraConditions,
       options?.onExtraConditionsLost,
     );
-    return;
+    return bytes;
   }
 
   await commitFencedEngineWrite(
@@ -431,6 +417,7 @@ export async function writeScheduleState(
     [],
     () => new Error(`Schedule state commit for schedule "${state.id}" lost its precondition.`),
   );
+  return bytes;
 }
 
 /**
@@ -457,9 +444,17 @@ async function commitScheduleStateWithExtraConditions(
   if (committed) {
     return;
   }
-  for (const condition of extraConditions) {
+  // The engine's own read condition is judged first, and told from a caller's by identity: it is
+  // the writer's to retry, and a caller's typed error must not stand in for it. A caller's
+  // condition on any key, the schedule's own included, is the caller's.
+  const ordered = [
+    ...extraConditions.filter(isScheduleReadCondition),
+    ...extraConditions.filter((condition) => !isScheduleReadCondition(condition)),
+  ];
+  for (const condition of ordered) {
     const currentValue = await internals.storage.get(condition.key);
     if (!storageValuesEqual(currentValue, condition.expectedValue)) {
+      if (isScheduleReadCondition(condition)) throw new ScheduleReadConditionLostError(state.id);
       throw (
         onExtraConditionsLost?.() ??
         new Error(`Schedule state commit for schedule "${state.id}" lost its precondition.`)
