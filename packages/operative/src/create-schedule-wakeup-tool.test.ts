@@ -1,13 +1,24 @@
 import { createTool, createToolbox, createToolCall } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import type { ScheduleWakeupContext } from './create-schedule-wakeup-tool';
+import { createRequestHumanInputTool } from './create-request-human-input-tool';
+import type {
+  ScheduleWakeupContext,
+  ScheduleWakeupOutcome,
+  ScheduleWakeupResult,
+} from './create-schedule-wakeup-tool';
 import { createScheduleWakeupTool } from './create-schedule-wakeup-tool';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 
 describe('createScheduleWakeupTool', () => {
   function makeContext(durable = true): ScheduleWakeupContext {
-    return { pendingWakeup: undefined, durable };
+    return { pendingWakeup: undefined, pendingHumanWait: undefined, durable };
+  }
+
+  /** Narrows an outcome the test expects to have scheduled. */
+  function expectScheduled(outcome: ScheduleWakeupOutcome): ScheduleWakeupResult {
+    if (!outcome.scheduled) throw new Error(`expected a scheduled result, got: ${outcome.message}`);
+    return outcome;
   }
 
   it('writes the duration into context.pendingWakeup', () => {
@@ -50,7 +61,7 @@ describe('createScheduleWakeupTool', () => {
     const context = makeContext();
     const tool = createScheduleWakeupTool({ context });
 
-    const result = tool.execute({ in: '6h' });
+    const result = expectScheduled(tool.execute({ in: '6h' }));
 
     expect(result.scheduled).toBe(true);
     expect(result.duration).toBe('6h');
@@ -76,22 +87,100 @@ describe('createScheduleWakeupTool', () => {
     expect(result.message).toContain('Check the deploy');
   });
 
-  it('overwrites a previous wakeup when called multiple times (last call wins)', () => {
-    const context = makeContext();
-    const tool = createScheduleWakeupTool({ context });
+  describe('first park request wins (COR-1578)', () => {
+    const refusalMessage = (pending: string) =>
+      `Not requested: this step already waits for ${pending}. Request it again after that wait ends.`;
 
-    tool.execute({ in: '1h', note: 'First' });
-    tool.execute({ in: '6h', note: 'Second' });
+    it('keeps the first wakeup and refuses a second one with the exact refusal shape', () => {
+      const context = makeContext();
+      const tool = createScheduleWakeupTool({ context });
 
-    expect(context.pendingWakeup?.duration).toBe('6h');
-    expect(context.pendingWakeup?.note).toBe('Second');
+      const first = tool.execute({ in: '1h', note: 'First' });
+      const second = tool.execute({ in: '6h', note: 'Second' });
+
+      expect(first).toMatchObject({ scheduled: true, duration: '1h' });
+      expect(second).toEqual({
+        scheduled: false,
+        refused: true,
+        pendingPark: { kind: 'wakeup', duration: '1h' },
+        message: refusalMessage('a wakeup in 1h'),
+      });
+      expect(context.pendingWakeup).toEqual({ duration: '1h', note: 'First' });
+    });
+
+    it('renders a numeric duration of the wakeup it already holds with renderDurationLabel', () => {
+      const context = makeContext();
+      const tool = createScheduleWakeupTool({ context });
+
+      tool.execute({ in: 21_600_000 });
+      const second = tool.execute({ in: '1h' });
+
+      expect(second).toEqual({
+        scheduled: false,
+        refused: true,
+        pendingPark: { kind: 'wakeup', duration: 21_600_000 },
+        message: refusalMessage('a wakeup in 21600000ms'),
+      });
+    });
+
+    it('refuses a wakeup when human input already holds the step', () => {
+      const shared = {
+        pendingHumanWait: undefined as ScheduleWakeupContext['pendingHumanWait'],
+        pendingWakeup: undefined as ScheduleWakeupContext['pendingWakeup'],
+        durable: true,
+      };
+      const humanTool = createRequestHumanInputTool({ context: shared });
+      const wakeupTool = createScheduleWakeupTool({ context: shared });
+
+      humanTool.execute({ signalName: 'a' });
+      const refused = wakeupTool.execute({ in: '6h', note: 'later' });
+
+      expect(refused).toEqual({
+        scheduled: false,
+        refused: true,
+        pendingPark: { kind: 'human-input', signalName: 'a' },
+        message: refusalMessage('human signal "a"'),
+      });
+      expect(shared.pendingWakeup).toBeUndefined();
+      expect(shared.pendingHumanWait).toEqual({ signalName: 'a' });
+    });
+
+    it('runs through a sequential toolbox: first call schedules, second is refused, in order', async () => {
+      const context = makeContext();
+      const raw = createScheduleWakeupTool({ context });
+      const tool = createTool({
+        ...raw,
+        execute: async (input) => await Promise.resolve(raw.execute(input)),
+      });
+      const toolbox = createToolbox([tool]);
+
+      const results = await toolbox.execute(
+        [createToolCall(tool.name, { in: '1h' }), createToolCall(tool.name, { in: 30_000 })],
+        { mode: 'sequential' },
+      );
+
+      expect(results.map((result) => result.outcome)).toEqual(['success', 'success']);
+      expect(results[0]?.result).toMatchObject({ scheduled: true, duration: '1h' });
+      expect(results[1]?.result).toMatchObject({
+        scheduled: false,
+        refused: true,
+        pendingPark: { kind: 'wakeup', duration: '1h' },
+      });
+    });
+
+    it('describes the rule to the model in the exact sentence', () => {
+      const tool = createScheduleWakeupTool({ context: makeContext() });
+      expect(tool.description).toContain(
+        'Only the first human-input or wakeup request in a step is honored.',
+      );
+    });
   });
 
   it('returns note in result when provided', () => {
     const context = makeContext();
     const tool = createScheduleWakeupTool({ context });
 
-    const result = tool.execute({ in: '1h', note: 'My note' });
+    const result = expectScheduled(tool.execute({ in: '1h', note: 'My note' }));
 
     expect(result.note).toBe('My note');
   });
@@ -100,7 +189,7 @@ describe('createScheduleWakeupTool', () => {
     const context = makeContext();
     const tool = createScheduleWakeupTool({ context });
 
-    const result = tool.execute({ in: '1h' });
+    const result = expectScheduled(tool.execute({ in: '1h' }));
 
     expect(result.note).toBeUndefined();
   });

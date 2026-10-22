@@ -13203,7 +13203,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
     // error class Bureau's composition never needs (because it prefers
     // omission, like config 2 below) is what a standalone caller sees.
     const tool = createScheduleWakeupTool({
-      context: { pendingWakeup: undefined, durable: false },
+      context: { pendingWakeup: undefined, pendingHumanWait: undefined, durable: false },
     });
     let caught: unknown;
     try {

@@ -382,6 +382,48 @@ describe('a bureau.run() park', () => {
   });
 });
 
+describe('a second park request in one catalog step is refused (COR-1578)', () => {
+  it('lists exactly one review, for the honored request, and numbers the next park after it', async () => {
+    const generate: GenerateFunction = async (context: GenerateContext) => {
+      if (context.step === 0) {
+        return {
+          content: '',
+          toolCalls: [
+            { id: 'call-a', name: 'requestHumanInput', arguments: { signalName: 'a' } },
+            { id: 'call-b', name: 'requestHumanInput', arguments: { signalName: 'b' } },
+          ],
+        };
+      }
+      return { content: 'thanks', toolCalls: [] };
+    };
+    const asker = createAgent({
+      generate,
+      toolbox: createToolbox([]),
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    });
+    const bureau = await start({ asker });
+
+    const run = bureau.run('asker', 'deploy', { principal: 'alice' });
+    const review = await nextReview(bureau, run.id);
+
+    // Which of the two parallel calls arrived first is not asserted; only that one parked.
+    if (review.kind !== 'human-wait') throw new Error('Expected a human-wait review.');
+    expect(['a', 'b']).toContain(review.signalName);
+    expect(review.id).toBe(`human-wait:${run.id}:${review.signalName}:0`);
+    // Let any second review that would be listed arrive before counting.
+    await yieldToPortableEventLoop();
+    const reviews = bureau.listPendingReviews().filter((candidate) => candidate.runId === run.id);
+    expect(reviews.map((candidate) => candidate.id)).toEqual([review.id]);
+
+    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+    const result = await run.result();
+    expect(result.finishReason).not.toBe('error');
+    expect(bureau.listPendingReviews().filter((candidate) => candidate.runId === run.id)).toEqual(
+      [],
+    );
+  });
+});
+
 describe('requestHumanInput on a catalog run', () => {
   it('is offered on a durable Bureau with the option, and only then', async () => {
     const offered = newSeen();

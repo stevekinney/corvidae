@@ -48,6 +48,9 @@ export const CHARGE_ORDER_ID = 'order-1';
 export const REMEMBERED_ANSWER = 'the remembered answer';
 export const HUMAN_WAIT_SIGNAL = 'human-response';
 export const HUMAN_WAIT_PROMPT = 'Approve the crashed run?';
+/** The second signal of COR-1578's two-call park step, which the first request's park refuses. */
+export const SECOND_HUMAN_WAIT_SIGNAL = 'human-response-second';
+export const SECOND_HUMAN_WAIT_PROMPT = 'Approve the second request?';
 
 export type Backend = 'sqlite' | 'lmdb';
 

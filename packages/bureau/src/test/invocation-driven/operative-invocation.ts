@@ -71,6 +71,9 @@ function createWakeupToolbox(servicesRef: { current?: DurableRunDeps }) {
       set pendingWakeup(value) {
         if (servicesRef.current !== undefined) servicesRef.current.pendingWakeup = value;
       },
+      get pendingHumanWait() {
+        return servicesRef.current?.pendingHumanWait;
+      },
     },
   });
   return createToolbox([

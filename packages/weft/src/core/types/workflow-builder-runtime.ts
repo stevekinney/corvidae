@@ -13,6 +13,7 @@ import { clonePlain } from './clone-plain.ts';
 import { deepFreeze } from './deep-freeze.ts';
 import type { DefinitionSchema } from './definition-schema.ts';
 import type { QueryDefinition, SignalDefinition, UpdateDefinition } from './message-handles.ts';
+import { findMessageNameCollision } from './message-name-collisions.ts';
 import { validateWorkflowOrActivityName } from './name-grammar.ts';
 import type { RetentionPolicy } from './retry-retention.ts';
 import type { SearchAttributeSchema } from './search-attributes.ts';
@@ -118,6 +119,18 @@ export interface WorkflowBuilderOptions<
 // Builder implementation
 // ---------------------------------------------------------------------------
 
+/**
+ * Entries a builder starts with, already normalised. `createWorkflowFactory`
+ * supplies them; a plain `workflow({ name })` builder starts empty.
+ */
+export interface SharedWorkflowEntries {
+  /** Engine-provided activities, declared on every workflow as if by `.uses()`. */
+  readonly uses?: Readonly<Record<string, UsedActivityDefinition>>;
+  readonly signals?: Readonly<Record<string, SignalDefinition<unknown>>>;
+  readonly updates?: Readonly<Record<string, UpdateDefinition>>;
+  readonly queries?: Readonly<Record<string, QueryDefinition>>;
+}
+
 type ChainMethodName =
   'activities' | 'uses' | 'signals' | 'updates' | 'queries' | 'searchAttributes' | 'services';
 
@@ -142,14 +155,36 @@ export class WorkflowBuilderImpl<TName extends string> {
   };
   #executed = false;
   #activities: Record<string, ActivityDefinition> = {};
-  #uses: Record<string, UsedActivityDefinition> = {};
-  #signals: Record<string, SignalDefinition<unknown>> = {};
-  #updates: Record<string, UpdateDefinition> = {};
-  #queries: Record<string, QueryDefinition> = {};
+  #uses: Record<string, UsedActivityDefinition>;
+  #signals: Record<string, SignalDefinition<unknown>>;
+  #updates: Record<string, UpdateDefinition>;
+  #queries: Record<string, QueryDefinition>;
   #searchAttributes: SearchAttributeSchema = {};
 
-  constructor(options: WorkflowBuilderOptions<TName>) {
+  constructor(options: WorkflowBuilderOptions<TName>, shared: SharedWorkflowEntries = {}) {
     this.#options = options;
+    this.#uses = { ...shared.uses };
+    this.#signals = { ...shared.signals };
+    this.#updates = { ...shared.updates };
+    this.#queries = { ...shared.queries };
+  }
+
+  /**
+   * Add a chain method's entries to the ones the builder already carries from
+   * `createWorkflowFactory`. An entry occupying any name a shared entry
+   * occupies, its key or its runtime name, is rejected rather than overriding
+   * it, so a shared entry means the same thing in every workflow.
+   */
+  #merge<T>(method: ChainMethodName, current: Record<string, T>, added: Record<string, T>) {
+    const collision = findMessageNameCollision(current, added);
+    if (collision !== undefined) {
+      const { key, name } = collision;
+      const as = name === key ? '' : ` with runtime name "${name}"`;
+      throw new WorkflowBuilderError(
+        `workflow("${this.#options.name}"): .${method}() declares "${key}"${as}, which the workflow factory already declares. Shared entries cannot be overridden; give this one a different name.`,
+      );
+    }
+    return { ...current, ...added };
   }
 
   #assertOpen(method: ChainMethodName | 'execute'): void {
@@ -172,35 +207,39 @@ export class WorkflowBuilderImpl<TName extends string> {
   activities = (map: ActivityMapInput): this => {
     this.#assertOpen('activities');
     this.#markCalled('activities');
-    this.#activities = normalizeActivityMap(map);
+    const scoped = normalizeActivityMap(map);
+    // A factory's shared activities are `.uses()` entries, so a workflow-scoped
+    // activity of the same name would shadow the engine's implementation.
+    this.#merge('activities', this.#uses, scoped);
+    this.#activities = scoped;
     return this;
   };
 
   uses = (map: UsesMapInput): this => {
     this.#assertOpen('uses');
     this.#markCalled('uses');
-    this.#uses = normalizeUsesMap(map);
+    this.#uses = this.#merge('uses', this.#uses, normalizeUsesMap(map));
     return this;
   };
 
   signals = (map: SignalMap): this => {
     this.#assertOpen('signals');
     this.#markCalled('signals');
-    this.#signals = { ...(map as Record<string, SignalDefinition<unknown>>) };
+    this.#signals = this.#merge('signals', this.#signals, map);
     return this;
   };
 
   updates = (map: UpdateMap): this => {
     this.#assertOpen('updates');
     this.#markCalled('updates');
-    this.#updates = { ...(map as Record<string, UpdateDefinition>) };
+    this.#updates = this.#merge('updates', this.#updates, map);
     return this;
   };
 
   queries = (map: QueryMap): this => {
     this.#assertOpen('queries');
     this.#markCalled('queries');
-    this.#queries = { ...(map as Record<string, QueryDefinition>) };
+    this.#queries = this.#merge('queries', this.#queries, map);
     return this;
   };
 
@@ -415,7 +454,7 @@ function normalizeActivityMap(map: ActivityMapInput): Record<string, ActivityDef
  * is not the definition the engine registers.
  * Only the name and schema metadata are kept, which is all a contract reads.
  */
-function normalizeUsesMap(map: UsesMapInput): Record<string, UsedActivityDefinition> {
+export function normalizeUsesMap(map: UsesMapInput): Record<string, UsedActivityDefinition> {
   const out = createNameRecord<UsedActivityDefinition>();
   for (const key of Object.keys(map)) {
     validateWorkflowOrActivityName(key, 'activity');
