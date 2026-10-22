@@ -32,6 +32,13 @@ export interface MemoryEvidenceManifest {
  */
 export type MemoryRecallDifference =
   | { readonly kind: 'plan-revision'; readonly recorded: string; readonly replayed: string }
+  /**
+   * The bundle revisions differ though no other difference names why, for
+   * example an evidence kind changed or exclusions were reordered. The bundle
+   * revision digests every input to the bundle, so this guard means a replay
+   * can never pass while its bundle differs from the recorded one.
+   */
+  | { readonly kind: 'bundle-revision'; readonly recorded: string; readonly replayed: string }
   | { readonly kind: 'policy-revision'; readonly recorded: string; readonly replayed: string }
   | { readonly kind: 'query'; readonly recorded: string; readonly replayed: string }
   | {
@@ -179,16 +186,25 @@ function exclusionDifferences(
 /**
  * Compares a replayed recall's manifest with the recorded one and names every
  * difference, in a fixed order: revisions and stop reason, then the selected
- * evidence, then the exclusions. An empty list means the replay reproduced the
- * recorded evidence exactly, which also means the two bundle revisions match.
+ * evidence, then the exclusions, and finally the bundle revision itself when
+ * nothing earlier explains a difference in it. An empty list therefore means
+ * the replay reproduced the recorded bundle exactly.
  */
 export function compareMemoryEvidenceManifests(
   recorded: MemoryEvidenceManifest,
   replayed: MemoryEvidenceManifest,
 ): MemoryRecallDifference[] {
-  return [
+  const differences = [
     ...scalarDifferences(recorded, replayed),
     ...evidenceDifferences(recorded, replayed),
     ...exclusionDifferences(recorded, replayed),
   ];
+  if (differences.length === 0 && recorded.revision !== replayed.revision) {
+    differences.push({
+      kind: 'bundle-revision',
+      recorded: recorded.revision,
+      replayed: replayed.revision,
+    });
+  }
+  return differences;
 }

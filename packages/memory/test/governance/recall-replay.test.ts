@@ -97,6 +97,19 @@ describe('compareMemoryEvidenceManifests', () => {
     expect(compareMemoryEvidenceManifests(manifest, manifest)).toEqual([]);
   });
 
+  it('falls back to the bundle revision when nothing else names a difference', () => {
+    const kindChanged: MemoryEvidenceManifest = {
+      ...manifest,
+      revision: 'sha256:other-bundle',
+      evidence: manifest.evidence.map((item) =>
+        item.recordId === 'a' ? { ...item, kind: 'historical-projection' } : item,
+      ),
+    };
+    expect(compareMemoryEvidenceManifests(manifest, kindChanged)).toEqual([
+      { kind: 'bundle-revision', recorded: 'sha256:bundle', replayed: 'sha256:other-bundle' },
+    ]);
+  });
+
   it('names each kind of difference in a fixed order', () => {
     const replayed: MemoryEvidenceManifest = {
       ...manifest,
