@@ -112,6 +112,8 @@ export type HarnessOptions = {
   readonly backends?: readonly BackendDescriptor[];
   /** Costs each media part of a run, in place of the backends' own rows: an agent may supply one. */
   readonly mediaCostEstimator?: MediaCostEstimator;
+  /** The skills every run of this Bureau may activate (COR-1628). */
+  readonly skills?: BureauOptions['skills'];
 };
 
 /** Keys the suites present, by name, with the scopes each holds. */
@@ -197,6 +199,7 @@ async function build(
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     ...(options.memory === undefined ? {} : { memory: options.memory }),
+    ...(options.skills === undefined ? {} : { skills: options.skills }),
     ...(options.durableOwnership === undefined
       ? {}
       : { durableOwnership: options.durableOwnership }),

@@ -94,6 +94,7 @@ import {
   SESSION_OWNER_METADATA_KEY,
   createSessionHandle,
   ForkThroughMessageError,
+  SKILL_TOOL_DENIED_CODE,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -1884,6 +1885,19 @@ function hasMaintenanceSurface(surface: {
  * (COR-1613, COR-1622): five minutes, the cadence of Weft's own retention sweep.
  */
 export const EXPIRY_SWEEP_INTERVAL_MILLISECONDS = 300_000;
+
+/**
+ * Whether a resumed approval's error result proves the call never ran, so the review stays
+ * pending: the toolbox reports its approval binding unconsumed (COR-1579), or, for a toolbox with
+ * no approval store that reports no consumption at all, the run's skill gate refused the call with
+ * `SKILL_TOOL_DENIED` (COR-1628).
+ */
+function resumeRefusedBeforeExecution(result: object): boolean {
+  // A toolbox that reports consumption has the final word: a consumed binding means the call ran,
+  // whatever code its error carries.
+  if ('approvalBindingConsumed' in result) return result.approvalBindingConsumed === false;
+  return (result as { error?: { code?: string } }).error?.code === SKILL_TOOL_DENIED_CODE;
+}
 
 /**
  * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
@@ -15446,8 +15460,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             typeof result === 'object' &&
             'outcome' in result &&
             result.outcome === 'error' &&
-            'approvalBindingConsumed' in result &&
-            result.approvalBindingConsumed === false
+            resumeRefusedBeforeExecution(result)
           ) {
             const failedResult = result as {
               error?: { message?: string };
