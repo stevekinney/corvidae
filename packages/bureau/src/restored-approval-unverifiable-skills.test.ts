@@ -35,23 +35,19 @@ import type { Bureau, BureauDiagnostic } from './types';
 const harness = createScheduleFireHarness();
 
 /**
- * A toolbox with no approval state to consume: its resume reports no `approvalBindingConsumed`,
- * as a toolbox without an approval store does. The resume still runs through the receiver, so a
- * skill gate in front of it still sees the call.
+ * Makes a toolbox's resume report no `approvalBindingConsumed`, as a toolbox without an approval
+ * store does. It is installed on the toolbox itself, so the identity Bureau keys a restored run's
+ * skill policy on is kept, and the resume still runs through the receiver: a skill gate in front
+ * of it still sees the call.
  */
-function withoutConsumptionReport(toolbox: Toolbox): Toolbox {
-  return new Proxy(toolbox, {
-    get(target, property, receiver) {
-      const member = Reflect.get(target, property, receiver) as unknown;
-      if (property !== 'resumeApproval' || typeof member !== 'function') return member;
-      return async function (this: unknown, ...args: unknown[]) {
-        const result = (await (member as (...a: unknown[]) => Promise<object>).apply(
-          this,
-          args,
-        )) as { approvalBindingConsumed?: boolean };
-        const { approvalBindingConsumed: _consumed, ...unreported } = result;
-        return unreported;
-      };
+function reportNoConsumption(toolbox: Toolbox): void {
+  const resume = toolbox.resumeApproval as (...args: unknown[]) => Promise<object>;
+  Object.defineProperty(toolbox, 'resumeApproval', {
+    configurable: true,
+    value: async function (this: unknown, ...args: unknown[]) {
+      const result = (await resume.apply(this, args)) as { approvalBindingConsumed?: boolean };
+      const { approvalBindingConsumed: _consumed, ...unreported } = result;
+      return unreported;
     },
   });
 }
@@ -625,14 +621,13 @@ describe('a restored session-run approval is decided under the snapshot read at 
     reads: BodyReads,
     charges: number[],
     withSkills = true,
-    shapeToolbox: (toolbox: Toolbox) => Toolbox = (toolbox) => toolbox,
   ) {
     const parked = await parkedRunWithSkill(catalog);
     const restarted = await harness.open({
       generate: lockedAfterCharging('stop'),
       stopWhen: stopWhen.noToolCalls(),
       ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
-      toolbox: shapeToolbox(chargeApprovalToolbox(charges)),
+      toolbox: chargeApprovalToolbox(charges),
       storage: await harness.sqliteStorage(parked.path, sessionBodyReads(reads)),
     });
     const restored = await pollUntil(
@@ -677,6 +672,12 @@ describe('a restored session-run approval is decided under the snapshot read at 
     await rewriteSkillSnapshotOnDisk(path, (metadata) => {
       metadata['activeSkillRecords'] = [];
     });
+    // The run's toolbox reports no consumption for its resume, as one without an approval store
+    // does, so its refusal carries no `approvalBindingConsumed`.
+    const runToolbox = scheduledFireReviewStateOf(restarted).runToolboxesByRunId.get(run.id);
+    if (runToolbox === undefined) throw new Error('The restored run has no toolbox of its own.');
+    reportNoConsumption(runToolbox as unknown as Toolbox);
+
     const refusal = await refusalOf(restarted, restored.id);
 
     expect(refusal.code).toBe('CONFLICT');
