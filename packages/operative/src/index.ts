@@ -553,6 +553,7 @@ export {
 } from './human-wait-parks';
 export {
   assistantMessageIdentifier,
+  parseAssistantMessageIdentifier,
   signalMessageIdentifier,
   toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
