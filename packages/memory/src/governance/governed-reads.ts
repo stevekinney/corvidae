@@ -2,8 +2,6 @@ import { cosineSimilarity } from 'armorer';
 
 import { computeBM25Scores } from '../text-search';
 import type { MemoryAuthority, MemoryOperation } from './authority';
-import { scanGovernedContent } from './content-scan';
-import { type MemoryEvidence, renderMemoryEvidence } from './evidence';
 import {
   authorizeLocated,
   type GovernanceContext,
@@ -16,13 +14,10 @@ import type {
   GovernedListOptions,
   GovernedSearchHit,
   GovernedSearchOptions,
-  MemoryEvidenceBundle,
   MemoryExportResult,
   MemoryRecordLocator,
-  RecallForModelOptions,
 } from './governed-memory-types';
 import { embedOne } from './governed-writes';
-import { trustAtLeast } from './policy';
 import { decideMemoryAccess, type MemoryRedaction } from './predicate';
 import {
   type GovernedMemoryRecord,
@@ -37,7 +32,8 @@ interface Candidate extends ResolvedRecord {
   readonly redaction: MemoryRedaction;
 }
 
-function scopesFor(
+/** The caller's own collection scopes for a visibility: never another owner's partition or tenant. */
+export function scopesFor(
   context: GovernanceContext,
   authority: MemoryAuthority,
   collection: string,
@@ -96,7 +92,8 @@ function retrievable(candidate: Candidate): boolean {
   );
 }
 
-async function textScores(
+/** Lexical scores in candidate order: the configured text-search provider's, or BM25 normalized to [0, 1). */
+export async function textScores(
   context: GovernanceContext,
   query: string,
   candidates: readonly Candidate[],
@@ -159,7 +156,8 @@ async function recordRead(
   });
 }
 
-async function capabilityAllowed(
+/** Whether the caller holds the capability for `operation` at all, recorded as an authorization decision. */
+export async function capabilityAllowed(
   context: GovernanceContext,
   authority: MemoryAuthority,
   operation: MemoryOperation,
@@ -244,117 +242,6 @@ export async function searchRecords(
     record: projectRecord(hit.candidate.record, hit.candidate.read, hit.candidate.redaction),
     score: hit.score,
   }));
-}
-
-function evidenceFrom(candidate: Candidate, score: number): MemoryEvidence {
-  const { governance } = candidate.read;
-  return {
-    id: candidate.record.id,
-    label: 'evidence',
-    authority: 'none',
-    content: candidate.record.content,
-    trust: governance.trust,
-    source: governance.source,
-    memoryClass: governance.memoryClass,
-    visibility: governance.visibility,
-    score,
-    contentDigest: governance.contentDigest,
-  };
-}
-
-async function withholdPoisoned(
-  context: GovernanceContext,
-  authority: MemoryAuthority,
-  operationId: string,
-  candidate: Candidate,
-  scan: { detector: string; category: string; confidence: number },
-): Promise<void> {
-  await context.updateGovernance(candidate, (governance) =>
-    governance.state === 'active' ? { state: 'quarantined' } : undefined,
-  );
-  await context.textSearchProvider?.remove(candidate.record.id);
-  await context.recordEvent({
-    tenantId: authority.tenantId,
-    type: 'memory.recall.withheld',
-    outcome: 'quarantined',
-    attribution: context.attribution(authority, operationId),
-    recordIds: [candidate.record.id],
-    reason: 'content-policy',
-    diagnostic: { ...scan, contentDigest: candidate.read.governance.contentDigest },
-  });
-}
-
-/**
- * Mandatory recall admission: the only recall path whose output is meant for a
- * model. Candidates are ranked first and then admitted in rank order, so a
- * withheld record never shrinks the evidence returned. A record is withheld when
- * it was evicted from this context, its trust is below the policy minimum for its
- * class (an untrusted procedure is never selected), or a recall detector trips
- * on it, which also quarantines it. The model receives only labeled evidence and
- * a count of what was withheld.
- */
-export async function recallForModel(
-  context: GovernanceContext,
-  authority: MemoryAuthority,
-  query: string,
-  options: RecallForModelOptions,
-): Promise<MemoryEvidenceBundle> {
-  const operationId = context.operationId();
-  const empty = { operationId, evidence: [], withheld: 0, rendered: '' };
-  if (!(await capabilityAllowed(context, authority, 'search', operationId))) return empty;
-  const policy = context.policy();
-  const evicted = new Set(
-    options.contextId === undefined
-      ? []
-      : await context.ledger.listEvictions(
-          authority.tenantId,
-          evictionContext(authority, options.contextId),
-        ),
-  );
-  const searchable = await candidatesFor(context, authority, 'search', options);
-  const candidates = searchable.filter(
-    (candidate) =>
-      retrievable(candidate) &&
-      (options.memoryClass === undefined ||
-        candidate.read.governance.memoryClass === options.memoryClass),
-  );
-  const limit = options.limit ?? 5;
-  const evidence: MemoryEvidence[] = [];
-  let withheld = 0;
-  for (const { candidate, score } of await rank(context, query, candidates)) {
-    if (evidence.length >= limit) break;
-    const { governance } = candidate.read;
-    if (
-      evicted.has(candidate.record.id) ||
-      !trustAtLeast(governance.trust, policy.recall.minimumTrust[governance.memoryClass])
-    ) {
-      withheld++;
-      continue;
-    }
-    const provenance =
-      governance.source === 'ingested-document' ? 'ingested-document' : 'recalled-memory';
-    const scan = await scanGovernedContent(
-      candidate.record.content,
-      policy.recall.detectors,
-      provenance,
-    );
-    if (scan.flagged) {
-      withheld++;
-      const { flagged: _flagged, ...diagnostic } = scan;
-      await withholdPoisoned(context, authority, operationId, candidate, diagnostic);
-      continue;
-    }
-    evidence.push(evidenceFrom(candidate, score));
-  }
-  await context.recordEvent({
-    tenantId: authority.tenantId,
-    type: 'memory.recall.admitted',
-    outcome: 'admitted',
-    attribution: context.attribution(authority, operationId),
-    recordIds: evidence.map((item) => item.id),
-    details: { withheld },
-  });
-  return { operationId, evidence, withheld, rendered: renderMemoryEvidence(evidence) };
 }
 
 /** Evictions are keyed by owner as well as context, so one owner cannot suppress another's recall. */
