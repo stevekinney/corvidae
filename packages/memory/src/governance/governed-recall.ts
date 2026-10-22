@@ -69,6 +69,8 @@ interface RecallRun {
   readonly conflicting: Set<string>;
   filtered?: FilteredCandidates;
   filterInput?: FilterInput;
+  /** Lineage sources resolved from outside the recalled collection, reported beside its own candidates. */
+  readonly expanded: RecallCandidate[];
   filters: readonly MemoryRecallFilterReport[];
   cost: number;
   tokens: number;
@@ -195,6 +197,8 @@ async function admitOne(
     run.exclusions.push(recallExclusion(candidate, 'admission', 'content-policy'));
     return undefined;
   }
+  // The scan awaited: a cancellation or the latency budget may have ended the recall meanwhile.
+  if (stopped(run)) return run.stopReason;
   run.tokens = tokens;
   run.selected.set(candidate.record.id, candidate);
   run.evidence.push(evidenceFrom(candidate, score));
@@ -291,12 +295,16 @@ async function expandProvenance(run: RecallRun): Promise<void> {
   for (const selected of run.selected.values()) {
     for (const source of selected.read.governance.lineage?.sources ?? []) {
       if (run.selected.has(source.id)) continue;
+      // A source admission already withheld (a detector quarantined it, or a
+      // budget left it out) is never offered to admission a second time.
+      if (run.exclusions.some((exclusion) => exclusion.recordId === source.id)) continue;
       // A source in the recalled collection already went through every filter;
       // one stored elsewhere is resolved and filtered by the same rules here.
       const candidate = listed.has(source.id)
         ? eligible.get(source.id)
         : await resolveLineageSource(run.filterInput!, source);
       if (candidate === undefined) continue;
+      if (!listed.has(source.id)) run.expanded.push(candidate);
       if (run.evidence.length >= run.limit || stopped(run)) break;
       const before = run.evidence.length;
       run.stopReason = await admitOne(run, candidate, 0);
@@ -459,7 +467,7 @@ async function finish(
     policyRevision,
     queryDigest,
     stopReason,
-    candidates: (run.filtered?.authorized ?? []).map((candidate) => {
+    candidates: [...(run.filtered?.authorized ?? []), ...run.expanded].map((candidate) => {
       const scores = run.scores.get(candidate.record.id);
       return {
         recordId: candidate.record.id,
@@ -533,6 +541,7 @@ export async function recallForModel(
     reformulations: [],
     contradictions: [],
     conflicting: new Set(),
+    expanded: [],
     filters: [],
     cost: 0,
     tokens: 0,

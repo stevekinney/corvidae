@@ -266,8 +266,8 @@ export async function filterRecallCandidates(
 /**
  * Resolves a selected derived record's lineage source wherever it is stored,
  * including another collection, and returns it only when the same predicate,
- * policy filters, and supersession rule the recall applied to its own
- * candidates would have let it through.
+ * policy filters, supersession rule, and constraint stages the recall applied
+ * to its own candidates would have let it through.
  */
 export async function resolveLineageSource(
   input: FilterInput,
@@ -279,5 +279,6 @@ export async function resolveLineageSource(
   if (!decision.allowed) return undefined;
   const candidate = candidateOf(resolved, decision.redaction);
   if (policyVerdict(input, candidate, input.context.now()) !== undefined) return undefined;
-  return historicalAdmitted(input.plan, candidate) ? candidate : undefined;
+  if (!historicalAdmitted(input.plan, candidate)) return undefined;
+  return constraintVerdict(input.plan, candidate) === undefined ? candidate : undefined;
 }

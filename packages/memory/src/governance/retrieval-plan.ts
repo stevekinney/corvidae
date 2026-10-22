@@ -181,6 +181,16 @@ export function createMemoryRetrievalPlan(
   const stages = orderedStages(input.stages ?? MEMORY_RETRIEVAL_STAGES);
   const budgets = { ...DEFAULT_MEMORY_RETRIEVAL_BUDGETS, ...input.budgets };
   validateBudgets(budgets);
+  for (const [name, value] of [
+    ['minimumScore', input.minimumScore ?? 0],
+    ['conflictSimilarity', input.conflictSimilarity ?? 0.9],
+  ] as const) {
+    // A non-finite threshold would digest as `null`, so two plans that behave
+    // differently could share a revision.
+    if (!Number.isFinite(value)) {
+      throw new MemoryRetrievalPlanError(`Retrieval ${name} must be a finite number.`);
+    }
+  }
   const given = input.constraints ?? {};
   const constraints: MemoryRetrievalConstraints = {
     ...(given.asOf === undefined ? {} : { asOf: given.asOf }),

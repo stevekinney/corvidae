@@ -505,6 +505,93 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
     });
 
     describe('the explainable bundle', () => {
+      it('holds a cross-collection source to the plan’s constraints, and reports it as a candidate', async () => {
+        const source = await write('Lockbox code is kept with the building manager.');
+        const summary = await recordIdOf(
+          fixture.memory.write(principalA, 'Jazz concert summary.', {
+            collection: 'summaries',
+            source: 'conversation',
+            derivedFrom: { kind: 'summary', sources: [at(source)] },
+          }),
+        );
+        const expanded = await fixture.memory.recallForModel(principalA, 'jazz', {
+          collection: 'summaries',
+        });
+        expect(expanded.candidates.find((item) => item.recordId === source)).toMatchObject({
+          selection: 'selected',
+          kind: 'source-evidence',
+        });
+        const constrained = await fixture.memory.recallForModel(principalA, 'jazz', {
+          collection: 'summaries',
+          plan: { constraints: { entities: ['jazz'] } },
+        });
+        expect(ids(constrained)).toEqual([summary]);
+      });
+
+      it('never offers a source a detector quarantined during this recall to admission again', async () => {
+        let calls = 0;
+        const once: InputDetector = {
+          name: 'once',
+          detect: async () => {
+            calls += 1;
+            return calls === 1
+              ? { triggered: true, confidence: 1, category: 'flaky' }
+              : { triggered: false, confidence: 0, category: 'none' };
+          },
+        };
+        fixture = await createGovernedFixture(backend, {
+          governed: { embedder: conceptEmbedder },
+          policy: { recall: { detectors: [once] } },
+        });
+        const source = await write('Lockbox code is kept with the manager.');
+        const summary = await recordIdOf(
+          fixture.memory.write(principalA, 'Summary: lockbox notes.', {
+            collection: 'notes',
+            source: 'conversation',
+            derivedFrom: { kind: 'summary', sources: [at(source)] },
+          }),
+        );
+        const bundle = await fixture.memory.recallForModel(principalA, 'lockbox code is kept', {
+          collection: 'notes',
+        });
+        expect(ids(bundle)).toEqual([summary]);
+        expect(exclusionFor(bundle, source)?.reason).toBe('content-policy');
+      });
+
+      it('honors a cancellation that lands while a detector scan is pending', async () => {
+        const controller = new AbortController();
+        const aborting: InputDetector = {
+          name: 'aborting',
+          detect: async () => {
+            controller.abort();
+            return { triggered: false, confidence: 0, category: 'none' };
+          },
+        };
+        fixture = await createGovernedFixture(backend, {
+          governed: { embedder: conceptEmbedder },
+          policy: { recall: { detectors: [aborting] } },
+        });
+        await write('The user drives an electric automobile.');
+        const bundle = await fixture.memory.recallForModel(principalA, 'vehicle', {
+          collection: 'notes',
+          signal: controller.signal,
+        });
+        expect(bundle).toMatchObject({ evidence: [], stopReason: 'canceled' });
+      });
+
+      it('keeps the exact match in a lexical-only plan, and rejects non-finite thresholds', async () => {
+        const target = await write('The user drives an electric automobile.');
+        const bundle = await fixture.memory.recallForModel(principalA, target, {
+          collection: 'notes',
+          plan: { stages: ['exact-lexical'], minimumScore: 1 },
+        });
+        expect(ids(bundle)).toEqual([target]);
+        for (const value of [Number.NaN, Number.POSITIVE_INFINITY]) {
+          expect(() => createMemoryRetrievalPlan({ minimumScore: value })).toThrow('finite');
+          expect(() => createMemoryRetrievalPlan({ conflictSimilarity: value })).toThrow('finite');
+        }
+      });
+
       it('runs the whole recall under the policy in force when it started', async () => {
         let memory: GovernedFixture['memory'] | undefined;
         const switching: InputDetector = {

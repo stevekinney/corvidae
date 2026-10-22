@@ -37,7 +37,9 @@ function exactMatch(query: string, candidate: RecallCandidate): number {
 function fuse(plan: MemoryRetrievalPlan, scores: Omit<MemoryRecallStageScores, 'fused'>): number {
   const lexical = plan.stages.includes('exact-lexical');
   const semantic = plan.stages.includes('semantic');
-  if (!plan.stages.includes('rank-fusion')) return semantic ? scores.semantic : scores.lexical;
+  if (!plan.stages.includes('rank-fusion')) {
+    return semantic ? scores.semantic : scores.lexical + scores.exact;
+  }
   if (lexical && semantic) {
     return VECTOR_WEIGHT * scores.semantic + TEXT_WEIGHT * scores.lexical + scores.exact;
   }
