@@ -5,11 +5,16 @@ import { describe, expect, test } from 'bun:test';
 import {
   callBureau,
   type Fetcher,
+  forkContext,
+  forkRefusalReason,
+  getAgentModels,
   getContext,
   getThreadMessages,
   listAgents,
   listContexts,
   sendContextInput,
+  steerContext,
+  type SteerOutcome,
 } from './bureau-client.ts';
 import { classifyFault } from './faults.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
@@ -138,6 +143,10 @@ describe('the Bureau’s context operations', () => {
         agentName: 'assistant',
         title: 'Hi',
         lastMessagePreview: null,
+        parentContextId: null,
+        forkedFromMessageId: null,
+        model: null,
+        configVersion: 0,
         messageCount: 2,
         createdAt: '2026-10-19T00:00:00.000Z',
         updatedAt: '2026-10-19T00:00:00.000Z',
@@ -170,6 +179,125 @@ describe('the Bureau’s context operations', () => {
       method: 'bureau.contexts.input',
       params: { contextId: 'c1', input: { id: 'row-1', payload: 'More' } },
     });
+  });
+});
+
+describe('switching a session’s model and branching it', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  const SONNET = {
+    provider: 'anthropic',
+    model: 'claude-sonnet-5',
+    displayName: 'claude-sonnet-5',
+  };
+
+  test('getAgentModels asks which models an agent allows, and reads its default', async () => {
+    const stub = answering(
+      result({
+        selectable: true,
+        models: [SONNET],
+        default: { provider: 'anthropic', model: 'claude-sonnet-5' },
+      }),
+    );
+
+    const models = await withStub(stub.fetch, () => getAgentModels('model-switcher'));
+
+    expect(models.models).toEqual([SONNET]);
+    expect(models.default).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5' });
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.agents.models',
+      params: { agentName: 'model-switcher' },
+    });
+  });
+
+  test('steerContext sends the override with the revision it read, and returns the outcome as data', async () => {
+    const stub = answering(
+      result({
+        outcome: 'rejected',
+        failure: { failedAt: '2026-10-22T00:00:00.000Z', reason: 'stale-revision' },
+      }),
+    );
+
+    const outcome = await withStub(stub.fetch, () =>
+      steerContext({
+        contextId: 'c1',
+        commandId: 'command-1',
+        override: { provider: 'anthropic', model: 'claude-haiku-4-5' },
+        expectedRevision: 4,
+      }),
+    );
+
+    expect(outcome).toEqual({ outcome: 'rejected', failure: { reason: 'stale-revision' } });
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.steer',
+      params: {
+        contextId: 'c1',
+        commandId: 'command-1',
+        override: { provider: 'anthropic', model: 'claude-haiku-4-5' },
+        expectedRevision: 4,
+      },
+    });
+  });
+
+  test('steerContext reads every outcome the Bureau admits or refuses with', async () => {
+    const answers: ReadonlyArray<Record<string, unknown> & { outcome: SteerOutcome['outcome'] }> = [
+      { outcome: 'accepted', command: {} },
+      { outcome: 'replayed', command: {} },
+      { outcome: 'conflict', conflict: {} },
+      { outcome: 'session-terminal', sessionId: 'c1' },
+      { outcome: 'unsupported-capability', reason: 'No steering.' },
+    ];
+    for (const answer of answers) {
+      const stub = answering(result(answer));
+      const outcome = await withStub(stub.fetch, () =>
+        steerContext({
+          contextId: 'c1',
+          commandId: 'command-1',
+          override: { provider: 'anthropic', model: 'claude-haiku-4-5' },
+        }),
+      );
+      expect(outcome.outcome).toBe(answer.outcome);
+    }
+  });
+
+  test('forkContext asks to branch through a message and returns the new session’s identifier', async () => {
+    const stub = answering(result({ contextId: 'branch-1', carriedOverride: null }));
+
+    const branchId = await withStub(stub.fetch, () =>
+      forkContext({ contextId: 'c1', commandId: 'command-2', throughMessageId: 'run-1:step:0' }),
+    );
+
+    expect(branchId).toBe('branch-1');
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.fork',
+      params: { contextId: 'c1', commandId: 'command-2', throughMessageId: 'run-1:step:0' },
+    });
+  });
+
+  test('forkRefusalReason names why a branch was refused, and nothing for a fault without a reason', async () => {
+    const refused = await withStub(
+      answering(fault(409, 'Conflict', 'Not a branch point.', { reason: 'not-a-branch-point' }))
+        .fetch,
+      () =>
+        failureOf(forkContext({ contextId: 'c1', commandId: 'command-3', throughMessageId: 'm1' })),
+    );
+    expect(forkRefusalReason(refused)).toBe('not-a-branch-point');
+
+    const unreasoned = await withStub(
+      answering(fault(503, 'Unavailable', 'Not answering.')).fetch,
+      () =>
+        failureOf(forkContext({ contextId: 'c1', commandId: 'command-4', throughMessageId: 'm1' })),
+    );
+    expect(unreasoned).toBeInstanceOf(HttpClientError);
+    expect(forkRefusalReason(unreasoned)).toBeUndefined();
+    expect(forkRefusalReason(new Error('The network failed.'))).toBeUndefined();
   });
 });
 

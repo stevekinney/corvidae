@@ -56,6 +56,7 @@ import {
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import { createModelAgents, SINGLE_MODEL_AGENT_NAME } from './model-agents.ts';
 import {
   createQuestionAgents,
   QUESTION_AND_APPROVAL_AGENT_NAME,
@@ -118,11 +119,13 @@ const host = await startHost({
       ...createEchoAgents(),
       ...createTextEchoAgents(),
       ...createQuestionAgents(),
+      ...createModelAgents(),
     },
     published: [
       BARRIER_AGENT_NAME,
       BARRIER_SHORT_AGENT_NAME,
       IMAGE_ECHO_AGENT_NAME,
+      SINGLE_MODEL_AGENT_NAME,
       TEXT_ECHO_AGENT_NAME,
       TEXT_ECHO_SOLO_AGENT_NAME,
       TWO_QUESTIONS_AGENT_NAME,
