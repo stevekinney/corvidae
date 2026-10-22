@@ -1,0 +1,107 @@
+import { describe, expect, it } from 'bun:test';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { type RecallRecording, replayRecording } from '../../scripts/replay-recall';
+import {
+  compareMemoryEvidenceManifests,
+  type MemoryEvidenceManifest,
+} from '../../src/governance/recall-replay';
+import { createMemoryRetrievalPlan } from '../../src/governance/retrieval-plan';
+
+const FIXTURES = join(import.meta.dir, '..', 'fixtures', 'recall');
+
+async function recording(name: string): Promise<RecallRecording> {
+  return (await Bun.file(join(FIXTURES, `${name}.json`)).json()) as RecallRecording;
+}
+
+const manifest: MemoryEvidenceManifest = {
+  revision: 'sha256:bundle',
+  planRevision: 'sha256:plan',
+  policyRevision: 'governance:1',
+  queryDigest: 'sha256:query',
+  stopReason: 'sufficient',
+  evidence: [
+    { recordId: 'a', revision: '1:a', kind: 'source-evidence' },
+    { recordId: 'b', revision: '1:b', kind: 'derived-summary' },
+  ],
+  exclusions: [{ recordId: 'c', revision: '1:c', reason: 'trust-below-minimum' }],
+};
+
+/**
+ * COR-771 — the replay script re-runs each recorded plan against fixed evidence
+ * and policy revisions, and asserts the same ordered evidence manifest or the
+ * named deterministic differences the recording expects.
+ */
+describe('recorded recall replays', () => {
+  for (const file of readdirSync(FIXTURES).filter((name) => name.endsWith('.json'))) {
+    it(`replays ${file} to its recorded manifest or its named differences`, async () => {
+      const replay = await replayRecording(await recording(file.replace(/\.json$/, '')));
+      expect(replay.passed).toBe(true);
+    });
+  }
+
+  it('names a changed record as a deterministic difference, not a silent pass', async () => {
+    const recorded = await recording('exact-and-paraphrase');
+    const changed: RecallRecording = {
+      ...recorded,
+      records: recorded.records.map((record, index) =>
+        index === 1
+          ? { ...record, content: 'The user prefers an aisle seat near the front.' }
+          : record,
+      ),
+    };
+    const replay = await replayRecording(changed);
+    expect(replay.passed).toBe(false);
+    expect(replay.differences.map((difference) => difference.kind)).toContain('record-revision');
+  });
+
+  it('reproduces the bundle revision when nothing changed', async () => {
+    const recorded = await recording('exact-and-paraphrase');
+    const replay = await replayRecording(recorded);
+    expect(replay.manifest.revision).toBe((recorded.manifest as MemoryEvidenceManifest).revision);
+    expect(replay.differences).toEqual([]);
+  });
+});
+
+describe('compareMemoryEvidenceManifests', () => {
+  it('reports nothing for an identical manifest', () => {
+    expect(compareMemoryEvidenceManifests(manifest, manifest)).toEqual([]);
+  });
+
+  it('names each kind of difference in a fixed order', () => {
+    const replayed: MemoryEvidenceManifest = {
+      ...manifest,
+      planRevision: 'sha256:other-plan',
+      stopReason: 'exhausted',
+      evidence: [
+        { recordId: 'b', revision: '2:b', kind: 'derived-summary' },
+        { recordId: 'a', revision: '1:a', kind: 'source-evidence' },
+        { recordId: 'd', revision: '1:d', kind: 'source-evidence' },
+      ],
+      exclusions: [{ recordId: 'c', revision: '1:c', reason: 'evicted' }],
+    };
+    expect(compareMemoryEvidenceManifests(manifest, replayed)).toEqual([
+      { kind: 'plan-revision', recorded: 'sha256:plan', replayed: 'sha256:other-plan' },
+      { kind: 'stop-reason', recorded: 'sufficient', replayed: 'exhausted' },
+      { kind: 'record-revision', recordId: 'b', recorded: '1:b', replayed: '2:b' },
+      { kind: 'evidence-added', recordId: 'd' },
+      { kind: 'evidence-order', recorded: ['a', 'b'], replayed: ['b', 'a'] },
+      { kind: 'exclusion', recordId: 'c', recorded: 'trust-below-minimum', replayed: 'evicted' },
+    ]);
+  });
+});
+
+describe('retrieval plan budgets', () => {
+  it('requires the count budgets to be whole numbers', () => {
+    expect(() => createMemoryRetrievalPlan({ budgets: { maxIterations: 1.5 } })).toThrow(
+      'whole number',
+    );
+    expect(() => createMemoryRetrievalPlan({ budgets: { maxCandidates: 2.5 } })).toThrow(
+      'whole number',
+    );
+    expect(createMemoryRetrievalPlan({ budgets: { maxTokens: 10.5 } }).budgets.maxTokens).toBe(
+      10.5,
+    );
+  });
+});

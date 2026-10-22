@@ -150,8 +150,12 @@ export class MemoryRetrievalPlanError extends Error {
 
 function validateBudgets(budgets: MemoryRetrievalBudgets): void {
   for (const [name, value] of Object.entries(budgets)) {
-    if (!Number.isFinite(value) || value < 1) {
-      throw new MemoryRetrievalPlanError(`Retrieval budget ${name} must be at least 1.`);
+    // Candidates and iterations are counts, so a fraction would let a pass run past its budget.
+    const integral = name === 'maxCandidates' || name === 'maxIterations';
+    if (!Number.isFinite(value) || value < 1 || (integral && !Number.isInteger(value))) {
+      throw new MemoryRetrievalPlanError(
+        `Retrieval budget ${name} must be ${integral ? 'a whole number ' : ''}at least 1.`,
+      );
     }
   }
 }

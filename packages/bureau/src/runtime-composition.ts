@@ -9,6 +9,7 @@ import type {
   GovernedMemory,
   MemoryAuthority,
   MemoryCapability,
+  MemoryEvidenceBundle,
   MemoryWriteReceipt,
 } from '@lostgradient/memory';
 import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
@@ -43,6 +44,7 @@ import type {
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
+  MEMORY_EVIDENCE_METADATA_KEY,
   createAgentSession,
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -147,7 +149,6 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
-import { MEMORY_EVIDENCE_METADATA_KEY } from './memory-evidence-metadata';
 import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
@@ -1209,6 +1210,45 @@ function redactProvider(provider: ProviderConfiguration): RedactedProviderConfig
   return safeProvider;
 }
 
+/** What a withdrawn evidence row reads as once a newer bundle replaced it. */
+const WITHDRAWN_MEMORY_EVIDENCE = '[memory evidence withdrawn: the memory policy changed]';
+
+function appendMemoryEvidence(
+  conversation: Conversation,
+  target: RunMemoryTarget,
+  bundle: MemoryEvidenceBundle,
+): void {
+  if (bundle.evidence.length === 0) {
+    return;
+  }
+  // The bundle's identity rides on the row it renders into: Operative's epoch
+  // sealer reads `bundleRevision` and `contentDigest` here and checks the
+  // digest against the row, so the epoch names exactly the bundle the model
+  // sees (COR-771).
+  conversation.appendSystemMessage(bundle.rendered, {
+    [MEMORY_EVIDENCE_METADATA_KEY]: {
+      sessionId: target.sessionId,
+      recordIds: bundle.evidence.map((item) => item.id),
+      withheld: bundle.withheld,
+      bundleRevision: bundle.revision,
+      contentDigest: bundle.contentDigest,
+      policyRevision: bundle.policyRevision,
+    },
+  });
+}
+
+/** Positions of the evidence rows recalled under a memory policy that is no longer in force. */
+function staleEvidencePositions(conversation: Conversation, policyRevision: string): number[] {
+  const { ids, messages } = conversation.current;
+  return ids.flatMap((id, position) => {
+    const entry = messages[id]?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const recalledUnder = (entry as Record<string, unknown>)['policyRevision'];
+    if (typeof recalledUnder !== 'string' || recalledUnder === policyRevision) return [];
+    return messages[id]?.content === WITHDRAWN_MEMORY_EVIDENCE ? [] : [position];
+  });
+}
+
 /**
  * Inject recalled memory on step 0 through governed memory's mandatory recall
  * admission (COR-41). Only records the run's authority may search, whose trust
@@ -1216,6 +1256,14 @@ function redactProvider(provider: ProviderConfiguration): RedactedProviderConfig
  * reach the conversation, and they arrive inside a labeled evidence envelope
  * whose content cannot close the envelope or claim authority. A record a
  * detector trips on is quarantined instead.
+ *
+ * A bundle never outlives the memory policy it was recalled under (COR-771).
+ * On every later step, including the first step of a recovered run, an
+ * evidence row recalled under an older policy revision is withdrawn and the
+ * prompt is recalled again, so the next epoch records the new bundle rather
+ * than carrying the stale one as current. Compaction and steering never
+ * recall: a compaction that rewrites the row breaks its digest, which the
+ * epoch flags, and steering does not change what memory returns.
  *
  * Replay classification (seam #11): `effectful`, because recall admission
  * writes to the governance ledger and can quarantine a poisoned record. Both
@@ -1231,16 +1279,23 @@ export function createMemoryRecallHook(
   target: RunMemoryTarget,
 ): PrepareStepHook {
   return async (context) => {
-    if (context.step !== 0) {
-      return;
-    }
-
     // The current prompt, whatever its shape: a string, or the text parts of a
     // part array (COR-716). Recall never runs against an older message because
     // the current one carries media, and a prompt with no text recalls nothing.
     const messages = context.conversation.getMessages();
     const latestUserMessage = messages.findLast((message) => message.role === 'user');
     const query = latestUserMessage === undefined ? '' : messageText(latestUserMessage);
+
+    if (context.step !== 0) {
+      const stale = staleEvidencePositions(context.conversation, memory.policyRevision);
+      if (stale.length === 0) {
+        return;
+      }
+      for (const position of stale) {
+        context.conversation.redactMessageAtPosition(position, WITHDRAWN_MEMORY_EVIDENCE);
+      }
+    }
+
     if (query.trim() === '') {
       return;
     }
@@ -1250,18 +1305,7 @@ export function createMemoryRecallHook(
       limit: 5,
       contextId: authority.principal.id,
     });
-
-    if (bundle.evidence.length === 0) {
-      return;
-    }
-
-    context.conversation.appendSystemMessage(bundle.rendered, {
-      [MEMORY_EVIDENCE_METADATA_KEY]: {
-        sessionId: target.sessionId,
-        recordIds: bundle.evidence.map((item) => item.id),
-        withheld: bundle.withheld,
-      },
-    });
+    appendMemoryEvidence(context.conversation, target, bundle);
   };
 }
 

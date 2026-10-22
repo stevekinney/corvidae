@@ -16,6 +16,7 @@ import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
 import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import { noToolCalls } from './conditions/predicates';
+import type { ContextEpochSealer } from './context-epoch';
 import type { MediaCostEstimator } from './context/types';
 import { createActiveRun } from './create-run';
 import type { GeneratedMediaAdmitter } from './generated-media';
@@ -121,6 +122,13 @@ export interface CreateAgentOptionsBase {
 
   /** Context window management (compaction). */
   contextManagement?: ContextManagementOptions | undefined;
+
+  /**
+   * Seals an effective-context epoch at every generate attempt of this agent's
+   * runs; see `RunOptions.contextEpoch`. Sealing is opt-in: without one, no
+   * epoch is recorded.
+   */
+  contextEpoch?: ContextEpochSealer | undefined;
 
   /**
    * Projects media parts whose source no provider takes directly (a managed
