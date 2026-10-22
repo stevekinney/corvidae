@@ -185,9 +185,18 @@ function formatNumber(
   }
 }
 
+/** Plural rules for `locale`, or the runtime's when it is not a BCP 47 tag. */
+function pluralRules(locale: string | undefined): Intl.PluralRules {
+  try {
+    return new Intl.PluralRules(locale);
+  } catch {
+    return new Intl.PluralRules();
+  }
+}
+
 function pluralize(args: Arguments, locale: string | undefined): string {
   const value = toNumber(args['value']) ?? 0;
-  const category = new Intl.PluralRules(locale).select(value);
+  const category = pluralRules(locale).select(value);
   const chosen = args[category];
   return stringify(chosen === undefined || chosen === null ? args['other'] : chosen);
 }
@@ -221,7 +230,12 @@ function dateName(
   locale: string | undefined,
   options: Intl.DateTimeFormatOptions,
 ): string {
-  return new Intl.DateTimeFormat(locale, options).format(date);
+  try {
+    return new Intl.DateTimeFormat(locale, options).format(date);
+  } catch {
+    // A locale that is not a BCP 47 tag (`en_US`) falls back to the runtime's.
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+  }
 }
 
 /**

@@ -570,4 +570,54 @@ describe('review fixes', () => {
     expect(screen.getByRole('combobox', { name: 'Options' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Shopping cart' })).not.toBeNull();
   });
+
+  test('a __proto__ key in an action context never becomes the context’s prototype', async () => {
+    const actions: A2uiAction[] = [];
+    const context = JSON.parse('{"__proto__": {"admin": true}, "item": "x"}') as Record<
+      string,
+      unknown
+    >;
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'proto-action',
+        components: [
+          {
+            id: 'root',
+            component: 'Button',
+            child: 'label',
+            action: { event: { name: 'go', context } },
+          },
+          { id: 'label', component: 'Text', text: 'Go' },
+        ],
+        onAction: (action: A2uiAction) => actions.push(action),
+      },
+    });
+    await flush();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+
+    expect(Reflect.get(actions[0]?.context ?? {}, 'admin')).toBeUndefined();
+    expect(Object.getPrototypeOf(actions[0]?.context)).toBe(Object.prototype);
+    expect(actions[0]?.context).toEqual({ item: 'x' });
+  });
+
+  test('a DateTimeInput without a label is named, and a CheckBox trigger is not nested in a button', async () => {
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'names-2',
+        components: [
+          { id: 'root', component: 'Column', children: ['when', 'modal'] },
+          { id: 'when', component: 'DateTimeInput', enableDate: true, enableTime: true, value: '' },
+          { id: 'modal', component: 'Modal', trigger: 'agree', content: 'body' },
+          { id: 'agree', component: 'CheckBox', label: 'Agree', value: false },
+          { id: 'body', component: 'Text', text: 'Terms' },
+        ],
+      },
+    });
+    await flush();
+
+    expect(screen.getAllByLabelText('Date and time').length).toBeGreaterThan(0);
+    expect(container.querySelector('button input, button [role="checkbox"]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open' })).not.toBeNull();
+  });
 });

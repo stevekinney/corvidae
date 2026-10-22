@@ -129,6 +129,12 @@ describe('basic catalog functions', () => {
     }
   });
 
+  it('falls back to the runtime locale for a locale that is not a BCP 47 tag', () => {
+    const scope = context({}, { locale: 'en_US' });
+    expect(callFunction('pluralize', { value: 1, one: 'one', other: 'many' }, scope)).toBe('one');
+    expect(callFunction('formatDate', { value: '2025-12-15', format: 'MMMM' }, scope)).not.toBe('');
+  });
+
   it('pluralize picks the locale’s category and falls back to other', () => {
     const scope = context();
     const forms = { one: '1 item', other: 'many items' };

@@ -200,6 +200,12 @@
       : undefined,
   );
 
+  /** A DateTimeInput's name when the surface gives it no label. */
+  function dateTimeLabel(kind: ReturnType<typeof dateTimeControl>): string {
+    if (kind.control === 'time-field') return 'Time';
+    return kind.granularity === 'day' ? 'Date' : 'Date and time';
+  }
+
   // ── Tabs ──
   let selectedTab = $state('0');
 
@@ -341,10 +347,16 @@
       <span bind:this={modalTrigger} class="a2ui-modal-trigger">
         {#if triggerComponent?.component === 'Button'}
           <Self id={triggerComponent.id} {scope} ancestry={lineage} activate={openModal} />
-        {:else}
+        {:else if triggerComponent !== undefined && ['Text', 'Icon', 'Image'].includes(triggerComponent.component)}
+          <!-- A non-interactive trigger is wrapped in a button so it can be reached and pressed. -->
           <Button variant="secondary" onclick={openModal} class="a2ui-leaf">
             {@render child(prop('trigger'), scope, true)}
           </Button>
+        {:else}
+          <!-- An interactive or container trigger is not nested inside a button: it
+               renders as itself, and a button beside it opens the dialog. -->
+          {@render child(prop('trigger'))}
+          <Button variant="secondary" onclick={openModal} class="a2ui-leaf">Open</Button>
         {/if}
       </span>
       <Modal bind:open={modalOpen} title={triggerTitle(triggerComponent)} triggerRef={modalTrigger}>
@@ -541,7 +553,7 @@
       {#if kind.control === 'time-field'}
         <TimeField
           id={domId}
-          label={text('label')}
+          label={text('label') || dateTimeLabel(kind)}
           bind:value={
             () => dateTimeForControl(value, 'time') ?? '', (next) => setLocal('value', next)
           }
@@ -551,7 +563,7 @@
       {:else}
         <DatePicker
           id={domId}
-          label={text('label')}
+          label={text('label') || dateTimeLabel(kind)}
           granularity={kind.granularity}
           {...optional('min', text('min') || undefined)}
           {...optional('max', text('max') || undefined)}

@@ -134,7 +134,8 @@ export function runAction(
     const resolved: Record<string, A2uiJsonValue> = {};
     if (typeof raw === 'object' && raw !== null) {
       for (const [key, value] of Object.entries(raw)) {
-        resolved[key] = toJsonValue(resolveDynamic(value, evaluation));
+        // A `__proto__` key from the wire would set the context's prototype, not add data.
+        if (key !== '__proto__') resolved[key] = toJsonValue(resolveDynamic(value, evaluation));
       }
     }
     context.dispatch({
@@ -159,7 +160,9 @@ export function toJsonValue(value: unknown): A2uiJsonValue {
   if (Array.isArray(value)) return value.map(toJsonValue);
   if (typeof value === 'object') {
     const result: Record<string, A2uiJsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) result[key] = toJsonValue(entry);
+    for (const [key, entry] of Object.entries(value)) {
+      if (key !== '__proto__') result[key] = toJsonValue(entry);
+    }
     return result;
   }
   return null;
