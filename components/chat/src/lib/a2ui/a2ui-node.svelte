@@ -512,7 +512,13 @@
       {@render child(prop('child'))}
       {#if activate !== undefined}
         <!-- As a Modal's trigger, the dropped Button still leaves a way to open the dialog. -->
-        <Button variant="secondary" onclick={activate} class="a2ui-leaf">Open</Button>
+        <Button
+          variant="secondary"
+          disabled={checkMessage !== undefined}
+          title={checkMessage}
+          onclick={activate}
+          class="a2ui-leaf">Open</Button
+        >
       {/if}
     {:else if type === 'Button'}
       <Button

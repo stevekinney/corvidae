@@ -885,4 +885,32 @@ describe('review fixes', () => {
       'Read before you continue',
     );
   });
+
+  test('a malformed component record is skipped and reported, and a checked dropped trigger stays disabled', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'boundary',
+        components: [
+          null,
+          { id: 'root', component: 'Column', children: ['modal'] },
+          { id: 'modal', component: 'Modal', trigger: 'open', content: 'body' },
+          {
+            id: 'open',
+            component: 'Button',
+            child: 'agree',
+            action: { event: { name: 'x' } },
+            checks: [{ condition: false, message: 'Not yet' }],
+          },
+          { id: 'agree', component: 'CheckBox', label: 'Agree', value: false },
+          { id: 'body', component: 'Text', text: 'Details', variant: 'h2' },
+        ] as unknown as A2uiComponent[],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(diagnostics.some((entry) => entry.message.startsWith('components[0]'))).toBe(true);
+    expect(screen.getByRole('button', { name: 'Open' }).hasAttribute('disabled')).toBe(true);
+  });
 });

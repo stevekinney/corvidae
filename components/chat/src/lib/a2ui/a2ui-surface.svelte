@@ -10,7 +10,7 @@
   import A2uiNode from './a2ui-node.svelte';
   import { A2uiDataModel } from './data-model.svelte.ts';
   import { setA2uiRenderContext } from './render-context.ts';
-  import type { A2uiComponent } from './types.ts';
+  import type { A2uiComponent, A2uiDiagnostic } from './types.ts';
 
   // Renders an A2UI v0.9.1 surface built from the basic catalog with Cinder
   // components, two-way data binding, the catalog's client functions, and
@@ -29,6 +29,12 @@
 
   const idPrefix = $props.id();
   const reported = new Set<string>();
+  function report(code: A2uiDiagnostic['code'], componentId: string | undefined, message: string) {
+    const key = `${code}\u0000${componentId ?? ''}\u0000${message}`;
+    if (reported.has(key)) return;
+    reported.add(key);
+    onDiagnostic?.({ code, ...(componentId === undefined ? {} : { componentId }), message });
+  }
   const model = new A2uiDataModel(
     untrack(() => dataModel),
     (value) => onDataModelChange?.(value),
@@ -49,9 +55,30 @@
     model.replace(next);
   });
 
+  // The wire boundary: every record is checked here once, so nothing below
+  // meets a component that is not an object with a string `id` and `component`.
   const byId = $derived.by(() => {
     const map = new Map<string, A2uiComponent>();
-    for (const component of components) map.set(component.id, component);
+    const records: unknown = components;
+    for (const [index, record] of (Array.isArray(records) ? records : []).entries()) {
+      if (
+        typeof record !== 'object' ||
+        record === null ||
+        typeof Reflect.get(record, 'id') !== 'string' ||
+        typeof Reflect.get(record, 'component') !== 'string'
+      ) {
+        untrack(() =>
+          report(
+            'unsupported-value',
+            undefined,
+            `components[${index}] is not a component with a string id and component`,
+          ),
+        );
+        continue;
+      }
+      const component = record as A2uiComponent;
+      map.set(component.id, component);
+    }
     return map;
   });
 
@@ -70,12 +97,7 @@
       return resolveAssetUrl;
     },
     releaseAssetUrl: (resolvedUrl) => releaseAssetUrl?.(resolvedUrl),
-    report: (code, componentId, message) => {
-      const key = `${code}\u0000${componentId ?? ''}\u0000${message}`;
-      if (reported.has(key)) return;
-      reported.add(key);
-      onDiagnostic?.({ code, ...(componentId === undefined ? {} : { componentId }), message });
-    },
+    report,
   });
 </script>
 
