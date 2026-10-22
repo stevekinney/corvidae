@@ -281,6 +281,10 @@ export interface InteractiveSurfaceActionRequest extends InteractiveSurfaceComma
   /** The action's `name` in the surface's catalog. */
   readonly action: string;
   readonly value?: InteractiveSurfaceJsonValue | undefined;
+  /** A2UI's `sourceComponentId`: the component that raised the action. Recorded with it. */
+  readonly sourceComponentId?: string | undefined;
+  /** A2UI's `timestamp`: when the user acted, as an ISO 8601 date-time. Recorded with it. */
+  readonly timestamp?: string | undefined;
 }
 
 /**

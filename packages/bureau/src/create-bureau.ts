@@ -11316,20 +11316,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // (a catalog run releases itself when it settles) age out here.
     // COR-1596: what a fire's decided approval keeps to fence a concurrent resolver ends with the
     // fire's task, which is the last thing that could name it.
-    let removed = await tasks.expire(cutoff, bound, async (record) => {
-      // COR-1631: a task's surfaces stay readable until its retention ends, and end with it.
-      // A failure is diagnosed and must not keep a fire's own cleanup below from running.
-      await surfaces?.removeTask(record.taskId).catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'interactive-surfaces',
-          message: `[bureau] Could not remove the surfaces of expired task "${record.taskId}": ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
-      if (record.kind !== 'schedule-fire') return;
-      await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
-    });
+    let removed = await tasks.expire(
+      cutoff,
+      bound,
+      async (record) => {
+        if (record.kind !== 'schedule-fire') return;
+        await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
+      },
+      // COR-1631: a task's surfaces stay readable until its retention ends, and end with it. They
+      // go first: a failure keeps the task's record, so the next pass finds the task and retries.
+      async (record) => {
+        try {
+          await surfaces?.removeTask(record.taskId);
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'interactive-surfaces',
+            message: `[bureau] Could not remove the surfaces of expired task "${record.taskId}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          throw error;
+        }
+      },
+    );
     for (const runId of expired) {
       if (bound.has(runId)) continue;
       try {

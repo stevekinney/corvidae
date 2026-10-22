@@ -843,6 +843,46 @@ describe('closing, cancellation, and cleanup', () => {
     });
   });
 
+  it('refuses a review that a longer task id owns, even when this task id prefixes it', async () => {
+    const { surfaces } = harness({
+      'session-1': { owner: OWNER, contextId: 'session-0' },
+      'session-1:0': { owner: OWNER, contextId: 'session-1' },
+    });
+    const created = await surfaces.create(
+      createCommand({
+        taskId: 'session-1',
+        actions: [
+          {
+            name: 'approve',
+            intent: 'approve',
+            continuation: { type: 'review', reviewId: 'approval:session-1:0:call-1' },
+          },
+        ],
+      }),
+    );
+    expect(created).toMatchObject({ reason: 'invalid' });
+  });
+
+  it('records an A2UI action’s source component and timestamp', async () => {
+    const { surfaces, events } = harness();
+    await surfaces.create(createCommand());
+    const admitted = await surfaces.act(
+      actionRequest({ sourceComponentId: 'submit-button', timestamp: '2026-10-22T12:00:00.000Z' }),
+    );
+    expect(admitted).toMatchObject({ outcome: 'accepted' });
+    const history = await events();
+    const recorded = history.find(
+      (event) => event.kind === INTERACTIVE_SURFACE_EVENT_KINDS.actionAdmitted,
+    );
+    expect(recorded?.payload).toMatchObject({
+      sourceComponentId: 'submit-button',
+      timestamp: '2026-10-22T12:00:00.000Z',
+    });
+    expect(
+      await surfaces.act(actionRequest({ commandId: 'act-2', timestamp: 'yesterday' })),
+    ).toMatchObject({ reason: 'invalid' });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

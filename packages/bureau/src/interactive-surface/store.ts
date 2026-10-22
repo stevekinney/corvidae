@@ -279,20 +279,30 @@ function withoutValue(
  * task's run, or a signal to this task's own session. A surface's author may
  * be the model, so a continuation naming another task is refused here rather
  * than handed to the caller to dispatch.
+ *
+ * A run id can itself hold colons (a session run is `<sessionId>:<sequence>`),
+ * so a review id is matched by its known prefix rather than split. A prefix
+ * alone is ambiguous when this task's id begins another's (`a` and `a:0`), so a
+ * review whose remainder names an existing longer task belongs to that task.
  */
-function assertOwnContinuations(
+async function assertOwnContinuations(
   actions: readonly InteractiveSurfaceActionDefinition[],
   taskId: string,
   task: InteractiveSurfaceTask,
-): void {
+  lookup: (taskId: string) => Promise<InteractiveSurfaceTask | undefined>,
+): Promise<void> {
   for (const action of actions) {
     const continuation = action.continuation;
     if (continuation.type === 'review') {
-      // A run id can itself hold colons (a session run is `<sessionId>:<sequence>`),
-      // so the review id is matched by its known prefix rather than split.
       const reviewId = continuation.reviewId;
-      const ownPrefixes = [`approval:${taskId}:`, `human-wait:${taskId}:`];
-      if (!ownPrefixes.some((prefix) => reviewId.startsWith(prefix))) {
+      const prefix = [`approval:${taskId}:`, `human-wait:${taskId}:`].find((candidate) =>
+        reviewId.startsWith(candidate),
+      );
+      const remainder = prefix === undefined ? '' : reviewId.slice(prefix.length);
+      const separator = remainder.indexOf(':');
+      const longer =
+        separator > 0 ? await lookup(`${taskId}:${remainder.slice(0, separator)}`) : undefined;
+      if (prefix === undefined || longer !== undefined) {
         throw new InteractiveSurfaceValidationError(
           `action "${action.name}" continues a review of another task`,
         );
@@ -303,6 +313,29 @@ function assertOwnContinuations(
       );
     }
   }
+}
+
+/** An action's A2UI provenance: the component that raised it and when, each optional. */
+function readActionProvenance(record: Record<string, unknown>): {
+  sourceComponentId?: string;
+  timestamp?: string;
+} {
+  const source = record['sourceComponentId'];
+  const timestamp = record['timestamp'];
+  if (
+    timestamp !== undefined &&
+    (typeof timestamp !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp) ||
+      Number.isNaN(Date.parse(timestamp)))
+  ) {
+    throw new InteractiveSurfaceValidationError('timestamp must be an ISO 8601 date-time');
+  }
+  return {
+    ...(source === undefined
+      ? {}
+      : { sourceComponentId: readIdentifier(source, 'sourceComponentId') }),
+    ...(timestamp === undefined ? {} : { timestamp }),
+  };
 }
 
 /** Thrown inside a commit when the projection moved; the caller re-reads. */
@@ -704,7 +737,7 @@ export function createInteractiveSurfaces(
       assertWithinPayloadLimit({ representation, data, summary, actions }, maxPayloadBytes);
       const digest = digestOf(record);
 
-      assertOwnContinuations(actions, taskId, task);
+      await assertOwnContinuations(actions, taskId, task, options.task);
       // Watch before committing, so a settlement after this point freezes the new surface.
       watch(taskId);
 
@@ -792,7 +825,9 @@ export function createInteractiveSurfaces(
       }
       const digest = digestOf(record);
 
-      if (changes.actions !== undefined) assertOwnContinuations(changes.actions, taskId, task);
+      if (changes.actions !== undefined) {
+        await assertOwnContinuations(changes.actions, taskId, task, options.task);
+      }
 
       return retrying(async () => {
         const loaded = await current(task, taskId, surfaceId);
@@ -902,6 +937,8 @@ export function createInteractiveSurfaces(
         'revision',
         'action',
         'value',
+        'sourceComponentId',
+        'timestamp',
       ]);
       const surfaceId = readIdentifier(record['surfaceId'], 'surfaceId');
       const revision = record['revision'];
@@ -910,6 +947,7 @@ export function createInteractiveSurfaces(
       }
       const actionName = readIdentifier(record['action'], 'action');
       const value = record['value'] === undefined ? null : readJsonValue(record['value'], 'value');
+      const provenance = readActionProvenance(record);
       const digest = digestOf(record);
 
       const task = await reachTask(taskId, authorization);
@@ -992,6 +1030,7 @@ export function createInteractiveSurfaces(
             action: action.name,
             intent: action.intent,
             continuation: action.continuation,
+            ...provenance,
             ...(surface.classification === 'sensitive'
               ? { valueDigest: digestOf(value) }
               : { value: value satisfies InteractiveSurfaceJsonValue }),

@@ -400,12 +400,15 @@ export interface TaskRegistry {
    * holds is deleted through `deleteRun`, which removes its record. Resolves how
    * many records it removed. `onRemoved` hears each record it removed, once it is gone, so
    * state kept for a task past its settling can end with it; a listener that throws is its own
-   * failure, never the removal's.
+   * failure, never the removal's. `beforeRemove` runs first, for state that must be gone
+   * before the record is: when it throws, the failure is diagnosed and the record is kept,
+   * so a later pass retries it.
    */
   expire(
     cutoffMs: number,
     keep: ReadonlySet<string>,
     onRemoved?: (record: TaskRecord) => Promise<void> | void,
+    beforeRemove?: (record: TaskRecord) => Promise<void>,
   ): Promise<number>;
   /**
    * Empties the history of every task of one incarnation of a context, keeping
@@ -1261,7 +1264,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       );
     },
 
-    async expire(cutoffMs, keep, onRemoved) {
+    async expire(cutoffMs, keep, onRemoved, beforeRemove) {
       let removed = 0;
       // A review still open holds its task: it is waiting on its requester, and removing the
       // record would make `get` and `respond` not-found while the review holds the context open.
@@ -1271,6 +1274,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         if (held.has(record.taskId)) continue;
         if (Date.parse(record.settled.at) >= cutoffMs) continue;
         if (host.liveTask(record.taskId) !== undefined) continue;
+        try {
+          await beforeRemove?.(record);
+        } catch (error) {
+          diagnose(`The cleanup before removing task "${record.taskId}" failed; it is kept`, error);
+          continue;
+        }
         await this.remove(record.taskId);
         removed += 1;
         try {
