@@ -91,6 +91,19 @@ function terminalBookkeepingDone(
   return run.held && holding !== run.workflowExecutionToken;
 }
 
+/**
+ * Whether this engine still holds `run`'s execution attempt: failing the run wrote nothing (the
+ * record was already ended by another writer), so nothing released what the run held here.
+ */
+function stillHoldsRun(
+  internals: EngineInternals,
+  workflowId: string,
+  run: TerminatedRun,
+): boolean {
+  const holding = currentExecutionAttempt(internals, workflowId)?.workflowExecutionToken;
+  return run.held && holding === run.workflowExecutionToken;
+}
+
 /** The error a run ends with when a write failed: the typed error itself, or one wrapping `cause`. */
 function commitFailureOf(
   workflowId: string,
@@ -160,9 +173,14 @@ export async function endRunAfterFailedWrite(
   if (write === 'failure') return abandonRun(internals, workflowId, failure, run);
   try {
     await failWorkflow(internals, workflowId, failWith ?? failure, termination, 'system');
-    // Only a waiter failing the run left pending: with none registered, failing it already wrote and
-    // announced the outcome, and settling again would announce it twice.
-    if (isTerminalWaiterPending(internals, workflowId, run)) {
+    // Settle again only if failing the run left it unfinished here: a waiter still pending, or the
+    // run still held because failing it found the record already ended and wrote nothing. When it
+    // wrote, its own teardown released the run and announced the outcome, and settling again would
+    // announce it twice.
+    if (
+      isTerminalWaiterPending(internals, workflowId, run) ||
+      stillHoldsRun(internals, workflowId, run)
+    ) {
       await settleRunFromStoredRecord(internals, workflowId, termination, run);
     }
   } catch (failureError) {

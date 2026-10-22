@@ -23,7 +23,11 @@ import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';
 import { createTerminationCallbacks } from './callback-creators-core.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
-import { abandonedExecutionAttemptCount, retireExecutionAttempt } from './execution-attempts.ts';
+import {
+  abandonedExecutionAttemptCount,
+  currentExecutionAttempt,
+  retireExecutionAttempt,
+} from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 import { putsWorkflowStatus } from './storage-write-refusal.test-support.ts';
@@ -325,7 +329,7 @@ describe('a run nobody asked the result of', () => {
         id,
         ownership === undefined ? {} : { ownership },
       );
-      const engine = run.engine;
+      await using engine = run.engine;
       const failures: unknown[] = [];
       const failed = Promise.withResolvers<void>();
       engine.addEventListener(WorkflowFailedEvent.type, (event) => {
@@ -335,10 +339,12 @@ describe('a run nobody asked the result of', () => {
       run.refusing.refuse({ matches: terminalPut(id, 'completion') });
 
       await engine.signal(id, 'go', 'x');
-      // No result() is ever asked for: the run is watched only through its events, and disposing
-      // the engine waits out what is left of the terminal path before anything is counted.
+      // No result() is ever asked for, so the run is watched only through its events. A second
+      // announcement would follow the first within the same terminal path, so one macrotask after
+      // the first lets it land; disposing first would end the path early (it drops the claim
+      // registry a workflow-lease announcement needs) and hide it.
       await failed.promise;
-      await engine[Symbol.asyncDispose]();
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(failures).toHaveLength(1);
     },
@@ -576,6 +582,42 @@ describe('the exits that need the engine in a particular state', () => {
       value: ANOTHER_WRITERS_RESULT,
     });
     expect(internals.resultResolvers.has(id)).toBe(false);
+  });
+
+  it('releases what the run held when failing it finds the record already ended and nobody waits', async () => {
+    const id = 'unobserved-ended-elsewhere';
+    const run = await startParkedUnobserved(steps, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    const captured = captureTerminatedRun(internals, id);
+    expect(captured.waiter).toBeUndefined();
+    // As in the waiter case above: the stored-record check reads the run still running, then another
+    // writer ends it before the failure write reads it, so failing the run writes nothing.
+    const base = run.refusing.base;
+    const read = base.get.bind(base);
+    let reads = 0;
+    base.get = async (key: string) => {
+      if (key === KEYS.workflow(id) && ++reads === 2) {
+        const record = decode((await read(key))!) as WorkflowState;
+        record.status = 'completed';
+        record.result = ANOTHER_WRITERS_RESULT;
+        await base.put(key, encode(record));
+      }
+      return read(key);
+    };
+
+    await endRunAfterFailedWrite(
+      internals,
+      id,
+      { createTerminationCallbacks: () => createTerminationCallbacks(engine) },
+      new Error('the completion write failed'),
+      'completion',
+      undefined,
+      captured,
+    );
+
+    expect(internals.checkpoints.has(id)).toBe(false);
+    expect(currentExecutionAttempt(internals, id)).toBeUndefined();
   });
 
   it('leaves a waiter bound to another run alone, though the run being ended captured none', async () => {
