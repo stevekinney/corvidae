@@ -12,9 +12,8 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, render } = await import('@testing-library/svelte');
-const { default: PresetsExample } = await import(
-  './examples/schedule-builder/presets.example.svelte'
-);
+const { default: PresetsExample } =
+  await import('./examples/schedule-builder/presets.example.svelte');
 
 afterEach(() => {
   cleanup();

@@ -183,13 +183,13 @@
   }
 
   .export-icon-success {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
 
   .copied-label {
     margin-inline-start: auto;
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
     font-weight: var(--cinder-font-medium);
   }
 </style>

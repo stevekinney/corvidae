@@ -132,7 +132,7 @@ test.describe('Toggle size', () => {
     // WCAG 2.5.8 measures the element's own box, which a pseudo-element would not enlarge.
     await page.emulateMedia({ media: 'screen' });
     const button = await openToggle(page, 'assertion');
-    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(false);
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(false);
     const box = await button.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(24);
     expect(box!.width).toBeGreaterThanOrEqual(24);
@@ -145,7 +145,7 @@ test.describe('Toggle size', () => {
     try {
       for (const fixtureName of ['assertion', 'on'] as const) {
         const button = await openToggle(page, fixtureName);
-        expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+        expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
         const box = await button.boundingBox();
         expect(box!.width).toBeGreaterThanOrEqual(44);
         expect(box!.height).toBeGreaterThanOrEqual(44);

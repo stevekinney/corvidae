@@ -222,7 +222,7 @@ function isUnderMedia(node: Node, query: RegExp): boolean {
   return false;
 }
 
-const COARSE_POINTER = /\(\s*pointer\s*:\s*coarse\s*\)/i;
+const COARSE_POINTER = /\(\s*any-pointer\s*:\s*coarse\s*\)/i;
 
 describe('Chat composer controls (COR-1552)', () => {
   test('the input area has no top rule', () => {

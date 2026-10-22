@@ -178,7 +178,8 @@ describe('ScheduleBuilder', () => {
       expect(getByRole('tab', { name: 'Cron', selected: true })).not.toBeNull();
       expect(queryByRole('tab', { name: 'Presets' })).toBeNull();
       expect(queryByRole('tab', { name: 'Interval' })).toBeNull();
-      expect(requiredInstance(getByLabelText('Minute'), HTMLInputElement).value).toBe('*/15');
+      expect(requiredInstance(getByLabelText('Minute'), HTMLInputElement).value).toBe('0');
+      expect(requiredInstance(getByLabelText('Hour'), HTMLInputElement).value).toBe('9');
     });
 
     test('cron-only authoring emits only cron values', async () => {
@@ -393,17 +394,37 @@ describe('ScheduleBuilder', () => {
       expect(onValueChange).not.toHaveBeenCalled();
     });
 
-    test('entering cron mode seeds the five fields from the default interval value', async () => {
-      const { getByLabelText, getByRole } = render(ScheduleBuilder, {});
+    test('entering cron mode seeds the five fields from the default daily value', async () => {
+      const onValueChange = mock();
+      const { container, getByLabelText, getByRole } = render(ScheduleBuilder, { onValueChange });
+      const summary = () =>
+        container.querySelector('.cinder-schedule-builder__summary-text')?.textContent;
+      expect(summary()).toBe('Repeats every day at 09:00');
 
       await fireEvent.click(getByRole('tab', { name: 'Cron' }));
 
-      // Default value is "every 15 minutes" -> */15 * * * *
-      expect(requiredInstance(getByLabelText('Minute'), HTMLInputElement).value).toBe('*/15');
-      expect(requiredInstance(getByLabelText('Hour'), HTMLInputElement).value).toBe('*');
+      // The default value is daily at 09:00 -> 0 9 * * *, the same value the summary describes.
+      expect(requiredInstance(getByLabelText('Minute'), HTMLInputElement).value).toBe('0');
+      expect(requiredInstance(getByLabelText('Hour'), HTMLInputElement).value).toBe('9');
       expect(requiredInstance(getByLabelText('Day of month'), HTMLInputElement).value).toBe('*');
       expect(requiredInstance(getByLabelText('Month'), HTMLInputElement).value).toBe('*');
       expect(requiredInstance(getByLabelText('Day of week'), HTMLInputElement).value).toBe('*');
+      // Switching tabs re-describes the same value: no change to the summary, no emission.
+      expect(summary()).toBe('Repeats every day at 09:00');
+      expect(onValueChange).not.toHaveBeenCalled();
+    });
+
+    test('opening the Cron tab with no value changes nothing: the next runs are computed for the same value', async () => {
+      const computeNextFires = mock((_value: ScheduleValue, _count: number): ScheduleFire[] => []);
+      const onValueChange = mock();
+      const { getByRole } = render(ScheduleBuilder, { computeNextFires, onValueChange });
+      const firstValue = computeNextFires.mock.calls.at(-1)![0];
+      expect(firstValue).toEqual({ mode: 'cron', expression: '0 9 * * *' });
+
+      await fireEvent.click(getByRole('tab', { name: 'Cron' }));
+
+      expect(computeNextFires.mock.calls.at(-1)![0]).toEqual(firstValue);
+      expect(onValueChange).not.toHaveBeenCalled();
     });
 
     test('entering interval mode from a representable cron value seeds every/unit losslessly', async () => {
@@ -713,9 +734,10 @@ describe('ScheduleBuilder', () => {
 
       await fireEvent.change(getByLabelText('Minute pattern'), { target: { value: 'step' } });
       await fireEvent.input(getByLabelText('Minute step'), { target: { value: '15' } });
+      await fireEvent.blur(getByLabelText('Minute step'));
       expect(onValueChange.mock.calls.at(-1)?.[0]).toEqual({
         mode: 'cron',
-        expression: '*/15 * * * *',
+        expression: '*/15 9 * * *',
       });
     });
 
@@ -737,7 +759,7 @@ describe('ScheduleBuilder', () => {
       expect(queryByLabelText('Minute value', { exact: true })).toBeNull();
       expect(onValueChange.mock.calls.at(-1)?.[0]).toEqual({
         mode: 'cron',
-        expression: '*/10 * * * *',
+        expression: '*/10 9 * * *',
       });
     });
 
@@ -756,12 +778,12 @@ describe('ScheduleBuilder', () => {
 
       await fireEvent.click(getByRole('tab', { name: 'Cron' }));
       const minuteField = requiredInstance(getByLabelText('Minute'), HTMLInputElement);
-      await fireEvent.input(minuteField, { target: { value: '0' } });
+      await fireEvent.input(minuteField, { target: { value: '30' } });
 
       expect(onValueChange).toHaveBeenCalledTimes(1);
       expect(onValueChange.mock.calls[0]![0]).toEqual({
         mode: 'cron',
-        expression: '0 * * * *',
+        expression: '30 9 * * *',
       });
     });
 
@@ -792,9 +814,9 @@ describe('ScheduleBuilder', () => {
       await fireEvent.input(hourField, { target: { value: '99' } });
       expect(onValueChange).not.toHaveBeenCalled();
 
-      await fireEvent.input(hourField, { target: { value: '9' } });
+      await fireEvent.input(hourField, { target: { value: '10' } });
       expect(onValueChange).toHaveBeenCalledTimes(1);
-      expect(onValueChange.mock.calls[0]![0]).toEqual({ mode: 'cron', expression: '*/15 9 * * *' });
+      expect(onValueChange.mock.calls[0]![0]).toEqual({ mode: 'cron', expression: '0 10 * * *' });
     });
 
     test('cron field description carries its numeric hint', async () => {
@@ -929,12 +951,12 @@ describe('ScheduleBuilder', () => {
       await fireEvent.input(hourField, { target: { value: '99' } });
       computeNextFires.mockClear();
 
-      await fireEvent.input(hourField, { target: { value: '9' } });
+      await fireEvent.input(hourField, { target: { value: '10' } });
 
       expect(computeNextFires).toHaveBeenCalledTimes(1);
       expect(computeNextFires.mock.calls[0]![0]).toEqual({
         mode: 'cron',
-        expression: '*/15 9 * * *',
+        expression: '0 10 * * *',
       });
     });
 

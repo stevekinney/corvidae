@@ -1365,7 +1365,7 @@
     cursor: not-allowed;
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-input-send::after {
       content: '';
       position: absolute;
@@ -1447,6 +1447,6 @@
   .chat-input-error {
     margin: 0;
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 </style>

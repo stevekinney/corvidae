@@ -44,8 +44,9 @@ describe('schedule-builder utilities', () => {
   });
 
   describe('defaultScheduleValue', () => {
-    test('returns an interval of every 15 minutes', () => {
-      expect(defaultScheduleValue()).toEqual({ mode: 'interval', every: 15, unit: 'minutes' });
+    test('returns the daily 09:00 cron value the Presets panel opens on', () => {
+      expect(defaultScheduleValue()).toEqual({ mode: 'cron', expression: '0 9 * * *' });
+      expect(describeValue(defaultScheduleValue())).toBe('Repeats every day at 09:00');
     });
   });
 

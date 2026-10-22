@@ -182,7 +182,7 @@
   padding: 0;
   color: var(--cinder-text-subtle);
   background: transparent;
-  border: 1px solid var(--cinder-border-strong);
+  border: 1px solid var(--cinder-border-control);
   border-radius: var(--cinder-radius-md);
   cursor: pointer;
 }

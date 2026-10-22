@@ -203,7 +203,7 @@
  * Coarse pointer: a 44 × 44 hit area around the 32 × 18 track
  * ---------------------------------------- */
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .cinder-toggle {
       --_cinder-toggle-pad-inline: calc((2.75rem - var(--cinder-toggle-width, 2rem)) / 2);
       --_cinder-toggle-pad-block: calc((2.75rem - var(--cinder-toggle-height, 1.125rem)) / 2);

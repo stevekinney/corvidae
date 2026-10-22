@@ -37,9 +37,12 @@ export const CRON_FIELDS: readonly {
   { name: 'Day of week', min: 0, max: 6, hint: '0–6 (Sun–Sat)' },
 ];
 
-/** The default value used when the consumer passes none. */
+/**
+ * The default value used when the consumer passes none: daily at 09:00, which is what the Presets
+ * panel's Daily kind authors, so the summary, the Cron tab's seed and the upcoming runs all agree.
+ */
 export function defaultScheduleValue(): ScheduleValue {
-  return { mode: 'interval', every: 15, unit: 'minutes' };
+  return { mode: 'cron', expression: '0 9 * * *' };
 }
 
 /** Singularize an interval unit for "every 1 X" phrasing. */

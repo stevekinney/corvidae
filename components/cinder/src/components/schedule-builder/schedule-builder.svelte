@@ -94,8 +94,6 @@
       : normalizedAriaLabel,
   );
 
-  const seedValue = untrack(() => value ?? defaultScheduleValue());
-
   function scheduleValuesEqual(a: ScheduleValue, b: ScheduleValue): boolean {
     if (a.mode !== b.mode) return false;
     if (a.mode === 'cron' && b.mode === 'cron') return a.expression === b.expression;
@@ -247,7 +245,10 @@
     }
   });
 
-  let lastKnownValue: ScheduleValue = seedValue;
+  // What the component shows right now is the committed value until the first edit: the controlled
+  // value when there is one, otherwise the value its own fields already express (the Daily preset,
+  // `defaultScheduleValue()`, when Presets is allowed).
+  let lastKnownValue: ScheduleValue = untrack(() => value ?? currentValue);
 
   function initialValueProp(): ScheduleValue | undefined {
     return value;
@@ -261,11 +262,10 @@
     previousValueProp = incoming;
     if (!propChanged) return;
 
-    const resolved = incoming ?? defaultScheduleValue();
     // Undefined explicitly resets; defined equal values are controlled echoes.
-    if (incoming !== undefined && scheduleValuesEqual(resolved, lastKnownValue)) return;
+    if (incoming !== undefined && scheduleValuesEqual(incoming, lastKnownValue)) return;
     applySeedToFields(seedFieldsFromValue(incoming, resolvedAllowedModes));
-    lastKnownValue = resolved;
+    lastKnownValue = incoming ?? untrack(() => currentValue);
   });
 
   $effect(() => {

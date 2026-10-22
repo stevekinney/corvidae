@@ -987,7 +987,7 @@
 
   .chat-message-failed-label {
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
     font-weight: var(--cinder-font-medium);
   }
 
@@ -1211,7 +1211,7 @@
    * Keep `.chat-message-copy-success` as a selector alias so existing
    * external callers that target it continue to work. */
   :global(.chat-message-copy[data-cinder-copied]) {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
 
   /* CopyButton renders cinder-icon-sm (16px) icons by default. Override to cinder-icon-xs

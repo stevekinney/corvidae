@@ -3738,7 +3738,7 @@ test.describe('chat harness — composer send button hit area (COR-1552)', () =>
   const PROBE_DISTANCE = 21;
 
   async function probeSendButton(page: Page, button: Locator): Promise<void> {
-    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
     const box = await button.boundingBox();
     expect(box?.width).toBeCloseTo(32, 0);
     expect(box?.height).toBeCloseTo(32, 0);
