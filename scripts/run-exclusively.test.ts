@@ -436,7 +436,39 @@ const runsUnlockedWhenLockCannotBeCreated = await inScratchDirectory(async (scra
   expect(reports.join('\n')).toContain('running without the host lock');
 });
 
+const sharedRunsBesideAHeldLock = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  const held = await acquireHostLock({
+    lockDirectory,
+    holder: {
+      pid: process.pid,
+      command: 'a full validate',
+      cwd: scratch.directory,
+      acquiredAt: new Date().toISOString(),
+    },
+  });
+  try {
+    const reports: string[] = [];
+    // `bun run check` runs shared: it neither waits for the held lock nor queues a ticket behind it.
+    expect(
+      await runExclusively({
+        lockDirectory,
+        script: 'exit 4',
+        shared: true,
+        report: (line) => reports.push(line),
+      }),
+    ).toBe(4);
+    expect(reports).toEqual([]);
+    expect(await readdir(queueDirectoryFor(lockDirectory)).catch(() => [])).toEqual([]);
+  } finally {
+    await held.release();
+  }
+});
+
 describe('runExclusively', () => {
+  test('a shared run neither waits for nor queues behind a held lock', () =>
+    rethrow(sharedRunsBesideAHeldLock));
+
   test('two concurrent runs never overlap', () => rethrow(concurrentRunsNeverOverlap));
 
   test("returns the command's exit code and releases the lock after a failure", () =>
@@ -662,6 +694,17 @@ describe('withTurborepoDefaults', () => {
     expect(concurrencyFor(16 * gibibyte, 12)).toBe('2');
     expect(concurrencyFor(4 * gibibyte, 10)).toBe('1');
     expect(concurrencyFor(256 * gibibyte, 2)).toBe('1');
+  });
+
+  test('gives a shared run half the concurrency, and at least one task', () => {
+    const sharedConcurrencyFor = (totalMemoryBytes: number, processors: number) =>
+      withTurborepoDefaults({}, '/repository/.git', { totalMemoryBytes, processors }, true)[
+        'TURBO_CONCURRENCY'
+      ];
+    expect(sharedConcurrencyFor(32 * gibibyte, 12)).toBe('2');
+    expect(sharedConcurrencyFor(64 * gibibyte, 24)).toBe('4');
+    expect(sharedConcurrencyFor(16 * gibibyte, 12)).toBe('1');
+    expect(sharedConcurrencyFor(4 * gibibyte, 2)).toBe('1');
   });
 
   test("keeps the caller's own cache directory and concurrency", () => {

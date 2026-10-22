@@ -10,7 +10,8 @@
 //                                   --iterations <n> --log <tsv> [--json]
 //
 // `run` waits while any process matches the configuration's `lockPattern` (checked every 15
-// seconds, each wait written to the log), records `HEAD <sha> LOAD <load>` as the log's first line
+// seconds, each wait written to the log), unless the command is the `affectedCheckCommand`, which
+// runs shared beside the lock, records `HEAD <sha> LOAD <load>` as the log's first line
 // and `TREE_START clean=<true|false|unknown> head=<sha>` before the gate, runs the wrapped gate
 // command in the worktree with all output going to the log, appends `TREE_END clean=... head=...`
 // and `GATE_RC=<n>`, and exits with the gate's code. `clean` is whether `git status --porcelain`
@@ -280,7 +281,10 @@ export function runGate(
   mkdirSync(dirname(options.log), { recursive: true });
   writeFileSync(options.log, '');
   let waits = 0;
-  if (config.lockPattern !== undefined) {
+  const command = options.command ?? config.gateCommand;
+  // The affected-only check runs shared, beside any lock holder, so waiting for one would only
+  // queue it behind a full validate it does not compete with.
+  if (config.lockPattern !== undefined && command !== config.affectedCheckCommand) {
     for (;;) {
       const holders = findLockProcesses(config.lockPattern, runner);
       if (holders.length === 0) break;
@@ -303,7 +307,7 @@ export function runGate(
     options.log,
     `HEAD ${head} LOAD ${dependencies.load().toFixed(2)}\n${waitLines}${treeLine('START', start)}`,
   );
-  const gate = `sh -c ${shellQuote(options.command ?? config.gateCommand)}`;
+  const gate = `sh -c ${shellQuote(command)}`;
   const wrapped = config.gateWrapper === undefined ? gate : `${config.gateWrapper} ${gate}`;
   const result = runner(['sh', '-c', `${wrapped} >> ${shellQuote(options.log)} 2>&1`], {
     cwd: options.worktree,
