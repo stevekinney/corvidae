@@ -477,7 +477,7 @@ function assertA2AUrl(name: string, value: unknown): void {
   }
 }
 
-function assertA2A(options: BureauHandlerOptions): void {
+function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): void {
   if (options.publicUrl === undefined) {
     if (options.discoveryUrl !== undefined) fail('discoveryUrl needs publicUrl, which mounts A2A');
     if (options.signing !== undefined) fail('signing needs publicUrl, which mounts A2A');
@@ -485,6 +485,13 @@ function assertA2A(options: BureauHandlerOptions): void {
   }
   assertA2AUrl('publicUrl', options.publicUrl);
   if (options.discoveryUrl !== undefined) assertA2AUrl('discoveryUrl', options.discoveryUrl);
+  if (!bureau.hasDurableEngine) {
+    fail(
+      'publicUrl needs a Bureau with a durable engine: every A2A send creates its task through a ' +
+        'run-creation receipt, which only a durable engine keeps. Configure storage and ' +
+        '`durableExecution` on createBureau',
+    );
+  }
 }
 
 function assertAssets(bureau: BureauHandlerSource): void {
@@ -889,7 +896,7 @@ export function createBureauHandler(
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertPublish(bureau, options.publish);
   assertAgUi(bureau, options);
-  assertA2A(options);
+  assertA2A(bureau, options);
   assertAssets(bureau);
   assertMaxRequestBodyBytes(options.maxRequestBodyBytes);
   assertBureauId(bureau);
