@@ -119,9 +119,16 @@ Durable session input, update, query, schedules, and human review are separate c
 ### `createBureau(options)`
 
 ```typescript
-function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
+import {
+  createBureau,
+  type AgentDefinitions,
+  type Bureau,
+  type BureauOptions,
+} from '@lostgradient/bureau';
+
+const create: <const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
-): Promise<Bureau<D>>;
+) => Promise<Bureau<D>> = createBureau;
 ```
 
 Composes and returns a `Bureau`. `agents` is the only required field—pass `{}` for a bureau that only uses the session/durability-backed `createRun` surface below (**deprecated**, not yet removed—see AB-242) and doesn't dispatch through the typed catalog at all. Without a `generate`/`provider`/`providers` + `routing` (all agent-owned fields, **deprecated** per AB-242), the result has no generate function configured (`bureau.ready === false`) and `createRun` throws `BureauError('NOT_CONFIGURED')` until one is provided.
@@ -184,8 +191,10 @@ Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` run
 
 ```typescript
 import { createAgentSkills } from '@lostgradient/bureau';
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { discoverSkills } from '@lostgradient/bureau/skills';
+
+declare const generate: GenerateFunction;
 
 const catalog = await discoverSkills({
   sources: [{ id: 'user', kind: 'user', location: './skills', precedence: 20 }],
@@ -200,9 +209,15 @@ Removing the two deprecated fields later is therefore not a behavior change for 
 `onLog` and `onDiagnostic` cover different sources: `onLog` carries only `ctx.log` records emitted _by durable workflow code itself_, while `onDiagnostic` carries bureau's own operational diagnostics—the sites that write to `console.error`/`console.warn` today (recovery failures, live-frame listener exceptions, dispose errors, persistence failures). Route `onDiagnostic` into a structured logger to capture those without monkeypatching `console`:
 
 ```ts
-import pino from 'pino';
+import { createBureau } from '@lostgradient/bureau';
 
-const logger = pino();
+// The members of a pino logger (`import pino from 'pino'; const logger = pino();`) this example uses.
+interface Logger {
+  warn(fields: object, message: string): void;
+  error(fields: object, message: string): void;
+}
+
+declare const logger: Logger;
 
 const bureau = await createBureau({
   agents: {},
@@ -259,15 +274,23 @@ The most commonly used members:
 ### `streamEventToFrame`
 
 ```typescript
-function streamEventToFrame(runId: string, event: StreamEvent): ServerFrame | undefined;
+import { streamEventToFrame, type StreamFrame } from '@lostgradient/bureau';
+import type { StreamEvent } from '@lostgradient/operative';
+
+const toFrame: (runId: string, event: StreamEvent) => StreamFrame | undefined = streamEventToFrame;
 ```
 
-Converts an `operative` `StreamEvent` (`stream:text-delta`, `stream:tool-call-start`, `stream:tool-call-delta`, `stream:tool-call-complete`, `stream:complete`, `stream:error`) into the matching typed `ServerFrame`, stamped with the owning `runId`. Returns `undefined` for event types with no frame equivalent. Bureau uses this internally to translate a run's `streaming` output into the frames delivered by `subscribeLiveFrames`; an application-owned WebSocket or server-sent events transport can use it the same way.
+Converts an `operative` `StreamEvent` (`stream:text-delta`, `stream:tool-call-start`, `stream:tool-call-delta`, `stream:tool-call-complete`, `stream:complete`, `stream:error`) into the matching typed `StreamFrame` (the stream members of `ServerFrame`, before Bureau stamps `runSeq`), stamped with the owning `runId`. Returns `undefined` for event types with no frame equivalent. Bureau uses this internally to translate a run's `streaming` output into the frames delivered by `subscribeLiveFrames`; an application-owned WebSocket or server-sent events transport can use it the same way.
 
 ### The Audit Trail
 
 ```typescript
-import { createAuditTrail } from '@lostgradient/bureau';
+import { createAuditTrail, type Bureau } from '@lostgradient/bureau';
+import type { ConditionalTextValueStore } from '@lostgradient/weft';
+
+declare const bureau: Bureau;
+declare const kv: ConditionalTextValueStore;
+declare const runId: string;
 
 const trail = createAuditTrail(bureau, kv);
 const records = await trail.query({ runId, since: Date.now() - 3_600_000, limit: 100 });
@@ -295,8 +318,10 @@ This is a second, durable layer alongside the in-memory `@lostgradient/operative
 `BureauOptions.auditRetention` controls whether the durable audit trail is ever pruned. It defaults to `'forever'`—unbounded, exactly the behavior described above—so a long-lived deployment must opt in before any postmortem evidence is ever removed:
 
 ```typescript
+import { createBureau } from '@lostgradient/bureau';
+
 const bureau = await createBureau({
-  // ...
+  agents: {},
   auditRetention: { olderThan: 30 * 24 * 60 * 60 * 1000 }, // 30 days
 });
 ```
@@ -318,7 +343,10 @@ A pass that actually prunes at least one record writes exactly one `audit.pruned
 `BureauOptions.checkpointRetention` controls whether a durable run's Weft checkpoint history is ever pruned once that run reaches a terminal state. It defaults to `'keep-all'`—unbounded, exactly the behavior described above—so a long-lived deployment must opt in before any checkpoint is ever removed:
 
 ```typescript
+import { createBureau } from '@lostgradient/bureau';
+
 const bureau = await createBureau({
+  agents: {},
   storage: { type: 'sqlite', path: './bureau.sqlite' },
   checkpointRetention: { keepLast: 5 },
 });
@@ -359,6 +387,11 @@ Once the window has passed, `bureau.locateRunCreationReceipt({ principal, agentN
 ### The Durable Event History Store (AB-91)
 
 ```typescript
+import type { Bureau } from '@lostgradient/bureau';
+
+declare const bureau: Bureau;
+declare const runId: string;
+
 const page = await bureau.eventHistory({ kind: 'run', id: runId });
 if ('outcome' in page) {
   // 'unsupported-capability' (ephemeral bureau) or 'gap' (since predates retention)
@@ -594,7 +627,15 @@ A child's `status` is `'completed'` when its run ends with `finishReason: 'stop-
 A grant's summary carries `grantId`, `policyVersion`, `depth`, `expiresAt`, and `artifactDigest` (present when the input is a conversation), plus `budget` only under a `'full'` `disclosurePolicy`; the default is `'redacted'`. The stored grant is always complete. `timeToLiveMilliseconds` defaults to `children.delegation.defaultTimeToLiveMilliseconds` (one hour), and a child's `expiresAt` never outlives its parent's. Bureau enforces the signature, revocation, expiry, `depth`, `concurrentChildren`, and `totalDescendants`. It signs and attenuates the capability lists, the grant's `delegatedAuthority`, and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings, but does not apply them to the running child. Expiry and revocation are checked when a descendant is dispatched and during recovery; neither stops a child already running. There is no public revoke operation. Rotating `children.delegation.secret` invalidates every existing grant.
 
 ```typescript
-import { createBureau } from '@lostgradient/bureau';
+import { createBureau, type Bureau } from '@lostgradient/bureau';
+import type { AgentRun, StandaloneAgent } from '@lostgradient/operative';
+
+declare const planner: StandaloneAgent;
+declare const delegationSecret: string;
+declare function durableRunId(
+  bureau: Bureau<{ planner: StandaloneAgent }>,
+  run: AgentRun,
+): Promise<string>;
 
 // `planner` is a long-running `createAgent` agent, `delegationSecret` comes
 // from the host's secret store (and must not change across restarts), and
@@ -667,6 +708,12 @@ Not supported: observing a child's signal `events` (Bureau only sends signals; a
 `bureau.goals` runs one goal across attempts and keeps it across a process restart. An attempt is one durable run of a catalog agent, followed by one validator execution that decides whether the goal is met; the attempt is the retry unit, and the decisions (when to retry, when a budget is spent, which terminal reason a goal ends with) are the same ones the in-memory `startGoal` controller makes, because both call the same pure functions.
 
 ```ts
+import { createBureau } from '@lostgradient/bureau';
+import type { StandaloneAgent, Validator } from '@lostgradient/operative';
+
+declare const worker: StandaloneAgent;
+declare const testsPass: Validator;
+
 const bureau = await createBureau({
   agents: { worker },
   validators: [testsPass], // identity: { name: 'tests-pass', version: '1' }
@@ -784,6 +831,12 @@ A candidate run is excluded from pruning—left for a later cycle—on any of fo
 The retained-owner set itself is revalidated fresh immediately before each session's write (inside `SessionStore.update`'s callback, re-run on every conflict retry, and passed `{ refreshActivity: false }` so this maintenance write never itself reads as session activity—Codex review, PR #568, "Avoid refreshing session activity during retention pruning")—a run can dispatch, complete, and have its terminal event land in the feed entirely within the time this pass spends paging through other sessions, which would make a single up-front snapshot stale by the time that run's own session is reached (Codex review, PR #568, "Revalidate retained owners before pruning"). That revalidation is a cheap, cursor-resumed `DurableEventHistory.refreshRetainedRunOwnerIds()` call, not a second from-scratch `retainedRunOwnerIds()` full replay per candidate session—the latter would turn one maintenance pass into O(candidate sessions × retained events) storage reads (Codex review, PR #568, "Avoid replaying the full fleet feed per candidate session"); the initial snapshot (one full replay) is still taken once, up front, per pass. `refreshRetainedRunOwnerIds()` also mutates that ONE snapshot's owner set in place rather than cloning it on every call—a per-candidate, per-retry `Set` copy of every retained owner would have kept CPU/allocation cost at O(candidate sessions × retained owners) even after the storage-read cost above was fixed (Codex review, PR #579, "Stop copying the full owner set on every refresh"). Across instances sharing one backend, no primitive spans the fleet feed and the session store in one atomic operation, and `claimHolder`, like Weft's `holderStatus` beneath it, is a point-in-time read, not a lock. So an event for a pruned run can still land after the delete: a terminal run whose claim was already released can still be deleted (`run.removed`) or have a review resolved (`review.*`) by an instance that holds it in memory, and another instance's event can commit between a pass's fresh refresh and its session write. Both sides therefore verify after they write (COR-1380), and whichever read comes second restores the entry with an idempotent union write that preserves `updatedAt`. The pruner reads the feed again after each committed delete and puts back, with the principal it removed, every deleted run that is now retained, whatever kind of event made it so; a rejected restore write is diagnosed and the pass moves on to the next session. `deleteRun()` and every `review.*` transition (approve, deny, reject, expired, revoked, canceled, superseded) wait for their own durable write to settle, then read the run's entry and restore it with the run owner's principal, never the acting principal; a failed restore is diagnosed and never changes the call's own outcome. The guarantee: once a pass and a `deleteRun()` or `review.*` transition on the same run have both settled, the run's entry exists whenever a retained `run.removed` or `review.*` event for it exists, provided the recording instance holds the run's principal in memory. What remains: the entry is briefly absent between a prune commit and its restore; a pass that crashes, or whose post-delete refresh rejects, between its commit and its restore can leave the entry absent; an instance with no in-memory principal or session incarnation for the run (one rehydrated at boot after the entry was already pruned, or recovered without an incarnation), or a run recorded without a principal, gets no writer-side restore, and neither side ever restores into a session deleted and recreated under the same id since the entry was removed; and `run.completed`, `run.error`, `run.aborted`, `run.tripwire`, `schedule.completed`, and `schedule.failed` events under a run owner have no writer-side restore, so they are covered only by the exclusion signals and, when they land before the pruner's re-read, by the pruner-side restore. Under the opt-out `{ ownership: 'none' }` the claim signal is absent and every exclusion beyond the shared authority entry is process-local. Durable maintenance calls `FleetEventFeed.retain()` under `eventRetention` (7 days by default), so the floor advances and this pass has work whenever runs are older than the window.
 
 ```typescript
+import type { Bureau } from '@lostgradient/bureau';
+
+declare const bureau: Bureau;
+declare const runId: string;
+declare const lastKnownCursor: string;
+
 const subscription = bureau.subscribeEventHistory(
   { kind: 'run', id: runId },
   (event) => console.log(event.kind, event.payload),
@@ -908,8 +961,10 @@ Both hooks are classified `replay: 'effectful'`: recall writes ledger events and
 `AgentDefinitions` (AB-15, AB-22) is a plain literal object—the `agents` map passed to `createBureau({ agents })`—of agent name to `RunnableAgent` (an `@lostgradient/operative` `createAgent()` or `createLazyAgent()` result). There is no register/unregister lifecycle: the map is fixed for the bureau's lifetime. `bureau.agents` exposes an immutable, read-only `BureauAgentCatalog` view over it (`get`/`find`/`has`/`names`/`entries`/`query`), and `bureau.run(name, input, options?)` dispatches to a named entry synchronously—like `RunnableAgent.run`, it returns the `AgentRun` handle immediately, never `Promise<AgentRun>`.
 
 ```typescript
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { createBureau } from '@lostgradient/bureau';
+
+declare const generate: GenerateFunction;
 
 const bureau = await createBureau({
   agents: {
@@ -958,7 +1013,10 @@ import {
   createAgentDiscoveryTool,
   createFanOutRouting,
   createSupervisor,
+  type Bureau,
 } from '@lostgradient/bureau';
+
+declare const bureau: Bureau;
 
 const supervisor = createSupervisor({
   agents: bureau.agents,
@@ -992,12 +1050,14 @@ The root exports `createBureau` and the Bureau-specific test harnesses. `waitFor
 Composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, defaulting to a freshly constructed one) and an owned `BureauStorageFixture` (`options.storage`, required). The returned promise resolves only once `bureau.ready` is `true` and boot recovery has completed. Every other `BureauOptions` field passes through unchanged. `createManualRuntimeServices` and the `ManualRuntimeServices` type are re-exported from `@lostgradient/bureau` (and `@lostgradient/operative`); their source owner, `@lostgradient/lifecycle`, is a private workspace inlined into these packages, so a consumer never imports it directly (COR-89).
 
 ```typescript
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import {
   createBureauTestHarness,
   createManualRuntimeServices,
   createSqliteStorageFixture,
 } from '@lostgradient/bureau';
+
+declare const myGenerate: GenerateFunction;
 
 const runtime = createManualRuntimeServices();
 const storage = createSqliteStorageFixture({ runtime });
@@ -1040,6 +1100,11 @@ import { assertBureauQuiescent, BureauQuiescenceError } from '@lostgradient/bure
 The other four—`runningScheduleFires`, `activeEvaluations`, `pendingAuditWrites`, `openStorageResources`—read empty on the common path (nothing genuinely survives an unbounded `bureau.shutdown()`, which awaits each owner's real drain) but populate for real once AB-265's fault engine forces a genuine leftover past a bounded `shutdown({ timeoutMilliseconds })` (AB-322): `runningScheduleFires` from `bureau.scheduler.getState().activeTask`, `activeEvaluations` from `bureau.onlineEvalSampler.activeEvaluationSnapshots()`, `pendingAuditWrites` from `harness.runtime.outstandingDeferred()` filtered to the `'audit-write'` label, and `openStorageResources` from the memory storage fixture's own public call accounting (`BureauStorageFixture.openHandles()`—sqlite/lmdb fixtures never open their own handle, so theirs always reads `[]`). The first three are read AFTER `bureau.shutdown()` returns but are deliberately never folded into `leaked`: the owner each names (`scheduler`/`online-evals`/`audit-trail`) is already reported under `incomplete` when a bounded `shutdown()` times out on it, and promoting the same fact into `leaked` too would double-report it. `openStorageResources` IS folded into `leaked`—nothing in `bureau.shutdown()`'s own owner accounting shadows a lingering low-level storage call, so this is the only place that leak is ever reported. `incomplete` carries any owner `bureau.shutdown({ timeoutMilliseconds })` itself classified `'unresolved'`—reported distinctly from `leaked`, never promoted into it.
 
 ```typescript
+import type { BureauTestHarness } from '@lostgradient/bureau';
+
+declare const harness: BureauTestHarness;
+declare const summary: { id: string };
+
 harness.registerDurableRun(summary.id, { detached: true });
 const report = await harness.close();
 report.detached; // [{ kind: 'durable-owner', id: summary.id }]—not a leak
@@ -1053,7 +1118,10 @@ Builds on a `harness` already constructed with `createBureauTestHarness` (see ab
 
 ```typescript
 import { createEventRecorder } from '@lostgradient/operative';
-import { assembleReproductionArtifact } from '@lostgradient/bureau';
+import { assembleReproductionArtifact, type BureauTestHarness } from '@lostgradient/bureau';
+import type { StandaloneAgent } from '@lostgradient/operative';
+
+declare const harness: BureauTestHarness<{ worker: StandaloneAgent }>;
 
 const recorder = createEventRecorder(harness.runtime);
 const run = harness.startRun('worker', 'hello');
@@ -1074,6 +1142,21 @@ const artifact = await assembleReproductionArtifact(harness, recorder, {
 `assembleReproductionArtifact` takes an optional fourth `environment` argument (AB-264): `{ sourceRevision?, packageVersions? }`. Supplying a field there replaces this function's own discovery for that field—`git rev-parse HEAD` and the `packages/*` manifest glob both assume a real repository checkout rooted at a `turbo.json`, neither of which exists inside a packed-and-path-installed tarball consumer (`scripts/verify-bureau-tarball-boundary.ts`'s probe passes both explicitly, since it already knows them from its own pack step). Omitted fields still discover normally, so every existing caller inside this repository is unaffected.
 
 ```typescript
+import {
+  assembleReproductionArtifact,
+  type AssembleReproductionArtifactOptions,
+  type BureauTestHarness,
+} from '@lostgradient/bureau';
+import type { EventRecorder, StandaloneAgent } from '@lostgradient/operative';
+
+declare const harness: BureauTestHarness<{ worker: StandaloneAgent }>;
+declare const recorder: EventRecorder;
+declare const terminalResult: AssembleReproductionArtifactOptions['terminalResult'];
+declare const cleanupReport: AssembleReproductionArtifactOptions['cleanupReport'];
+
+const sourceRevision = '0123456789abcdef0123456789abcdef01234567';
+const packageVersions = { '@lostgradient/bureau': '0.0.0' };
+
 const artifact = await assembleReproductionArtifact(
   harness,
   recorder,

@@ -152,6 +152,8 @@ This component does not declare any local CSS variables.
 ## FacetDefinition
 
 ```ts
+import type { Snippet } from 'svelte';
+
 // Select facet — fixed options list
 type SelectFacet = {
   type: 'select';

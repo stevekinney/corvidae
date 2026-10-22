@@ -117,7 +117,7 @@ The mount the handler is served at selects the agent; `tenant` only identifies t
 
 To let a client resume with `Last-Event-ID`, tag each event your request handler yields with its durable cursor:
 
-```ts partial
+```ts
 import type { StreamResponse } from '@a2a-js/sdk';
 import { withStreamEventCursor } from '@lostgradient/weft/a2a';
 
@@ -147,7 +147,12 @@ With `signing`, the card carries one signature from the SDK's `generateAgentCard
 
 WebCrypto derives the public key only by exporting the private one, so `privateKey` must be created with `extractable: true`. It must also be the private key `alg` names: an ECDSA P-256 key for `ES256`, an Ed25519 key for `EdDSA`. `createA2AHandler` throws for a key that is not, so no other key's members can reach the JWKS, which publishes only `kty`, `crv`, `x`, and (for P-256) `y`.
 
-```ts partial
+```ts
+import { createA2AHandler, type A2AHandlerOptions } from '@lostgradient/weft/a2a';
+
+declare const requestHandler: A2AHandlerOptions['requestHandler'];
+declare const agentCard: A2AHandlerOptions['agentCard'];
+
 const { privateKey } = await crypto.subtle.generateKey(
   { name: 'ECDSA', namedCurve: 'P-256' },
   true,

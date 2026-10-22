@@ -2,7 +2,7 @@
 
 Monitor API costs and usage quotas.
 
-```typescript
+```typescript file=cost-tracking.ts
 import { createToolbox, createMiddleware } from 'armorer';
 
 interface CostEntry {
@@ -34,12 +34,10 @@ class CostTracker {
     const stats: Record<string, { calls: number; cost: number; units: number }> = {};
 
     for (const entry of this.entries) {
-      if (!stats[entry.toolName]) {
-        stats[entry.toolName] = { calls: 0, cost: 0, units: 0 };
-      }
-      stats[entry.toolName].calls++;
-      stats[entry.toolName].cost += entry.cost;
-      stats[entry.toolName].units += entry.units;
+      const toolStats = (stats[entry.toolName] ??= { calls: 0, cost: 0, units: 0 });
+      toolStats.calls++;
+      toolStats.cost += entry.cost;
+      toolStats.units += entry.units;
     }
 
     return stats;
@@ -47,7 +45,7 @@ class CostTracker {
 }
 
 // Cost calculator function type
-type CostCalculator = (
+export type CostCalculator = (
   params: unknown,
   result: unknown,
 ) => {
@@ -91,7 +89,7 @@ function createCostTrackingMiddleware(
 }
 
 // Example: OpenAI GPT-4 cost calculator
-const costCalculators = new Map<string, CostCalculator>([
+export const costCalculators = new Map<string, CostCalculator>([
   [
     'openai-completion',
     (params: any, result: any) => {
@@ -129,6 +127,9 @@ if (costTracker.getTotalCost() > 10.0) {
 ## Per-User Cost Quotas
 
 ```typescript
+import { createMiddleware, createToolbox } from 'armorer';
+import { costCalculators, type CostCalculator } from './cost-tracking.ts';
+
 class QuotaManager {
   private usage = new Map<string, number>();
 

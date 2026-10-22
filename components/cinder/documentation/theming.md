@@ -190,7 +190,27 @@ If your consumer app uses Storybook, you can wire the same `data-theme` mutation
 
 ```ts
 // .storybook/preview.ts
-import type { Preview } from '@storybook/svelte-vite';
+// In your app: import type { Preview } from '@storybook/svelte-vite';
+// The members of Storybook's `Preview` type this file uses:
+interface StoryContext {
+  globals: Record<string, unknown>;
+}
+interface Preview {
+  globalTypes?: Record<
+    string,
+    {
+      description?: string;
+      toolbar?: {
+        title?: string;
+        icon?: string;
+        items: { value: string; title: string }[];
+        dynamicTitle?: boolean;
+      };
+    }
+  >;
+  initialGlobals?: Record<string, unknown>;
+  decorators?: ((story: (context: StoryContext) => unknown, context: StoryContext) => unknown)[];
+}
 
 const preview: Preview = {
   globalTypes: {
@@ -213,7 +233,7 @@ const preview: Preview = {
   },
   decorators: [
     (story, context) => {
-      const theme = context.globals.theme as 'light' | 'dark' | 'system';
+      const theme = context.globals['theme'] as 'light' | 'dark' | 'system';
       const root = document.documentElement;
       if (theme === 'system') {
         root.removeAttribute('data-theme');
@@ -369,6 +389,7 @@ import {
   evaluateThemeProperties,
   renderThemeStylesheet,
   validateThemeSources,
+  type ContextProperties,
 } from '@lostgradient/cinder/tokens/runtime';
 
 const envelope = JSON.parse(readFileSync('brand.cinder-theme.json', 'utf8'));
@@ -384,11 +405,12 @@ const evaluation = evaluateThemeProperties(sources);
 if (!evaluation.ok) throw new Error('The theme does not evaluate.');
 
 const maps = Object.fromEntries(
-  evaluation.contexts.map(({ id }) => [
-    id,
-    applyCssOnlyOverrides(evaluation.properties[id], envelope.cssOverrides, id),
-  ]),
-);
+  evaluation.contexts.map(({ id }) => {
+    const properties = evaluation.properties[id];
+    if (properties === undefined) throw new Error(`${id} did not evaluate.`);
+    return [id, applyCssOnlyOverrides(properties, envelope.cssOverrides, id)];
+  }),
+) as ContextProperties;
 writeFileSync('brand.css', renderThemeStylesheet(maps, { identity: envelope.name }));
 ```
 

@@ -26,18 +26,16 @@ import { createToolbox, createTool } from 'armorer';
 import { createMCP } from 'armorer';
 import { z } from 'zod';
 
-const toolbox = createToolbox();
-createTool(
-  {
+const toolbox = createToolbox([
+  createTool({
     name: 'sum',
     description: 'adds two numbers',
     input: z.object({ a: z.number(), b: z.number() }),
     async execute({ a, b }) {
       return a + b;
     },
-  },
-  toolbox,
-);
+  }),
+]);
 
 const mcp = await createMCP(toolbox, {
   serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
@@ -77,7 +75,7 @@ const server = new MCPServerStreamableHttp({
   url: 'http://localhost:8000/mcp',
   name: 'toolbox-tools',
   requestInit: {
-    headers: { Authorization: `Bearer ${process.env.MCP_SERVER_TOKEN}` },
+    headers: { Authorization: `Bearer ${process.env['MCP_SERVER_TOKEN']}` },
   },
   cacheToolsList: true,
 });

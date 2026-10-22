@@ -74,8 +74,14 @@ Keep the composer as a plain textarea by committing a selected item as a Markdow
 import {
   parseChatComposerMentions,
   serializeChatComposerMention,
+  type ChatComposerMentionRange,
   type ChatComposerPopoverSelection,
 } from '@lostgradient/chat';
+
+// The bound `<Chat bind:this={chat}>` instance from the example above.
+declare const chat:
+  { insertAtRange(range: { start: number; end: number }, text: string): void } | undefined;
+declare function sendMessage(input: { text: string; mentions: ChatComposerMentionRange[] }): void;
 
 type MentionItem = {
   value: string;

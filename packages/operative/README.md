@@ -68,15 +68,19 @@ console.log(result.finishReason); // "stop-condition"
 `result()` resolves for an ordinary completed, errored, or cancelled run and carries the classification in `finishReason`; `abort()` is therefore observed as `finishReason: 'aborted'`. A durable run whose engine fails it (an activity or workflow-body failure, a refused storage write, a history circuit-breaker or deadline timeout) resolves with `finishReason: 'error'` too, from what the run had committed, after `run.error` and `run.completed` fire. `result()` rejects only where the outcome cannot be trusted: a stored result or checkpoint record this build cannot read (`UnsupportedRunResultVersionError`, `UnsupportedCheckpointRecordVersionError` on a reattached run), and a session run whose own terminal commit fails or conflicts with another writer's, so a caller cannot mistake an uncommitted terminal run for success. The promise remains cached, including after rejection. `abort()` is synchronous request signaling; await `result()` when the caller needs the terminal outcome.
 
 ```typescript
+import { createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction; // as in Quick Start above
 
 const conversation = new Conversation();
 conversation.appendUserMessage('Summarize the docs.');
 
 const activeRun = createActiveRun({
   generate,
-  toolbox, // a Toolbox from armorer's createToolbox()—empty or populated
+  toolbox: createToolbox([]), // a Toolbox from armorer's createToolbox()—empty or populated
   conversation,
   stopWhen: stopWhen.noToolCalls(),
 });
@@ -116,7 +120,12 @@ The main import surface for defining agents, running loops, managing sessions, b
 The documented public factory for a standalone, bureau-less agent. `generate` is required—there's no bureau to inherit a provider from. Runs are in-memory and ephemeral by default (no durability, no session, no shared memory) unless you inject your own `Toolbox` and `ConversationHistory`, as below.
 
 ```typescript
+import type { Tool } from 'armorer';
 import { createAgent } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+
+declare const myProvider: GenerateFunction;
+declare const searchTool: Tool;
 
 const agent = createAgent({
   generate: myProvider, // GenerateFunction—required
@@ -163,8 +172,21 @@ A host with a browser- or client-owned conversation and an approval-gated toolbo
 ```typescript
 import { unlink } from 'node:fs/promises';
 import { createTool, createToolbox } from 'armorer';
+import type { SignedPendingToolApproval } from 'armorer';
+import type { ConversationHistory } from 'conversationalist';
 import { createAgent, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
 import { z } from 'zod';
+
+// Supplied by your host: the provider, the client-POSTed history, and the
+// identity your HTTP layer resolves for each authenticated request.
+type Identity = { readonly id: string };
+type Authorization = { readonly capabilities: readonly string[]; readonly revision: string };
+declare const myProvider: GenerateFunction;
+declare const clientHistory: ConversationHistory;
+declare const currentUser: Identity, currentTenant: Identity, currentSession: Identity;
+declare const currentAuthorization: Authorization;
+declare const agentId: string, runId: string;
 
 const deleteFileTool = createTool({
   name: 'delete-file',
@@ -186,9 +208,11 @@ const deleteFileTool = createTool({
 // present. Without one, `allowMutation` and `allowDangerous` both default to
 // true and `deleteFileTool` would simply EXECUTE—`approvalSecret` alone only
 // signs a pending approval once something has produced one.
+const approvalSecret = Bun.env['APPROVAL_SECRET'];
+if (!approvalSecret) throw new Error('APPROVAL_SECRET is required');
 const toolbox = createToolbox([deleteFileTool], {
   approvalPolicy: { mode: 'on-mutation' },
-  approvalSecret: Bun.env['APPROVAL_SECRET'],
+  approvalSecret,
 });
 
 // Build this from the authenticated request. Do not store tenant or principal
@@ -222,6 +246,9 @@ const pending = result.steps.at(-1)?.results.find((r) => r.pendingApproval)?.pen
 // Later, on approval: authenticate the new HTTP request and construct a fresh
 // context. Preserve the bound identity fields, but derive controls such as a
 // deadline from this request instead of copying an expired deadline.
+declare const approvalUser: Identity, approvalTenant: Identity, approvalSession: Identity;
+declare const approvalAuthorization: Authorization;
+declare const signedApproval: SignedPendingToolApproval; // the human-approved `pending`
 const approvalRequestContext = {
   authority: {
     principalId: approvalUser.id,
@@ -308,6 +335,19 @@ The run's terminal result and `ActiveRun.closed()` wait for every admission the 
 For a process that only needs to reconnect to an existing durable run, construct the handle with the same session store, engine, and checkpoint store, then call `await session.recover()` without calling `run()` first. Recovery returns `null` when no run is available or when an engine resume fails, and emits `session.recover` failures for inspection, including a reconciliation persistence failure. `run()` requires configured `runOptions` and throws `MissingRunOptionsError` synchronously before reserving a run when they are absent.
 
 ```typescript
+import { createSessionHandle } from '@lostgradient/operative';
+import type {
+  CheckpointStore,
+  RegistryAgnosticEngine,
+  SessionStore,
+} from '@lostgradient/operative';
+
+// The same stores and engine the original process started the run with.
+declare const store: SessionStore;
+declare const engine: RegistryAgnosticEngine;
+declare const checkpointStore: CheckpointStore;
+declare const sessionId: string;
+
 const session = createSessionHandle(sessionId, {
   store,
   agentName: 'assistant',
@@ -322,6 +362,8 @@ if (recovered) await recovered.result();
 An elicitation callback returns a response carrying the same immutable request identity and schema-validated data, or `null` to decline/cancel:
 
 ```typescript
+import type { OnElicitation } from '@lostgradient/operative';
+
 const onElicitation: OnElicitation = async (request) => ({
   requestId: request.requestId,
   ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
@@ -338,6 +380,10 @@ New `RunRef` records also retain `baseConversationMetadata`, captured when the r
 Pass an `AbortSignal` to clear the active timer and stop the operation:
 
 ```typescript
+import type { SessionHandle } from '@lostgradient/operative';
+
+declare const session: SessionHandle;
+
 const controller = new AbortController();
 
 const monitoring = session.monitor({
@@ -358,6 +404,10 @@ Use a Weft-backed run wakeup or signal when a current run must survive restart, 
 `SessionHandle` implements `LivenessObservable` (`@lostgradient/operative`): `snapshot()` returns a `LivenessSnapshot` narrowed to `kind: 'session'`, and `subscribeSnapshot(observer, options?)` delivers it immediately, then again on every revision change. Unlike an `AgentRun`, a session never reaches a terminal liveness status—it can always accept another `run()`—so a `subscribeSnapshot` subscription stays open until `unsubscribe()` or `options.signal` aborts it. `durability` is always `'process-local'` (AB-39: session monitoring is not durable-ized by this record).
 
 ```typescript
+import type { SessionHandle } from '@lostgradient/operative';
+
+declare const session: SessionHandle;
+
 const subscription = session.subscribeSnapshot((snapshot) => {
   console.log(snapshot.status, snapshot.reachability, snapshot.missedPulseCount);
 });
@@ -374,14 +424,32 @@ A durable run step parks on at most one request, and the first one wins. `reques
 
 ### `createLazyAgent(loader, options?)`
 
-Type-preserving lazy loading for a whole `RunnableAgent` (AB-21)—instructions, tools, and output schema together, not just the `generate` function (`createLazyGenerate` covers that narrower case: `createAgent({ generate: createLazyGenerate(loader) })`). It defers `import()`ing an agent's module until the first `run()` call, while still returning an `AgentRun` handle synchronously:
+Type-preserving lazy loading for a whole `RunnableAgent` (AB-21)—instructions, tools, and output schema together, not just the `generate` function (`createLazyGenerate` covers that narrower case: `createAgent({ generate: createLazyGenerate(loader) })`). It defers `import()`ing an agent's module until the first `run()` call, while still returning an `AgentRun` handle synchronously. Given two agent modules, one with a named export and one with a default export:
+
+```typescript file=researcher.ts
+import { createAgent, createMockGenerate } from '@lostgradient/operative';
+
+export const researcher = createAgent({
+  generate: createMockGenerate([{ content: 'Q3 revenue grew 12%.', toolCalls: [] }]),
+  instructions: 'Summarize the documents you are given.',
+});
+```
+
+```typescript file=plugin.ts
+import { createAgent, createMockGenerate } from '@lostgradient/operative';
+
+export default createAgent({
+  generate: createMockGenerate([{ content: 'Plugin ready.', toolCalls: [] }]),
+  instructions: 'You are a plugin agent.',
+});
+```
 
 ```typescript
 import { createLazyAgent } from '@lostgradient/operative';
 
 // A named export: select it inside the loader—there is no selector overload.
 const researcher = createLazyAgent(() =>
-  import('./agents/researcher').then((module) => module.researcher),
+  import('./researcher.ts').then((module) => module.researcher),
 );
 
 const run = researcher.run('Summarize the Q3 report.'); // synchronous—no await here
@@ -389,7 +457,7 @@ const result = await run.result(); // the module loads on first run(), then is c
 
 // A default export: `createLazyAgent` accepts the raw `import()` result
 // directly and unwraps `.default` itself (AB-15's `AgentModule<O, H>`).
-const plugin = createLazyAgent(() => import('./agents/plugin'));
+const plugin = createLazyAgent(() => import('./plugin.ts'));
 ```
 
 `createLazyAgent`'s `options` also accepts `runtime?: RuntimeServices` (AB-92/AB-252/AB-325)—the clock the synthetic liveness snapshot reads through for the window before the underlying agent resolves (`startedAt`/`observedAt`), forwarded into `createDeferredAgentRun`. Defaults to the real implementation.
@@ -415,7 +483,14 @@ The full-control factory behind `createAgent`, `createSessionHandle`, and bureau
 Most callers should reach for `createAgent({...}).run(...)` instead—it wraps `createActiveRun` in the higher-level `AgentRun` handle and covers the common cases. Reach for `createActiveRun` directly when you need something `createAgent` doesn't expose: an already-live `Conversation` instance, durable routing, a `hooks` registry for that one run, structured output via `output`, or a pre-built emitter to bind tool dispatches to.
 
 ```typescript
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // `stopWhen` is required for the in-memory loop to finish on an ordinary turn:
 // without a stop condition, a text-only provider response keeps advancing until
@@ -460,6 +535,9 @@ Like `createAgent`, a plain `ConversationHistory` passed here is SNAPSHOTTED on 
 **`RunResult`:**
 
 ```typescript
+import type { Conversation } from 'conversationalist';
+import type { FinishReason, StepResult, TokenUsage } from '@lostgradient/operative';
+
 interface RunResult {
   conversation: Conversation;
   steps: readonly StepResult[];
@@ -502,6 +580,10 @@ interface RunResult {
 Tool settlement is represented by the run's sealed `tool-result.validated` event and corresponding `StepResult` tool result. Filtering occurs before execution, so a filtered tool has no scripted settlement call; hook and validation failures preserve their final result payload and outcome in the emitted step result.
 
 ```typescript
+import type { ActiveRun } from '@lostgradient/operative';
+
+declare const activeRun: ActiveRun;
+
 // Iterate events as an async stream
 for await (const event of activeRun.events('step.completed')) {
   console.log(event.step, event.content);
@@ -819,6 +901,8 @@ A retry or reset that must not inherit a failed attempt's transcript starts from
 `ConversationPolicy` names the first three rows as values, so a controller can decide which one an attempt gets:
 
 ```typescript
+import type { FreshAttemptHandoffArtifact } from '@lostgradient/operative';
+
 type ConversationPolicy =
   | { kind: 'continue' }
   | { kind: 'fork-from-baseline'; throughRun?: number }
@@ -828,6 +912,12 @@ type ConversationPolicy =
 `applyConversationPolicy(session, { policy, instructions })` resolves the `SessionHandle` an attempt should run in: `session` itself for `continue` (also the result when `policy` is omitted), `session.fork()` for `fork-from-baseline`, and `session.startFreshAttempt()` for `fresh-from-artifact`. Only `fresh-from-artifact` reads `instructions`; a continued or forked conversation already carries its own.
 
 ```typescript
+import { applyConversationPolicy } from '@lostgradient/operative';
+import type { FreshAttemptHandoffArtifact, SessionHandle } from '@lostgradient/operative';
+
+declare const session: SessionHandle;
+declare const artifact: FreshAttemptHandoffArtifact; // validated, see below
+
 const attempt = await applyConversationPolicy(session, {
   policy: { kind: 'fresh-from-artifact', artifact },
   instructions: 'You are the implementer. Follow AGENTS.md.',
@@ -1078,6 +1168,13 @@ import {
   stopWhen,
   withTimeout,
 } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // Compose two prepare-step hooks into one
 const combined = composeHooks(
@@ -1142,7 +1239,23 @@ A run emits four events describing the `HookRegistry` it was dispatched with, so
 | `hook-plan.removed` | when an entry is unregistered while the run holds the plan | `hookName`, `hookId`, `runId` |
 
 ```typescript
-const activeRun = createActiveRun({ generate, toolbox, conversation, stopWhen, hooks });
+import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction, HookRegistry, OperativeHookMap } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
+declare const hooks: HookRegistry<OperativeHookMap>; // as registered above
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  hooks,
+});
 
 activeRun.addEventListener('hook-plan.registered', (event) => {
   console.log(`plan: ${event.hookName}/${event.hookId} priority=${event.priority}`);
@@ -1174,8 +1287,17 @@ import {
   createInputLengthDetector,
   createTopicBoundaryDetector,
   createOutputPIIValidator,
+  HookRegistry,
+  type GenerateFunction,
+  type OperativeHookMap,
   stopWhen,
 } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // Injection detection on inputs
 const injectionDetector = createPromptInjectionDetector();
@@ -1195,13 +1317,20 @@ const guardrails = createGuardrails({
   output: { validators: [createOutputPIIValidator()] },
 });
 
+// Register both halves on the run's hook registry.
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('prepareStep', guardrails.prepareStep, { id: 'app:guardrails-input', replay: 'safe' });
+hooks.on('validateResponse', guardrails.validateResponse, {
+  id: 'app:guardrails-output',
+  replay: 'safe',
+});
+
 const activeRun = createActiveRun({
   generate,
   toolbox,
   conversation,
   stopWhen: stopWhen.noToolCalls(),
-  prepareStep: guardrails.prepareStep,
-  validateResponse: guardrails.validateResponse,
+  hooks,
 });
 ```
 
@@ -1209,21 +1338,30 @@ const activeRun = createActiveRun({
 
 `createContextAssembler()` returns a function that, given a conversation and a budget, partitions messages into system / retrieved / history slices and trims each to fit:
 
-```typescript
+```typescript file=assembly.ts
+import type { Conversation } from 'conversationalist';
 import { createContextAssembler, createTokenBudget } from '@lostgradient/operative';
 
-const budget = createTokenBudget({
+declare const conversation: Conversation;
+
+export const budget = createTokenBudget({
   maxTokens: 100_000,
   minimumResponseTokens: 4_000,
 });
 
-const assembler = createContextAssembler();
+export const assembler = createContextAssembler();
 const { messages, budgetReport } = assembler({ conversation, budget });
 ```
 
 **Stable-prefix mode (`stablePrefix: true`)** trades the default priority-ranked/budget-fill behavior for a prompt-cache-friendly one: system messages and `pinnedMessages` are assembled into a prefix that stays byte-identical across steps as the conversation grows—never budget-truncated, never re-ranked—and the last message of that prefix comes back with `cacheBoundary: true`. History and `retrievedMessages` are unaffected: they're assembled exactly as in the default mode and appended AFTER the stable prefix, so their normal per-step re-ranking never touches the cached region.
 
 ```typescript
+import type { Conversation, Message } from 'conversationalist';
+import { assembler, budget } from './assembly.ts';
+
+declare const conversation: Conversation;
+declare const toolUsageNotesMessage: Message;
+
 const { messages } = assembler({
   conversation,
   budget,
@@ -1240,6 +1378,9 @@ import {
   createContextAssembler,
   createTokenBudget,
 } from '@lostgradient/operative';
+import type { Message } from 'conversationalist';
+
+declare const toolUsageNotesMessage: Message;
 
 const generate = createAnthropicProvider({
   model: 'claude-sonnet-4-20250514',
@@ -1258,6 +1399,8 @@ const generate = createAnthropicProvider({
 Every shipped provider (`createAnthropicProvider`, `createOpenAIProvider`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side:
 
 ```typescript
+import { createAnthropicProvider } from '@lostgradient/operative';
+
 const generate = createAnthropicProvider({
   model: 'claude-sonnet-4-20250514',
   apiKey: 'placeholder-token', // never a real key—the proxy injects it
@@ -1279,6 +1422,8 @@ No provider issues a token-counting, models-list, or beta/experimental endpoint 
 **Per-run request metadata.** `requestMetadata` (a `Record<string, string>`) attaches to every generate request of a run:
 
 ```typescript
+import { createAnthropicProvider } from '@lostgradient/operative';
+
 const generate = createAnthropicProvider({
   model: 'claude-sonnet-4-20250514',
   requestMetadata: { requestId: 'run-42', tenant: 'acme' },
@@ -1297,6 +1442,10 @@ Every shipped provider throws `ProviderError` (`@lostgradient/operative`) for HT
 
 ```typescript
 import { ToolCallParseError } from '@lostgradient/operative';
+import type { GenerateContext, GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction; // a streaming provider
+declare const context: GenerateContext;
 
 try {
   await generate(context);
@@ -1317,6 +1466,8 @@ Use `isToolCallParseError` to recognize the error structurally when it crosses a
 ```typescript
 import { isToolCallParseError } from '@lostgradient/operative';
 
+declare const error: unknown;
+
 if (isToolCallParseError(error)) {
   // Matches structurally even if `error` came from a different
   // operative entrypoint's bundle than this check.
@@ -1333,6 +1484,13 @@ import {
   createAdaptiveBackoff,
   stopWhen,
 } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // Smooth out burst traffic with a sliding window
 const backpressure = createSlidingWindow({ windowSize: 60_000, maximumRequests: 20 });
@@ -1357,6 +1515,16 @@ const result = await activeRun.result;
 
 ```typescript
 import { createActiveRun, stopWhen, withCache, withCacheMetrics } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
+import type { TextValueStore } from '@lostgradient/weft';
+
+declare const kvStore: TextValueStore;
 
 // withCache requires a TextValueStore backend (e.g. from Weft)
 const cachedGenerate = withCache(generate, {
@@ -1387,7 +1555,10 @@ metrics.reset(); // clear counters between test runs
 
 ```typescript
 import { composeGenerate, createFallbackGenerate } from '@lostgradient/operative';
-import type { GenerateMiddleware } from '@lostgradient/operative';
+import type { GenerateFunction, GenerateMiddleware } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction, primaryGenerate: GenerateFunction;
+declare const fallbackGenerate: GenerateFunction;
 
 // composeGenerate(base, ...middleware) applies middleware right-to-left (outermost first)
 const loggingMiddleware: GenerateMiddleware = (next) => async (context) => {
@@ -1413,7 +1584,11 @@ For the whole lifecycle across packages—addressing, observation, signals, budg
 
 ```typescript
 import { createAgent, createSubagentTool } from '@lostgradient/operative';
+import type { GenerateFunction, RunnableAgent } from '@lostgradient/operative';
 import { z } from 'zod';
+
+declare const generate: GenerateFunction;
+declare const researcherAgent: RunnableAgent;
 
 const researcherTool = createSubagentTool({
   name: 'research',
@@ -1448,6 +1623,16 @@ Every non-success terminal (abort, execution error, tripwire, budget exceeded, e
 Both modes ultimately hand off to `toToolOutput(result)` (AB-19; renamed from `mapOutput`), which receives the complete successful `RunResult`—including `conversation`, `steps`, and `usage`—so a custom `toToolOutput` CAN reach past the summary and return those fields directly. `toToolOutput` is a pure projection, not runtime validation: it is never invoked for a non-success terminal, which rejects with `SubagentRunError` before `toToolOutput` is ever reached. `returnMode`/`summaryTokenCap` cap `result.content`, not what a custom `toToolOutput` chooses to do with the rest of the object; keep that in mind if you override it. Omit `toToolOutput` entirely for a schema-less child and the tool returns a plain string (`result.content`).
 
 ```typescript
+import { createSubagentTool } from '@lostgradient/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
+import { z } from 'zod';
+
+declare const researcherAgent: RunnableAgent;
+declare function condenseWithLLM(
+  text: string,
+  options: { agentName: string; maxTokens: number; signal?: AbortSignal | undefined },
+): Promise<string>;
+
 const researcherTool = createSubagentTool({
   name: 'research',
   description: 'Delegates a research task to a specialist agent.',
@@ -1474,6 +1659,9 @@ const researcherTool = createSubagentTool({
 
 ```typescript
 import { dispatchChildRun } from '@lostgradient/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
+
+declare const researcherAgent: RunnableAgent;
 
 // `AgentRun` carries no id of its own (a recorded gap owned by AB-88), so a
 // caller who wants one supplies it—here, generated up front so it can
@@ -1500,7 +1688,13 @@ Two failures surface as exceptions rather than as a resolved result. If `agent.r
 **Child discovery.** `AgentRun.children()` / `.abortChild(id, reason?)` (the signatures the started-work control contract in `documentation/operative-type-safe-api.md` assigns to AB-50) are backed by an opt-in `ChildRunRegistry`. Discovery does not happen automatically—a tool is constructed once, independent of any particular run, so nothing can inject a run-scoped registry into an already-built tool by itself. Wire the same registry into both places to make a run's children discoverable even when the tool's own return value never surfaces them to the caller:
 
 ```typescript
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
 import { createChildRunRegistry, createSubagentTool } from '@lostgradient/operative';
+import type { OperativeEventMap, RunnableAgent } from '@lostgradient/operative';
+import { z } from 'zod';
+
+declare const researcherAgent: RunnableAgent, orchestratorAgent: RunnableAgent;
+declare const emitter: TypedEventTarget<OperativeEventMap>;
 
 const registry = createChildRunRegistry();
 // Tools are built once, independent of any particular run—so the parent
@@ -1527,7 +1721,8 @@ const researcherTool = createSubagentTool({
 const run = orchestratorAgent.run('...', { childRegistry: registry }); // <- same registry
 // ... after the orchestrator has dispatched some subagent calls ...
 run.children(); // [{ id, parentId, agentName: 'researcher', durable: false, status: 'running' | ..., assessment: 'healthy' | ... }]
-run.abortChild(run.children()[0]?.id, 'no longer needed'); // scoped: this child only
+const [firstChild] = run.children();
+if (firstChild) run.abortChild(firstChild.id, 'no longer needed'); // scoped: this child only
 run.snapshot().worstChildAssessment; // AB-216—most severe non-terminal child assessment, or absent
 ```
 
@@ -1540,6 +1735,12 @@ Omit `registry` on either side and `children()` reads back an empty array and `a
 **AB-233—one registry is enough in the ordinary loop.** The explicit `parentContext: { registry }` wiring above remains fully supported (and is still what a direct `dispatchChildRun` caller, or a tool built outside the ordinary agent loop, needs). But for a `createSubagentTool` reached through `createAgent`'s ordinary loop, passing `childRegistry` to `agent.run()` alone is now enough—`run-step.ts` threads THAT run's own registry into every tool call's per-execution context, and `createSubagentTool` reads it there in preference to `parentContext.registry`:
 
 ```typescript
+import { createChildRunRegistry, createSubagentTool } from '@lostgradient/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
+import { z } from 'zod';
+
+declare const researcherAgent: RunnableAgent, orchestratorAgent: RunnableAgent;
+
 const registry = createChildRunRegistry();
 const researcherTool = createSubagentTool({
   name: 'research',
@@ -1566,6 +1767,9 @@ Two further event classes are typed and exported by this package but have no pro
 
 ```typescript
 import { createChildRunRegistry, dispatchChildRun, listChildRuns } from '@lostgradient/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
+
+declare const researcherAgent: RunnableAgent;
 
 const registry = createChildRunRegistry();
 dispatchChildRun(researcherAgent, 'Research topic A', {
@@ -1586,7 +1790,12 @@ A `parentRunId` with no registered children returns an empty array—never a thr
 ```typescript
 import { createTool } from 'armorer';
 import { defineChildSignals, dispatchChildRun, readParentSignals } from '@lostgradient/operative';
+import type { RunnableAgent } from '@lostgradient/operative';
 import { z } from 'zod';
+
+declare const researcherAgent: RunnableAgent;
+declare function refocus(topic: string): void;
+const parentRunId = crypto.randomUUID();
 
 export const researchSignals = defineChildSignals({
   signals: { focus: z.object({ topic: z.string() }) },
@@ -1632,6 +1841,10 @@ Everything here is in-process: no persistence, restart recovery, or network tran
 **Cleanup acknowledgement.** `closed(options?)` (AB-37, delivered by AB-204) is on `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` alike—a truthful cleanup acknowledgement, backed by the same settlement `abort()` already uses, for a caller that wants more than "I fired `abort()` and hoped":
 
 ```typescript
+import type { AgentRun } from '@lostgradient/operative';
+
+declare const run: AgentRun;
+
 const cleanup = await run.closed(); // never rejects
 // { status: 'not-required' | 'completed' | 'failed' | 'unresolved', reason?, error? }
 ```
@@ -1668,6 +1881,11 @@ import {
   HANDOFF_MARKER,
   stopWhen,
 } from '@lostgradient/operative';
+import type { GenerateFunction, RunnableAgent, RunResult } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
+declare const supportAgent: RunnableAgent;
+declare const result: RunResult; // from triageAgent.run(...).result()
 
 // Each handoff targets one specific agent
 const escalateToSupport = createHandoffTool({
@@ -1837,6 +2055,14 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import type { SchedulerTask } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
+declare const totalItems: number;
 
 // The scheduler shares a generate function and toolbox across all its tasks.
 const scheduler = createScheduler({
@@ -1957,6 +2183,7 @@ import {
   createModelCatalog,
   readBackendDescriptors,
   withBackendDescriptors,
+  type GenerateContext,
 } from '@lostgradient/operative';
 
 // createAnthropicProvider/createOpenAIProvider/createGeminiProvider (and the
@@ -1974,7 +2201,7 @@ agent.generationProfile.mode; // 'fixed'
 const catalog = createModelCatalog();
 const customDescriptor = catalog.descriptors.find((d) => d.provider === 'anthropic');
 const custom = withBackendDescriptors(
-  async (context) => {
+  async (context: GenerateContext) => {
     /* ... */
     return { content: '', toolCalls: [] };
   },
@@ -1983,9 +2210,12 @@ const custom = withBackendDescriptors(
 readBackendDescriptors(custom); // the array just attached, never inferred
 
 // A lazy generate function attaches descriptors at construction time—a
-// profile read never triggers the loader.
+// profile read never triggers the loader (here, the provider module itself).
 const lazyGenerate = createLazyGenerate(
-  () => import('./anthropic-generate.ts').then((m) => m.default),
+  () =>
+    import('@lostgradient/operative').then((m) =>
+      m.createAnthropicProvider({ model: 'claude-sonnet-5', apiKey: '...' }),
+    ),
   {
     descriptors: customDescriptor ? [customDescriptor] : [],
   },
@@ -2066,9 +2296,14 @@ Bureau wiring (`BureauOptions.modelPolicy`, `Bureau.planSelection`) and `runStep
 ```typescript
 import { createSelectionGate } from '@lostgradient/operative';
 import { select } from '@lostgradient/operative';
+import type { SelectionRequest, SelectOptions } from '@lostgradient/operative';
+
+// Your host's view of the current catalog, policy, and availability revisions.
+declare function currentRequest(): SelectionRequest;
+declare function currentOptions(): SelectOptions;
 
 const gate = createSelectionGate({
-  initialPlan: select(request, options),
+  initialPlan: select(currentRequest(), currentOptions()),
   request: () => currentRequest(), // read fresh on every revalidate() call
   options: () => currentOptions(), // read fresh on every revalidate() call
 });
@@ -2092,6 +2327,13 @@ Bureau's `planSelection`/`createSelectionGateFor` surface (`packages/bureau/src/
 
 ```typescript
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 import { z } from 'zod';
 
 const OutputSchema = z.object({
@@ -2125,6 +2367,9 @@ import {
   createScratchpadReadTool,
   createScratchpadWriteTool,
 } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
 
 const scratchpad = createScratchpad({ initialValues: { step: 0 } });
 
@@ -2139,12 +2384,19 @@ const agent = createAgent({
 
 ### Context Compaction
 
-```typescript
+```typescript file=compaction.ts
 import { createActiveRun, createContextCompactor, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // createContextCompactor returns an onCompact function for contextManagement.
 // The summarize callback receives an array of Message objects (not a Conversation).
-const onCompact = createContextCompactor({
+export const onCompact = createContextCompactor({
   summarize: async (messages) => {
     // Condense messages into a summary string—call your provider here.
     return `Summary of ${messages.length} prior messages.`;
@@ -2171,7 +2423,14 @@ A step can also prepare compaction ahead of time without waiting for it. Create 
 The candidate publishes only through `Conversation.compact()`'s revision compare-and-swap. A step therefore reads either the whole history before the commit or the whole compacted history after it. When a message or streamed token lands while the summary is being written, the candidate goes stale and is rescheduled under the scheduler's bounded policy instead of overwriting the write. A candidate also starts only at a durable boundary: a window that opens while a step is streaming or while its tool calls are still running waits until the stream closes or the results land, so a summary never strands a streaming reply or removes a pending tool call. Aborting the run withdraws queued work and aborts a running summary. A step that reaches the synchronous threshold cancels background work and waits for any aborted summary to return before its own `onCompact` runs, so the synchronous summary never overlaps a background one. Overflow recovery through `createOverflowMutator` never waits for background work, and the retry loop hands it the history the failed request was sent with. What it does depends on where the background candidate is when the overflow arrives. If the candidate already committed after the request was sent, for example during the provider's network wait, recovery retries once against that compaction without writing a summary of its own. If the candidate is still running, recovery's summary overlaps it and the compare-and-swap publishes whichever commits first; when the candidate wins, recovery retries once against it. If no candidate is running, recovery compacts the history itself. In every case a second overflow against the same compacted history rethrows the provider error instead of compacting it again. The caller owns the scheduler and disposes it.
 
 ```typescript
+import type { Toolbox } from 'armorer';
 import { Conversation, createCompactionScheduler } from 'conversationalist';
+import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import { onCompact } from './compaction.ts';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
 
 const conversation = new Conversation();
 const scheduler = createCompactionScheduler(conversation, {
@@ -2203,11 +2462,17 @@ import {
   createActiveRun,
   createMemoryBridge,
   createScratchpad,
+  HookRegistry,
+  type OperativeHookMap,
   stopWhen,
 } from '@lostgradient/operative';
 import type { GenerateFunction, MemoryLike } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
 
 declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 declare const myMemoryAdapter: MemoryLike;
 
 // operative never imports the memory package directly—supply a MemoryLike adapter.
@@ -2224,31 +2489,51 @@ const bridge = createMemoryBridge({
   scratchpadKey: 'memories',
 });
 
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('prepareStep', bridge.prepareStep, { id: 'app:memory-recall', replay: 'safe' });
+// Writes to long-term memory, so it must be idempotent on replay.
+hooks.on('onStep', bridge.onStep, { id: 'app:memory-persist', replay: 'effectful' });
+
 const activeRun = createActiveRun({
   generate,
   toolbox,
   conversation,
   stopWhen: stopWhen.noToolCalls(),
-  prepareStep: bridge.prepareStep,
-  onStep: bridge.onStep,
+  hooks,
 });
 ```
 
 ### Identity Hook
 
 ```typescript
-import { createActiveRun, createIdentityHook, stopWhen } from '@lostgradient/operative';
+import {
+  createActiveRun,
+  createIdentityHook,
+  HookRegistry,
+  type OperativeHookMap,
+  stopWhen,
+} from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 const identityHook = createIdentityHook({
   resolve: async () => 'You are Aria, a friendly customer success agent.',
 });
+
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('prepareStep', identityHook, { id: 'app:identity', replay: 'safe' });
 
 const activeRun = createActiveRun({
   generate,
   toolbox,
   conversation,
   stopWhen: stopWhen.noToolCalls(),
-  prepareStep: identityHook,
+  hooks,
 });
 ```
 
@@ -2257,6 +2542,9 @@ const activeRun = createActiveRun({
 ```typescript
 import { createPolicyEnforcementHook } from '@lostgradient/operative';
 import type { ToolLike } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
 
 // createPolicyEnforcementHook returns a tool-filtering function:
 //   (tools: T[]) => T[]
@@ -2272,7 +2560,7 @@ const enforcePolicy = createPolicyEnforcementHook({
 
 // Example: filter a tool-descriptor array before constructing a toolbox.
 // `toolbox.tools()` returns the registered tools; pass them through enforcePolicy.
-const allTools: ToolLike[] = toolbox.tools();
+const allTools: ToolLike[] = [...toolbox.tools()];
 const allowedTools = enforcePolicy(allTools);
 ```
 
@@ -2280,6 +2568,13 @@ const allowedTools = enforcePolicy(allTools);
 
 ```typescript
 import { createActiveRun, createEarlyStoppingHandler, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // Creates an onMaximumSteps callback that calls the model one final time
 // without tools, prompting it to summarize findings before the loop ends.
@@ -2304,6 +2599,13 @@ Composable predicates for loop exit. All are available on the `stopWhen` namespa
 ```typescript
 import { createActiveRun } from '@lostgradient/operative';
 import { stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // Stop when the model produces no tool calls (each predicate is a factory—call it)
 const noTools = stopWhen.noToolCalls();
@@ -2427,6 +2729,12 @@ Pass `guardrails: false` to `bureau`'s options to opt out entirely, or a `Guardr
 The preset is exported as `createDefaultGuardrailsPreset()`, and `createAgent` applies it too (COR-1367): an agent whose `guardrails` option is omitted resolves its run's guardrails as `inheritedGuardrails ?? createDefaultGuardrailsPreset()`, where `inheritedGuardrails` is the policy a host hands down through `AgentRunContext` (Bureau hands down the deprecated `BureauOptions.guardrails`). `guardrails: false` opts the agent out, and a `GuardrailsOptions` replaces the preset whatever the host says. The guardrails are created per run, registered in the agent's tier (`agent:guardrails-prepare-step`, `agent:guardrails-validate-response`, pinned behind the agent's own hooks), and also scan the agent's skill bodies and resources when `skills` is set.
 
 ```typescript
+import { createAgent, createPromptInjectionDetector } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
+const detectors = [createPromptInjectionDetector()];
+
 const guarded = createAgent({ generate }); // AB-40 preset
 const custom = createAgent({ generate, guardrails: { mode: 'tripwire', input: { detectors } } });
 const unguarded = createAgent({ generate, guardrails: false });
@@ -2445,7 +2753,15 @@ import {
   createOutputPIIValidator,
   withMinimumTripwireConfidence,
 } from '@lostgradient/operative';
-import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import { createActiveRun, HookRegistry, stopWhen } from '@lostgradient/operative';
+import type { OperativeHookMap } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 const guardrails = createGuardrails({
   mode: 'tripwire',
@@ -2455,13 +2771,19 @@ const guardrails = createGuardrails({
   output: { validators: [createOutputPIIValidator()] },
 });
 
+const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
+hooks.on('prepareStep', guardrails.prepareStep, { id: 'app:guardrails-input', replay: 'safe' });
+hooks.on('validateResponse', guardrails.validateResponse, {
+  id: 'app:guardrails-output',
+  replay: 'safe',
+});
+
 const activeRun = createActiveRun({
   generate,
   toolbox,
   conversation,
   stopWhen: stopWhen.noToolCalls(),
-  prepareStep: guardrails.prepareStep,
-  validateResponse: guardrails.validateResponse,
+  hooks,
 });
 ```
 
@@ -2479,12 +2801,13 @@ import {
   LIVENESS_POLICY_VERSION,
   TOOL_CALL_POLICY,
   toolCallPolicy,
+  type StallWatchdogClock,
 } from '@lostgradient/operative';
 
-const clock = {
+const clock: StallWatchdogClock = {
   now: () => Date.now(),
   setTimeout: (cb, ms) => setTimeout(cb, ms),
-  clearTimeout: (handle) => clearTimeout(handle),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
 
 const watchdog = createStallWatchdog(toolCallPolicy(30_000), clock);
@@ -2514,6 +2837,13 @@ Observes one or more `ActiveRun` instances, accumulating steps, usage, and the a
 ```typescript
 import { createStore } from '@lostgradient/operative';
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 const store = createStore({ maxActions: 500, maxSnapshots: 10 });
 
@@ -2587,6 +2917,11 @@ Adapts a `StreamingGenerateFunction` (one that receives a `StreamingHandle`) int
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
 import { withStreaming } from '@lostgradient/operative';
 import type { StreamingGenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 const streamingGenerate: StreamingGenerateFunction = async ({ conversation, streaming }) => {
   // Push incremental tokens through streaming.update()
@@ -2631,10 +2966,15 @@ const generate = withEnhancedStreaming(streamingGenerate, {
 By default the tool-call events are reconstructed from the resolved `GenerateResponse`, which means they land _after_ the provider response has closed. Text deltas stream live; tool-call deltas do not. Set `liveToolCalls` to change that:
 
 ```typescript
+import { TypedEventTarget } from '@lostgradient/lifecycle';
 import { createAnthropicProviderStream } from '@lostgradient/operative';
 import { withEnhancedStreaming } from '@lostgradient/operative';
+import type { StreamEventMap } from '@lostgradient/operative';
 
-const generate = withEnhancedStreaming(createAnthropicProviderStream({ model, apiKey }), {
+const eventTarget = new TypedEventTarget<StreamEventMap>();
+const provider = createAnthropicProviderStream({ model: 'claude-sonnet-5', apiKey: '...' });
+
+const generate = withEnhancedStreaming(provider, {
   eventTarget,
   liveToolCalls: true,
 });
@@ -2695,6 +3035,13 @@ import {
   addJitter,
 } from '@lostgradient/operative';
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 
 // Increase by 0.2 per attempt (default), capped at 1.0
 const escalate = createTemperatureEscalationMutator({
@@ -2751,6 +3098,13 @@ Attaches OpenTelemetry spans to an `ActiveRun`, mirroring the agent loop lifecyc
 ```typescript
 import { instrumentRun } from '@lostgradient/operative';
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
 import { trace } from '@opentelemetry/api';
 
 const activeRun = createActiveRun({
@@ -2854,10 +3208,20 @@ Drives agent runs through the Weft durable execution engine—checkpointed, cras
 import { createActiveRun } from '@lostgradient/operative';
 import type { DurableRunRouting } from '@lostgradient/operative';
 import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+import type { Conversation } from 'conversationalist';
+
+declare const generate: GenerateFunction;
+declare const toolbox: Toolbox;
+declare const conversation: Conversation;
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 // Build the durable substrate once at startup. createRunEngine returns
 // { engine, checkpointStore }—`storage` is Weft's raw Storage backend;
 // `checkpointStore` wraps a TextValueStore over that same backend.
+const rawStorage = new MemoryStorage(); // a persistent Weft Storage in production
+const kvStore = textValueStore(rawStorage);
 const checkpointStore = createCheckpointStore(kvStore);
 const runWorkflow = createRunWorkflow(checkpointStore);
 const { engine } = await createRunEngine({ storage: rawStorage, runWorkflow, checkpointStore });
@@ -2927,6 +3291,13 @@ import {
 } from '@lostgradient/operative';
 import type { EventRecorder, QuiescenceReport, RunRecorder } from '@lostgradient/operative';
 import { createActiveRun, stopWhen } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
+import { Conversation } from 'conversationalist';
+import { expect } from 'bun:test';
+
+const toolbox = createToolbox([]);
+const conversation = new Conversation();
+conversation.appendUserMessage('Hello');
 
 // Replay pre-canned responses in sequence
 const generate = createMockGenerate([
@@ -3054,6 +3425,7 @@ A `block` step (`{ kind: 'block', barrier: 'name' }`) suspends the call until th
 
 ```typescript
 import { createBarrierRegistry } from '@lostgradient/operative';
+import { expect } from 'bun:test';
 
 const registry = createBarrierRegistry();
 const barrier = registry.barrier('slow-write');
