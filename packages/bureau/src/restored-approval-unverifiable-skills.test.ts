@@ -611,13 +611,18 @@ describe('a restored session-run approval is decided under the snapshot read at 
     const before = await refusalOf(restarted, restored.id);
     expect(before.message).toContain('not permitted by the run');
 
-    // The snapshot now says, verifiably and under the same run, that no skill is active.
+    // The snapshot now says, verifiably and under the same run, that no skill is active. The
+    // approve-time check follows it and lets the call through to the run's toolbox, but that
+    // toolbox still holds the skill the restore activated (COR-1628), so it refuses the call
+    // rather than run it under a policy the live run does not hold.
     await rewriteSkillSnapshotOnDisk(path, (metadata) => {
       metadata['activeSkillRecords'] = [];
     });
-    await approve(restarted, restored.id);
+    const after = await refusalOf(restarted, restored.id);
 
-    expect(charges).toEqual([4242]);
+    expect(after.message).not.toContain('not permitted by the run');
+    expect(after.message).toContain("the active skills' allowed-tools exclude it");
+    expect(charges).toEqual([]);
   });
 
   it('is refused when the snapshot names another run', async () => {

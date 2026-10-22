@@ -2566,6 +2566,27 @@ const allTools: ToolLike[] = [...toolbox.tools()];
 const allowedTools = enforcePolicy(allTools);
 ```
 
+`withActiveSkillToolPolicy` applies the same allow and deny lists to a whole toolbox, as a filter and as an execution gate. Its `tools()` hides what the policy excludes, and its `execute` refuses a call to any tool `tools()` hides, so a model that names a tool it was shown before a skill narrowed the set, or one it guesses, does not get it run. The refusal is a tool result with `outcome: 'error'`, `errorCategory: 'permission'` and an error coded `SKILL_TOOL_DENIED`, so the conversation keeps a result for every call and the run continues. Under `errorMode: 'failFast'` it throws that error instead, as Armorer does for a policy denial. A call is judged by the tool it reaches, by name, by id, or through Armorer's fuzzy name resolution, so a near-miss name cannot bypass it. A name that resolves to no registered tool is left to the toolbox's own `NOT_FOUND`. The policy is read once per `execute` call, so a batch runs under the policy the model was shown when it generated the step.
+
+```typescript
+import { withActiveSkillToolPolicy } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
+
+let activeAllowList: string[] | undefined;
+
+// `search` stays callable while the allow list is `['search']`; a call to any other tool is
+// answered with a `SKILL_TOOL_DENIED` result instead of running.
+const narrowed = withActiveSkillToolPolicy(toolbox, () =>
+  activeAllowList === undefined ? undefined : { allowList: activeAllowList },
+);
+activeAllowList = ['search'];
+
+const refused = await narrowed.execute({ id: 'call-1', name: 'write', arguments: {} });
+refused.error?.code; // 'SKILL_TOOL_DENIED'
+```
+
 ### Early Stopping
 
 ```typescript

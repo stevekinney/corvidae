@@ -17,13 +17,12 @@ export const SKILL_TOOL_DENIED_CODE = 'SKILL_TOOL_DENIED';
 type ExecuteOptions = { errorMode?: 'failFast' | 'collect'; [key: string]: unknown } | undefined;
 
 type DurableOperationKey =
-  | string
-  | ((call: ToolCall, index: number) => string | undefined)
-  | undefined;
+  string | ((call: ToolCall, index: number) => string | undefined) | undefined;
 
 /** The refusal for `toolName`, shaped like Armorer's own policy denial. */
 function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult {
-  const callId = call.id !== undefined && call.id.length > 0 ? call.id : createToolCall(toolName).id;
+  const callId =
+    call.id !== undefined && call.id.length > 0 ? call.id : createToolCall(toolName).id;
   const message = `Tool "${toolName}" is not available: the active skills' allowed-tools exclude it.`;
   return {
     callId,
@@ -55,7 +54,10 @@ function canonicalName(
 }
 
 /** Re-bases a function key's index onto the original batch, so a refusal never shifts a key. */
-function rebasedKey(key: DurableOperationKey, originalIndices: readonly number[]): DurableOperationKey {
+function rebasedKey(
+  key: DurableOperationKey,
+  originalIndices: readonly number[],
+): DurableOperationKey {
   if (typeof key !== 'function') return key;
   return (call, index) => key(call, originalIndices[index] ?? index);
 }

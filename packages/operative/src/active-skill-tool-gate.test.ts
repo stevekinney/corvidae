@@ -114,7 +114,9 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
         seenByNextStep.push({
           callId: message.toolResult.callId,
           outcome: message.toolResult.outcome,
-          ...(message.toolResult.error === undefined ? {} : { code: message.toolResult.error.code }),
+          ...(message.toolResult.error === undefined
+            ? {}
+            : { code: message.toolResult.error.code }),
         });
       }
       return { content: 'done', toolCalls: [] };
@@ -363,6 +365,35 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
     expect(received).toHaveLength(1);
     expect(received[0]?.[0]).toBe(calls);
     expect(received[0]?.[1]).toBe(options);
+  });
+
+  it('settles an allowed call and a refused call once each in the same step', async () => {
+    const { gated } = harness();
+    const run = createActiveRun({
+      generate: createMockGenerate([
+        {
+          content: '',
+          toolCalls: [
+            { id: 'call-search', name: 'search', arguments: {} },
+            { id: 'call-write', name: 'write', arguments: {} },
+          ],
+        },
+        { content: 'done', toolCalls: [] },
+      ]),
+      toolbox: gated,
+      conversation: new Conversation(),
+      runId: 'settle-once-run',
+      stopWhen: ({ toolCalls }) => toolCalls.length === 0,
+    });
+    const settled: ToolSettledBubbleEvent[] = [];
+    run.addEventListener('tool.settled', (event) => settled.push(event));
+
+    await run.result;
+
+    expect(settled.map((event) => [event.toolCallId, event.status]).sort()).toEqual([
+      ['call-search', 'success'],
+      ['call-write', 'error'],
+    ]);
   });
 
   it('records the refusal in the run when a model asks for a hidden tool and then a visible one', async () => {
