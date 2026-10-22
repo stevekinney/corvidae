@@ -34,3 +34,10 @@ export {
   type MCPToolSource,
   type ToMCPToolsOptions,
 } from './tools';
+export {
+  UI_RESOURCE_SCHEME,
+  mcpUiResourceUri,
+  readUiResource,
+  type McpUiResource,
+  type McpUiResourceReader,
+} from './ui-resource';
