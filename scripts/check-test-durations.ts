@@ -272,7 +272,21 @@ interface Collected {
   problems: string[];
 }
 
-function collect(): Collected {
+/**
+ * Whether the duration report reads a workspace's JUnit reports. `bun run validate` gates a
+ * workspace that has a `test:coverage` script through that coverage run instead of its `test`
+ * (the `test:gate` task in `turbo.json`), so its fast lane did not run and writes no report there;
+ * the report mode skips it rather than call the missing report a wiring problem or read a stale
+ * one. The on-demand enforce mode reruns every `test` first, so it measures every workspace.
+ */
+export function measuresWorkspace(
+  mode: 'report' | 'enforce',
+  scripts: Readonly<Record<string, string>>,
+): boolean {
+  return mode === 'enforce' || scripts['test:coverage'] === undefined;
+}
+
+function collect(mode: 'report' | 'enforce'): Collected {
   const collected: Collected = {
     measured: [],
     coveredWorkspaces: new Set(),
@@ -301,6 +315,7 @@ function collect(): Collected {
       ),
     );
 
+    if (!measuresWorkspace(mode, scripts)) continue;
     const wrapped = Object.values(scripts).some((script) =>
       WRAPPER_NAMES.some((name) => script.includes(name)),
     );
@@ -361,7 +376,7 @@ export function verdict(
 
 function main(): number {
   const mode = Bun.argv[2];
-  const collected = collect();
+  const collected = collect(mode === '--report' ? 'report' : 'enforce');
   const allowlist = readAllowlist();
 
   if (mode === '--seed') {

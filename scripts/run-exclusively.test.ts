@@ -652,14 +652,16 @@ describe('withTurborepoDefaults', () => {
     expect(environment['TURBO_CACHE_DIR']).toBe('/repository/.git/turbo-cache');
   });
 
-  test('runs one task per 16 GiB of memory, at least one and at most one per processor', () => {
+  test('runs one task per 8 GiB of memory and per three processors, whichever is fewer, and at least one', () => {
     const concurrencyFor = (totalMemoryBytes: number, processors: number) =>
       withTurborepoDefaults({}, '/repository/.git', { totalMemoryBytes, processors })[
         'TURBO_CONCURRENCY'
       ];
-    expect(concurrencyFor(64 * gibibyte, 10)).toBe('4');
-    expect(concurrencyFor(8 * gibibyte, 10)).toBe('1');
-    expect(concurrencyFor(256 * gibibyte, 6)).toBe('6');
+    expect(concurrencyFor(32 * gibibyte, 12)).toBe('4');
+    expect(concurrencyFor(64 * gibibyte, 10)).toBe('3');
+    expect(concurrencyFor(16 * gibibyte, 12)).toBe('2');
+    expect(concurrencyFor(4 * gibibyte, 10)).toBe('1');
+    expect(concurrencyFor(256 * gibibyte, 2)).toBe('1');
   });
 
   test("keeps the caller's own cache directory and concurrency", () => {
