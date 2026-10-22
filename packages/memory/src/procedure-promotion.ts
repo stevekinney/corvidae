@@ -2,12 +2,14 @@ import {
   PROCEDURE_REVIEWER_KINDS,
   type ProcedurePayloadV2,
   type ProjectionReference,
+  type ProjectionSource,
 } from './evidence-projection-schema';
 import { digestOfText } from './evidence-schema';
 import type { MemoryAuthority, MemoryPrincipal } from './governance/authority';
 import {
   type ProcedureCandidate,
   ProcedureCandidateError,
+  assertDistinctEpisodes,
   readCurrentEpisodes,
 } from './procedure-candidate';
 import type { TransitionEngine } from './transition-engine';
@@ -121,6 +123,7 @@ export type ProcedurePromotion =
         | 'review-not-human'
         | 'review-mismatch'
         | 'episode-withdrawn'
+        | 'contradictory-episodes'
         | 'wrong-tenant';
       readonly detail: string;
       readonly run?: ProcedureValidationRun;
@@ -142,13 +145,12 @@ function deepFreeze<T>(value: T): T {
 }
 
 function procedurePayload(
-  options: PromoteProcedureOptions,
   candidate: ProcedureCandidate,
   validator: ProcedureValidator,
   run: ProcedureValidationRun,
+  review: ProcedureReviewDecision | undefined,
 ): ProcedurePayloadV2 {
   const { scope, ...draft } = candidate.draft;
-  const { review } = options;
   return {
     version: 2,
     ...draft,
@@ -188,7 +190,9 @@ function promotionProposal(
   run: ProcedureValidationRun,
 ): TransitionProposal {
   const { authority } = options;
-  const payload = procedurePayload(options, candidate, validator, run);
+  // Only a review the high-impact gate verified is recorded; a routine promotion records none.
+  const verifiedReview = candidate.draft.scope === 'high-impact' ? options.review : undefined;
+  const payload = procedurePayload(candidate, validator, run, verifiedReview);
   const base = { operationId: options.operationId, tenantId: authority.tenantId, authority };
   const confidence = options.confidence ?? 0.5;
   if (options.replaces !== undefined) {
@@ -229,16 +233,22 @@ function promotionProposal(
   };
 }
 
-/** Refuses a candidate that cannot be promoted under this authority before anything runs. */
-async function preconditionRefusal(
+/**
+ * Checks a candidate can be promoted under this authority before anything runs,
+ * and returns the evidence its episodes rest on as read now: the sources the
+ * procedure is stored with, whatever the candidate value claims.
+ */
+async function verifiedSources(
   options: PromoteProcedureOptions,
   candidate: ProcedureCandidate,
-): Promise<ProcedurePromotion | undefined> {
+): Promise<{ readonly refusal: ProcedurePromotion } | { readonly sources: ProjectionSource[] }> {
   if (candidate.tenantId !== options.authority.tenantId) {
     return {
-      status: 'refused',
-      reason: 'wrong-tenant',
-      detail: `The candidate was extracted for tenant "${candidate.tenantId}", not "${options.authority.tenantId}".`,
+      refusal: {
+        status: 'refused',
+        reason: 'wrong-tenant',
+        detail: `The candidate was extracted for tenant "${candidate.tenantId}", not "${options.authority.tenantId}".`,
+      },
     };
   }
   const reviewer = options.review?.reviewer.kind;
@@ -247,13 +257,16 @@ async function preconditionRefusal(
     !(PROCEDURE_REVIEWER_KINDS as readonly string[]).includes(reviewer)
   ) {
     return {
-      status: 'refused',
-      reason: 'review-not-human',
-      detail: `A ${reviewer} principal cannot review a procedure; only a person can.`,
+      refusal: {
+        status: 'refused',
+        reason: 'review-not-human',
+        detail: `A ${reviewer} principal cannot review a procedure; only a person can.`,
+      },
     };
   }
   try {
-    await readCurrentEpisodes(
+    assertDistinctEpisodes(candidate.successfulEpisodes, candidate.failedEpisodes);
+    const sources = await readCurrentEpisodes(
       {
         storage: options.engine.storage,
         tenantId: candidate.tenantId,
@@ -261,11 +274,13 @@ async function preconditionRefusal(
       },
       [...candidate.successfulEpisodes, ...candidate.failedEpisodes],
     );
+    return { sources: [...new Map(sources.map((source) => [source.evidenceId, source])).values()] };
   } catch (error) {
     if (!(error instanceof ProcedureCandidateError)) throw error;
-    return { status: 'refused', reason: 'episode-withdrawn', detail: error.message };
+    const reason =
+      error.code === 'contradictory-episodes' ? 'contradictory-episodes' : 'episode-withdrawn';
+    return { refusal: { status: 'refused', reason, detail: error.message } };
   }
-  return undefined;
 }
 
 /** The review gate: a high-impact candidate waits for an approving decision from a person. */
@@ -321,9 +336,11 @@ function reviewGate(
 export async function promoteProcedure(
   options: PromoteProcedureOptions,
 ): Promise<ProcedurePromotion> {
-  const candidate = deepFreeze(structuredClone(options.candidate));
-  const refusal = await preconditionRefusal(options, candidate);
-  if (refusal !== undefined) return refusal;
+  const snapshot = structuredClone(options.candidate);
+  const verified = await verifiedSources(options, snapshot);
+  if ('refusal' in verified) return verified.refusal;
+  // The stored sources are the episodes' evidence as just read, never the candidate's claim.
+  const candidate = deepFreeze({ ...snapshot, sources: verified.sources });
   const { validator } = options;
   if (validator === undefined) {
     return {

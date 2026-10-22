@@ -39,7 +39,8 @@ export type ProcedureCandidateErrorCode =
   | 'not-an-episode'
   | 'episode-not-current'
   | 'no-successful-episode'
-  | 'no-causal-step';
+  | 'no-causal-step'
+  | 'contradictory-episodes';
 
 /** Thrown for a candidate that cannot be extracted from the episodes it names. */
 export class ProcedureCandidateError extends Error {
@@ -62,6 +63,23 @@ export interface ExtractProcedureCandidateOptions {
   readonly successfulEpisodes: readonly ProjectionReference[];
   /** The exact episode revisions it failed in; they are kept as provenance, never dropped. */
   readonly failedEpisodes?: readonly ProjectionReference[];
+}
+
+/**
+ * Refuses episode lists that name an episode twice, or call one episode both a
+ * success and a failure, so a procedure's provenance can never contradict itself.
+ */
+export function assertDistinctEpisodes(
+  successful: readonly ProjectionReference[],
+  failed: readonly ProjectionReference[],
+): void {
+  const ids = [...successful, ...failed].map((reference) => reference.id);
+  if (new Set(ids).size !== ids.length) {
+    throw new ProcedureCandidateError(
+      'contradictory-episodes',
+      'An episode is named twice, or as both a success and a failure.',
+    );
+  }
 }
 
 /**
@@ -130,6 +148,7 @@ export async function extractProcedureCandidate(
       'The draft claims no step caused the outcome, so it describes a run, not a procedure.',
     );
   }
+  assertDistinctEpisodes(options.successfulEpisodes, failedEpisodes);
   const sources = [
     ...(await readCurrentEpisodes(options, options.successfulEpisodes)),
     ...(await readCurrentEpisodes(options, failedEpisodes)),

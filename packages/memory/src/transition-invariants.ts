@@ -6,6 +6,7 @@ import {
   procedureStepText,
   sameEmbeddingProfile,
 } from './evidence-projection-schema';
+import { digestOfText } from './evidence-schema';
 import type { TransitionRefusal } from './transition-outcome';
 import {
   plannedProjections,
@@ -62,6 +63,14 @@ function procedureInvariant(record: ProcedureRecord): TransitionRefusal | undefi
     );
   }
   if (!('version' in payload)) return undefined;
+  const { validation } = payload.provenance;
+  if (validation.observationDigest !== digestOfText(validation.observation)) {
+    return violation(
+      'procedure.observation-digest',
+      record,
+      'records a validation observation whose digest does not match it.',
+    );
+  }
   if (!payload.steps.some((step) => step.causal)) {
     return violation('procedure.causal-step-claimed', record, 'claims no step caused its outcome.');
   }

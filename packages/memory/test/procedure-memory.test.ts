@@ -359,6 +359,73 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       expect(promotion).toMatchObject({ status: 'refused', reason: 'episode-withdrawn' });
     });
 
+    it('stores the sources the episodes rest on, never a candidate value’s claim', async () => {
+      const candidate = await candidateFrom(1);
+      const stray = makeInlineEvidence('stray', { text: 'Unrelated evidence.' });
+      await harness.storage.commit({ tenantId: TENANT, evidence: [stray] });
+      const promotion = await promote(
+        { ...candidate, sources: [sourceOf(stray)] },
+        { validator: validator() },
+      );
+      expect(promotion.status).toBe('promoted');
+      const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
+      expect(stored?.sources.map((source) => source.evidenceId)).toEqual(['run-0']);
+    });
+
+    it('records no review on a routine procedure, whatever decision accompanies it', async () => {
+      const candidate = await candidateFrom(1);
+      await promote(candidate, { validator: validator(), review: review(false, 'sha256:junk') });
+      const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
+      expect(stored?.payload).not.toHaveProperty('provenance.review');
+    });
+
+    it('refuses an episode named twice, or as both a success and a failure', async () => {
+      const { successful } = await seedEpisodes(1);
+      const error = await rejectionOf(
+        extractProcedureCandidate({
+          storage: harness.storage,
+          tenantId: TENANT,
+          namespace: NAMESPACE,
+          draft: draft(),
+          successfulEpisodes: successful,
+          failedEpisodes: successful,
+        }),
+      );
+      expect(error).toMatchObject({ code: 'contradictory-episodes' });
+    });
+
+    it('refuses a hand-written procedure whose observation digest does not match it, at the engine', async () => {
+      await promote(await candidateFrom(1), { validator: validator() });
+      const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
+      if (stored?.kind !== 'procedure' || !('version' in stored.payload)) throw new Error('v2');
+      const { provenance } = stored.payload;
+      const result = await harness.engine.submit({
+        kind: 'create-projection',
+        operationId: 'forged-observation',
+        tenantId: TENANT,
+        authority,
+        projections: [
+          {
+            id: 'procedure-forged',
+            tenantId: TENANT,
+            namespace: NAMESPACE,
+            kind: 'procedure',
+            projectorRevision: 'procedure-projector:1',
+            sources: stored.sources,
+            confidence: 0.5,
+            payload: {
+              ...stored.payload,
+              provenance: {
+                ...provenance,
+                validation: { ...provenance.validation, observation: 'it all failed' },
+              },
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(result)).toContain('procedure.observation-digest');
+    });
+
     it('refuses to retire anything but a procedure', async () => {
       await candidateFrom(1);
       harness.clock.advance(1000);
