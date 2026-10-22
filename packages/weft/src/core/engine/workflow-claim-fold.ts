@@ -161,6 +161,12 @@ export async function commitWithWorkflowClaimFold(
   operations: BatchOperation[],
   conditions: ConditionalBatchCondition[],
   featureName: string,
+  /**
+   * Runs in the same synchronous turn as `recordFoldedAcquire`, once the batch has committed, for
+   * a caller that must record something beside the claim before anything else can observe the
+   * claim held (a delayed start's launching marker, COR-1625).
+   */
+  onCommitted?: () => void,
 ): Promise<WorkflowClaimFoldCommitResult> {
   requireStorageCapability(internals.storage, 'conditionalBatch', featureName);
   const committed = await storageConditionalBatch(
@@ -170,6 +176,7 @@ export async function commitWithWorkflowClaimFold(
   );
   if (committed) {
     fold.registry.recordFoldedAcquire(fold.workflowId, fold.preparation);
+    onCommitted?.();
     return { status: 'committed' };
   }
   return {
