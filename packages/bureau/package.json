@@ -22,6 +22,7 @@
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/weft": "workspace:*",
+    "ajv": "catalog:",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",
     "gray-matter": "catalog:",
@@ -30,7 +31,6 @@
   },
   "devDependencies": {
     "@ag-ui/client": "catalog:",
-    "ajv": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",

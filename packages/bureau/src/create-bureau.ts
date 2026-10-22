@@ -330,6 +330,7 @@ import {
   type FireReviewFollower,
   trackFireReviewFollower,
 } from './fire-review-follower';
+import { createBureauInteractiveSurfaces } from './interactive-surface/bureau-wiring';
 import {
   adoptRestoredScheduledFire,
   committedFireApprovalIds,
@@ -10088,6 +10089,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         cause: error,
       });
     });
+    await surfaces?.removeTask(id).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'interactive-surfaces',
+        message: `[bureau] Could not remove the surfaces of deleted run "${id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
     await restoreRunOwnershipAfterEvent(id, sessionId, ownerPrincipal, ownerIncarnation);
     if (sessionId) {
       await retryRunDeletionPersistenceWrite('pending-approvals', sessionId, `approval:${id}:`);
@@ -11296,6 +11305,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-1596: what a fire's decided approval keeps to fence a concurrent resolver ends with the
     // fire's task, which is the last thing that could name it.
     let removed = await tasks.expire(cutoff, bound, async (record) => {
+      // COR-1631: a task's surfaces stay readable until its retention ends, and end with it.
+      await surfaces?.removeTask(record.taskId);
       if (record.kind !== 'schedule-fire') return;
       await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
     });
@@ -16921,6 +16932,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const eventHistoryInstance: DurableEventHistory | undefined = persistentDurableStorage
     ? createDurableEventHistory(persistentDurableStorage, runtimeServices, diagnose)
     : undefined;
+  // COR-1631 — a surface lives in its task's durable history, so a Bureau without one has none.
+  const surfaces = createBureauInteractiveSurfaces({
+    storage: persistentDurableStorage,
+    history: eventHistoryInstance,
+    tasks,
+    now: runtimeServices.clock.now,
+    diagnose,
+  });
   // COR-1621: a review another process closes is read from the shared history by one subscription
   // per process, whether or not any client follows a task.
   fireReviewFollower =
@@ -17852,6 +17871,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionStore: runtime.sessionStore,
     kv: runtime.kv,
     tasks,
+    surfaces,
     get lifecycle() {
       return bureau.completed ? 'stopped' : runAdmissionClosed ? 'draining' : 'ready';
     },
