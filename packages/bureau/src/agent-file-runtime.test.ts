@@ -76,7 +76,7 @@ describe('agentForRecordedRun', () => {
     );
 
     const { agent, binding } = await runtime.agentForRecordedRun('helper', 'aa');
-    expect(binding).toEqual({ id: 'helper', hash: 'aa', definition: DEFINITION });
+    expect(binding).toEqual({ id: 'helper', hash: 'aa', definition: DEFINITION, revision: 1 });
     expect(readFileAgentBinding(agent)?.definition.instructions).toBe('Recorded instructions.\n');
     expect(agent).not.toBe(fixture.catalog.find('helper'));
   });

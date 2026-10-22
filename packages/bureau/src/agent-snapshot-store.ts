@@ -13,6 +13,8 @@
  *   list. The stored definition is validated on read (`agentFileDefinitionSchema`).
  * - `bureau-agent-run:v1:<runId>` holds an {@link AgentRunReference}, the reference that keeps a
  *   snapshot alive until its run's retention ends.
+ *   It also names the definition revision the run started at (COR-1584), because a snapshot is
+ *   keyed by content and cannot.
  *
  * ## Starting a run
  *
@@ -75,6 +77,14 @@ export interface AgentRunReference {
   readonly hash: string;
   readonly startedAt: string;
   readonly settledAt?: string;
+  /**
+   * The definition revision (`agent-revision-store.ts`) the run started at (COR-1584). A snapshot
+   * is keyed by content, so one snapshot can have been several revisions, and a session's
+   * metadata names only its latest run's: the run's own reference is where its revision lives.
+   * Absent on a reference written before the field existed, which resumes on the session's
+   * metadata instead. The reference stays at `schemaVersion` 1, as the field is additive.
+   */
+  readonly revision?: number;
 }
 
 /** What a start stores: the file agent as it stood when the run started. */
@@ -82,6 +92,8 @@ export interface AgentSnapshotSource {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /** The definition revision the run starts at, kept on its reference. Not part of the snapshot. */
+  readonly revision?: number | undefined;
 }
 
 /** One entry of `revisions(id)`. */
@@ -203,7 +215,11 @@ function parseReference(text: string | null): AgentRunReference | undefined {
       typeof value['startedAt'] === 'string' &&
       (value['settledAt'] === undefined || typeof value['settledAt'] === 'string')
     ) {
-      return value as unknown as AgentRunReference;
+      // A revision that is not a positive safe integer is no revision: the reference still reads.
+      const { revision, ...rest } = value;
+      return (typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 1
+        ? { ...rest, revision }
+        : rest) as unknown as AgentRunReference;
     }
   } catch {
     // A record that is not JSON is not a reference.
@@ -286,7 +302,15 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
                   id: source.id,
                   hash: source.hash,
                   startedAt: now,
+                  ...(source.revision === undefined ? {} : { revision: source.revision }),
                 } satisfies AgentRunReference),
+              );
+            } else if (source.revision !== undefined && existing.revision !== source.revision) {
+              // The same snapshot at another revision (or a reference written before revisions):
+              // the run keeps its start and its settlement, and gains the revision.
+              await store.set(
+                referenceKey(runId),
+                JSON.stringify({ ...existing, revision: source.revision }),
               );
             }
             const current = parseSnapshot(await store.get(key));

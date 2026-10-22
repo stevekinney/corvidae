@@ -6206,17 +6206,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // run's, and a session's runs may be of different agents, so the run's own reference decides
     // and the session's hash is what an older record without one falls back to.
     const reference = await fileAgents?.snapshots.reference(runId);
+    const ownReference =
+      reference !== undefined && reference.id === agentName ? reference : undefined;
     const recordedHash =
-      reference !== undefined && reference.id === agentName
-        ? reference.hash
-        : metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
+      ownReference === undefined
+        ? metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]
+        : ownReference.hash;
     const resolution = await runtime.resolveSessionAgentRun(
       agentName,
       runId,
       resolveSessionOwner(metadata),
       {
         agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
-        definitionRevision: sessionRecordedRevision(metadata, recordedHash),
+        // COR-1584: the revision the run's own reference recorded. Only a reference written before
+        // references named one falls back to the session's metadata, which names its latest run's.
+        definitionRevision:
+          ownReference?.revision ?? sessionRecordedRevision(metadata, recordedHash),
       },
     );
     if (resolution.status === 'resolved') return resolution.run;

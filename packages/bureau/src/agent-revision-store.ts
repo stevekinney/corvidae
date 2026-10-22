@@ -8,7 +8,8 @@
  * ## The record
  *
  * `bureau-agent-revision:v1:<identifier>` holds `{ "revision": <n>, "hash": "<hex>" }` as JSON, in
- * that key order: the revision, and the SHA-256 of the file's bytes it was last raised for. An
+ * that key order: the revision, and the SHA-256 of the file's bytes (64 lowercase hex digits; any
+ * other hash makes the record malformed) it was last raised for. An
  * identifier cannot hold `:`, so the key needs no encoding. There is one record per identifier,
  * and nothing else is stored: not the history of hashes, and not the definition (the snapshot
  * store holds those).
@@ -73,6 +74,9 @@ export interface AgentRevisionStoreOptions {
  */
 const MAXIMUM_CONFLICTS = 16;
 
+/** What `hashAgentFileBytes` returns: a SHA-256 in lowercase hex. Anything else is not a hash. */
+const HASH_PATTERN = /^[0-9a-f]{64}$/u;
+
 function keyOf(id: string): string {
   return `${AGENT_REVISION_KEY_PREFIX}${id}`;
 }
@@ -95,8 +99,10 @@ function parse(id: string, text: string): AgentRevisionRecord {
   if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 1) {
     throw new Error(`The revision record of agent "${id}" does not hold a positive revision.`);
   }
-  if (typeof hash !== 'string' || hash === '') {
-    throw new Error(`The revision record of agent "${id}" does not hold a hash.`);
+  if (typeof hash !== 'string' || !HASH_PATTERN.test(hash)) {
+    throw new Error(
+      `The revision record of agent "${id}" does not hold a SHA-256 hash in lowercase hex.`,
+    );
   }
   return { revision, hash };
 }
@@ -115,6 +121,9 @@ export function createAgentRevisionStore(options: AgentRevisionStoreOptions): Ag
     },
 
     async advance(id, hash) {
+      if (!HASH_PATTERN.test(hash)) {
+        throw new Error(`The file hash given for agent "${id}" is not a SHA-256 in lowercase hex.`);
+      }
       const key = keyOf(id);
       for (let conflicts = 0; conflicts <= MAXIMUM_CONFLICTS; conflicts += 1) {
         // The condition is the text exactly as it was read, not an encoding of the parsed record.

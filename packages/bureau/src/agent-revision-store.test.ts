@@ -198,7 +198,7 @@ describe('the persisted revision of a file agent', () => {
     expect(
       String(
         await rejectionOf(
-          createAgentRevisionStore({ store: unreadable }).advance('researcher', 'a'),
+          createAgentRevisionStore({ store: unreadable }).advance('researcher', HASH_A),
         ),
       ),
     ).toContain('disk gone');
@@ -209,7 +209,7 @@ describe('the persisted revision of a file agent', () => {
     expect(
       String(
         await rejectionOf(
-          createAgentRevisionStore({ store: unwritable }).advance('researcher', 'a'),
+          createAgentRevisionStore({ store: unwritable }).advance('researcher', HASH_A),
         ),
       ),
     ).toContain('read only');

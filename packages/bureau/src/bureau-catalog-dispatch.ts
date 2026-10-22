@@ -741,9 +741,10 @@ export function createCatalogDispatcher({
           // record has to describe the workflow that runs, and the one claim
           // does. A workflow this execution still has to start is built from that
           // claim's own input and estimator, not from what this execution
-          // resolved. The claim's definition revision cannot be rebuilt (the
-          // catalog holds only the current one); recovery pins it and warns on a
-          // drift, and this start is no different.
+          // resolved. A code-defined agent's claim cannot be rebuilt at the revision it
+          // recorded (the catalog holds only the current one); recovery pins it and warns on a
+          // drift, and this start is no different. A file agent's claim is rebuilt from its
+          // snapshot at the revision the claim recorded (COR-1584), below.
           const claimed = existing.record;
           // COR-1524 — the claim's run began on a definition of a file agent that may since have
           // changed; this execution continues that run, so it is built from the claim's snapshot.

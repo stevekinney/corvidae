@@ -109,7 +109,7 @@ const agentListingSchema = z.object({
   published: z.boolean(),
   owner: z.string(),
   hash: z.string().nullable(),
-  definitionRevision: z.number().int().nonnegative().nullable(),
+  definitionRevision: z.number().int().positive().nullable(),
   problem: problemSchema.nullable(),
 });
 

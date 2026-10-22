@@ -81,7 +81,8 @@ export interface WatchedDirectoryOptions<TEntry extends DirectoryEntry> {
    * the entries to keep, which the scan then compares with the previous ones: a subsystem whose
    * entries need an async step (a persisted revision) completes them here. It must not reject; a
    * rejection fails the scan, which keeps the previous entries. `previous` is the entries the last
-   * scan kept.
+   * scan kept. The scan waits for it: a step that never settles stalls the scan, every `refresh()`
+   * behind it, and `close()`, as a file read that never settles does.
    */
   readonly settle?:
     | ((

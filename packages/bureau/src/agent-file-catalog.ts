@@ -21,8 +21,12 @@
  * changes (COR-1584), kept per identifier by `agent-revision-store.ts`. Each scan settles it after
  * the files are evaluated and before the scan's entries replace the previous ones, so by the time
  * `refresh()` resolves or `onChange` fires, the listing, the agent object's generation profile, and
- * the record all agree. A record that cannot be read or written leaves the agent listed at its last
- * known revision (1 if none is known) with a diagnostic naming it, and the next scan tries again.
+ * the record all agree. Every scan reads the record of every ready file, so a catalog that missed
+ * another process's edits agrees with the record on its next scan, and a revision that changed
+ * with the content unchanged is a change `onChange` reports. A record that cannot be read or
+ * written leaves the agent listed at its last known revision (1 if none is known) with a
+ * diagnostic naming it, reported when the failure is new rather than on every scan, and the next
+ * scan tries again.
  * The model catalog is not part of a file's content: a revalidation against a new model catalog
  * keeps the revision.
  *
@@ -120,6 +124,8 @@ export interface FileAgentBinding {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /** The definition revision the agent was built at; a run keeps it on its reference. */
+  readonly revision: number;
 }
 
 const fileAgentBindings = new WeakMap<object, FileAgentBinding>();
@@ -252,10 +258,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     store: options.revisionStore ?? textValueStore(new MemoryStorage()),
   });
   /**
-   * The last record this catalog read or wrote for each identifier. A file whose hash it holds
-   * needs no read of the store, and one that could not be recorded keeps the revision it had.
+   * The last record this catalog read or wrote for each identifier: what a file keeps while its
+   * record cannot be read or written, and what an agent is first built at before a scan settles it.
    */
   const recorded = new Map<string, AgentRevisionRecord>();
+  /** The files whose record could not be read or written, by the hash they last failed at. */
+  const failedAt = new Map<string, string>();
 
   function toListing(entry: FileEntry): AgentListing {
     const ready = entry.problem === undefined;
@@ -342,7 +350,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
     }) as AnyRunnableAgent;
-    fileAgentBindings.set(agent, { id, hash, definition });
+    fileAgentBindings.set(agent, { id, hash, definition, revision });
     return agent;
   }
 
@@ -412,23 +420,31 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   });
 
   /**
-   * The revision of the file `id` at `hash`: the record's, raised first if the record describes
-   * other content. A record that cannot be read or written is reported and leaves the last known
-   * revision, or 1, and the next scan tries again.
+   * The revision of the file `id` at `hash`, read from the record on every scan: the record is the
+   * authority, and another process on the same store may have raised it while this catalog was not
+   * looking (a peer's edit and revert between two scans leaves this catalog's last-seen hash equal
+   * to the file's while the record is two revisions on). Reading writes nothing when the record
+   * already describes `hash`. A record that cannot be read or written leaves the last known
+   * revision, or 1, and the next scan tries again; the failure is reported when it is new (the
+   * first after a success, or at a different hash), not on every scan that finds the store still
+   * down.
    */
   async function revisionOf(id: string, hash: string): Promise<number> {
     const known = recorded.get(id);
-    if (known?.hash === hash) return known.revision;
     try {
       const record = await revisions.advance(id, hash);
       recorded.set(id, record);
+      failedAt.delete(id);
       return record.revision;
     } catch (error) {
       const kept = known?.revision ?? 1;
-      options.diagnose(
-        `The revision of agent file "${id}" could not be recorded, so it stays at ${kept}.`,
-        error,
-      );
+      if (failedAt.get(id) !== hash) {
+        failedAt.set(id, hash);
+        options.diagnose(
+          `The revision of agent file "${id}" could not be recorded, so it stays at ${kept}.`,
+          error,
+        );
+      }
       return kept;
     }
   }

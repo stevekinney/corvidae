@@ -169,7 +169,9 @@ describe('a pending approval restored after a restart', () => {
 
 describe('a session run the durable engine resumes after a restart', () => {
   const file = (instructions: string) => agentFileText({ model: KNOWN_MODEL }, instructions);
-  async function open(options: Parameters<typeof startFileBureau>[0]): Promise<FileBureauHarness> {
+  async function open(
+    options: NonNullable<Parameters<typeof startFileBureau>[0]>,
+  ): Promise<FileBureauHarness> {
     const harness = await startFileBureau({
       ...options,
       overrides: { onDiagnostic: () => undefined, ...options.overrides },

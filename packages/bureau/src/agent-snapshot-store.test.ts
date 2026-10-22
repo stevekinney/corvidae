@@ -302,7 +302,7 @@ describe('the revision a run started at (COR-1584)', () => {
       'run-1',
     );
 
-    expect(await store.reference('run-1')).toEqual({ ...before, revision: 3 });
+    expect(await store.reference('run-1')).toEqual({ ...before, revision: 3 } as typeof before);
   });
 
   it('is not erased by a hold that names none', async () => {
