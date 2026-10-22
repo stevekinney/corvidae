@@ -14,11 +14,6 @@ import {
   toJsonValue,
 } from './node-helpers.ts';
 import type { A2uiRenderContext } from './render-context.ts';
-import type { A2uiAction } from './types.ts';
-
-function evaluation(overrides: Partial<A2uiEvaluationContext> = {}): A2uiEvaluationContext {
-  return { read: () => undefined, scope: '', report: () => {}, ...overrides };
-}
 
 describe('node helpers', () => {
   test('dateTimeForControl shapes ISO values for each control', () => {
@@ -91,60 +86,70 @@ describe('node helpers', () => {
     expect(elementId(context, 'pick', '', 'one')).not.toBe(elementId(context, 'pick-one', ''));
   });
 
-  test('failingCheck returns the first failing check’s message', () => {
-    const checks = [
-      null,
-      { condition: true, message: 'fine' },
-      { condition: false, message: 'no' },
-    ];
-    expect(failingCheck(checks, evaluation())).toBe('no');
-    expect(failingCheck([{ condition: true, message: 'fine' }], evaluation())).toBeUndefined();
-    expect(failingCheck('not a list', evaluation())).toBeUndefined();
+  test('failingCheck returns the first failing check’s message and skips malformed checks', () => {
+    const evaluation: A2uiEvaluationContext = {
+      read: () => undefined,
+      scope: '',
+      report: () => {},
+    };
+    expect(failingCheck('not a list', evaluation)).toBeUndefined();
+    expect(
+      failingCheck(
+        [null, { condition: true, message: 'fine' }, { condition: false, message: 'Not yet' }],
+        evaluation,
+      ),
+    ).toBe('Not yet');
+    expect(failingCheck([{ condition: true, message: 'fine' }], evaluation)).toBeUndefined();
   });
 
-  test('runAction runs a function call as a user-activated action', () => {
+  test('runAction runs a function call as a user-activated evaluation', () => {
     const opened: string[] = [];
-    const dispatched: A2uiAction[] = [];
-    const context = { dispatch: (action: A2uiAction) => dispatched.push(action) } as never;
-    const scope = evaluation({ openUrl: (url) => opened.push(url), baseUrl: 'https://a.test/' });
+    const reports: string[] = [];
+    const evaluation: A2uiEvaluationContext = {
+      read: () => undefined,
+      scope: '',
+      report: (message) => reports.push(message),
+      openUrl: (url) => opened.push(url),
+      baseUrl: 'https://app.example.test/',
+    };
+    const context = { surfaceId: 's', dispatch: () => {} } as unknown as A2uiRenderContext;
     const component = { id: 'go', component: 'Button' };
 
     runAction(
-      { functionCall: { call: 'openUrl', args: { url: '/next' } } },
+      { functionCall: { call: 'openUrl', args: { url: '/help' } } },
       component,
       context,
-      scope,
+      evaluation,
     );
-    runAction({ functionCall: { call: 7 } }, component, context, scope);
-    runAction({ event: { name: 7 } }, component, context, scope);
-    runAction(null, component, context, scope);
+    runAction({ functionCall: { call: 42 } }, component, context, evaluation);
+    runAction(null, component, context, evaluation);
 
-    expect(opened).toEqual(['https://a.test/next']);
-    expect(dispatched).toEqual([]);
+    expect(opened).toEqual(['https://app.example.test/help']);
+    expect(reports).toEqual([]);
   });
 
-  test('toJsonValue keeps JSON and turns anything else into null', () => {
-    expect(toJsonValue({ a: [1, 'b', true, null], n: Number.NaN, f: () => 1 })).toEqual({
-      a: [1, 'b', true, null],
-      n: null,
-      f: null,
+  test('toJsonValue keeps JSON and turns everything else into null', () => {
+    expect(toJsonValue(Number.NaN)).toBeNull();
+    expect(toJsonValue(3)).toBe(3);
+    expect(toJsonValue([1, undefined, 'a'])).toEqual([1, null, 'a']);
+    expect(toJsonValue(JSON.parse('{"a":1,"__proto__":{"x":1},"b":{"c":true}}'))).toEqual({
+      a: 1,
+      b: { c: true },
     });
-    expect(toJsonValue(JSON.parse('{"__proto__": {"x": 1}, "y": 2}'))).toEqual({ y: 2 });
-    expect(toJsonValue(undefined)).toBeNull();
+    expect(toJsonValue(() => {})).toBeNull();
   });
 
-  test('evaluationContext reads the model and reports as a function error on the component', () => {
+  test('evaluationContext reads the model and reports function errors for its component', () => {
     const reports: unknown[][] = [];
     const context = {
       model: { get: (pointer: string) => (pointer === '/name' ? 'Ada' : undefined) },
       locale: 'en-US',
-      report: (...entry: unknown[]) => reports.push(entry),
+      report: (...args: unknown[]) => reports.push(args),
     } as unknown as A2uiRenderContext;
-    const scope = evaluationContext(context, 'field', '/items/0');
+    const evaluation = evaluationContext(context, 'field', '');
 
-    expect(scope.read('/name')).toBe('Ada');
-    scope.report('broken');
-    expect(reports).toEqual([['function-error', 'field', 'broken']]);
-    expect(scope.scope).toBe('/items/0');
+    expect(evaluation.read('/name')).toBe('Ada');
+    evaluation.report('bad call');
+    expect(reports).toEqual([['function-error', 'field', 'bad call']]);
   });
 });

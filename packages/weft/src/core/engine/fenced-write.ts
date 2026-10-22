@@ -34,11 +34,12 @@
  */
 
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { KEYS, storageConditionalBatch } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/interface.ts';
 import type { EngineInternals } from './internals.ts';
 import { decodeEpoch } from './lease-codec.ts';
 import { emitWorkflowClaimLostWarning, handleDeposition } from './lease-deposition.ts';
 import { EngineDeposedError, EngineLeaseNotHeldError } from './lease-errors.ts';
+import { adapterCall, adapterConditionalBatch } from './storage-write-retry.ts';
 
 /**
  * Reject an engine-owned work entry point (start, startOrSignal, fork, resume)
@@ -113,11 +114,11 @@ async function fencedCommit(
     // byte-for-byte the pre-ADR shape — plain batch when there are no base
     // conditions, conditionalBatch otherwise. No epoch condition.
     if (baseConditions.length === 0) {
-      await trackWrite(internals.storage.batch(operations));
+      await trackWrite(adapterCall(() => internals.storage.batch(operations)));
       return 'committed';
     }
     const committed = await trackWrite(
-      storageConditionalBatch(internals.storage, baseConditions, operations),
+      adapterConditionalBatch(internals.storage, baseConditions, operations),
     );
     return committed ? 'committed' : 'lost-race';
   }
@@ -127,7 +128,7 @@ async function fencedCommit(
     { key: KEYS.leaseEpoch(), expectedValue: epochBytes },
   ];
   const committed = await trackWrite(
-    storageConditionalBatch(internals.storage, conditions, operations),
+    adapterConditionalBatch(internals.storage, conditions, operations),
   );
   if (committed) return 'committed';
 
@@ -210,7 +211,7 @@ async function fencedCommitForWorkflow(
     { key: KEYS.workflowOwnerEpoch(workflowId), expectedValue: epochBytes },
   ];
   const committed = await trackWrite(
-    storageConditionalBatch(internals.storage, conditions, operations),
+    adapterConditionalBatch(internals.storage, conditions, operations),
   );
   if (committed) return 'committed';
 

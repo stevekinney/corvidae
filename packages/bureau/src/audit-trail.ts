@@ -1536,43 +1536,35 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       { timestampMs: eventTimestamp(event) },
     );
   };
-  const schedulePausedListener = (event: SchedulePausedEvent): void => {
-    if (!auditEventSet.has('schedule.paused')) return;
-    void writeOutOfBandRecord(
+  // COR-194 — a transition Bureau committed through its schedule-transition outbox carries the
+  // outbox's dedupe key and commit time. Bureau has already recorded it under that key before
+  // dispatching, so this write is a no-op for Bureau's own trail; another trail subscribed to the
+  // same bureau records it once. A keyed write rejects on failure, so the failure is diagnosed
+  // here rather than left unhandled.
+  const scheduleTransitionListener = (
+    event: SchedulePausedEvent | ScheduleResumedEvent | ScheduleCancelledEvent,
+  ): void => {
+    if (!auditEventSet.has(event.type)) return;
+    writeOutOfBandRecord(
       {
         runId: scheduleOwnerId(event.scheduleId),
-        type: 'schedule.paused',
+        type: event.type,
         detail: { scheduleId: event.scheduleId },
       },
-      { timestampMs: eventTimestamp(event) },
-    );
-  };
-  const scheduleResumedListener = (event: ScheduleResumedEvent): void => {
-    if (!auditEventSet.has('schedule.resumed')) return;
-    void writeOutOfBandRecord(
-      {
-        runId: scheduleOwnerId(event.scheduleId),
-        type: 'schedule.resumed',
-        detail: { scheduleId: event.scheduleId },
-      },
-      { timestampMs: eventTimestamp(event) },
-    );
-  };
-  const scheduleCancelledListener = (event: ScheduleCancelledEvent): void => {
-    if (!auditEventSet.has('schedule.cancelled')) return;
-    void writeOutOfBandRecord(
-      {
-        runId: scheduleOwnerId(event.scheduleId),
-        type: 'schedule.cancelled',
-        detail: { scheduleId: event.scheduleId },
-      },
-      { timestampMs: eventTimestamp(event) },
-    );
+      { timestampMs: event.committedAtMs ?? eventTimestamp(event), dedupeKey: event.dedupeKey },
+    ).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[audit-trail] Failed to persist the "${event.type}" audit record for schedule "${event.scheduleId}":`,
+        cause: error,
+      });
+    });
   };
   bureau.addEventListener('schedule.created', scheduleCreatedListener);
-  bureau.addEventListener('schedule.paused', schedulePausedListener);
-  bureau.addEventListener('schedule.resumed', scheduleResumedListener);
-  bureau.addEventListener('schedule.cancelled', scheduleCancelledListener);
+  bureau.addEventListener('schedule.paused', scheduleTransitionListener);
+  bureau.addEventListener('schedule.resumed', scheduleTransitionListener);
+  bureau.addEventListener('schedule.cancelled', scheduleTransitionListener);
 
   // AB-228 (Codex P1 review finding, PR #566) — session-deletion listener.
   // `deleteSession` (`create-bureau.ts`) dispatches `SessionDeletedEvent`
@@ -2637,9 +2629,9 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     async dispose(): Promise<void> {
       bureau.removeEventListener('action', listener);
       bureau.removeEventListener('schedule.created', scheduleCreatedListener);
-      bureau.removeEventListener('schedule.paused', schedulePausedListener);
-      bureau.removeEventListener('schedule.resumed', scheduleResumedListener);
-      bureau.removeEventListener('schedule.cancelled', scheduleCancelledListener);
+      bureau.removeEventListener('schedule.paused', scheduleTransitionListener);
+      bureau.removeEventListener('schedule.resumed', scheduleTransitionListener);
+      bureau.removeEventListener('schedule.cancelled', scheduleTransitionListener);
       bureau.removeEventListener('session.deleted', sessionDeletedListener);
       // Await every write already in flight (AB-207) — `kv.set` has no
       // cancellation hook, so there is nothing for the owner-issued `signal`

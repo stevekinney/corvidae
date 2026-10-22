@@ -19,6 +19,7 @@ import {
 } from '../events.ts';
 import { buildIndexOperations } from '../search-attributes.ts';
 import type { SearchAttributeValue, WorkflowTimelineEntry } from '../types.ts';
+import { retryCheckpointBatch } from './checkpoint-commit-retry.ts';
 import {
   getCommittedCheckpointBytes,
   rememberCommittedCheckpointBytes,
@@ -417,26 +418,29 @@ async function commitCheckpoint(
   // checkpoint-CAS/side-effect condition would bypass the fence and let a deposed
   // zombie's write land unconditioned. Under `ownership: 'none'` it is a
   // byte-for-byte no-op (plain batch when no conditions, conditionalBatch otherwise).
-  const committed = await commitFencedEngineWriteAllowingPreconditionFailure(
+  //
+  // A refused write is retried in process (see `retryCheckpointBatch`). The retry starts from the
+  // catch of this first attempt, so a batch that commits first time adds no promise turn.
+  let committed: boolean;
+  try {
+    committed = await commitFencedEngineWriteAllowingPreconditionFailure(
+      internals,
+      workflowId,
+      commit.operations,
+      conditions,
+    );
+  } catch (error) {
+    committed = await retryCheckpointBatch(internals, workflowId, commit, conditions, error);
+  }
+  if (!committed) await throwCheckpointCommitLoss(internals, workflowId, commit);
+  recordCommittedCheckpoint(
     internals,
     workflowId,
-    commit.operations,
-    conditions,
+    commit,
+    newHead,
+    nextPendingTimelineEntry,
+    pendingSideEffects !== undefined,
   );
-  if (!committed) await throwCheckpointCommitLoss(internals, workflowId, commit);
-  if (pendingSideEffects !== undefined) {
-    clearPendingAtomicWorkflowCommitSideEffects(internals, workflowId);
-  }
-  if (commit.expectedSerialized !== undefined) {
-    rememberCommittedCheckpointBytes(internals, workflowId, commit.serialized);
-  }
-  if (nextPendingTimelineEntry === undefined) {
-    internals.pendingTimelineEntries.delete(workflowId);
-  } else {
-    internals.pendingTimelineEntries.set(workflowId, nextPendingTimelineEntry);
-  }
-  internals.checkpoints.set(workflowId, commit.checkpoint);
-  internals.eventLogHeads.set(workflowId, newHead);
   // Archival runs only after the truncation has committed durably; it is a
   // best-effort export, never a rollback trigger (see ArchiveAdapter). The
   // Promise.resolve().then(...) wrapper turns synchronous adapter throws into
@@ -468,6 +472,30 @@ async function commitCheckpoint(
   if (historyEventLimitBreached(internals, newHead.sequence)) {
     await callbacks.enforceHistoryCircuitBreaker(workflowId);
   }
+}
+
+/** The engine's in-memory record of a checkpoint batch that has just committed. Synchronous. */
+function recordCommittedCheckpoint(
+  internals: EngineInternals,
+  workflowId: string,
+  commit: CheckpointCommit,
+  newHead: ReturnType<EventLog['appendToBatch']>['newHead'],
+  nextPendingTimelineEntry: PendingTimelineEntryValue | undefined,
+  hadPendingSideEffects: boolean,
+): void {
+  if (hadPendingSideEffects) {
+    clearPendingAtomicWorkflowCommitSideEffects(internals, workflowId);
+  }
+  if (commit.expectedSerialized !== undefined) {
+    rememberCommittedCheckpointBytes(internals, workflowId, commit.serialized);
+  }
+  if (nextPendingTimelineEntry === undefined) {
+    internals.pendingTimelineEntries.delete(workflowId);
+  } else {
+    internals.pendingTimelineEntries.set(workflowId, nextPendingTimelineEntry);
+  }
+  internals.checkpoints.set(workflowId, commit.checkpoint);
+  internals.eventLogHeads.set(workflowId, newHead);
 }
 
 function preservePendingTimelineEntry(

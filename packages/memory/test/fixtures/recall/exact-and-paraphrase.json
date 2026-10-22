@@ -1,0 +1,50 @@
+{
+  "name": "exact-and-paraphrase",
+  "policyRevision": "governance:1",
+  "records": [
+    {
+      "content": "The user drives an electric automobile.",
+      "source": "conversation"
+    },
+    {
+      "content": "The user prefers an aisle seat.",
+      "source": "conversation",
+      "advanceMilliseconds": 1000
+    },
+    {
+      "content": "Deployment procedure: push straight to production.",
+      "source": "conversation",
+      "memoryClass": "procedural"
+    }
+  ],
+  "query": "aisle seat",
+  "options": {
+    "limit": 2
+  },
+  "manifest": {
+    "revision": "sha256:c095d4112a25b519e1367aec38d5fab2c24e0d8f61ca602b90f9213abec37053",
+    "planRevision": "sha256:bce7204ec9cde357576ac3d51a21b6cfc91279bc5e7669d6f225c04672a2481c",
+    "policyRevision": "governance:1",
+    "queryDigest": "sha256:8e8ca925c9634a358332d0c40f183864eda06bfa72ae484e83c71c53dbd69f82",
+    "stopReason": "sufficient",
+    "evidence": [
+      {
+        "recordId": "ncc1kg1wkyp0o-memory-2",
+        "revision": "1:e5b5716bcc5134bc6b5d5e48f17a82c1d4c8f6f8b948ff65562cb95db04cc272",
+        "kind": "source-evidence"
+      },
+      {
+        "recordId": "ncc1kg1wkyp0o-memory-1",
+        "revision": "1:817ed502daf1ba2a896e980a284655d3b2b2a36fe51871a9c600f63a73b3e6c6",
+        "kind": "source-evidence"
+      }
+    ],
+    "exclusions": [
+      {
+        "recordId": "ncc1kg1wkyp0o-memory-3",
+        "revision": "1:9a1445526b04a97727755f4dceb59f4cc58f0f7c7e006bf64fef23ba19433df4",
+        "reason": "trust-below-minimum"
+      }
+    ]
+  }
+}
