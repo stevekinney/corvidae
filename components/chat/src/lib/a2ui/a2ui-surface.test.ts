@@ -620,4 +620,37 @@ describe('review fixes', () => {
     expect(container.querySelector('button input, button [role="checkbox"]')).toBeNull();
     expect(screen.getByRole('button', { name: 'Open' })).not.toBeNull();
   });
+
+  test('an Icon modal trigger is named, and a repeated ChoicePicker value renders once', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'names-3',
+        components: [
+          { id: 'root', component: 'Column', children: ['modal', 'pick'] },
+          { id: 'modal', component: 'Modal', trigger: 'help', content: 'body' },
+          { id: 'help', component: 'Icon', name: 'search' },
+          { id: 'body', component: 'Text', text: 'Help' },
+          {
+            id: 'pick',
+            component: 'ChoicePicker',
+            variant: 'multipleSelection',
+            options: [
+              { label: 'One', value: 'one' },
+              { label: 'Again', value: 'one' },
+            ],
+            value: [],
+          },
+        ],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(screen.getByRole('button', { name: 'Search' })).not.toBeNull();
+    expect(container.querySelectorAll('[data-a2ui-id="pick"] input[type="checkbox"]')).toHaveLength(
+      1,
+    );
+    expect(diagnostics.some((entry) => entry.message.includes('listed more than once'))).toBe(true);
+  });
 });

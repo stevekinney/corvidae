@@ -185,8 +185,7 @@
   }
 
   /** An icon-only Button's name: its icon's name in words, since the icon itself is hidden. */
-  function iconButtonLabel(): string | undefined {
-    const childId = prop('child');
+  function iconButtonLabel(childId: unknown = prop('child')): string | undefined {
     const childComponent = typeof childId === 'string' ? context.component(childId) : undefined;
     if (childComponent?.component !== 'Icon') return undefined;
     const name = resolveDynamic(childComponent['name'], evaluation);
@@ -204,6 +203,29 @@
   function dateTimeLabel(kind: ReturnType<typeof dateTimeControl>): string {
     if (kind.control === 'time-field') return 'Time';
     return kind.granularity === 'day' ? 'Date' : 'Date and time';
+  }
+
+  /**
+   * A ChoicePicker's options, each value once: a repeated value would give two
+   * controls one key and one id, so the first wins and the rest are reported.
+   */
+  function choiceOptions(raw: unknown): { value: string; label: string }[] {
+    if (!Array.isArray(raw)) return [];
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    for (const option of raw as { label?: unknown; value?: unknown }[]) {
+      if (typeof option.value !== 'string') continue;
+      if (seen.has(option.value)) {
+        report(`ChoicePicker option "${option.value}" is listed more than once; the first is kept`);
+        continue;
+      }
+      seen.add(option.value);
+      options.push({
+        value: option.value,
+        label: plainText(resolveString(option.label, evaluation)),
+      });
+    }
+    return options;
   }
 
   // ── Tabs ──
@@ -351,7 +373,12 @@
           <Self id={triggerComponent.id} {scope} ancestry={lineage} activate={openModal} />
         {:else if triggerComponent !== undefined && ['Text', 'Icon', 'Image'].includes(triggerComponent.component)}
           <!-- A non-interactive trigger is wrapped in a button so it can be reached and pressed. -->
-          <Button variant="secondary" onclick={openModal} class="a2ui-leaf">
+          <Button
+            variant="secondary"
+            onclick={openModal}
+            class="a2ui-leaf"
+            {...optional('aria-label', iconButtonLabel(prop('trigger')))}
+          >
             {@render child(prop('trigger'), scope, true)}
           </Button>
         {:else}
@@ -443,14 +470,7 @@
         onValueChange={(next: boolean) => setLocal('value', next)}
       />
     {:else if type === 'ChoicePicker'}
-      {@const options = Array.isArray(prop('options'))
-        ? (prop('options') as { label?: unknown; value?: unknown }[])
-            .filter((option) => typeof option.value === 'string')
-            .map((option) => ({
-              value: option.value as string,
-              label: plainText(resolveString(option.label, evaluation)),
-            }))
-        : []}
+      {@const options = choiceOptions(prop('options'))}
       {@const selected = resolveStringList(read('value'), evaluation)}
       {@const control = choicePickerControl(
         mapEnum(
