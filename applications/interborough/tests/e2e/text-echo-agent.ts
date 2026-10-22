@@ -3,7 +3,7 @@
  * can tell apart from every other: each answers with the text of the user's last message. A memory
  * is stored from an agent's final answer, so a case that sends a unique label gets a memory
  * holding exactly that label, whatever else the suite has stored for the seeded agents (whose
- * scripted replies are identical every time). They are not `echo` (`echo-agent.ts`), which sends
+ * scripted replies are identical every time). They are not `echo-image` (`echo-agent.ts`), which sends
  * back images for the attachment specs.
  */
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';

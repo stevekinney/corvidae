@@ -1,5 +1,5 @@
 /**
- * What a fresh Interborough has in it: four agents, one schedule, and one goal, and a validator that
+ * What a fresh Interborough has in it: five agents, one schedule, and one goal, and a validator that
  * never passes, which no goal names until somebody creates one.
  *
  * Every agent answers from a script, so a seeded agent calls no model and needs no provider key,
@@ -22,6 +22,9 @@
  *   operator answers the review, then thanks them. Through a session run the review carries the
  *   session's id; through `bureau.run('request-human-input')` there is no session, so the review
  *   is addressed by its run id and resolves the same way.
+ * - `echo`: answers every message with the text of the last message it was sent. A reply that
+ *   quotes parts of earlier replies reaches the model as Markdown block quotes ahead of the typed
+ *   text, so the echo shows exactly what the agent received.
  * - `internal`: a plain agent the host does not publish.
  *
  * What these agents do not cover: a schedule's fire and a goal's attempt pass their agent name
@@ -47,11 +50,17 @@ export const SEEDED_AGENT_NAMES = [
   'assistant',
   'tool-runner',
   'request-human-input',
+  'echo',
   'internal',
 ] as const;
 
 /** The agents the host publishes through the Bureau handler; `internal` stays private. */
-export const PUBLISHED_AGENT_NAMES = ['assistant', 'tool-runner', 'request-human-input'] as const;
+export const PUBLISHED_AGENT_NAMES = [
+  'assistant',
+  'tool-runner',
+  'request-human-input',
+  'echo',
+] as const;
 
 /** How many times a script repeats before it runs out. */
 const SCRIPT_REPETITIONS = 200;
@@ -115,6 +124,24 @@ function humanInputGenerate(): GenerateFunction {
       'requestHumanInput',
       { signalName: HUMAN_INPUT_SIGNAL, prompt: HUMAN_INPUT_PROMPT },
       `seeded-requestHumanInput-${asked + 1}`,
+    );
+  };
+}
+
+/** What `echo` says when the conversation holds no user message with text to repeat. */
+export const ECHO_NOTHING_TO_REPEAT = 'There was no message to repeat.';
+
+/**
+ * The script of `echo`: it repeats the text of the last user message, unchanged. Each turn answers
+ * the message that began it, so a session of several turns echoes the newest one, not the first.
+ */
+function echoGenerate(): GenerateFunction {
+  return async ({ conversation }) => {
+    const last = conversation.getMessages().findLast((message) => message.role === 'user');
+    return replyResponse(
+      typeof last?.content === 'string' && last.content !== ''
+        ? last.content
+        : ECHO_NOTHING_TO_REPEAT,
     );
   };
 }
@@ -243,6 +270,12 @@ export function createSeededAgents(approvalSecret: string) {
       // The run ends on the request so it parks; once an operator answers it continues to the
       // reply, which has no tool call.
       stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],
+    }),
+    echo: createAgent({
+      name: 'echo',
+      description: 'Repeats the last message it was sent.',
+      generate: echoGenerate(),
+      stopWhen: stopWhen.noToolCalls(),
     }),
     internal: createAgent({
       name: 'internal',
