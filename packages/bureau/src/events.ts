@@ -129,13 +129,19 @@ export class RecoveryAttemptedEvent extends Event {
  * branches exactly — see `create-bureau.ts`'s `classifyRecoveredRunDetailed`,
  * the single source of truth both the verdict and this reason are derived
  * from in one pass, so the two can never drift.
+ *
+ * `'prepared-not-launched'` (COR-297) rejects a run its session still owns and
+ * says is running, whose durable record is still `pending`: the process that
+ * prepared it stopped before launching it, so it never executed and is
+ * cancelled rather than reattached.
  */
 export type RecoveryRejectionReason =
   | 'metadata-read-failed'
   | 'foreign-input'
   | 'session-absent'
   | 'session-run-mismatch'
-  | 'session-not-running';
+  | 'session-not-running'
+  | 'prepared-not-launched';
 
 /**
  * Fired only when `classifyRecoveredRun`'s verdict is `'cancel'` — a

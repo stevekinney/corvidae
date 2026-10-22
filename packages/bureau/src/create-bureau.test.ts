@@ -1612,7 +1612,7 @@ describe('createBureau', () => {
   });
 
   it("createRun resolves only after weft's initial durable workflow record is committed (AB-361): a fresh process over the same SQLite store always sees it", async () => {
-    // THE HONESTY PROOF: gate the SPECIFIC storage write `engine.start`
+    // THE HONESTY PROOF: gate the SPECIFIC storage write `engine.prepare`
     // performs for THIS run (a `batch` call whose first operation is
     // `wf:<runId>` — confirmed by instrumenting a real run's storage calls;
     // bureau's own session save is a SEPARATE `conditionalBatch` against
@@ -1622,7 +1622,7 @@ describe('createBureau', () => {
     // eventually happens before some LATER unrelated await gives it enough
     // microtasks to sneak in first (the previous bug: `createRun` resolved
     // once the session's `lastRunStatus: 'running'` write landed, several
-    // microtasks BEFORE `engine.start`'s own write — a race that a plain
+    // microtasks BEFORE `engine.prepare`'s own write — a race that a plain
     // "await createRun() then reopen and check" test cannot reliably catch,
     // since nothing here forces real I/O latency between the two writes).
     const databasePath = createTemporaryPath('bureau-durably-started', '.sqlite');
@@ -1772,7 +1772,7 @@ describe('createBureau', () => {
   it('createRun rejects, unregisters the run, and persists an errored session when the durable workflow write itself fails (AB-361 review PRRT_kwDORvupsc6gWc39)', async () => {
     // Same gated-storage shape as the honesty proof above, but the
     // intercepted start mutation REJECTS instead of blocking — modelling a
-    // genuine persistence failure inside `context.engine.start`. Before the
+    // genuine persistence failure inside `context.engine.prepare`. Before the
     // review fix, this rejection propagated out of `driveDurableRun`
     // uncaught: `durablyStarted` rejected (correct), but `result` ALSO
     // rejected raw with no `RunCompletedEvent`/`run.completed` ever
@@ -2279,7 +2279,7 @@ describe('createBureau', () => {
       // inside that real `ActiveRun`: since ITS OWN `abort()` also runs
       // before ITS OWN deferred microtask fires (synchronously, right
       // after `createActiveRun` returns, same as this test's own outer
-      // abort), `drive()` skips `context.engine.start` too — so no durable
+      // abort), `drive()` skips `context.engine.prepare` too — so no durable
       // workflow record is ever written for a run that was already doomed
       // before dispatch. `bureau.listDurableRuns()` correctly stays empty
       // of it; asserting the OPPOSITE (as this test did pre-AB-339) would

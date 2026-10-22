@@ -1397,6 +1397,12 @@ export interface ClassifyRecoveredRunArgs {
    * the drift.
    */
   versionMismatch?: boolean;
+  /**
+   * COR-297 — the status of the run's durable record, when it was read. A `'pending'` record was
+   * prepared and never launched, so a run that would otherwise reattach is cancelled instead
+   * (`'prepared-not-launched'`). Omitted, or any other status, changes nothing.
+   */
+  engineRecordStatus?: string;
 }
 
 /**
@@ -1435,6 +1441,10 @@ export function classifyRecoveredRunDetailed(args: ClassifyRecoveredRunArgs): {
   }
   if (session.lastRunStatus !== 'running') {
     return { verdict: 'cancel', rejection: 'session-not-running' };
+  }
+  // A pending record never resumes, so a version mismatch is moot for it.
+  if (args.engineRecordStatus === 'pending') {
+    return { verdict: 'cancel', rejection: 'prepared-not-launched' };
   }
   return { verdict: args.versionMismatch ? 'reattach-version-mismatch' : 'reattach' };
 }
@@ -7202,7 +7212,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `emitter` is threaded in directly (built here, handed to
       // `createActiveRun` to use instead of minting its own); the
       // `ctx.services` reference is captured via `onServices`, a synchronous
-      // hook the durable adapter fires immediately before `engine.start` —
+      // hook the durable adapter fires immediately before `engine.prepare` —
       // see `DurableActiveRunOptions.onServices` in operative for why this is
       // the only point such a reference can be obtained. Once captured, the
       // tool's `pendingHumanWait` setter forwards onto it, so a real
@@ -7215,7 +7225,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // run may wire (`requestHumanInput` and `scheduleWakeup`): Weft's
       // durable adapter fires exactly one `onServices` hook per run
       // (`DurableActiveRunOptions.onServices`, immediately before
-      // `engine.start`), so a SINGLE ref/hook is captured here and handed to
+      // `engine.prepare`), so a SINGLE ref/hook is captured here and handed to
       // whichever context(s) `wireDurableOptInTools` wires below need it —
       // two separate hooks would have the later one clobber the earlier
       // one's `onServices` property in the `createActiveRun` options object
@@ -7735,8 +7745,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // acknowledged durable run is durable — a caller that holds this
       // run's identifier must be able to recover it after a crash at any
       // later point. `activeRun.durablyStarted` settles with the SAME write
-      // `driveDurableRun`'s `context.engine.start(...)` performs on the
-      // durable branch (`durable/active-run-adapter.ts`). Awaited here,
+      // `driveDurableRun`'s `context.engine.prepare(...)` performs on the
+      // durable branch (`durable/active-run-driver.ts`), which commits before
+      // the run's `onRunStart` hook runs, so this never waits on that hook
+      // (COR-297). Awaited here,
       // AFTER `store.register` (so `run.started` is still the first frame
       // any live subscriber sees — an earlier await would let the deferred
       // `drive()` microtask run before this function's own subscription
@@ -7757,7 +7769,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // (no terminal event to settle through — the original reason this
       // catch exists), OR because `store.register` succeeded but the
       // AWAITED `durablyStarted` above rejected (a genuine durable-write
-      // failure — `engine.start` rejecting, or a caller-supplied
+      // failure — `engine.prepare` rejecting, or a caller-supplied
       // `onServices` throwing; see `driveDurableRun`'s own review-fixed
       // handling of both, PRRT_kwDORvupsc6gWc39/PRRT_kwDORvupsc6gWb3a).
       // Either way this function is about to throw instead of returning a
@@ -9215,7 +9227,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         }
 
-        const classification = classifyRecoveredRunDetailed({
+        const classificationArgs: ClassifyRecoveredRunArgs = {
           handleId: handle.id,
           scheduledFire,
           ownedSessionId,
@@ -9223,7 +9235,56 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           hasSessionStore: sessionStore !== undefined,
           sessionLoad,
           versionMismatch: runtime.workflowVersionMismatches.has(handle.id),
-        });
+        };
+        let classification = classifyRecoveredRunDetailed(classificationArgs);
+        // COR-297 — a run that would reattach may be a record its process prepared and never
+        // launched (Weft's two-phase start): Weft recovers a `pending` record without resuming it,
+        // so reattaching would leave a run whose result never settles. Its status is read only
+        // here, for a would-be reattach; a read that fails leaves the verdict as it was.
+        if (
+          classification.verdict === 'reattach' ||
+          classification.verdict === 'reattach-version-mismatch'
+        ) {
+          try {
+            const record = await durable.engine.get(handle.id);
+            if (record !== null) {
+              classification = classifyRecoveredRunDetailed({
+                ...classificationArgs,
+                engineRecordStatus: record.status,
+              });
+            }
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'recovery',
+              message: `[bureau] Could not read the durable record of recovered run "${handle.id}"; classifying it without its status: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        }
+        // The session says the run is running, and no later boot could repair that once the record
+        // is cancelled, so it is settled first; the cancel is issued whether or not this write
+        // lands, and a cancel that fails leaves the next boot a `session-not-running` run to cancel.
+        if (
+          classification.rejection === 'prepared-not-launched' &&
+          sessionStore &&
+          ownedSessionId !== undefined
+        ) {
+          try {
+            await sessionStore.updateMetadata(ownedSessionId, {
+              lastRunStatus: 'aborted',
+              lastFinishReason: 'aborted',
+              lastError: `Run "${handle.id}" was prepared but never launched before its process stopped.`,
+            });
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'session-persistence',
+              message: `[bureau] Failed to settle the session of never-launched run "${handle.id}" (session ${ownedSessionId}): ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        }
         const { verdict } = classification;
         dispatchRecoveryClassification(handle.id, classification);
         dispatchRecoveryLeaseReleasedIfAny(handle.id);
