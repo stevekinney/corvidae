@@ -1,6 +1,6 @@
 import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../../events.ts';
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
-import { currentExecutionAttempt } from '../execution-attempts.ts';
+import { currentExecutionAttempt, type ExecutionAttempt } from '../execution-attempts.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { recordResultCommitter } from '../result-committer.ts';
@@ -17,36 +17,40 @@ import {
 } from './terminal-claim-release.ts';
 
 /**
- * The run a terminate was issued against, captured before it awaits anything: the generation this
- * engine holds for the id and the result waiter that generation registered. A replacement that
- * lands later installs its own attempt and waiter under the same id, so only this capture says
- * which ones belong to the run being terminated.
+ * The run a terminate, or a write that may end a run, was issued against, captured before it
+ * awaits anything: the execution attempt this engine holds for the id, that attempt's generation
+ * token, and the result waiter the generation registered. A replacement that lands later installs
+ * its own attempt and waiter under the same id, so only this capture says which ones belong to the
+ * run being ended.
+ *
+ * The attempt object, not its token, is the run's identity on this engine (see
+ * {@link engineHoldsRun}): every launch of an id installs a new object, so a `start-new`
+ * replacement, and a relaunch of the very same generation after a suspend, are both told apart
+ * from the captured run, which a token comparison cannot do for two pre-token launches.
  */
 export type TerminatedRun = {
+  /** The attempt this engine held for the id when the run was captured; `undefined` when it held none. */
+  readonly attempt: ExecutionAttempt | undefined;
   readonly workflowExecutionToken: string | undefined;
   readonly waiter: WorkflowResultWaiter | undefined;
-  readonly held: boolean;
   /** The ownership claim this engine held for the run when it was captured, to release with it. */
   readonly claimEpoch: number | null;
 };
 
 /**
- * Whether this engine still holds an execution attempt for `run` itself: it held one when the run
- * was captured, it holds one now, and that one carries the run's token. The attempt must exist: a
- * run recorded before execution tokens existed has no token, and an engine that holds no attempt
- * reads no token either, so comparing tokens alone would mistake a released run for a held one.
+ * Whether this engine still holds `run`'s own execution attempt: it held one when the run was
+ * captured, and the attempt it holds now is that very object. A run captured with no attempt is
+ * never held. Any later launch of the id, whether a replacement generation or the same generation
+ * launched again, installs a different object, so it never passes for the captured run, whatever
+ * tokens the two carry: two pre-token launches share an absent token, and comparing tokens alone
+ * would treat them as one run.
  */
 export function engineHoldsRun(
   internals: EngineInternals,
   workflowId: string,
   run: TerminatedRun,
 ): boolean {
-  const attempt = currentExecutionAttempt(internals, workflowId);
-  return (
-    run.held &&
-    attempt !== undefined &&
-    attempt.workflowExecutionToken === run.workflowExecutionToken
-  );
+  return run.attempt !== undefined && currentExecutionAttempt(internals, workflowId) === run.attempt;
 }
 
 export function captureTerminatedRun(
@@ -55,9 +59,9 @@ export function captureTerminatedRun(
 ): TerminatedRun {
   const attempt = currentExecutionAttempt(internals, workflowId);
   return {
+    attempt,
     workflowExecutionToken: attempt?.workflowExecutionToken,
     waiter: internals.resultResolvers.get(workflowId),
-    held: attempt !== undefined,
     claimEpoch: captureCurrentClaimEpoch(internals, workflowId),
   };
 }
@@ -242,7 +246,7 @@ function announceOwnTerminalWrite(
 ): void {
   const engineId = internals.workflowClaimRegistry?.engineId;
   const stampedHere = engineId !== undefined && state.terminalCommittedBy === engineId;
-  const unstampedAndHeld = state.terminalCommittedBy === undefined && run.held;
+  const unstampedAndHeld = state.terminalCommittedBy === undefined && run.attempt !== undefined;
   if (!stampedHere && !unstampedAndHeld) return;
   let event: WorkflowCompletedEvent | WorkflowFailedEvent;
   if (state.status === 'completed') {

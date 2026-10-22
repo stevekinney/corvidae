@@ -360,18 +360,19 @@ describe('whether the engine still holds a run', () => {
     await using engine = run.engine;
     const internals = getInternals(engine);
     // A run from before execution tokens: no token on the run, and none on the attempt that holds it.
-    const preToken = {
-      workflowExecutionToken: undefined,
-      waiter: undefined,
-      held: true,
-      claimEpoch: null,
-    };
     beginExecutionAttempt(internals, id, undefined);
+    const preToken = captureTerminatedRun(internals, id);
+    expect(preToken.workflowExecutionToken).toBeUndefined();
     expect(engineHoldsRun(internals, id, preToken)).toBe(true);
 
     // Released, the engine reads no token at all, which must not pass for the run's missing one.
     retireExecutionAttempt(internals, id);
     expect(engineHoldsRun(internals, id, preToken)).toBe(false);
+
+    // Launched again, the generation shares the run's missing token and is still not the run.
+    beginExecutionAttempt(internals, id, undefined);
+    expect(engineHoldsRun(internals, id, preToken)).toBe(false);
+    retireExecutionAttempt(internals, id);
   });
 });
 
@@ -545,7 +546,7 @@ describe('the exits that need the engine in a particular state', () => {
     const internals = getInternals(engine);
     const waiter = internals.resultResolvers.get(id)!;
     // The run as it stood when the engine held no attempt for it, so there is nothing to mark.
-    const captured = { ...captureTerminatedRun(internals, id), held: false };
+    const captured = { ...captureTerminatedRun(internals, id), attempt: undefined };
     retireExecutionAttempt(internals, id);
 
     await endRunAfterFailedWrite(
@@ -554,7 +555,6 @@ describe('the exits that need the engine in a particular state', () => {
       { createTerminationCallbacks: () => ({}) as TerminationCallbacks },
       new Error('the failure write failed'),
       'failure',
-      undefined,
       captured,
     );
 
@@ -597,7 +597,6 @@ describe('the exits that need the engine in a particular state', () => {
       { createTerminationCallbacks: () => createTerminationCallbacks(engine) },
       new Error('the completion write failed'),
       'completion',
-      undefined,
       captured,
     );
 
@@ -636,7 +635,6 @@ describe('the exits that need the engine in a particular state', () => {
       { createTerminationCallbacks: () => createTerminationCallbacks(engine) },
       new Error('the completion write failed'),
       'completion',
-      undefined,
       captured,
     );
 
@@ -675,7 +673,7 @@ describe('the exits that need the engine in a particular state', () => {
     const run = await startParked(steps, id);
     await using engine = run.engine;
     const internals = getInternals(engine);
-    const captured = { ...captureTerminatedRun(internals, id), held: false };
+    const captured = { ...captureTerminatedRun(internals, id), attempt: undefined };
     const completions: unknown[] = [];
     engine.addEventListener(WorkflowCompletedEvent.type, (event) => completions.push(event));
     const record = decode((await run.refusing.base.get(KEYS.workflow(id)))!) as WorkflowState;

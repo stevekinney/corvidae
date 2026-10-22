@@ -25,7 +25,10 @@ import {
   failWorkflow as failWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
-import { captureTerminatedRun } from './termination/settle-refused-terminal.ts';
+import {
+  captureTerminatedRun,
+  type TerminatedRun,
+} from './termination/settle-refused-terminal.ts';
 
 export type ParkedWorkflowResumeDisposition = 'resumable' | 'terminal-or-missing' | 'corrupt';
 
@@ -199,6 +202,7 @@ async function dispatchStrategyMessage(
   internals: EngineInternals,
   message: WorkerOutboundMessage,
   callbacks: InlineParkingCallbacks,
+  run: TerminatedRun,
 ): Promise<void> {
   switch (message.type) {
     case 'completed':
@@ -256,6 +260,9 @@ async function dispatchStrategyMessage(
         }
 
         if (operation.type === 'wait-signal' && internals.inlineStrategy === null) {
+          // The worker's wait-signal loop runs detached from this message, so its rejection ends
+          // the run from here, bound to the run the message was dispatched for (`run`): by the
+          // time the loop fails, the id may be another run's.
           void callbacks.processOperation(message.workflowId, operation).catch((error: unknown) => {
             const failedError = error instanceof Error ? error : new Error(String(error));
             return endRunAfterFailedWrite(
@@ -264,6 +271,7 @@ async function dispatchStrategyMessage(
               callbacks,
               failedError,
               'checkpoint',
+              run,
               failedError,
             );
           });
@@ -287,13 +295,15 @@ export async function handleStrategyMessage(
   callbacks: InlineParkingCallbacks,
 ): Promise<void> {
   const terminalWrite = terminalWriteOf(message);
-  // The run as it stands before the terminal commit, which releases what identifies it.
-  const run =
-    terminalWrite === undefined ? undefined : captureTerminatedRun(internals, message.workflowId);
+  // The run this message belongs to, as it stands before anything awaits: a terminal commit
+  // releases what identifies it, and a checkpoint write is retried for most of a second, during
+  // which a cancel and a `start-new` replacement, or a relaunch, can put another run under the id.
+  // Every exit below ends this run and no other (see `terminal-run-exit.ts`).
+  const run = captureTerminatedRun(internals, message.workflowId);
   try {
-    await dispatchStrategyMessage(internals, message, callbacks);
+    await dispatchStrategyMessage(internals, message, callbacks, run);
     // A terminal message that returned with its run's waiter still pending did not settle it.
-    if (run !== undefined && isTerminalWaiterPending(internals, message.workflowId, run)) {
+    if (terminalWrite !== undefined && isTerminalWaiterPending(internals, message.workflowId, run)) {
       await settleUnsettledTerminalMessage(internals, message.workflowId, callbacks, run);
     }
   } catch (error) {

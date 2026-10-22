@@ -124,6 +124,22 @@ function waitBeforeRetry(internals: EngineInternals, milliseconds: number): Prom
   });
 }
 
+/** The test-only replacements for the wait before a retry, per engine; see {@link holdStorageWriteRetryWaitsForTesting}. */
+const retryWaitsForTesting = new WeakMap<EngineInternals, (milliseconds: number) => Promise<void>>();
+
+/**
+ * Replace the wait before each further attempt of `internals`' refused writes with `wait`, which is
+ * given the delay the attempt would have waited: a test holds a retry in its wait, with no attempt
+ * in flight, and acts on the engine meanwhile. Nothing replaces the wait in production, where it is
+ * a timer the engine's disposal ends.
+ */
+export function holdStorageWriteRetryWaitsForTesting(
+  internals: EngineInternals,
+  wait: (milliseconds: number) => Promise<void>,
+): void {
+  retryWaitsForTesting.set(internals, wait);
+}
+
 /** Which write is being retried, and for which generation of which workflow. */
 export type RefusedWriteDescriptor = {
   readonly workflowId: string;
@@ -140,7 +156,8 @@ export type RefusedWriteDescriptor = {
  * conditions, never a recomputed batch) and returns whether it committed, so a caller that can
  * recognize a write that landed but reported failure folds that into its own return value. When
  * every attempt is refused this throws {@link CheckpointCommitFailedError} naming the last cause.
- * Tests shorten the waits through `EngineInternals.storageWriteRetryDelaysForTesting`.
+ * Tests shorten the waits through `EngineInternals.storageWriteRetryDelaysForTesting`, or hold them
+ * through {@link holdStorageWriteRetryWaitsForTesting}.
  *
  * Callers invoke this from the `catch` of their own first attempt rather than wrapping it, so a
  * write that succeeds first time pays no extra promise turn.
@@ -153,9 +170,12 @@ export async function retryRefusedStorageWrite(
 ): Promise<boolean> {
   if (!isRetryableStorageWriteError(firstError)) throw firstError;
   const delays = internals.storageWriteRetryDelaysForTesting ?? STORAGE_WRITE_RETRY_DELAYS_MS;
+  const wait =
+    retryWaitsForTesting.get(internals) ??
+    ((milliseconds: number) => waitBeforeRetry(internals, milliseconds));
   let lastError: unknown = firstError;
   for (const delay of delays) {
-    await waitBeforeRetry(internals, delay);
+    await wait(delay);
     try {
       return await attemptWrite();
     } catch (error) {
