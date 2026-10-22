@@ -58,7 +58,8 @@ describe('the models list', () => {
     expect(detail.definition?.models).toEqual(['anthropic/sonnet', 'openai/gpt-4.1']);
     stub.restore();
     stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
-    expect((await getAgentDefinition('researcher')).definition?.models).toBeNull();
+    const plain = await getAgentDefinition('researcher');
+    expect(plain.definition?.models).toBeNull();
   });
 
   test('update sends the models it is given, and sends none when the definition has none', async () => {

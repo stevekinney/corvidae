@@ -23,7 +23,7 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import type { SteeringCommandAdmissionOutcome, SteeringCommandSnapshot } from '../../steering.ts';
 import type { Bureau } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -228,10 +228,10 @@ export const contextsSteerOperation = defineOperation<
     } catch (error) {
       // Bureau closed admission. Nothing was decided and nothing is logged, so a retry after a
       // restart is admitted as a new command; an in-process caller still gets the throw.
-      if (error instanceof BureauError && error.code === 'CONFLICT') {
+      if (error instanceof BureauShuttingDownError) {
         return {
           outcome: 'rejected' as const,
-          failure: { failedAt: new Date().toISOString(), reason: 'shutting-down' as const },
+          failure: { failedAt: error.at, reason: 'shutting-down' as const },
         };
       }
       if (error instanceof BureauError && error.code === 'BAD_REQUEST') {

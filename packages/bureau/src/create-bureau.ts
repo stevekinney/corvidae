@@ -93,6 +93,7 @@ import {
   TaskPreemptedEvent,
   SESSION_OWNER_METADATA_KEY,
   createSessionHandle,
+  ForkThroughMessageError,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -408,6 +409,8 @@ import {
   assertBranchPoint,
   createForkLedger,
   FORK_OPERATION_VERSION,
+  type ForkLedgerFailure,
+  type ForkLedgerResult,
   type ForkSessionRequest,
   type ForkSessionResult,
   SessionForkRefusedError,
@@ -984,7 +987,23 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
   }
 }
 
-export { ApprovalOutcomeNotWrittenError, BureauError };
+/**
+ * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
+ * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
+ * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
+ */
+class BureauShuttingDownError extends BureauError {
+  /** When Bureau refused the command, as an ISO timestamp of its runtime clock. */
+  readonly at: string;
+
+  constructor(message: string, at: string) {
+    super(message, 'CONFLICT');
+    this.name = 'BureauShuttingDownError';
+    this.at = at;
+  }
+}
+
+export { ApprovalOutcomeNotWrittenError, BureauError, BureauShuttingDownError };
 
 /**
  * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
@@ -13250,7 +13269,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // disposes either; once shutdown starts, none begins.
     if (durableSteeringStore() === undefined) return admitSteeringRequest(sessionId, snapshot);
     if (runAdmissionClosed) {
-      throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
+      throw new BureauShuttingDownError(
+        'Cannot steer: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
     }
     const submission = admitSteeringRequest(sessionId, snapshot);
     inFlightSteeringSubmissions.add(submission);
@@ -13312,7 +13334,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     request: ForkSessionRequest,
   ): Promise<ForkSessionResult> {
     if (runAdmissionClosed) {
-      throw new BureauError('Cannot fork: Bureau is shutting down.', 'CONFLICT');
+      throw new BureauShuttingDownError(
+        'Cannot fork: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
     }
     const identity = {
       callerId: request.owner,
@@ -13353,16 +13378,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (sessions === undefined) {
       throw new BureauError('This Bureau keeps no sessions to branch.', 'BAD_REQUEST');
     }
-    const session = await sessions.load(sessionId);
-    if (session === undefined)
-      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     // A command already answered is answered again without judging the branch point afresh: the
     // parent may have changed since, and the retry must see what the first attempt made.
     const located = await forkLedger.locate(identity);
     const retained = located.state === 'retained' ? located.entry : undefined;
     if (retained?.state === 'completed' && retained.payloadDigest === digest) {
-      return structuredClone(retained.result);
+      return answerOfFork(retained.result);
     }
+    const session = await sessions.load(sessionId);
+    if (session === undefined)
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     if (retained === undefined) {
       await assertBranchPoint(session, request.throughMessageId, {
         record: (runId) => tasks.record(runId),
@@ -13389,19 +13414,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
       throw error;
     }
-    if (outcome.entry.state === 'completed') return structuredClone(outcome.entry.result);
+    if (outcome.entry.state === 'completed') return answerOfFork(outcome.entry.result);
     const claim = outcome.entry.claim;
     // The identifier is the claim's, so an attempt that died after forking finds its fork, and one
     // that died before it makes the fork under the identifier the ledger already holds.
-    await createSessionHandle(sessionId, {
-      store: sessions,
-      agentName: session.agentName,
-      runtime: runtimeServices,
-    }).fork({
-      throughMessageId: request.throughMessageId,
-      id: claim.contextId,
-      owner: request.owner,
-    });
+    try {
+      await createSessionHandle(sessionId, {
+        store: sessions,
+        agentName: session.agentName,
+        runtime: runtimeServices,
+      }).fork({
+        throughMessageId: request.throughMessageId,
+        id: claim.contextId,
+        owner: request.owner,
+      });
+    } catch (error) {
+      // The parent was deleted, or the message with it, after the checks: nothing was created. The
+      // command settles to that failure rather than staying pending, so a retry is refused alike.
+      if (!(error instanceof ForkThroughMessageError)) throw error;
+      const failure: ForkLedgerFailure = {
+        failure: { reason: 'message-not-found', message: error.message },
+      };
+      await forkLedger.complete(outcome.entry, failure);
+      return answerOfFork(failure);
+    }
     const carried =
       claim.override === null
         ? null
@@ -13416,7 +13452,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           });
     const result: ForkSessionResult = { contextId: claim.contextId, carriedOverride: carried };
     const completed = await forkLedger.complete(outcome.entry, result);
-    return structuredClone(completed.result);
+    return answerOfFork(completed.result);
+  }
+
+  /** What a ledger result answers: the fork, or the refusal the command settled to. */
+  function answerOfFork(result: ForkLedgerResult): ForkSessionResult {
+    if ('failure' in result) {
+      throw new SessionForkRefusedError(result.failure.reason, result.failure.message);
+    }
+    return structuredClone(result);
   }
 
   async function getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined> {

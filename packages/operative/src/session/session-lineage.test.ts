@@ -265,6 +265,29 @@ describe('session.fork() through a message', () => {
     expect(kept?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(ids[1]);
   });
 
+  it('refuses the same fork asked for again under the same identifier for another owner', async () => {
+    const { store, handle, ids } = await source();
+    await handle.fork({ throughMessageId: ids[1]!, id: 'planned-id', owner: 'alice' });
+
+    expect(
+      await rejectionOf(handle.fork({ throughMessageId: ids[1]!, id: 'planned-id', owner: 'bob' })),
+    ).toBeInstanceOf(ForkIdentifierInUseError);
+
+    const kept = await store.load('planned-id');
+    expect(kept?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('alice');
+  });
+
+  it('does not recreate a session deleted before the fork, and refuses the message', async () => {
+    const { store, handle, ids } = await source();
+    await store.delete('source');
+
+    expect(await rejectionOf(handle.fork({ throughMessageId: ids[1]! }))).toBeInstanceOf(
+      ForkThroughMessageError,
+    );
+
+    expect(await store.exists('source')).toBe(false);
+  });
+
   it('refuses a message the session does not hold, and creates nothing', async () => {
     const { store, handle } = await source();
     const listedBefore = await store.list({});

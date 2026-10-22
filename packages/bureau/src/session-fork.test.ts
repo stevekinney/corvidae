@@ -17,7 +17,7 @@ import {
   FORK_OPERATION_VERSION,
   SessionForkRefusedError,
 } from './session-fork';
-import { waitForRunState } from './test';
+import { waitForCondition, waitForRunState } from './test';
 import { approvalToolbox } from './http/management/management-fixtures.test-support';
 import { noopTool, OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
@@ -32,7 +32,7 @@ afterEach(async () => {
 type Behavior = 'complete' | 'fail-second-step' | 'hold-second-step';
 
 /** An agent that thinks (a tool call and text), then answers, or fails or hangs at its second step. */
-function twoStepAgent(behavior: Behavior = 'complete') {
+function twoStepAgent(behavior: Behavior = 'complete', onSecondStep?: () => void) {
   return createAgent({
     name: 'two-step',
     tools: { noop: noopTool },
@@ -46,6 +46,7 @@ function twoStepAgent(behavior: Behavior = 'complete') {
           toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }],
         };
       }
+      onSecondStep?.();
       if (behavior === 'fail-second-step') throw new Error('the model failed');
       if (behavior === 'hold-second-step') {
         await new Promise<never>((_resolve, reject) => {
@@ -75,10 +76,23 @@ async function openBureau(
 
 const ALICE = 'alice';
 
+/** Waits until the stored session holds `messageId`; a run's messages arrive just after it settles. */
+async function waitForStoredMessage(
+  bureau: Bureau<AgentDefinitions>,
+  sessionId: string,
+  messageId: string,
+) {
+  await waitForCondition(async () => {
+    const stored = await bureau.getSession(sessionId);
+    return stored?.conversationHistory.ids.includes(messageId) === true;
+  }, `message ${messageId} stored`);
+}
+
 async function completedSession(
   bureau: Bureau<AgentDefinitions>,
   sessionId?: string,
   message = 'go',
+  lastStep = 1,
 ) {
   const run = await bureau.createRun({
     message,
@@ -87,12 +101,7 @@ async function completedSession(
     ...(sessionId === undefined ? {} : { sessionId }),
   });
   await waitForRunState(bureau, run.id);
-  // The run's messages reach the stored session just after the run settles.
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const stored = await bureau.getSession(run.sessionId);
-    if (stored?.conversationHistory.ids.includes(`${run.id}:step:1`)) break;
-    await Bun.sleep(10);
-  }
+  await waitForStoredMessage(bureau, run.sessionId, `${run.id}:step:${lastStep}`);
   return run;
 }
 
@@ -222,6 +231,31 @@ describe('the command identifier', () => {
   });
 });
 
+describe('a parent deleted while it is being branched', () => {
+  it('refuses the command as message-not-found, creates nothing, never resurrects the parent, and answers a retry the same way', async () => {
+    const bureau = await openBureau();
+    const run = await completedSession(bureau);
+    const store = bureau.sessionStore!;
+    const load = store.load.bind(store);
+    let loads = 0;
+    // The parent is read once to check the branch point, and once more by the fork itself: the
+    // deletion lands exactly between the two.
+    store.load = async (id: string) => {
+      loads += 1;
+      if (id === run.sessionId && loads === 2) await bureau.deleteSession(run.sessionId);
+      return load(id);
+    };
+
+    const first = await refusalOf(fork(bureau, run.sessionId, finalAssistantOf(run.id)));
+    const retry = await refusalOf(fork(bureau, run.sessionId, finalAssistantOf(run.id)));
+
+    expect(first).toBe('message-not-found');
+    expect(retry).toBe('message-not-found');
+    expect(await bureau.getSession(run.sessionId)).toBeUndefined();
+    expect(await sessionCount(bureau)).toBe(0);
+  });
+});
+
 describe('a message that is not a branch point', () => {
   it('refuses a message the history does not hold, and one of another session, creating nothing', async () => {
     const bureau = await openBureau();
@@ -288,26 +322,34 @@ describe('a message that is not a branch point', () => {
     );
   });
 
-  it('refuses the final message of a run that errored, and of one that was aborted', async () => {
+  it('refuses the final message of a run that errored', async () => {
     const failing = await openBureau({ agent: twoStepAgent('fail-second-step') });
-    const errored = await completedSession(failing);
-    const holding = await openBureau({ agent: twoStepAgent('hold-second-step') });
+    const errored = await completedSession(failing, undefined, 'go', 0);
+
+    expect(await refusalOf(fork(failing, errored.sessionId, `${errored.id}:step:0`))).toBe(
+      'branch-from-errored-run',
+    );
+    expect(await sessionCount(failing)).toBe(1);
+  });
+
+  it('refuses the final message of a run that was aborted', async () => {
+    const entered = Promise.withResolvers<void>();
+    const holding = await openBureau({
+      agent: twoStepAgent('hold-second-step', () => entered.resolve()),
+    });
     const run = await holding.createRun({
       message: 'go',
       agentName: 'agent',
       principal: ALICE,
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await entered.promise;
     holding.abortRun(run.id);
     await waitForRunState(holding, run.id);
+    await waitForStoredMessage(holding, run.sessionId, `${run.id}:step:0`);
 
-    expect(await refusalOf(fork(failing, errored.sessionId, `${errored.id}:step:0`))).toBe(
-      'branch-from-errored-run',
-    );
     expect(await refusalOf(fork(holding, run.sessionId, `${run.id}:step:0`))).toBe(
       'branch-from-aborted-run',
     );
-    expect(await sessionCount(failing)).toBe(1);
     expect(await sessionCount(holding)).toBe(1);
   });
 

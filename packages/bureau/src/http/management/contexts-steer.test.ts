@@ -7,7 +7,7 @@ import { createAgent } from '@lostgradient/operative';
 import { createOperationHandler, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauShuttingDownError } from '../../create-bureau.ts';
 import { waitForCondition } from '../../test';
 import { noopTool, OPUS_5, OPUS_5_5, GPT_4_1 } from '../../testing/model-override.test-support.ts';
 import { buildBureauHandlerHost, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
@@ -19,6 +19,8 @@ import {
   rpc,
   type RpcBody,
 } from './management-fixtures.test-support.ts';
+
+const SHUT_AT = '2026-10-22T12:00:00.000Z';
 
 const picker = createAgent({
   name: 'picker',
@@ -254,7 +256,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened, 'anonymous:local');
       const handler = stubbed(opened, async () => {
-        throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
+        throw new BureauShuttingDownError('Cannot steer: Bureau is shutting down.', SHUT_AT);
       });
 
       const body = await call(handler, run.sessionId);
@@ -262,7 +264,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
       expect(body.error).toBeUndefined();
       expect(body.result).toMatchObject({
         outcome: 'rejected',
-        failure: { reason: 'shutting-down' },
+        failure: { reason: 'shutting-down', failedAt: SHUT_AT },
       });
     });
   });

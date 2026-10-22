@@ -82,6 +82,18 @@ export interface ForkSessionResult {
   readonly carriedOverride: SteeringCommandAdmissionOutcome | null;
 }
 
+/**
+ * How an attempt ended when the branch could not be made after it had been claimed: the parent
+ * session or the message went away between the checks and the fork. The ledger keeps it as the
+ * entry's result, so the command does not stay pending and an exact retry is refused the same way.
+ */
+export interface ForkLedgerFailure {
+  readonly failure: { readonly reason: 'message-not-found'; readonly message: string };
+}
+
+/** What the fork ledger keeps for a command: the answer it gave, or the failure it settled to. */
+export type ForkLedgerResult = ForkSessionResult | ForkLedgerFailure;
+
 /** What a first attempt records before it forks, so a retry finds the fork and never makes a second. */
 export interface ForkLedgerClaim {
   /** The identifier the fork is created under, minted before it is created. */
@@ -203,8 +215,8 @@ function stepsOfRun(
 export function createForkLedger(
   kv: ConditionalTextValueStore | undefined,
   services: Pick<RuntimeServices, 'clock' | 'identifiers'>,
-): CommandLedger<ForkLedgerClaim, ForkSessionResult> {
-  return createCommandLedger<ForkLedgerClaim, ForkSessionResult>({
+): CommandLedger<ForkLedgerClaim, ForkLedgerResult> {
+  return createCommandLedger<ForkLedgerClaim, ForkLedgerResult>({
     kv: kv ?? textValueStore(new MemoryStorage()),
     keyPrefix: FORK_LEDGER_KEY_PREFIX,
     clock: services.clock,

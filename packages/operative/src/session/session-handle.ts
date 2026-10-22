@@ -32,6 +32,7 @@ import type {
 } from './session-handle-types';
 import {
   ForkIdentifierInUseError,
+  ForkThroughMessageError,
   NoDurableEngineError,
   NoRunningRunError,
 } from './session-handle-types';
@@ -46,6 +47,11 @@ import { createSessionRecovery } from './session-recovery';
 import { createSessionRun, type SessionRunState } from './session-run';
 
 export * from './session-handle-types';
+
+/** Throws `error`, as an expression. */
+function fail(error: Error): never {
+  throw error;
+}
 
 /**
  * Parse an ISO-8601 duration into milliseconds. Supports hours, minutes and
@@ -303,7 +309,13 @@ export function createSessionHandle(
     },
 
     async fork(options?: SessionForkOptions): Promise<SessionHandle> {
-      const session = await loadOrCreate();
+      // A fork through a message needs the session to exist: one deleted meanwhile is not
+      // recreated empty, it is a message the session does not hold.
+      const session =
+        options?.throughMessageId === undefined
+          ? await loadOrCreate()
+          : ((await store.load(sessionId)) ??
+            fail(new ForkThroughMessageError(sessionId, options.throughMessageId)));
 
       // Without a fork point, copy the latest stored history. With one, copy
       // that terminal run's immutable boundary (COR-816), which never holds a
@@ -344,7 +356,9 @@ export function createSessionHandle(
           if (
             options.throughMessageId !== undefined &&
             existing.metadata[SESSION_PARENT_METADATA_KEY] === sessionId &&
-            existing.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY] === options.throughMessageId
+            existing.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY] ===
+              options.throughMessageId &&
+            existing.metadata[SESSION_OWNER_METADATA_KEY] === owner
           ) {
             return createSessionHandle(existing.id, context);
           }
