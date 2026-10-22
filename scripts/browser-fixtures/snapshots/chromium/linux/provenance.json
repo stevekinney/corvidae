@@ -12,6 +12,10 @@
       "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
       "suiteExitCode": 1
     },
+    "chat-mcp-app": {
+      "renderedSourceSha": "246aaa3c12d03d54b00aa0fa6cd970ee260537c3",
+      "suiteExitCode": 0
+    },
     "text": {
       "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
       "suiteExitCode": 1
