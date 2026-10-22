@@ -727,7 +727,8 @@ describe('coverage edges', () => {
     expect(await searchTool({ query: 'ops', tags: ['ops'] })).toMatchObject([
       {
         name: 'ops-search-target',
-        reasons: ['text:ops', 'tag:ops'],
+        score: 3,
+        reasons: ['tag:ops', 'text:name', 'text:tags(ops)'],
       },
     ]);
     const retried = retry(

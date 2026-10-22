@@ -141,6 +141,19 @@ export function getQueryEmbeddingInfo(
   return info ?? undefined;
 }
 
+/**
+ * Resolve the query embedding, waiting for an asynchronous embedder, so a following
+ * synchronous search can read it from the cache.
+ */
+export async function awaitQueryEmbeddingInfo(
+  embedder: Embedder,
+  query: string,
+): Promise<EmbeddingInfo | undefined> {
+  const info = getQueryEmbeddingInfo(embedder, query);
+  if (info) return info;
+  return queryEmbeddings.get(embedder)?.get(query.trim());
+}
+
 export function getQueryEmbedding(embedder: Embedder, query: string): EmbeddingVector | undefined {
   const info = getQueryEmbeddingInfo(embedder, query);
   return info?.vector;
