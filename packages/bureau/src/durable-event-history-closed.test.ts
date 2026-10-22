@@ -23,6 +23,7 @@ afterEach(() => {
 const owner = { kind: 'run', id: 'run-1' } as const;
 
 async function openHistory() {
+  jest.useFakeTimers();
   const storage = await resolveStorage({ type: 'memory' });
   const diagnostics: string[] = [];
   const history: DurableEventHistory = createDurableEventHistory(
@@ -35,15 +36,15 @@ async function openHistory() {
 }
 
 /**
- * Lets the subscription's loop run to its end. The feed's live poll is a raw `setTimeout`, so a
- * test that waits on it runs on fake timers, which this advances a poll interval at a time.
+ * Lets the subscription's loop run to its end, on fake timers: the feed's live poll is a raw
+ * `setTimeout`, and the loop notices an abort only when that poll comes round, so the clock is
+ * advanced a poll interval at a time for a fixed number of turns.
  */
-async function settleSubscription(subscription: { readonly closed: boolean }): Promise<void> {
-  for (let turn = 0; turn < 200 && !subscription.closed; turn += 1) {
-    if (jest.isFakeTimers()) jest.advanceTimersByTime(100);
+async function settleSubscription(): Promise<void> {
+  for (let turn = 0; turn < 20; turn += 1) {
+    jest.advanceTimersByTime(100);
     await yieldToPortableEventLoop();
   }
-  for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
 }
 
 describe('the close notification of a history subscription', () => {
@@ -56,7 +57,7 @@ describe('the close notification of a history subscription', () => {
     const subscription = history.subscribeEventHistory(owner, () => {}, {
       onClosed: (error) => closed.push(error),
     });
-    await settleSubscription(subscription);
+    await settleSubscription();
 
     expect(subscription.closed).toBe(true);
     expect(closed).toHaveLength(1);
@@ -64,7 +65,6 @@ describe('the close notification of a history subscription', () => {
   });
 
   it('is called once when a stored record is corrupt', async () => {
-    jest.useFakeTimers();
     const { storage, history } = await openHistory();
     const closed: unknown[] = [];
     const subscription = history.subscribeEventHistory(owner, () => {}, {
@@ -79,7 +79,7 @@ describe('the close notification of a history subscription', () => {
       payload: 'not-a-wrapper',
     });
     feed.dispose();
-    await settleSubscription(subscription);
+    await settleSubscription();
 
     expect(subscription.closed).toBe(true);
     expect(closed).toHaveLength(1);
@@ -93,7 +93,7 @@ describe('the close notification of a history subscription', () => {
     });
 
     subscription.unsubscribe();
-    await settleSubscription(subscription);
+    await settleSubscription();
 
     expect(subscription.closed).toBe(true);
     expect(closed).toEqual([]);
@@ -109,7 +109,7 @@ describe('the close notification of a history subscription', () => {
     });
 
     controller.abort();
-    await settleSubscription(subscription);
+    await settleSubscription();
 
     expect(subscription.closed).toBe(true);
     expect(closed).toEqual([]);
