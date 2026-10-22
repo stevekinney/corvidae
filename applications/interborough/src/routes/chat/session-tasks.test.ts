@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -48,7 +49,7 @@ describe('the tasks of a chat session', () => {
 
     stub.on('bureau.tasks.list', () => ({
       tasks: [taskFixture({ id: 'run-1' }), taskFixture({ id: 'run-2' })],
-      nextOffset: null,
+      nextPageToken: null,
     }));
     await view.rerender({
       page: SessionTasks,
@@ -66,7 +67,6 @@ describe('the tasks of a chat session', () => {
     expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 0,
     });
 
     await fireEvent.click(getByRole('button', { name: 'Load more' }));
@@ -74,9 +74,42 @@ describe('the tasks of a chat session', () => {
     expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 50,
+      pageToken: '50',
     });
     expect(queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
+  test('start the listing again when Load more’s page token was refused, and page on from there', async () => {
+    const many = Array.from({ length: 51 }, (_, index) =>
+      taskFixture({ id: `run-${String(index).padStart(2, '0')}`, contextId: 'session-1' }),
+    );
+    const { container, getByRole, queryByRole } = mount('session-1', many);
+    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
+    // Fifteen minutes later the token has expired: the Bureau refuses it once.
+    let refused = false;
+    stub?.on('bureau.tasks.list', (params) => {
+      if (params['pageToken'] !== undefined && !refused) {
+        refused = true;
+        throw new StubFault('InvalidParams', 400, 'The page token has expired.', {
+          issues: [{ path: ['pageToken'], message: 'expired', code: 'page-token-expired' }],
+        });
+      }
+      const start = typeof params['pageToken'] === 'string' ? Number(params['pageToken']) : 0;
+      const page = many.slice(start, start + 50);
+      return { tasks: page, nextPageToken: start + 50 < many.length ? String(start + 50) : null };
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+    await waitFor(() => expect(refused).toBe(true));
+    await waitFor(() => expect(getByRole('button', { name: 'Load more' })).not.toBeNull());
+    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+
+    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(51));
+    expect(queryByRole('button', { name: 'Load more' })).toBeNull();
+    const firstPages = stub
+      ?.callsTo('bureau.tasks.list')
+      .filter((call) => call.params['pageToken'] === undefined);
+    expect(firstPages?.length).toBeGreaterThanOrEqual(2);
   });
 
   test('do not repeat a task that arrived after the first page, when Load more reads the next', async () => {
@@ -91,8 +124,9 @@ describe('the tasks of a chat session', () => {
     } as never);
     await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
 
-    // A run starts in the session: the list is newest first, so every row moves down one place and
-    // offset 50 now begins with the row the first page ended with.
+    // A run starts in the session. The stub's token is a position in the live list, unlike the
+    // Bureau's snapshot, so the next page begins with the row the first page ended with; the
+    // pages are joined by id all the same.
     world.tasks = [taskFixture({ id: 'run-new', contextId: 'session-1' }), ...world.tasks];
     await fireEvent.click(getByRole('button', { name: 'Load more' }));
 
@@ -114,7 +148,6 @@ describe('the tasks of a chat session', () => {
     expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 0,
     });
     const links = [...container.querySelectorAll<HTMLAnchorElement>('li a')];
     expect(links.map((link) => link.getAttribute('href'))).toEqual([

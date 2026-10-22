@@ -11,7 +11,7 @@
   import { createInfiniteQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
-  import { listTasks } from '../../lib/bureau-tasks.ts';
+  import { listTasks, loadMoreTasks } from '../../lib/bureau-tasks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -32,15 +32,22 @@
     () => ({
       queryKey: queryKeys.bureauTasks.ofSession(sessionId),
       queryFn: ({ pageParam, signal }) =>
-        listTasks({ contextId: sessionId, limit: PAGE_SIZE, offset: pageParam }, { signal }),
-      initialPageParam: 0,
-      getNextPageParam: (last) => last.nextOffset ?? undefined,
+        listTasks(
+          {
+            contextId: sessionId,
+            limit: PAGE_SIZE,
+            ...(pageParam === '' ? {} : { pageToken: pageParam }),
+          },
+          { signal },
+        ),
+      initialPageParam: '',
+      getNextPageParam: (last) => last.nextPageToken ?? undefined,
       retry: false,
     }),
     undefined,
   );
-  // A run that starts after the first page loaded moves the next page's offset onto a row the first
-  // page ended with, so the pages are joined with each task once.
+  // Each page after the first reads the listing as the first page saw it, so a task appears once;
+  // the pages are still joined by id, as every paged list here is.
   const rows = $derived(
     combinePages(
       tasks.data?.pages,
@@ -89,7 +96,7 @@
         size="sm"
         label={CHAT_COPY.loadMore}
         loading={tasks.isFetchingNextPage}
-        onclick={() => void tasks.fetchNextPage()}
+        onclick={() => void loadMoreTasks(tasks)}
       />
     {/if}
   </section>
