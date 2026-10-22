@@ -244,17 +244,58 @@ describe('the revision of a file agent', () => {
     expect(await recordedRevisionOf(revisionStore)).toBe(2);
   });
 
-  it('is reported by detail as the last scanned revision, without touching the record', async () => {
+  it('is served by detail for a file edited since the last scan as one settled entry: the new hash, text and revision', async () => {
     const revisionStore = newStore();
     const fixture = await start({ revisionStore });
     await fixture.put('helper.md', versionOne);
     await fixture.catalog.refresh();
     await fixture.put('helper.md', versionTwo);
 
+    // No scan in between: `detail` itself settles the edit.
     const detail = await fixture.catalog.detail('helper');
 
-    expect(detail).toMatchObject({ id: 'helper', state: 'ready', definitionRevision: 1 });
-    expect(await recordedRevisionOf(revisionStore)).toBe(1);
+    expect(detail).toMatchObject({
+      id: 'helper',
+      state: 'ready',
+      definitionRevision: 2,
+      definitionHash: hashAgentFileBytes(new TextEncoder().encode(versionTwo)),
+      text: versionTwo,
+    });
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
+    expect(revisionOf(fixture)).toBe(2);
+  });
+
+  it('is served by detail for an unchanged file without reading the record', async () => {
+    const inner = newStore();
+    let reads = 0;
+    const store: ConditionalTextValueStore = {
+      ...inner,
+      async get(key) {
+        if (key.startsWith(AGENT_REVISION_KEY_PREFIX)) reads += 1;
+        return inner.get(key);
+      },
+    };
+    const fixture = await start({ revisionStore: store });
+    await fixture.put('helper.md', versionOne);
+    await fixture.catalog.refresh();
+    const before = reads;
+
+    const detail = await fixture.catalog.detail('helper');
+
+    expect(detail).toMatchObject({ definitionRevision: 1, text: versionOne });
+    expect(reads).toBe(before);
+  });
+
+  it('is served by detail for a file edited into an invalid one with no revision', async () => {
+    const fixture = await start();
+    await fixture.put('helper.md', versionOne);
+    await fixture.catalog.refresh();
+    await fixture.put('helper.md', agentFileText({ model: 'anthropic/none' }));
+
+    const detail = await fixture.catalog.detail('helper');
+
+    expect(detail).toMatchObject({ id: 'helper', state: 'invalid' });
+    expect(detail && 'definitionRevision' in detail).toBe(false);
   });
 });
 
