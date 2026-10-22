@@ -8,6 +8,7 @@ import type { DefinitionSchema, WorkflowContext } from '../types.ts';
 import { query, signal, update } from '../types/message-handles.ts';
 import { StandardSchemaValidationError } from '../types/standard-schema-validate.ts';
 import { workflow } from '../types/workflow-function.ts';
+import { UndeclaredWorkflowMessageError } from './declared-messages.ts';
 import { Engine } from './index.ts';
 
 const engines: Engine[] = [];
@@ -117,13 +118,17 @@ describe('payloadValidation engine option', () => {
     expect(await handle.result()).toEqual({ count: '5' });
   });
 
-  it('rejects an invalid declared signal and passes an undeclared one', async () => {
+  it('rejects an invalid declared signal, and an undeclared one as undeclared', async () => {
     const engine = validatingEngine();
     const handle = await engine.start('checkout', { id: 'o-2' });
     const error = await schemaRejection(engine.signal(handle.id, 'approve', { approved: 'yes' }));
     expect(error.fieldName).toBe('payload');
     expect(error.operation).toBe('weft.workflows.signal');
-    await engine.signal(handle.id, 'undeclared', 'anything');
+    // Declaring signals closes the set, so an undeclared name never reaches
+    // payload validation.
+    expect(await rejectionOf(engine.signal(handle.id, 'undeclared', 'anything'))).toBeInstanceOf(
+      UndeclaredWorkflowMessageError,
+    );
     await engine.signal(handle.id, 'approve', { approved: false });
     expect(await handle.result()).toEqual({ input: { id: 'o-2' }, decision: { approved: false } });
   });
