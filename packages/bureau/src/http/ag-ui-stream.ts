@@ -27,7 +27,7 @@ import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conve
 import type { BureauChildRecord } from '../child-topology-store.ts';
 import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
-import { snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
+import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { openPeerStream } from './ag-ui-peer-stream.ts';
 import {
   errorOf,
@@ -102,8 +102,7 @@ export type OpenRunStream = {
    * carries each one the conversation does not hold yet, as a row of its own, ahead of
    * the step that answers it.
    */
-  readonly answerRows?:
-    ReadonlyArray<{ readonly id: string; readonly content: string }> | undefined;
+  readonly answerRows?: ReadonlyArray<AnswerRow> | undefined;
   /**
    * The interrupts the resume that opened this stream answered. A process that does not hold the
    * run reads its human waits from durable state, which can still show an answered one pending
@@ -756,10 +755,8 @@ export function openRunStream(
     // against it is shown the conversation as well, as an attach is.
     const answerRows = request.answerRows ?? [];
     if (request.messagesSnapshot || detail === undefined || answerRows.length > 0) {
-      // The answers a resume delivered ride in the snapshot (a row the run has not appended yet),
-      // and are held, so the row the run appends under the same id is not announced a second time.
+      // The answers a resume delivered ride in the snapshot (a row the run has not appended yet).
       projector.holds(conversation?.ids ?? []);
-      projector.holds(answerRows.map((row) => row.id));
       writeEvents([
         stamp(
           {

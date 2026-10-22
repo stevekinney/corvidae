@@ -844,7 +844,7 @@ describe('the resume command ledger', () => {
 });
 
 describe('resuming a human wait', () => {
-  it('carries the human’s answer as a row of the opening snapshot, under the id the conversation holds it by', async () => {
+  it('carries the human’s answer as a row of a snapshot, under the id the conversation holds it by', async () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks for the answer.')],
@@ -2006,13 +2006,10 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
    * whether the run had already committed its answer before the stream opened or the resume
    * says what the run will append. A stream that sends one as user-role text instead fails.
    */
-  const shownUserRows = (frames: ReadonlyArray<{ event: Event }>) => {
-    expect(userTextRows(frames)).toEqual([]);
-    return snapshotUserRows(frames)
+  const shownUserRows = (frames: ReadonlyArray<{ event: Event }>) =>
+    snapshotUserRows(frames)
       .map((row) => row.id)
       .filter((id) => id.includes(':signal:'));
-  };
-  const userRows = shownUserRows;
   const interruptOf = (frames: ReadonlyArray<{ event: unknown }>) =>
     (frames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } }).outcome
       .interrupts[0]!.id;
@@ -2045,6 +2042,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         generate.release('after-second');
         await third.rest();
 
+        expect(userTextRows(second)).toEqual([]);
+        expect(userTextRows(opening)).toEqual([]);
         expect(shownUserRows(second)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
         expect(shownUserRows(opening)).toEqual([
           `${first.nativeRunId}:signal:human-response:0`,
@@ -2095,7 +2094,82 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         harness.generate.release('next-step');
         await retry.rest();
 
-        expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+        expect(userTextRows(opening)).toEqual([]);
+        expect(shownUserRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+      },
+    );
+  });
+
+  /**
+   * A stream opens on the conversation as it stands, and a run appends its answer row only once it
+   * wakes. Hiding the live run's transcript puts every stream on the side of that race where the
+   * row is not there yet, so the answer can reach the client only through the resume that says what
+   * it was (COR-1632).
+   */
+  const withTranscriptHidden = (bureau: Harness['bureau']) => {
+    const getRun = bureau.getRun.bind(bureau);
+    return spyOn(bureau, 'getRun').mockImplementation((runId) => {
+      const detail = getRun(runId);
+      return detail === undefined ? detail : { ...detail, transcript: undefined };
+    });
+  };
+
+  it('shows the answer in the opening snapshot of a retry that joins the attempt still applying it', async () => {
+    await withHarness(
+      {
+        script: [askAs('call-1'), { kind: 'block', barrier: 'after-answer' }, say('Done.')],
+        storage: 'sqlite',
+        ...humanWait,
+      },
+      async ({ handler, bureau, generate }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [answerOf(first.interruptIds[0]!, 'yes')];
+        const resolve = spyOn(bureau, 'resolveReview');
+        withTranscriptHidden(bureau);
+
+        const applying = handler(resumeRequest(entries));
+        const joining = handler(resumeRequest(entries, {}, 'client-run-3'));
+        const left = new FrameReader(await applying);
+        const right = new FrameReader(await joining);
+        const leftOpening = await left.until(EventType.STATE_SNAPSHOT);
+        const rightOpening = await right.until(EventType.STATE_SNAPSHOT);
+        generate.release('after-answer');
+        await left.rest();
+        await right.rest();
+
+        // One attempt applied the answer, and the other joined it.
+        expect(resolve).toHaveBeenCalledTimes(1);
+        const id = `${first.nativeRunId}:signal:human-response:0`;
+        expect(userTextRows(rightOpening)).toEqual([]);
+        expect(shownUserRows(leftOpening)).toEqual([id]);
+        expect(shownUserRows(rightOpening)).toEqual([id]);
+      },
+    );
+  });
+
+  it('shows the answer in the opening snapshot of a retry that finds the command already completed', async () => {
+    await withHarness(
+      {
+        script: [askAs('call-1'), { kind: 'block', barrier: 'after-answer' }, say('Done.')],
+        storage: 'sqlite',
+        ...humanWait,
+      },
+      async ({ handler, bureau, generate }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [answerOf(first.interruptIds[0]!, 'yes')];
+        withTranscriptHidden(bureau);
+
+        const applying = new FrameReader(await handler(resumeRequest(entries)));
+        await applying.until(EventType.STATE_SNAPSHOT);
+        // The ledger now says the command completed, while the run is still going.
+        const retry = new FrameReader(await handler(resumeRequest(entries, {}, 'client-run-3')));
+        const opening = await retry.until(EventType.STATE_SNAPSHOT);
+        generate.release('after-answer');
+        await applying.rest();
+        await retry.rest();
+
+        expect(userTextRows(opening)).toEqual([]);
+        expect(shownUserRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
       },
     );
   });
@@ -2131,7 +2205,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
           .getRun(first.nativeRunId)!
           .transcript!.ids.filter((id) => id.includes(':signal:'));
         expect(committed).toHaveLength(1);
-        expect(userRows(opening)).toEqual(committed);
+        expect(userTextRows(opening)).toEqual([]);
+        expect(shownUserRows(opening)).toEqual(committed);
       },
     );
   });

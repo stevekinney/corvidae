@@ -45,7 +45,7 @@ import type {
   PendingToolApprovalReview,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
-import { snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
+import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { errorOf, type NativeTerminal, RECORDED, usageOf } from './ag-ui-projection.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
@@ -90,7 +90,7 @@ export type PeerStreamContext = {
   readonly owner: string;
   /** The interrupts a resume just answered, which a peer may still read as pending. */
   readonly answered: ReadonlySet<string>;
-  readonly answerRows: ReadonlyArray<{ readonly id: string; readonly content: string }>;
+  readonly answerRows: ReadonlyArray<AnswerRow>;
   readonly preludeEvents: () => Event[];
   readonly replayCall: (
     history: AgentSession['conversationHistory'] | undefined,
