@@ -39,6 +39,43 @@ function expectNoViolations(
 }
 
 test.describe('a11y regressions', () => {
+  test('A2UI Modals open from their triggers, can be closed, and pass axe', async ({
+    componentPage,
+  }) => {
+    const entry = getEntry('a2ui-surface');
+    const fixture = getFixture(entry, 'assertion');
+    const page = await componentPage.open({
+      entry,
+      theme: lightTheme,
+      viewport: desktopViewport,
+      fixtureName: 'assertion',
+      fixtureContentHash: fixture.fixtureContentHash,
+    });
+    const surface = page.locator('#fixture-a2ui-surface');
+
+    for (const [trigger, title, body] of [
+      ['Show details', 'Show details', 'Ships in two business days.'],
+      ['Read the terms', 'Read the terms', 'Returns are accepted within thirty days.'],
+    ] as const) {
+      await surface.getByRole('button', { name: trigger }).click();
+      const dialog = page.getByRole('dialog', { name: title });
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText(body);
+      expectNoViolations(
+        'a2ui-surface',
+        `modal ${trigger}`,
+        await runAxe(
+          page,
+          { slug: 'a2ui-surface', theme: lightTheme, viewport: 'desktop', fixture: 'assertion' },
+          { include: ['#fixture-a2ui-surface', '[role="dialog"]'] },
+        ),
+      );
+      await dialog.getByRole('button', { name: /close/i }).click();
+      await expect(dialog).toBeHidden();
+      await expect(surface.getByRole('button', { name: trigger })).toBeFocused();
+    }
+  });
+
   test('access-gate denied states expose reasons and block inline activation', async ({
     componentPage,
   }) => {

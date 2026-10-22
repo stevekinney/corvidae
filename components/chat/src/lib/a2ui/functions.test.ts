@@ -36,7 +36,7 @@ describe('basic catalog functions', () => {
     ).json()) as {
       functions: Record<string, unknown>;
     };
-    expect([...A2UI_BASIC_FUNCTIONS].toSorted()).toEqual(Object.keys(catalog.functions).toSorted());
+    expect([...A2UI_BASIC_FUNCTIONS].toSorted() as string[]).toEqual(Object.keys(catalog.functions).toSorted());
   });
 
   it('formatString interpolates paths, literals, nested calls, and escapes', () => {
