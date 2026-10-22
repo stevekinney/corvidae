@@ -1,5 +1,5 @@
 /**
- * What a fresh Interborough has in it: five agents, one schedule, and one goal, and a validator that
+ * What a fresh Interborough has in it: six agents, one schedule, and one goal, and a validator that
  * never passes, which no goal names until somebody creates one.
  *
  * Every agent answers from a script, so a seeded agent calls no model and needs no provider key,
@@ -25,6 +25,10 @@
  * - `echo`: answers every message with the text of the last message it was sent. A reply that
  *   quotes parts of earlier replies reaches the model as Markdown block quotes ahead of the typed
  *   text, so the echo shows exactly what the agent received.
+ * - `model-switcher`: a selectable agent over two models (`MODEL_SWITCHER_MODELS`), whose reply
+ *   names the model that answered, so a session switched with `bureau.contexts.steer` shows which
+ *   model each message ran on. It is offered the models the host's catalog holds: the two models
+ *   need a configured provider, and a host with none offers no choice, so Chat shows no picker.
  * - `internal`: a plain agent the host does not publish.
  *
  * What these agents do not cover: a schedule's fire and a goal's attempt pass their agent name
@@ -35,8 +39,10 @@
 import type { Bureau } from '@lostgradient/bureau';
 import {
   createAgent,
+  createModelCatalog,
   createScriptedGenerate,
   stopWhen,
+  withBackendDescriptors,
   type GenerateFunction,
   type GenerateResponse,
   type ScriptedGenerateStep,
@@ -51,6 +57,7 @@ export const SEEDED_AGENT_NAMES = [
   'tool-runner',
   'request-human-input',
   'echo',
+  'model-switcher',
   'internal',
 ] as const;
 
@@ -60,6 +67,7 @@ export const PUBLISHED_AGENT_NAMES = [
   'tool-runner',
   'request-human-input',
   'echo',
+  'model-switcher',
 ] as const;
 
 /** How many times a script repeats before it runs out. */
@@ -126,6 +134,38 @@ function humanInputGenerate(): GenerateFunction {
       `seeded-requestHumanInput-${asked + 1}`,
     );
   };
+}
+
+/**
+ * The models `model-switcher` allows, in the order a picker lists them: catalog rows of the
+ * `anthropic` provider, by their exact model names. The first is the agent's default. A session is
+ * switched to the second with `bureau.contexts.steer`. The script names a model and calls none.
+ */
+export const MODEL_SWITCHER_MODELS = [
+  { provider: 'anthropic', model: 'claude-sonnet-5' },
+  { provider: 'anthropic', model: 'claude-haiku-4-5' },
+] as const;
+
+/** What `model-switcher` says when `model` answered. */
+export function modelSwitcherReply(model: string): string {
+  return `This reply is from ${model}. It is scripted; no model was called.`;
+}
+
+/**
+ * The script of `model-switcher`: it names the model its step was told to use, which is the model
+ * the session was switched to, and the first of {@link MODEL_SWITCHER_MODELS} before any switch.
+ * That first model's catalog row is attached to the script, which is how the Bureau knows the
+ * agent's default (`bureau.agents.models`), so Chat can show the model a new session runs on.
+ */
+function modelSwitcherGenerate(): GenerateFunction {
+  const [first] = MODEL_SWITCHER_MODELS;
+  const row = createModelCatalog().descriptors.find(
+    (descriptor) => descriptor.provider === first.provider && descriptor.model === first.model,
+  );
+  if (row === undefined) throw new Error(`The model catalog has no ${first.model} row.`);
+  const generate: GenerateFunction = async ({ steering }) =>
+    replyResponse(modelSwitcherReply(steering?.model ?? first.model));
+  return withBackendDescriptors(generate, [row]);
 }
 
 /** What `echo` says when the conversation holds no user message with text to repeat. */
@@ -275,6 +315,13 @@ export function createSeededAgents(approvalSecret: string) {
       name: 'echo',
       description: 'Repeats the last message it was sent.',
       generate: echoGenerate(),
+      stopWhen: stopWhen.noToolCalls(),
+    }),
+    'model-switcher': createAgent({
+      name: 'model-switcher',
+      description: 'Names the model it answers as, and can be switched between two.',
+      generate: modelSwitcherGenerate(),
+      allowedCandidates: MODEL_SWITCHER_MODELS,
       stopWhen: stopWhen.noToolCalls(),
     }),
     internal: createAgent({
