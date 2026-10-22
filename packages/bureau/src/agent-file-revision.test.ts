@@ -68,6 +68,12 @@ async function recordOf(store: ConditionalTextValueStore, id = 'helper') {
   return text === null ? undefined : (JSON.parse(text) as { revision: number; hash: string });
 }
 
+/** The revision the record holds for `id`, or `undefined` when it holds none. */
+async function recordedRevisionOf(store: ConditionalTextValueStore, id = 'helper') {
+  const record = await recordOf(store, id);
+  return record?.revision;
+}
+
 describe('the revision of a file agent', () => {
   it('is 1 on first sighting, raised by every edit, raised again when the content returns, and kept across a restart', async () => {
     const directory = sharedDirectory();
@@ -214,7 +220,7 @@ describe('the revision of a file agent', () => {
     await settled;
 
     expect(observed).toEqual([2]);
-    expect((await recordOf(revisionStore))?.revision).toBe(2);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
   });
 
   it('is settled before refresh resolves: the record is written by then', async () => {
@@ -225,7 +231,7 @@ describe('the revision of a file agent', () => {
     await fixture.put('helper.md', versionTwo);
     await fixture.catalog.refresh();
 
-    expect((await recordOf(revisionStore))?.revision).toBe(2);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
   });
 
   it('is reported by detail as the last scanned revision, without touching the record', async () => {
@@ -238,7 +244,7 @@ describe('the revision of a file agent', () => {
     const detail = await fixture.catalog.detail('helper');
 
     expect(detail).toMatchObject({ id: 'helper', state: 'ready', definitionRevision: 1 });
-    expect((await recordOf(revisionStore))?.revision).toBe(1);
+    expect(await recordedRevisionOf(revisionStore)).toBe(1);
   });
 });
 
@@ -299,7 +305,7 @@ describe('two catalogs on one store', () => {
 
     expect([revisionOf(left), revisionOf(right)]).toEqual([2, 2]);
     expect([profileRevisionOf(left), profileRevisionOf(right)]).toEqual([2, 2]);
-    expect((await recordOf(revisionStore))?.revision).toBe(2);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
   });
 
   it('agree on a first sighting of the same file', async () => {
@@ -312,7 +318,7 @@ describe('two catalogs on one store', () => {
     await Promise.all([left.catalog.refresh(), right.catalog.refresh()]);
 
     expect([revisionOf(left), revisionOf(right)]).toEqual([1, 1]);
-    expect((await recordOf(revisionStore))?.revision).toBe(1);
+    expect(await recordedRevisionOf(revisionStore)).toBe(1);
   });
 
   it('report the revision a second catalog finds already recorded, without raising it', async () => {
@@ -328,7 +334,7 @@ describe('two catalogs on one store', () => {
     await right.catalog.refresh();
 
     expect(revisionOf(right)).toBe(2);
-    expect((await recordOf(revisionStore))?.revision).toBe(2);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
   });
 });
 
@@ -407,7 +413,7 @@ describe('a revision record that cannot be read or written', () => {
       await fixture.catalog.refresh();
       expect(revisionOf(fixture)).toBe(3);
       expect(profileRevisionOf(fixture)).toBe(3);
-      expect((await recordOf(inner))?.revision).toBe(3);
+      expect(await recordedRevisionOf(inner)).toBe(3);
       expect(diagnostics).toHaveLength(1);
     },
   );

@@ -58,6 +58,12 @@ async function recoveryRecordOf(storage: Storage, runId: string) {
     : (decode(bytes) as { definitionRevision: number; agentDefinitionHash?: string });
 }
 
+/** The `definitionRevision` the run's recovery record holds. */
+async function recordedRevisionOf(storage: Storage, runId: string) {
+  const record = await recoveryRecordOf(storage, runId);
+  return record?.definitionRevision;
+}
+
 /** A durable Bureau over storage the test owns, so the records can be read back. */
 async function openDurable(
   storage: Storage,
@@ -83,8 +89,8 @@ describe('a run of a file agent', () => {
     const later = bureau.run('researcher', 'hello again');
     await later.result();
 
-    expect((await recoveryRecordOf(storage, run.id))?.definitionRevision).toBe(2);
-    expect((await recoveryRecordOf(storage, later.id))?.definitionRevision).toBe(3);
+    expect(await recordedRevisionOf(storage, run.id)).toBe(2);
+    expect(await recordedRevisionOf(storage, later.id)).toBe(3);
   });
 
   it('records the revision it started with on its session', async () => {
@@ -120,7 +126,7 @@ describe('a run of a code-defined agent', () => {
 
     expect(revisionOf(bureau, 'alpha')).toBe(4);
     expect(readGenerationProfile(bureau.agents.get('alpha')).revision).toBe(4);
-    expect((await recoveryRecordOf(storage, run.id))?.definitionRevision).toBe(4);
+    expect(await recordedRevisionOf(storage, run.id)).toBe(4);
   });
 });
 
@@ -151,7 +157,7 @@ describe('a run resumed after a restart', () => {
       'the run is recorded',
       ATTEMPTS,
     );
-    expect((await recoveryRecordOf(firstStorage, run.id))?.definitionRevision).toBe(2);
+    expect(await recordedRevisionOf(firstStorage, run.id)).toBe(2);
     await edit(first, 'Version three.\n');
     expect(revisionOf(first.bureau, 'researcher')).toBe(3);
 
@@ -176,7 +182,7 @@ describe('a run resumed after a restart', () => {
     expect(resumed.length).toBeGreaterThan(0);
     expect(resumed.map((agentOptions) => agentOptions.revision)).toEqual(resumed.map(() => 2));
     expect(revisionOf(second.bureau, 'researcher')).toBe(3);
-    expect((await recoveryRecordOf(secondStorage, run.id))?.definitionRevision).toBe(2);
+    expect(await recordedRevisionOf(secondStorage, run.id)).toBe(2);
     built.mockRestore();
   });
 });

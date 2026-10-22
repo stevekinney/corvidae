@@ -65,7 +65,8 @@ describe('definitionRevision on the wire', () => {
     const served = await serve();
     await served.put('researcher.md', RESEARCHER);
     await served.bureau.agents.refresh();
-    expect((await reported(served, 'researcher'))[0]).toBe(1);
+    const [before] = await reported(served, 'researcher');
+    expect(before).toBe(1);
 
     await served.put('researcher.md', agentFileText({ model: KNOWN_MODEL }, 'Rewritten.\n'));
     await served.bureau.agents.refresh();
