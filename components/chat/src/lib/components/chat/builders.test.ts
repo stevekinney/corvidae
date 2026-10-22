@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { CURRENT_SCHEMA_VERSION } from './schema-version.ts';
+
 import {
   appendAssistantMessage,
   appendMessages,
@@ -30,7 +32,7 @@ describe('chat conversation builders', () => {
     const conversation = createConversationHistory({ id: 'conversation-builders' });
 
     expect(conversation).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'conversation-builders',
       metadata: {},
       ids: [],
@@ -41,7 +43,7 @@ describe('chat conversation builders', () => {
   test('keeps createConversation as a migration alias', () => {
     const conversation = createConversation({ id: 'conversation-alias' });
 
-    expect(conversation.schemaVersion).toBe(6);
+    expect(conversation.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(conversation.id).toBe('conversation-alias');
   });
 

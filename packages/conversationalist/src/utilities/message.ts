@@ -1,9 +1,10 @@
-import type { MultiModalContent } from '../multi-modal';
 import {
   contentSourceDisplayUrl,
   copyContent,
   isMediaContent,
+  type MultiModalContent,
   renderMediaPlaceholder,
+  twoMediaListsProblem,
 } from '../multi-modal';
 import type { AssistantMessage, Message, MessageInput } from '../types';
 import { normalizeContent } from './content';
@@ -26,6 +27,8 @@ export interface MessageBuildEnvironment {
 export function createMessage(props: AssistantMessage): AssistantMessage;
 export function createMessage(props: Message): Message;
 export function createMessage(props: Message | AssistantMessage): Message | AssistantMessage {
+  const problem = twoMediaListsProblem(props);
+  if (problem !== undefined) throw new Error(problem);
   const content =
     typeof props.content === 'string'
       ? props.content

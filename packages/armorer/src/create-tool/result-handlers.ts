@@ -11,7 +11,7 @@ import type {
 } from '../is-tool';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import { createDeadlineError, isAbortRejection } from './cancellation';
-import { computeDigest, normalizeToolContent } from './content';
+import { computeDigest, successContent } from './content';
 import {
   classifyErrorCategory,
   createToolError,
@@ -108,7 +108,7 @@ function successResult(input: SuccessInput, outputDigest: string | undefined): T
   return {
     callId,
     outcome: 'success',
-    content: normalizeToolContent(input.value),
+    ...successContent(input.value),
     toolCallId: callId,
     toolName: input.name,
     result: input.value,

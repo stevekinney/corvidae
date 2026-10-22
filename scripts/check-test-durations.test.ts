@@ -8,6 +8,7 @@ import {
   budgetFailures,
   judgeDurations,
   laneProblems,
+  measuresWorkspace,
   parseJunit,
   verdict,
 } from './check-test-durations.ts';
@@ -90,6 +91,67 @@ describe('laneProblems', () => {
       ),
     ).toEqual([]);
     expect(laneProblems('w', { test: 'bun ../../scripts/bun-test-junit.ts' }, false)).toEqual([]);
+  });
+
+  test('judges the root workspace by test:self and test:self:slow, not by its turbo fan-out', () => {
+    const fanOut = { test: 'turbo run test:self test', 'test:slow': 'turbo run test:slow' };
+    expect(laneProblems('.', fanOut, true)).toHaveLength(2);
+    expect(
+      laneProblems(
+        '.',
+        {
+          ...fanOut,
+          'test:self': "bun scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+          'test:self:slow': 'bun test ./scripts/chef/*.slow.test.ts',
+        },
+        true,
+      ),
+    ).toEqual([]);
+    // A root with no slow files needs neither script.
+    expect(laneProblems('.', fanOut, false)).toEqual([]);
+  });
+
+  test('requires every root slow file to be named by a test:self:slow pattern', () => {
+    const scripts = {
+      test: 'turbo run test:self test',
+      'test:self': "bun scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+      'test:self:slow': 'bun test ./scripts/chef/*.slow.test.ts',
+    };
+    const listed = ['scripts/chef/a.slow.test.ts', 'scripts/chef/b.slow.test.ts'];
+    expect(laneProblems('.', scripts, true, listed)).toEqual([]);
+    // A slow file elsewhere is ignored by the fast lane and unlisted by the slow lane.
+    const problems = laneProblems('.', scripts, true, [
+      ...listed,
+      'scripts/terminal/c.slow.test.ts',
+    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('scripts/terminal/c.slow.test.ts');
+    expect(problems[0]).toContain('test:self:slow does not run');
+    // Listing the directory, with or without quotes, covers it.
+    expect(
+      laneProblems(
+        '.',
+        {
+          ...scripts,
+          'test:self:slow':
+            "bun test './scripts/chef/*.slow.test.ts' ./scripts/terminal/*.slow.test.ts",
+        },
+        true,
+        [...listed, 'scripts/terminal/c.slow.test.ts'],
+      ),
+    ).toEqual([]);
+    // A workspace other than the root is not judged by the root's script.
+    expect(
+      laneProblems(
+        'w',
+        {
+          test: "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+          'test:slow': 'bun test .slow.test.ts',
+        },
+        true,
+        ['elsewhere/x.slow.test.ts'],
+      ),
+    ).toEqual([]);
   });
 
   test('accepts the playground runner, which splits lanes by file name itself', () => {
@@ -282,5 +344,22 @@ describe('the on-demand check measures before it enforces', () => {
     expect(scripts['validate']).toContain('bun run report:test-durations');
     expect(scripts['validate']).not.toContain('measure:test-durations');
     expect(scripts['report:test-durations']).not.toContain('--force');
+  });
+});
+
+describe('measuresWorkspace', () => {
+  test('the report mode skips a workspace that validate gates through its coverage run', () => {
+    // validate's `test:gate` runs only `test:coverage` there, so no fast-lane report exists in a
+    // fresh worktree; reading for one would fail the report as a wiring problem.
+    const gatedThroughCoverage = {
+      test: 'bun ../../scripts/bun-test-junit.ts',
+      'test:coverage': 'bun test --coverage',
+    };
+    expect(measuresWorkspace('report', gatedThroughCoverage)).toBe(false);
+    expect(measuresWorkspace('report', { test: 'bun ../../scripts/bun-test-junit.ts' })).toBe(true);
+  });
+
+  test('the enforce mode, which reruns every test first, measures every workspace', () => {
+    expect(measuresWorkspace('enforce', { test: 'x', 'test:coverage': 'y' })).toBe(true);
   });
 });

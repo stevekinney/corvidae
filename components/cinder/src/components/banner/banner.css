@@ -116,28 +116,28 @@
  * ---------------------------------------- */
 
   .cinder-banner[data-cinder-variant='info'] {
-    --_cinder-banner-ring: var(--cinder-status-info-solid);
+    --_cinder-banner-ring: var(--cinder-status-info-text);
     --_cinder-status-base: var(--cinder-status-info-solid);
     --_cinder-status-fg-chroma-light: 0.12;
     --_cinder-status-fg-chroma-dark: 0.12;
   }
 
   .cinder-banner[data-cinder-variant='success'] {
-    --_cinder-banner-ring: var(--cinder-status-success-solid);
+    --_cinder-banner-ring: var(--cinder-status-success-text);
     --_cinder-status-base: var(--cinder-status-success-solid);
     --_cinder-status-fg-chroma-light: 0.14;
     --_cinder-status-fg-chroma-dark: 0.12;
   }
 
   .cinder-banner[data-cinder-variant='warning'] {
-    --_cinder-banner-ring: var(--cinder-status-warning-solid);
+    --_cinder-banner-ring: var(--cinder-status-warning-text);
     --_cinder-status-base: var(--cinder-status-warning-solid);
     --_cinder-status-fg-chroma-light: 0.16;
     --_cinder-status-fg-chroma-dark: 0.14;
   }
 
   .cinder-banner[data-cinder-variant='danger'] {
-    --_cinder-banner-ring: var(--cinder-status-danger-solid);
+    --_cinder-banner-ring: var(--cinder-status-danger-text);
     --_cinder-status-base: var(--cinder-status-danger-solid);
     --_cinder-status-fg-chroma-light: 0.18;
     --_cinder-status-fg-chroma-dark: 0.16;

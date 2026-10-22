@@ -2141,7 +2141,7 @@
     padding: 0 var(--cinder-space-2);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border-strong);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-sm);
     cursor: pointer;
     font: inherit;
@@ -2353,7 +2353,6 @@
   .chat-input-area {
     flex-shrink: 0;
     padding: var(--cinder-chat-timeline-padding);
-    border-top: 1px solid var(--cinder-border);
     background: var(--cinder-surface);
   }
 

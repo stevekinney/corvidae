@@ -1,0 +1,14 @@
+{
+  "repository": "stevekinney/corvidae",
+  "defaultBranch": "main",
+  "worktreeRoots": {
+    "claude": "~/.agent-worktrees/claude/corvidae",
+    "codex": "~/.agent-worktrees/codex/corvidae"
+  },
+  "manifestName": "corvidae",
+  "installCommand": "bun install --frozen-lockfile",
+  "gateCommand": "bun run validate",
+  "affectedCheckCommand": "bun run check",
+  "lockPattern": "^[^ ]*bun [^ ]*run-exclusively\\.ts",
+  "mergeMethod": "squash"
+}

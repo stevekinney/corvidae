@@ -8,14 +8,18 @@ import {
   type GovernedMemory,
   type MemoryAuthority,
 } from '@lostgradient/memory';
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  createAgent,
+  type GenerateFunction,
+  MEMORY_EVIDENCE_METADATA_KEY,
+  stopWhen,
+} from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import type { InputDetector, ToolRequestContext } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { MEMORY_EVIDENCE_METADATA_KEY } from './memory-evidence-metadata';
 import { waitForRunState } from './test';
 import type { Bureau } from './types';
 

@@ -284,6 +284,7 @@ export type {
   MinimalToolConfiguration,
   PendingToolApproval,
   PolicyPauseTier,
+  RedactedToolExecutionResult,
   SatisfiedPolicyPause,
   SignedPendingToolApproval,
   ToolAction,

@@ -146,7 +146,7 @@ function toOutboundMessage(
       blocks: typeof content === 'string' ? [{ type: 'text', text: content }] : content,
     };
   }
-  return toToolMessage(message);
+  return toToolMessage(message, lineage, options);
 }
 
 function shouldSkipOutboundMessage(message: Message): boolean {
@@ -161,11 +161,15 @@ function shouldSkipOutboundMessage(message: Message): boolean {
 
 function toToolMessage(
   message: Message,
+  lineage: ContentPartLineage[],
+  options: ToAnthropicMessagesOptions | undefined,
 ): { role: 'user' | 'assistant'; blocks: AnthropicContentBlock[] } | undefined {
   if (message.role === 'tool-call' && message.toolCall)
     return { role: 'assistant', blocks: [toToolUseBlock(message.toolCall)] };
-  if (message.role === 'tool-result' && message.toolResult)
-    return { role: 'user', blocks: [toToolResultBlock(message.toolResult)] };
+  if (message.role === 'tool-result' && message.toolResult) {
+    const context = createMediaExportContext('anthropic', message, lineage, options);
+    return { role: 'user', blocks: [toToolResultBlock(message.toolResult, context)] };
+  }
   return undefined;
 }
 
