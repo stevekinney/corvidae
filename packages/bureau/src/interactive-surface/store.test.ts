@@ -502,6 +502,7 @@ describe('closing, cancellation, and cleanup', () => {
       commandId: 'close-1',
       taskId: TASK,
       surfaceId: 'reason-form',
+      baseRevision: 1,
       reason: 'dismissed',
     });
 
@@ -624,6 +625,55 @@ describe('closing, cancellation, and cleanup', () => {
     const { surfaces } = harness();
     expect(await surfaces.closed(TASK)).toEqual({ status: 'not-required' });
     await surfaces.create(createCommand());
+    const controller = new AbortController();
+    const waiting = surfaces.closed(TASK, { signal: controller.signal });
+    controller.abort();
+
+    expect(await waiting).toEqual({ status: 'unresolved', reason: 'timed-out' });
+  });
+
+  it('refuses a close made against an earlier revision', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+    await surfaces.update(updateCommand());
+
+    const stale = await surfaces.close({
+      type: 'surface.close',
+      contractVersion: version,
+      commandId: 'close-stale',
+      taskId: TASK,
+      surfaceId: 'reason-form',
+      baseRevision: 1,
+      reason: 'completed',
+    });
+
+    expect(stale).toMatchObject({ outcome: 'rejected', reason: 'stale-revision' });
+    expect(await snapshotOf(surfaces)).toMatchObject({ state: 'open', revision: 2 });
+  });
+
+  it('counts each surface once when two aborts race', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+    await surfaces.create(createCommand({ commandId: 'create-2', surfaceId: 'second' }));
+    const abort = (commandId: string) =>
+      surfaces.abort({
+        type: 'surface.owner-abort',
+        contractVersion: version,
+        commandId,
+        taskId: TASK,
+      });
+
+    const receipts = await Promise.all([abort('abort-a'), abort('abort-b')]);
+
+    let total = 0;
+    for (const receipt of receipts) if ('frozen' in receipt) total += receipt.frozen;
+    expect(total).toBe(2);
+  });
+
+  it('lets an aborted signal end the wait while a read is stuck', async () => {
+    const { surfaces, table } = harness();
+    await surfaces.create(createCommand());
+    Reflect.set(table, 'get', () => new Promise<never>(() => {}));
     const controller = new AbortController();
     const waiting = surfaces.closed(TASK, { signal: controller.signal });
     controller.abort();
@@ -787,6 +837,7 @@ describe('review fixes', () => {
       commandId: 'close-1',
       taskId: TASK,
       surfaceId: 'reason-form',
+      baseRevision: 1,
       reason: 'completed',
     });
 

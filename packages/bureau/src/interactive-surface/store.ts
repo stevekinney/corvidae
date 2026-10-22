@@ -442,17 +442,21 @@ export function createInteractiveSurfaces(
     };
   }
 
-  /** Freezes one surface if it is still open. Resolves whether it is now closed. */
+  /**
+   * Freezes one surface if it is still open. Resolves `frozen` when this call
+   * committed the freeze, `closed` when the surface was already closed or gone,
+   * and `contended` when it kept changing underneath every attempt.
+   */
   async function freezeOne(
     taskId: string,
     surfaceId: string,
     reason: Extract<InteractiveSurfaceCloseReason, 'cancelled' | 'task-ended'>,
     commandId: string,
-  ): Promise<boolean> {
+  ): Promise<'frozen' | 'closed' | 'contended'> {
     for (let attempt = 0; attempt < MAX_COMMIT_ATTEMPTS; attempt += 1) {
       const loaded = await load(taskId, surfaceId);
-      if (loaded === undefined) return true;
-      if (loaded.stored.surface.state === 'closed') return true;
+      if (loaded === undefined) return 'closed';
+      if (loaded.stored.surface.state === 'closed') return 'closed';
       const surface = frozen(loaded.stored.surface, reason);
       try {
         await commit(
@@ -469,12 +473,12 @@ export function createInteractiveSurfaces(
             closeResult: surface.closeResult,
           },
         );
-        return true;
+        return 'frozen';
       } catch (error: unknown) {
         if (!(error instanceof LostRace)) throw error;
       }
     }
-    return false;
+    return 'contended';
   }
 
   async function surfaceIdsOf(taskId: string): Promise<string[]> {
@@ -494,13 +498,12 @@ export function createInteractiveSurfaces(
     let failure: unknown;
     for (const surfaceId of surfaceIds) {
       try {
-        const before = await load(taskId, surfaceId);
-        const wasOpen = before?.stored.surface.state === 'open';
-        if (!(await freezeOne(taskId, surfaceId, reason, commandId))) {
+        const outcome = await freezeOne(taskId, surfaceId, reason, commandId);
+        if (outcome === 'contended') {
           failure ??= new Error(`surface "${surfaceId}" kept changing while it was being frozen`);
-          continue;
+        } else if (outcome === 'frozen') {
+          count += 1;
         }
-        if (wasOpen) count += 1;
       } catch (error: unknown) {
         failure ??= error;
       }
@@ -597,6 +600,13 @@ export function createInteractiveSurfaces(
       }
       throw error;
     }
+  }
+
+  function readBaseRevision(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+      throw new InteractiveSurfaceValidationError('baseRevision must be a positive integer');
+    }
+    return value;
   }
 
   function readCommandBase(command: unknown, type: string, extra: readonly string[]) {
@@ -738,14 +748,7 @@ export function createInteractiveSurfaces(
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
-      const baseRevision = record['baseRevision'];
-      if (
-        typeof baseRevision !== 'number' ||
-        !Number.isSafeInteger(baseRevision) ||
-        baseRevision < 1
-      ) {
-        throw new InteractiveSurfaceValidationError('baseRevision must be a positive integer');
-      }
+      const baseRevision = readBaseRevision(record['baseRevision']);
       const changes = {
         ...(record['representation'] === undefined
           ? {}
@@ -981,6 +984,7 @@ export function createInteractiveSurfaces(
     return guarded(async () => {
       const { record, commandId, taskId } = readCommandBase(command, 'surface.close', [
         'surfaceId',
+        'baseRevision',
         'reason',
       ]);
       const surfaceId = readIdentifier(record['surfaceId'], 'surfaceId');
@@ -988,6 +992,7 @@ export function createInteractiveSurfaces(
       if (reason !== 'completed' && reason !== 'dismissed') {
         throw new InteractiveSurfaceValidationError('reason must be "completed" or "dismissed"');
       }
+      const baseRevision = readBaseRevision(record['baseRevision']);
       const digest = digestOf(record);
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
@@ -1000,6 +1005,9 @@ export function createInteractiveSurfaces(
         if (replayed !== undefined) return replayed;
         const before = loaded.stored.surface;
         if (ended(task, before)) return rejection('closed', 'the surface is closed');
+        if (before.revision !== baseRevision) {
+          return rejection('stale-revision', undefined, before.revision);
+        }
         const at = isoNow();
         const revision = before.revision + 1;
         const surface: InteractiveSurface = {
@@ -1154,9 +1162,34 @@ export function createInteractiveSurfaces(
     });
   }
 
-  async function closed(
+  /** Settles `wait`, or `unresolved` once `signal` aborts, whichever is first. */
+  function untilAborted(
+    wait: Promise<CleanupAcknowledgement>,
+    signal: AbortSignal | undefined,
+  ): Promise<CleanupAcknowledgement> {
+    if (signal === undefined) return wait;
+    const timedOut: CleanupAcknowledgement = { status: 'unresolved', reason: 'timed-out' };
+    if (signal.aborted) return Promise.resolve(timedOut);
+    const aborted = Promise.withResolvers<CleanupAcknowledgement>();
+    const onAbort = (): void => aborted.resolve(timedOut);
+    signal.addEventListener('abort', onAbort, { once: true });
+    return Promise.race([wait, aborted.promise]).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  }
+
+  function closed(
     taskId: string,
     waitOptions?: { readonly signal?: AbortSignal | undefined },
+  ): Promise<CleanupAcknowledgement> {
+    // Every await below (storage, the task lookup, a settlement's freezes) can
+    // stall, so the whole wait races the caller's signal.
+    return untilAborted(waitForClosed(taskId, waitOptions?.signal), waitOptions?.signal);
+  }
+
+  async function waitForClosed(
+    taskId: string,
+    signal: AbortSignal | undefined,
   ): Promise<CleanupAcknowledgement> {
     const pending = settlements.get(taskId);
     if (pending !== undefined) await pending;
@@ -1172,7 +1205,6 @@ export function createInteractiveSurfaces(
     const again = await options.task(taskId);
     if (again === undefined) return { status: 'not-required' };
     if (again.settled !== undefined) return settleTask(taskId, again.settled);
-    const signal = waitOptions?.signal;
     return new Promise<CleanupAcknowledgement>((resolve) => {
       if (signal?.aborted === true) {
         resolve({ status: 'unresolved', reason: 'timed-out' });

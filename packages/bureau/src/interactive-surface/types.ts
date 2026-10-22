@@ -318,10 +318,14 @@ export interface InteractiveSurfaceSubscribeCommand {
   readonly since?: string | undefined;
 }
 
-/** Closes a surface and tears it down. */
+/**
+ * Closes a surface and tears it down, only while its `revision` is still
+ * `baseRevision`, so a close cannot discard a change its caller has not seen.
+ */
 export interface CloseInteractiveSurfaceCommand extends InteractiveSurfaceCommandBase {
   readonly type: 'surface.close';
   readonly surfaceId: string;
+  readonly baseRevision: number;
   readonly reason: Extract<InteractiveSurfaceCloseReason, 'completed' | 'dismissed'>;
 }
 
