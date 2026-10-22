@@ -695,3 +695,26 @@ describe('an old queued start whose flush is in flight when a same-id replacemen
     expect(probe.runs).toBe(1);
   });
 });
+
+describe('an engine disposed while a delayed start is in its launching window', () => {
+  it('leaves no launching record behind', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    const engine = await createInlineEngine(storage, clock);
+    const internals = getInternals(engine);
+    await engine.start('counted', null, { id: WORKFLOW_ID, startAt: START_AT });
+    clock.now = START_AT;
+
+    // The fire holds its launching record across the terminal-cleanup read. A synchronous disposal
+    // in that window clears it with every other record, since no queue entry will ever settle it.
+    storage.holdReadOf = KEYS.terminalCleanupNeeded(WORKFLOW_ID);
+    const fire = engine.scheduler.tick(clock.now);
+    await storage.reachedHeldRead.promise;
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(true);
+
+    engine[Symbol.dispose]();
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
+    storage.releaseHeldRead();
+    await fire.catch(() => undefined);
+  });
+});

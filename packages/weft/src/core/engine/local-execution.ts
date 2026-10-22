@@ -32,13 +32,16 @@ import type { EngineInternals } from './internals.ts';
 export type PendingLaunch = {
   readonly workflowId: string;
   readonly claimEpoch: number | null;
-  phase: 'queued' | 'launching';
+  readonly phase: 'queued' | 'launching';
 };
 
-/** The current record of each queued or launching start, by workflow id. Held beside the engine. */
-const pendingLaunches = new WeakMap<EngineInternals, Map<string, PendingLaunch>>();
+/** The record as this module holds it: only a transition here moves its phase. */
+type PendingLaunchRecord = { -readonly [Key in keyof PendingLaunch]: PendingLaunch[Key] };
 
-function pendingLaunchesOf(internals: EngineInternals): Map<string, PendingLaunch> {
+/** The current record of each queued or launching start, by workflow id. Held beside the engine. */
+const pendingLaunches = new WeakMap<EngineInternals, Map<string, PendingLaunchRecord>>();
+
+function pendingLaunchesOf(internals: EngineInternals): Map<string, PendingLaunchRecord> {
   let launches = pendingLaunches.get(internals);
   if (launches === undefined) {
     launches = new Map();
@@ -50,7 +53,7 @@ function pendingLaunchesOf(internals: EngineInternals): Map<string, PendingLaunc
 function currentPendingLaunch(
   internals: EngineInternals,
   workflowId: string,
-): PendingLaunch | undefined {
+): PendingLaunchRecord | undefined {
   return pendingLaunches.get(internals)?.get(workflowId);
 }
 
@@ -64,7 +67,7 @@ function recordPendingLaunch(
   workflowId: string,
   phase: PendingLaunch['phase'],
 ): PendingLaunch {
-  const launch: PendingLaunch = {
+  const launch: PendingLaunchRecord = {
     workflowId,
     claimEpoch: internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null,
     phase,
@@ -96,7 +99,8 @@ export function recordInlineWorkflowStartLaunching(
   internals: EngineInternals,
   launch: PendingLaunch,
 ): void {
-  if (isCurrent(internals, launch)) launch.phase = 'launching';
+  const current = currentPendingLaunch(internals, launch.workflowId);
+  if (current === launch) current.phase = 'launching';
 }
 
 /** The launch of the queued start is over: it started the generator, skipped the run, was discarded, or threw. */
