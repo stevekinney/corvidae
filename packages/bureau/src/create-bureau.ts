@@ -1893,7 +1893,9 @@ export const EXPIRY_SWEEP_INTERVAL_MILLISECONDS = 300_000;
  * `SKILL_TOOL_DENIED` (COR-1628).
  */
 function resumeRefusedBeforeExecution(result: object): boolean {
-  if ('approvalBindingConsumed' in result && result.approvalBindingConsumed === false) return true;
+  // A toolbox that reports consumption has the final word: a consumed binding means the call ran,
+  // whatever code its error carries.
+  if ('approvalBindingConsumed' in result) return result.approvalBindingConsumed === false;
   return (result as { error?: { code?: string } }).error?.code === SKILL_TOOL_DENIED_CODE;
 }
 

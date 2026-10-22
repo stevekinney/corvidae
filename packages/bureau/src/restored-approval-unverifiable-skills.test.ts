@@ -52,6 +52,22 @@ function reportNoConsumption(toolbox: Toolbox): void {
   });
 }
 
+/**
+ * Makes `toolbox` report its approval binding consumed on every resume. A call that ran and then
+ * failed with the skill gate's code, for example a tool that rethrows a refusal from a gated
+ * toolbox it delegates to, reports exactly this.
+ */
+function reportConsumption(toolbox: Toolbox): void {
+  const resume = toolbox.resumeApproval as (...args: unknown[]) => Promise<object>;
+  Object.defineProperty(toolbox, 'resumeApproval', {
+    configurable: true,
+    value: async function (this: unknown, ...args: unknown[]) {
+      const result = (await resume.apply(this, args)) as object;
+      return { ...result, approvalBindingConsumed: true };
+    },
+  });
+}
+
 /** What the Bureaus a test opened reported, which a test that expects a fault asserts. */
 const diagnostics: BureauDiagnostic[] = [];
 
@@ -690,6 +706,28 @@ describe('a restored session-run approval is decided under the snapshot read at 
       principal: OWNER.alice,
     });
     expect(denied.decision).toBe('deny');
+  });
+
+  it('resolves the review when the toolbox reports its binding consumed, whatever code the error carries', async () => {
+    const charges: number[] = [];
+    const { restarted, restored, path, run } = await restoreRun(
+      await skillCatalogOnDisk(),
+      newBodyReads(),
+      charges,
+    );
+    await rewriteSkillSnapshotOnDisk(path, (metadata) => {
+      metadata['activeSkillRecords'] = [];
+    });
+    // The binding is spent, so the call counts as having run: the review must not stay pending on
+    // an approval no later approve could use.
+    const runToolbox = scheduledFireReviewStateOf(restarted).runToolboxesByRunId.get(run.id);
+    if (runToolbox === undefined) throw new Error('The restored run has no toolbox of its own.');
+    reportConsumption(runToolbox);
+
+    const resolved = await approve(restarted, restored.id);
+
+    expect(resolved.decision).toBe('approve');
+    expect(restarted.listPendingReviews().some((review) => review.id === restored.id)).toBe(false);
   });
 
   it('is refused when the snapshot names another run', async () => {
