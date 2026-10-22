@@ -26,7 +26,11 @@ import { EngineDisposedError } from './errors.ts';
 import { getInternals, type EngineInternals } from './internals.ts';
 import { EngineDeposedError } from './lease-errors.ts';
 import { createRefusingStorage, putsCheckpoint } from './storage-write-refusal.test-support.ts';
-import { retryRefusedStorageWrite } from './storage-write-retry.ts';
+import {
+  adapterConditionalBatch,
+  isRetryableStorageWriteError,
+  retryRefusedStorageWrite,
+} from './storage-write-retry.ts';
 
 /** A memory storage that counts its `conditionalBatch` calls and lets a subclass decide each one. */
 class CountingStorage extends MemoryStorage {
@@ -201,6 +205,18 @@ describe('an error that is not a storage refusal is attempted once', () => {
 
     expect(reason).toBe(cause);
     expect(attempts).toBe(0);
+  });
+
+  it('a conditional write the storage cannot make is a deterministic error, not a refusal', async () => {
+    const withoutConditionalBatch = Object.assign(new MemoryStorage(), {
+      conditionalBatch: undefined,
+      capabilities: () => ({ ...new MemoryStorage().capabilities(), conditionalBatch: false }),
+    });
+
+    const reason = await rejectionOf(adapterConditionalBatch(withoutConditionalBatch, [], []));
+
+    expect(reason).toBeInstanceOf(Error);
+    expect(isRetryableStorageWriteError(reason)).toBe(false);
   });
 
   it('a checkpoint that cannot be encoded fails the run and is never sent twice', async () => {

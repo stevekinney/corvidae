@@ -18,6 +18,8 @@ export type WriteRefusal = {
   /** Which writes the rule applies to, judged on the write's operations. */
   readonly matches: (operations: readonly BatchOperation[]) => boolean;
   readonly mode?: WriteRefusalMode;
+  /** What a refused write throws. Default: an ordinary `Error`, as an adapter's refusal. */
+  readonly error?: () => Error;
   /** How many matching writes the rule handles before it lets them through. Default: all. */
   readonly times?: number;
 };
@@ -134,7 +136,7 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
         } else {
           record({ method, operations, outcome: 'refused' });
         }
-        throw new Error(REFUSED_WRITE_MESSAGE);
+        throw rule.error?.() ?? new Error(REFUSED_WRITE_MESSAGE);
       };
     },
   }) as unknown as Storage;

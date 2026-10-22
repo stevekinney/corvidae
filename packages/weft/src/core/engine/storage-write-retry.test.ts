@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../engine.ts';
@@ -21,6 +22,7 @@ import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts'
 import { abandonedExecutionAttemptCount } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
+import { EngineDeposedError } from './lease-errors.ts';
 import {
   createRefusingStorage,
   putsCheckpoint,
@@ -203,6 +205,27 @@ describe('a refused failure write', () => {
 
     expect(late).toBeInstanceOf(CheckpointCommitFailedError);
     expect(late).not.toBeInstanceOf(WorkflowCheckpointConflictError);
+  });
+
+  it('does not retry a failure write that fails for any reason but a refusal, and leaves the run to the next boot', async () => {
+    const run = await startParked(steps, 'deposed-failure');
+    await using engine = run.engine;
+    run.refusing.refuse({ matches: putsCheckpoint('deposed-failure') });
+    // The failure write throws a deposition, which is not a refusal: attempted once, never retried.
+    run.refusing.refuse({
+      matches: putsWorkflowStatus('deposed-failure', 'failed'),
+      error: () => new EngineDeposedError(),
+    });
+
+    await engine.signal('deposed-failure', 'go', 'x');
+    await run.refusing.whenAttempts(1, putsWorkflowStatus('deposed-failure', 'failed'));
+    await yieldToPortableEventLoop();
+
+    expect(
+      run.refusing.attemptsMatching(putsWorkflowStatus('deposed-failure', 'failed')),
+    ).toHaveLength(1);
+    expect(await statusOf(run.refusing, 'deposed-failure')).toBe('running');
+    expect(abandonedExecutionAttemptCount(getInternals(engine))).toBe(0);
   });
 
   it('abandons a run whose own failure is refused: a failed message is not retried as a checkpoint', async () => {
