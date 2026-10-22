@@ -472,6 +472,7 @@
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "@types/pg": "catalog:",
+        "ajv": "catalog:",
         "fake-indexeddb": "catalog:",
         "oxlint": "catalog:",
         "playwright": "catalog:",
