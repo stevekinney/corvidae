@@ -82,3 +82,13 @@
 .weft-chat-tasks__link:hover {
   text-decoration: underline;
 }
+
+.weft-chat-header__origin {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-chat-header__origin-link {
+  color: inherit;
+}
