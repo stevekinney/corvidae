@@ -492,6 +492,9 @@ export async function completeWorkflow(
       // finishing its own workflow.
       await callbacks.commitSelfWorkflowStateOperations(state, completionOperations, {
         includePendingAtomicSideEffects: true,
+        // A refused write is retried in process; if every attempt fails the run fails as a
+        // `system` failure with `CheckpointCommitFailedError` (see `handleStrategyMessage`).
+        retryRefusedWrite: 'completion',
       });
       // Captured synchronously, immediately after the commit resolves — see
       // `releaseWorkflowClaimAfterTerminalSettlement`'s doc for why this
@@ -579,6 +582,9 @@ export async function failWorkflow(
       // checkpoint CAS, or over a run it has launched again since this failure began. Judged
       // after the last read, so a failure of the current attempt still fails normally.
       skipCommitIf,
+      // A refused failure write is retried in process; if every attempt fails nothing durable can
+      // be written, and `handleStrategyMessage` abandons the generation locally.
+      retryRefusedWrite: 'failure',
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);

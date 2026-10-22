@@ -1,6 +1,8 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { hasExposedAccessors, hasUpdateHandlers } from '../context/context-presence.ts';
 import type { WorkerOutboundMessage, WorkflowState } from '../types.ts';
+import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
+import { abandonWorkflowAfterCheckpointConflict } from './checkpoint-conflict-abandon.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
 import { beginInFlightOperation, endInFlightOperation } from './in-flight-operation.ts';
@@ -252,13 +254,7 @@ async function dispatchStrategyMessage(
         if (operation.type === 'wait-signal' && internals.inlineStrategy === null) {
           void callbacks.processOperation(message.workflowId, operation).catch((error: unknown) => {
             const failedError = error instanceof Error ? error : new Error(String(error));
-            return failWorkflowFromTermination(
-              internals,
-              message.workflowId,
-              failedError,
-              callbacks.createTerminationCallbacks(),
-              'system',
-            );
+            return failRunOrAbandon(internals, message.workflowId, failedError, callbacks);
           });
           break;
         }
@@ -274,6 +270,37 @@ async function dispatchStrategyMessage(
   }
 }
 
+/**
+ * Fail the workflow as a `system` failure with `error`. When the failure write is itself refused on
+ * every attempt, nothing durable can be written, so stop driving the generation locally instead:
+ * the pending `result()` rejects with that {@link CheckpointCommitFailedError}, the durable record
+ * stays `running`, and the next boot recovers the run from its last committed checkpoint.
+ */
+async function failRunOrAbandon(
+  internals: EngineInternals,
+  workflowId: string,
+  error: Error,
+  callbacks: InlineParkingCallbacks,
+): Promise<void> {
+  try {
+    await failWorkflowFromTermination(
+      internals,
+      workflowId,
+      error,
+      callbacks.createTerminationCallbacks(),
+      'system',
+    );
+  } catch (failureError) {
+    if (
+      !(failureError instanceof CheckpointCommitFailedError) ||
+      failureError.write !== 'failure'
+    ) {
+      throw failureError;
+    }
+    abandonWorkflowAfterCheckpointConflict(internals, failureError);
+  }
+}
+
 export async function handleStrategyMessage(
   internals: EngineInternals,
   message: WorkerOutboundMessage,
@@ -283,30 +310,37 @@ export async function handleStrategyMessage(
     await dispatchStrategyMessage(internals, message, callbacks);
   } catch (error) {
     rejectSleepTimerAcknowledgements(internals, message.workflowId, error);
-    // The inline strategy contains a handler's rejection so one workflow's
-    // failure cannot take down the engine, and recovery runs only at boot, so
-    // what is left alone here stays un-driven until the next restart. A storage
-    // failure is left that way on purpose: the workflow stays `running` durably
-    // and the next boot's recovery retries it.
+    // The inline strategy contains a handler's rejection so one workflow's failure cannot take
+    // down the engine, and recovery runs only at boot, so what is left alone here stays un-driven
+    // until the next restart. Each error below therefore ends the run here instead.
     //
-    // A checkpoint that cannot be encoded is not retryable, since the same
-    // state fails on every resume, so left alone it would stay `running` with
-    // `result()` pending forever. Fail the workflow with the cause instead.
+    // A storage write the engine needs (the checkpoint batch, or the terminal `wf:` write of a
+    // completion) that storage refused on every attempt is a `CheckpointCommitFailedError`:
+    // `commitCheckpoint` and the terminal commit already retried it, five attempts over 750 ms. It
+    // fails the workflow as a `system` failure, so `result()` rejects with it. The failure write is
+    // retried the same way; if that is refused too, nothing durable can be written, so the
+    // generation is abandoned locally and the run stays `running` durably until the next boot,
+    // the one case that does.
     //
-    // A checkpoint commit that lost its compare-and-swap race means another
-    // engine over the same store already advanced this workflow and owns its
-    // durable state. `commitCheckpoint` already abandoned the run where it
-    // detected the loss (this engine stops driving it and settles its local
-    // handle); all that is left is to write nothing: failing the workflow here
-    // would overwrite the winner.
+    // A checkpoint that cannot be encoded is not retryable, since the same state fails on every
+    // resume, so left alone it would stay `running` with `result()` pending forever. Fail the
+    // workflow with the cause instead.
+    //
+    // A checkpoint commit that lost its compare-and-swap race means another engine over the same
+    // store already advanced this workflow and owns its durable state. `commitCheckpoint` already
+    // abandoned the run where it detected the loss (this engine stops driving it and settles its
+    // local handle); all that is left is to write nothing: failing the workflow here would
+    // overwrite the winner.
     if (error instanceof WorkflowCheckpointConflictError) return;
-    if (!(error instanceof CheckpointEncodingError)) throw error;
-    await failWorkflowFromTermination(
-      internals,
-      message.workflowId,
-      error,
-      callbacks.createTerminationCallbacks(),
-      'system',
-    );
+    if (error instanceof CheckpointCommitFailedError && error.write === 'failure') {
+      abandonWorkflowAfterCheckpointConflict(internals, error);
+      return;
+    }
+    if (!(
+      error instanceof CheckpointEncodingError || error instanceof CheckpointCommitFailedError
+    )) {
+      throw error;
+    }
+    await failRunOrAbandon(internals, message.workflowId, error, callbacks);
   }
 }

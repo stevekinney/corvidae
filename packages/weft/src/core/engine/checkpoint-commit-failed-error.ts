@@ -1,0 +1,57 @@
+import { WeftError } from '../weft-error.ts';
+
+/** Which engine-owned durable write a {@link CheckpointCommitFailedError} gave up on. */
+export type RefusedStorageWrite = 'checkpoint' | 'completion' | 'failure';
+
+/**
+ * Thrown when storage refused one of a workflow's engine-owned writes on every attempt the engine
+ * makes in process: the checkpoint batch (`wf:<id>:ckpt` and the `ev:<id>:*` event-log records
+ * together), the terminal `wf:<id>` write of a completion, or the `wf:<id>` write of a failure.
+ * The engine retries a refused write a bounded number of times (the first attempt and four
+ * retries, 750 ms of waiting in all) before it raises this error, which carries the workflow, the
+ * write, the attempt count, and the last storage error as `cause`.
+ *
+ * A refused checkpoint or completion write then fails the workflow as a `system` failure with this
+ * error, so `handle.result()` rejects with it. A refused failure write leaves nothing durable to
+ * write, so the engine stops driving the generation locally and rejects the pending `result()`
+ * with it; the durable record stays `running` and the next boot recovers it from its last
+ * committed checkpoint.
+ *
+ * Like `CheckpointEncodingError` it is neither exported from the package root nor registered
+ * in `WeftErrorCode`, so the public error vocabulary does not change.
+ */
+export class CheckpointCommitFailedError extends WeftError<'CheckpointCommitFailedError'> {
+  readonly workflowId: string;
+  /** The write the engine gave up on. */
+  readonly write: RefusedStorageWrite;
+  /** How many times the engine attempted the write, the first attempt included. */
+  readonly attempts: number;
+  /**
+   * The execution token of the generation whose write was refused, captured with the write so an
+   * abandonment is scoped to that generation, as `WorkflowCheckpointConflictError`'s is.
+   */
+  readonly workflowExecutionToken: string | undefined;
+
+  constructor(
+    workflowId: string,
+    options: {
+      readonly write: RefusedStorageWrite;
+      readonly attempts: number;
+      readonly cause: unknown;
+      readonly workflowExecutionToken: string | undefined;
+    },
+  ) {
+    super(
+      'CheckpointCommitFailedError',
+      `Workflow "${workflowId}" ${options.write} write was refused by storage on all ` +
+        `${String(options.attempts)} attempts: ${
+          options.cause instanceof Error ? options.cause.message : String(options.cause)
+        }`,
+      { cause: options.cause },
+    );
+    this.workflowId = workflowId;
+    this.write = options.write;
+    this.attempts = options.attempts;
+    this.workflowExecutionToken = options.workflowExecutionToken;
+  }
+}

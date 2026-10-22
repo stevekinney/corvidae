@@ -22,6 +22,7 @@ import type { EngineInternals } from './internals.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { isScheduleReadCondition, ScheduleReadConditionLostError } from './schedule-state-read.ts';
 import { createScheduleTimerId, decodeWorkflowStartHeaders } from './state-utilities.ts';
+import { retryTerminalWorkflowStateWrite } from './terminal-write-retry.ts';
 import { decodeWorkflowState } from './validation.ts';
 import {
   buildWorkflowClaimExternalTerminalRotationTransition,
@@ -141,6 +142,8 @@ type WorkflowStateCommitOptions = {
    * side effects it took, so the caller can re-decide and commit again.
    */
   extraConditions?: ConditionalBatchCondition[];
+  /** Retry a refused write in process, as this terminal write; read only by the self commit. */
+  retryRefusedWrite?: 'completion' | 'failure';
 };
 
 /**
@@ -236,18 +239,34 @@ export async function commitSelfWorkflowStateOperations(
   options: WorkflowStateCommitOptions = {},
 ): Promise<void> {
   const commit = buildWorkflowStateCommit(internals, state.id, operations, options);
+  const onLostRace = () =>
+    new Error(
+      `Workflow state commit for workflow "${state.id}" lost its atomic side-effect precondition.`,
+    );
 
   try {
-    await commitFencedEngineWrite(
-      internals,
-      state.id,
-      commit.operations,
-      commit.conditions,
-      () =>
-        new Error(
-          `Workflow state commit for workflow "${state.id}" lost its atomic side-effect precondition.`,
-        ),
-    );
+    try {
+      await commitFencedEngineWrite(
+        internals,
+        state.id,
+        commit.operations,
+        commit.conditions,
+        onLostRace,
+      );
+    } catch (error) {
+      // A refused write is retried in process when the caller asked for it. The retry starts from
+      // this catch, so a first-time commit adds no promise turn; the batch keeps its side effects.
+      if (options.retryRefusedWrite === undefined) throw error;
+      await retryTerminalWorkflowStateWrite(
+        internals,
+        state,
+        options.retryRefusedWrite,
+        commit.operations,
+        commit.conditions,
+        error,
+        onLostRace,
+      );
+    }
   } catch (error) {
     commit.restoreSideEffects();
     throw error;
