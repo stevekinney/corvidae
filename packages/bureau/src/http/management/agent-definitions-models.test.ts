@@ -1,7 +1,8 @@
 /**
  * COR-1559 — the `models` list of an agent file over `bureau.agents.definitions.*`: `get` returns
- * it, `create` and `update` carry it and check it as a file's frontmatter is checked, and an editor
- * that does not send it never erases it.
+ * it, `create` and `update` carry it and check it as a file's frontmatter is checked, and an
+ * `update` that omits it removes it, exactly as omitting `tools` removes the tools (a client that
+ * read the list sends it back to keep it).
  */
 import { readFile } from 'node:fs/promises';
 

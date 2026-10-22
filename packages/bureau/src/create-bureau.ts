@@ -409,6 +409,7 @@ import {
   assertBranchPoint,
   createForkLedger,
   FORK_OPERATION_VERSION,
+  type ForkLedgerClaim,
   type ForkLedgerFailure,
   type ForkLedgerResult,
   type ForkSessionRequest,
@@ -3928,6 +3929,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // a DIFFERENT session must resolve to `session-mismatch`, not be silently
   // admitted as an unrelated command in that other session's own ledger.
   const steeringCommandLedger = createSteeringCommandLedger();
+  /**
+   * The `policyRef` a caller submitted for an in-process model command Bureau resolved, by
+   * `principal -> id`: the in-process counterpart of a cursor's `submitted`, which a fork reads to
+   * carry the request as the parent made it.
+   */
+  const submittedSteeringValues = new Map<string, Map<string, SteeringRequestedValue>>();
   // Keep the exact host-supplied (or bureau-derived) context for approval
   // resumption. Approval bindings identify the original caller, but are not a
   // substitute for the complete request context and must not mint authority.
@@ -13404,11 +13411,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
     }
     const parentSteering = await getSessionSteering(sessionId);
+    const parentRequest = await latestModelRequest(sessionId);
     let outcome: Awaited<ReturnType<typeof forkLedger.claim>>;
     try {
       outcome = await forkLedger.claim(identity, digest, {
         contextId: runtimeServices.identifiers.next('session'),
-        override: parentSteering?.model ?? null,
+        override: parentRequest ?? parentSteering?.model ?? null,
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
@@ -13444,15 +13452,71 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         : await submitSteeringCommand(claim.contextId, {
             id: `${request.commandId}:model`,
             principal: request.owner,
-            requestedValue: {
-              target: 'model',
-              override: claim.override.model,
-              ...(claim.override.provider === null ? {} : { provider: claim.override.provider }),
-            },
+            // As the parent asked: a policy reference is submitted as a reference, and resolved
+            // afresh like any carried request; otherwise the explicit override.
+            requestedValue:
+              claim.override.policyRef === undefined
+                ? {
+                    target: 'model',
+                    override: claim.override.model,
+                    ...(claim.override.provider === null
+                      ? {}
+                      : { provider: claim.override.provider }),
+                  }
+                : { target: 'model', policyRef: claim.override.policyRef },
           });
     const result: ForkSessionResult = { contextId: claim.contextId, carriedOverride: carried };
     const completed = await forkLedger.complete(outcome.entry, result);
     return answerOfFork(completed.result);
+  }
+
+  /**
+   * The session's latest admitted `model` request as it was made, from the steering record itself
+   * (COR-1560): the accepted command with the highest version, and, where Bureau resolved a
+   * `policyRef` into that command, the reference the caller submitted. A durable Bureau reads the
+   * folded log; an in-process one reads its ledger and the references it kept. `undefined` when
+   * the session has had no model request.
+   */
+  async function latestModelRequest(
+    sessionId: string,
+  ): Promise<ForkLedgerClaim['override'] | undefined> {
+    const session = await runtime.sessionStore?.load(sessionId);
+    if (session === undefined) return undefined;
+    const kv = durableSteeringStore();
+    let ledger: ReturnType<typeof createSteeringCommandLedger> = steeringCommandLedger;
+    let selectors = submittedSteeringValues;
+    if (kv !== undefined) {
+      const cursor = await enqueueSteering(sessionId, () =>
+        catchUpSteering(kv, sessionId, session.incarnation),
+      );
+      ledger = cursor.ledger;
+      selectors = cursor.submitted;
+    }
+    let latest: { principal: string; id: string; version: number; at: string } | undefined;
+    for (const [principal, commands] of ledger) {
+      for (const [id, command] of commands) {
+        if (command.sessionId !== sessionId || command.requestedValue.target !== 'model') continue;
+        if (command.state !== 'accepted' && command.state !== 'applied') continue;
+        if (
+          latest === undefined ||
+          command.configVersion > latest.version ||
+          (command.configVersion === latest.version && command.requestedAt > latest.at)
+        ) {
+          latest = { principal, id, version: command.configVersion, at: command.requestedAt };
+        }
+      }
+    }
+    if (latest === undefined) return undefined;
+    const resolved = ledger.get(latest.principal)?.get(latest.id)?.requestedValue;
+    if (resolved?.target !== 'model' || resolved.override === undefined) return undefined;
+    const selector = selectors.get(latest.principal)?.get(latest.id);
+    const policyRef =
+      selector !== undefined && 'policyRef' in selector ? selector.policyRef : undefined;
+    return {
+      provider: resolved.provider ?? null,
+      model: resolved.override,
+      ...(policyRef === undefined ? {} : { policyRef }),
+    };
   }
 
   /** What a ledger result answers: the fork, or the refusal the command settled to. */
@@ -13833,6 +13897,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const kv = durableSteeringStore();
     if (kv === undefined) {
       const outcome = getSessionSteeringGate(sessionId).admit(command, { liveRunIds, now });
+      if (
+        outcome.outcome === 'accepted' &&
+        'policyRef' in request.requestedValue &&
+        request.requestedValue.policyRef !== undefined
+      ) {
+        nestedSet(submittedSteeringValues, request.principal, id, request.requestedValue);
+      }
       if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
       return outcome;
     }

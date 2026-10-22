@@ -98,8 +98,18 @@ export type ForkLedgerResult = ForkSessionResult | ForkLedgerFailure;
 export interface ForkLedgerClaim {
   /** The identifier the fork is created under, minted before it is created. */
   readonly contextId: string;
-  /** The parent's model override when the attempt began; `null` when it had none. */
-  readonly override: { readonly provider: string | null; readonly model: string } | null;
+  /**
+   * The parent's latest admitted `model` request when the attempt began, as the parent made it;
+   * `null` when it had none. `policyRef` is present when the parent chose its model through a
+   * policy profile, and the carried admission then submits that reference, resolved afresh. A
+   * claim written before the field existed has none and carries an explicit override, as it
+   * always did.
+   */
+  readonly override: {
+    readonly provider: string | null;
+    readonly model: string;
+    readonly policyRef?: string;
+  } | null;
 }
 
 /** What the branch-point checks read besides the session. */

@@ -13,8 +13,10 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createCommandLedger, digestCommandPayload } from './command-ledger';
 import {
+  createForkLedger,
   FORK_LEDGER_KEY_PREFIX,
   FORK_OPERATION_VERSION,
+  type ForkLedgerClaim,
   SessionForkRefusedError,
 } from './session-fork';
 import { waitForCondition, waitForRunState } from './test';
@@ -122,6 +124,29 @@ async function refusalOf(pending: Promise<unknown>): Promise<string> {
   );
   if (!(error instanceof SessionForkRefusedError)) return `not a refusal: ${String(error)}`;
   return error.reason;
+}
+
+/** Records the claim a first attempt of `commandId` made, as if it died before forking. */
+async function claimFork(
+  bureau: Bureau<AgentDefinitions>,
+  run: { id: string; sessionId: string },
+  commandId: string,
+  claim: ForkLedgerClaim,
+) {
+  const ledger = createForkLedger(bureau.kv, {
+    clock: { now: () => Date.now(), nowISO: () => new Date().toISOString() },
+    identifiers: { next: () => crypto.randomUUID() },
+  } as never);
+  await ledger.claim(
+    {
+      callerId: ALICE,
+      target: run.sessionId,
+      requestId: commandId,
+      operationVersion: FORK_OPERATION_VERSION,
+    },
+    digestCommandPayload({ throughMessageId: `${run.id}:step:0` }),
+    claim,
+  );
 }
 
 async function sessionCount(bureau: Bureau<AgentDefinitions>): Promise<number> {
@@ -616,6 +641,110 @@ describe('the parent’s model choice', () => {
     const planned = await bureau.getSessionSteering('planned-fork');
     expect(planned?.model?.model).toBe('claude-opus-5');
     expect(await fork(bureau, run.sessionId, finalAssistantOf(run.id), 'crash-2')).toEqual(result);
+  });
+});
+
+describe('a parent whose model a policy profile chose', () => {
+  const POLICY = {
+    policyRevision: 1,
+    users: { 'fast-tier': { exactOverride: { model: 'claude-opus-5' } } },
+  };
+
+  /** An opaque agent that records the model each of its steps was steered to. */
+  async function openOpaque(durable: boolean) {
+    const observed: Array<string | undefined> = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        agent: createAgent({
+          name: 'opaque',
+          generate: async (context) => {
+            observed.push(context.steering?.model);
+            return { content: 'answer', toolCalls: [] };
+          },
+        }),
+      },
+      stopWhen: stopWhen.noToolCalls(),
+      storage: { type: 'memory' },
+      modelPolicy: POLICY,
+      ...(durable ? { durableExecution: true } : {}),
+    });
+    cleanups.push(() => bureau.dispose());
+    const run = await bureau.createRun({ message: 'go', agentName: 'agent', principal: ALICE });
+    await waitForRunState(bureau, run.id);
+    await waitForStoredMessage(bureau, run.sessionId, `${run.id}:step:0`);
+    return { bureau, run, observed };
+  }
+
+  const throughOf = (run: { id: string }) => `${run.id}:step:0`;
+
+  it.each([
+    ['a durable Bureau', true],
+    ['an in-process Bureau', false],
+  ])('carries the model onto the fork of %s, and the fork runs on it', async (_name, durable) => {
+    const { bureau, run, observed } = await openOpaque(durable);
+    const chosen = await bureau.submitSteeringCommand(run.sessionId, {
+      id: 'by-policy',
+      principal: ALICE,
+      requestedValue: { target: 'model', policyRef: 'fast-tier' },
+    });
+    expect(chosen.outcome).toBe('accepted');
+
+    const result = await fork(bureau, run.sessionId, throughOf(run));
+
+    expect(result.carriedOverride).toMatchObject({ outcome: 'accepted' });
+    const steering = await bureau.getSessionSteering(result.contextId);
+    expect(steering?.model?.model).toBe('claude-opus-5');
+    const next = await completedSession(bureau, result.contextId, 'again', 0);
+    expect(next.sessionId).toBe(result.contextId);
+    expect(observed.at(-1)).toBe('claude-opus-5');
+  });
+
+  it('carries the policy request, as the parent made it, when a claim names it', async () => {
+    const { bureau, run } = await openOpaque(true);
+    await claimFork(bureau, run, 'policy-claim', {
+      contextId: 'planned-fork',
+      override: { provider: null, model: 'claude-opus-5', policyRef: 'fast-tier' },
+    });
+
+    const result = await fork(bureau, run.sessionId, throughOf(run), 'policy-claim');
+
+    expect(result.carriedOverride).toMatchObject({
+      outcome: 'accepted',
+      command: { requestedValue: { target: 'model', override: 'claude-opus-5' } },
+    });
+  });
+
+  it('still forks when the policy now refuses the carried request, and says so', async () => {
+    const { bureau, run } = await openOpaque(true);
+    await claimFork(bureau, run, 'gone-claim', {
+      contextId: 'planned-fork',
+      override: { provider: null, model: 'claude-opus-5', policyRef: 'retired-profile' },
+    });
+
+    const result = await fork(bureau, run.sessionId, throughOf(run), 'gone-claim');
+
+    expect(result.carriedOverride).toMatchObject({
+      outcome: 'rejected',
+      failure: { reason: 'policy-denied' },
+    });
+    expect((await bureau.getSession(result.contextId))?.id).toBe('planned-fork');
+  });
+
+  it('reads a claim written before it could name a policy as an explicit override', async () => {
+    const { bureau, run } = await openOpaque(true);
+    await claimFork(bureau, run, 'old-claim', {
+      contextId: 'planned-fork',
+      override: { provider: 'anthropic', model: 'claude-opus-5' },
+    });
+
+    const result = await fork(bureau, run.sessionId, throughOf(run), 'old-claim');
+
+    // An explicit override for an opaque agent is refused, which is what an old claim meant.
+    expect(result.carriedOverride).toMatchObject({
+      outcome: 'rejected',
+      failure: { reason: 'model-not-allowed' },
+    });
+    expect((await bureau.getSession(result.contextId))?.id).toBe('planned-fork');
   });
 });
 
