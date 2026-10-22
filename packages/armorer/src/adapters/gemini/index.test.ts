@@ -132,6 +132,20 @@ describe('parseGeminiToolCalls', () => {
     ).toEqual([{ name: 'search', arguments: { query: 'gemini' } }]);
   });
 
+  it('reads the all-optional function calls that @google/genai returns', () => {
+    expect(
+      parseGeminiToolCalls([
+        { functionCall: { id: 'call-1', name: 'search', args: { query: 'id' } } },
+        { functionCall: { name: 'list' } },
+        { functionCall: { args: { query: 'nameless' } } },
+        { functionCall: undefined },
+      ]),
+    ).toEqual([
+      { id: 'call-1', name: 'search', arguments: { query: 'id' } },
+      { name: 'list', arguments: {} },
+    ]);
+  });
+
   it('returns an empty array for missing parts', () => {
     expect(parseGeminiToolCalls(undefined)).toEqual([]);
     expect(parseGeminiToolCalls(null)).toEqual([]);

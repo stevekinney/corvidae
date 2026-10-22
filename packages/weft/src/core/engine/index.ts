@@ -882,8 +882,6 @@ export class Engine<
       });
     }
     getInternals(this).queuedInlineWorkflowStarts = [];
-    getInternals(this).queuedInlineWorkflowStartIds = new Set();
-    getInternals(this).queuedOrLaunchingInlineWorkflowStartIds = new Set();
     getInternals(this).queuedInlineWorkflowStartFlushScheduled = false;
     const weakEngine = new WeakRef(this);
     // COR-74: 'manual' scheduling never constructs this channel — a queued

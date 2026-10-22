@@ -11,6 +11,7 @@ import {
   queueInlineWorkflowExecutionStart,
 } from './inline-launch-queue.ts';
 import { getInternals } from './internals.ts';
+import { hasQueuedInlineWorkflowStart } from './local-execution.ts';
 
 describe('inline launch queue', () => {
   it('falls back to a timeout flush when no message channel is available', async () => {
@@ -152,7 +153,7 @@ describe('inline launch queue', () => {
       // still settles — matching the existing skip-path contract.
       expect(started).toBe(false);
       expect(onStarted).toHaveBeenCalledTimes(1);
-      expect(internalsB.queuedInlineWorkflowStartIds.has('wf-successor-owned')).toBe(false);
+      expect(hasQueuedInlineWorkflowStart(internalsB, 'wf-successor-owned')).toBe(false);
     });
 
     it('discards a queued start whose workflowExecutionToken no longer matches the live run (WFT-79)', async () => {
@@ -172,7 +173,7 @@ describe('inline launch queue', () => {
       // The real, live run for this id — `defer: false` awaits its queued
       // macrotask start completing, so by the time this resolves the
       // durably-persisted state carries the REAL token and
-      // `queuedInlineWorkflowStartIds` no longer contains this id.
+      // the id's queued record is gone.
       await engine.start('inline-launch-queue-ownership-parked', null, {
         id: 'wf-replaced-run',
         defer: false,
@@ -227,7 +228,7 @@ describe('inline launch queue', () => {
       // 'workflow:started' fired), yet the liveness callback still settles.
       expect(startedCount).toBe(1);
       expect(onStarted).toHaveBeenCalledTimes(1);
-      expect(internals.queuedInlineWorkflowStartIds.has('wf-replaced-run')).toBe(false);
+      expect(hasQueuedInlineWorkflowStart(internals, 'wf-replaced-run')).toBe(false);
     });
 
     it('discards a queued pre-token start once a token-bearing replacement holds the id (COR-1604)', async () => {
@@ -286,7 +287,7 @@ describe('inline launch queue', () => {
 
       expect(startedCount).toBe(1);
       expect(onStarted).toHaveBeenCalledTimes(1);
-      expect(internals.queuedInlineWorkflowStartIds.has('wf-pre-token-replaced')).toBe(false);
+      expect(hasQueuedInlineWorkflowStart(internals, 'wf-pre-token-replaced')).toBe(false);
     });
   });
 });

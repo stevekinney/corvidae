@@ -76,6 +76,7 @@ import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import {
   createFleetEventFeed,
   encode,
+  EngineDisposedError,
   KEYS,
   MemoryStorage,
   resolveStorage,
@@ -6477,6 +6478,33 @@ describe('monitorRecoveredScheduledFire', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain('scheduled-fire-maximum');
     expect(messages[0]).toContain('finished with maximum-steps');
+  });
+
+  it('reports no failure when this engine is disposed before the fire ends, and reports any other rejection', async () => {
+    const messages: string[] = [];
+    const collect = (diagnostic: { readonly message: string }) => {
+      messages.push(diagnostic.message);
+    };
+
+    await monitorRecoveredScheduledFire(
+      {
+        id: 'scheduled-fire-disposed',
+        result: async () => Promise.reject(new EngineDisposedError()),
+      },
+      collect,
+    );
+    expect(messages).toEqual([]);
+
+    await monitorRecoveredScheduledFire(
+      {
+        id: 'scheduled-fire-rejected',
+        result: async () => Promise.reject(new Error('storage unavailable')),
+      },
+      collect,
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('scheduled-fire-rejected');
+    expect(messages[0]).toContain('failed: storage unavailable');
   });
 });
 

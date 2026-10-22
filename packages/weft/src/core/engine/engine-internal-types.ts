@@ -22,6 +22,7 @@ import type {
   WorkflowTimelineEntry,
 } from '../types.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
+import type { PendingLaunch } from './local-execution.ts';
 
 /**
  * The identity a running workflow instance was launched under, cached by
@@ -181,4 +182,13 @@ export type QueuedInlineWorkflowExecutionStart = {
    * the dispose path so the `defer: false` awaiter never hangs.
    */
   onStarted?: () => void;
+  /**
+   * The record the queue made for this start when it enqueued it (`local-execution.ts`), which its
+   * flush transitions and settles through, never by id: a later start of the same id makes its own
+   * record.
+   */
+  launch: PendingLaunch;
 };
+
+/** What a caller hands the inline launch queue; the queue makes the entry's record itself. */
+export type QueuedInlineWorkflowStartRequest = Omit<QueuedInlineWorkflowExecutionStart, 'launch'>;
