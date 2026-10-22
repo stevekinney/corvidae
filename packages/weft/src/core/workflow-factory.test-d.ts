@@ -21,8 +21,11 @@ type Equals<X, Y> =
 type Own = NormalizeActivities<{ shout: (text: string) => Promise<string> }>;
 const _check_merge_identity: Equals<MergeMaps<{}, Own>, Own> = true;
 const _check_merge_union: Equals<MergeMaps<{ a: 1 }, { b: 2 }>, { a: 1; b: 2 }> = true;
-// A wide map has no known names to merge, so the added map replaces it.
-const _check_merge_wide: Equals<MergeMaps<Record<string, 1>, { b: 2 }>, { b: 2 }> = true;
+// A wide map on either side is intersected, so neither side's entries are lost.
+const _check_merge_wide: Equals<
+  MergeMaps<Record<string, 1>, { b: 2 }>,
+  Record<string, 1> & { b: 2 }
+> = true;
 void _check_merge_identity;
 void _check_merge_union;
 void _check_merge_wide;
@@ -133,6 +136,25 @@ workflow({ name: 'wide' })
     const _check_wide_approval: Equals<typeof approval, { approverId: string }> = true;
     void _check_wide_approval;
     return greeting;
+  });
+
+// A factory whose shared maps have wide types keeps them after a local addition.
+declare const wideShared: Record<string, typeof greet>;
+declare const wideSharedSignals: Record<string, SignalDefinition<{ approverId: string }>>;
+createWorkflowFactory({ activities: wideShared, signals: wideSharedSignals })
+  .workflow({ name: 'wide-shared' })
+  .activities({ shout: async (text: string) => text.toUpperCase() })
+  .uses({ audit })
+  .signals({ reject: signal<{ reason: string }>('reject') })
+  .execute(async function* (ctx, name: string) {
+    const greeting = yield* ctx.run('greet', name);
+    const _check_wide_shared_greeting: Equals<typeof greeting, string> = true;
+    void _check_wide_shared_greeting;
+    const shouted = yield* ctx.run('shout', greeting);
+    const approval = yield* ctx.waitForSignal('approve');
+    const _check_wide_shared_approval: Equals<typeof approval, { approverId: string }> = true;
+    void _check_wide_shared_approval;
+    return shouted;
   });
 
 // ---------------------------------------------------------------------------

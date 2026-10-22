@@ -402,10 +402,9 @@ export type QueryMap = Record<string, { readonly name: string }>;
  * The map a chain method produces when a builder already carries entries, as a
  * builder from `createWorkflowFactory(...).workflow()` does: the builder's
  * existing entries plus the ones the call adds. A fresh `workflow({ name })`
- * builder carries `{}`, so `MergeMaps<{}, T>` is exactly `T`. A builder typed
- * with a wide `Record<string, ...>` map keeps the old replace semantics, since
- * there are no known names to merge; a wide added map is intersected with the
- * known base entries, so they keep their types.
+ * builder carries `{}`, so `MergeMaps<{}, T>` is exactly `T`. When either side
+ * is a wide `Record<string, ...>` map, the two are intersected, so every entry
+ * the builder carries at runtime stays typed.
  *
  * @example
  * ```ts
@@ -416,19 +415,17 @@ export type QueryMap = Record<string, { readonly name: string }>;
  * void merged;
  * ```
  */
-export type MergeMaps<TBase, TAdded> = string extends keyof TBase
-  ? TAdded
-  : string extends keyof TAdded
-    ? // A wide added map has no known names; keep the known base entries rather
-      // than letting its index signature shadow them.
-      TBase & TAdded
-    : {
-        [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
-          ? TAdded[K]
-          : K extends keyof TBase
-            ? TBase[K]
-            : never;
-      };
+export type MergeMaps<TBase, TAdded> = string extends keyof TBase | keyof TAdded
+  ? // A wide map has no known names to merge by key, so intersect: neither
+    // side's index signature or known entries can discard the other's.
+    TBase & TAdded
+  : {
+      [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
+        ? TAdded[K]
+        : K extends keyof TBase
+          ? TBase[K]
+          : never;
+    };
 
 /**
  * Constraint a chain method intersects with its argument so that an entry
