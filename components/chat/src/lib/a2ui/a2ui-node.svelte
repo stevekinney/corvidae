@@ -497,7 +497,7 @@
       </span>
       <Modal
         bind:open={modalOpen}
-        title={triggerName(triggerComponent) || 'Dialog'}
+        title={accessibleName ?? (triggerName(triggerComponent) || 'Dialog')}
         triggerRef={modalTrigger}
         {...optional(
           'describedById',

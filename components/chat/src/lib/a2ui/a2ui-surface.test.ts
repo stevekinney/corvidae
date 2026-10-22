@@ -941,4 +941,29 @@ describe('review fixes', () => {
     expect(Reflect.get({}, 'x')).toBeUndefined();
     expect(Reflect.get(Object.prototype, 'x')).toBeUndefined();
   });
+
+  test('a Modal named by its own accessibility label uses it as the dialog title', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'modal-label',
+        components: [
+          { id: 'root', component: 'Column', children: ['modal'] },
+          {
+            id: 'modal',
+            component: 'Modal',
+            trigger: 'delete',
+            content: 'body',
+            accessibility: { label: 'Confirm deletion' },
+          },
+          { id: 'delete', component: 'Text', text: 'Delete' },
+          { id: 'body', component: 'Text', text: 'Details', variant: 'h2' },
+        ],
+      },
+    });
+    await flush();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await flush();
+    expect(screen.getByRole('dialog', { name: 'Confirm deletion' })).not.toBeNull();
+  });
 });
