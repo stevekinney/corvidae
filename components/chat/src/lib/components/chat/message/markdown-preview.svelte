@@ -8,6 +8,8 @@
     markdownNode?: MarkdownNodeOverride | undefined;
     /** `false` renders each image as its alt text, so the content loads nothing. Default `true`. */
     images?: boolean | undefined;
+    /** `false` renders each link as its text, so the content navigates nowhere. Default `true`. */
+    links?: boolean | undefined;
   };
 
   export type MarkdownSegment =
@@ -63,12 +65,13 @@
   /**
    * Preserves placeholder ancestors so nested markdown nodes remain overridable.
    * With `images: false`, each image becomes its alt text while the markup is
-   * still inert, so nothing it names is ever fetched.
+   * still inert, so nothing it names is ever fetched; with `links: false`, each
+   * link becomes its text, so nothing in it navigates.
    */
   export function segmentRenderedMarkdown(
     html: string,
     ownerDocument: Document = document,
-    options: { readonly images?: boolean | undefined } = {},
+    options: { readonly images?: boolean | undefined; readonly links?: boolean | undefined } = {},
   ): MarkdownSegment[] {
     const template = ownerDocument.createElement('template');
     template.innerHTML = html;
@@ -77,6 +80,10 @@
         image.replaceWith(ownerDocument.createTextNode(image.getAttribute('alt') ?? ''));
       }
       for (const source of template.content.querySelectorAll('picture, source')) source.remove();
+    }
+    if (options.links === false) {
+      for (const link of template.content.querySelectorAll('a'))
+        link.replaceWith(...link.childNodes);
     }
     return Array.from(template.content.childNodes, (child, index) =>
       segmentNode(child, index, ownerDocument),
@@ -93,6 +100,7 @@
     content,
     markdownNode,
     images = true,
+    links = true,
     class: className,
     ...rest
   }: ChatMarkdownPreviewProps = $props();
@@ -138,7 +146,10 @@
           if (!pipeline || cancelled) return undefined;
           const { renderMarkdownWithMath } = pipeline;
           try {
-            const result = await renderMarkdownWithMath(snapshot, { nodePlaceholders: true });
+            const result = await renderMarkdownWithMath(snapshot, {
+              nodePlaceholders: true,
+              stripLinks: !links,
+            });
             // Re-check cancelled and verify the snapshot still matches
             // the live content. The latter handles a subtle race: if
             // content updates AFTER cancelled was set but BEFORE this
@@ -148,7 +159,7 @@
             // committing HTML that doesn't match the current props.
             if (!cancelled && snapshot === content) {
               renderedHtml = result.html;
-              segments = segmentRenderedMarkdown(result.html, document, { images });
+              segments = segmentRenderedMarkdown(result.html, document, { images, links });
             }
           } catch {
             if (!cancelled && snapshot === content) renderedHtml = '';

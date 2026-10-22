@@ -351,7 +351,7 @@
         <span class="a2ui-inline-text">{plainText(content)}</span>
       {:else if variant === 'body' || variant === 'caption'}
         <Text {variant} as="div" class="a2ui-text"
-          ><MarkdownPreview {content} images={false} /></Text
+          ><MarkdownPreview {content} images={false} links={false} /></Text
         >
       {:else}
         <Text {variant} class="a2ui-text">{plainText(content)}</Text>
@@ -503,6 +503,10 @@
       <!-- A control inside a button would be pressed through it, dispatching both
            actions, so the child renders on its own and the Button is dropped. -->
       {@render child(prop('child'))}
+      {#if activate !== undefined}
+        <!-- As a Modal's trigger, the dropped Button still leaves a way to open the dialog. -->
+        <Button variant="secondary" onclick={activate} class="a2ui-leaf">Open</Button>
+      {/if}
     {:else if type === 'Button'}
       <Button
         variant={mapEnum(

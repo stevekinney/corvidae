@@ -833,4 +833,24 @@ describe('review fixes', () => {
     expect(container.querySelectorAll('button button')).toHaveLength(0);
     expect(diagnostics.some((entry) => entry.message.includes('interactive'))).toBe(true);
   });
+
+  test('a Modal whose Button trigger holds a control can still be opened', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'nested-trigger',
+        components: [
+          { id: 'root', component: 'Column', children: ['modal'] },
+          { id: 'modal', component: 'Modal', trigger: 'open', content: 'body' },
+          { id: 'open', component: 'Button', child: 'agree', action: { event: { name: 'x' } } },
+          { id: 'agree', component: 'CheckBox', label: 'Agree', value: false },
+          { id: 'body', component: 'Text', text: 'Details', variant: 'h2' },
+        ],
+      },
+    });
+    await flush();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await flush();
+    expect(screen.getByRole('dialog')).not.toBeNull();
+  });
 });

@@ -91,6 +91,14 @@ describe('Chat markdown-preview SSR contract', () => {
     expect(JSON.stringify(dropped)).toContain('pixel');
   });
 
+  test('keeps a link’s text but not the link when links are off', () => {
+    const html = '<p>See <a href="https://example.test/">the docs</a>.</p>';
+    const dropped = segmentRenderedMarkdown(html, document, { links: false });
+
+    expect(JSON.stringify(dropped)).not.toContain('href');
+    expect(JSON.stringify(dropped)).toContain('the docs');
+  });
+
   test('server-renders the raw-text fallback for the message content', async () => {
     // The `$effect` that populates `renderedHtml` never runs on the server, so
     // `renderedHtml` stays '' and the `{:else}` branch emits the raw content as
