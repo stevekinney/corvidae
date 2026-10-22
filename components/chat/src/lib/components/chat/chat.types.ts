@@ -278,6 +278,14 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
     resolution: ApprovalResolution,
   ) => void | ChatToolApprovalResolution | Promise<void | ChatToolApprovalResolution>;
   /**
+   * Called when the user submits the form for an action-required tool result
+   * that requests input. Chat renders the action's JSON Schema with Cinder's
+   * `SchemaForm` and calls this only with a value that passed validation. A
+   * rejected promise keeps the form open so the user can try again. Without
+   * this callback, Chat shows the request's message but no form.
+   */
+  onInputSubmit?: (toolCallId: string, value: unknown) => void | Promise<void>;
+  /**
    * Override or supplement the reasoning text for a message. Called per-message;
    * return a non-empty string or `{ content, summary? }` to show one reasoning
    * body, `undefined` to fall back to `message.metadata['cinder:reasoning']`,
