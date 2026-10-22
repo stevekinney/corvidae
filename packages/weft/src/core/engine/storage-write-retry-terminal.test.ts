@@ -107,6 +107,33 @@ describe('a terminal write never overwrites another writer', () => {
     expect(record.tags).toEqual(['edited-elsewhere']);
   });
 
+  it('does not rebuild the completion over a record of another generation that is still running', async () => {
+    const run = await startParked(steps, 'replacement-running');
+    await using engine = run.engine;
+    const key = KEYS.workflow('replacement-running');
+    let replacement: Uint8Array | undefined;
+    run.refusing.refuse({
+      matches: putsWorkflowStatus('replacement-running', 'completed'),
+      times: 1,
+      before: async () => {
+        const state = decode((await run.refusing.base.get(key))!) as WorkflowState;
+        state.workflowExecutionToken = 'another-generation';
+        replacement = encode(state);
+        await run.refusing.base.put(key, replacement);
+      },
+    });
+
+    await engine.signal('replacement-running', 'go', 'x');
+    const reason = await rejectionOf(run.result);
+
+    // The id belongs to another run now: this run is told so, and its record is left as it is.
+    expect((reason as Error).message).toContain('was replaced by a newer run');
+    expect(await run.refusing.base.get(key)).toEqual(replacement ?? null);
+    expect(
+      run.refusing.attemptsMatching(putsWorkflowStatus('replacement-running', 'completed')),
+    ).toHaveLength(1);
+  });
+
   it('ends the run visibly, and leaves the record, when it cannot be read as a workflow record', async () => {
     const run = await startParked(steps, 'unreadable-record');
     await using engine = run.engine;
