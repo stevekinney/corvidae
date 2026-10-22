@@ -110,8 +110,8 @@ export type ToolApprovalAction = Extract<ToolAction, { type: 'approval' }>;
 /**
  * A tool-approval render part — emitted in place of a `tool-result` part only
  * when the result's `outcome === 'action_required'` and the action is an
- * explicit approval request. Input requests keep the neutral tool-result
- * presentation.
+ * explicit approval request. Input requests render as a
+ * {@link ToolInputMessagePart}.
  *
  * The state is UI-only and comes from the container's approval state map; it is
  * never written back to the transcript.
@@ -125,6 +125,27 @@ export type ToolApprovalMessagePart = {
   action: ToolApprovalAction;
   state: ApprovalState;
   resolutionInFlight: boolean;
+};
+
+/**
+ * A tool-input render part — emitted in place of a `tool-result` part when the
+ * result's `outcome === 'action_required'` and the action asks for structured
+ * input with a JSON Schema object. The renderer shows the schema as a Cinder
+ * `SchemaForm` and forwards a valid submission as `(toolCallId, value)`.
+ *
+ * An input action without an object schema keeps the neutral tool-result
+ * presentation, because there is no form to render.
+ */
+export type ToolInputMessagePart = {
+  type: 'tool-input';
+  /** Stable identity, derived from the message id + the tool result's call id. */
+  key: string;
+  toolCallId: string;
+  toolName: string;
+  /** The action's message, shown above the form. */
+  message: string | undefined;
+  /** The JSON Schema object the form renders and validates against. */
+  schema: Record<string, unknown>;
 };
 
 /**
@@ -223,7 +244,7 @@ export type SuggestionMessagePart = {
  *
  * This is a UI layer derived from the compatible {@link Message} shape — it is
  * never written back to the transcript. The union includes `markdown`,
- * `tool-call`, `tool-result`, `image`, `tool-approval`, `reasoning`, `step`,
+ * `tool-call`, `tool-result`, `image`, `tool-approval`, `tool-input`, `reasoning`, `step`,
  * and `suggestion`. Each widening also adds a renderer branch so the static
  * part switch stays exhaustive (the renderer's `{:else}` sentinel + the
  * `never` narrowing there force the new branch to be added).
@@ -234,6 +255,7 @@ export type ChatMessagePart =
   | ToolResultMessagePart
   | ImageMessagePart
   | ToolApprovalMessagePart
+  | ToolInputMessagePart
   | ReasoningMessagePart
   | TranscriptEntryMessagePart
   | StepMessagePart

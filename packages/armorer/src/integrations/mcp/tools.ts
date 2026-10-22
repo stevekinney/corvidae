@@ -10,6 +10,7 @@ import type {
 import type { Context } from '@opentelemetry/api';
 import type { z } from 'zod';
 
+import type { JsonObject } from '../../core/serialization/json';
 import { createTool } from '../../create-tool';
 import type { createExecutionLifecycle } from '../../execution-lifecycle';
 import type {
@@ -545,9 +546,13 @@ function metadataFromMcpTool(tool: MCPToolSource): Tool['metadata'] {
   if (tool.annotations?.readOnlyHint === true) {
     metadata['readOnly'] = true;
   }
-  const mcp: { title?: string; description?: string } = {};
+  const mcp: { title?: string; description?: string; meta?: JsonObject } = {};
   if (tool.title !== undefined) mcp['title'] = tool.title;
   if (tool.description !== undefined) mcp['description'] = tool.description;
+  // The whole `_meta` record (MCP Apps' `_meta.ui` included) rides along unchanged under
+  // `metadata.mcp.meta`, which `toMcpTools` and `createMCP` already emit as `_meta`.
+  // `_meta` arrives as JSON on the wire; tool metadata is JSON by contract.
+  if (tool._meta !== undefined) mcp['meta'] = tool._meta as JsonObject;
   if (Object.keys(mcp).length) {
     metadata['mcp'] = mcp;
   }

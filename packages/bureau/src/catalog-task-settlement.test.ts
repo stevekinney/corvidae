@@ -64,7 +64,7 @@ describe('settling a catalog task from the hook', () => {
     await settler(settlement);
 
     expect(await registry.record('agent-run-1')).toBeUndefined();
-    const listed = await registry.list({ limit: 10, offset: 0 });
+    const listed = await registry.enumerate({ limit: 10, offset: 0 });
     expect(listed.tasks).toEqual([]);
   });
 
@@ -83,7 +83,7 @@ describe('settling a catalog task from the hook', () => {
 
     expect(await goal.registry.record('agent-run-1')).toBeUndefined();
     expect(await step.registry.record('agent-run-1')).toBeUndefined();
-    const listed = await step.registry.list({ limit: 10, offset: 0 });
+    const listed = await step.registry.enumerate({ limit: 10, offset: 0 });
     expect(listed.tasks).toEqual([]);
   });
 
