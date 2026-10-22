@@ -401,6 +401,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/operative": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
