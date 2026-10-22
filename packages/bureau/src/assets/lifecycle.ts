@@ -33,7 +33,7 @@ import {
 } from './errors';
 import { type AssetInternals, classifyFailure } from './internals';
 import type { AssetWorkContext } from './operation';
-import { readVerifiedBytes, type UploadSessionRecord } from './admission';
+import { readVerifiedBytes } from './admission';
 import {
   type AssetRecord,
   authorize,
@@ -54,6 +54,7 @@ import type {
   AssetProviderCopy,
   AssetWorkHandle,
 } from './types';
+import type { UploadSessionRecord } from './uploads';
 
 type Change =
   { readonly next: AssetRecord; readonly extra?: readonly AssetStorageOperation[] } | undefined;

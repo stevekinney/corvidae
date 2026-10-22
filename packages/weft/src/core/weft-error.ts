@@ -33,6 +33,7 @@ export type WeftErrorCode =
   | 'BulkOperationConfirmationError'
   | 'WorkflowTypeNotRegisteredForRecoveryError'
   | 'EngineCreateNameMismatchError'
+  | 'DefinitionSchemaRequiredError'
   | 'EngineDisposedError'
   | 'EngineDisposalError'
   | 'WorkflowNotFoundError'
@@ -65,6 +66,7 @@ export type WeftErrorCode =
   | 'ActivityPerAttemptTimeoutError'
   | 'PayloadSizeExceededError'
   | 'StartOrSignalConflictError'
+  | 'UndeclaredWorkflowMessageError'
   | 'WorkflowTeardownPendingError'
   | 'IdempotencyKeyPurgedError'
   | 'WorkerManifestBuildError'
@@ -123,6 +125,7 @@ const publicWeftErrorCodeMap = {
   BulkOperationConfirmationError: true,
   WorkflowTypeNotRegisteredForRecoveryError: true,
   EngineCreateNameMismatchError: true,
+  DefinitionSchemaRequiredError: true,
   EngineDisposedError: true,
   EngineDisposalError: true,
   WorkflowNotFoundError: true,
@@ -155,6 +158,7 @@ const publicWeftErrorCodeMap = {
   ActivityPerAttemptTimeoutError: true,
   PayloadSizeExceededError: true,
   StartOrSignalConflictError: true,
+  UndeclaredWorkflowMessageError: true,
   WorkflowTeardownPendingError: true,
   IdempotencyKeyPurgedError: true,
   WorkerManifestBuildError: true,

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTool, createToolbox, type AnyToolbox, type CreateToolOptions } from '../src';
+import {
+  createTool,
+  createToolbox,
+  registerToolEmbeddings,
+  type AnyToolbox,
+  type CreateToolOptions,
+  type Embedder,
+} from '../src';
 
 import { createSearchTool, type SearchToolsResult } from '../src/tools';
 
@@ -186,6 +193,64 @@ describe('createSearchTool', () => {
     expect(searchTool.tags).toContain('readonly');
   });
 
+  describe('semantic search', () => {
+    const semanticQuery = 'notify someone';
+    const toolsForSemanticSearch = () => [
+      makeTool('send-email', { description: 'Send an email message' }),
+      makeTool('get-weather', { description: 'Get weather forecast' }),
+    ];
+    // The query shares no words with either tool, so only an embedding match can rank `send-email`.
+    const vectorFor = (text: string) =>
+      text === semanticQuery || text.includes('email') ? [1, 0] : [0, 1];
+    const embedders: Array<[string, Embedder]> = [
+      ['synchronous', (texts) => texts.map(vectorFor)],
+      ['asynchronous', async (texts) => texts.map(vectorFor)],
+    ];
+
+    for (const [kind, embed] of embedders) {
+      it(`ranks by the toolbox's ${kind} embed function`, async () => {
+        const toolbox = createToolbox(toolsForSemanticSearch(), { embed });
+        const searchTool = createSearchTool(toolbox, { explain: true });
+
+        const results = await searchFor(searchTool, semanticQuery);
+
+        expect(results.map((result) => result.name)).toEqual(['send-email']);
+        expect(results[0]?.score).toBeGreaterThan(0);
+        expect(results[0]?.reasons).toEqual(['embedding:name:1.00']);
+      });
+    }
+
+    it('ranks by embeddings registered with registerToolEmbeddings', async () => {
+      const toolbox = createToolbox(toolsForSemanticSearch(), {
+        embed: (texts) => texts.map((text) => (text === semanticQuery ? [1, 0] : [0, 1])),
+      });
+      const weather = toolbox.getTool('get-weather');
+      if (!weather) throw new Error('get-weather is not registered');
+      registerToolEmbeddings(weather, { description: [1, 0] });
+      const searchTool = createSearchTool(toolbox, { explain: true });
+
+      const results = await searchFor(searchTool, semanticQuery);
+
+      expect(results.map((result) => result.name)).toEqual(['get-weather']);
+      expect(results[0]?.reasons).toEqual(['embedding:description:1.00']);
+    });
+
+    it('still omits unavailable tools that match by embedding', async () => {
+      const toolbox = createToolbox(
+        [
+          makeTool('send-email', {
+            description: 'Send an email message',
+            availability: () => false,
+          }),
+        ],
+        { embed: (texts) => texts.map(vectorFor) },
+      );
+      const searchTool = createSearchTool(toolbox);
+
+      expect(await searchFor(searchTool, semanticQuery)).toEqual([]);
+    });
+  });
+
   describe('agent usability', () => {
     it('is available to agents via toolbox.execute()', async () => {
       let toolbox: AnyToolbox = createToolbox();
@@ -280,6 +345,16 @@ describe('createSearchTool', () => {
     });
   });
 });
+
+async function searchFor(
+  searchTool: ReturnType<typeof createSearchTool>,
+  query: string,
+): Promise<SearchToolsResult[]> {
+  const results = await searchTool({ query });
+  if (!isSearchToolsResultArray(results))
+    throw new Error('search tool returned a non-array result');
+  return results;
+}
 
 function isSearchToolsResultArray(value: unknown): value is SearchToolsResult[] {
   return (

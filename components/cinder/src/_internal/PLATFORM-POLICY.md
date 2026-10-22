@@ -58,8 +58,19 @@ Every form control that wraps a native form element (`<input>`, `<select>`, `<te
 `autocomplete.svelte` and `checkbox.svelte` are the canonical examples (they call `resolveFieldControl`). The reference call shape is:
 
 ```ts
-import { resolveFieldControl } from '../../_internal/field-control.ts';
-import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+// A component under src/components/<name>/ imports these as '../../_internal/field-control.ts'
+// and '../../_internal/form-field-context.ts'.
+import { resolveFieldControl } from '../../../../src/_internal/field-control.ts';
+import { getFormFieldContext } from '../../../../src/_internal/form-field-context.ts';
+
+// In the component these come from its `$props()` destructure.
+declare const id: string | undefined;
+declare const description: string | undefined;
+declare const error: string | undefined;
+declare const consumerDescribedBy: string | undefined; // the 'aria-describedby' prop
+declare const consumerInvalid: boolean | undefined; // the 'aria-invalid' prop
+declare const required: boolean;
+declare const disabled: boolean;
 
 const context = getFormFieldContext();
 const generatedId = $props.id();

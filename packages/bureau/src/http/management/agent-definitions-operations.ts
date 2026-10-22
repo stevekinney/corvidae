@@ -109,6 +109,7 @@ const agentListingSchema = z.object({
   published: z.boolean(),
   owner: z.string(),
   hash: z.string().nullable(),
+  definitionRevision: z.number().int().positive().nullable(),
   problem: problemSchema.nullable(),
 });
 
@@ -178,6 +179,7 @@ function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentLi
     published,
     owner: listing.owner,
     hash: listing.definitionHash ?? null,
+    definitionRevision: listing.definitionRevision ?? null,
     problem: listing.problem === undefined ? null : problemView(listing.problem),
   };
 }
@@ -526,7 +528,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it is published (by the `publish` allowlist for a code-defined agent, by its own file for a persisted one; an invalid file is never published, even when its `published` key says so), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it is published (by the `publish` allowlist for a code-defined agent, by its own file for a persisted one; an invalid file is never published, even when its `published` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -559,7 +561,7 @@ export const agentDefinitionsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List agent definitions',
   description:
-    'Lists every agent: the code-defined ones in definition order, then the agent files by identifier, `ready` and `invalid` alike. Each file shows its `hash` and `state`. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s agents and lacks `bureau.agents:read` gets an empty page.',
+    'Lists every agent: the code-defined ones in definition order, then the agent files by identifier, `ready` and `invalid` alike. Each file shows its `hash`, `state`, and `definitionRevision`. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s agents and lacks `bureau.agents:read` gets an empty page.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: listInput,

@@ -46,3 +46,16 @@ export function reservedWorkflowIdentifierReason(kind: string, id: string): stri
     ? undefined
     : `reserved-identifier: ${kind} "${id}" begins with "${prefix}", a prefix durable event history or the audit trail records its owners under; choose another.`;
 }
+
+/**
+ * COR-1590 — why `id` may not name a session that does not exist yet; `undefined` when it may.
+ * `.` and `..` are path segments a browser resolves away before a client reads them, so a session
+ * made under one could never be opened again at an address that names it. A session that already
+ * holds one of these ids keeps it: the refusal is for creating, and the caller decides what "does
+ * not exist yet" means for its entry point.
+ */
+export function unopenableNewSessionIdentifierReason(kind: string, id: string): string | undefined {
+  return id === '.' || id === '..'
+    ? `unopenable-session-identifier: ${kind} "${id}" cannot name a new session, because a browser resolves it as a path segment before any client can read it; choose another.`
+    : undefined;
+}

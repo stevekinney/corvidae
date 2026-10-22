@@ -69,12 +69,12 @@ describe('entryNeedsResult', () => {
 describe('isSubmissionTimeout', () => {
   test('recognises a timeout by status or by fault code, over either transport', () => {
     // REST: the status. JSON-RPC: the fault code, and the status the envelope carries.
-    expect(isSubmissionTimeout(new HttpClientError(408, 'timed out'))).toBe(true);
+    expect(isSubmissionTimeout(new HttpClientError(504, 'timed out'))).toBe(true);
     expect(
       isSubmissionTimeout(
-        new HttpClientError(408, 'timed out', {
+        new HttpClientError(504, 'timed out', {
           faultCode: 'Timeout',
-          data: { updateId: 'u-1', weftCode: 'Timeout', httpStatus: 408 },
+          data: { updateId: 'u-1', weftCode: 'Timeout', httpStatus: 504 },
         }),
       ),
     ).toBe(true);
@@ -85,6 +85,8 @@ describe('isSubmissionTimeout', () => {
 
   test('does not call any other failure a timeout', () => {
     expect(isSubmissionTimeout(new HttpClientError(422, 'refused'))).toBe(false);
+    // `Request Timeout` is no longer what the server answers a timeout with: nothing treats it as one.
+    expect(isSubmissionTimeout(new HttpClientError(408, 'timed out'))).toBe(false);
     expect(isSubmissionTimeout(new Error('network unreachable'))).toBe(false);
     expect(isSubmissionTimeout('boom')).toBe(false);
     expect(isSubmissionTimeout(null)).toBe(false);

@@ -1,32 +1,33 @@
 /**
- * Type-checks the TypeScript code blocks in Weft's Markdown documentation against the package's
- * published export surface.
+ * Type-checks the TypeScript code blocks in a workspace's Markdown against the surface its
+ * consumers can import.
  *
- * Every ```` ```ts ```` or ```` ```typescript ```` fence in `README.md` and `documentation/**` is
- * compiled as its own module in one in-memory TypeScript program. Imports of `@lostgradient/weft`
- * and its subpaths resolve through the published `exports` map recorded in
- * `scripts/published-exports.json` at the repository root — a snapshot of the map the public mirror ships —
- * rather than this workspace's single `"."` export, so a guide cannot import a subpath or symbol a
- * consumer would not be able to import.
+ * Run from a workspace directory, as each library's and component's `typecheck` does. Every
+ * ```` ```ts ```` or ```` ```typescript ```` fence in the workspace's Markdown (outside
+ * dependencies and generated output) is compiled as its own module in one in-memory TypeScript
+ * program. Fences in other languages, `svelte` included, are not checked. Imports of the
+ * workspace's own package name and its subpaths resolve through the published `exports` map
+ * recorded in `scripts/published-exports.json` when the workspace has one there — a snapshot of
+ * the map the public mirror ships, so a guide cannot import a subpath or symbol a consumer would
+ * not be able to import — and through the workspace's own `package.json` `exports` otherwise.
+ * Imports of other workspaces resolve as they do for any consumer, through `node_modules`.
  *
- * The fence info string accepts two attributes after the language:
- *
- * - `partial` marks an illustrative fragment that depends on context the block does not declare.
- *   It is skipped.
- * - `file=<name>.ts` names the block's module, so a later block in the same document can import it
- *   with a relative specifier such as `import('./greeting.ts')`.
- *
- * Any other attribute is an error, so a misspelled `partial` cannot silently opt a block out.
+ * The fence info string accepts one attribute after the language: `file=<name>.ts` names the
+ * block's module, so a later block in the same document can import it with a relative specifier
+ * such as `import('./greeting.ts')`. Any other attribute is an error. No attribute opts a block
+ * out: every TypeScript example is checked, so one that cannot compile on its own needs the
+ * context it depends on, in the block or in an earlier named block.
  * Unused-binding checks are disabled: a snippet that declares a value to show its type is not a
- * defect. Every other compiler option comes from this package's `tsconfig.json`.
- *
- * Triggered as part of `bun run typecheck`.
+ * defect. Every other compiler option comes from the workspace's `tsconfig.json`, whose ambient
+ * declaration files every block also sees.
  */
 
 import { Glob } from 'bun';
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import ts from 'typescript';
+
+import { readEntryPoints } from './check-documentation-coverage.ts';
 
 export interface DocumentationCodeBlock {
   /** Package-relative path of the Markdown document that contains the block. */
@@ -42,7 +43,6 @@ export interface DocumentationCodeBlock {
 
 export interface ExtractedCodeBlocks {
   blocks: DocumentationCodeBlock[];
-  partialCount: number;
   problems: string[];
 }
 
@@ -64,7 +64,6 @@ export function extractCodeBlocks(document: string, markdown: string): Extracted
   const blocks: DocumentationCodeBlock[] = [];
   const problems: string[] = [];
   const fileNames = new Set<string>();
-  let partialCount = 0;
 
   for (let index = 0; index < lines.length; index += 1) {
     const opening = OPENING_FENCE_PATTERN.exec(lines[index] ?? '');
@@ -84,17 +83,11 @@ export function extractCodeBlocks(document: string, markdown: string): Extracted
     index = closing;
     if (!TYPESCRIPT_LANGUAGES.has(language)) continue;
 
-    let partial = false;
     let fileName = `line-${line}.ts`;
     for (const attribute of attributes) {
       const fileMatch = FILE_ATTRIBUTE_PATTERN.exec(attribute);
-      if (attribute === 'partial') partial = true;
-      else if (fileMatch?.[1]) fileName = fileMatch[1];
+      if (fileMatch?.[1]) fileName = fileMatch[1];
       else problems.push(`${document}:${line}: unknown code-block attribute "${attribute}"`);
-    }
-    if (partial) {
-      partialCount += 1;
-      continue;
     }
     if (fileNames.has(fileName)) {
       problems.push(`${document}:${line}: duplicate code-block file name "${fileName}"`);
@@ -104,55 +97,103 @@ export function extractCodeBlocks(document: string, markdown: string): Extracted
     blocks.push({ document, line, indent, fileName, source: body.join('\n') });
   }
 
-  return { blocks, partialCount, problems };
+  return { blocks, problems };
 }
 
-interface PublishedPackageSurface {
-  packages: Record<
-    string,
-    { exports: Record<string, string | { types?: unknown } | null> } | undefined
-  >;
+type ExportTarget = string | { [condition: string]: unknown } | null;
+
+/** The published `exports` snapshot in `scripts/published-exports.json`. */
+export interface PublishedPackageSurface {
+  packages: Record<string, { exports: Record<string, ExportTarget> } | undefined>;
+}
+
+const SOURCE_CONDITIONS = ['bun', 'svelte', 'browser'];
+const SOURCE_TARGET_PATTERN = /^\.\/src\/.+\.ts$/;
+
+/**
+ * Finds the source file behind one published export, or returns `undefined` for an export that is
+ * not a TypeScript module, such as `./package.json`, a JSON manifest, or a stylesheet. A source
+ * condition (`bun`, `svelte`, `browser`) that names a `./src/**.ts` file wins; otherwise the
+ * `types` target `./dist/<tail>.d.ts` maps to `src/<tail>.ts` or `src/<tail>/index.ts`, or the same
+ * under `src/lib/` for a Svelte package.
+ */
+function publishedSource(packageRoot: string, target: ExportTarget): string | false | undefined {
+  if (target !== null && typeof target === 'object') {
+    for (const condition of SOURCE_CONDITIONS) {
+      const source = target[condition];
+      if (typeof source === 'string' && SOURCE_TARGET_PATTERN.test(source)) {
+        return join(packageRoot, source);
+      }
+    }
+  }
+  const types = typeof target === 'string' ? target : target?.['types'];
+  if (typeof types !== 'string') return false;
+  if (!types.endsWith('.d.ts')) return types.endsWith('.json') ? undefined : false;
+  if (types.endsWith('.css.d.ts')) return undefined;
+  if (!types.startsWith('./dist/')) return false;
+  const tail = types.slice('./dist/'.length, -'.d.ts'.length);
+  const source = [
+    `src/${tail}.ts`,
+    `src/${tail}/index.ts`,
+    `src/lib/${tail}.ts`,
+    `src/lib/${tail}/index.ts`,
+  ]
+    .map((candidate) => join(packageRoot, candidate))
+    .find((candidate) => existsSync(candidate));
+  return source ?? false;
 }
 
 /**
- * Maps each published specifier of `publicName` to the source file behind its `types` target:
- * `./dist/storage/sqlite.d.ts` becomes `src/storage/sqlite.ts`, or `src/storage/sqlite/index.ts`.
+ * Maps each published specifier of `publicName` to the source file behind it, or returns
+ * `undefined` when the snapshot has no exports map for the package. Cinder's entry, for one, names
+ * the generator that derives its map rather than the map itself.
  */
 export function publishedModuleMap(
   surface: PublishedPackageSurface,
   publicName: string,
   packageRoot: string,
-): Map<string, string> {
-  const entry = surface.packages[publicName];
-  if (!entry) throw new Error(`The published package surface has no entry for ${publicName}.`);
+): Map<string, string> | undefined {
+  const exports = surface.packages[publicName]?.exports;
+  if (!exports || !Object.keys(exports).every((subpath) => subpath.startsWith('.'))) {
+    return undefined;
+  }
 
   const modules = new Map<string, string>();
-  for (const [subpath, target] of Object.entries(entry.exports)) {
-    const types = typeof target === 'string' ? target : target?.types;
-    if (typeof types !== 'string' || !types.startsWith('./dist/') || !types.endsWith('.d.ts')) {
-      throw new Error(`${publicName} export "${subpath}" has no ./dist/*.d.ts types target.`);
+  for (const [subpath, target] of Object.entries(exports)) {
+    const source = publishedSource(packageRoot, target);
+    if (source === undefined) continue;
+    if (source === false) {
+      throw new Error(`${publicName} export "${subpath}" has no TypeScript source.`);
     }
-    const tail = types.slice('./dist/'.length, -'.d.ts'.length);
-    const source = [`src/${tail}.ts`, `src/${tail}/index.ts`]
-      .map((candidate) => join(packageRoot, candidate))
-      .find((candidate) => existsSync(candidate));
-    if (!source) throw new Error(`${publicName} export "${subpath}" has no source for ${types}.`);
     modules.set(subpath === '.' ? publicName : `${publicName}/${subpath.slice(2)}`, source);
   }
   return modules;
 }
 
-function loadCompilerOptions(
+/** Maps each specifier of the workspace's own `exports` map to its source file. */
+export function manifestModuleMap(
+  packageRoot: string,
+  manifest: { name: string; exports?: unknown },
+): Map<string, string> {
+  return new Map(
+    readEntryPoints(packageRoot, manifest.exports).map(({ subpath, file }) => [
+      subpath === '.' ? manifest.name : `${manifest.name}/${subpath.slice(2)}`,
+      file,
+    ]),
+  );
+}
+
+function loadConfiguration(
   packageRoot: string,
   modules: ReadonlyMap<string, string>,
-): ts.CompilerOptions {
+): { options: ts.CompilerOptions; declarationFiles: string[] } {
   const configurationPath = join(packageRoot, 'tsconfig.json');
   const loaded = ts.readConfigFile(configurationPath, (path) => ts.sys.readFile(path));
   if (loaded.error) {
     throw new Error(ts.flattenDiagnosticMessageText(loaded.error.messageText, '\n'));
   }
   const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, packageRoot);
-  return {
+  const options: ts.CompilerOptions = {
     ...parsed.options,
     noEmit: true,
     noUnusedLocals: false,
@@ -161,6 +202,13 @@ function loadCompilerOptions(
     pathsBasePath: packageRoot,
     paths: Object.fromEntries([...modules].map(([specifier, source]) => [specifier, [source]])),
   };
+  // A composite project would require every block to be listed in its own file list.
+  for (const option of ['composite', 'incremental', 'declaration', 'emitDeclarationOnly']) {
+    delete options[option];
+  }
+  // Ambient declarations, such as a Svelte workspace's `*.svelte` module, apply to every block.
+  const declarationFiles = parsed.fileNames.filter((fileName) => fileName.endsWith('.d.ts'));
+  return { options, declarationFiles };
 }
 
 /**
@@ -181,7 +229,7 @@ export function checkCodeBlocks(
   const isVirtualDirectory = (path: string): boolean =>
     [...virtualFiles.keys()].some((file) => file.startsWith(`${resolve(path)}/`));
 
-  const options = loadCompilerOptions(packageRoot, modules);
+  const { options, declarationFiles } = loadConfiguration(packageRoot, modules);
   const base = ts.createCompilerHost(options, true);
   const host: ts.CompilerHost = {
     ...base,
@@ -197,7 +245,7 @@ export function checkCodeBlocks(
     },
   };
 
-  const program = ts.createProgram([...virtualFiles.keys()], options, host);
+  const program = ts.createProgram([...virtualFiles.keys(), ...declarationFiles], options, host);
   const messages = [...program.getOptionsDiagnostics(), ...program.getGlobalDiagnostics()].map(
     (diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
   );
@@ -224,49 +272,65 @@ export interface DocumentationCheckResult {
   summary: string;
 }
 
+const IGNORED_DIRECTORIES = [
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  'test-output',
+  '.types',
+  '.svelte-kit',
+];
+
+/** Lists the workspace's Markdown documents, skipping dependencies and generated output. */
+export function findDocuments(packageRoot: string): string[] {
+  return [...new Glob('**/*.md').scanSync({ cwd: packageRoot, dot: true })]
+    .filter((document) => !document.split('/').some((part) => IGNORED_DIRECTORIES.includes(part)))
+    .toSorted();
+}
+
 /**
- * Checks `README.md` and every `documentation/**` Markdown file under `packageRoot` against the
- * published surface of `publicName` recorded in `surfacePath`.
+ * Checks every Markdown document under `packageRoot`. The workspace's own imports resolve through
+ * its entry in the published surface at `surfacePath` when that entry is an exports map, and
+ * through its `package.json` `exports` otherwise.
  */
 export async function runDocumentationCodeBlockCheck(
   packageRoot: string,
   surfacePath: string,
-  publicName: string,
 ): Promise<DocumentationCheckResult> {
+  const manifest: { name: string; exports?: unknown } = await Bun.file(
+    join(packageRoot, 'package.json'),
+  ).json();
   const surface = (await Bun.file(surfacePath).json()) as PublishedPackageSurface;
-  const modules = publishedModuleMap(surface, publicName, packageRoot);
+  const modules =
+    publishedModuleMap(surface, manifest.name, packageRoot) ??
+    manifestModuleMap(packageRoot, manifest);
 
-  const documents = [
-    ...new Glob('documentation/**/*.md').scanSync(packageRoot),
-    'README.md',
-  ].toSorted();
+  const documents = findDocuments(packageRoot);
   const blocks: DocumentationCodeBlock[] = [];
   const problems: string[] = [];
-  let partialCount = 0;
   for (const document of documents) {
     const markdown = await Bun.file(join(packageRoot, document)).text();
     const extracted = extractCodeBlocks(document, markdown);
     blocks.push(...extracted.blocks);
     problems.push(...extracted.problems);
-    partialCount += extracted.partialCount;
   }
-  problems.push(...checkCodeBlocks(packageRoot, blocks, modules));
+  if (blocks.length > 0) problems.push(...checkCodeBlocks(packageRoot, blocks, modules));
 
   const summary =
-    `Checked ${blocks.length} documentation code blocks in ${documents.length} documents ` +
-    `(${partialCount} partial blocks skipped); ${problems.length} problems.`;
+    `Checked ${blocks.length} documentation code blocks in ${documents.length} documents; ` +
+    `${problems.length} problems.`;
   return { problems, summary };
 }
 
 if (import.meta.main) {
-  const packageRoot = resolve(import.meta.dir, '..');
-  const surfacePath = resolve(packageRoot, '../../scripts/published-exports.json');
+  const packageRoot = process.cwd();
+  const name = relative(join(import.meta.dir, '..'), packageRoot);
   const result = await runDocumentationCodeBlockCheck(
     packageRoot,
-    surfacePath,
-    '@lostgradient/weft',
+    join(import.meta.dir, 'published-exports.json'),
   );
   for (const problem of result.problems) process.stderr.write(`${problem}\n`);
-  process.stdout.write(`${result.summary}\n`);
+  process.stdout.write(`check-documentation-code-blocks — ${name}: ${result.summary}\n`);
   process.exitCode = result.problems.length > 0 ? 1 : 0;
 }

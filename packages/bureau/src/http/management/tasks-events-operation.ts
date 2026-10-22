@@ -40,7 +40,7 @@ import {
 import { z } from 'zod';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
-import { REVIEW_CLOSING_EVENT_KINDS } from '../../review-closing-events.ts';
+import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from '../../schedule-fire-settled-event.ts';
 import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
@@ -307,10 +307,7 @@ const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
-  readonly tasks: Pick<
-    TaskRegistry,
-    'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged' | 'reviewClosedElsewhere'
-  >;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged'>;
   readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
@@ -366,7 +363,7 @@ function followScheduleFire(
         };
   let unsubscribe: (() => void) | undefined;
   let unsubscribeChanged: (() => void) | undefined;
-  let unsubscribeHistory: (() => void) | undefined;
+  let historySubscription: { unsubscribe(): void } | undefined;
   let ended = false;
   /**
    * The status the stream last told, so a change is told once (COR-1596). A stream that resumes
@@ -381,7 +378,7 @@ function followScheduleFire(
     ended = true;
     unsubscribe?.();
     unsubscribeChanged?.();
-    unsubscribeHistory?.();
+    historySubscription?.unsubscribe();
     queue.push({
       kind: 'task.status',
       taskId,
@@ -443,27 +440,58 @@ function followScheduleFire(
           finish(view, settledRecord.settled);
         });
         unsubscribeChanged = host.tasks.onChanged(taskId, tellChange);
-        // A review another process closes is in the run's durable history, which is shared; this
-        // process drops its own stale copy and re-reads the task, so the end reaches this stream
-        // (COR-1613). The history replays what was closed before, which drops nothing it holds.
-        const subscription = host.taskHistory.subscribeEventHistory(
+        // A review another process closes reaches `onChanged` through the Bureau's own history
+        // subscription (COR-1621), which every process keeps whether or not a stream is open, so
+        // this stream opens none of its own for that.
+        const readAgain = async (): Promise<void> => {
+          const latest = await host.tasks.get(taskId);
+          if (latest !== undefined && isTerminalStatus(latest.status)) {
+            const latestRecord = await host.tasks.record(taskId);
+            finish(latest, latestRecord?.settled);
+          } else if (latest !== undefined) {
+            tellChange(latest);
+          }
+        };
+        // The end of a fire another process settles reaches `onSettled` of no listener here. That
+        // process records it in the fire's durable history once the settlement is written
+        // (COR-1594), so the history is followed too, and `onSettled` stays the fast path for a
+        // fire settled by this process. A Bureau with no persistent storage has no second process,
+        // and its subscription never delivers. The history is replayed from its start, so an end
+        // recorded before this point is read, and a repeat of one already read is a no-op.
+        historySubscription = host.taskHistory.subscribeEventHistory(
           { kind: 'run', id: taskId },
           (event) => {
-            const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
-            if (typeof reviewId !== 'string' || !REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) return;
-            void host.tasks
-              .reviewClosedElsewhere(taskId, reviewId, event.kind)
-              .catch(() => undefined);
+            // The end itself, or a gap: retention overtook the subscription, so events were lost,
+            // possibly the end. Either way the record says whether the fire is over.
+            if (
+              event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND ||
+              event.kind === DURABLE_HISTORY_GAP_KIND
+            ) {
+              readAgain().catch((error: unknown) => queue.fail(error));
+            }
+          },
+          {
+            // The subscription ended on an error (a storage fault) and will deliver nothing more,
+            // so the settled event can no longer be waited for. The record is read once more: a
+            // fire that is over finishes the stream, and any other ends it with an error, so the
+            // client reconnects and a new subscription follows the history from its tail.
+            onClosed: () => {
+              if (ended) return;
+              void (async () => {
+                await readAgain();
+                if (ended) return;
+                // The control plane's own fault for a server that cannot serve a request now but
+                // may later, so a client can tell "reconnect" from a server defect.
+                queue.fail({
+                  code: 'Unavailable',
+                  message: `The history of task "${taskId}" can no longer be followed; reconnect to follow it again`,
+                  data: { reason: 'history-unavailable' },
+                });
+              })().catch((error: unknown) => queue.fail(error));
+            },
           },
         );
-        unsubscribeHistory = () => subscription.unsubscribe();
-        const latest = await host.tasks.get(taskId);
-        if (latest !== undefined && isTerminalStatus(latest.status)) {
-          const latestRecord = await host.tasks.record(taskId);
-          finish(latest, latestRecord?.settled);
-        } else if (latest !== undefined) {
-          tellChange(latest);
-        }
+        await readAgain();
       })().catch((error: unknown) => queue.fail(error));
       return {
         async *[Symbol.asyncIterator]() {
@@ -480,7 +508,7 @@ function followScheduleFire(
         ended = true;
         unsubscribe?.();
         unsubscribeChanged?.();
-        unsubscribeHistory?.();
+        historySubscription?.unsubscribe();
         queue.end();
       },
     },
@@ -557,7 +585,7 @@ export const tasksEventsOperation = defineOperation<
   tags: ['Tasks'],
   inputSchema: tasksEventsInput,
   outputSchema: tasksEventsEnvelope,
-  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  producibleFaults: ['InvalidParams', 'NotFound', 'Unavailable', 'UnsupportedCapability'],
   eventSchema: taskEventSchema,
   access: { kind: 'authenticated' },
   discoverable: true,

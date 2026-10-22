@@ -3,7 +3,7 @@ import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
 
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
-import { workflow } from '../../core/types.ts';
+import { signal, workflow } from '../../core/types.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
@@ -21,11 +21,18 @@ const twoSignalWorkflow = workflow({ name: 'two-signal' }).execute(async functio
   return [first, second];
 });
 
+const declaredWorkflow = workflow({ name: 'declared' })
+  .signals({ release: signal('release') })
+  .execute(async function* (ctx: WorkflowContext) {
+    return yield* ctx.waitForSignal('release');
+  });
+
 function createEngine(): Engine {
   const storage = new MemoryStorage();
   const engine = new Engine({ storage });
   engine.register(holdWorkflow);
   engine.register(twoSignalWorkflow);
+  engine.register(declaredWorkflow);
   return engine;
 }
 
@@ -51,6 +58,26 @@ const registry = createOperationRegistry([signalWorkflowOperation]);
 const bindings = [signalWorkflowRestBinding];
 
 describe('weft.workflows.signal', () => {
+  it('answers 422 when the workflow declares its signals and this name is not one of them', async () => {
+    await using engine = createEngine();
+    const handle = await engine.start('declared', null, { id: 'signal-undeclared' });
+    await waitForStatus(engine, handle.id, 'running');
+
+    const response = await handleRequest(
+      new Request(`http://localhost/v1/workflows/${handle.id}/signal/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: null }),
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error?: string };
+    expect(JSON.stringify(body)).toContain('does not declare signal');
+  });
+
   it('signals a workflow and returns the ok response', async () => {
     await using engine = createEngine();
     const handle = await engine.start('hold', null, { id: 'signal-success' });

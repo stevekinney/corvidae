@@ -6,8 +6,10 @@
 import type { PendingToolApproval, ToolRequestContext } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import { countCheckpointParks } from './park-ordinals';
 import {
   adoptRestoredScheduledFire,
+  committedFireReviewIds,
   endContinuingScheduledFire,
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
@@ -224,5 +226,35 @@ describe('releaseScheduledFireReviews', () => {
 
     expect(releaseScheduledFireReviews(state, 'fire-1')).toBe(true);
     expect(state.runToolboxesByRunId.has('fire-1')).toBe(false);
+  });
+});
+
+describe('committedFireReviewIds', () => {
+  const parked = (signalName: string) => ({
+    outcome: 'success',
+    toolName: 'requestHumanInput',
+    result: { parked: true, signalName },
+  });
+
+  it('numbers a park by the shared rule: results on one signal in a step are one park', () => {
+    const committed = committedFireReviewIds('run-1', [
+      { results: [parked('s'), parked('s')] },
+      { results: [parked('t')] },
+    ]);
+
+    expect([...committed].filter((id) => id.startsWith('human-wait:')).toSorted()).toEqual([
+      'human-wait:run-1:s:0',
+      'human-wait:run-1:t:1',
+    ]);
+  });
+
+  it('agrees with the checkpoint walk about the ordinal of the park a run is waiting on', () => {
+    const steps = [{ results: [parked('s'), parked('s')] }, { results: [parked('t')] }];
+
+    const outstanding = countCheckpointParks(steps).outstanding;
+
+    expect(committedFireReviewIds('run-1', steps)).toContain(
+      `human-wait:run-1:${outstanding?.signalName}:${outstanding?.ordinal}`,
+    );
   });
 });

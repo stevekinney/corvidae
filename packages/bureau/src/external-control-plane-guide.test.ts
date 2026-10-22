@@ -8,8 +8,7 @@
  * A guard test compares the function's body with the README's code block, so the two cannot drift:
  * change the example and the documentation together.
  */
-import { readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -18,17 +17,21 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { principalFromApiKey } from '@lostgradient/weft';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
 
-const databasePath = join(tmpdir(), `bureau-external-control-plane-guide-${process.pid}.sqlite`);
+let databasePath = '';
 
-afterEach(async () => {
-  for (const suffix of ['', '-wal', '-shm']) {
-    await rm(`${databasePath}${suffix}`, { force: true });
-  }
+beforeEach(() => {
+  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
+  databasePath = createTemporaryPath('bureau-external-control-plane-guide', '.sqlite');
+});
+
+afterEach(() => {
+  removeTemporaryPath(databasePath);
 });
 
 /** What the example's `console` records, in order. */

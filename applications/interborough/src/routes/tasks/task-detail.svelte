@@ -24,6 +24,7 @@
     type TaskCleanup,
     type TaskView,
   } from '../../lib/bureau-tasks.ts';
+  import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import TaskCancel from './task-cancel.svelte';
@@ -160,8 +161,8 @@
         <dt>{TASK_COPY.sessionFact}</dt>
         <dd>
           <a
-            href={router.href(`/chat/${encodeURIComponent(current.contextId)}`)}
-            onclick={(event) => open(event, `/chat/${encodeURIComponent(current.contextId)}`)}
+            href={router.href(chatSessionPath(current.contextId))}
+            onclick={(event) => open(event, chatSessionPath(current.contextId))}
             >{TASK_COPY.openChat}</a
           >
         </dd>

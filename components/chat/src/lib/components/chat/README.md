@@ -100,20 +100,30 @@ import {
   appendUserMessage,
   clearMessageDeliveryStatus,
   markMessageDeliveryFailed,
+  type ChatAdapter,
+  type ChatAttachment,
+  type ConversationHistory,
+  type MessageInput,
 } from '@lostgradient/chat';
 
-// Inside your ChatAdapter implementation:
-async sendMessage(message, attachments) {
-  conversation = appendUserMessage(conversation, message.content);
-  const messageId = conversation.ids.at(-1)!;
-  try {
-    await yourBackend.send(message, attachments);
-    conversation = clearMessageDeliveryStatus(conversation, messageId);
-  } catch (error) {
-    conversation = markMessageDeliveryFailed(conversation, messageId);
-    throw error; // rethrow so Chat routes it to onAdapterError
-  }
-}
+declare let conversation: ConversationHistory;
+declare const yourBackend: {
+  send(message: MessageInput, attachments: ChatAttachment[]): Promise<void>;
+};
+
+const adapter: ChatAdapter = {
+  async sendMessage(message, attachments) {
+    conversation = appendUserMessage(conversation, message.content);
+    const messageId = conversation.ids.at(-1)!;
+    try {
+      await yourBackend.send(message, attachments);
+      conversation = clearMessageDeliveryStatus(conversation, messageId);
+    } catch (error) {
+      conversation = markMessageDeliveryFailed(conversation, messageId);
+      throw error; // rethrow so Chat routes it to onAdapterError
+    }
+  },
+};
 ```
 
 The helpers immutably set or clear the transient `_deliveryStatus` metadata used by Chat's failed-message label and Retry button. Apply the same pair around `retryMessage` and `editMessage` resends; the successful attempt clears the marker.
@@ -126,7 +136,26 @@ By default the composer is disabled while `streaming` is `true`, and the session
 - `ChatSessionControllerOptions.sendRunInput(conversationId, message, attachments, { messageId })` is the host-facing hook. The controller appends a transcript row for the follow-up and fills `messageId` with that row's id, so a host can pass it on as the session input's own id (`submitSessionInput` accepts a caller-supplied `id`). A retry of the same row passes the same id. Providing it makes `controller.adapter` expose the adapter hook.
 
 ```ts
-import { assertRunInputAccepted } from '@lostgradient/chat';
+import {
+  assertRunInputAccepted,
+  createChatSessionController,
+  type ChatAttachment,
+  type ChatSessionRunInputReceipt,
+  type ChatSessionTransport,
+  type ConversationHistory,
+  type MessageInput,
+} from '@lostgradient/chat';
+
+declare let conversation: ConversationHistory;
+declare const transport: ChatSessionTransport;
+declare const yourBackend: {
+  submitSessionInput(input: {
+    id: string;
+    conversationId: string;
+    message: MessageInput;
+    attachments: ChatAttachment[];
+  }): Promise<{ outcome: string; receipt?: ChatSessionRunInputReceipt }>;
+};
 
 const session = createChatSessionController({
   getConversation: () => conversation,
@@ -170,13 +199,23 @@ A controller without `sendRunInput`, or with a browser-owned run, behaves exactl
 `ChatAdapter.editMessage` hands you the edited message's ID and new content; the superseded branch (the old reply, any tool calls after it) should be discarded before the edited content is re-sent. `rewindBeforeMessage` performs exactly that cut — it drops the named message and everything after it in the transcript, keeps tool-call/tool-result pairs atomic, and renumbers positions — so an edit flow never assembles `ids`/`messages`/`updatedAt` by hand:
 
 ```ts
-import { appendUserMessage, rewindBeforeMessage } from '@lostgradient/chat';
+import {
+  appendUserMessage,
+  rewindBeforeMessage,
+  type ChatAdapter,
+  type ConversationHistory,
+  type MessageInput,
+} from '@lostgradient/chat';
 
-// Inside your ChatAdapter implementation:
-async editMessage({ messageId, content }) {
-  conversation = appendUserMessage(rewindBeforeMessage(conversation, messageId), content);
-  await yourBackend.send({ role: 'user', content });
-}
+declare let conversation: ConversationHistory;
+declare const yourBackend: { send(message: MessageInput): Promise<void> };
+
+const adapter: Pick<ChatAdapter, 'editMessage'> = {
+  async editMessage({ messageId, content }) {
+    conversation = appendUserMessage(rewindBeforeMessage(conversation, messageId), content);
+    await yourBackend.send({ role: 'user', content });
+  },
+};
 ```
 
 `rewindBeforePosition` is the position-keyed form, and both accept a `RewindOptions` bag (`preserveToolPairs: false` cuts strictly at the boundary, leaving a straddled tool call pending).
@@ -194,7 +233,12 @@ import {
   replaceToolResult,
   setMessageHidden,
   updateMessage,
+  type ConversationHistory,
 } from '@lostgradient/chat';
+
+declare let conversation: ConversationHistory;
+declare const messageId: string;
+declare const toolCallId: string;
 
 // Edit a message's content in place, keeping identity, role, order, and
 // creation time intact.
@@ -405,6 +449,11 @@ Chat owns always-rendered polite and assertive live regions outside the `role="l
 Use the default polite channel for non-urgent status updates:
 
 ```ts
+import type { ChatAnnounceLevel } from '@lostgradient/chat';
+
+// The bound `<Chat bind:this={chat}>` instance.
+declare const chat: { announce(message: string, level?: ChatAnnounceLevel): void } | undefined;
+
 chat?.announce('Attachment scan finished.');
 ```
 
@@ -474,7 +523,9 @@ A paired `tool-result` message does not render a second visible row and does not
 When `capabilities.attachments` is enabled, `onSubmit` receives ready `ChatAttachment[]` values. Use `serializeChatAttachment()` or `serializeChatAttachments()` from `@lostgradient/chat` to convert those files into transportable base64 payloads without spreading the full byte array onto the JavaScript stack.
 
 ```ts
-import { serializeChatAttachments } from '@lostgradient/chat';
+import { serializeChatAttachments, type ChatAttachment } from '@lostgradient/chat';
+
+declare const chatAttachments: ChatAttachment[];
 
 const attachments = await serializeChatAttachments(chatAttachments);
 ```
@@ -482,6 +533,8 @@ const attachments = await serializeChatAttachments(chatAttachments);
 Each serialized attachment has this shape:
 
 ```ts
+import type { ChatAttachment } from '@lostgradient/chat';
+
 type SerializedChatAttachment = {
   name: string;
   mimeType: string;

@@ -85,6 +85,20 @@ describe('the agent run event feed', () => {
     expect(envelope?.payload['error']).not.toHaveProperty('stack');
   });
 
+  it('marks a reconstructed run.error, and leaves a live one without the key', () => {
+    const error = new AgentRunError('the model refused', { kind: 'generate', code: 'UNKNOWN' });
+    const feed = createAgentRunEventFeed({ runId: 'run-1' });
+
+    const live = feed.publish(new RunErrorEvent(2, error));
+    const reconstructed = feed.publish(
+      new RunErrorEvent(2, error, undefined, { reconstructed: true }),
+    );
+
+    expect(Object.hasOwn(live?.payload ?? {}, 'reconstructed')).toBe(false);
+    expect(reconstructed?.payload).toMatchObject({ step: 2, reconstructed: true });
+    feed.dispose();
+  });
+
   it('redacts an abort error the same way', () => {
     const error = new AgentRunError(CANARY, { kind: 'abort', code: 'ABORTED' });
     error.name = CANARY;

@@ -2,9 +2,8 @@
 
 Implement graceful degradation with fallback tools.
 
-```typescript
-import { createTool, createMiddleware } from 'armorer';
-import { when } from 'armorer';
+```typescript file=fallback-tools.ts
+import { createTool, createMiddleware, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 // Create a fallback middleware
@@ -39,7 +38,7 @@ function createFallbackMiddleware(fallbacks: Map<string, string>) {
 }
 
 // Define primary and fallback tools
-const fetchFromApi = createTool({
+export const fetchFromApi = createTool({
   name: 'fetch-from-api',
   description: 'Fetch data from external API',
   input: z.object({ endpoint: z.string() }),
@@ -50,7 +49,7 @@ const fetchFromApi = createTool({
   },
 });
 
-const fetchFromCache = createTool({
+export const fetchFromCache = createTool({
   name: 'fetch-from-cache',
   description: 'Fetch data from cache',
   input: z.object({ endpoint: z.string() }),
@@ -70,20 +69,18 @@ const toolbox = createToolbox([fetchFromApi.configuration, fetchFromCache.config
 
 ```typescript
 import { when } from 'armorer';
+import { fetchFromApi, fetchFromCache } from './fallback-tools.ts';
 
-// Create a tool that tries primary, falls back to secondary
+// Route to the API while its health check passes, and to the cache otherwise
 const resilientFetch = when(
-  async (params) => {
-    try {
-      return await fetchFromApi(params);
-    } catch {
-      return undefined; // Signal to use fallback
-    }
+  async () => {
+    const health = await fetch('https://api.example.com/health').catch(() => undefined);
+    return health?.ok === true;
   },
   fetchFromApi,
-  fetchFromCache, // Used if condition returns falsy
+  fetchFromCache, // Used if the predicate returns false
 );
 
 // Usage
-const result = await resilientFetch({ endpoint: '/api/data' });
+const result = await resilientFetch.execute({ endpoint: '/api/data' });
 ```

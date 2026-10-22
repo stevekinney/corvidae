@@ -83,6 +83,11 @@ All values in the default rule are concrete (not `revert`), so you only need to 
 A `<VisuallyHidden>` element must be queryable by text in unit tests:
 
 ```ts
+import { expect } from 'bun:test';
+import { render } from '@testing-library/svelte';
+
+import MyComponent from './my-component.svelte';
+
 const { getByText } = render(MyComponent);
 expect(getByText('Copy code to clipboard')).toBeDefined();
 ```

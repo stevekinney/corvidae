@@ -318,6 +318,11 @@ export interface TaskRegistry {
   /** The records of tasks that have not been settled: the ones a crash may have left so. */
   unsettled(): Promise<readonly TaskRecord[]>;
   /**
+   * The records of schedule fires that have been settled (COR-1594). A boot reads them to append the
+   * history event of a fire whose process died between writing the settlement and appending it.
+   */
+  settledFires(): Promise<readonly TaskRecord[]>;
+  /**
    * Follows a task's `closed()` acknowledgement and records where its cleanup
    * ended. A second call for a task already followed returns the first.
    */
@@ -386,6 +391,13 @@ export interface CreateTaskRegistryOptions {
   readonly identifiers: RuntimeIdentifiers;
   readonly host: TaskRegistryHost;
   readonly diagnose: (message: string, cause?: unknown) => void;
+  /**
+   * Told, after {@link TaskRegistry.recordSettled} has written the settlement and announced it
+   * here, of each schedule fire it settled (COR-1594). The Bureau records the fire's end in the
+   * durable history from here, which is how a stream another process serves learns of it. A
+   * rejection is diagnosed, never thrown into the settlement.
+   */
+  readonly onFireSettled?: ((record: TaskRecord) => Promise<void>) | undefined;
 }
 
 /** The task state a settled run maps to. */
@@ -767,6 +779,21 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   }
 
   /**
+   * Tells {@link CreateTaskRegistryOptions.onFireSettled} that a schedule fire's settlement has been
+   * written, wherever it was written (COR-1594). Other kinds of task are not announced. A rejection
+   * is diagnosed and not thrown into the settlement: the boot pass over settled fires appends an
+   * event that never landed.
+   */
+  async function recordFireSettled(record: TaskRecord): Promise<void> {
+    if (record.kind !== 'schedule-fire' || options.onFireSettled === undefined) return;
+    try {
+      await options.onFireSettled(record);
+    } catch (error) {
+      diagnose(`Could not record in the history how schedule fire "${record.taskId}" ended`, error);
+    }
+  }
+
+  /**
    * Tells whoever waits that the task has settled. A listener is told once, and a task not yet
    * settled (a write that changed something else) tells no one. A listener that throws is its
    * own failure, never the write's.
@@ -863,6 +890,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async recordSettled(taskId, settlement) {
+      const captured: { settled?: TaskRecord } = {};
       const recorded = await track(
         update(taskId, (record) => {
           // A task has more than one writer of its settlement (the action that ended the run,
@@ -874,10 +902,16 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               ? (settlement.answer ?? record.settled?.answer)
               : undefined;
           const { answer: _ignored, ...rest } = settlement;
-          return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
+          const next: TaskRecord = {
+            ...record,
+            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+          };
+          captured.settled = next;
+          return next;
         }),
       );
       if (recorded) await announceSettled(taskId);
+      if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
       return recorded;
     },
 
@@ -953,6 +987,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async unsettled() {
       const records = await allRecords();
       return records.filter((record) => record.settled === undefined);
+    },
+
+    async settledFires() {
+      const records = await allRecords();
+      return records.filter(
+        (record) => record.kind === 'schedule-fire' && record.settled !== undefined,
+      );
     },
 
     watchCleanup,
@@ -1143,18 +1184,25 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           // A durable run this process holds no live run for.
           const outcome = await host.cancelDurable(taskId);
           if (outcome.status === 'requested') {
-            await update(taskId, (current) => ({
-              ...current,
-              settled: {
-                at: clock.nowISO(),
-                status: 'canceled',
-                finishReason: 'aborted',
-                message: null,
-              },
-              // A stop with no acknowledgement behind it: a repeat answers the same.
-              cleanup: 'canceled',
-            }));
+            const canceled: { record?: TaskRecord } = {};
+            await update(taskId, (current) => {
+              const next: TaskRecord = {
+                ...current,
+                settled: {
+                  at: clock.nowISO(),
+                  status: 'canceled',
+                  finishReason: 'aborted',
+                  message: null,
+                },
+                // A stop with no acknowledgement behind it: a repeat answers the same.
+                cleanup: 'canceled',
+              };
+              canceled.record = next;
+              return next;
+            });
             await announceSettled(taskId);
+            // COR-1594: written here and not through `recordSettled`, so announced as it is.
+            if (canceled.record !== undefined) await recordFireSettled(canceled.record);
             return { receipt: 'canceled' };
           }
           if (outcome.status === 'failed') throw outcome.error;

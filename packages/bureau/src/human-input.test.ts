@@ -28,11 +28,13 @@
 // (every pre-existing park test in `create-bureau.test.ts` uses it), so a
 // loop that doesn't break on its own is never masked.
 
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, HumanWaitParkedEvent, stopWhen } from '@lostgradient/operative';
+import {
+  createCheckpointStore,
+  type GenerateFunction,
+  HumanWaitParkedEvent,
+  stopWhen,
+} from '@lostgradient/operative';
 import {
   createProcessLocalGrantStateStore,
   createTool,
@@ -41,6 +43,7 @@ import {
 } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
@@ -73,8 +76,6 @@ function createNextTool() {
     execute: async () => 'ok',
   });
 }
-
-let recoveryDatabaseCounter = 0;
 
 describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', () => {
   it('parks before any further generation, observable through listPendingReviews, getRun, getDurableRun, and liveness', async () => {
@@ -240,10 +241,7 @@ describe('requestHumanInput park survives a process restart while still parked (
     // disposed — simulating a crash while genuinely parked, the exact
     // scenario the crash fixture's `signal-parked` marker now drives through
     // the real tool instead of a bespoke stand-in.
-    const databasePath = join(
-      tmpdir(),
-      `ab336-human-wait-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('ab336-human-wait-recovery', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -336,6 +334,7 @@ describe('requestHumanInput park survives a process restart while still parked (
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -346,10 +345,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     // process died before the run committed a step past the park. On recovery
     // the last checkpointed step is still the park, so it is re-synthesized;
     // its id must equal the persisted one or it would show as pending again.
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-resolved-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-resolved', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -423,14 +419,12 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('numbers a re-park after several resolved parks and a mid-step crash past all of them', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-multi-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-multi-park', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -526,16 +520,14 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('a re-park after a resolved park and a crash before the next commit (COR-106)', () => {
   it('surfaces the re-park on the same signal instead of hiding it behind the resolved id', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-resume-crash-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-resume-crash', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -621,16 +613,14 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('resolving a recovered run re-park leaves no phantom review (COR-106)', () => {
   it('keeps listPendingReviews empty while the resumed run is still running its next step', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-phantom-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-phantom', '.sqlite');
     const park = (id: string) => ({
       content: '',
       toolCalls: [{ id, name: 'requestHumanInput', arguments: { signalName: 'human-response' } }],
@@ -700,16 +690,14 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       );
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('parallel same-signal parks keep review ids stable across a restart (COR-106)', () => {
   it('reconstructs no phantom review after two parallel same-signal calls, a re-park, and a crash', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-parallel-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-parallel-park', '.sqlite');
     const call = (id: string) => ({
       id,
       name: 'requestHumanInput',
@@ -786,6 +774,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       );
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -801,10 +790,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     // never included `requestHumanInput`: the call would settle as a
     // tool-not-found error, `pendingHumanWait` would never be set, and the
     // step loop would continue straight past the park.
-    const databasePath = join(
-      tmpdir(),
-      `ab336-toolbox-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('ab336-toolbox-recovery', '.sqlite');
 
     let bureauAReachedStep1 = false;
     const bureauA = await createBureau({
@@ -903,6 +889,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -1062,6 +1049,281 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
       expect(stored?.usesRemaining).toBe(0);
     } finally {
       bureau.dispose();
+    }
+  });
+});
+
+// COR-1578 — in a step, the first park request is honored and every later one is refused. Bureau
+// runs its tools in armorer's default parallel mode and exposes no execution-mode option, so which
+// of two calls arrives first is not asserted: exactly one park is honored, exactly one refusal is
+// returned, the refusal's `pendingPark` names the honored request, and the refusal's own fields
+// (or its call id) name the other.
+describe('the first park request in a step is honored and the rest are refused (COR-1578)', () => {
+  type ParkCall = { id: string; name: string; arguments: Record<string, unknown> };
+  type Outcome = Record<string, unknown>;
+
+  const ask = (id: string, signalName: string, prompt?: string): ParkCall => ({
+    id,
+    name: 'requestHumanInput',
+    arguments: prompt === undefined ? { signalName } : { signalName, prompt },
+  });
+  const sleep = (id: string, duration: number | string): ParkCall => ({
+    id,
+    name: 'scheduleWakeup',
+    arguments: { in: duration },
+  });
+  const refusalMessage = (pending: string) =>
+    `Not requested: this step already waits for ${pending}. Request it again after that wait ends.`;
+
+  /** The tool results a generate step finds in its conversation, by call id. */
+  function outcomesFrom(context: Parameters<GenerateFunction>[0]): Map<string, Outcome> {
+    const outcomes = new Map<string, Outcome>();
+    for (const message of context.conversation.getMessages()) {
+      const result = message.toolResult;
+      if (result !== undefined) outcomes.set(result.callId, result.content as Outcome);
+    }
+    return outcomes;
+  }
+
+  const isParked = (outcome: Outcome | undefined) =>
+    outcome?.['parked'] === true || outcome?.['scheduled'] === true;
+
+  /** Runs a step that makes every call at once, then whatever `followUp` says. */
+  async function startStep(calls: ParkCall[], followUp?: ParkCall) {
+    const requests: Map<string, Outcome>[] = [];
+    let generateCalls = 0;
+    const bureau = await createBureau({
+      agents: {},
+      generate: async (context) => {
+        generateCalls++;
+        if (generateCalls === 1) return { content: '', toolCalls: calls };
+        requests.push(outcomesFrom(context));
+        if (generateCalls === 2 && followUp !== undefined) {
+          return { content: '', toolCalls: [followUp] };
+        }
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      durableBackgroundTasks: 'manual',
+      humanInput: true,
+      wakeup: true,
+      stopWhen: stopWhen.some(
+        stopWhen.toolCalled('requestHumanInput'),
+        stopWhen.toolCalled('scheduleWakeup'),
+        stopWhen.noToolCalls(),
+      ),
+    });
+    const run = await bureau.createRun({ message: 'park-twice' });
+    const reviews = () =>
+      bureau
+        .listPendingReviews()
+        .filter((review) => review.runId === run.id && review.kind === 'human-wait');
+    const parkSignals = () =>
+      bureau.store
+        .getRun(run.id)!
+        .actions.filter((action) => action.type === HumanWaitParkedEvent.type)
+        .map((action) => (action.detail as { signalName: string }).signalName);
+    return { bureau, run, requests, generateCalls: () => generateCalls, reviews, parkSignals };
+  }
+
+  /**
+   * Waits for the first step to be committed, then reads its tool results from the durable
+   * checkpoint: the persisted `StepRecord.results` a refusal has to survive in.
+   */
+  async function firstStepOutcomes(
+    started: Awaited<ReturnType<typeof startStep>>,
+    calls: ParkCall[],
+  ) {
+    const checkpoints = createCheckpointStore(started.bureau.kv!);
+    await waitForCondition(async () => {
+      const committed = await checkpoints.loadSteps(started.run.id);
+      return committed.length >= 1;
+    }, 'expected the first step to be committed');
+    const steps = await checkpoints.loadSteps(started.run.id);
+    const [step] = steps;
+    const outcomes = new Map<string, Outcome>();
+    for (const result of step!.results) outcomes.set(result.toolCallId, result.result as Outcome);
+    expect(outcomes.size).toBe(calls.length);
+    const honoredCalls = calls.filter((call) => isParked(outcomes.get(call.id)));
+    const refusedCalls = calls.filter((call) => outcomes.get(call.id)?.['refused'] === true);
+    expect(honoredCalls).toHaveLength(1);
+    expect(refusedCalls).toHaveLength(1);
+    return {
+      honored: honoredCalls[0]!,
+      refused: refusedCalls[0]!,
+      honoredOutcome: outcomes.get(honoredCalls[0]!.id)!,
+      refusedOutcome: outcomes.get(refusedCalls[0]!.id)!,
+    };
+  }
+
+  it('parks on one of two different signals and refuses the other, listing one review and one park event', async () => {
+    const calls = [ask('call-a', 'a', 'Approve a?'), ask('call-b', 'b', 'Approve b?')];
+    const started = await startStep(calls);
+    try {
+      const { honored, refused, refusedOutcome } = await firstStepOutcomes(started, calls);
+      const honoredSignal = honored.arguments['signalName'] as string;
+      const refusedSignal = refused.arguments['signalName'] as string;
+      expect(refusedOutcome).toEqual({
+        parked: false,
+        signalName: refusedSignal,
+        refused: true,
+        pendingPark: { kind: 'human-input', signalName: honoredSignal },
+        message: refusalMessage(`human signal "${honoredSignal}"`),
+      });
+      expect(new Set(started.parkSignals())).toEqual(new Set([honoredSignal]));
+      const reviews = started.reviews();
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]).toMatchObject({ kind: 'human-wait', signalName: honoredSignal });
+      // The refusal took no ordinal: the honored park is the run's first.
+      expect(reviews[0]!.id).toBe(`human-wait:${started.run.id}:${honoredSignal}:0`);
+    } finally {
+      started.bureau.dispose();
+    }
+  });
+
+  it('refuses a repeat of the same signal name; the park and review are those of one call', async () => {
+    const calls = [ask('call-1', 'a'), ask('call-2', 'a')];
+    const started = await startStep(calls);
+    try {
+      const { refusedOutcome } = await firstStepOutcomes(started, calls);
+      expect(refusedOutcome).toEqual({
+        parked: false,
+        signalName: 'a',
+        refused: true,
+        pendingPark: { kind: 'human-input', signalName: 'a' },
+        message: refusalMessage('human signal "a"'),
+      });
+      expect(new Set(started.parkSignals())).toEqual(new Set(['a']));
+      expect(started.reviews().map((review) => review.id)).toEqual([
+        `human-wait:${started.run.id}:a:0`,
+      ]);
+    } finally {
+      started.bureau.dispose();
+    }
+  });
+
+  for (const order of ['human input then wakeup', 'wakeup then human input'] as const) {
+    it(`honors exactly one of a human-input request and a wakeup (${order})`, async () => {
+      const human = ask('call-human', 'a', 'Approve?');
+      const wake = sleep('call-wake', '6h');
+      const calls = order === 'human input then wakeup' ? [human, wake] : [wake, human];
+      const started = await startStep(calls);
+      try {
+        const { honored, refused, refusedOutcome } = await firstStepOutcomes(started, calls);
+        if (honored === human) {
+          expect(refused).toBe(wake);
+          expect(refusedOutcome).toEqual({
+            scheduled: false,
+            refused: true,
+            pendingPark: { kind: 'human-input', signalName: 'a' },
+            message: refusalMessage('human signal "a"'),
+          });
+          expect(started.reviews()).toHaveLength(1);
+          expect(new Set(started.parkSignals())).toEqual(new Set(['a']));
+        } else {
+          expect(honored).toBe(wake);
+          expect(refusedOutcome).toEqual({
+            parked: false,
+            signalName: 'a',
+            refused: true,
+            pendingPark: { kind: 'wakeup', duration: '6h' },
+            message: refusalMessage('a wakeup in 6h'),
+          });
+          // No park event is dispatched and no review is listed for the refused human input.
+          expect(started.parkSignals()).toEqual([]);
+          expect(started.reviews()).toEqual([]);
+        }
+      } finally {
+        started.bureau.dispose();
+      }
+    });
+  }
+
+  it('honors one of two wakeups and refuses the other, rendering a numeric duration as milliseconds', async () => {
+    const calls = [sleep('call-1', 21_600_000), sleep('call-2', '1h')];
+    const started = await startStep(calls);
+    try {
+      const { honored, refusedOutcome } = await firstStepOutcomes(started, calls);
+      const duration = honored.arguments['in'] as number | string;
+      const label = typeof duration === 'number' ? `${duration}ms` : duration;
+      expect(refusedOutcome).toEqual({
+        scheduled: false,
+        refused: true,
+        pendingPark: { kind: 'wakeup', duration },
+        message: refusalMessage(`a wakeup in ${label}`),
+      });
+      expect(started.reviews()).toEqual([]);
+      expect(started.parkSignals()).toEqual([]);
+    } finally {
+      started.bureau.dispose();
+    }
+  });
+
+  it('resumes when the honored human input is answered, and the next request carries both tool results', async () => {
+    const calls = [ask('call-a', 'a'), ask('call-b', 'b')];
+    const started = await startStep(calls);
+    try {
+      const { honored, refused } = await firstStepOutcomes(started, calls);
+      await started.bureau.resolveReview({
+        id: started.reviews()[0]!.id,
+        decision: 'approve',
+        principal: 'operator',
+      });
+      await waitForCondition(() => started.requests.length === 1, 'expected the resumed step');
+      const [request] = started.requests;
+      expect(isParked(request!.get(honored.id))).toBe(true);
+      expect(request!.get(refused.id)?.['refused']).toBe(true);
+      await waitForCondition(
+        () => started.bureau.getRun(started.run.id)?.status === 'completed',
+        'expected the run to complete',
+      );
+      expect(started.generateCalls()).toBe(2);
+    } finally {
+      started.bureau.dispose();
+    }
+  });
+
+  it('resumes under stopWhen.toolCalled, and a later step can ask a different signal that parks normally', async () => {
+    const calls = [ask('call-a', 'a'), ask('call-b', 'b')];
+    const started = await startStep(calls, ask('call-c', 'c'));
+    try {
+      await firstStepOutcomes(started, calls);
+      await started.bureau.resolveReview({
+        id: started.reviews()[0]!.id,
+        decision: 'approve',
+        principal: 'operator',
+      });
+      await waitForCondition(
+        () => started.reviews().some((review) => review.id.includes(':c:')),
+        'expected the later step to park on c',
+      );
+      // The refusal took no ordinal, so the second park is the run's second.
+      expect(started.reviews().map((review) => review.id)).toEqual([
+        `human-wait:${started.run.id}:c:1`,
+      ]);
+      expect(started.requests).toHaveLength(1);
+    } finally {
+      started.bureau.dispose();
+    }
+  });
+
+  it('fires the honored wakeup and resumes with both tool results in the next request', async () => {
+    const calls = [sleep('call-1', '6h'), sleep('call-2', 30_000)];
+    const started = await startStep(calls);
+    try {
+      const { honored, refused } = await firstStepOutcomes(started, calls);
+      const deadline = Date.parse('2099-01-01T00:00:00.000Z');
+      await waitForCondition(async () => {
+        await started.bureau.runDurableMaintenance(deadline);
+        return started.requests.length === 1;
+      }, 'expected the wakeup to fire and the run to resume');
+      const [request] = started.requests;
+      expect(isParked(request!.get(honored.id))).toBe(true);
+      expect(request!.get(refused.id)?.['refused']).toBe(true);
+    } finally {
+      started.bureau.dispose();
     }
   });
 });

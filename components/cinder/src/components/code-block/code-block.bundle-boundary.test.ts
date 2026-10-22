@@ -16,6 +16,7 @@
  */
 
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { uniqueFileName } from '@lostgradient/testing/temporary-path';
 import { dirname, resolve as resolvePath, sep } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
@@ -114,7 +115,7 @@ async function renderServerFallback(): Promise<{
       const compiled = compile(source, { filename: sourcePath, generate: 'server', css: 'external', dev: false });
       const serverSvelteEntry = pathToFileURL(join(process.cwd(), 'node_modules/svelte/src/index-server.js')).href;
       const serverCode = compiled.js.code.replaceAll("from 'svelte';", \`from \${JSON.stringify(serverSvelteEntry)};\`);
-      const file = join(dirname(sourcePath), \`.cinder-ssr-test-\${process.pid}-\${Date.now()}.mjs\`);
+      const file = join(dirname(sourcePath), ${JSON.stringify(uniqueFileName('.cinder-ssr-test', '.mjs'))});
       await writeFile(file, serverCode, 'utf-8');
       try {
         const { render } = await import('svelte/server');

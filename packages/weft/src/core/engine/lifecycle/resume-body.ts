@@ -1,11 +1,9 @@
 /**
- * `resumeWorkflowFromStorage()`'s guts — split out of `resume.ts`, which has
- * no headroom under the repository's 500-line implementation-file ceiling
- * for the WFT-134 claim-release wrapping added around this logic (mirrors
- * `resume-generation-guard.ts`'s same split). `resume.ts` itself is now just
- * the public entry point: load/validate state, acquire a claim if needed,
- * and call {@link performResumeAfterClaimAcquired} below inside the
- * claim-release `try`/`catch`.
+ * `resumeWorkflowFromStorage()`'s guts — split out of `resume.ts`, which has no headroom under
+ * the repository's 500-line implementation-file ceiling for the WFT-134 claim-release wrapping
+ * added around this logic (mirrors `resume-generation-guard.ts`'s same split). `resume.ts` itself
+ * is now just the public entry point: load/validate state, acquire a claim if needed, and call
+ * {@link performResumeAfterClaimAcquired} below inside the claim-release `try`/`catch`.
  *
  * @module core/engine/lifecycle/resume-body
  */
@@ -23,6 +21,7 @@ import { createWorkflowScopedContextCallbacks, resetCancelHandlers } from '../ca
 import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { rehydrateChildCancellationHandlers } from '../child-workflow-cancellation.ts';
 import { resolveExecutableRegistrationOrRenamedNotFound } from '../dynamic-source-execution.ts';
+import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import { commitFencedEngineWrite } from '../fenced-write.ts';
 import { getWorkflowExecutionStartedAt, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
@@ -46,6 +45,7 @@ import {
   type RecoveredWorkflowInfo,
   type RegistrationEntry,
 } from './shared.ts';
+import { WorkflowNotResumableError } from './workflow-not-resumable-error.ts';
 
 export type SerializedResumeArgs = {
   workflowId: string;
@@ -182,19 +182,17 @@ function commitSerializedResumeState(
   internals.parkedInlineWorkflows.delete(workflowId);
 }
 
-async function relaunchInlineWorkflowAfterResume(
+function relaunchInlineWorkflowAfterResume(
   internals: EngineInternals,
   latestState: WorkflowState,
   args: Pick<
     SerializedResumeArgs,
     'workflowId' | 'resumeCheckpoint' | 'registration' | 'resolvedRevision' | 'callbacks'
   >,
-): Promise<void> {
+): void {
   const { workflowId, resumeCheckpoint, registration, resolvedRevision, callbacks } = args;
-  // Keep the final running-state check and the re-entry into user code
-  // in the same serialized section so cancel/timeout cannot commit a
-  // terminal state and still let a parked workflow continue.
-  //
+  // Keep the final running-state check and the re-entry into user code in the same serialized
+  // section so cancel/timeout cannot commit a terminal state and still let a parked workflow continue.
   const accumulatedResults = new Map<number, unknown>(resumeCheckpoint.accumulatedResults);
   const workflowAbort = new AbortController();
 
@@ -210,8 +208,6 @@ async function relaunchInlineWorkflowAfterResume(
     revision: resolvedRevision,
   });
 
-  resetCancelHandlers(internals, workflowId);
-  await rehydrateChildCancellationHandlers(internals, workflowId, callbacks);
   const context = new Context({
     workflowId,
     ...(latestState.workflowExecutionToken !== undefined && {
@@ -237,13 +233,12 @@ async function relaunchInlineWorkflowAfterResume(
     // Non-serialized services re-provided by resolveServicesForRecovery (or set
     // at start when resuming in the same process); undefined when none.
     services: internals.workflowServices.get(workflowId),
-    // Carry the host `ctx.log` sink onto the recovered context, mirroring the
-    // fresh-start path (resolveLogSinkOption). Without it, a log at the live frontier
-    // of a recovered run — and any speculative child it parents — reaches the console
-    // but never `EngineOptions.onLog`. Construction normalizes a missing `onLog` to
-    // `null`; use loose `!= null` so the narrowed type drops both `null` and the option's
-    // declared `undefined`, keeping `logSink` assignable under `exactOptionalPropertyTypes`
-    // (the build's stricter tsc enforces this) (#549).
+    // Carry the host `ctx.log` sink onto the recovered context, mirroring the fresh-start path
+    // (resolveLogSinkOption). Without it, a log at the live frontier of a recovered run — and any
+    // speculative child it parents — reaches the console but never `EngineOptions.onLog`.
+    // Construction normalizes a missing `onLog` to `null`; use loose `!= null` so the narrowed type
+    // drops both `null` and the option's declared `undefined`, keeping `logSink` assignable under
+    // `exactOptionalPropertyTypes` (the build's stricter tsc enforces this) (#549).
     ...(internals.options.onLog != null && { logSink: internals.options.onLog }),
   });
   setContextWorkflowInterceptor(context, getComposedWorkflowInterceptor(internals));
@@ -256,17 +251,18 @@ async function relaunchInlineWorkflowAfterResume(
   const inlineStrategy = internals.inlineStrategy!;
   inlineStrategy.adoptWorkflow(workflowId, generator, context, workflowAbort);
   inlineStrategy.continueWorkflow(workflowId, undefined);
+  completeExecutionAttemptLaunch(internals, workflowId, latestState.workflowExecutionToken);
 }
 
-async function relaunchWorkerWorkflowAfterResume(
+function relaunchWorkerWorkflowAfterResume(
   internals: EngineInternals,
   latestState: WorkflowState,
   args: Pick<
     SerializedResumeArgs,
-    'workflowId' | 'resumeCheckpoint' | 'workflowStartHeaders' | 'resolvedRevision' | 'callbacks'
+    'workflowId' | 'resumeCheckpoint' | 'workflowStartHeaders' | 'resolvedRevision'
   >,
-): Promise<void> {
-  const { workflowId, resumeCheckpoint, workflowStartHeaders, resolvedRevision, callbacks } = args;
+): void {
+  const { workflowId, resumeCheckpoint, workflowStartHeaders, resolvedRevision } = args;
   // See `relaunchInlineWorkflowAfterResume()`'s matching comment: identity
   // population (WFT-19), landed before `startWorkflow()` below, using
   // `resolvedRevision` per `SerializedResumeArgs.resolvedRevision`'s doc.
@@ -274,8 +270,6 @@ async function relaunchWorkerWorkflowAfterResume(
     type: latestState.type,
     revision: resolvedRevision,
   });
-  resetCancelHandlers(internals, workflowId);
-  await rehydrateChildCancellationHandlers(internals, workflowId, callbacks);
   const serialized = serializeCheckpoint(resumeCheckpoint);
   internals.strategy.startWorkflow({
     workflowId,
@@ -295,6 +289,7 @@ async function relaunchWorkerWorkflowAfterResume(
         headers: [...workflowStartHeaders],
       }),
   });
+  completeExecutionAttemptLaunch(internals, workflowId, latestState.workflowExecutionToken);
 }
 
 /**
@@ -358,9 +353,7 @@ async function performSerializedResume(
   }
 
   if (latestState.status !== 'running' && latestState.status !== 'suspended') {
-    throw new Error(
-      `Cannot resume workflow "${workflowId}": status is "${latestState.status}", expected "running" or "suspended"`,
-    );
+    throw new WorkflowNotResumableError(workflowId, latestState.status);
   }
 
   assertSameGeneration(workflowId, latestState, args.expectedGeneration);
@@ -376,13 +369,17 @@ async function performSerializedResume(
   // extra state write (and visibility-index churn) on every recoverAll() resume.
   await reactivateSuspendedWorkflowState(internals, latestState);
 
+  // The scan awaits, so it runs before adoption: from `commitSerializedResumeState` to the launch
+  // completing nothing awaits, and a resume landing there never sees an adopted, unlaunched run.
+  resetCancelHandlers(internals, workflowId);
+  await rehydrateChildCancellationHandlers(internals, workflowId, args.callbacks);
   commitSerializedResumeState(internals, args);
 
   if (internals.inlineStrategy) {
-    await relaunchInlineWorkflowAfterResume(internals, latestState, args);
+    relaunchInlineWorkflowAfterResume(internals, latestState, args);
     return;
   }
-  await relaunchWorkerWorkflowAfterResume(internals, latestState, args);
+  relaunchWorkerWorkflowAfterResume(internals, latestState, args);
 }
 
 /**

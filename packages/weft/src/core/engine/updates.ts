@@ -5,6 +5,7 @@ import type { UpdateRequest, UpdateResponse } from '../updates.ts';
 import { notifyConditionWaiters } from './condition-waiters.ts';
 import type { EngineInternals } from './internals.ts';
 import { invokeUpdateHandler, type InlineUpdateHandler } from './invoke-update-handler.ts';
+import { validateMessageInput } from './payload-validation.ts';
 import { isLiveContextStale, isWorkflowClaimedByAnotherEngine } from './queries.ts';
 import { untrackWaiterKey } from './signals.ts';
 import { runUpdateValidator } from './update-validation.ts';
@@ -21,7 +22,8 @@ export type UpdateCallbacks = {
     operationId: string,
     workflowExecutionToken?: string,
   ) => void;
-  guardTerminalWorkflow: (workflowId: string) => Promise<void>;
+  /** Rejects a terminal workflow and, given `updateName`, an update name the workflow did not declare. */
+  guardTerminalWorkflow: (workflowId: string, updateName?: string) => Promise<void>;
   guardTerminalWorkflowAfterCoordinatedRequest: (
     workflowId: string,
     updateId: string,
@@ -62,11 +64,13 @@ export async function update(
 ): Promise<unknown> {
   const timeout = options?.timeout ?? 30_000;
 
-  // Run pre-acceptance validator before any durable action.
+  // Validate against the declared schema, then run the pre-acceptance
+  // validator, before any durable action.
+  await validateMessageInput(internals, 'update', workflowId, name, payload);
   await runUpdateValidator(internals, workflowId, name, payload);
 
-  // Reject updates to workflows in terminal states
-  await callbacks.guardTerminalWorkflow(workflowId);
+  // Reject updates to workflows in terminal states, and undeclared update names
+  await callbacks.guardTerminalWorkflow(workflowId, name);
 
   const inlineResult = await tryInlineUpdateHandler(
     internals,
@@ -300,11 +304,13 @@ export async function submitCoordinatedUpdate(
     }
   }
 
-  // Run pre-acceptance validator before any durable action.
+  // Validate against the declared schema, then run the pre-acceptance
+  // validator, before any durable action.
+  await validateMessageInput(internals, 'update', workflowId, name, payload);
   await runUpdateValidator(internals, workflowId, name, payload);
 
-  // Reject updates to workflows in terminal states
-  await callbacks.guardTerminalWorkflow(workflowId);
+  // Reject updates to workflows in terminal states, and undeclared update names
+  await callbacks.guardTerminalWorkflow(workflowId, name);
 
   const requestOptions: { timeout: number; idempotencyKey?: string } = { timeout };
   if (idempotencyKey !== undefined) {

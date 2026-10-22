@@ -37,6 +37,8 @@ import {
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
+import { resolvePayloadValidation, resolveSchemaPolicy } from './schema-policy.ts';
+import { declaredMapFields } from './used-activities.ts';
 import {
   normalizeHistoryPolicy,
   normalizePayloadSizePolicy,
@@ -180,9 +182,7 @@ export function copyWorkflowDefinition(
     ...(registration.description === undefined ? {} : { description: registration.description }),
     ...(registration.inputSchema === undefined ? {} : { inputSchema: registration.inputSchema }),
     ...(registration.outputSchema === undefined ? {} : { outputSchema: registration.outputSchema }),
-    ...(registration.signals === undefined ? {} : { signals: { ...registration.signals } }),
-    ...(registration.updates === undefined ? {} : { updates: { ...registration.updates } }),
-    ...(registration.queries === undefined ? {} : { queries: { ...registration.queries } }),
+    ...declaredMapFields(registration),
     ...(registration.searchAttributes === undefined
       ? {}
       : { searchAttributes: registration.searchAttributes }),
@@ -314,6 +314,8 @@ export function resolveEngineOptions(
     workerStartOverrideSigningSecret: options?.workerStartOverrideSigningSecret ?? null,
     backgroundTaskMode: resolveBackgroundTaskMode(options),
     inlineLaunchSchedulingMode: resolveInlineLaunchSchedulingMode(options),
+    schemaPolicy: resolveSchemaPolicy(options),
+    payloadValidation: resolvePayloadValidation(options),
     ...resolveBooleanDefaults(options),
     ...resolveNumericDefaults(options),
     ...resolveRetentionFields(options),

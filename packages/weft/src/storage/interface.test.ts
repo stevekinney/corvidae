@@ -306,6 +306,8 @@ describe('WEFT_RESERVED_KEY_PREFIXES', () => {
       KEYS.timeline('workflow-id', 1),
       KEYS.schedule('schedule-id'),
       KEYS.scheduleTick(1, 'schedule-id'),
+      // The scheduler's timer index, written beside every durable timer.
+      'timer-idx:schedule:schedule-id',
       KEYS.scheduleRun('workflow-id'),
       KEYS.scheduleRunLink('workflow-id'),
       KEYS.scheduleRunBySchedule('schedule-id', 'workflow-id'),

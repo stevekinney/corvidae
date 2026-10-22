@@ -7,10 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-documentation-coverage.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "types": "tsc -b tsconfig.source.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "devDependencies": {

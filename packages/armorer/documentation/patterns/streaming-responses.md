@@ -11,11 +11,11 @@ Armorer supports two modes for async-iterable tool output:
 
 ## Example: Collect Fallback (Default)
 
-```typescript
+```typescript file=token-tool.ts
 import { createTool } from 'armorer';
 import { z } from 'zod';
 
-const tokenTool = createTool({
+export const tokenTool = createTool({
   name: 'token-tool',
   description: 'Emit tokens',
   input: z.object({ prompt: z.string() }),
@@ -41,6 +41,8 @@ console.log(result.result); // ['hello:a', 'hello:b']
 ## Example: Live Stream Mode
 
 ```typescript
+import { tokenTool } from './token-tool.ts';
+
 const result = await tokenTool.execute(
   {
     id: 'stream-1',
@@ -67,12 +69,14 @@ These events are emitted when a tool returns an async-iterable:
 `output-chunk` is still emitted for compatibility.
 
 ```typescript
+import { tokenTool } from './token-tool.ts';
+
 tokenTool.addEventListener('stream-start', (event) => {
-  console.log('mode', event.detail.mode);
+  console.log('mode', event.mode);
 });
 
 tokenTool.addEventListener('stream-chunk', (event) => {
-  console.log(event.detail.index, event.detail.chunk);
+  console.log(event.index, event.chunk);
 });
 ```
 

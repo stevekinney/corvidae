@@ -44,7 +44,7 @@ describe('FaultCode mapping tables', () => {
     expect(FAULT_CODE_TO_HTTP_STATUS.NotFound).toBe(404);
     expect(FAULT_CODE_TO_HTTP_STATUS.Conflict).toBe(409);
     expect(FAULT_CODE_TO_HTTP_STATUS.Unprocessable).toBe(422);
-    expect(FAULT_CODE_TO_HTTP_STATUS.Timeout).toBe(408);
+    expect(FAULT_CODE_TO_HTTP_STATUS.Timeout).toBe(504);
     expect(FAULT_CODE_TO_HTTP_STATUS.PayloadTooLarge).toBe(413);
     expect(FAULT_CODE_TO_HTTP_STATUS.NotImplemented).toBe(501);
     expect(FAULT_CODE_TO_HTTP_STATUS.UnsupportedTransport).toBe(501);

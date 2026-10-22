@@ -13,6 +13,9 @@ Use `SelectionPopover` when you want readers to annotate or comment on a highlig
 The `position` prop accepts a **viewport-relative anchor point** — the same coordinate space returned by `Range.getClientRects()` and `Range.getBoundingClientRect()`. A typical consumer computes the anchor from the selected range and passes it directly:
 
 ```ts
+declare const selection: Selection;
+let position: { x: number; y: number; height: number };
+
 const range = selection.getRangeAt(0);
 const rect =
   Array.from(range.getClientRects()).find((clientRect) => {

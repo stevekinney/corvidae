@@ -4,18 +4,24 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./protocol": "./src/protocol/index.ts"
+    "./protocol": "./src/protocol/index.ts",
+    "./open-ai/agents": "./src/adapters/open-ai/agents/index.ts",
+    "./coding": "./src/coding/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-documentation-coverage.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "types": "tsc -b tsconfig.source.json",
-    "typecheck": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "catalog:",
+    "@google/genai": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
+    "openai": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   },

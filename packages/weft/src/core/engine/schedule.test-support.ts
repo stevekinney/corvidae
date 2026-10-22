@@ -1,3 +1,4 @@
+import type { Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
 import { Engine } from '../engine.ts';
@@ -16,7 +17,7 @@ export type Clock = { now: number };
 export const MINUTE = 60_000;
 export const START = Date.UTC(2026, 0, 1, 0, 0, 0);
 
-export function createEngine(clock: Clock, storage = new MemoryStorage()): Engine {
+export function createEngine(clock: Clock, storage: Storage = new MemoryStorage()): Engine {
   return new Engine({ storage, getNow: () => clock.now });
 }
 

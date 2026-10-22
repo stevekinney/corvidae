@@ -495,6 +495,7 @@ export type {
   ScheduleSelfTool,
 } from './create-schedule-self-tool';
 export * from './create-schedule-wakeup-tool';
+export type { RefusedParkRequest } from './park-refusal';
 // F3/D6 — thrown by scheduleWakeup/requestHumanInput when invoked outside a
 // durable run (AB-41's decision record, implemented by AB-43).
 export { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
@@ -541,7 +542,15 @@ export {
 export { DEFAULT_MAXIMUM_STEPS } from './run-step';
 export * from './scheduler/index';
 
-export { countHumanWaitParks, parkedSignalName } from './human-wait-parks';
+export {
+  countHumanWaitParks,
+  humanWaitParkSignalNames,
+  humanWaitParks,
+  parkedHumanWait,
+  parkedSignalName,
+  type HumanWaitPark,
+  type ParkedHumanWait,
+} from './human-wait-parks';
 export {
   assistantMessageIdentifier,
   signalMessageIdentifier,

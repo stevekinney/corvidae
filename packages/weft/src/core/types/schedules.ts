@@ -127,8 +127,11 @@ export interface ScheduleOptions {
   description?: string;
   overlap?: ScheduleOverlapPolicy;
   /**
-   * When `false` (the default), a tick that is more than one second late is
-   * skipped instead of backfilled. Skipped ticks increment
+   * When `false` (the default), an occurrence the scheduler reaches more than
+   * one second plus one scheduler poll interval
+   * (the engine's `schedulerPollIntervalMs`) late is skipped
+   * instead of backfilled. An occurrence the next poll tick reaches is never
+   * skipped for the lateness that polling itself introduces. Skipped ticks increment
    * {@link ScheduleState.missedFireCount}, update
    * {@link ScheduleState.lastMissedFireAt}, and emit a
    * `ScheduleMissedFireEvent`.
@@ -183,9 +186,11 @@ export type ScheduleUpdateOptions = Pick<
 > & {
   /**
    * Apply the update only if the schedule's {@link ScheduleMetadata.revision} is still this
-   * value. The comparison is made inside the schedule's serialized write, so of two concurrent
-   * changes carrying the same `expectedRevision` exactly one applies and the other rejects with
-   * {@link ScheduleStaleRevisionError}. Omitted, the update applies whatever the revision is.
+   * value. The comparison is made inside the schedule's serialized write, and the write is
+   * conditioned on the exact bytes it read, so of two concurrent changes carrying the same
+   * `expectedRevision`, from this engine or from another sharing the store, exactly one applies and
+   * the other rejects with {@link ScheduleStaleRevisionError}. Omitted, the update applies whatever
+   * the revision is.
    */
   expectedRevision?: number;
 };
@@ -244,20 +249,25 @@ export interface ScheduleTransitionOptions {
    * Apply the transition only if the schedule's {@link ScheduleMetadata.revision} is still this
    * value. The comparison is made inside the schedule's serialized write, before the transition
    * decides whether it changes anything, so a caller holding a stale view is refused even when
-   * the call would have been a no-op. A mismatch rejects with
+   * the call would have been a no-op. The write is conditioned on the exact bytes the comparison
+   * read, so of two transitions naming the same revision, from this engine or another sharing the
+   * store, exactly one commits. A mismatch rejects with
    * {@link ScheduleStaleRevisionError} and writes nothing, the caller's
    * `additionalOperations` included. Omitted, the transition applies whatever the revision is.
    */
   expectedRevision?: number;
   /**
    * Caller-owned put/delete operations committed atomically with the schedule
-   * state transition.
+   * state transition. A key under one of Weft's reserved prefixes
+   * (`WEFT_RESERVED_KEY_PREFIXES`) is refused with {@link ScheduleReservedKeyError}.
    */
   additionalOperations?: BatchOperation[];
   /**
    * Caller-owned expected-value guards. The commit — the caller's operations
    * AND the schedule state transition together — is rejected unless every
-   * condition currently holds.
+   * condition currently holds. Each names a key of the caller's own: a key under one of
+   * Weft's reserved prefixes (`WEFT_RESERVED_KEY_PREFIXES`), the schedule's own key among
+   * them, is refused with {@link ScheduleReservedKeyError} before anything is read or written.
    */
   extraConditions?: ConditionalBatchCondition[];
   /**

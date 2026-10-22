@@ -40,6 +40,8 @@ import {
   readEffects,
   REMEMBERED_ANSWER,
   requestContext,
+  SECOND_HUMAN_WAIT_PROMPT,
+  SECOND_HUMAN_WAIT_SIGNAL,
   SESSION_ID,
 } from './process-crash-work-integrity-fixtures';
 
@@ -292,20 +294,22 @@ async function twoParkedRuns(): Promise<void> {
  * the step record. COR-121's in-process test covers the narrower window where
  * the memo landed and the step record did not.
  */
-async function humanWaitParked(): Promise<void> {
+async function humanWaitParked(twoCalls = false): Promise<void> {
+  const park = {
+    id: 'call-park',
+    name: 'requestHumanInput',
+    arguments: { signalName: HUMAN_WAIT_SIGNAL, prompt: HUMAN_WAIT_PROMPT },
+  };
+  // COR-1578: a second request in the same step is refused, so only one of the two parks.
+  const secondPark = {
+    id: 'call-park-second',
+    name: 'requestHumanInput',
+    arguments: { signalName: SECOND_HUMAN_WAIT_SIGNAL, prompt: SECOND_HUMAN_WAIT_PROMPT },
+  };
   const bureau = await createHarnessBureau({
     backend: backend as 'sqlite' | 'lmdb',
     storagePath: storagePath as string,
-    generate: async () => ({
-      content: '',
-      toolCalls: [
-        {
-          id: 'call-park',
-          name: 'requestHumanInput',
-          arguments: { signalName: HUMAN_WAIT_SIGNAL, prompt: HUMAN_WAIT_PROMPT },
-        },
-      ],
-    }),
+    generate: async () => ({ content: '', toolCalls: twoCalls ? [park, secondPark] : [park] }),
     toolbox: createToolbox([]),
     humanInput: true,
   });
@@ -324,7 +328,15 @@ async function humanWaitParked(): Promise<void> {
     const cursor = await checkpoints.loadCursor(run.id);
     return cursor !== null && cursor.step >= 1;
   });
-  writeMarker({ runId: run.id });
+  // The signal the step honored, as the live review names it: the parent compares the recovered
+  // review with it, without assuming which of the two parallel calls arrived first.
+  const honored = bureau
+    .listPendingReviews()
+    .find((review) => review.runId === run.id && review.kind === 'human-wait');
+  writeMarker({
+    runId: run.id,
+    ...(honored?.kind === 'human-wait' ? { honoredSignal: honored.signalName } : {}),
+  });
 }
 
 /**
@@ -421,7 +433,8 @@ const scenarios: Record<string, () => Promise<void>> = {
   'charge-then-crash': chargeThenCrash,
   'memory-write-then-crash': memoryWriteThenCrash,
   'two-parked-runs': twoParkedRuns,
-  'human-wait-parked': humanWaitParked,
+  'human-wait-parked': () => humanWaitParked(),
+  'human-wait-two-calls-parked': () => humanWaitParked(true),
   'relaunch-recover': relaunchRecover,
   verify,
 };

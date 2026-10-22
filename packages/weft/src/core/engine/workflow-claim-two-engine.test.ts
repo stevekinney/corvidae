@@ -600,6 +600,7 @@ describe('Engine.lostWorkflowClaim', () => {
         getNow: () => now,
         workflowClaimTtl: 3_000,
         workflowClaimRenewInterval: 1_000,
+        inlineLaunchScheduling: 'manual',
       });
       engine.register(claimRaceRecoveryWorkflow);
       await engine.recoverAll();
@@ -614,8 +615,12 @@ describe('Engine.lostWorkflowClaim', () => {
     });
     const outcome = handle.result();
     void outcome.catch(() => {});
-    await waitForCondition(async () => (await storage.get(KEYS.checkpoint(workflowId))) !== null, {
-      label: 'checkpoint for the started run',
+    // The start's own launch runs, and parks, before the claim changes hands: a reclaim joins a
+    // launch still queued and leaves a run that launch drives under the reacquired claim alone, so
+    // the replay this case needs is reached only when the launch is already over (COR-1618).
+    await engineA.flushInlineLaunches();
+    await waitForCondition(() => getInternals(engineA).parkedInlineWorkflows.has(workflowId), {
+      label: 'the started run parks on its signal',
     });
 
     // Engine B takes the lapsed claim and holds it without driving the run, then its claim lapses too.

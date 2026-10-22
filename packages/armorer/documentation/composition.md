@@ -12,26 +12,26 @@ Pipelines are first-class tools. The result of `pipe()` is an `Tool`, so you can
 
 Chains tools left-to-right (data flows forward):
 
-```typescript
+```typescript file=pipeline.ts
 import { createTool } from 'armorer';
 import { pipe } from 'armorer';
 import { z } from 'zod';
 
-const parseNumber = createTool({
+export const parseNumber = createTool({
   name: 'parse-number',
   description: 'Parse string to number',
   input: z.object({ str: z.string() }),
-  execute: async ({ str }) => parseInt(str, 10),
+  execute: async ({ str }) => ({ value: parseInt(str, 10) }),
 });
 
-const double = createTool({
+export const double = createTool({
   name: 'double',
   description: 'Double a number',
   input: z.object({ value: z.number() }),
   execute: async ({ value }) => ({ value: value * 2 }),
 });
 
-const stringify = createTool({
+export const stringify = createTool({
   name: 'stringify',
   description: 'Format as result string',
   input: z.object({ value: z.number() }),
@@ -39,7 +39,7 @@ const stringify = createTool({
 });
 
 // Chain tools together - types flow through automatically
-const pipeline = pipe(parseNumber, double, stringify);
+export const pipeline = pipe(parseNumber, double, stringify);
 
 // Input type is inferred from first tool: { str: string }
 // Output type is inferred from last tool: string
@@ -53,9 +53,10 @@ Bind some or all parameters of a tool and get back a new tool that only needs th
 
 Optional third argument: `{ name?: string; description?: string }`.
 
-```typescript
+```typescript file=send-alert.ts
 import { createTool } from 'armorer';
 import { bind } from 'armorer';
+import { z } from 'zod';
 
 const sendEmail = createTool({
   name: 'send-email',
@@ -71,7 +72,7 @@ const sendEmail = createTool({
   },
 });
 
-const sendAlert = bind(sendEmail, { to: 'alerts@example.com' }, { name: 'send-alert' });
+export const sendAlert = bind(sendEmail, { to: 'alerts@example.com' }, { name: 'send-alert' });
 await sendAlert({ subject: 'Outage', body: 'Investigating' });
 ```
 
@@ -81,11 +82,19 @@ await sendAlert({ subject: 'Outage', body: 'Investigating' });
 
 Run a side effect after a tool and pass through its output unchanged.
 
-```typescript
-import { tap } from 'armorer';
+```typescript file=fetch-user.ts
+import { createTool, tap } from 'armorer';
+import { z } from 'zod';
+
+export const fetchUser = createTool({
+  name: 'fetch-user',
+  description: 'Fetch a user by id',
+  input: z.object({ id: z.string() }),
+  execute: async ({ id }) => ({ id, name: 'Ada' }),
+});
 
 const loggedFetch = tap(fetchUser, (user) => {
-  console.log('Fetched user', user.id);
+  console.log('Fetched user', user);
 });
 
 const user = await loggedFetch({ id: 'user-123' });
@@ -96,7 +105,10 @@ const user = await loggedFetch({ id: 'user-123' });
 Branch between tools based on a predicate. If no else tool is provided, the input is returned unchanged.
 
 ```typescript
-import { when } from 'armorer';
+import { when, type ToolWithInput } from 'armorer';
+
+declare const sendAlert: ToolWithInput<{ severity: string }>;
+declare const logTicket: ToolWithInput<{ severity: string }>;
 
 const route = when(({ severity }) => severity === 'high', sendAlert, logTicket);
 
@@ -108,10 +120,17 @@ await route({ severity: 'high' });
 Run multiple tools with the same input concurrently and return their outputs in order.
 
 ```typescript
-import { parallel } from 'armorer';
+import { parallel, type ToolWithInput } from 'armorer';
+import { fetchUser } from './fetch-user.ts';
+
+declare const fetchOrders: ToolWithInput<{ id: string }>;
+declare const fetchUsage: ToolWithInput<{ id: string }>;
 
 const fanout = parallel(fetchUser, fetchOrders, fetchUsage);
-const [user, orders, usage] = await fanout({ id: 'user-123' });
+const outputs = await fanout({ id: 'user-123' });
+if (Array.isArray(outputs)) {
+  const [user, orders, usage] = outputs;
+}
 ```
 
 ### retry()
@@ -120,6 +139,7 @@ Retry a tool on failure with configurable attempts and backoff.
 
 ```typescript
 import { retry } from 'armorer';
+import { fetchUser } from './fetch-user.ts';
 
 const reliableFetch = retry(fetchUser, {
   attempts: 3,
@@ -135,10 +155,12 @@ const user = await reliableFetch({ id: 'user-123' });
 Transform inputs before they're passed to a tool. Useful for normalizing, validating, or enriching input data.
 
 ```typescript
-import { preprocess } from 'armorer';
+import { createTool, preprocess } from 'armorer';
+import { z } from 'zod';
 
 const addNumbers = createTool({
   name: 'add-numbers',
+  description: 'Add two numbers',
   input: z.object({ a: z.number(), b: z.number() }),
   execute: async ({ a, b }) => a + b,
 });
@@ -163,19 +185,22 @@ console.log(result); // 8
 Transform outputs after a tool executes. Useful for formatting, enriching, or normalizing output data.
 
 ```typescript
-import { postprocess } from 'armorer';
+import { createTool, postprocess } from 'armorer';
+import { z } from 'zod';
 
 const fetchUser = createTool({
   name: 'fetch-user',
+  description: 'Fetch a user by id',
   input: z.object({ id: z.string() }),
   execute: async ({ id }) => ({ userId: id, name: 'John' }),
 });
 
 // Postprocess to format the output
-const fetchUserFormatted = postprocess(fetchUser, async (output) => ({
-  ...output,
-  displayName: `${output.name} (${output.userId})`,
-}));
+// The mapper receives the tool's call return, which is typed to allow stream output too
+const fetchUserFormatted = postprocess(fetchUser, async (output) => {
+  const user = output as { userId: string; name: string };
+  return { ...user, displayName: `${user.name} (${user.userId})` };
+});
 
 // Returns enriched output
 const result = await fetchUserFormatted({ id: '123' });
@@ -187,25 +212,31 @@ const result = await fetchUserFormatted({ id: '123' });
 Pipelines created with `pipe()`, as well as tools created with `bind()`, `tap()`, `when()`, `parallel()`, `retry()`, `preprocess()`, and `postprocess()`, are valid tools in their own right. They implement the full `Tool` interface (and pass `isTool()`), so you can register, query via registry helpers, serialize, and adapt them just like any other tool.
 
 ```typescript
-import { isTool } from 'armorer';
+import { createToolbox, isTool } from 'armorer';
 import { pipe } from 'armorer';
+import { double, parseNumber, stringify } from './pipeline.ts';
 
 const pipeline = pipe(parseNumber, double);
 console.log(isTool(pipeline)); // true
 
 // Register in a toolbox
-toolbox.register(pipeline);
+const toolbox = createToolbox([pipeline]);
 
 // Serialize or export
 const json = pipeline.toJSON();
 
 // Listen to events
+// Step events carry their fields on the event itself
+type StepEvent = Event & { stepIndex: number; stepName: string; output?: unknown };
+
 pipeline.addEventListener('step-start', (e) => {
-  console.log(`Step ${e.detail.stepIndex}: ${e.detail.stepName}`);
+  const { stepIndex, stepName } = e as StepEvent;
+  console.log(`Step ${stepIndex}: ${stepName}`);
 });
 
 pipeline.addEventListener('step-complete', (e) => {
-  console.log(`Step ${e.detail.stepIndex} output:`, e.detail.output);
+  const { stepIndex, output } = e as StepEvent;
+  console.log(`Step ${stepIndex} output:`, output);
 });
 
 // Compose further
@@ -217,12 +248,12 @@ const extendedPipeline = pipe(pipeline, stringify);
 Errors are wrapped with step context for debugging:
 
 ```typescript
-import { PipelineError } from 'armorer';
+import { pipeline } from './pipeline.ts';
 
 try {
   await pipeline({ str: 'invalid' });
 } catch (e) {
-  if (e.message.includes('Pipeline failed at step')) {
+  if (e instanceof Error && e.message.includes('Pipeline failed at step')) {
     // Error message includes: "Pipeline failed at step 1 (double)"
     console.error(e.message);
   }

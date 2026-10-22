@@ -54,6 +54,10 @@ await mcp.serveStdio();
 `mcp.fetch` is a web-standard `(Request) => Promise<Response>` handler, so it plugs straight into Bun, Deno, and Workers. On Node frameworks, wrap `mcp.handler` with `toNodeHandler` from `@modelcontextprotocol/node`.
 
 ```typescript
+import { createMCP, type AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const mcp = await createMCP(toolbox, {
   serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
 });
@@ -104,29 +108,33 @@ MCP tasks are not implemented. The 2025-11 experimental task API was removed fro
 You can declare MCP-specific metadata on tools. `createMCP` reads `metadata.mcp` by default.
 
 ```typescript
-createTool(
-  {
-    name: 'status',
-    description: 'reports status',
-    input: z.object({}),
-    metadata: {
-      mcp: {
-        title: 'Status Tool',
-        annotations: { readOnlyHint: true },
-        meta: { source: 'toolbox' },
-      },
-    },
-    async execute() {
-      return { ok: true };
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
+const status = createTool({
+  name: 'status',
+  description: 'reports status',
+  input: z.object({}),
+  metadata: {
+    mcp: {
+      title: 'Status Tool',
+      annotations: { readOnlyHint: true },
+      meta: { source: 'toolbox' },
     },
   },
-  toolbox,
-);
+  async execute() {
+    return { ok: true };
+  },
+});
 ```
 
 You can override or extend this with `toolConfiguration`:
 
 ```typescript
+import { createMCP, type AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const mcp = await createMCP(toolbox, {
   toolConfiguration: (tool) => ({
     title: tool.name.toUpperCase(),
@@ -154,11 +162,16 @@ By default, tool results are returned as:
 You can customize this with `formatResult`:
 
 ```typescript
+import { createMCP, type AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const mcp = await createMCP(toolbox, {
   formatResult: (result) => {
     if (result.outcome === 'error') {
+      const message = typeof result.error === 'string' ? result.error : result.error?.message;
       return {
-        content: [{ type: 'text', text: result.error ?? 'Error' }],
+        content: [{ type: 'text', text: message ?? 'Error' }],
         isError: true,
       };
     }
@@ -179,6 +192,10 @@ Thrown exceptions from tool execution are converted into MCP errors with a text 
 Register additional MCP resources and prompts via registrars. Each runs once per server instance the SDK builds and receives the request context as a second argument:
 
 ```typescript
+import { createMCP, type AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
 const mcp = await createMCP(toolbox, {
   resources: (server, { era }) => {
     server.registerResource('readme', 'toolbox://readme', { title: 'README' }, async () => ({
@@ -196,6 +213,17 @@ const mcp = await createMCP(toolbox, {
 You can pass a single registrar or an array of registrars:
 
 ```typescript
+import {
+  createMCP,
+  type AnyToolbox,
+  type MCPPromptRegistrar,
+  type MCPResourceRegistrar,
+} from 'armorer';
+
+declare const toolbox: AnyToolbox;
+declare const registerDocs: MCPResourceRegistrar, registerSchemas: MCPResourceRegistrar;
+declare const registerAssistantPrompts: MCPPromptRegistrar;
+
 const mcp = await createMCP(toolbox, {
   resources: [registerDocs, registerSchemas],
   prompts: [registerAssistantPrompts],
@@ -204,7 +232,7 @@ const mcp = await createMCP(toolbox, {
 
 ### Tool updates
 
-`createMCP` reads the toolbox's available tools once, when it is created. Create a new endpoint after re-registering tools.
+`createMCP` reads the toolbox's available tools once, when it is created. Create a new endpoint after building a toolbox with a different set of tools.
 
 ## Conversion helpers
 
@@ -228,6 +256,8 @@ import {
   fromMcpClientTools,
   isMcpUnauthorizedError,
 } from 'armorer';
+
+declare const receivedCallbackUrl: string; // the URL your OAuth callback route received
 
 const tokenStorage = createInMemoryMcpOAuthTokenStorage(); // swap for durable storage in production
 

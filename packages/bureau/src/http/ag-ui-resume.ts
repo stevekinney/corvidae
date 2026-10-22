@@ -51,6 +51,10 @@ import { ApprovalOutcomeNotWrittenError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type { Bureau, PendingReview, ResolveReviewInput } from '../types.ts';
 import { type AgUiResumePayload, interruptKey } from './ag-ui-interrupts.ts';
+import {
+  RESUME_ATTEMPT_FAILED_MESSAGES,
+  RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+} from './ag-ui-resume-messages.ts';
 import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { eventsResponse } from './ag-ui-sink.ts';
@@ -501,7 +505,7 @@ export function createResume(context: ResumeContext) {
       }
       return {
         code: 'RUN_FAILED',
-        message: 'An earlier attempt at this resume is still being applied; try again shortly',
+        message: RESUME_ATTEMPT_STILL_GOING_MESSAGES.stillBeingApplied,
       };
     }
     try {
@@ -573,7 +577,7 @@ export function createResume(context: ResumeContext) {
         return apply(request, reviews, retaken.entry, true, holds);
       return {
         code: 'RUN_FAILED',
-        message: 'Another attempt at this resume is in progress; try again',
+        message: RESUME_ATTEMPT_STILL_GOING_MESSAGES.inProgress,
       };
     }
     if (!(await holds())) return LEASE_LOST;
@@ -782,14 +786,11 @@ export function createResume(context: ResumeContext) {
       ].some((review) => review.runId === runId && addressed.has(review.id));
       if (stranded) {
         if (!appliedAny) {
-          return refuse(
-            'RUN_FAILED',
-            'The answers could not be applied; answer the interrupts again',
-          );
+          return refuse('RUN_FAILED', RESUME_ATTEMPT_FAILED_MESSAGES.answersNotApplied);
         }
         return {
           code: 'RUN_FAILED',
-          message: 'Some of the answers could not be applied; answer the interrupts again',
+          message: RESUME_ATTEMPT_FAILED_MESSAGES.someAnswersNotApplied,
         };
       }
     }
@@ -832,15 +833,13 @@ const CONTINUATION_UNAVAILABLE_MESSAGE =
   'No run can continue from this thread’s conversation as it stands (it does not end in a user or tool-result message), so this approval cannot be approved. Deny or cancel it, which frees the thread; a new message is refused while it is pending';
 const LEASE_LOST: Refusal = {
   code: 'RUN_FAILED',
-  message: 'This resume lost its lease to another attempt before it finished; try again',
+  message: RESUME_ATTEMPT_STILL_GOING_MESSAGES.leaseLost,
 };
 const OUTCOME_NOT_WRITTEN: Refusal = {
   code: 'RUN_FAILED',
-  message:
-    'The approval was applied, but its outcome was not written into the conversation, so the run was not continued; send a new message to continue the thread',
+  message: RESUME_ATTEMPT_FAILED_MESSAGES.outcomeNotWritten,
 };
 const CONTINUATION_NOT_STARTED: Refusal = {
   code: 'RUN_FAILED',
-  message:
-    'The approvals were applied, but the run that continues from them could not be started; send a new message to continue the thread',
+  message: RESUME_ATTEMPT_FAILED_MESSAGES.continuationNotStarted,
 };

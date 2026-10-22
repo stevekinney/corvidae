@@ -16,11 +16,13 @@ import type {
   SearchAttributeSchema,
   SignalDefinition,
   UpdateDefinition,
+  UsedActivityDefinition,
   WorkflowConcurrencyOptions,
   WorkflowFunction,
   WorkflowTimelineEntry,
 } from '../types.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
+import type { PendingLaunch } from './local-execution.ts';
 
 /**
  * The identity a running workflow instance was launched under, cached by
@@ -34,6 +36,13 @@ import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
  */
 export type WorkflowExecutionIdentity = { type: string; revision: string | undefined };
 
+/** Per message kind, each builder key that aliases a different wire name, mapped to that wire name. */
+export type MessageAliases = Readonly<{
+  signal?: Readonly<Record<string, string>>;
+  update?: Readonly<Record<string, string>>;
+  query?: Readonly<Record<string, string>>;
+}>;
+
 export interface RegistrationEntry {
   handler: WorkflowFunction;
   version: string;
@@ -44,6 +53,14 @@ export interface RegistrationEntry {
   signals?: Readonly<Record<string, Readonly<SignalDefinition<unknown>>>>;
   updates?: Readonly<Record<string, Readonly<UpdateDefinition<unknown>>>>;
   queries?: Readonly<Record<string, Readonly<QueryDefinition<unknown>>>>;
+  /**
+   * Builder keys that alias a different wire name, per message kind
+   * (`.signals({ localAlias: signal('wireName') })`). The maps above are keyed
+   * by wire name; an alias resolves through this to its declared definition.
+   */
+  messageAliases?: MessageAliases;
+  /** Engine-provided activities the workflow declared with `.uses()`, keyed by name. */
+  uses?: Readonly<Record<string, UsedActivityDefinition>>;
   searchAttributes?: SearchAttributeSchema;
   retention?: NormalizedRetentionPolicy;
   concurrency?: WorkflowConcurrencyOptions;
@@ -63,6 +80,10 @@ export interface ResolvedOptions {
   backgroundTaskMode: 'automatic' | 'manual';
   /** Resolved form of `EngineOptions.inlineLaunchScheduling` (COR-74). */
   inlineLaunchSchedulingMode: 'event-loop' | 'manual';
+  /** Resolved form of `EngineOptions.schemas`. */
+  schemaPolicy: 'optional' | 'required';
+  /** Resolved form of `EngineOptions.payloadValidation`. */
+  payloadValidation: 'none' | 'inbound';
   checkpointHistory: number;
   checkpointSizeWarningThreshold: number;
   maxNestingDepth: number;
@@ -174,4 +195,13 @@ export type QueuedInlineWorkflowExecutionStart = {
    * the dispose path so the `defer: false` awaiter never hangs.
    */
   onStarted?: () => void;
+  /**
+   * The record the queue made for this start when it enqueued it (`local-execution.ts`), which its
+   * flush transitions and settles through, never by id: a later start of the same id makes its own
+   * record.
+   */
+  launch: PendingLaunch;
 };
+
+/** What a caller hands the inline launch queue; the queue makes the entry's record itself. */
+export type QueuedInlineWorkflowStartRequest = Omit<QueuedInlineWorkflowExecutionStart, 'launch'>;

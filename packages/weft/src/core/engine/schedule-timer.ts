@@ -6,13 +6,22 @@ import { awaitScheduledRunTurn } from './schedule-current-run.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { collectDueScheduleOccurrences, getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import { drainQueuedScheduleRun } from './schedule-overlap.ts';
-import type { ScheduleCallbacks } from './schedules.ts';
+import { loadScheduleState } from './schedule-state-read.ts';
 import {
-  loadScheduleState,
-  runSerializedScheduleStateOperation,
-  writeScheduleState,
-} from './storage-io.ts';
+  pauseScheduleAfterTimerFailure,
+  persistScheduleTimerState,
+  ScheduleStatePersistenceError,
+  type ScheduleTimerProgress,
+} from './schedule-timer-writes.ts';
+import type { ScheduleCallbacks } from './schedules.ts';
+import { runSerializedScheduleStateOperation } from './storage-io.ts';
 
+/**
+ * How far past one poll interval a tick may land before a non-backfill occurrence it reaches
+ * counts as missed. The scheduler only sees an occurrence when a poll tick lands after it, so a
+ * healthy engine reaches it up to a whole poll interval late, plus the tick's own drift
+ * (COR-1616). Only lateness beyond both, such as an engine that was down, is a missed fire.
+ */
 const SCHEDULE_LATE_GRACE_MILLISECONDS = 1000;
 const MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TICK = 256;
 const MAX_MISSED_FIRE_COUNT_PER_TICK = MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TICK;
@@ -32,15 +41,6 @@ type ScheduleTimerWork = {
   occurrencesToProcess: number[];
   skipMissedOccurrences: boolean;
 };
-
-class ScheduleStatePersistenceError extends Error {
-  constructor(
-    readonly scheduleId: string,
-    cause: unknown,
-  ) {
-    super(`Failed to persist schedule "${scheduleId}" while processing its timer`, { cause });
-  }
-}
 
 /**
  * One schedule timer tick, in serialized sections of the schedule's own write.
@@ -100,10 +100,14 @@ async function failScheduleTimerWait(
   if (isEngineShutdown(internals, error)) return;
   await runSerializedScheduleStateOperation(internals, scheduleId, async () => {
     const current = await loadScheduleState(internals, scheduleId);
-    if (current === null || current.status !== 'active' || current.revision !== pending.revision) {
+    if (
+      current === null ||
+      current.state.status !== 'active' ||
+      current.state.revision !== pending.revision
+    ) {
       return;
     }
-    await pauseScheduleAfterTimerFailure(internals, current, error);
+    await pauseScheduleAfterTimerFailure(internals, current.state, current, error);
   });
 }
 
@@ -127,9 +131,6 @@ type ScheduleTimerStep =
       readonly revision: number;
     };
 
-/** The latest state a section has, for the pause it owes a schedule whose processing failed. */
-type ScheduleTimerProgress = { state: ScheduleState };
-
 /** Runs one section, pausing the schedule when its processing fails, as the whole tick used to. */
 async function guardScheduleTimerSection(
   internals: EngineInternals,
@@ -142,7 +143,7 @@ async function guardScheduleTimerSection(
     if (error instanceof ScheduleStatePersistenceError) {
       throw error;
     }
-    await pauseScheduleAfterTimerFailure(internals, progress.state, error);
+    await pauseScheduleAfterTimerFailure(internals, progress.state, progress.stored, error);
     return { kind: 'done' };
   }
 }
@@ -154,15 +155,21 @@ async function beginScheduleTimer(
 ): Promise<ScheduleTimerStep> {
   if (internals.deposed) return { kind: 'done' };
 
-  const state = await loadScheduleState(internals, entry.workflowId);
-  if (!isCurrentActiveScheduleTimer(state, entry)) {
+  const loaded = await loadScheduleState(internals, entry.workflowId);
+  const state = loaded?.state ?? null;
+  if (loaded === null || !isCurrentActiveScheduleTimer(state, entry)) {
     return { kind: 'done' };
   }
 
-  const progress: ScheduleTimerProgress = { state };
+  const progress: ScheduleTimerProgress = { state, stored: loaded };
   return guardScheduleTimerSection(internals, progress, async () => {
     const now = internals.options.getNow();
-    const work = planScheduleTimerWork(state, entry, now);
+    const work = planScheduleTimerWork(
+      state,
+      entry,
+      now,
+      internals.options.schedulerPollIntervalMs + SCHEDULE_LATE_GRACE_MILLISECONDS,
+    );
     if (!work) {
       return { kind: 'done' };
     }
@@ -178,7 +185,9 @@ async function beginScheduleTimer(
         }),
       };
       progress.state = nextState;
-      await persistScheduleTimerState(internals, nextState);
+      if (!(await persistScheduleTimerState(internals, progress, nextState))) {
+        return { kind: 'done' };
+      }
       if (work.missedOccurrences) {
         internals.engine.dispatchEvent(
           new ScheduleMissedFireEvent(
@@ -208,12 +217,17 @@ async function resumeScheduleTimer(
 ): Promise<ScheduleTimerStep> {
   if (internals.deposed) return { kind: 'done' };
 
-  const current = await loadScheduleState(internals, scheduleId);
-  if (current === null || current.status !== 'active' || current.revision !== pending.revision) {
+  const loaded = await loadScheduleState(internals, scheduleId);
+  if (
+    loaded === null ||
+    loaded.state.status !== 'active' ||
+    loaded.state.revision !== pending.revision
+  ) {
     return { kind: 'done' };
   }
+  const current = loaded.state;
 
-  const progress: ScheduleTimerProgress = { state: current };
+  const progress: ScheduleTimerProgress = { state: current, stored: loaded };
   return guardScheduleTimerSection(internals, progress, async () => {
     const { work, now, index } = pending;
     const refreshed = await callbacks.refreshScheduledWorkflowState(current);
@@ -236,7 +250,9 @@ async function resumeScheduleTimer(
         nextFireAt: resolveNextScheduleFireAt(nextState, work, now),
       };
       progress.state = nextState;
-      await persistScheduleTimerState(internals, nextState);
+      if (!(await persistScheduleTimerState(internals, progress, nextState))) {
+        return { kind: 'done' };
+      }
     }
     progress.state = nextState;
     return processScheduleTimerOccurrences(
@@ -266,6 +282,7 @@ function planScheduleTimerWork(
   state: ActiveScheduleTimerState,
   entry: TimerEntry,
   now: number,
+  lateGraceMilliseconds: number,
 ): ScheduleTimerWork | null {
   const dueOccurrences = collectDueScheduleOccurrences(
     state,
@@ -275,7 +292,7 @@ function planScheduleTimerWork(
   );
   if (dueOccurrences.length === 0) return null;
 
-  if (!state.backfill && now - entry.fireAt > SCHEDULE_LATE_GRACE_MILLISECONDS) {
+  if (!state.backfill && now - entry.fireAt > lateGraceMilliseconds) {
     return {
       dueOccurrences,
       missedOccurrences: countMissedScheduleOccurrences(state, state.nextFireAt, now),
@@ -364,7 +381,13 @@ async function processScheduleTimerOccurrences(
       };
     }
     progress.state = nextState;
-    await persistScheduleTimerState(internals, nextState, { includeTimer: finalOccurrence });
+    if (
+      !(await persistScheduleTimerState(internals, progress, nextState, {
+        includeTimer: finalOccurrence,
+      }))
+    ) {
+      return { kind: 'done' };
+    }
     if (state.backfill && nextState.currentWorkflowId !== undefined) {
       return {
         kind: 'settle',
@@ -378,33 +401,4 @@ async function processScheduleTimerOccurrences(
   }
 
   return { kind: 'done' };
-}
-
-async function persistScheduleTimerState(
-  internals: EngineInternals,
-  state: ScheduleState,
-  options?: { includeTimer?: boolean },
-): Promise<void> {
-  try {
-    await writeScheduleState(internals, state, options);
-  } catch (error) {
-    throw new ScheduleStatePersistenceError(state.id, error);
-  }
-}
-
-async function pauseScheduleAfterTimerFailure(
-  internals: EngineInternals,
-  state: ScheduleState,
-  error: unknown,
-): Promise<void> {
-  const errorNow = internals.options.getNow();
-  const pausedState: ScheduleState = {
-    ...state,
-    status: 'paused',
-    revision: state.revision + 1,
-    updatedAt: errorNow,
-    nextFireAt: getNextScheduleOccurrence(state, errorNow),
-  };
-  await writeScheduleState(internals, pausedState, { includeTimer: false });
-  console.error(`[weft] Paused schedule "${pausedState.id}" after timer processing failed:`, error);
 }

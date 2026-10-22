@@ -21,7 +21,7 @@ interface MessageLike {
 interface StepContextLike {
   conversation: ConversationLike;
   step: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /**

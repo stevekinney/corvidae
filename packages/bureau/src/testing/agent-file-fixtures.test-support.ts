@@ -12,6 +12,7 @@ import {
   createModelCatalog,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import { createTool } from 'armorer';
 import { z } from 'zod';
 
@@ -22,7 +23,7 @@ import {
   createAgentFileCatalog,
 } from '../agent-file-catalog.ts';
 import type { AgentFileOperations } from '../agent-file-operations.ts';
-import { createModelCatalogService } from '../model-catalog-refresh.ts';
+import { createModelCatalogService, type ModelCatalogService } from '../model-catalog-refresh.ts';
 
 /** A model the default catalog holds, written the way an agent file names it. */
 export const KNOWN_MODEL = 'anthropic/claude-opus-5-5';
@@ -51,6 +52,8 @@ export function validAgentFile(body = 'You are helpful.\n'): string {
 export interface AgentFileFixture {
   readonly directory: string;
   readonly catalog: AgentFileCatalog;
+  /** The model catalog the file catalog validates against; `replaceCatalog` raises its revision. */
+  readonly modelCatalog: ModelCatalogService;
   readonly descriptors: readonly BackendDescriptor[];
   readonly generated: BackendDescriptor[];
   /** Write a file into the directory without going through the catalog. */
@@ -61,6 +64,15 @@ export interface AgentFileFixture {
 }
 
 export interface AgentFileFixtureOptions {
+  /**
+   * An agent directory that already exists, such as the one an earlier fixture used: a restart
+   * over the same files. The fixture does not remove it.
+   */
+  readonly directory?: string;
+  /** Where the revision records live. Share one between fixtures to model one store. */
+  readonly revisionStore?: ConditionalTextValueStore;
+  /** Where scan, watcher, and record failures are reported. Defaults to throwing. */
+  readonly diagnose?: (message: string, cause: unknown) => void;
   /** A subdirectory of the temporary root that does not exist yet, to use as the agent directory. */
   readonly subdirectory?: string;
   readonly reserved?: readonly string[];
@@ -77,7 +89,7 @@ export interface AgentFileFixtureOptions {
 export async function createAgentFileFixture(
   options: AgentFileFixtureOptions = {},
 ): Promise<AgentFileFixture> {
-  const root = await mkdtemp(join(tmpdir(), 'bureau-agent-files-'));
+  const root = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-agent-files-')));
   const directory = options.subdirectory === undefined ? root : join(root, options.subdirectory);
   const descriptors = options.descriptors ?? createModelCatalog().descriptors;
   const modelCatalog = createModelCatalogService({
@@ -98,9 +110,12 @@ export async function createAgentFileFixture(
     modelCatalog,
     resolveGenerate: options.resolveGenerate ?? resolveGenerate,
     runtime: options.runtime ?? createDefaultRuntimeServices(),
-    diagnose: (message, cause) => {
-      throw new Error(`${message} ${String(cause)}`);
-    },
+    diagnose:
+      options.diagnose ??
+      ((message, cause) => {
+        throw new Error(`${message} ${String(cause)}`);
+      }),
+    ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
     ...(options.watch === undefined ? {} : { watch: options.watch }),
     ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
     ...(options.operations === undefined ? {} : { operations: options.operations }),
@@ -108,6 +123,7 @@ export async function createAgentFileFixture(
   return {
     directory,
     catalog,
+    modelCatalog,
     descriptors,
     generated,
     async put(name, text) {
@@ -124,7 +140,7 @@ export async function createAgentFileFixture(
     },
     async dispose() {
       await catalog.close();
-      await rm(root, { recursive: true, force: true });
+      if (options.directory === undefined) await rm(root, { recursive: true, force: true });
     },
   };
 }

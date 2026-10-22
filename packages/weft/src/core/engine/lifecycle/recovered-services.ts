@@ -8,7 +8,7 @@ import type {
 } from '../../types.ts';
 import type { EngineInternals } from '../internals.ts';
 import { decodeScheduleRunMetadata } from '../schedule-run-metadata.ts';
-import { loadScheduleState } from '../storage-io.ts';
+import { loadScheduleState } from '../schedule-state-read.ts';
 
 const RESOLVE_WORKFLOW_SERVICES_OPTION_PATH = 'EngineOptions.resolveWorkflowServices';
 
@@ -169,10 +169,11 @@ async function scheduleFromWorkflowState(
     return null;
   }
 
-  const scheduleState = await loadScheduleState(internals, metadata.id);
-  if (scheduleState === null) {
+  const loadedSchedule = await loadScheduleState(internals, metadata.id);
+  if (loadedSchedule === null) {
     return null;
   }
+  const scheduleState = loadedSchedule.state;
   if (scheduleState.workflowType !== state.type) {
     return null;
   }

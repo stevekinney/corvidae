@@ -14,21 +14,53 @@ Install the required dependencies:
 bun add @lancedb/lancedb openai apache-arrow
 ```
 
+## The LanceDB Client Members These Examples Use
+
+The examples below import LanceDB from a local `lancedb.ts` that declares only the members they call, so they type-check without `@lancedb/lancedb` installed. In your project, write `import * as lancedb from '@lancedb/lancedb'` instead.
+
+```typescript file=lancedb.ts
+export type LanceRecord = Record<string, unknown>;
+
+export interface Query {
+  limit(limit: number): Query;
+  where(predicate: string): Query;
+  select(columns: string[]): Query;
+  toArray(): Promise<LanceRecord[]>;
+}
+
+export interface Table {
+  add(data: LanceRecord[]): Promise<void>;
+  delete(predicate: string): Promise<void>;
+  search(vector: number[]): Query;
+  query(): Query;
+  countRows(filter?: string): Promise<number>;
+}
+
+export interface Connection {
+  openTable(name: string): Promise<Table>;
+  createTable(name: string, data: LanceRecord[]): Promise<Table>;
+}
+
+export declare function connect(uri: string, options?: { apiKey?: string }): Promise<Connection>;
+```
+
 ## Basic LanceDB Integration
 
 Here's a simple example using LanceDB for local vector storage:
 
-```typescript
-import { createToolbox, createTool, type Tool } from 'armorer';
-import * as lancedb from '@lancedb/lancedb';
+```typescript file=basic.ts
+import { createToolbox, type Tool } from 'armorer';
 import OpenAI from 'openai';
-import { z } from 'zod';
+import * as lancedb from './lancedb.ts';
+
+// Your tools
+declare const tools: readonly Tool[];
 
 // Initialize OpenAI for embeddings
 const openai = new OpenAI();
 
 // Embedding function
-async function embed(texts: string[]): Promise<number[][]> {
+export async function embed(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const response = await openai.embeddings.create({
@@ -40,7 +72,7 @@ async function embed(texts: string[]): Promise<number[][]> {
 }
 
 // Create toolbox with embedding support
-const toolbox = createToolbox([], { embed });
+export const toolbox = createToolbox(tools, { embed });
 
 // Connect to LanceDB (creates a local database)
 const db = await lancedb.connect('./data/lancedb');
@@ -63,16 +95,18 @@ try {
   // Remove the placeholder row
   await toolsTable.delete('id = "placeholder"');
 }
+
+export { toolsTable };
 ```
 
 ## Syncing Tools to LanceDB
 
-Register an event listener to automatically sync tools to LanceDB when they're registered:
+Index the toolbox's tools in LanceDB once the toolbox is built:
 
 ```typescript
-toolbox.addEventListener('registered', async (event) => {
-  const tool = event.detail;
+import { embed, toolbox, toolsTable } from './basic.ts';
 
+for (const tool of toolbox.tools()) {
   // Generate embeddings for searchable fields
   const fields = [
     { field: 'name', text: tool.name },
@@ -82,20 +116,27 @@ toolbox.addEventListener('registered', async (event) => {
 
   const embeddings = await embed(fields.map((f) => f.text));
 
-  // Prepare records for LanceDB
-  const records = fields.map((field, i) => ({
-    id: `${tool.name}:${field.field}`,
-    toolName: tool.name,
-    field: field.field,
-    text: field.text,
-    vector: embeddings[i],
-    tags: tool.tags ?? [],
-  }));
+  // Prepare records for LanceDB, pairing each field with its embedding
+  const records = fields.flatMap((field, i) => {
+    const vector = embeddings[i];
+    return vector
+      ? [
+          {
+            id: `${tool.name}:${field.field}`,
+            toolName: tool.name,
+            field: field.field,
+            text: field.text,
+            vector,
+            tags: [...(tool.tags ?? [])],
+          },
+        ]
+      : [];
+  });
 
   // Delete existing records for this tool and insert new ones
   await toolsTable.delete(`toolName = "${tool.name}"`);
   await toolsTable.add(records);
-});
+}
 ```
 
 ## Semantic Search with LanceDB
@@ -103,9 +144,13 @@ toolbox.addEventListener('registered', async (event) => {
 LanceDB makes vector search simple with its built-in search API:
 
 ```typescript
+import type { Tool } from 'armorer';
+import { embed, toolbox, toolsTable } from './basic.ts';
+
 async function searchTools(query: string, limit = 5): Promise<Tool[]> {
   // Generate embedding for the query
   const [queryEmbedding] = await embed([query]);
+  if (!queryEmbedding) return [];
 
   // Search LanceDB
   const results = await toolsTable
@@ -118,8 +163,8 @@ async function searchTools(query: string, limit = 5): Promise<Tool[]> {
   const tools: Tool[] = [];
 
   for (const result of results) {
-    const toolName = result.toolName as string;
-    if (toolName && !seen.has(toolName)) {
+    const toolName = result['toolName'];
+    if (typeof toolName === 'string' && !seen.has(toolName)) {
       seen.add(toolName);
       const tool = toolbox.getTool(toolName);
       if (tool) {
@@ -138,11 +183,10 @@ async function searchTools(query: string, limit = 5): Promise<Tool[]> {
 Here's a complete, production-ready example:
 
 ```typescript
-import { createToolbox, createTool, type Tool } from 'armorer';
-import { queryTools } from 'armorer';
-import * as lancedb from '@lancedb/lancedb';
+import { createToolbox, createTool, queryTools, type Tool, type ToolQuery } from 'armorer';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import * as lancedb from './lancedb.ts';
 
 // Configuration
 const LANCEDB_PATH = './data/lancedb';
@@ -176,6 +220,46 @@ type ToolRecord = {
   metadata: string; // JSON-serialized metadata
 };
 
+// Embed a tool's searchable fields as one record per field
+async function toToolRecords(tool: Tool): Promise<ToolRecord[]> {
+  const fields = [
+    { field: 'name', text: tool.name },
+    { field: 'description', text: tool.description },
+    { field: 'tags', text: tool.tags?.join(' ') ?? '' },
+  ].filter((f) => f.text);
+
+  const embeddings = await embed(fields.map((f) => f.text));
+
+  return fields.flatMap((field, i) => {
+    const vector = embeddings[i];
+    return vector
+      ? [
+          {
+            id: `${tool.name}:${field.field}`,
+            toolName: tool.name,
+            field: field.field,
+            text: field.text,
+            vector,
+            tags: [...(tool.tags ?? [])],
+            metadata: JSON.stringify(tool.metadata ?? {}),
+          },
+        ]
+      : [];
+  });
+}
+
+// Read the distinct tool names from LanceDB rows, in rank order
+function toolNamesFrom(rows: readonly lancedb.LanceRecord[]): string[] {
+  const names = new Set<string>();
+  for (const row of rows) {
+    const toolName = row['toolName'];
+    if (typeof toolName === 'string') {
+      names.add(toolName);
+    }
+  }
+  return Array.from(names);
+}
+
 async function createLanceDBTable(db: lancedb.Connection): Promise<lancedb.Table> {
   try {
     return await db.openTable(TOOLS_TABLE);
@@ -197,37 +281,27 @@ async function createLanceDBTable(db: lancedb.Connection): Promise<lancedb.Table
   }
 }
 
-export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
+export async function createLanceDBToolRegistry(tools: readonly Tool[], dbPath = LANCEDB_PATH) {
   const db = await lancedb.connect(dbPath);
   const table = await createLanceDBTable(db);
-  const toolbox = createToolbox([], { embed });
+  const toolbox = createToolbox(tools, { embed });
 
-  // Sync tools to LanceDB on registration
-  toolbox.addEventListener('registered', async (event) => {
-    const tool = event.detail;
-
-    const fields = [
-      { field: 'name', text: tool.name },
-      { field: 'description', text: tool.description },
-      { field: 'tags', text: tool.tags?.join(' ') ?? '' },
-    ].filter((f) => f.text);
-
-    const embeddings = await embed(fields.map((f) => f.text));
-
-    const records: ToolRecord[] = fields.map((field, i) => ({
-      id: `${tool.name}:${field.field}`,
-      toolName: tool.name,
-      field: field.field,
-      text: field.text,
-      vector: embeddings[i],
-      tags: tool.tags ?? [],
-      metadata: JSON.stringify(tool.metadata ?? {}),
-    }));
+  // Index the toolbox's tools in LanceDB
+  for (const tool of toolbox.tools()) {
+    const records = await toToolRecords(tool);
 
     // Delete existing and insert new
     await table.delete(`toolName = "${tool.name}"`);
     await table.add(records);
-  });
+  }
+
+  // Map ranked tool names back to the toolbox's tools
+  function toolsNamed(names: readonly string[], limit: number): Tool[] {
+    return names
+      .map((name) => toolbox.getTool(name))
+      .filter((t): t is Tool => t !== undefined)
+      .slice(0, limit);
+  }
 
   return {
     toolbox,
@@ -239,28 +313,14 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
      */
     async search(query: string, limit = 10): Promise<Tool[]> {
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
 
       const results = await table
         .search(queryEmbedding)
         .limit(limit * 3)
         .toArray();
 
-      const seen = new Set<string>();
-      const tools: Tool[] = [];
-
-      for (const result of results) {
-        const toolName = result.toolName as string;
-        if (toolName && !seen.has(toolName)) {
-          seen.add(toolName);
-          const tool = toolbox.getTool(toolName);
-          if (tool) {
-            tools.push(tool);
-          }
-          if (tools.length >= limit) break;
-        }
-      }
-
-      return tools;
+      return toolsNamed(toolNamesFrom(results), limit);
     },
 
     /**
@@ -272,6 +332,7 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
       limit = 10,
     ): Promise<Tool[]> {
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
 
       let searchQuery = table.search(queryEmbedding).limit(limit * 5);
 
@@ -288,31 +349,16 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
       const results = await searchQuery.toArray();
 
       // Post-filter by tags if needed (LanceDB array filtering)
-      const seen = new Set<string>();
-      const tools: Tool[] = [];
+      const matching = results.filter((result) => {
+        if (!filter.tags?.length) return true;
+        const resultTags = result['tags'];
+        if (!Array.isArray(resultTags)) return false;
+        return filter.tags.every((tag) =>
+          resultTags.some((t) => String(t).toLowerCase() === tag.toLowerCase()),
+        );
+      });
 
-      for (const result of results) {
-        const toolName = result.toolName as string;
-        if (toolName && !seen.has(toolName)) {
-          // Check tag filter
-          if (filter.tags?.length) {
-            const resultTags = result.tags as string[];
-            const hasAllTags = filter.tags.every((tag) =>
-              resultTags.some((t) => t.toLowerCase() === tag.toLowerCase()),
-            );
-            if (!hasAllTags) continue;
-          }
-
-          seen.add(toolName);
-          const tool = toolbox.getTool(toolName);
-          if (tool) {
-            tools.push(tool);
-          }
-          if (tools.length >= limit) break;
-        }
-      }
-
-      return tools;
+      return toolsNamed(toolNamesFrom(matching), limit);
     },
 
     /**
@@ -320,39 +366,26 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
      */
     async hybridSearch(
       query: string,
-      toolboxFilter?: {
-        tags?: { any?: string[]; all?: string[]; none?: string[] };
-        metadata?: { eq?: Record<string, unknown> };
-      },
+      toolboxFilter?: Pick<ToolQuery, 'tags' | 'metadata'>,
       limit = 10,
     ): Promise<Tool[]> {
       // Get semantic candidates from LanceDB
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
 
       const results = await table
         .search(queryEmbedding)
         .limit(50) // Get more candidates for filtering
         .toArray();
 
-      const candidates = new Set<string>();
-      for (const result of results) {
-        candidates.add(result.toolName as string);
-      }
-
       // Get tools and apply Toolbox filters
-      const tools = Array.from(candidates)
-        .map((name) => toolbox.getTool(name))
-        .filter((t): t is Tool => t !== undefined);
+      const candidates = toolsNamed(toolNamesFrom(results), Infinity);
 
       if (!toolboxFilter) {
-        return tools.slice(0, limit);
+        return candidates.slice(0, limit);
       }
 
-      return queryTools(tools, {
-        tags: toolboxFilter.tags,
-        metadata: toolboxFilter.metadata ? { eq: toolboxFilter.metadata.eq } : undefined,
-        limit,
-      });
+      return queryTools(candidates, { ...toolboxFilter, limit });
     },
 
     /**
@@ -371,25 +404,7 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
 
       // Re-embed all tools
       for (const tool of toolbox.tools()) {
-        const fields = [
-          { field: 'name', text: tool.name },
-          { field: 'description', text: tool.description },
-          { field: 'tags', text: tool.tags?.join(' ') ?? '' },
-        ].filter((f) => f.text);
-
-        const embeddings = await embed(fields.map((f) => f.text));
-
-        const records: ToolRecord[] = fields.map((field, i) => ({
-          id: `${tool.name}:${field.field}`,
-          toolName: tool.name,
-          field: field.field,
-          text: field.text,
-          vector: embeddings[i],
-          tags: tool.tags ?? [],
-          metadata: JSON.stringify(tool.metadata ?? {}),
-        }));
-
-        await table.add(records);
+        await table.add(await toToolRecords(tool));
       }
     },
 
@@ -397,11 +412,10 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
      * Get database statistics
      */
     async stats(): Promise<{ toolCount: number; recordCount: number }> {
-      const results = await table.search(new Array(EMBEDDING_DIMENSIONS).fill(0)).toArray();
-      const toolNames = new Set(results.map((r) => r.toolName as string));
+      const rows = await table.query().select(['toolName']).toArray();
       return {
-        toolCount: toolNames.size,
-        recordCount: results.length,
+        toolCount: toolNamesFrom(rows).length,
+        recordCount: await table.countRows(),
       };
     },
   };
@@ -409,68 +423,61 @@ export async function createLanceDBToolRegistry(dbPath = LANCEDB_PATH) {
 
 // Usage example
 async function main() {
-  const { toolbox, search, hybridSearch } = await createLanceDBToolRegistry();
-
-  // Register tools
-  createTool(
-    {
-      name: 'send-email',
-      description: 'Send an email message to one or more recipients',
-      input: z.object({
-        to: z.array(z.string().email()),
-        subject: z.string(),
-        body: z.string(),
-      }),
-      tags: ['communication', 'email', 'messaging'],
-      metadata: { category: 'communication' },
-      async execute({ to, subject, body }) {
-        console.log(`Sending email to ${to.join(', ')}`);
-        return { sent: true, recipients: to.length };
-      },
+  // Define tools
+  const sendEmail = createTool({
+    name: 'send-email',
+    description: 'Send an email message to one or more recipients',
+    input: z.object({
+      to: z.array(z.string().email()),
+      subject: z.string(),
+      body: z.string(),
+    }),
+    tags: ['communication', 'email', 'messaging'],
+    metadata: { category: 'communication' },
+    async execute({ to, subject, body }) {
+      console.log(`Sending email to ${to.join(', ')}`);
+      return { sent: true, recipients: to.length };
     },
-    toolbox,
-  );
+  });
 
-  createTool(
-    {
-      name: 'send-sms',
-      description: 'Send a text message to a phone number',
-      input: z.object({
-        phoneNumber: z.string(),
-        message: z.string().max(160),
-      }),
-      tags: ['communication', 'sms', 'messaging'],
-      metadata: { category: 'communication' },
-      async execute({ phoneNumber, message }) {
-        console.log(`Sending SMS to ${phoneNumber}`);
-        return { sent: true };
-      },
+  const sendSms = createTool({
+    name: 'send-sms',
+    description: 'Send a text message to a phone number',
+    input: z.object({
+      phoneNumber: z.string(),
+      message: z.string().max(160),
+    }),
+    tags: ['communication', 'sms', 'messaging'],
+    metadata: { category: 'communication' },
+    async execute({ phoneNumber, message }) {
+      console.log(`Sending SMS to ${phoneNumber}`);
+      return { sent: true };
     },
-    toolbox,
-  );
+  });
 
-  createTool(
-    {
-      name: 'schedule-meeting',
-      description: 'Create a calendar event and invite attendees',
-      input: z.object({
-        title: z.string(),
-        startTime: z.string().datetime(),
-        duration: z.number().describe('Duration in minutes'),
-        attendees: z.array(z.string().email()),
-      }),
-      tags: ['calendar', 'scheduling', 'meetings'],
-      metadata: { category: 'productivity' },
-      async execute({ title }) {
-        console.log(`Scheduling: ${title}`);
-        return { scheduled: true, eventId: 'evt_123' };
-      },
+  const scheduleMeeting = createTool({
+    name: 'schedule-meeting',
+    description: 'Create a calendar event and invite attendees',
+    input: z.object({
+      title: z.string(),
+      startTime: z.string().datetime(),
+      duration: z.number().describe('Duration in minutes'),
+      attendees: z.array(z.string().email()),
+    }),
+    tags: ['calendar', 'scheduling', 'meetings'],
+    metadata: { category: 'productivity' },
+    async execute({ title }) {
+      console.log(`Scheduling: ${title}`);
+      return { scheduled: true, eventId: 'evt_123' };
     },
-    toolbox,
-  );
+  });
 
-  // Wait for embeddings to be generated
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  // Resolves once every tool is indexed in LanceDB
+  const { search, hybridSearch } = await createLanceDBToolRegistry([
+    sendEmail,
+    sendSms,
+    scheduleMeeting,
+  ]);
 
   // Semantic search
   console.log('\n--- Semantic Search: "notify someone" ---');
@@ -512,11 +519,11 @@ main().catch(console.error);
 For production deployments, you can use LanceDB Cloud instead of local storage:
 
 ```typescript
-import * as lancedb from '@lancedb/lancedb';
+import * as lancedb from './lancedb.ts';
 
 // Connect to LanceDB Cloud
 const db = await lancedb.connect('db://your-project.lancedb.com', {
-  apiKey: process.env.LANCEDB_API_KEY,
+  apiKey: process.env['LANCEDB_API_KEY']!,
 });
 
 // The rest of the code remains the same
@@ -524,10 +531,20 @@ const db = await lancedb.connect('db://your-project.lancedb.com', {
 
 ## Using Local Embedding Models
 
-LanceDB works well with local embedding models for offline or privacy-focused deployments:
+LanceDB works well with local embedding models for offline or privacy-focused deployments. This example declares the one `@xenova/transformers` member it uses; in your project, write `import { pipeline } from '@xenova/transformers'` instead:
 
 ```typescript
-import { pipeline } from '@xenova/transformers';
+import { createToolbox } from 'armorer';
+
+// The subset of `@xenova/transformers` this example uses
+type FeatureExtractionPipeline = (
+  text: string,
+  options: { pooling: 'mean'; normalize: boolean },
+) => Promise<{ data: Float32Array }>;
+declare function pipeline(
+  task: 'feature-extraction',
+  model: string,
+): Promise<FeatureExtractionPipeline>;
 
 // Load a local embedding model
 const embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');

@@ -25,7 +25,7 @@ export interface StepResultLike {
   conversation: ConversationLike;
   content: string;
   final: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 /**

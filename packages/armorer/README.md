@@ -199,6 +199,10 @@ import {
 Toolboxes also expose lazy provider exporters, and `createToolbox` exposes matching lazy provider import helpers:
 
 ```typescript
+import { createToolbox, type Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
+
 const openAITools = await toolbox.toOpenAITools();
 const importedToolbox = await createToolbox.fromOpenAITools(openAITools, {
   getTool(configuration) {
@@ -277,7 +281,7 @@ import { createMCP, toMcpTools, fromMcpTools } from 'armorer';
 OpenAI Agents SDK integration with tool gating:
 
 ```typescript
-import { toOpenAIAgentTools, createOpenAIToolGate } from 'armorer';
+import { toOpenAIAgentTools, createOpenAIToolGate } from 'armorer/open-ai/agents';
 ```
 
 ### Other Utilities
@@ -333,7 +337,11 @@ console.log(toolCall.result); // 8
 Compose toolboxes without mutating existing instances.
 
 ```typescript
-import { createToolbox, combineToolboxes } from 'armorer';
+import { createToolbox, combineToolboxes, type Tool } from 'armorer';
+
+declare const mathTool: Tool;
+declare const stringTool: Tool;
+declare const auditTool: Tool;
 
 const base = createToolbox([mathTool], {
   context: { region: 'us-east-1' },
@@ -373,6 +381,11 @@ Use policy hooks to block or gate risky actions before execution.
 Execute multiple tools in parallel or sequentially with global controls.
 
 ```ts
+import type { Toolbox, ToolCallInput } from 'armorer';
+
+declare const toolbox: Toolbox;
+declare const call1: ToolCallInput, call2: ToolCallInput, call3: ToolCallInput;
+
 const results = await toolbox.execute([call1, call2, call3], {
   concurrency: 5, // Global concurrency limit
   mode: 'parallel', // 'parallel' | 'sequential'
@@ -385,6 +398,32 @@ const results = await toolbox.execute([call1, call2, call3], {
 Policies can pause execution for human approval or input. Return `status: 'needs_approval'` to pause a call. `allow` may be omitted whenever `status` is present—it is derived from the status (`'allow'` → `true`; `'deny'`, `'needs_approval'`, `'needs_input'` → `false`).
 
 ```ts
+import {
+  createToolbox,
+  type ApprovalStateStore,
+  type PendingToolApproval,
+  type ToolCallInput,
+} from 'armorer';
+
+// Host-owned durable storage and the current request's identity.
+type DurableCollection = {
+  get(id: string): Promise<PendingToolApproval & { approvalToken: string }>;
+  set(id: string, value: PendingToolApproval | undefined): Promise<void>;
+};
+declare function openSharedDurableApprovalStore(): {
+  collection(name: string): DurableCollection;
+};
+declare function createDurableApprovalStateStore(
+  store: ReturnType<typeof openSharedDurableApprovalStore>,
+): ApprovalStateStore;
+declare const currentUser: { id: string };
+declare const currentTenant: { id: string };
+declare const currentSession: { id: string };
+declare const currentAuthorization: { capabilities: string[]; revision: string };
+declare const agent: { id: string };
+declare const run: { id: string };
+declare const sensitiveCall: ToolCallInput;
+
 const sharedDurableApprovalStore = openSharedDurableApprovalStore();
 const approvalStateStore = createDurableApprovalStateStore(sharedDurableApprovalStore);
 const approvalDescriptors = sharedDurableApprovalStore.collection('approval-descriptors');
@@ -392,11 +431,11 @@ const approvalDescriptors = sharedDurableApprovalStore.collection('approval-desc
 function buildToolbox() {
   return createToolbox([], {
     // Use the same secret and durable approval state anywhere pending approvals may be resumed.
-    approvalSecret: process.env.ARMORER_APPROVAL_SECRET,
+    approvalSecret: process.env['ARMORER_APPROVAL_SECRET']!,
     approvalStateStore,
     policy: {
       async beforeExecute(context) {
-        if (context.metadata?.sensitive) {
+        if (context.metadata?.['sensitive']) {
           return {
             status: 'needs_approval',
             reason: 'Sensitive action requires confirmation',
@@ -457,7 +496,7 @@ A complete `ApprovalStateStore` implementation must implement every method used 
 
 A `ReusableApprovalGrant` lets a matching future tool call skip human review entirely, bounded by principal, agent, tool, resource pattern, argument constraints, scope, expiry, use count, policy revision, revocation, and delegation behavior:
 
-```ts
+```ts file=grants.ts
 import {
   createProcessLocalGrantStateStore,
   GRANT_VERSION,
@@ -466,11 +505,11 @@ import {
   type ReusableApprovalGrant,
 } from 'armorer';
 
-const grantStore = createProcessLocalGrantStateStore();
+export const grantStore = createProcessLocalGrantStateStore();
 // Reuses the same secret configured as the toolbox's `approvalSecret` (see
 // "Approval Flows" above)—grant signing shares `signPendingApproval`'s HMAC
 // primitive, not a separate secret.
-const grantSigningSecret = process.env.ARMORER_APPROVAL_SECRET!;
+export const grantSigningSecret = process.env['ARMORER_APPROVAL_SECRET']!;
 
 const grant: ReusableApprovalGrant = {
   version: GRANT_VERSION,
@@ -494,7 +533,7 @@ const grant: ReusableApprovalGrant = {
 const signed = { ...grant, signature: signGrant(grant, grantSigningSecret) };
 
 await grantStore.issue(signed);
-verifyGrantSignature(await grantStore.get(signed.id)!, grantSigningSecret); // throws GrantError on tamper
+verifyGrantSignature((await grantStore.get(signed.id))!, grantSigningSecret); // throws GrantError on tamper
 await grantStore.decrementUse(signed.id); // { usesRemaining: 4 }
 await grantStore.revoke(signed.id); // idempotent; never throws on an unknown or already-revoked id
 ```
@@ -516,6 +555,12 @@ await grantStore.revoke(signed.id); // idempotent; never throws on an unknown or
 A toolbox constructed with both `approvalSecret` and a `grantStateStore` (defaulted to a process-local store whenever `approvalSecret` is configured, exactly like `approvalStateStore`) matches reusable approval grants inside its policy pipeline, ahead of the two-axis capability approval policy's `ask` outcome:
 
 ```ts
+import { createToolbox, type Tool, type ToolRequestContext } from 'armorer';
+import { grantSigningSecret, grantStore } from './grants.ts';
+
+declare const readFileTool: Tool;
+declare const requestContext: ToolRequestContext;
+
 const toolbox = createToolbox([readFileTool], {
   approvalSecret: grantSigningSecret,
   approvalPolicy: { mode: 'always' },
@@ -571,16 +616,28 @@ import {
   formatOpenAIToolResultsAsync,
   parseOpenAIToolCalls,
   toOpenAITools,
+  type AnyToolbox,
 } from 'armorer';
+import OpenAI from 'openai';
+
+declare const toolbox: AnyToolbox;
+declare const conversation: OpenAI.Chat.ChatCompletionMessageParam[];
+const openai = new OpenAI();
 
 // 1. Export tools
 const tools = toOpenAITools(toolbox);
 
 // 2. Call model
-const completion = await openai.chat.completions.create({ tools, ... });
+const completion = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  messages: conversation,
+  tools,
+});
 
-// 3. Parse and execute
-const toolCalls = parseOpenAIToolCalls(completion.choices[0].message.tool_calls);
+// 3. Parse and execute (Armorer tools are function tools)
+const toolCalls = parseOpenAIToolCalls(
+  completion.choices[0]?.message.tool_calls?.filter((toolCall) => toolCall.type === 'function'),
+);
 const results = await toolbox.execute(toolCalls);
 
 // 4. Format results
@@ -593,6 +650,11 @@ const streamingMessages = await formatOpenAIToolResultsAsync(results);
 If you want the root package to stay adapter-light until you need it, use the lazy toolbox methods instead:
 
 ```typescript
+import { createToolbox, type Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
+declare function loadExecute(name: string, params: unknown): Promise<unknown>;
+
 const tools = await toolbox.toOpenAITools();
 const imported = await createToolbox.fromOpenAITools(tools, {
   getTool(configuration) {
@@ -605,32 +667,7 @@ const imported = await createToolbox.fromOpenAITools(tools, {
 
 Use `armorer` for tool schemas, provider tool definitions, tool-call parsing, and execution. Use `conversationalist` for the persistent conversation state and provider message history.
 
-```typescript
-import {
-  appendToolCalls,
-  appendToolResultsAsync,
-  appendUserMessage,
-  createConversationHistory,
-} from 'conversationalist';
-import { toOpenAIMessagesGrouped } from 'conversationalist';
-import { createToolbox } from 'armorer';
-import { parseOpenAIToolCalls, toOpenAITools } from 'armorer';
-
-let conversation = createConversationHistory({ title: 'Weather' });
-conversation = appendUserMessage(conversation, 'What is the weather in Denver?');
-
-const tools = toOpenAITools(toolbox);
-const messages = toOpenAIMessagesGrouped(conversation);
-const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages, tools });
-
-const toolCalls = parseOpenAIToolCalls(completion.choices[0]?.message?.tool_calls);
-conversation = appendToolCalls(conversation, toolCalls);
-
-const results = await toolbox.execute(toolCalls, { stream: true });
-conversation = await appendToolResultsAsync(conversation, results);
-```
-
-See [Using `armorer` with `conversationalist`](documentation/conversationalist-integration.md) for complete OpenAI, Anthropic, and Gemini examples.
+`conversationalist` depends on `armorer`, so the examples that use both packages live in Conversationalist's documentation. See [Using `armorer` with `conversationalist`](../conversationalist/documentation/armorer-integration.md) for complete OpenAI, Anthropic, and Gemini examples.
 
 ## Observability (OpenTelemetry)
 
@@ -707,8 +744,12 @@ const toolbox = createToolbox([], {
 Prevent oversized tool results from blowing up context windows. The truncation utilities safely handle UTF-16 surrogate pairs and strip base64 data. When a tool returns a streaming result (an object with `stream` or `result` fields containing an `AsyncIterable`), the middleware wraps the streams so chunks are yielded until the character limit is reached, then a truncation marker is emitted and iteration stops.
 
 ```ts
+import { createToolbox, type Tool } from 'armorer';
 import { truncateToolResultContent } from 'armorer';
 import { createTruncationMiddleware } from 'armorer';
+
+declare const longResult: string;
+declare const tools: Tool[];
 
 // Standalone usage
 const truncated = truncateToolResultContent(longResult, {
@@ -726,6 +767,8 @@ For large tool outputs that are stored separately, use the structured head-and-t
 
 ```ts
 import { truncateToolResultContentStructured } from 'armorer';
+
+declare const toolOutput: string;
 
 const excerpt = truncateToolResultContentStructured(toolOutput, {
   maxBytes: 8000,
@@ -779,13 +822,36 @@ Use the idempotency helpers when a tool might be retried by an at-least-once exe
 - `authorization-required`: a completed result exists, but it was recorded under another policy revision and must not be returned without reauthorization.
 
 ```ts
-import { createToolbox } from 'armorer';
+import {
+  createToolbox,
+  type IdempotencyResolutionReceipt,
+  type LegacyIdempotencyResolutionReceipt,
+  type Tool,
+} from 'armorer';
 import { createToolResultCache, withToolboxIdempotency } from 'armorer';
 
+// Host-owned storage, identities, and operator signing.
+declare const processLocalKeyValueStore: Parameters<typeof createToolResultCache>[0]['store'];
+export declare const chargeCardTool: Tool;
+export declare const currentTenant: { id: string };
+declare const operator: { principalId: string; ownerId: string; authorizationRevision: string };
+declare const temporalWorkflowRunId: string;
+export declare const temporalToolCallId: string;
+export declare function verifyOperatorSignature(receipt: IdempotencyResolutionReceipt): boolean;
+declare function verifyLegacyOperatorSignature(
+  receipt: LegacyIdempotencyResolutionReceipt,
+): boolean;
+declare function signResolutionReceipt(
+  receipt: Omit<IdempotencyResolutionReceipt, 'authorization'>,
+): IdempotencyResolutionReceipt;
+declare function signLegacyResolutionReceipt(
+  receipt: Omit<LegacyIdempotencyResolutionReceipt, 'authorization'>,
+): LegacyIdempotencyResolutionReceipt;
+
 // This adapter is atomic only among instances sharing this store object in one process.
-const cache = createToolResultCache({ store: processLocalKeyValueStore });
+export const cache = createToolResultCache({ store: processLocalKeyValueStore });
 const toolbox = createToolbox([chargeCardTool]);
-const requestContext = {
+export const requestContext = {
   authority: {
     principalId: operator.principalId,
     tenantId: currentTenant.id,
@@ -796,15 +862,15 @@ const requestContext = {
   audience: 'operator',
   agentId: 'billing-agent',
   runId: temporalWorkflowRunId,
-};
-const idempotentToolbox = withToolboxIdempotency(toolbox, {
+} as const;
+export const idempotentToolbox = withToolboxIdempotency(toolbox, {
   cache,
   tenantId: currentTenant.id,
   verifyResolutionReceipt: (receipt) => verifyOperatorSignature(receipt),
   verifyLegacyResolutionReceipt: (receipt) => verifyLegacyOperatorSignature(receipt),
 });
 
-const call = {
+export const call = {
   id: 'provider-call-1',
   name: 'charge-card',
   arguments: { cents: 2500 },
@@ -815,11 +881,12 @@ const result = await idempotentToolbox.execute(call, {
 });
 
 if (result.idempotency?.outcome === 'unknown-outcome') {
-  if (result.idempotency.attemptId) {
+  if (result.idempotency.attemptId && result.idempotency.inputDigest) {
     const signedOperatorReceipt = signResolutionReceipt({
       version: 1,
       key: result.idempotency.key,
       attemptId: result.idempotency.attemptId,
+      inputDigest: result.idempotency.inputDigest,
       tenantId: currentTenant.id,
       toolRevision: chargeCardTool.id,
       decision: 'retry',
@@ -863,6 +930,19 @@ if (result.idempotency?.outcome === 'unknown-outcome') {
 An expired lease is still an unknown outcome—it is never evidence that the side effect did not happen. After an authorized operator verifies the external system, retry with a typed resolution receipt bound to the tenant, full tool revision, cache key, and fenced attempt:
 
 ```ts
+import type {
+  AnyToolbox,
+  IdempotencyResolutionReceipt,
+  ToolCallInput,
+  ToolRequestContext,
+} from 'armorer';
+
+declare const idempotentToolbox: AnyToolbox;
+declare const call: ToolCallInput;
+declare const temporalToolCallId: string;
+declare const signedOperatorReceipt: IdempotencyResolutionReceipt;
+declare const requestContext: ToolRequestContext;
+
 await idempotentToolbox.execute(call, {
   idempotencyKey: temporalToolCallId,
   resolutionReceipt: signedOperatorReceipt,
@@ -873,6 +953,22 @@ await idempotentToolbox.execute(call, {
 The direct `withIdempotency()` wrapper uses the same fenced recovery rule. Configure `verifyResolutionReceipt`, then pass the signed receipt through the wrapped tool's typed `execute()` options after the lease expires. The cache atomically replaces only the attempt named by the verified receipt:
 
 ```ts
+import {
+  withIdempotency,
+  type IdempotencyResolutionReceipt,
+  type Tool,
+  type ToolRequestContext,
+  type ToolResultCache,
+} from 'armorer';
+
+declare const chargeCardTool: Tool;
+declare const cache: ToolResultCache;
+declare const currentTenant: { id: string };
+declare const call: { arguments: { cents: number } };
+declare const requestContext: ToolRequestContext;
+declare const signedOperatorReceipt: IdempotencyResolutionReceipt;
+declare function verifyResolutionReceipt(receipt: IdempotencyResolutionReceipt): boolean;
+
 const idempotentCharge = withIdempotency(chargeCardTool, {
   cache,
   tenantId: currentTenant.id,
@@ -898,14 +994,16 @@ Legacy stores may contain `started` entries that predate attempt fencing. Those 
 LLMs sometimes mangle tool names (wrong case, dots instead of hyphens). Enable resolution to auto-correct:
 
 ```ts
+import { createToolbox, type Tool } from 'armorer';
+
+declare const tools: Tool[];
+
 const toolbox = createToolbox(tools, {
   resolution: true,
 });
 
 toolbox.addEventListener('name-resolved', (event) => {
-  console.log(
-    `Resolved ${event.detail.originalName} → ${event.detail.resolvedName} (${event.detail.tier})`,
-  );
+  console.log(`Resolved ${event.originalName} → ${event.resolvedName} (${event.tier})`);
 });
 ```
 
@@ -916,16 +1014,20 @@ Resolution tiers (in order): exact → case-insensitive → normalized (dot/slas
 Catch stuck models that repeat the same tool call in a loop:
 
 ```ts
+import { createToolbox, type Tool } from 'armorer';
+
+declare const tools: Tool[];
+
 const toolbox = createToolbox(tools, {
   loopDetection: true, // or { warningThreshold: 5, blockThreshold: 10 }
 });
 
 toolbox.addEventListener('loop-warning', (event) => {
-  console.warn(event.detail.message);
+  console.warn(event.message);
 });
 
 toolbox.addEventListener('loop-blocked', (event) => {
-  console.error(event.detail.message);
+  console.error(event.message);
   // Tool call was blocked and returned an error result
 });
 ```
@@ -942,11 +1044,10 @@ import { createMockTool, createTestRegistry } from 'armorer';
 const mock = createMockTool({ name: 'weather' });
 mock.mockResolve({ temp: 72 });
 
-const toolbox = createTestRegistry();
-toolbox.register(mock);
+const toolbox = createTestRegistry([mock]);
 
 await toolbox.execute({ name: 'weather', arguments: {} });
-console.log(toolbox.history[0].call.name); // 'weather'
+console.log(toolbox.history[0]?.call.name); // 'weather'
 ```
 
 ## Safety, Policy, and Metadata
@@ -956,18 +1057,6 @@ Toolbox supports registry-level policy hooks and per-tool policy for centralized
 ```ts
 import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
-
-const toolbox = createToolbox([], {
-  readOnly: true,
-  policy: {
-    beforeExecute({ toolName, metadata }) {
-      if (metadata?.mutates) {
-        return { allow: false, reason: `${toolName} is mutating` };
-      }
-    },
-  },
-  telemetry: true,
-});
 
 const writeFile = createTool({
   name: 'fs.write',
@@ -979,7 +1068,18 @@ const writeFile = createTool({
   },
 });
 
-toolbox.register(writeFile);
+const toolbox = createToolbox([writeFile], {
+  readOnly: true,
+  policy: {
+    beforeExecute({ toolName, metadata }) {
+      if (metadata?.mutates) {
+        return { allow: false, reason: `${toolName} is mutating` };
+      }
+      return { allow: true };
+    },
+  },
+  telemetry: true,
+});
 ```
 
 Metadata keys with built-in enforcement:
@@ -1007,6 +1107,9 @@ Execution tracing events (opt-in via `telemetry: true`):
 Per-tool concurrency:
 
 ```ts
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 createTool({
   name: 'git.status',
   description: 'status',
@@ -1027,6 +1130,9 @@ Define tools with Zod schemas, validation, and typed execution contexts. For adv
 ### Basic Tool
 
 ```typescript
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 const greetUser = createTool({
   name: 'greet-user',
   description: 'Greet a user by name',
@@ -1051,6 +1157,12 @@ Tool schemas must be object schemas (`z.object(...)` or a plain object shape). T
 Use `availability` when a tool can only run in the current platform or runtime environment. The hook is evaluated lazily against the toolbox context, so boot-time checks such as `process.platform`, an optional local binary probe, or a service health flag can decide whether the tool should be shown to a model.
 
 ```typescript
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+
+declare function hasCommand(command: string): Promise<boolean>;
+declare function runRipgrep(query: string): Promise<string[]>;
+
 const toolbox = createToolbox([], {
   context: {
     platform: process.platform,
@@ -1078,37 +1190,39 @@ Availability is not secrets configuration. A tool with an optional API key can s
 You can use `isTool(obj)` to check if an object is a tool:
 
 ```typescript
-import { isTool, createTool } from 'armorer';
+import { isTool } from 'armorer';
 
-const tool = createTool({ ... });
-if (isTool(tool)) {
-  // TypeScript knows tool is ToolboxTool here
-  console.log(tool.name);
+declare const value: unknown;
+
+if (isTool(value)) {
+  // TypeScript knows value is a Tool here
+  console.log(value.name);
 }
 ```
 
-### Creating and Registering in One Step
+### Reading Toolbox Context
 
-You can create a tool and register it with a toolbox in one step by passing the toolbox as the second argument:
+`createTool` takes a single options object; register the tool by passing it to `createToolbox` (or `toolbox.extend()`). At run time the toolbox merges its `context` into each tool's execute context. The execute context's type does not carry those keys, so narrow it where you read them, or use [`withContext`](#tool-with-context) when the tool should own typed context:
 
 ```typescript
-const toolbox = createToolbox([], {
-  context: { userId: 'user-123', apiKey: 'secret' },
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+
+const tool = createTool({
+  name: 'my-tool',
+  description: 'A tool with toolbox context',
+  input: z.object({ input: z.string() }),
+  async execute({ input }, context) {
+    // context includes toolbox.context at run time
+    const { userId } = context as typeof context & { userId?: string };
+    console.log('User:', userId);
+    return input.toUpperCase();
+  },
 });
 
-const tool = createTool(
-  {
-    name: 'my-tool',
-    description: 'A tool with toolbox context',
-    input: z.object({ input: z.string() }),
-    async execute({ input }, context) {
-      // context includes toolbox.context automatically
-      console.log('User:', context.userId);
-      return input.toUpperCase();
-    },
-  },
-  toolbox, // Automatically registers the tool
-);
+const toolbox = createToolbox([tool], {
+  context: { userId: 'user-123', apiKey: 'secret' },
+});
 ```
 
 ### Tool Without Inputs
@@ -1116,6 +1230,8 @@ const tool = createTool(
 If your tool accepts no input arguments, omit `input` (it defaults to `z.object({})`):
 
 ```typescript
+import { createTool } from 'armorer';
+
 const healthCheck = createTool({
   name: 'health-check',
   description: 'Verify service is alive',
@@ -1130,6 +1246,9 @@ const healthCheck = createTool({
 Metadata is a lightweight, out-of-band descriptor for things that should not be part of the tool's input schema. It is useful for discovery and routing (filter/query by tier, cost, capabilities, auth requirements), for UI grouping, or for analytics and policy checks without changing the tool signature.
 
 ```typescript
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 const fetchWeather = createTool({
   name: 'fetch-weather',
   description: 'Get current weather for a location',
@@ -1155,6 +1274,9 @@ const fetchWeather = createTool({
 Use `withContext` to inject shared context into tools:
 
 ```typescript
+import { withContext } from 'armorer';
+import { z } from 'zod';
+
 const createToolWithContext = withContext({ userId: 'user-123', apiKey: 'secret' });
 
 const userTool = createToolWithContext({
@@ -1172,14 +1294,21 @@ const userTool = createToolWithContext({
 
 You can supply `execute` as a promise that resolves to a function. To avoid `import()` starting immediately, wrap the dynamic import with `lazy` so it only loads on first execution:
 
+```typescript file=heavy-tool.ts
+export async function execute({ input }: { input: string }): Promise<string> {
+  return `processed ${input}`;
+}
+```
+
 ```typescript
-import { lazy } from 'armorer';
+import { createTool, lazy } from 'armorer';
+import { z } from 'zod';
 
 const heavyTool = createTool({
   name: 'heavy-tool',
   description: 'Runs an expensive workflow',
   input: z.object({ input: z.string() }),
-  execute: lazy(() => import('./tools/heavy-tool').then((mod) => mod.execute)),
+  execute: lazy(async () => (await import('./heavy-tool.ts')).execute),
 });
 ```
 
@@ -1190,33 +1319,36 @@ If the promise rejects or resolves to a non-function, `tool.execute(toolCall)` r
 Listen to tool execution lifecycle events:
 
 ```typescript
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 const tool = createTool({
   name: 'my-tool',
   description: 'A tool with events',
   input: z.object({ input: z.string() }),
-  async execute({ input }, { dispatch }) {
-    dispatch({ type: 'progress', detail: { percent: 50, message: 'Processing...' } });
+  async execute({ input }, { progress }) {
+    progress({ percent: 50, message: 'Processing...' });
     return input.toUpperCase();
   },
 });
 
 tool.addEventListener('execute-start', (event) => {
-  console.log('Starting:', event.detail.params);
+  console.log('Starting:', event.params);
 });
 
 tool.addEventListener('execute-success', (event) => {
-  console.log('Result:', event.detail.result);
+  console.log('Result:', event.result);
 });
 
 tool.addEventListener('execute-error', (event) => {
-  console.error('Error:', event.detail.error);
+  console.error('Error:', event.error);
 });
 
 tool.addEventListener('progress', (event) => {
-  if (event.detail.percent !== undefined) {
-    console.log(`${event.detail.percent}%: ${event.detail.message ?? ''}`);
+  if (event.percent !== undefined) {
+    console.log(`${event.percent}%: ${event.message ?? ''}`);
   } else {
-    console.log(event.detail.message ?? 'Progress update');
+    console.log(event.message ?? 'Progress update');
   }
 });
 ```
@@ -1238,6 +1370,12 @@ Every per-call event—one fired for a specific execution, as opposed to a toolb
 A caller sharing one `Tool`/`Toolbox` across more than one concurrent owner scopes its own listeners like this:
 
 ```typescript
+import type { Toolbox, ToolCallInput } from 'armorer';
+
+declare const toolbox: Toolbox;
+declare const toolCall: ToolCallInput;
+declare const myRunId: string;
+
 const result = await toolbox.execute(toolCall, { ownerId: myRunId });
 
 toolbox.addEventListener('settled', (event) => {
@@ -1251,6 +1389,10 @@ toolbox.addEventListener('settled', (event) => {
 Tools and toolboxes expose the lifetime of work they own. `activeExecutions` counts admitted calls, `executionSignal` aborts that work when the owner completes, and `whenIdle()` resolves once all admitted calls have reached a terminal or explicitly unknown-effect state. `complete()` is idempotent, closes admission, requests cancellation for active work, and returns a promise you can await during shutdown:
 
 ```typescript
+import type { Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
+
 const pending = toolbox.execute({ name: 'my-tool', arguments: {} });
 await toolbox.complete();
 await toolbox.whenIdle();
@@ -1272,6 +1414,9 @@ Tools that return an `AsyncIterable` support two execution modes:
 - `stream: true`: Armorer returns a live stream on `ToolResult.stream` (and `ToolResult.result`), and you consume it incrementally.
 
 ```typescript
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 const streamTool = createTool({
   name: 'stream-tool',
   description: 'Emits tokens',
@@ -1311,8 +1456,11 @@ Stream lifecycle events are emitted for both modes: `stream-start`, `stream-chun
 
 To report progress from inside a tool, call `progress` on the `ToolContext` (second argument to `execute`)—a typed wrapper over `dispatch` that constructs and dispatches the same `progress` event, so you no longer hand-construct the event yourself. Pass an optional `percent` number (0–100), an optional `message`, and an optional `checkpoint` of any shape, forwarded verbatim for a downstream consumer (such as an activity-backed execution's heartbeat forwarder) to read without reconstructing it from `percent`/`message`:
 
-```typescript
-const longTask = createTool({
+```typescript file=long-task.ts
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
+export const longTask = createTool({
   name: 'long-task',
   description: 'Does work in phases',
   input: z.object({ input: z.string() }),
@@ -1327,13 +1475,15 @@ const longTask = createTool({
 });
 ```
 
-`progress` is a no-op once the tool call has completed or been aborted, and it never resets or extends an explicit `timeout`. You can still dispatch the event by hand—`dispatch({ type: 'progress', detail: { percent: 50, message: 'Processing...' } })`—the two are equivalent.
+`progress` is a no-op once the tool call has completed or been aborted, and it never resets or extends an explicit `timeout`. You can still dispatch the event by hand—`dispatch(new ToolProgressEvent({ percent: 50, message: 'Processing...' }))`—the two are equivalent.
 
 Then subscribe to `progress` on the tool:
 
 ```typescript
+import { longTask } from './long-task.ts';
+
 longTask.addEventListener('progress', (event) => {
-  console.log(`${event.detail.percent}%: ${event.detail.message ?? ''}`);
+  console.log(`${event.percent}%: ${event.message ?? ''}`);
 });
 ```
 
@@ -1346,24 +1496,20 @@ import { createToolbox, createTool } from 'armorer';
 import { createSearchTool } from 'armorer';
 import { z } from 'zod';
 
-const toolbox = createToolbox();
-
-// Install the search tool - it auto-registers with the toolbox
-createSearchTool(toolbox);
-
-// Register your tools (can be done before or after the search tool)
-createTool(
-  {
-    name: 'send-email',
-    description: 'Send an email to recipients',
-    input: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
-    tags: ['communication'],
-    async execute({ to, subject, body }) {
-      return { sent: true };
-    },
+const sendEmail = createTool({
+  name: 'send-email',
+  description: 'Send an email to recipients',
+  input: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+  tags: ['communication'],
+  async execute({ to, subject, body }) {
+    return { sent: true };
   },
-  toolbox,
-);
+});
+
+const tools = createToolbox([sendEmail]);
+
+// The search tool searches the toolbox you pass it; extend that toolbox to expose it
+const toolbox = tools.extend(createSearchTool(tools));
 
 // Agents can now search for tools via toolbox.execute()
 const result = await toolbox.execute({
@@ -1372,13 +1518,13 @@ const result = await toolbox.execute({
 });
 
 console.log(result.result);
-// [{ name: 'send-email', description: '...', tags: ['communication'], score: 1.5 }]
+// [{ name: 'send-email', description: '...', tags: ['communication'], score: 1 }]
 ```
 
 The search tool:
 
-- **Auto-registers** with the toolbox when created
-- **Discovers tools dynamically** - finds tools registered before or after it
+- **Searches the toolbox you pass it** - toolboxes are immutable, so add the search tool with `extend()` and build it from the toolbox whose tools it should find
+- **Respects availability** - it searches `toolbox.getAvailable()` at call time, so tools whose availability hook fails are left out
 - **Works with provider adapters** - included in `toOpenAITools(toolbox)`, `toAnthropicTools(toolbox)`, and `toGeminiTools(toolbox)`
 - **Supports semantic search** when embeddings are configured on the toolbox
 
@@ -1417,6 +1563,9 @@ TypeScript inference guidance and type-level patterns. For a complete list of ex
 Toolbox is written in TypeScript and provides full type inference:
 
 ```typescript
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 const tool = createTool({
   name: 'typed-tool',
   description: 'A typed tool',

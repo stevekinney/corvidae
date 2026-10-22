@@ -1,3 +1,5 @@
+import type { BatchOperation, ConditionalBatchCondition } from '../../../storage/interface.ts';
+import { WEFT_RESERVED_KEY_PREFIXES } from '../../../storage/key-prefixes.ts';
 import { parseCronExpression } from '../../schedule.ts';
 import { parseDuration } from '../../scheduler.ts';
 import type {
@@ -8,6 +10,7 @@ import type {
   ScheduleStatus,
 } from '../../types.ts';
 import { assertDecodableWorkflowId, isDecodableWorkflowId } from '../../workflow-identifiers.ts';
+import { ScheduleReservedKeyError } from '../schedule-reserved-key-error.ts';
 import { SCHEDULE_OVERLAP_POLICIES, SCHEDULE_REVISION_POLICIES } from './schedule-options.ts';
 
 export {
@@ -88,6 +91,32 @@ export function coerceExpectedScheduleRevision(expectedRevision: unknown): numbe
     throw new Error('options.expectedRevision must be a non-negative integer when provided');
   }
   return expectedRevision;
+}
+
+/**
+ * The keys a caller named in the options of a schedule transition (COR-1594): each condition in
+ * `extraConditions` and each operation in `additionalOperations` must name a key of the caller's
+ * own. A key under one of Weft's reserved prefixes is refused with {@link ScheduleReservedKeyError},
+ * the schedule's own key among them, because the engine conditions the schedule's own write itself,
+ * a caller's condition on a key the engine owns is not the caller's to make, and a caller's
+ * operation on one would write it through the transition that guards it.
+ */
+export function assertCallerOwnedTransitionKeys(
+  scheduleId: string,
+  options: {
+    readonly extraConditions?: readonly ConditionalBatchCondition[] | undefined;
+    readonly additionalOperations?: readonly BatchOperation[] | undefined;
+  } = {},
+): void {
+  const keys = [
+    ...(options.extraConditions ?? []).map((condition) => condition.key),
+    ...(options.additionalOperations ?? []).map((operation) => operation.key),
+  ];
+  for (const key of keys) {
+    if (WEFT_RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      throw new ScheduleReservedKeyError(scheduleId, key);
+    }
+  }
 }
 
 /**

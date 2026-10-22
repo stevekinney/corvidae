@@ -23,6 +23,7 @@ import {
 import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
   CHUNK_STREAMER_RUN_ID,
+  UPDATE_DESK_REPLAY_RUN_ID,
   UPDATE_DESK_RUN_ID,
 } from './engine-console-ids.ts';
 
@@ -174,4 +175,11 @@ export async function seedEngineConsole(engine: EngineConsoleEngine): Promise<vo
     timeout: SEED_UPDATE_TIMEOUT_MS,
   });
   if (exploded.error === undefined) throw new Error('the seeded explode update did not fail');
+
+  // A desk nobody has sent anything to: its history must hold exactly what one browser send makes.
+  await engine.start(
+    'update-desk',
+    { name: 'replay-desk' },
+    { id: UPDATE_DESK_REPLAY_RUN_ID, defer: false },
+  );
 }

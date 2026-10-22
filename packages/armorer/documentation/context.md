@@ -14,6 +14,7 @@ You can also pass per-call execution controls (`signal`, `timeout`) when executi
 Every tool execute function receives a `ToolContext`, including:
 
 - `dispatch`: emit tool events.
+- `progress`: report progress for the current call.
 - `meta`: generic metadata bag for runtime use.
 - `toolCall`: normalized tool call (`id`, `name`, `arguments`).
 - `configuration`: the resolved tool configuration.
@@ -31,10 +32,7 @@ const echo = createTool({
   description: 'Echo text',
   input: z.object({ text: z.string() }),
   async execute({ text }, context) {
-    context.dispatch({
-      type: 'progress',
-      detail: { percent: 50, message: 'Echoing text' },
-    });
+    context.progress({ percent: 50, message: 'Echoing text' });
 
     return {
       callId: context.toolCall.id,
@@ -52,26 +50,26 @@ Use `createToolbox({ context })` when values should be available to many tools:
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
-const toolbox = createToolbox([], {
+const whoami = createTool({
+  name: 'whoami',
+  description: 'Return user/session identity',
+  input: z.object({}),
+  async execute(_params, context) {
+    // Toolbox context is merged into the runtime context but not typed on it.
+    const { userId, sessionId } = context as typeof context & {
+      userId: string;
+      sessionId: string;
+    };
+    return { userId, sessionId };
+  },
+});
+
+const toolbox = createToolbox([whoami], {
   context: {
     userId: 'user-123',
     sessionId: 'session-456',
   },
 });
-
-toolbox.register(
-  createTool({
-    name: 'whoami',
-    description: 'Return user/session identity',
-    input: z.object({}),
-    async execute(_params, context) {
-      return {
-        userId: context.userId,
-        sessionId: context.sessionId,
-      };
-    },
-  }),
-);
 ```
 
 ## withContext
@@ -82,8 +80,14 @@ Use `withContext` when you want tool-local context injection without requiring t
 import { withContext } from 'armorer';
 import { z } from 'zod';
 
+declare function fetchProjects(options: {
+  accountId: string;
+  apiKey: string | undefined;
+  region: string;
+}): Promise<unknown[]>;
+
 const createAuthedTool = withContext({
-  apiKey: process.env.API_KEY,
+  apiKey: process.env['API_KEY'],
   region: 'us-east-1',
 });
 

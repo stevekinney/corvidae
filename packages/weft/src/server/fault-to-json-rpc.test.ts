@@ -243,6 +243,9 @@ describe('faultToJsonRpcError', () => {
       data: { operationName: 'weft.workflows.update' },
     });
     expect(error.code).toBe(-32023);
+    // 504, not `Request Timeout`: a user agent replays a request answered that way, and gives up on a 504.
+    expect(error.data['httpStatus']).toBe(504);
+    expect(error.data['weftCode']).toBe('Timeout');
   });
 
   it('JSON-RPC error.data carries structured machine-readable detail. At minimum it includes the canonical Weft application code and the related HTTP status when the same failure is exposed over REST.', () => {

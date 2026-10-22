@@ -628,7 +628,12 @@ export function createAgUiMount(
         // before anything is added to the thread or any run is created.
         let unusable: string | undefined;
         try {
-          unusable = await firstUnusableAsset(bureau, owner, appendMessages);
+          unusable = await firstUnusableAsset(
+            bureau,
+            owner,
+            appendMessages,
+            principal.method !== 'unauthenticated' && principal.hasScope('bureau.assets:read'),
+          );
         } catch {
           return { response: refuse('RUN_FAILED', 'The run could not be started') };
         }
@@ -820,7 +825,7 @@ function holdsPendingApproval(
  * Why the first managed asset `rows` name cannot be used by `owner`, as the message the start is
  * refused with, or `undefined` when every one can. An asset another owner holds and one that does
  * not exist read alike, as `was not found`, so no caller learns whether another owner's asset
- * exists. An asset the owner holds that is not `available` (pending, rejected, quarantined,
+ * exists, and a caller without `bureau.assets:read` reads every asset alike, whoever holds it. An asset the owner holds that is not `available` (pending, rejected, quarantined,
  * expired or deleted) is named by its state: a run resolves every asset in the thread on every
  * turn, so a row that names one is committed only to fail the thread's every later turn.
  */
@@ -828,10 +833,15 @@ async function firstUnusableAsset(
   bureau: Pick<AgUiBureau, 'assets'>,
   owner: string,
   rows: Parameters<typeof managedAssetIdsOf>[0],
+  mayReadAssets: boolean,
 ): Promise<string | undefined> {
   const assets = bureau.assets;
   if (assets === undefined) return undefined;
   for (const assetId of managedAssetIdsOf(rows)) {
+    // Naming an asset in a chat is reading it: the model reads it. A credential without the read
+    // scope is answered as for a missing asset, before the asset is looked up, so neither its
+    // existence nor its state is disclosed.
+    if (!mayReadAssets) return `Asset "${assetId}" was not found`;
     try {
       const { state } = await assets.inspect(assetId, { id: owner });
       if (state !== 'available') return `Asset "${assetId}" is ${state}`;

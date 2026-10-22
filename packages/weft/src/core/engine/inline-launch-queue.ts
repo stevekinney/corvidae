@@ -1,7 +1,18 @@
 import { WorkflowStartedEvent } from '../events.ts';
-import type { QueuedInlineWorkflowExecutionStart } from './engine-internal-types.ts';
+import type {
+  QueuedInlineWorkflowExecutionStart,
+  QueuedInlineWorkflowStartRequest,
+} from './engine-internal-types.ts';
+import { letGoOfFailedQueuedStart } from './inline-launch-failure.ts';
 import type { EngineInternals } from './internals.ts';
 import { startWorkflowExecution } from './lifecycle.ts';
+import {
+  isPendingLaunchStale,
+  recordInlineWorkflowStartLaunching,
+  recordInlineWorkflowStartQueued,
+  settleEveryInlineWorkflowStart,
+  settleInlineWorkflowStart,
+} from './local-execution.ts';
 import { loadWorkflowState } from './storage-io.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 
@@ -78,11 +89,13 @@ async function settleQueuedShutdownWork(
  */
 export function queueInlineWorkflowExecutionStart(
   internals: EngineInternals,
-  start: QueuedInlineWorkflowExecutionStart,
+  request: QueuedInlineWorkflowStartRequest,
   callbacks: InlineLaunchQueueCallbacks,
 ): void {
-  internals.queuedInlineWorkflowStartIds.add(start.workflowId);
-  internals.queuedOrLaunchingInlineWorkflowStartIds.add(start.workflowId);
+  const start: QueuedInlineWorkflowExecutionStart = {
+    ...request,
+    launch: recordInlineWorkflowStartQueued(internals, request.workflowId),
+  };
   internals.queuedInlineWorkflowStarts.push(start);
   if (internals.options.inlineLaunchSchedulingMode === 'manual') {
     return;
@@ -116,8 +129,7 @@ function settleDiscardedInlineStarts(
   discarded: QueuedInlineWorkflowExecutionStart[],
 ): void {
   for (const start of discarded) {
-    internals.queuedInlineWorkflowStartIds.delete(start.workflowId);
-    internals.queuedOrLaunchingInlineWorkflowStartIds.delete(start.workflowId);
+    settleInlineWorkflowStart(internals, start.launch);
     start.onStarted?.();
   }
 }
@@ -149,7 +161,9 @@ export async function flushQueuedInlineWorkflowStarts(
     // batch. The batch was already removed from the queue above, so an escaping
     // throw would leave later starts' onStarted callbacks unfired forever —
     // hanging their defer:false awaiters. swallowPromiseRejection contains the
-    // failure; the per-start finally still fires onStarted.
+    // failure, which `startQueuedInlineWorkflowExecution` has already reported
+    // and acted on (see `letGoOfFailedQueuedStart`); the per-start finally
+    // still fires onStarted.
     await callbacks.swallowPromiseRejection(
       startQueuedInlineWorkflowExecution(internals, start, callbacks, options),
     );
@@ -303,6 +317,45 @@ async function isQueuedStartStillTheLiveRun(
   );
 }
 
+/**
+ * What follows the generator's first scheduled turn. Async disposal starts queued workflows so
+ * their first turns cannot fire later against torn-down state: it aborts cooperatively after
+ * `generator.next()` has been scheduled, before awaiting either the advance or pending-update
+ * processing, so a first turn parked on `ctx.signal` can settle (if the aborted advance yields
+ * another operation, the inline strategy suppresses it so nested work cannot begin during lease
+ * handoff). Otherwise the pending updates are processed. Not `async`, and split out of
+ * {@link startQueuedInlineWorkflowExecution} only for the repository's complexity ceiling: the
+ * launch path's turn count is load-bearing, and this adds none on the processing path.
+ */
+function settleQueuedStartFirstAdvance(
+  internals: EngineInternals,
+  start: QueuedInlineWorkflowExecutionStart,
+  callbacks: Pick<InlineLaunchQueueCallbacks, 'processPendingUpdatesAfterInlineAdvance'>,
+  options: { abortStartedWorkflows?: boolean } | undefined,
+): Promise<void> | undefined {
+  if (options?.abortStartedWorkflows === true) {
+    internals.inlineStrategy?.abortWorkflowAdvanceForShutdown(start.workflowId);
+    return undefined;
+  }
+  return callbacks.processPendingUpdatesAfterInlineAdvance(start.workflowId);
+}
+
+/**
+ * Move the queued start's own record to `launching`, in the same synchronous turn as the launch
+ * that follows, or report the start stale: enqueued under a claim this engine lost and took back
+ * since, so its checkpoint may be behind the run's durable one; the reclaim that took the claim
+ * back drives the run from storage instead (COR-1618). Synchronous, so the launch path gains no
+ * turn.
+ */
+function beginQueuedStartLaunch(
+  internals: EngineInternals,
+  start: QueuedInlineWorkflowExecutionStart,
+): boolean {
+  if (isPendingLaunchStale(internals, start.launch)) return false;
+  recordInlineWorkflowStartLaunching(internals, start.launch);
+  return true;
+}
+
 async function startQueuedInlineWorkflowExecution(
   internals: EngineInternals,
   start: QueuedInlineWorkflowExecutionStart,
@@ -336,7 +389,9 @@ async function startQueuedInlineWorkflowExecution(
       return;
     }
 
-    internals.queuedInlineWorkflowStartIds.delete(start.workflowId);
+    if (!beginQueuedStartLaunch(internals, start)) {
+      return;
+    }
     internals.engine.dispatchEvent(
       new WorkflowStartedEvent(start.workflowId, start.workflowType, start.input),
     );
@@ -355,20 +410,13 @@ async function startQueuedInlineWorkflowExecution(
       start.executionStateOwnerId,
     );
 
-    // Async disposal starts queued workflows so their first turns cannot fire
-    // later against torn-down state. Abort cooperatively after generator.next()
-    // has been scheduled, before awaiting either the advance or pending-update
-    // processing, so a first turn parked on ctx.signal can settle. If the
-    // aborted advance yields another operation, the inline strategy suppresses
-    // it so nested work cannot begin during lease handoff.
-    if (options?.abortStartedWorkflows === true) {
-      internals.inlineStrategy?.abortWorkflowAdvanceForShutdown(start.workflowId);
-    } else {
-      await callbacks.processPendingUpdatesAfterInlineAdvance(start.workflowId);
-    }
+    await settleQueuedStartFirstAdvance(internals, start, callbacks, options);
+  } catch (error) {
+    await letGoOfFailedQueuedStart(internals, start, error);
+    throw error;
   } finally {
-    internals.queuedInlineWorkflowStartIds.delete(start.workflowId);
-    internals.queuedOrLaunchingInlineWorkflowStartIds.delete(start.workflowId);
+    // The launch is over, whatever it did: the run is now live, let go, or someone else's.
+    settleInlineWorkflowStart(internals, start.launch);
     // Settle the `defer: false` awaiter exactly once. The generator has been
     // driven by this point on the success path; on the skip/throw paths the run
     // will not become live, so resolving (rather than hanging the awaiter) is the
@@ -412,11 +460,10 @@ export function disposeQueuedInlineWorkflowStarts(internals: EngineInternals): v
   const discarded = internals.queuedInlineWorkflowStarts;
   internals.queuedInlineWorkflowStarts = [];
   settleDiscardedInlineStarts(internals, discarded);
-  // Belt-and-suspenders full reset: the helper already cleared each discarded
-  // start's id, but a total clear guards against any index entry without a
-  // matching queued start.
-  internals.queuedInlineWorkflowStartIds.clear();
-  internals.queuedOrLaunchingInlineWorkflowStartIds.clear();
+  // Belt-and-suspenders full reset: the helper already settled each discarded
+  // start, but a total clear guards against any index entry without a
+  // matching queued start, and settles whatever waited on one.
+  settleEveryInlineWorkflowStart(internals);
 
   const channel = internals.queuedInlineWorkflowStartChannel;
   if (channel !== null) {
@@ -424,56 +471,4 @@ export function disposeQueuedInlineWorkflowStarts(internals: EngineInternals): v
     channel.port2.close();
     internals.queuedInlineWorkflowStartChannel = null;
   }
-}
-
-export function hasQueuedInlineWorkflowStart(
-  internals: EngineInternals,
-  workflowId: string,
-): boolean {
-  return internals.queuedInlineWorkflowStartIds.has(workflowId);
-}
-
-export function hasQueuedOrLaunchingInlineWorkflowStart(
-  internals: EngineInternals,
-  workflowId: string,
-): boolean {
-  return internals.queuedOrLaunchingInlineWorkflowStartIds.has(workflowId);
-}
-
-function workflowStatusCanRetainLocalOwnership(workflowStatus: string): boolean {
-  return workflowStatus === 'running' || workflowStatus === 'pending';
-}
-
-export function isInlineWorkflowLocallyOwned(
-  internals: EngineInternals,
-  workflowId: string,
-  workflowStatus: string,
-): boolean {
-  if (!workflowStatusCanRetainLocalOwnership(workflowStatus)) {
-    return false;
-  }
-
-  if (hasQueuedOrLaunchingInlineWorkflowStart(internals, workflowId)) {
-    return true;
-  }
-
-  if (internals.inlineStrategy === null) {
-    return false;
-  }
-
-  return (
-    internals.inlineStrategy.getContext(workflowId) !== undefined ||
-    internals.inlineStrategy.waitForWorkflowTurn(workflowId) !== undefined ||
-    internals.parkedInlineWorkflows.has(workflowId)
-  );
-}
-
-export function hasLocalCheckpointOwnership(
-  internals: EngineInternals,
-  workflowId: string,
-  workflowStatus: string,
-): boolean {
-  return (
-    internals.checkpoints.has(workflowId) && workflowStatusCanRetainLocalOwnership(workflowStatus)
-  );
 }

@@ -10,20 +10,20 @@ For a guided walkthrough, see the [Remote Workers guide](../guides/remote-worker
 
 A bounded pool of Bun Web Workers with acquire/release semantics. Implements both `Disposable` (immediate termination) and `AsyncDisposable` (graceful shutdown -- waits for in-flight workers to be released before terminating).
 
-```ts partial
-class WorkerPool implements Disposable, AsyncDisposable {
-  constructor(options: WorkerPoolOptions);
+```ts
+import { WorkerPool, type WorkerPoolOptions } from '@lostgradient/weft';
 
-  async acquire(): Promise<Worker>;
-  release(worker: Worker): void;
+// The documented surface; assigning the real class checks it still matches.
+type WorkerPoolSurface = Disposable &
+  AsyncDisposable & {
+    acquire(): Promise<Worker>;
+    release(worker: Worker): void;
+    readonly availableCount: number;
+    readonly totalCount: number;
+    readonly pendingCount: number;
+  };
 
-  get availableCount(): number;
-  get totalCount(): number;
-  get pendingCount(): number;
-
-  [Symbol.dispose](): void;
-  async [Symbol.asyncDispose](): Promise<void>;
-}
+const WorkerPoolClass: new (options: WorkerPoolOptions) => WorkerPoolSurface = WorkerPool;
 ```
 
 | Method / Property | Returns | Description |
@@ -46,8 +46,10 @@ class WorkerPool implements Disposable, AsyncDisposable {
 
 **Example:**
 
-```ts partial
+```ts
 import { WorkerPool } from '@lostgradient/weft';
+
+declare const data: unknown;
 
 await using pool = new WorkerPool({
   concurrency: 4,
@@ -65,34 +67,58 @@ pool.release(worker);
 
 Execute an activity function with error handling and abort support. Returns a structured result indicating success or failure.
 
-```ts partial
-async function executeActivity(
+```ts
+import {
+  executeActivity,
+  type ActivityExecutionRequest,
+  type ActivityExecutionResult,
+} from '@lostgradient/weft';
+
+const execute: (
   request: ActivityExecutionRequest,
   activityFunction: (...arguments_: unknown[]) => unknown,
   signal?: AbortSignal,
-): Promise<ActivityExecutionResult>;
+) => Promise<ActivityExecutionResult> = executeActivity;
+
+const result = await execute(
+  { operationId: 'op-1', activityName: 'greet', input: 'World', attempt: 1 },
+  async (input) => `Hello, ${String(input)}!`,
+);
+console.log(result.status); // 'completed'
 ```
 
 ### `ActivityExecutionRequest`
 
 ```ts
-interface ActivityExecutionRequest {
-  operationId: string;
-  activityName: string;
-  input: unknown;
-  attempt: number;
-}
+import type { ActivityExecutionRequest } from '@lostgradient/weft';
+
+const request: ActivityExecutionRequest = {
+  operationId: 'op-1',
+  activityName: 'greet',
+  input: { name: 'World' },
+  attempt: 1,
+  workflowExecutionToken: 'run-token', // optional: the dispatching run's token
+  activityAttemptToken: 'attempt-token', // optional: this dispatch's attempt token
+};
 ```
 
 ### `ActivityExecutionResult`
 
 ```ts
-interface ActivityExecutionResult {
-  operationId: string;
-  status: 'completed' | 'failed';
-  value?: unknown;
-  error?: string;
-}
+import type { ActivityExecutionResult } from '@lostgradient/weft';
+
+const completed: ActivityExecutionResult = {
+  operationId: 'op-1',
+  status: 'completed',
+  value: 'Hello, World!',
+};
+
+const failed: ActivityExecutionResult = {
+  operationId: 'op-1',
+  status: 'failed',
+  error: 'Activity "greet" aborted before execution',
+  errorName: 'AbortError', // error constructor name, used by retry classification
+};
 ```
 
 If `signal` is already aborted when called, returns a failed result immediately without invoking the function.
@@ -103,20 +129,20 @@ If `signal` is already aborted when called, returns a failed result immediately 
 
 WebSocket-based remote worker client. Connects to the Weft server, sends a v8 registration, waits for `registerAck`, and then processes tasks dispatched by the server. Implements `Disposable`.
 
-```ts partial
-class RemoteWorker implements Disposable {
-  constructor(options: RemoteWorkerOptions);
+```ts
+import { RemoteWorker, type RemoteWorkerOptions } from '@lostgradient/weft';
 
-  async connect(): Promise<void>;
-  async disconnect(): Promise<{ unacknowledgedResults: number }>;
+// The documented surface; assigning the real class checks it still matches.
+type RemoteWorkerSurface = Disposable & {
+  connect(): Promise<void>;
+  disconnect(): Promise<{ unacknowledgedResults: number }>;
+  readonly inFlight: number;
+  readonly connected: boolean;
+  readonly shuttingDown: boolean;
+  readonly unacknowledgedResultCount: number;
+};
 
-  get inFlight(): number;
-  get connected(): boolean;
-  get shuttingDown(): boolean;
-  get unacknowledgedResultCount(): number;
-
-  [Symbol.dispose](): void;
-}
+const RemoteWorkerClass: new (options: RemoteWorkerOptions) => RemoteWorkerSurface = RemoteWorker;
 ```
 
 | Method / Property | Returns | Description |
@@ -186,19 +212,18 @@ await worker.disconnect();
 
 Manages periodic heartbeat signals for keeping visibility timeouts alive.
 
-```ts partial
-class HeartbeatManager {
-  constructor(
-    sendHeartbeat: (details?: unknown) => void,
-    intervalMs?: number, // default: 10_000
-  );
+```ts
+import { HeartbeatManager } from '@lostgradient/weft';
 
-  start(): void;
-  stop(): void;
-  beat(details?: unknown): void;
+const heartbeat = new HeartbeatManager(
+  (details?: unknown) => console.log('heartbeat', details),
+  10_000, // intervalMs, default: 10_000
+);
 
-  get isRunning(): boolean;
-}
+heartbeat.start();
+heartbeat.beat({ progress: 0.5 });
+console.log(heartbeat.isRunning); // true
+heartbeat.stop();
 ```
 
 | Method           | Description                                                  |
@@ -211,13 +236,15 @@ class HeartbeatManager {
 
 The optional second parameter every worker-executed activity function receives, on both `RemoteWorker` and `LongPollWorker`. Shared by both worker classes so an activity function does not need to know which transport dispatched it.
 
-```ts partial
-type RemoteActivityContext = {
-  signal: AbortSignal;
-  workflowExecutionToken?: string;
-  activityAttemptToken?: string;
-  heartbeat: (details?: unknown) => void;
-  lastHeartbeatDetails?: unknown;
+```ts
+import type { RemoteActivityContext } from '@lostgradient/weft';
+
+const context: RemoteActivityContext = {
+  signal: new AbortController().signal,
+  workflowExecutionToken: 'run-token',
+  activityAttemptToken: 'attempt-token',
+  heartbeat: (details?: unknown) => console.log(details),
+  lastHeartbeatDetails: { done: 3 },
 };
 ```
 
@@ -233,19 +260,20 @@ type RemoteActivityContext = {
 
 HTTP long-poll fallback for environments without WebSocket support. Registers the same canonical worker manifest as the WebSocket transport, receives a server-issued session token, then polls `/api/v1/worker-sessions/:sessionId/tasks` and reports durable results through `/api/v1/worker-sessions/:sessionId/results` with `Weft-Worker-Session-Token` on every continuation request. Implements `Disposable`.
 
-```ts partial
-class LongPollWorker implements Disposable {
-  constructor(options: LongPollWorkerOptions);
+```ts
+import { LongPollWorker, type LongPollWorkerOptions } from '@lostgradient/weft';
 
+// The documented surface; assigning the real class checks it still matches.
+type LongPollWorkerSurface = Disposable & {
   start(): void;
-  async stop(): Promise<{ unacknowledgedResults: number }>;
+  stop(): Promise<{ unacknowledgedResults: number }>;
+  readonly inFlight: number;
+  readonly running: boolean;
+  readonly unacknowledgedResultCount: number;
+};
 
-  get inFlight(): number;
-  get running(): boolean;
-  get unacknowledgedResultCount(): number;
-
-  [Symbol.dispose](): void;
-}
+const LongPollWorkerClass: new (options: LongPollWorkerOptions) => LongPollWorkerSurface =
+  LongPollWorker;
 ```
 
 | Method / Property | Returns | Description |
@@ -303,11 +331,24 @@ await worker.stop();
 
 Server-side worker tracking and least-loaded routing. The server uses this to track connected workers, assign tasks, and detect expired visibility timeouts.
 
-```ts partial
-class WorkerRegistry {
-  constructor(options?: WorkerRegistryOptions);
+```ts
+import {
+  WorkerRegistry,
+  type InFlightTask,
+  type RoutingOptions,
+  type WorkerInfo,
+} from '@lostgradient/weft';
 
-  register(info: Omit<WorkerInfo, 'connectedAt' | 'lastHeartbeat' | 'inFlight'>): void;
+type WorkerRegistryOptions = ConstructorParameters<typeof WorkerRegistry>[0];
+type WorkerRegistrationInfo = Parameters<WorkerRegistry['register']>[0];
+type WorkerDrainOptions = Parameters<WorkerRegistry['markWorkerDraining']>[1];
+type WorkerDrainMutationResult = ReturnType<WorkerRegistry['markDeploymentDraining']>;
+type WorkerSummary = ReturnType<WorkerRegistry['getWorkerSummaries']>[number];
+type WorkerDeploymentSummary = ReturnType<WorkerRegistry['getDeploymentSummaries']>[number];
+
+// The documented surface; assigning the real class checks it still matches.
+type WorkerRegistrySurface = {
+  register(info: WorkerRegistrationInfo): void;
   unregister(workerId: string): WorkerInfo | undefined;
   heartbeat(workerId: string): void;
 
@@ -325,24 +366,37 @@ class WorkerRegistry {
   ): WorkerDrainMutationResult;
   clearDeploymentDrain(deploymentName: string): WorkerDrainMutationResult;
 
-  assignTask(workerId: string, operationId: string, visibilityTimeout: number): void;
+  assignTask(
+    workerId: string,
+    operationId: string,
+    visibilityTimeout: number,
+    fairShareKey: string | undefined,
+    attemptToken: string,
+    workflowRevision?: string,
+  ): void;
   checkExpiredTasks(now: number): InFlightTask[];
   extendVisibility(operationId: string, extension: number): number | undefined;
   isAssignedToWorker(operationId: string, workerId: string): boolean;
+  isAssignedToAttempt(operationId: string, workerId: string, attemptToken: string): boolean;
 
   getAll(): WorkerInfo[];
   getWorkerSummaries(now: number): WorkerSummary[];
   getDeploymentSummaries(now: number): WorkerDeploymentSummary[];
-  get size(): number;
-}
+  readonly size: number;
+};
+
+const WorkerRegistryClass: new (options?: WorkerRegistryOptions) => WorkerRegistrySurface =
+  WorkerRegistry;
 ```
 
 ### `WorkerRegistryOptions`
 
-```ts partial
-interface WorkerRegistryOptions {
-  policy?: RoutingPolicy;
-}
+```ts
+import { WorkerRegistry, type RoutingPolicy } from '@lostgradient/weft';
+
+const policy: RoutingPolicy = 'least-loaded';
+const registry = new WorkerRegistry({ policy });
+console.log(registry.policy); // 'least-loaded'
 ```
 
 | Field    | Type            | Default          | Description                    |
@@ -352,31 +406,44 @@ interface WorkerRegistryOptions {
 ### `WorkerInfo`
 
 ```ts
-interface WorkerInfo {
-  id: string;
-  queue: string;
-  activities: string[];
-  concurrency: number;
-  inFlight: number;
-  connectedAt: number;
-  lastHeartbeat: number;
-  startedAt: number;
-  capabilities: Record<string, unknown>;
-  deploymentName?: string;
-  buildId?: string;
-  runtimeVersion?: string;
-  gitSha?: string;
-}
+import type { WorkerInfo, WorkerManifest } from '@lostgradient/weft';
+
+declare const manifest: WorkerManifest;
+
+const worker: WorkerInfo = {
+  id: 'worker-1',
+  queue: 'default',
+  transport: 'websocket', // or 'long-poll'
+  activities: ['checkout.charge'],
+  concurrency: 10,
+  inFlight: 2,
+  connectedAt: 1_760_000_000_000, // epoch ms
+  lastHeartbeat: 1_760_000_050_000, // epoch ms
+  startedAt: 1_759_999_990_000, // epoch ms
+  sessionGeneration: 1,
+  capabilities: { region: 'us-east-1' },
+  deploymentName: 'billing',
+  buildId: '2026.08.18-3',
+  runtimeVersion: '1.3.14',
+  manifest, // the accepted canonical worker manifest
+  acceptedManifestDigest: 'sha256:deadbeef',
+  drainReason: 'maintenance', // set while the worker is drained
+  drainStartedAt: 1_760_000_060_000, // epoch ms
+};
 ```
 
 ### `RoutingOptions`
 
 ```ts
-interface RoutingOptions {
-  sticky?: string; // preferred worker ID for cache locality
-  queue?: string;
-  fairShareKey?: string; // key used for fair-share routing policy
-}
+import type { RoutingOptions } from '@lostgradient/weft';
+
+const routing: RoutingOptions = {
+  sticky: 'worker-1', // preferred worker ID for cache locality
+  queue: 'default',
+  fairShareKey: 'tenant-42', // key used for fair-share routing policy
+  excludeWorkerIds: new Set(['worker-2']), // e.g. workers inside the reconnect grace window
+  workflowId: 'order-123',
+};
 ```
 
 `findWorker()` applies the configured `RoutingPolicy` (least-loaded by default; supports `'round-robin'` and `'fair-share'`). It filters workers that can handle the activity and have capacity. For `'least-loaded'`, it returns the worker with the lowest `inFlight` count. If `sticky` is set and that worker has capacity, it is preferred.
@@ -388,10 +455,14 @@ Draining workers are excluded from `findWorker()` so no new tasks are assigned t
 ### `WorkerDrainOptions`
 
 ```ts
-interface WorkerDrainOptions {
-  reason?: string;
-  updatedAt?: number;
-}
+import type { WorkerRegistry } from '@lostgradient/weft';
+
+type WorkerDrainOptions = NonNullable<Parameters<WorkerRegistry['markWorkerDraining']>[1]>;
+
+const drain: WorkerDrainOptions = {
+  reason: 'maintenance',
+  updatedAt: Date.now(), // drain start time in epoch ms
+};
 ```
 
 `updatedAt` records the drain start time in epoch milliseconds. When omitted, the registry uses `Date.now()`.
@@ -399,16 +470,18 @@ interface WorkerDrainOptions {
 ### `InFlightTask`
 
 ```ts
-interface InFlightTask {
-  operationId: string;
-  workerId: string;
-  deadline: number; // absolute timestamp
-  visibilityTimeout: number;
-  fairShareKey?: string;
-  attemptToken: string;
-  /** The dispatching workflow run's persisted revision (WFT-20), when the `TaskDispatch` carried one. */
-  workflowRevision?: string;
-}
+import type { InFlightTask } from '@lostgradient/weft';
+
+const task: InFlightTask = {
+  operationId: 'op-1',
+  workerId: 'worker-1',
+  deadline: 1_760_000_030_000, // absolute timestamp
+  visibilityTimeout: 30_000, // original timeout duration in ms
+  fairShareKey: 'tenant-42',
+  attemptToken: 'attempt-token',
+  // The dispatching workflow run's persisted revision (WFT-20), when the `TaskDispatch` carried one.
+  workflowRevision: 'rev-88',
+};
 ```
 
 `checkExpiredTasks(now)` returns tasks whose visibility deadline has passed, suitable for reassignment.
@@ -580,41 +653,47 @@ Returns every connected worker with its queue assignment, advertised activities,
 The server snapshots `Date.now()` exactly once per request, so every `heartbeatAgeMs` in the response is consistent.
 
 ```ts
-type WorkerHealth = 'active' | 'draining' | 'drained';
+import type { ClientOperationTypes } from '@lostgradient/weft';
 
-type ListWorkersResponse = {
-  items: Array<{
-    id: string;
-    queue: string;
-    activities: string[];
-    concurrency: number;
-    inFlight: number;
-    availableCapacity: number; // max(0, concurrency - inFlight)
-    connectedAt: number; // epoch ms
-    lastHeartbeatAt: number; // epoch ms
-    heartbeatAgeMs: number; // now - lastHeartbeatAt at snapshot time
-    startedAt: number; // epoch ms
-    capabilities: Record<string, unknown>;
-    health: WorkerHealth;
-    deploymentName?: string;
-    buildId?: string;
-    runtimeVersion?: string;
-    gitSha?: string;
-  }>;
-  deployments: Array<{
-    deploymentName: string | null;
-    buildId: string | null;
-    runtimeVersion: string | null;
-    gitSha: string | null;
-    health: WorkerHealth;
-    workers: number;
-    activeWorkers: number;
-    drainingWorkers: number;
-    drainedWorkers: number;
-    inFlight: number;
-    oldestStartedAt: number | null;
-  }>;
-  routingPolicy: 'least-loaded' | 'round-robin' | 'fair-share';
+type ListWorkersResponse = ClientOperationTypes['weft.workers.list']['output'];
+
+const response: ListWorkersResponse = {
+  items: [
+    {
+      id: 'worker-1',
+      queue: 'default',
+      transport: 'websocket', // or 'long-poll'
+      activities: ['checkout.charge'],
+      concurrency: 10,
+      inFlight: 2,
+      availableCapacity: 8, // max(0, concurrency - inFlight)
+      connectedAt: 1_760_000_000_000, // epoch ms
+      lastHeartbeatAt: 1_760_000_050_000, // epoch ms
+      heartbeatAgeMs: 4_000, // now - lastHeartbeatAt at snapshot time
+      startedAt: 1_759_999_990_000, // epoch ms
+      capabilities: { region: 'us-east-1' },
+      health: 'active', // 'active' | 'draining' | 'drained'
+      deploymentName: 'billing',
+      buildId: '2026.08.18-3',
+      runtimeVersion: '1.3.14',
+    },
+  ],
+  deployments: [
+    {
+      deploymentName: 'billing',
+      buildId: '2026.08.18-3',
+      runtimeVersion: '1.3.14',
+      transports: ['websocket'],
+      health: 'active',
+      workers: 1,
+      activeWorkers: 1,
+      drainingWorkers: 0,
+      drainedWorkers: 0,
+      inFlight: 2,
+      oldestStartedAt: 1_759_999_990_000,
+    },
+  ],
+  routingPolicy: 'least-loaded', // or 'round-robin' | 'fair-share'
 };
 ```
 
@@ -636,13 +715,17 @@ Marks a connected worker as draining. Requires `system:admin`. The optional JSON
 
 Response:
 
-```ts partial
-type WorkerDrainResponse = {
-  target: 'worker';
-  workerId: string;
-  affectedWorkers: 1;
-  inFlight: number;
-  health: WorkerHealth;
+```ts
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+type WorkerDrainResponse = ClientOperationTypes['weft.workers.drain']['output'];
+
+const response: WorkerDrainResponse = {
+  target: 'worker',
+  workerId: 'worker-1',
+  affectedWorkers: 1,
+  inFlight: 2,
+  health: 'draining', // 'active' | 'draining' | 'drained'
 };
 ```
 
@@ -660,14 +743,18 @@ Marks every current and future worker that reports `deploymentName` as draining.
 
 Response:
 
-```ts partial
-type DeploymentDrainResponse = {
-  target: 'deployment';
-  deploymentName: string;
-  buildId?: string; // present when the request named a build
-  affectedWorkers: number;
-  inFlight: number;
-  health: WorkerHealth;
+```ts
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+type DeploymentDrainResponse = ClientOperationTypes['weft.worker.deployments.drain']['output'];
+
+const response: DeploymentDrainResponse = {
+  target: 'deployment',
+  deploymentName: 'billing',
+  buildId: '2026.08.18-3', // present when the request named a build
+  affectedWorkers: 3,
+  inFlight: 0,
+  health: 'drained', // 'active' | 'draining' | 'drained'
 };
 ```
 
@@ -697,39 +784,47 @@ Bounded instance and deployment-version diagnostics for one connected worker (WF
 
 The response splits into two structurally distinct parts, mirroring the manifest's own split between "which process" and "which build":
 
-```ts partial
-type WorkerDiagnosticsResponse = {
+```ts
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+type WorkerDiagnosticsResponse = ClientOperationTypes['weft.workers.diagnostics']['output'];
+
+const response: WorkerDiagnosticsResponse = {
   worker: {
     instance: {
-      workerId: string;
-      queue: string;
-      health: WorkerHealth;
-      connectedAt: number; // epoch ms
-      startedAt: number; // epoch ms
-      lastHeartbeatAt: number; // epoch ms
-      heartbeatAgeMs: number;
-    };
+      workerId: 'worker-1',
+      queue: 'default',
+      transport: 'websocket', // or 'long-poll'
+      health: 'active', // 'active' | 'draining' | 'drained'
+      inFlight: 2,
+      sessionGeneration: 1,
+      connectedAt: 1_760_000_000_000, // epoch ms
+      startedAt: 1_759_999_990_000, // epoch ms
+      lastHeartbeatAt: 1_760_000_050_000, // epoch ms
+      heartbeatAgeMs: 4_000,
+    },
     deploymentVersion: {
-      deploymentName: string;
-      buildId: string;
-      artifactDigest: string;
-      runtimeName: string;
-      runtimeVersion: string;
-      sdkVersion: string;
-      manifestVersion: number;
-      protocolVersion: number;
-      manifestDigest: string;
-      workflows: Record<
-        string,
-        {
-          workflowVersion: string;
-          workflowRevision: string;
-          contractHash: string;
-          activities: Record<string, { contractHash: string; implementationRevision: string }>;
-        }
-      >;
-    };
-  } | null;
+      deploymentName: 'billing',
+      buildId: '2026.08.18-3',
+      artifactDigest: 'sha256:41d0e2',
+      runtimeName: 'bun',
+      runtimeVersion: '1.3.14',
+      sdkVersion: '0.18.0',
+      manifestVersion: 1,
+      protocolVersion: 8,
+      manifestDigest: 'sha256:deadbeef',
+      // Keyed by workflow type: workflowVersion, workflowRevision, contractHash,
+      // and each activity's { contractHash, implementationRevision }.
+      workflows: {
+        checkout: {
+          workflowVersion: '2.1.0',
+          workflowRevision: 'rev-88',
+          contractHash: 'sha256:9ab3',
+          activities: { charge: { contractHash: 'sha256:2b1f', implementationRevision: 'rev-41' } },
+        },
+      },
+    },
+  }, // `null` when the worker is not connected
 };
 ```
 
@@ -742,22 +837,27 @@ The JSON-RPC operation name is `weft.workers.diagnostics`.
 Bounded, most-recent-first log of declined `register` attempts (WFT-29). Requires `system:read`. Accepts an optional `limit` query parameter (default `20`, max `100`).
 
 ```ts
-type RegistrationRejectionCode =
-  | 'invalid_registration'
-  | 'unsupported_protocol_version'
-  | 'deployment_conflict'
-  | 'registration_rejected';
+import type { ClientOperationTypes } from '@lostgradient/weft';
 
-type ListWorkerRegistrationRejectionsResponse = {
-  items: Array<{
-    code: RegistrationRejectionCode;
-    workerId?: string; // absent when the frame failed to parse before a workerId could be read
-    rejectedAt: number; // epoch ms
-    queue?: string;
-    deploymentName?: string;
-    buildId?: string;
-  }>;
-  limit: number;
+type ListWorkerRegistrationRejectionsResponse =
+  ClientOperationTypes['weft.workers.rejections']['output'];
+type RegistrationRejectionCode = ListWorkerRegistrationRejectionsResponse['items'][number]['code'];
+
+const code: RegistrationRejectionCode = 'deployment_conflict';
+// Also 'invalid_registration', 'unsupported_protocol_version', or 'registration_rejected'.
+
+const response: ListWorkerRegistrationRejectionsResponse = {
+  items: [
+    {
+      code,
+      workerId: 'worker-1', // absent when the frame failed to parse before a workerId could be read
+      rejectedAt: 1_760_000_000_000, // epoch ms
+      queue: 'default',
+      deploymentName: 'billing',
+      buildId: '2026.08.18-3',
+    },
+  ],
+  limit: 20,
 };
 ```
 
@@ -770,18 +870,23 @@ The JSON-RPC operation name is `weft.workers.rejections`.
 Remote-worker protocol conformance reports (COR-1365). `GET` lists the conformance targets registered with `serve({ conformanceTargets: createConformanceTargets({ ... }) })` and requires `system:read`. `POST` runs the `weft conformance` check sequence against one target in a private sandbox server and requires `system:admin`. A request names a target only. It can never supply a worker command.
 
 ```ts
-type ListConformanceTargetsResponse = {
-  targets: Array<{ name: string; timeoutMs: number }>; // commands are never returned
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+type ListConformanceTargetsResponse = ClientOperationTypes['weft.conformance.targets']['output'];
+type RunConformanceReportResponse = ClientOperationTypes['weft.conformance.report']['output'];
+
+const targets: ListConformanceTargetsResponse = {
+  targets: [{ name: 'typescript-worker', timeoutMs: 10_000 }], // commands are never returned
 };
 
-type RunConformanceReportResponse = {
-  target: string;
-  startedAt: number; // epoch ms
-  completedAt: number; // epoch ms
-  ok: boolean;
-  protocolVersion: number;
-  supportedProtocolVersions: number[];
-  checks: Array<{ name: string; ok: boolean; message: string }>;
+const report: RunConformanceReportResponse = {
+  target: 'typescript-worker',
+  startedAt: 1_760_000_000_000, // epoch ms
+  completedAt: 1_760_000_004_000, // epoch ms
+  ok: true,
+  protocolVersion: 8,
+  supportedProtocolVersions: [8],
+  checks: [{ name: 'register', ok: true, message: 'registerAck received' }],
 };
 ```
 
@@ -796,25 +901,29 @@ Bounded task-attempt diagnostics (COR-198): stuck queued tasks, stale in-flight 
 Every filter is optional and independently bounded; supplying several combines them with AND:
 
 ```ts
-type GetTaskDiagnosticsInput = {
-  operationId?: string;
-  workflowId?: string;
-  queue?: string;
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+type GetTaskDiagnosticsInput = ClientOperationTypes['weft.tasks.diagnostics']['input'];
+
+const input: GetTaskDiagnosticsInput = {
+  operationId: 'op-1',
+  workflowId: 'order-123',
+  queue: 'default',
   // Execution-identity filters, sourced from each matching task's current
   // TaskAttemptRecord.executionIdentity—see "Attempt history and
   // provenance" in the remote task recovery guide for what that identity
   // is and how it differs from the ledger's routing requirement.
-  deploymentName?: string;
-  buildId?: string;
-  artifactDigest?: string;
-  workerId?: string;
-  workflowRevision?: string;
-  staleQueuedAfterMs?: number; // default 60000
-  staleHeartbeatAfterMs?: number; // default 60000
-  retryStormMinimumAttempts?: number; // default 3
-  includeExpectedDelayed?: boolean; // default false
-  unadoptedAfterMs?: number; // default 60000
-  limit?: number; // default 50, max 200
+  deploymentName: 'billing',
+  buildId: 'b47',
+  artifactDigest: 'sha256:41d0e2',
+  workerId: 'worker-1',
+  workflowRevision: 'rev-88',
+  staleQueuedAfterMs: 60_000, // default 60000
+  staleHeartbeatAfterMs: 60_000, // default 60000
+  retryStormMinimumAttempts: 3, // default 3
+  includeExpectedDelayed: false, // default false
+  unadoptedAfterMs: 60_000, // default 60000
+  limit: 50, // default 50, max 200
 };
 ```
 
@@ -850,17 +959,23 @@ Returns per-queue health. The queue set is the union of three sources:
 `inFlight` is summed across the workers currently assigned to that queue. `connectedWorkers` counts workers whose `queue` matches.
 
 ```ts
-type ListTaskQueuesResponse = {
-  items: Array<{
-    queue: string;
-    backlog: number; // pending tasks
-    oldestEnqueuedAt: number | null; // epoch ms, null if backlog == 0
-    oldestQueuedAgeMs: number | null;
-    waitingPollers: number;
-    schedulingPolicy: 'priority' | 'fifo' | 'lifo';
-    inFlight: number;
-    connectedWorkers: number;
-  }>;
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+type ListTaskQueuesResponse = ClientOperationTypes['weft.task.queues.list']['output'];
+
+const response: ListTaskQueuesResponse = {
+  items: [
+    {
+      queue: 'default',
+      backlog: 3, // pending tasks
+      oldestEnqueuedAt: 1_760_000_000_000, // epoch ms, null if backlog == 0
+      oldestQueuedAgeMs: 12_000,
+      waitingPollers: 0,
+      schedulingPolicy: 'fifo', // 'priority' | 'fifo' | 'lifo'
+      inFlight: 2,
+      connectedWorkers: 1,
+    },
+  ],
 };
 ```
 

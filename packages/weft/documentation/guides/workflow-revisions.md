@@ -88,7 +88,12 @@ Use a literal `import('./greeting.ts')` so [TypeScript](https://www.typescriptla
 
 Preload a source when you want deployment readiness to include loading and validation before the first request:
 
-```typescript partial
+```typescript
+import type { Engine, WorkflowRevisionManifest } from '@lostgradient/weft';
+
+declare const engine: Engine;
+declare const manifest: WorkflowRevisionManifest;
+
 await engine.workflows.preload('greeting', manifest.revision, {
   signal: AbortSignal.timeout(5_000),
 });
@@ -112,7 +117,12 @@ Installation records an immutable manifest. Activation changes the catalog's adv
 
 An active pointer has a **generation**: a counter used to reject an activation based on an outdated observation. Read it before changing the pointer, supply it as `expectedGeneration`, and inspect the result:
 
-```typescript partial
+```typescript
+import type { Engine, WorkflowRevisionManifest } from '@lostgradient/weft';
+
+declare const engine: Engine;
+declare const manifest: WorkflowRevisionManifest;
+
 const current = await engine.workflows.getActive('greeting');
 const result = await engine.workflows.activate('greeting', manifest.revision, {
   ...(current === null ? {} : { expectedGeneration: current.generation }),
@@ -161,7 +171,11 @@ Schedules choose between `revisionPolicy: 'active-at-fire'` and `revisionPolicy:
 
 The schedule call remains the normal API; the revision policy belongs in its options:
 
-```typescript partial
+```typescript
+import type { Engine } from '@lostgradient/weft';
+
+declare const engine: Engine;
+
 await engine.schedule('greeting', 'Steve', '0 9 * * *', {
   revisionPolicy: 'pinned',
 });

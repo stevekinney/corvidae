@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { uniqueFileName } from '../temporary-path.ts';
 import {
   computeCoverageAverages,
   coverageFailures,
@@ -118,6 +119,29 @@ describe('LCOV scope', () => {
       'src/widget.svelte',
       'src/state.svelte.ts',
     ]);
+  });
+
+  test('a transient SSR module named by `uniqueFileName` is out of every scope', () => {
+    // The names the SSR tests make, so a change to the helper's format fails here first.
+    const transient = [
+      `src/components/virtual-list/${uniqueFileName('.cinder-ssr-test', '.mjs')}`,
+      `src/lib/components/chat/${uniqueFileName('.cinder-ssr-chat', '.mjs')}`,
+      `src/${uniqueFileName('.cinder-ssr-test', '.svelte-server.mjs')}`,
+    ];
+    const withTransient = [
+      record('src/index.ts', 4, 4),
+      ...transient.map((file) => record(file, 9, 0)),
+    ].join('');
+    expect(parseRuntimeLcovRecords(withTransient, root).map((entry) => entry.file)).toEqual([
+      'src/index.ts',
+    ]);
+    expect(parseSvelteLcovRecords(withTransient, root)).toEqual([]);
+    // A real module that only borrows the prefix stays in scope.
+    expect(
+      parseRuntimeLcovRecords(record('src/.cinder-ssr-chat-notes.ts', 1, 1), root).map(
+        (e) => e.file,
+      ),
+    ).toEqual(['src/.cinder-ssr-chat-notes.ts']);
   });
 
   test('the subject prefix keeps an ordinary `test-result.ts` module in scope', () => {

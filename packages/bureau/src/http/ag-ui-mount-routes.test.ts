@@ -1112,6 +1112,30 @@ describe('door refusals are one-event streams', () => {
     });
   });
 
+  // COR-1590: a browser resolves these out of the address that would open the thread.
+  it.each(['.', '..'])(
+    'refuses a start that would create the thread %s as INVALID_INPUT, and creates nothing',
+    async (threadId) => {
+      await withHarness({ script: [say('x')] }, async (harness) => {
+        const event = await refusal(harness, startRequest(runAgentInput({ threadId })));
+
+        expect(event.code).toBe('INVALID_INPUT');
+        expect(event.message).toContain('unopenable-session-identifier');
+        expect(await harness.bureau.getSession(threadId)).toBeUndefined();
+      });
+    },
+  );
+
+  it('still starts a thread whose id only contains dots', async () => {
+    await withHarness({ script: [say('x')] }, async (harness) => {
+      const frames = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput({ threadId: '...' }))),
+      );
+
+      expect(typesOf(frames)).toContain(EventType.RUN_FINISHED);
+    });
+  });
+
   it('answers an attach to a run that does not exist as RUN_NOT_FOUND and to a thread as THREAD_NOT_FOUND', async () => {
     await withHarness({ script: [say('x')] }, async (harness) => {
       const missingRun = await refusal(harness, attachRunRequest('nope'));

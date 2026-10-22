@@ -41,9 +41,7 @@ Export all registered tools as JSON Schema:
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
-const toolbox = createToolbox();
-
-toolbox.register(
+const toolbox = createToolbox([
   createTool({
     name: 'send-email',
     description: 'Send an email',
@@ -56,7 +54,7 @@ toolbox.register(
       return { sent: true, to };
     },
   }),
-);
+]);
 
 const toolboxJSONSchema = toolbox.toJSON({ format: 'json-schema' });
 // [

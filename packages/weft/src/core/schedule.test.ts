@@ -156,14 +156,26 @@ class FailingScheduleBatchStorage extends MemoryStorage {
     this.#nextFailingKey = key;
   }
 
-  override async batch(operations: BatchOperation[]): Promise<void> {
+  #failIfTargeted(operations: BatchOperation[]): void {
     const failingKey = this.#nextFailingKey;
     if (failingKey !== null && operations.some((operation) => operation.key === failingKey)) {
       this.#nextFailingKey = null;
       throw new Error(`simulated schedule batch failure for ${failingKey}`);
     }
+  }
 
+  override async batch(operations: BatchOperation[]): Promise<void> {
+    this.#failIfTargeted(operations);
     return super.batch(operations);
+  }
+
+  // A schedule write is conditioned on the bytes it read (COR-1594), so it commits here.
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    this.#failIfTargeted(operations);
+    return super.conditionalBatch(conditions, operations);
   }
 }
 
@@ -178,7 +190,7 @@ class ControlledScheduleBatchStorage extends MemoryStorage {
     this.#failure = failure ?? null;
   }
 
-  override async batch(operations: BatchOperation[]): Promise<void> {
+  async #blockIfTargeted(operations: BatchOperation[]): Promise<void> {
     const blockedKey = this.#blockedKey;
     if (blockedKey !== null && operations.some((operation) => operation.key === blockedKey)) {
       this.#blockedKey = null;
@@ -186,8 +198,20 @@ class ControlledScheduleBatchStorage extends MemoryStorage {
       await this.releaseBatch.promise;
       if (this.#failure !== null) throw this.#failure;
     }
+  }
 
+  override async batch(operations: BatchOperation[]): Promise<void> {
+    await this.#blockIfTargeted(operations);
     return super.batch(operations);
+  }
+
+  // A schedule write is conditioned on the bytes it read (COR-1594), so it commits here.
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    await this.#blockIfTargeted(operations);
+    return super.conditionalBatch(conditions, operations);
   }
 }
 
@@ -2512,7 +2536,8 @@ describe('recurring schedules', () => {
     });
     const description = await schedule.describe();
 
-    await tickEngine(engine, clock, Date.UTC(2026, 0, 1, 0, 1, 2));
+    // Three seconds late: past one poll interval plus the one-second drift margin (COR-1616).
+    await tickEngine(engine, clock, Date.UTC(2026, 0, 1, 0, 1, 3));
 
     expect(executions).toEqual([]);
 

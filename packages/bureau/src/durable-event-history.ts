@@ -53,6 +53,12 @@
  * under the fired run's own `{ kind: 'run', id: runId }` owner — never
  * under `'schedule'`, so a schedule's own durable page never carries a fire.
  *
+ * Widened again by COR-1594: `schedule.fire.settled` is recorded once under the same fired run's
+ * `{ kind: 'run', id: runId }` owner when the fire's settlement has been written to the task
+ * registry, so a `bureau.tasks.events` stream served by another process sharing the stores learns
+ * that the fire is over. It is recorded by `createBureau` from the registry's settlement, not
+ * from the action stream; its shape, owner, and deduplication are in `schedule-fire-settled-event.ts`.
+ *
  * Widened again by AB-224, 2026-09-04: the seven `review.*` lifecycle
  * events (`approved`/`denied`/`rejected`/`expired`/`revoked`/`canceled`/
  * `superseded`, AB-87/AB-46's `ReviewStatus` vocabulary minus the
@@ -137,6 +143,7 @@ import {
 
 import type { AgentDefinitions } from './agent-catalog';
 import { FRAMES_DROPPED_KIND } from './frames-dropped';
+import { reviewCanceledDedupeKey } from './review-closing-events';
 import type { EventTimestampResolver } from './event-timestamp';
 import type {
   ActionEvent,
@@ -248,6 +255,13 @@ export interface DurableEventHistoryPageOptions {
    * every incarnation, as a trusted caller does.
    */
   incarnation?: string | undefined;
+  /**
+   * COR-1622 — called once for each stored record the read skipped because it could not be decoded
+   * (it is reported to the diagnostic sink as well). A caller that mirrors what the history says
+   * knows by it that the page it received is not the whole of what was recorded, and reads
+   * the state the events would have described instead.
+   */
+  onSkipped?: (() => void) | undefined;
 }
 
 /**
@@ -327,6 +341,67 @@ export interface DurableEventHistorySubscribeOptions {
    * (`DurableEventHistory.subscribeEventHistory`) does not read this field.
    */
   principal?: string | undefined;
+  /**
+   * COR-1594 — told once, with the error, when the subscription ends because of an error: the
+   * feed's replay or tail rejected (a storage fault), or a stored record could not be decoded. A
+   * subscription that ends this way delivers nothing more, and a subscriber that depends on it
+   * learns of that here instead of waiting for an event that cannot come. Not called when the
+   * subscriber ends the subscription itself (`unsubscribe()`, or aborting `signal`). A throw from
+   * the callback is reported to the diagnostic sink and otherwise ignored.
+   *
+   * It reports an error, and only an error. A subscription whose live buffer overflows also ends
+   * without the subscriber having asked, and that end is not reported: it needs a subscriber
+   * that cannot keep up with a feed it is not filtered from, and a subscription to one owner is
+   * filtered before it is buffered, so only that owner's own events and a gap count.
+   */
+  onClosed?: ((error: unknown) => void) | undefined;
+}
+
+/** Options for {@link DurableEventHistory.subscribeEventHistoryOfOwners}. */
+export interface DurableEventOwnersSubscribeOptions {
+  /** Ends the subscription (equivalent to calling `unsubscribe()`) when aborted. */
+  signal?: AbortSignal;
+  /**
+   * Told when the feed's retention floor passed the subscription's next cursor, so events of the
+   * followed owners may have been dropped unread. It is awaited, and nothing is delivered until it
+   * settles: a caller reads the state it follows again here, rather than trusting the events.
+   */
+  onGap?: (gap: DurableHistoryGapPayload) => void | Promise<void>;
+  /**
+   * Told when the subscription ended on its own (a storage failure or a record it could not
+   * read), as opposed to by `unsubscribe()` or `signal`, so the caller can open another.
+   */
+  onEnded?: () => void;
+  /**
+   * COR-1622 — told the owner of each event the subscription skipped because it could not be
+   * decoded (reported to the diagnostic sink as well), so a follower of that owner can read what the
+   * event would have said from the state it describes, instead of trusting a feed with a hole in it.
+   */
+  onSkipped?: (owner: DurableEventOwner) => void;
+}
+
+/**
+ * One subscription that follows several owners at once
+ * ({@link DurableEventHistory.subscribeEventHistoryOfOwners}). It starts at the feed's tail and
+ * knows no owner until {@link follow} names it, so it costs nothing while nothing is followed.
+ */
+export interface DurableEventOwnersSubscription extends Subscription {
+  /**
+   * Follows `owner` from now on. Idempotent. An event of `owner` recorded before this call, and
+   * not yet read by the subscription, is delivered; one the subscription already passed is not,
+   * so a caller that needs the owner's earlier events reads them with `page()` after this call
+   * (that order leaves no event in between).
+   */
+  follow(owner: DurableEventOwner): void;
+  /** Stops following `owner`. Idempotent; events already queued for it are still delivered. */
+  unfollow(owner: DurableEventOwner): void;
+  /** The owners followed now. */
+  followed(): readonly DurableEventOwner[];
+  /**
+   * Resolves once the subscription's start is fixed at the feed's tail, from which every event
+   * recorded is delivered to a followed owner. Rejects when the tail could not be read.
+   */
+  readonly ready: Promise<void>;
 }
 
 /**
@@ -443,6 +518,28 @@ export interface DurableEventHistory {
     listener: (event: DurableEventEnvelope, incarnation: string | undefined) => void,
     options?: DurableEventHistorySubscribeOptions,
   ): Subscription;
+  /**
+   * COR-1621 — one live subscription that follows several owners at once, from the feed's tail,
+   * and that owners are added to and removed from while it runs ({@link
+   * DurableEventOwnersSubscription.follow}). A process that follows the owners it holds a review
+   * of opens one, instead of one subscription per owner.
+   *
+   * Unlike {@link subscribeEventHistory}, `listener` is awaited: the subscription's position
+   * does not move past an event until `listener` has settled, so a caller that retries a failed
+   * reaction does so before the position advances. A listener that throws is reported to the
+   * diagnostic sink and delivery goes on. A corrupt stored record is reported and skipped, since
+   * it belongs to one owner among many and must not end the others' feed. When the retention
+   * floor passes the subscription's next cursor, `options.onGap` is told, once per overtaking,
+   * before any later event; the synthesized {@link DURABLE_HISTORY_GAP_KIND} event is not
+   * delivered to `listener`, which has no single owner to give it.
+   */
+  subscribeEventHistoryOfOwners(
+    listener: (
+      event: DurableEventEnvelope,
+      incarnation: string | undefined,
+    ) => void | Promise<void>,
+    options?: DurableEventOwnersSubscribeOptions,
+  ): DurableEventOwnersSubscription;
   /**
    * Snapshots the `run`-owner ids that still have at least one durable
    * event at or above the feed's CURRENT retention floor — the primitive
@@ -1124,6 +1221,16 @@ export function createDurableEventHistory(
           message: `[durable-event-history] Skipped corrupt durable record at sequence ${envelope.sequence} for ${owner.kind}:${owner.id}:`,
           cause: error,
         });
+        try {
+          options?.onSkipped?.();
+        } catch (callbackError) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-event-history',
+            message: '[durable-event-history] A page skip handler threw:',
+            cause: callbackError,
+          });
+        }
         continue;
       }
       if (events.length >= limit) {
@@ -1176,6 +1283,8 @@ export function createDurableEventHistory(
     void deliver();
 
     async function deliver(): Promise<void> {
+      // Set when the subscription ends because of an error, so `options.onClosed` is told of it.
+      let failure: { readonly error: unknown } | undefined;
       // The cursor of the last envelope handed to the listener, a gap event
       // included: what the subscriber has actually received, which is what a
       // gap must name. Not the position the feed has walked to, which counts
@@ -1223,6 +1332,7 @@ export function createDurableEventHistory(
               message: `[durable-event-history] Ending subscription for ${owner.kind}:${owner.id}: corrupt durable record.`,
               cause: error,
             });
+            failure = { error };
             return;
           }
           deliveredCursor = mapped.cursor;
@@ -1245,6 +1355,7 @@ export function createDurableEventHistory(
         // watermark/tail record, etc.) — not a clean unsubscribe/abort,
         // which weft's own generator returns from normally rather than
         // throwing.
+        failure = { error };
         diagnose({
           level: 'error',
           scope: 'durable-event-history',
@@ -1253,6 +1364,171 @@ export function createDurableEventHistory(
         });
       } finally {
         closed = true;
+        // A close the subscriber asked for is its own business; only an error close is reported.
+        if (failure !== undefined && !combinedSignal.aborted) {
+          try {
+            options?.onClosed?.(failure.error);
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[durable-event-history] onClosed threw for ${owner.kind}:${owner.id}:`,
+              cause: error,
+            });
+          }
+        }
+      }
+    }
+
+    return subscription;
+  }
+
+  function subscribeEventHistoryOfOwners(
+    listener: (
+      event: DurableEventEnvelope,
+      incarnation: string | undefined,
+    ) => void | Promise<void>,
+    options?: DurableEventOwnersSubscribeOptions,
+  ): DurableEventOwnersSubscription {
+    const owners = new Map<string, DurableEventOwner>();
+    const ownController = new AbortController();
+    const combinedSignal = options?.signal
+      ? AbortSignal.any([options.signal, ownController.signal])
+      : ownController.signal;
+    let closed = false;
+    let unsubscribed = false;
+    const started = Promise.withResolvers<void>();
+    // The caller observes `ready` when it matters; a rejection nobody awaited is not unhandled.
+    started.promise.catch(() => undefined);
+
+    const subscription: DurableEventOwnersSubscription = {
+      follow(owner) {
+        owners.set(encodeOwner(owner), owner);
+      },
+      unfollow(owner) {
+        owners.delete(encodeOwner(owner));
+      },
+      followed: () => [...owners.values()],
+      unsubscribe() {
+        if (closed) return;
+        unsubscribed = true;
+        closed = true;
+        ownController.abort();
+      },
+      get closed() {
+        return closed;
+      },
+      ready: started.promise,
+    };
+
+    void deliver();
+
+    async function deliver(): Promise<void> {
+      let since: string | undefined;
+      try {
+        // The tail is read before anything is followed from it, so no event recorded after this
+        // call returns is missed: a caller reads an owner's earlier history itself.
+        const tail = await feed.snapshotTailSequence();
+        since = tail >= 0 ? encodeCursor(tail) : undefined;
+        started.resolve();
+      } catch (error) {
+        started.reject(error);
+        diagnose({
+          level: 'error',
+          scope: 'durable-event-history',
+          message: '[durable-event-history] Could not open a subscription at the feed tail:',
+          cause: error,
+        });
+        closed = true;
+        if (!unsubscribed) options?.onEnded?.();
+        return;
+      }
+      try {
+        for await (const envelope of feed.subscribe({
+          ...(since === undefined ? {} : { fromCursor: since }),
+          signal: combinedSignal,
+          // The fleet-wide gap marker names no owner, so an owner filter would drop it.
+          filterEnvelope: (candidate) =>
+            candidate.kind === 'fleet:gap' ||
+            (candidate.workflowId !== undefined && owners.has(candidate.workflowId)),
+        })) {
+          if (envelope.kind === 'fleet:gap') {
+            const payload = envelope.payload;
+            const firstRetainedSequence: unknown =
+              typeof payload === 'object' && payload !== null
+                ? Reflect.get(payload, 'firstRetainedSequence')
+                : undefined;
+            if (typeof firstRetainedSequence !== 'number') {
+              diagnose({
+                level: 'error',
+                scope: 'durable-event-history',
+                message: `[durable-event-history] Fleet gap at sequence ${envelope.sequence} does not carry a recognized payload.`,
+              });
+              continue;
+            }
+            try {
+              await options?.onGap?.({
+                requestedCursor: since ?? '-1',
+                firstRetainedCursor: encodeCursor(firstRetainedSequence),
+              });
+            } catch (error) {
+              diagnose({
+                level: 'error',
+                scope: 'durable-event-history',
+                message: '[durable-event-history] A subscription gap handler threw:',
+                cause: error,
+              });
+            }
+            since = envelope.cursor;
+            continue;
+          }
+          const owner =
+            envelope.workflowId === undefined ? undefined : owners.get(envelope.workflowId);
+          if (owner === undefined) continue;
+          since = envelope.cursor;
+          let mapped: DurableEventEnvelope;
+          try {
+            mapped = toDurableEventEnvelope(envelope, owner);
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[durable-event-history] Skipped corrupt durable record at sequence ${envelope.sequence} for ${owner.kind}:${owner.id}:`,
+              cause: error,
+            });
+            try {
+              options?.onSkipped?.(owner);
+            } catch (callbackError) {
+              diagnose({
+                level: 'error',
+                scope: 'durable-event-history',
+                message: '[durable-event-history] A subscription skip handler threw:',
+                cause: callbackError,
+              });
+            }
+            continue;
+          }
+          try {
+            await listener(mapped, recordedIncarnation(envelope));
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[durable-event-history] Listener threw for ${owner.kind}:${owner.id} event "${mapped.kind}":`,
+              cause: error,
+            });
+          }
+        }
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-event-history',
+          message: '[durable-event-history] A subscription of several owners ended with an error:',
+          cause: error,
+        });
+      } finally {
+        closed = true;
+        if (!unsubscribed && !combinedSignal.aborted) options?.onEnded?.();
       }
     }
 
@@ -1564,6 +1840,7 @@ export function createDurableEventHistory(
     wasRecorded,
     page,
     subscribeEventHistory,
+    subscribeEventHistoryOfOwners,
     retainedRunOwnerIds,
     retainedRunOwnerIdsForAuditRetention,
     refreshRetainedRunOwnerIds,
@@ -2354,7 +2631,16 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   };
   const reviewCanceledListener = (event: ReviewCanceledEvent): void => {
     if (signal?.aborted) return;
-    sink({ kind: 'run', id: event.runId }, 'review.canceled', reviewPayload(event));
+    // COR-1621: two instances that observe one cancel both dispatch this event, and the key makes
+    // the history keep one record of the round's closing. An event that states no round has no key.
+    sink(
+      { kind: 'run', id: event.runId },
+      'review.canceled',
+      reviewPayload(event),
+      event.round === undefined
+        ? undefined
+        : { dedupeKey: reviewCanceledDedupeKey(event.reviewId, event.round) },
+    );
   };
   const reviewSupersededListener = (event: ReviewSupersededEvent): void => {
     if (signal?.aborted) return;

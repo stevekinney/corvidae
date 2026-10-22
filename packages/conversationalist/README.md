@@ -24,7 +24,7 @@ Public conversation values are deeply frozen when they enter the runtime. `curre
 
 ## Workspace usage
 
-Declare `"conversationalist": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `conversationalist`; the consumer compiles it. Shared external versions come from the root Bun catalog.
+Declare `"conversationalist": "workspace:*"` in the consuming workspace's dependencies. Install dependencies from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `conversationalist` and, for consumers that also depend on `@anthropic-ai/sdk`, from `conversationalist/adapters/anthropic/sdk`; the consumer compiles it. Shared external versions come from the root Bun catalog.
 
 ## Host Support
 
@@ -33,7 +33,9 @@ The root entry includes conversation state, streaming, schemas, provider convers
 Use `createPublicConversationProjection()` before serializing a transcript into an SSR response or browser payload. It intentionally removes hidden messages, internal instruction roles, metadata, provider-private reasoning, tool input and results, token usage, citations, document and image references, container identifiers, and managed-asset grants. It retains only user and assistant text and always applies the package's default personal-data and credential redaction rules. Supply `redactText` to apply stricter domain-specific redaction after those defaults.
 
 ```typescript
-import { createPublicConversationProjection } from 'conversationalist';
+import { createPublicConversationProjection, type Conversation } from 'conversationalist';
+
+declare const authoritativeConversation: Conversation;
 
 const browserHistory = createPublicConversationProjection(authoritativeConversation.current);
 const serialized = JSON.stringify(browserHistory);
@@ -148,6 +150,7 @@ import {
   appendToolResults,
   appendUserMessage,
   createConversationHistory,
+  getMessages,
   getToolInteractions,
   type AppendableToolCallInput,
   type AppendableToolResult,
@@ -260,7 +263,7 @@ const rows: TranscriptEventRow[] = [
 ];
 
 const conversation = replayTranscriptRows(rows);
-const orderedMessages = conversation.ids.map((id) => conversation.messages[id]);
+const orderedMessages = getMessages(conversation);
 const interactions = getToolInteractions(conversation);
 
 console.assert(
@@ -336,6 +339,9 @@ const projection = createProjection<StreamEvent, ProjectionState>({
     }
   },
 });
+
+declare function streamTranscriptEvents(): AsyncIterable<StreamEvent[]>;
+declare function renderConversation(conversation: ConversationHistory): void;
 
 for await (const events of streamTranscriptEvents()) {
   projection.apply(events);
@@ -445,8 +451,8 @@ if (previous) {
   console.log('Undone');
 }
 
-conversation.on('change', ({ detail }) => {
-  console.log('New history:', detail.current);
+conversation.addEventListener('change', (event) => {
+  console.log('New history:', event.conversation);
 });
 ```
 
@@ -465,7 +471,13 @@ import {
   simpleTokenEstimator,
   truncateFromPosition,
   truncateToTokenLimit,
+  type ConversationHistory,
+  type Message,
 } from 'conversationalist';
+
+declare const history: ConversationHistory;
+declare const editedMessageId: string;
+declare function countWithProviderTokenizer(messages: readonly Message[]): Promise<number>;
 
 // Estimate total tokens in a conversation
 const tokens = estimateConversationTokens(history);
@@ -532,13 +544,20 @@ import {
   isStreamingMessage,
   updateUnsafeStreamingMessage,
   updateStreamingMessage,
+  type ConversationHistory,
 } from 'conversationalist';
+
+declare const history: ConversationHistory;
+declare const stream: AsyncIterable<string>;
+declare const signature: string; // the provider's thinking signature
 
 // Start a streaming placeholder
 let { conversation, messageId } = appendStreamingMessage(history, 'assistant');
 
 // Accumulate tokens as they arrive
+let accumulatedText = '';
 for await (const chunk of stream) {
+  accumulatedText += chunk;
   conversation = updateStreamingMessage(conversation, messageId, accumulatedText);
 }
 
@@ -591,7 +610,10 @@ import {
   messageParts,
   messageText,
   messageToString,
+  type Message,
 } from 'conversationalist';
+
+declare const message: Message;
 
 const text = messageText(message);
 const parts = messageParts(message); // ReadonlyArray<MultiModalContent>
@@ -626,7 +648,12 @@ import {
   fromMarkdown,
   getRoleLabel,
   toMarkdown,
+  type Conversation,
+  type ConversationHistory,
 } from 'conversationalist';
+
+declare const conversation: Conversation;
+declare const history: ConversationHistory;
 
 // From a Conversation instance
 const md = conversationToMarkdown(conversation);
@@ -657,7 +684,9 @@ const deterministic = fromMarkdown(md2, runtime);
 Export helpers that normalize line endings for cross-platform file output.
 
 ```typescript
-import { exportMarkdown, normalizeLineEndings } from 'conversationalist';
+import { exportMarkdown, normalizeLineEndings, type ConversationHistory } from 'conversationalist';
+
+declare const history: ConversationHistory;
 
 const file = exportMarkdown(history, { includeMetadata: true });
 await Bun.write('transcript.md', file);
@@ -677,6 +706,8 @@ import {
   toolResultSchema,
 } from 'conversationalist';
 
+declare const rawData: unknown;
+
 const result = conversationSchema.safeParse(rawData);
 if (!result.success) {
   console.error(result.error.flatten());
@@ -691,11 +722,15 @@ PII redaction plugin. Scans assistant and user message text and replaces sensiti
 
 ```typescript
 import {
+  Conversation,
   createPIIRedaction,
   createPIIRedactionPlugin,
   DEFAULT_PII_RULES,
   redactPii,
+  type ConversationHistory,
 } from 'conversationalist';
+
+declare const history: ConversationHistory;
 
 // Use the pre-built default plugin (redacts emails, phone numbers, and API keys/secrets)
 const conversation = new Conversation(history, {
@@ -704,7 +739,7 @@ const conversation = new Conversation(history, {
 
 // Or define custom rules
 const customPlugin = createPIIRedactionPlugin({
-  rules: [{ pattern: /\b\d{9}\b/g, replacement: '[ID_REDACTED]' }],
+  rules: { nationalId: { regex: /\b\d{9}\b/g, replace: '[ID_REDACTED]' } },
 });
 
 // Or use the lower-level redaction function directly
@@ -732,10 +767,12 @@ console.log(CURRENT_SCHEMA_VERSION); // 6
 Deterministic sort helpers for consistent ordering and snapshot comparisons.
 
 ```typescript
-import { sortMessagesByPosition, sortObjectKeys } from 'conversationalist';
+import { sortMessagesByPosition, sortObjectKeys, type Message } from 'conversationalist';
+
+declare const messages: Message[];
 
 const ordered = sortMessagesByPosition([...messages]);
-const stable = sortObjectKeys(obj); // alphabetically sorted copy
+const stable = sortObjectKeys({ zebra: 1, apple: 2 }); // alphabetically sorted copy
 ```
 
 **Key exports:** `sortMessagesByPosition`, `sortObjectKeys`.
@@ -757,28 +794,47 @@ import {
   whenToolsAvailable,
 } from 'conversationalist';
 
-// Static instruction composer
-const composer = createInstructionComposer([
-  { heading: 'Role', content: 'You are a helpful assistant.' },
-  { heading: 'Rules', content: 'Be concise.' },
-]);
+// Static instruction composer: named sections, sorted by ascending `priority`
+const composer = createInstructionComposer(
+  { name: 'role', content: 'You are a helpful assistant.' },
+  { name: 'rules', content: 'Be concise.', priority: 1 },
+);
 
-const systemPrompt = await composer.render({ step: 0, metadata: {} });
+const systemPrompt = composer.render();
 
 // Template with variable interpolation
 const template = createInstructionTemplate('You are assisting {{userName}} on step {{step}}.');
-const rendered = renderTemplate(template, { userName: 'Alice', step: '1' });
+const rendered = template.render({ userName: 'Alice', step: '1' });
+const sameText = renderTemplate(template.source, { userName: 'Alice', step: '1' });
+const variables = extractTemplateVariables(template.source); // Set { 'userName', 'step' }
 
-// Conditional sections—only included when their predicate passes
-const conditionalComposer = createConditionalInstructionComposer([
-  whenStep(0, { heading: 'Welcome', content: 'Welcome! Here is how I can help.' }),
-  whenToolsAvailable(['search', 'read-file'], {
-    heading: 'Available tools',
+// Conditional sections—only included when their `when` predicate passes
+const conditionalComposer = createConditionalInstructionComposer(
+  {
+    name: 'welcome',
+    content: 'Welcome! Here is how I can help.',
+    when: whenStep((step) => step === 0),
+  },
+  {
+    name: 'available-tools',
     content: 'You may search the web and read files.',
-  }),
-  whenAnyToolAvailable({ heading: 'Tools', content: 'You have tools available.' }),
-  whenMetadata('mode', 'strict', { heading: 'Strict mode', content: 'Follow all rules exactly.' }),
-]);
+    when: whenToolsAvailable('search', 'read-file'),
+  },
+  {
+    name: 'tools',
+    content: 'You have tools available.',
+    when: whenAnyToolAvailable('search', 'read-file'),
+  },
+  {
+    name: 'strict-mode',
+    content: 'Follow all rules exactly.',
+    when: whenMetadata('mode', 'strict'),
+  },
+);
+
+const conditionalPrompt = conditionalComposer.render({
+  context: { step: 0, toolNames: ['search'], metadata: { mode: 'strict' } },
+});
 ```
 
 **Key exports:** `createInstructionComposer`, `createInstructionTemplate`, `createConditionalInstructionComposer`, `renderTemplate`, `extractTemplateVariables`, `whenStep`, `whenToolsAvailable`, `whenAnyToolAvailable`, `whenMetadata`, `whenMetadataPresent`. Also exports types `InstructionComposer`, `InstructionSection`, `InstructionComposerRenderOptions`, `InstructionTemplate`, `MissingVariableStrategy`, `TemplateOptions`, `ConditionalInstructionComposer`, `ConditionalInstructionSection`, `ConditionalInstructionComposerRenderOptions`, `InstructionContext`.
@@ -789,13 +845,18 @@ OpenAI Chat Completions message format adapter.
 
 ```typescript
 import {
+  Conversation,
   appendOpenAIMessages,
   fromOpenAIMessages,
   openAIConversationAdapter,
   toOpenAIMessages,
   toOpenAIMessagesGrouped,
 } from 'conversationalist';
-import type { OpenAIMessage } from 'conversationalist';
+import type { ConversationHistory, OpenAIMessage } from 'conversationalist';
+
+declare const history: ConversationHistory;
+declare const openAIMessages: OpenAIMessage[];
+declare const newMessages: OpenAIMessage[];
 
 // Export to OpenAI format: the wire messages, and one lineage entry per media part delivered
 const { messages, lineage } = toOpenAIMessages(history);
@@ -810,7 +871,7 @@ const imported = fromOpenAIMessages(openAIMessages);
 const updated = appendOpenAIMessages(history, newMessages);
 
 // Use with Conversation.fromProvider / conversation.toProvider
-const restored = await Conversation.fromProvider('openai', { messages: openAIMessages });
+const restored = await Conversation.fromProvider('openai', openAIMessages);
 ```
 
 Every outbound adapter delivers each media part or throws an `UnsupportedContentError` (`error:unsupported-content`) before any provider call. The error names the `provider`, `messageId`, `partIndex`, `partType`, optional `sourceKind`, and a `reason`: `modality-not-accepted`, `source-form-not-accepted`, `mime-family-not-accepted`, `mime-type-required`, `role-not-accepted`, or `part-type-not-accepted`. Nothing becomes marker prose, an empty string, or text alone. OpenAI Chat Completions takes an image as `image_url` (a remote URL or a data URL) and a PDF as a `file` part holding a base64 data URL or a Files API id (`provider-file` from `openai`); it takes PDFs only, and has no audio, video, or generic file input on this endpoint. Anthropic sends a plain-text document as a `text` source whose `media_type` is always `text/plain`, and records the part's own type as `originalMimeType` in lineage. `lineage` (a `ContentPartLineage[]`) records, for each delivered part, its `from` and `to` source kinds and a `transform` (`passthrough`, `data-url-split`, `inline-base64`, `remote-url-delegated`, `provider-file-reference`, or `resolved`). Pass `{ sources }` (a map keyed `${messageId}:${partIndex}` to a `ResolvedMediaSource`) to export a part through a source a resolver projected, such as a managed asset resolved to inline bytes, without rewriting the stored message.
@@ -830,7 +891,9 @@ import {
   fromAnthropicMessages,
   toAnthropicMessages,
 } from 'conversationalist';
-import type { AnthropicConversation } from 'conversationalist';
+import type { AnthropicConversation, ConversationHistory } from 'conversationalist';
+
+declare const history: ConversationHistory;
 
 const payload = toAnthropicMessages(history);
 // payload.system: string, payload.messages: AnthropicMessage[], payload.lineage: ContentPartLineage[]
@@ -842,8 +905,12 @@ const updated = appendAnthropicMessages(history, payload);
 **Key exports:** `toAnthropicMessages`, `fromAnthropicMessages`, `appendAnthropicMessages`, `anthropicConversationAdapter`. Type exports: `AnthropicConversation`, `AnthropicExport`, `AnthropicMessage`, `AnthropicContentBlock`, `AnthropicTextBlock`, `AnthropicToolUseBlock`, `AnthropicToolResultBlock`, `AnthropicImageBlock`, `AnthropicImageSource`, `AnthropicBase64ImageSource`, `AnthropicUrlImageSource`.
 
 ```typescript
+import type { ConversationHistory } from 'conversationalist';
 import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
 
+declare const history: ConversationHistory;
+
+// sdkPayload.system and sdkPayload.messages use @anthropic-ai/sdk's MessageParam shapes
 const sdkPayload = toAnthropicMessagesForSdk(history);
 ```
 
@@ -858,7 +925,9 @@ import {
   geminiConversationAdapter,
   toGeminiMessages,
 } from 'conversationalist';
-import type { GeminiConversation } from 'conversationalist';
+import type { ConversationHistory, GeminiConversation } from 'conversationalist';
+
+declare const history: ConversationHistory;
 
 const payload = toGeminiMessages(history);
 // payload.contents: GeminiContent[], payload.lineage: ContentPartLineage[]
@@ -874,7 +943,14 @@ const updated = appendGeminiMessages(history, payload);
 Maps Conversationalist history to and from the `messages` of an [AG-UI](https://docs.ag-ui.com) 1.0 `MESSAGES_SNAPSHOT` event, using the types and schemas of the pinned `@ag-ui/core` package. Event streaming is not included.
 
 ```ts
-import { agUiConversationAdapter, fromAGUIMessages, toAGUIMessages } from 'conversationalist';
+import {
+  agUiConversationAdapter,
+  fromAGUIMessages,
+  toAGUIMessages,
+  type ConversationHistory,
+} from 'conversationalist';
+
+declare const history: ConversationHistory;
 
 const messages = toAGUIMessages(history); // validated against the @ag-ui/core message schema
 const imported = fromAGUIMessages(messages);
@@ -895,11 +971,18 @@ Pure content-shape mapping between Conversationalist messages and [A2A](https://
 ```typescript
 import {
   appendMessages,
+  createConversationHistory,
   fromA2AMessage,
   resolveA2AArtifactReference,
   toA2AArtifact,
   toA2AMessage,
+  type Message,
 } from 'conversationalist';
+
+declare const message: Message;
+let conversation = createConversationHistory();
+const agentCardUrl = 'https://agent.example/.well-known/agent-card.json';
+const taskId = 'task-42';
 
 const a2aMessage = toA2AMessage(message); // user -> ROLE_USER, assistant -> ROLE_AGENT
 const { messageId, ...input } = fromA2AMessage(a2aMessage); // input: { role, content, metadata? }
@@ -998,10 +1081,16 @@ const restored = await Conversation.fromProvider('gemini', {
 import { appendToolCalls, appendToolResultsAsync } from 'conversationalist';
 import { createToolbox } from 'armorer';
 import { parseOpenAIToolCalls, toOpenAITools } from 'armorer';
+import { createConversationHistory } from 'conversationalist';
+import type OpenAI from 'openai';
+
+// The function tool calls from an OpenAI chat completion's assistant message.
+declare const responseToolCalls: OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall[];
+let conversationHistory = createConversationHistory();
 
 const toolbox = createToolbox();
 const tools = await toolbox.toProvider('openai');
-const toolCalls = parseOpenAIToolCalls(response);
+const toolCalls = parseOpenAIToolCalls(responseToolCalls);
 
 conversationHistory = appendToolCalls(conversationHistory, toolCalls);
 
@@ -1011,6 +1100,8 @@ conversationHistory = await appendToolResultsAsync(conversationHistory, results)
 
 Shared tool types and materializers are provided by `armorer/protocol`, a dependency-free subpath of Armorer, and re-exported by both packages.
 
+See [Using `armorer` with `conversationalist`](documentation/armorer-integration.md) for complete OpenAI, Anthropic, and Gemini tool loops.
+
 ## Events
 
 For how conversation observation and disposal fit with run, tool, and runtime ownership, see [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
@@ -1018,6 +1109,19 @@ For how conversation observation and disposal fit with run, tool, and runtime ow
 `Conversation` is both a framework-neutral external store and a typed event source. Store subscriptions never start work or invoke the listener during setup, so the standard read-subscribe-read pattern closes the setup race and React Strict Mode setup-cleanup-setup remains safe:
 
 ```typescript
+import {
+  Conversation,
+  type ConversationHistory,
+  type ConversationLifecycle,
+} from 'conversationalist';
+
+declare const initialHistory: ConversationHistory;
+declare function render(
+  conversation: ConversationHistory,
+  revision: number,
+  lifecycle: ConversationLifecycle,
+): void;
+
 const conversation = new Conversation(initialHistory);
 const before = conversation.getSnapshot();
 const unsubscribe = conversation.subscribe(() => {
@@ -1094,15 +1198,23 @@ Compaction reclaims context-window space by replacing older messages with a summ
 
 ### Compacting a conversation
 
-```typescript
-import { Conversation, messageText, type Summarizer } from 'conversationalist';
+```typescript file=compaction.ts
+import {
+  Conversation,
+  messageText,
+  type ConversationHistory,
+  type Summarizer,
+} from 'conversationalist';
+
+declare const existingHistory: ConversationHistory;
+declare function summarizeWithModel(transcript: string, signal?: AbortSignal): Promise<string>;
 
 // `summarizeWithModel` is your model call. The library forwards the signal but never
 // checks it between chunks, so passing it through is what stops the work on abort.
-const summarize: Summarizer = (messages, options) =>
+export const summarize: Summarizer = (messages, options) =>
   summarizeWithModel(messages.map((message) => messageText(message)).join('\n'), options?.signal);
 
-const conversation = new Conversation(existingHistory);
+export const conversation = new Conversation(existingHistory);
 const result = await conversation.compact(summarize, { preserveRecentCount: 6 });
 
 switch (result.outcome) {
@@ -1248,6 +1360,8 @@ Every attempt emits `compaction.started` and then exactly one settling event. Ea
 The result's `attempt` equals the record on the settling event. A commit also emits `change` (with `action: 'compaction.completed'`) and `push` just before `compaction.completed`. All three carry the new revision and the same `compaction` record. Their `messageIds` list every identifier the commit removed, which are the summarized messages and nothing else: kept messages, hidden or not, keep their identifiers. An attempt that publishes nothing emits no `change` or `push`, so store subscribers are not notified. Closing or disposing the conversation mid-attempt emits no `compaction.cancelled`, because the controller has stopped emitting. The promise still rejects with `error:operation-cancelled`.
 
 ```typescript
+import { conversation } from './compaction.ts';
+
 for (const type of [
   'compaction.started',
   'compaction.completed',
@@ -1286,6 +1400,7 @@ for (const type of [
 
 ```typescript
 import { createCompactionScheduler, createIdleCompactionSchedule } from 'conversationalist';
+import { conversation, summarize } from './compaction.ts';
 
 const scheduler = createCompactionScheduler(conversation, {
   summarizer: summarize,
@@ -1304,6 +1419,7 @@ A stale candidate is discarded and rescheduled in a new window up to `maxStaleRe
 ## Documentation
 
 - [API Reference](documentation/api-reference.md)
+- [Using `armorer` with `conversationalist`](documentation/armorer-integration.md) - Complete OpenAI, Anthropic, and Gemini tool loops
 - [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md) - Cross-package state, tool, run, and cleanup ownership
 
 ## Development

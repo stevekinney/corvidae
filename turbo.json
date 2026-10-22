@@ -11,7 +11,8 @@
     },
     "lint": {
       "outputs": [],
-      "dependsOn": ["transit"]
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-documentation-coverage.ts"]
     },
     "lint:fix": {
       "cache": false
@@ -23,7 +24,13 @@
     "typecheck": {
       "outputs": [],
       "dependsOn": ["transit", "^types"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
+        "$TURBO_ROOT$/scripts/check-documentation-code-blocks.ts",
+        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/published-exports.json"
+      ]
     },
     "test": {
       "outputs": ["test-output/junit/**"],
@@ -165,6 +172,7 @@
       "dependsOn": ["transit"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
@@ -176,6 +184,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
+        "$TURBO_ROOT$/scripts/check-documentation-code-blocks.ts",
+        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/published-exports.json",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
