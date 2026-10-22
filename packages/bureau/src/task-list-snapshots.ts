@@ -224,7 +224,7 @@ export interface TaskListingStore {
     expiresAt: number,
     window: number,
   ): Promise<TaskListingRecord<T> | undefined>;
-  /** Writes a window. A first window also makes room under the per-principal cap. */
+  /** Writes a window. A first window then trims its principal's listings to the cap. */
   save<T>(record: TaskListingRecord<T>): Promise<void>;
   /** Deletes every window whose listing has expired, reading no record. Resolves the count. */
   expire(): Promise<number>;
@@ -249,7 +249,12 @@ export function createTaskListingStore(options: TaskListingStoreOptions): TaskLi
     if (!sameFilters(record.filters, scope.filters)) throw new TaskListingTokenError('filters');
   }
 
-  async function makeRoom(principal: string): Promise<void> {
+  /**
+   * Deletes a principal's oldest listings beyond the cap. It runs after a first window is
+   * written, so concurrent starts that each write before any of them trims still end within the
+   * cap: whichever trim runs last sees every listing.
+   */
+  async function trimToCap(principal: string): Promise<void> {
     const prefix = principalPrefix(principal);
     const listings = new Map<string, { expiresAt: number; keys: string[] }>();
     for (const key of await kv.list(prefix)) {
@@ -265,7 +270,7 @@ export function createTaskListingStore(options: TaskListingStoreOptions): TaskLi
     );
     let live = oldestFirst.length;
     for (const [, listing] of oldestFirst) {
-      if (live < TASK_LISTING_MAXIMUM_PER_PRINCIPAL) break;
+      if (live <= TASK_LISTING_MAXIMUM_PER_PRINCIPAL) break;
       for (const key of listing.keys) await kv.delete(key);
       live -= 1;
     }
@@ -286,11 +291,11 @@ export function createTaskListingStore(options: TaskListingStoreOptions): TaskLi
     },
 
     async save<T>(record: TaskListingRecord<T>) {
-      if (record.window === 0) await makeRoom(record.principal);
       await kv.set(
         listingKey(record.principal, record.expiresAt, record.listingId, record.window),
         JSON.stringify(record),
       );
+      if (record.window === 0) await trimToCap(record.principal);
     },
 
     async expire() {

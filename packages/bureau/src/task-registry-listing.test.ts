@@ -446,6 +446,17 @@ describe('a TaskRegistry.list page token', () => {
     expect(await snapshotKeys(harness.kv)).toHaveLength(17);
   });
 
+  it('stays within the cap when many listings start at once', async () => {
+    const harness = build();
+    await admitMany(harness, 2);
+
+    await Promise.all(
+      Array.from({ length: 24 }, () => harness.registry.list({ principal: ALICE, limit: 1 })),
+    );
+
+    expect(await snapshotKeys(harness.kv)).toHaveLength(16);
+  });
+
   it('survives a restart over persistent storage', async () => {
     const runtime = createManualRuntimeServices({ origin: '2026-10-22T00:00:00.000Z' });
     const kv = textValueStore(new MemoryStorage());

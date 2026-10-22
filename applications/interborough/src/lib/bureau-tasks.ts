@@ -10,7 +10,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BUREAU_PATH, callBureau, type Fetcher } from './bureau-client.ts';
+import { BUREAU_PATH, callBureau, type Fetcher, wireCodeOf } from './bureau-client.ts';
 import { readServerSentEventStream } from './live-source/sse-reader.ts';
 
 /** A task's state. */
@@ -94,6 +94,40 @@ export async function listTasks(
   options?: Options,
 ): Promise<TaskPage> {
   return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));
+}
+
+/**
+ * Whether `error` is the Bureau refusing a page token: the listing it named expired (fifteen
+ * minutes after its first page), was ended by newer listings, or belongs to other filters. The
+ * listing has to start again from its first page.
+ */
+export function isRefusedPageToken(error: unknown): boolean {
+  if (wireCodeOf(error) !== 'InvalidParams' || !(error instanceof HttpClientError)) return false;
+  const issues = error.data?.['issues'];
+  return (
+    Array.isArray(issues) &&
+    issues.some(
+      (issue: unknown) =>
+        typeof issue === 'object' &&
+        issue !== null &&
+        String((issue as { code?: unknown }).code).startsWith('page-token-'),
+    )
+  );
+}
+
+/** The part of an infinite query Load more drives. */
+type PagedTasks = {
+  fetchNextPage(): Promise<{ readonly error: unknown }>;
+  refetch(): Promise<unknown>;
+};
+
+/**
+ * Reads the next page. When the Bureau refuses the page token, the listing is read again from
+ * its first page, which issues fresh tokens, so Load more works again instead of failing for good.
+ */
+export async function loadMoreTasks(tasks: PagedTasks): Promise<void> {
+  const next = await tasks.fetchNextPage();
+  if (isRefusedPageToken(next.error)) await tasks.refetch();
 }
 
 /** One task. A task the caller may not see is answered as a missing one: a not-found fault. */

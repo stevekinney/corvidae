@@ -21,7 +21,7 @@
   import { createInfiniteQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../app/copy.ts';
-  import { listTasks } from '../../lib/bureau-tasks.ts';
+  import { listTasks, loadMoreTasks } from '../../lib/bureau-tasks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -205,7 +205,7 @@
             variant="secondary"
             label={TASK_COPY.loadMore}
             loading={tasks.isFetchingNextPage}
-            onclick={() => void tasks.fetchNextPage()}
+            onclick={() => void loadMoreTasks(tasks)}
           />
         </div>
       {/if}
