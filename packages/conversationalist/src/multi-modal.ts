@@ -1,45 +1,22 @@
+import type { ContentSource, MediaContent, Modality, TextContent } from 'armorer/protocol';
+
 import type { JSONValue } from './types';
 
-export interface TextContent {
-  type: 'text';
-  text: string;
-  /**
-   * Citation references Anthropic attaches to cited text (e.g. from web search).
-   * Preserved opaquely so they round-trip for display and multi-turn replay.
-   */
-  citations?: JSONValue;
-}
-
-/** Fields every media part carries. `source` is a `ContentSource` (below); nothing else names bytes or a location. */
-export interface MediaContentFields {
-  source: ContentSource;
-  mimeType?: string;
-  name?: string;
-  alt?: string;
-  caption?: string;
-  transcript?: string;
-  extractedText?: string;
-  metadata?: Readonly<Record<string, JSONValue>>;
-}
-
-export interface ImageContent extends MediaContentFields {
-  type: 'image';
-}
-export interface AudioContent extends MediaContentFields {
-  type: 'audio';
-}
-export interface VideoContent extends MediaContentFields {
-  type: 'video';
-}
-export interface DocumentContent extends MediaContentFields {
-  type: 'document';
-}
-export interface FileContent extends MediaContentFields {
-  type: 'file';
-}
-
-export type MediaContent =
-  ImageContent | AudioContent | VideoContent | DocumentContent | FileContent;
+// The portable part vocabulary (text, media, and `ContentSource`) is defined in
+// `armorer/protocol`, so a tool result can carry the same parts.
+export type {
+  AudioContent,
+  ContentSource,
+  DocumentContent,
+  FileContent,
+  ImageContent,
+  MediaContent,
+  MediaContentFields,
+  Modality,
+  TextContent,
+  ToolResultPart,
+  VideoContent,
+} from 'armorer/protocol';
 
 /**
  * Renders a short human-readable placeholder for a media part. Display only:
@@ -275,9 +252,6 @@ export function copyContent(
 // bytes or location. See `multi-modal-vocabulary.test-d.ts` for the
 // compile-time shape proof.
 
-/** The six portable content modalities a backend or provider can carry. */
-export type Modality = 'text' | 'image' | 'audio' | 'video' | 'document' | 'file';
-
 // A MIME "family" is the type before the slash, plus the handful of container
 // formats that need their own bucket because they carry mixed content.
 export type MimeFamily =
@@ -289,18 +263,6 @@ export type MimeFamily =
   | 'application' // generic binary / octet-stream and non-document application/* types
   | 'font'
   | 'model'; // 3D/model/* MIME types, carried as generic `file` parts
-
-// The nine ingress source forms, mapped onto ContentSource's discriminant.
-export type ContentSource =
-  | { kind: 'inline'; data: string; encoding: 'base64' | 'utf8' }
-  | { kind: 'data-url'; url: string }
-  | { kind: 'remote-url'; url: string } // deny-by-default hardened fetch is deployment configuration
-  | { kind: 'local-file'; path: string } // host-process only; never crosses a network boundary
-  | { kind: 'upload'; uploadId: string } // prior to becoming a ManagedAsset
-  | { kind: 'provider-file'; provider: string; providerFileId: string }
-  | { kind: 'mcp-resource'; serverId: string; uri: string }
-  | { kind: 'a2a-reference'; agentCardUrl: string; taskId: string; artifactId: string } // an A2A artifactId is unique only within its task
-  | { kind: 'managed-asset'; assetId: string; revision?: number };
 
 export type MediaLimitScope = 'per-part' | 'aggregate';
 

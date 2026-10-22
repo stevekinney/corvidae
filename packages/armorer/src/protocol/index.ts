@@ -1,4 +1,25 @@
 export {
+  TOOL_CONTENT_KIND,
+  assertToolResultParts,
+  isToolContent,
+  isToolResultParts,
+  toolContent,
+} from './content-parts';
+export type {
+  AudioContent,
+  ContentSource,
+  DocumentContent,
+  FileContent,
+  ImageContent,
+  MediaContent,
+  MediaContentFields,
+  Modality,
+  TextContent,
+  ToolContent,
+  ToolResultPart,
+  VideoContent,
+} from './content-parts';
+export {
   assertJSONValue,
   isJSONValue,
   materializeToolCall,

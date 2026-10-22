@@ -284,6 +284,7 @@ export type {
   ServerToolUseContent,
   TextContent,
   ThinkingContent,
+  ToolResultPart,
   VideoContent,
   WebSearchToolResultContent,
 } from './multi-modal';
