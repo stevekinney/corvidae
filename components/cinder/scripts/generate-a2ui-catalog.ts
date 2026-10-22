@@ -84,17 +84,24 @@ export const EXCLUDED_CINDER_PROPERTIES: ReadonlySet<string> = new Set([
 /**
  * Cinder properties that can carry a component's accessible name, in
  * precedence order. The first one a schema declares becomes the A2UI `label`.
- * An explicit accessible-name property wins over a visible `label`, because a
- * component that declares both uses `label` for something else (Progress's is
- * its `aria-valuetext`).
+ * A visible `label` wins, so a component keeps its visible label; a component
+ * whose `label` is something else is listed in {@link ACCESSIBLE_NAME_OVERRIDES}.
  */
 export const ACCESSIBLE_NAME_SOURCES: readonly string[] = [
+  'label',
   'ariaLabel',
   'aria-label',
-  'label',
   'alt',
   'title',
 ];
+
+/**
+ * Components whose accessible name is not the first source they declare.
+ * Progress's `label` is its `aria-valuetext`, so its name is `ariaLabel`.
+ */
+export const ACCESSIBLE_NAME_OVERRIDES: Readonly<Record<string, string>> = {
+  progress: 'ariaLabel',
+};
 
 /** The A2UI property that carries the accessible name on every entry. */
 export const A2UI_LABEL_PROPERTY = 'label';
@@ -223,7 +230,10 @@ export function mapProperty(source: JsonObject): JsonObject | undefined {
 /** The Cinder property that supplies a schema's accessible name, if any. */
 export function findAccessibleNameSource(
   properties: Readonly<Record<string, JsonObject>>,
+  componentId?: string,
 ): string | undefined {
+  const override = componentId === undefined ? undefined : ACCESSIBLE_NAME_OVERRIDES[componentId];
+  if (override !== undefined && override in properties) return override;
   return ACCESSIBLE_NAME_SOURCES.find((name) => name in properties);
 }
 
@@ -320,7 +330,7 @@ export function buildA2uiCatalog(inputs: CatalogInputs): A2uiCatalog {
       errors.push(`${id}: allowlisted component is not in components.json`);
       continue;
     }
-    const nameSource = findAccessibleNameSource(schema.properties);
+    const nameSource = findAccessibleNameSource(schema.properties, id);
     if (nameSource === undefined) {
       errors.push(
         `${info.name} (${id}): schema has no accessible-name property (looked for ${ACCESSIBLE_NAME_SOURCES.join(', ')})`,
@@ -474,7 +484,23 @@ export function createA2uiMessageValidator(
   const ajv = createAjv(catalog, vendored);
   const validate = ajv.getSchema(String(vendored.serverToClient['$id']));
   if (validate === undefined) throw new Error('the A2UI message schema did not register');
-  return (message) => schemaProblems(ajv, validate, message);
+  return (message) => {
+    const problems = schemaProblems(ajv, validate, message);
+    // The message schema only checks that a createSurface names some catalog;
+    // this validator is for surfaces built from this one.
+    const create: unknown =
+      typeof message === 'object' && message !== null
+        ? Reflect.get(message, 'createSurface')
+        : undefined;
+    const catalogId: unknown =
+      typeof create === 'object' && create !== null ? Reflect.get(create, 'catalogId') : undefined;
+    if (catalogId !== undefined && catalogId !== catalog.catalogId) {
+      problems.push(
+        `createSurface names the catalog ${JSON.stringify(catalogId)}, not "${catalog.catalogId}"`,
+      );
+    }
+    return problems;
+  };
 }
 
 // ---------------------------------------------------------------------------

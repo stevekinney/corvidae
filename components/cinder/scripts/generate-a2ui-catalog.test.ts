@@ -106,10 +106,11 @@ describe('buildA2uiCatalog', () => {
     expect(mapProperty({ anyOf: [{ type: 'number' }, { type: 'string' }] })).toBeUndefined();
   });
 
-  it('prefers an explicit accessible-name property over a visible label', () => {
+  it('keeps a visible label, and names Progress from ariaLabel', () => {
     expect(
       findAccessibleNameSource({ label: { type: 'string' }, ariaLabel: { type: 'string' } }),
-    ).toBe('ariaLabel');
+    ).toBe('label');
+    expect(String(catalog.components['Rating']?.['description'])).toContain("from Cinder 'label'");
     expect(String(catalog.components['Progress']?.['description'])).toContain(
       "from Cinder 'ariaLabel'",
     );
@@ -189,11 +190,19 @@ describe('A2UI messages against the Cinder catalog', () => {
           surfaceId,
           components: [
             { id: 'root', component: 'Meter', label: 'Disk usage', value: { path: '/disk' } },
-            { id: 'done', component: 'Checkbox', label: 'Done', checked: true },
           ],
         },
       }),
     ).toEqual([]);
+  });
+
+  it('rejects a createSurface that names another catalog', () => {
+    const validate = createA2uiMessageValidator(catalog, vendored);
+    const basic = 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json';
+
+    expect(validate({ version: 'v0.9.1', createSurface: { surfaceId, catalogId: basic } })).toEqual(
+      [`createSurface names the catalog "${basic}", not "${catalog.catalogId}"`],
+    );
   });
 
   it('rejects a component the catalog does not list, and one without its label', () => {
