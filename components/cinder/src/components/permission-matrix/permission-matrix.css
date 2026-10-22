@@ -168,12 +168,12 @@
 
   .cinder-permission-matrix__cell[data-cinder-state='granted']
     .cinder-permission-matrix__cell-token {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
 
   .cinder-permission-matrix__cell[data-cinder-state='denied']
     .cinder-permission-matrix__cell-token {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 
   .cinder-permission-matrix__cell[data-cinder-state='not-applicable']

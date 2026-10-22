@@ -308,7 +308,7 @@
   .comment-composer-error {
     margin: 0;
     font-size: var(--cinder-text-xs);
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 
   .comment-composer-footer {

@@ -299,7 +299,7 @@
     height: 1.5rem;
     color: var(--cinder-text-muted);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border-strong);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-sm);
     cursor: pointer;
     transition:

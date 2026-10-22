@@ -284,6 +284,6 @@
   }
 
   .diff-review-renderer-error {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 </style>

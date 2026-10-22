@@ -53,7 +53,9 @@ describe('ChatInput — shortcut accessibility', () => {
   });
 
   test('uses Cinder Tooltip for contextual send guidance', () => {
-    expect(chatInputSource).toContain('import { ArrowUp, Paperclip, Square, Tooltip, X, Button }');
+    expect(chatInputSource).toContain(
+      'import { Paperclip, SendHorizontal, Square, Tooltip, X, Button }',
+    );
     expect(chatInputSource).toContain("'Wait for attachments'");
     expect(chatInputSource).toContain("'Add a message or attachment'");
     expect(chatInputSource).toContain("'Stop generating'");

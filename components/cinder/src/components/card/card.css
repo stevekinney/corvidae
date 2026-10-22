@@ -159,7 +159,7 @@
   .cinder-card__risk-icon {
     display: inline-flex;
     flex: 0 0 auto;
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 
   .cinder-card__title {

@@ -73,9 +73,15 @@ async function openOverlayPage(
   return page;
 }
 
+// Three backdrops the popover composites over. They have to paint three colors that differ by more
+// than a couple of 8-bit levels, which is what the distinctness check at the end of the spec reads.
+// COR-1552 made the light canvas, surface and raised tiers whites that are one level apart (99.5%,
+// 99.8% and 100% lightness), so `--cinder-surface-canvas` can no longer stand in for a third
+// backdrop: the pressed wash of the surface is a legal surface paint, and it is far enough from
+// both the inset and the white tiers in both themes.
 const SURFACES = {
   inset: '--cinder-surface-inset',
-  canvas: '--cinder-surface-canvas',
+  pressed: '--cinder-surface-pressed',
   surface: '--cinder-surface',
 } as const;
 

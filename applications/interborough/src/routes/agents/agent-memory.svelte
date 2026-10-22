@@ -288,8 +288,8 @@
   }
 
   .weft-memory__row[data-selected='true'] {
-    border-color: var(--cinder-border-strong);
-    outline: 2px solid var(--cinder-border-strong);
+    border-color: var(--cinder-border-control);
+    outline: 2px solid var(--cinder-border-control);
   }
 
   .weft-memory__content {
