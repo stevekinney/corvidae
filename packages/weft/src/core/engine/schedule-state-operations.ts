@@ -4,10 +4,10 @@ import type { EngineInternals } from './internals.ts';
 import { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 import {
   requireScheduleState,
-  runSerializedScheduleStateOperation,
   ScheduleReadConditionLostError,
   scheduleReadConditions,
-} from './storage-io.ts';
+} from './schedule-state-read.ts';
+import { runSerializedScheduleStateOperation } from './storage-io.ts';
 
 /**
  * Run `operation` inside the schedule's serialized write, carrying a failure out of the

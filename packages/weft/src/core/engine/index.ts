@@ -293,6 +293,7 @@ import {
 } from './reviews.ts';
 import { ScheduleHandle } from './schedule-handle.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
+import { loadScheduleState } from './schedule-state-read.ts';
 import {
   cancelSchedule as cancelScheduleFromInternals,
   listSchedules as listSchedulesFromInternals,
@@ -319,11 +320,7 @@ import {
   type ResolveWorkflowSourceOptions,
 } from './source-resolution.ts';
 import { createWorkflowSourceRuntimeState } from './source-runtime-state.ts';
-import {
-  loadScheduleState,
-  loadWorkflowState,
-  runSerializedWorkflowStateWrite,
-} from './storage-io.ts';
+import { loadWorkflowState, runSerializedWorkflowStateWrite } from './storage-io.ts';
 import {
   feedOperationResult,
   getComposedWorkflowInterceptor,

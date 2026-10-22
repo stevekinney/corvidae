@@ -25,16 +25,13 @@ import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { runScheduleTransition } from './schedule-state-operations.ts';
+import { ScheduleReadConditionLostError, scheduleReadConditions } from './schedule-state-read.ts';
 import {
   createScheduleTimerId,
   matchesScheduleFilter,
   paginateScheduleSummaries,
 } from './state-utilities.ts';
-import {
-  ScheduleReadConditionLostError,
-  scheduleReadConditions,
-  writeScheduleState,
-} from './storage-io.ts';
+import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
   coerceExpectedScheduleRevision,
@@ -237,6 +234,24 @@ function timerConditions(
 }
 
 /**
+ * A write's pinned-revision fence (WFT-20), if it has one, with the conditions on the bytes the
+ * write was decided from (COR-1594) ahead of it. The read conditions are judged first and never
+ * reach the fence's typed error.
+ */
+function withReadConditions(
+  readConditions: ConditionalBatchCondition[],
+  pinned:
+    | { extraConditions: ConditionalBatchCondition[]; onExtraConditionsLost: () => Error }
+    | undefined,
+): { extraConditions?: ConditionalBatchCondition[]; onExtraConditionsLost?: () => Error } {
+  const extraConditions = [...readConditions, ...(pinned?.extraConditions ?? [])];
+  return {
+    ...(extraConditions.length > 0 && { extraConditions }),
+    ...(pinned !== undefined && { onExtraConditionsLost: pinned.onExtraConditionsLost }),
+  };
+}
+
+/**
  * Project a caller-supplied {@link ScheduleTransitionOptions} onto the subset
  * of {@link writeScheduleState}'s options it forwards to. Built with
  * conditional spreads — rather than `{ additionalOperations:
@@ -289,27 +304,32 @@ export async function pauseSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
-    if (state.status !== 'active') return;
-    await internals.scheduler.cancel(
-      createScheduleTimerId(normalizedScheduleId),
-      normalizedScheduleId,
-      timerConditions(readConditions),
-    );
-    const now = internals.options.getNow();
-    const updatedState: ScheduleState = {
-      ...state,
-      status: 'paused',
-      revision: state.revision + 1,
-      updatedAt: now,
-      nextFireAt: getNextScheduleOccurrence(state, now),
-      queuedRuns: [],
-    };
-    await writeScheduleState(internals, updatedState, {
-      includeTimer: false,
-      ...scheduleTransitionWriteOptions(options, readConditions),
-    });
-  });
+  await runScheduleTransition(
+    internals,
+    normalizedScheduleId,
+    expectedRevision,
+    async (state, readConditions) => {
+      if (state.status !== 'active') return;
+      await internals.scheduler.cancel(
+        createScheduleTimerId(normalizedScheduleId),
+        normalizedScheduleId,
+        timerConditions(readConditions),
+      );
+      const now = internals.options.getNow();
+      const updatedState: ScheduleState = {
+        ...state,
+        status: 'paused',
+        revision: state.revision + 1,
+        updatedAt: now,
+        nextFireAt: getNextScheduleOccurrence(state, now),
+        queuedRuns: [],
+      };
+      await writeScheduleState(internals, updatedState, {
+        includeTimer: false,
+        ...scheduleTransitionWriteOptions(options, readConditions),
+      });
+    },
+  );
 }
 
 /** `options` (COR-67, COR-1482) — see {@link pauseSchedule}'s doc comment. */
@@ -320,25 +340,30 @@ export async function resumeSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
-    if (state.status === 'cancelled') {
-      throw new Error(
-        `Schedule "${normalizedScheduleId}" has been cancelled and cannot be resumed`,
-      );
-    }
-    if (state.status === 'active') return;
-    const now = internals.options.getNow();
-    const updatedState: ScheduleState = {
-      ...state,
-      status: 'active',
-      revision: state.revision + 1,
-      updatedAt: now,
-      nextFireAt: getNextScheduleOccurrence(state, now),
-    };
-    await writeScheduleState(internals, updatedState, {
-      ...scheduleTransitionWriteOptions(options, readConditions),
-    });
-  });
+  await runScheduleTransition(
+    internals,
+    normalizedScheduleId,
+    expectedRevision,
+    async (state, readConditions) => {
+      if (state.status === 'cancelled') {
+        throw new Error(
+          `Schedule "${normalizedScheduleId}" has been cancelled and cannot be resumed`,
+        );
+      }
+      if (state.status === 'active') return;
+      const now = internals.options.getNow();
+      const updatedState: ScheduleState = {
+        ...state,
+        status: 'active',
+        revision: state.revision + 1,
+        updatedAt: now,
+        nextFireAt: getNextScheduleOccurrence(state, now),
+      };
+      await writeScheduleState(internals, updatedState, {
+        ...scheduleTransitionWriteOptions(options, readConditions),
+      });
+    },
+  );
 }
 
 /**
@@ -353,27 +378,32 @@ export async function cancelSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
-    if (state.status === 'active') {
-      await internals.scheduler.cancel(
-        createScheduleTimerId(normalizedScheduleId),
-        normalizedScheduleId,
-        timerConditions(readConditions),
-      );
-    }
-    const updatedState: ScheduleState = {
-      ...state,
-      status: 'cancelled',
-      revision: state.status === 'cancelled' ? state.revision : state.revision + 1,
-      updatedAt: internals.options.getNow(),
-      nextFireAt: null,
-      queuedRuns: [],
-    };
-    await writeScheduleState(internals, updatedState, {
-      includeTimer: false,
-      ...scheduleTransitionWriteOptions(options, readConditions),
-    });
-  });
+  await runScheduleTransition(
+    internals,
+    normalizedScheduleId,
+    expectedRevision,
+    async (state, readConditions) => {
+      if (state.status === 'active') {
+        await internals.scheduler.cancel(
+          createScheduleTimerId(normalizedScheduleId),
+          normalizedScheduleId,
+          timerConditions(readConditions),
+        );
+      }
+      const updatedState: ScheduleState = {
+        ...state,
+        status: 'cancelled',
+        revision: state.status === 'cancelled' ? state.revision : state.revision + 1,
+        updatedAt: internals.options.getNow(),
+        nextFireAt: null,
+        queuedRuns: [],
+      };
+      await writeScheduleState(internals, updatedState, {
+        includeTimer: false,
+        ...scheduleTransitionWriteOptions(options, readConditions),
+      });
+    },
+  );
 }
 
 export async function updateSchedule(
@@ -386,78 +416,77 @@ export async function updateSchedule(
   const normalizedSpec = normalizeScheduleSpec(newSpec);
   const normalizedOptions = normalizeScheduleUpdateOptions(options);
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state, readConditions) => {
-    const now = internals.options.getNow();
-    // Replace the cadence wholesale so switching kinds (cron <-> interval) never
-    // leaves a stale field behind. Interval cadence re-anchors at the update time.
-    // Strip both cadence fields, and `pinnedRevision`, from the carried-over
-    // state first, then attach only what the new spec/revision decision
-    // selects (exactOptionalPropertyTypes forbids carrying an explicit
-    // `undefined`).
-    const {
-      cronExpression: _droppedCron,
-      intervalMs: _droppedInterval,
-      pinnedRevision: _droppedPinnedRevision,
-      ...stateWithoutCadenceOrPin
-    } = state;
-    const cadenceFields =
-      normalizedSpec.kind === 'interval'
-        ? { intervalMs: normalizedSpec.intervalMs }
-        : { cronExpression: normalizedSpec.cronExpression };
-    // For interval specs the occurrence grid is anchored at `createdAt`. Re-anchor
-    // to `now` (the update time) so the timer's subsequent `getNextScheduleOccurrence`
-    // calls use the same origin as the `nextFireAt` computed here. Without this,
-    // the first fire after the update is correct but later fires drift back to the
-    // original creation-time grid.
-    const anchorFields = normalizedSpec.kind === 'interval' ? { createdAt: now } : {};
-    // Omitting `revisionPolicy` preserves the schedule's current policy AND
-    // its captured pin unchanged. Passing `'pinned'` — even when already
-    // pinned — always RE-resolves and re-captures against the revision
-    // active RIGHT NOW; it is never a no-op. Passing `'active-at-fire'`
-    // clears any previously captured pin.
-    let pinnedRevision: string | undefined;
-    let revisionFields: Pick<ScheduleState, 'revisionPolicy' | 'pinnedRevision'>;
-    if (normalizedOptions.revisionPolicy === undefined) {
-      revisionFields = {
-        revisionPolicy: state.revisionPolicy,
-        ...(state.pinnedRevision !== undefined && { pinnedRevision: state.pinnedRevision }),
+  await runScheduleTransition(
+    internals,
+    normalizedScheduleId,
+    expectedRevision,
+    async (state, readConditions) => {
+      const now = internals.options.getNow();
+      // Replace the cadence wholesale so switching kinds (cron <-> interval) never
+      // leaves a stale field behind. Interval cadence re-anchors at the update time.
+      // Strip both cadence fields, and `pinnedRevision`, from the carried-over
+      // state first, then attach only what the new spec/revision decision
+      // selects (exactOptionalPropertyTypes forbids carrying an explicit
+      // `undefined`).
+      const {
+        cronExpression: _droppedCron,
+        intervalMs: _droppedInterval,
+        pinnedRevision: _droppedPinnedRevision,
+        ...stateWithoutCadenceOrPin
+      } = state;
+      const cadenceFields =
+        normalizedSpec.kind === 'interval'
+          ? { intervalMs: normalizedSpec.intervalMs }
+          : { cronExpression: normalizedSpec.cronExpression };
+      // For interval specs the occurrence grid is anchored at `createdAt`. Re-anchor
+      // to `now` (the update time) so the timer's subsequent `getNextScheduleOccurrence`
+      // calls use the same origin as the `nextFireAt` computed here. Without this,
+      // the first fire after the update is correct but later fires drift back to the
+      // original creation-time grid.
+      const anchorFields = normalizedSpec.kind === 'interval' ? { createdAt: now } : {};
+      // Omitting `revisionPolicy` preserves the schedule's current policy AND
+      // its captured pin unchanged. Passing `'pinned'` — even when already
+      // pinned — always RE-resolves and re-captures against the revision
+      // active RIGHT NOW; it is never a no-op. Passing `'active-at-fire'`
+      // clears any previously captured pin.
+      let pinnedRevision: string | undefined;
+      let revisionFields: Pick<ScheduleState, 'revisionPolicy' | 'pinnedRevision'>;
+      if (normalizedOptions.revisionPolicy === undefined) {
+        revisionFields = {
+          revisionPolicy: state.revisionPolicy,
+          ...(state.pinnedRevision !== undefined && { pinnedRevision: state.pinnedRevision }),
+        };
+      } else if (normalizedOptions.revisionPolicy === 'pinned') {
+        pinnedRevision = await resolveScheduleRevisionForPin(
+          internals.engine as unknown as Engine,
+          internals,
+          state.workflowType,
+        );
+        revisionFields = { revisionPolicy: 'pinned', pinnedRevision };
+      } else {
+        revisionFields = { revisionPolicy: 'active-at-fire' };
+      }
+      const updatedState: ScheduleState = {
+        ...stateWithoutCadenceOrPin,
+        ...normalizedOptions,
+        ...cadenceFields,
+        ...anchorFields,
+        ...revisionFields,
+        revision: state.revision + 1,
+        updatedAt: now,
+        nextFireAt:
+          state.status === 'cancelled'
+            ? null
+            : getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
       };
-    } else if (normalizedOptions.revisionPolicy === 'pinned') {
-      pinnedRevision = await resolveScheduleRevisionForPin(
-        internals.engine as unknown as Engine,
-        internals,
-        state.workflowType,
-      );
-      revisionFields = { revisionPolicy: 'pinned', pinnedRevision };
-    } else {
-      revisionFields = { revisionPolicy: 'active-at-fire' };
-    }
-    const updatedState: ScheduleState = {
-      ...stateWithoutCadenceOrPin,
-      ...normalizedOptions,
-      ...cadenceFields,
-      ...anchorFields,
-      ...revisionFields,
-      revision: state.revision + 1,
-      updatedAt: now,
-      nextFireAt:
-        state.status === 'cancelled'
-          ? null
-          : getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
-    };
-    const pinnedWriteOptions = await buildPinnedRevisionWriteOptions(
-      internals,
-      state.workflowType,
-      pinnedRevision,
-    );
-    const extraConditions = [...readConditions, ...(pinnedWriteOptions?.extraConditions ?? [])];
-    await writeScheduleState(internals, updatedState, {
-      includeTimer: state.status === 'active',
-      replaceTimerFrom: state,
-      ...(extraConditions.length > 0 && { extraConditions }),
-      ...(pinnedWriteOptions !== undefined && {
-        onExtraConditionsLost: pinnedWriteOptions.onExtraConditionsLost,
-      }),
-    });
-  });
+      await writeScheduleState(internals, updatedState, {
+        includeTimer: state.status === 'active',
+        replaceTimerFrom: state,
+        ...withReadConditions(
+          readConditions,
+          await buildPinnedRevisionWriteOptions(internals, state.workflowType, pinnedRevision),
+        ),
+      });
+    },
+  );
 }

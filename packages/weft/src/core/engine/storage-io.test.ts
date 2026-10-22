@@ -7,17 +7,19 @@ import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.
 import { encode } from '../codec.ts';
 import type { ScheduleState, WorkflowState } from '../types.ts';
 import { encodeEpoch } from './lease-codec.ts';
+import {
+  loadScheduleState,
+  requireScheduleState,
+  ScheduleReadConditionLostError,
+  scheduleReadConditions,
+} from './schedule-state-read.ts';
 import { encodeWorkflowStartHeaders } from './state-utilities.ts';
 import {
   buildExternalTerminalRotationFragment,
   commitExternalTerminalWorkflowStateOperations,
   commitSelfWorkflowStateOperations,
-  loadScheduleState,
   loadWorkflowResult,
   loadWorkflowStartHeaders,
-  requireScheduleState,
-  ScheduleReadConditionLostError,
-  scheduleReadConditions,
   writeScheduleState,
 } from './storage-io.ts';
 import { decodeEpoch } from './workflow-claim-codec.ts';
@@ -247,9 +249,8 @@ describe('storage I/O helpers', () => {
     ).catch((error: unknown) => error);
 
     expect(rejection).toBeInstanceOf(ScheduleReadConditionLostError);
-    expect((await loadScheduleState(internals, scheduleState.id))?.state.revision).toBe(
-      scheduleState.revision,
-    );
+    const reread = await loadScheduleState(internals, scheduleState.id);
+    expect(reread?.state.revision).toBe(scheduleState.revision);
   });
 
   it('writes when the schedule key still holds the bytes it was read as, and resolves with the bytes it wrote', async () => {
@@ -270,7 +271,10 @@ describe('storage I/O helpers', () => {
 
   it('drops the schedule condition on a storage that cannot condition a write', () => {
     const storage = new MemoryStorage();
-    storage.capabilities = () => ({ ...MemoryStorage.prototype.capabilities.call(storage), conditionalBatch: false });
+    storage.capabilities = () => ({
+      ...MemoryStorage.prototype.capabilities.call(storage),
+      conditionalBatch: false,
+    });
     expect(
       scheduleReadConditions(createCommitInternals(storage, 'none'), 'any', { bytes: encode(1) }),
     ).toEqual([]);

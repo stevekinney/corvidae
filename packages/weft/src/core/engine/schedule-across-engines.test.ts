@@ -13,6 +13,7 @@ import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import type { Engine } from '../engine.ts';
 import type { ScheduleState } from '../types.ts';
+import { getInternals } from './internals.ts';
 import { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 import {
   createEngine,
@@ -21,10 +22,18 @@ import {
   START,
   tickEngine,
 } from './schedule.test-support.ts';
+import { recoverOrphanedScheduleTimers } from './schedules.ts';
 import { createScheduleTimerId } from './state-utilities.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 
 const SCHEDULE_ID = 'across-engines';
+
+/** Whether a write removes a timer, as a pause or a cancel of an active schedule does. */
+function removesTimer(operations: readonly BatchOperation[]): boolean {
+  return operations.some(
+    (operation) => operation.type === 'delete' && operation.key.startsWith('timer-idx:'),
+  );
+}
 
 /** What a held write is: the first one that puts the schedule's own key. */
 function putsScheduleKey(operations: readonly BatchOperation[]): boolean {
@@ -41,8 +50,20 @@ type Hold = { readonly reached: Promise<void>; release(): void };
  * throw, as a storage fault does.
  */
 function engineStorage(shared: Storage) {
-  let armed: { reached: () => void; open: Promise<void> } | undefined;
+  let armed:
+    | {
+        reached: () => void;
+        open: Promise<void>;
+        matches: (operations: readonly BatchOperation[]) => boolean;
+      }
+    | undefined;
   let failRunStarts = false;
+  const hold = (matches: (operations: readonly BatchOperation[]) => boolean): Hold => {
+    const reached = Promise.withResolvers<void>();
+    const open = Promise.withResolvers<void>();
+    armed = { reached: reached.resolve, open: open.promise, matches };
+    return { reached: reached.promise, release: open.resolve };
+  };
   const storage = new Proxy(shared, {
     get(target, property) {
       const member = Reflect.get(target, property, target) as unknown;
@@ -59,7 +80,7 @@ function engineStorage(shared: Storage) {
         ) {
           return Promise.reject(new Error('simulated schedule start failure'));
         }
-        if (armed !== undefined && putsScheduleKey(operations)) {
+        if (armed?.matches(operations)) {
           const held = armed;
           armed = undefined;
           held.reached();
@@ -72,10 +93,10 @@ function engineStorage(shared: Storage) {
   return {
     storage,
     holdScheduleWrite(): Hold {
-      const reached = Promise.withResolvers<void>();
-      const open = Promise.withResolvers<void>();
-      armed = { reached: reached.resolve, open: open.promise };
-      return { reached: reached.promise, release: open.resolve };
+      return hold(putsScheduleKey);
+    },
+    holdTimerRemoval(): Hold {
+      return hold(removesTimer);
     },
     failRunStarts(): void {
       failRunStarts = true;
@@ -149,9 +170,11 @@ const TRANSITIONS: readonly Transition[] = [
   {
     name: 'update',
     run: (engine, expectedRevision) =>
-      engine.updateSchedule(SCHEDULE_ID, '*/5 * * * *', {
-        ...(expectedRevision === undefined ? {} : { expectedRevision }),
-      }),
+      engine.updateSchedule(
+        SCHEDULE_ID,
+        '*/5 * * * *',
+        expectedRevision === undefined ? {} : { expectedRevision },
+      ),
   },
 ];
 
@@ -160,7 +183,7 @@ describe('two engines naming the same expectedRevision', () => {
     it(`${transition.name}: exactly one wins and the other is stale`, async () => {
       const { shared, a, engineA, engineB } = await openEngines();
       await transition.prepare?.(engineA);
-      const before = (await stateOf(shared)).revision;
+      const { revision: before } = await stateOf(shared);
       const hold = a.holdScheduleWrite();
 
       const loser = transition.run(engineA, before);
@@ -172,7 +195,8 @@ describe('two engines naming the same expectedRevision', () => {
 
       expect(error).toBeInstanceOf(ScheduleStaleRevisionError);
       expect(error).toMatchObject({ expectedRevision: before, currentRevision: before + 1 });
-      expect((await stateOf(shared)).revision).toBe(before + 1);
+      const { revision: after } = await stateOf(shared);
+      expect(after).toBe(before + 1);
     });
   }
 });
@@ -209,9 +233,33 @@ describe('a transition with no expectedRevision', () => {
   });
 });
 
+describe('a transition that read a schedule another engine has since changed', () => {
+  for (const name of ['pause', 'cancel'] as const) {
+    it(`${name}: removes no timer the other engine armed`, async () => {
+      const { shared, a, engineA, engineB } = await openEngines();
+      const hold = a.holdTimerRemoval();
+
+      const stale = rejectionOf(
+        name === 'pause'
+          ? engineA.pauseSchedule(SCHEDULE_ID, { expectedRevision: 1 })
+          : engineA.cancelSchedule(SCHEDULE_ID, { expectedRevision: 1 }),
+      );
+      await hold.reached;
+      await engineB.updateSchedule(SCHEDULE_ID, '*/5 * * * *');
+      hold.release();
+
+      expect(await stale).toBeInstanceOf(ScheduleStaleRevisionError);
+      const state = await stateOf(shared);
+      expect(state.status).toBe('active');
+      expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).not.toBeNull();
+    });
+  }
+});
+
 /** Ticks engine B at the schedule's first occurrence; the tick resolves once its write is let go. */
 async function tickB(clock: { now: number }, engineB: Engine, shared: Storage) {
-  clock.now = (await stateOf(shared)).nextFireAt!;
+  const { nextFireAt } = await stateOf(shared);
+  clock.now = nextFireAt!;
   return engineB.scheduler.tick(clock.now);
 }
 
@@ -254,6 +302,32 @@ describe('a timer tick on one engine while another changes the schedule', () => 
     expect(state.nextFireAt).toBeGreaterThan(clock.now);
   });
 
+  it('still pauses a schedule that changed only in bytes while its failure was handled', async () => {
+    const { clock, shared, b, engineB } = await openEngines();
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      b.failRunStarts();
+      const hold = b.holdScheduleWrite();
+
+      const ticking = tickB(clock, engineB, shared);
+      await hold.reached;
+      const current = await stateOf(shared);
+      await shared.put(
+        KEYS.schedule(SCHEDULE_ID),
+        encode({ ...current, updatedAt: current.updatedAt + 5 }),
+      );
+      hold.release();
+      await ticking;
+      await drainEngine();
+
+      const state = await stateOf(shared);
+      expect(state.status).toBe('paused');
+      expect(state.revision).toBe(2);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it('does not pause over an update that landed while its failure was handled', async () => {
     const { clock, shared, b, engineA, engineB } = await openEngines();
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});
@@ -278,11 +352,34 @@ describe('a timer tick on one engine while another changes the schedule', () => 
   });
 });
 
+describe('a timer recovered on one engine while another changes the schedule', () => {
+  it('does not write a schedule that was paused after the scan back to active', async () => {
+    const { shared, b, engineA, engineB } = await openEngines();
+    // The timer is lost, as a crash between a schedule write and its timer leaves it.
+    const { nextFireAt } = await stateOf(shared);
+    await shared.batch([
+      { type: 'delete', key: `timer-idx:${createScheduleTimerId(SCHEDULE_ID)}` },
+      { type: 'delete', key: KEYS.scheduleTick(nextFireAt!, SCHEDULE_ID) },
+    ]);
+    const hold = b.holdScheduleWrite();
+
+    const recovering = recoverOrphanedScheduleTimers(getInternals(engineB));
+    await hold.reached;
+    await engineA.pauseSchedule(SCHEDULE_ID);
+    hold.release();
+    await recovering;
+
+    expect((await stateOf(shared)).status).toBe('paused');
+    expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).toBeNull();
+  });
+});
+
 describe('a run that ends on one engine while another changes the schedule', () => {
   it('clears the current run on top of a pause instead of undoing it', async () => {
     const { clock, shared, b, engineA, engineB } = await openEngines();
-    await tickEngine(engineB, clock, (await stateOf(shared)).nextFireAt!);
-    const runId = (await stateOf(shared)).currentWorkflowId;
+    const { nextFireAt } = await stateOf(shared);
+    await tickEngine(engineB, clock, nextFireAt!);
+    const { currentWorkflowId: runId } = await stateOf(shared);
     expect(runId).toBeDefined();
     const hold = b.holdScheduleWrite();
 

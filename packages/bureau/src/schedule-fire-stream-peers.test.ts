@@ -149,10 +149,10 @@ describe('a fire settled on another Bureau ends the stream this one serves', () 
       const view = await peer.tasks.get(fireId);
       return view?.status === 'completed' ? true : undefined;
     }, 'the fire to settle');
-    await pollUntil(
-      async () => ((await settledEventsOf(peer, fireId)).length === 1 ? true : undefined),
-      'the settled event',
-    );
+    await pollUntil(async () => {
+      const recorded = await settledEventsOf(peer, fireId);
+      return recorded.length === 1 ? true : undefined;
+    }, 'the settled event');
 
     // A second settlement, as the recovery of a fire whose process died would make.
     await peer.tasks.recordSettled(fireId, {

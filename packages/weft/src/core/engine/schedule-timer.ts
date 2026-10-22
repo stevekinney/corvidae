@@ -6,15 +6,15 @@ import { awaitScheduledRunTurn } from './schedule-current-run.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { collectDueScheduleOccurrences, getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import { drainQueuedScheduleRun } from './schedule-overlap.ts';
-import type { ScheduleCallbacks } from './schedules.ts';
+import { loadScheduleState } from './schedule-state-read.ts';
 import {
-  loadScheduleState,
-  type LoadedScheduleState,
-  runSerializedScheduleStateOperation,
-  ScheduleReadConditionLostError,
-  scheduleReadConditions,
-  writeScheduleState,
-} from './storage-io.ts';
+  pauseScheduleAfterTimerFailure,
+  persistScheduleTimerState,
+  ScheduleStatePersistenceError,
+  type ScheduleTimerProgress,
+} from './schedule-timer-writes.ts';
+import type { ScheduleCallbacks } from './schedules.ts';
+import { runSerializedScheduleStateOperation } from './storage-io.ts';
 
 /**
  * How far past one poll interval a tick may land before a non-backfill occurrence it reaches
@@ -41,15 +41,6 @@ type ScheduleTimerWork = {
   occurrencesToProcess: number[];
   skipMissedOccurrences: boolean;
 };
-
-class ScheduleStatePersistenceError extends Error {
-  constructor(
-    readonly scheduleId: string,
-    cause: unknown,
-  ) {
-    super(`Failed to persist schedule "${scheduleId}" while processing its timer`, { cause });
-  }
-}
 
 /**
  * One schedule timer tick, in serialized sections of the schedule's own write.
@@ -139,14 +130,6 @@ type ScheduleTimerStep =
       /** The schedule's `revision` as this tick left it, to tell whether anything else changed it. */
       readonly revision: number;
     };
-
-/**
- * The latest state a section has, for the pause it owes a schedule whose processing failed, and
- * the state and bytes the schedule key last held for this tick (read, or written by it), which
- * its next write is conditioned on (COR-1594). They differ while a section has computed a state
- * it has not yet written.
- */
-type ScheduleTimerProgress = { state: ScheduleState; stored: LoadedScheduleState };
 
 /** Runs one section, pausing the schedule when its processing fails, as the whole tick used to. */
 async function guardScheduleTimerSection(
@@ -418,96 +401,4 @@ async function processScheduleTimerOccurrences(
   }
 
   return { kind: 'done' };
-}
-
-/**
- * Whether the schedule is still as this tick left it: active, at the `revision` the tick holds,
- * with the `nextFireAt` it holds. Another process's pause, update or cancel moves the revision,
- * and another process's timer tick moves `nextFireAt`; a clearing of the current run moves neither.
- */
-function isStillAsTickLeftIt(current: ScheduleState, left: ScheduleState): boolean {
-  return (
-    current.status === 'active' &&
-    current.revision === left.revision &&
-    current.nextFireAt === left.nextFireAt
-  );
-}
-
-/**
- * Writes the tick's state, conditioned on the bytes the schedule key last held for it (COR-1594).
- * A write that loses the condition read a schedule another process has since changed: the schedule
- * is read again, and the write is made again, on the new bytes, only if the schedule is still as
- * this tick left it ({@link isStillAsTickLeftIt}). Otherwise whatever changed it owns the schedule
- * and the timer from then on, nothing is written, and this resolves `false`.
- */
-async function persistScheduleTimerState(
-  internals: EngineInternals,
-  progress: ScheduleTimerProgress,
-  state: ScheduleState,
-  options?: { includeTimer?: boolean },
-): Promise<boolean> {
-  try {
-    for (;;) {
-      try {
-        const bytes = await writeScheduleState(internals, state, {
-          ...options,
-          extraConditions: scheduleReadConditions(internals, state.id, progress.stored),
-        });
-        progress.stored = { state, bytes };
-        return true;
-      } catch (error) {
-        if (!(error instanceof ScheduleReadConditionLostError)) throw error;
-      }
-      const current = await loadScheduleState(internals, state.id);
-      if (current === null || !isStillAsTickLeftIt(current.state, progress.stored.state)) {
-        return false;
-      }
-      progress.stored = current;
-    }
-  } catch (error) {
-    throw new ScheduleStatePersistenceError(state.id, error);
-  }
-}
-
-/**
- * Pauses `state` after its timer processing failed, conditioned on `stored`, the bytes the
- * schedule key last held for the tick. If the condition is lost the schedule is read again: it is
- * paused from what is stored now only if it is still as the tick left it, and otherwise left to
- * whatever changed it (COR-1594).
- */
-async function pauseScheduleAfterTimerFailure(
-  internals: EngineInternals,
-  state: ScheduleState,
-  stored: LoadedScheduleState,
-  error: unknown,
-): Promise<void> {
-  let basis = state;
-  let read = stored;
-  for (;;) {
-    const errorNow = internals.options.getNow();
-    const pausedState: ScheduleState = {
-      ...basis,
-      status: 'paused',
-      revision: basis.revision + 1,
-      updatedAt: errorNow,
-      nextFireAt: getNextScheduleOccurrence(basis, errorNow),
-    };
-    try {
-      await writeScheduleState(internals, pausedState, {
-        includeTimer: false,
-        extraConditions: scheduleReadConditions(internals, state.id, read),
-      });
-      console.error(
-        `[weft] Paused schedule "${pausedState.id}" after timer processing failed:`,
-        error,
-      );
-      return;
-    } catch (writeError) {
-      if (!(writeError instanceof ScheduleReadConditionLostError)) throw writeError;
-    }
-    const current = await loadScheduleState(internals, state.id);
-    if (current === null || !isStillAsTickLeftIt(current.state, stored.state)) return;
-    basis = current.state;
-    read = current;
-  }
 }
