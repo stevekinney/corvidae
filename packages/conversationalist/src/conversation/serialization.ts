@@ -5,6 +5,7 @@ import {
   createSerializationError,
   createUnsupportedSchemaVersionError,
 } from '../errors';
+import { copyToolResultPart } from '../multi-modal';
 import { conversationShape, messageSchema } from '../schemas';
 import {
   CURRENT_SCHEMA_VERSION,
@@ -29,6 +30,7 @@ function normalizeToolResult(toolResult: Message['toolResult']): ToolResult | un
     callId: toolResult.callId,
     outcome: toolResult.outcome,
     content: toolResult.content,
+    ...(toolResult.parts ? { parts: toolResult.parts.map(copyToolResultPart) } : {}),
     ...(toolResult.error ? { error: { ...toolResult.error } } : {}),
     ...(toolResult.action ? { action: { ...toolResult.action } } : {}),
     ...(toolResult.inputDigest ? { inputDigest: toolResult.inputDigest } : {}),

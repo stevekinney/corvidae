@@ -69,13 +69,12 @@ function stripStructuralToolBlocks(
 export function stripToolResultDetails(messages: Message[]): Message[] {
   return messages.map((message) => {
     if (message.role === 'tool-result' && message.toolResult) {
+      // `parts` is payload too: it is stripped with `content`, never forwarded to the summarizer.
+      const { parts: _parts, ...toolResult } = message.toolResult;
       return {
         ...message,
         content: STRIPPED_PLACEHOLDER,
-        toolResult: {
-          ...message.toolResult,
-          content: STRIPPED_PLACEHOLDER,
-        },
+        toolResult: { ...toolResult, content: STRIPPED_PLACEHOLDER },
       };
     }
     // Structural tool-result blocks live inside assistant content; strip them too.

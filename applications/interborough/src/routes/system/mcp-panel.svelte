@@ -147,8 +147,7 @@
       />
     {:else}
       <p class="weft-mcp-panel__test-hint">
-        Sends a real <code>initialize</code> request and shows the full request/response, including
-        the <code>Mcp-Session-Id</code>/<code>Mcp-Session-Token</code> headers.
+        Sends a real <code>initialize</code> request and shows the full request/response headers and body.
       </p>
     {/if}
   </div>

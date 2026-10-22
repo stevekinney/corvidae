@@ -129,7 +129,7 @@ import type {
   MultiModalContent,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { isMediaContent } from 'conversationalist';
+import { isMediaContent, messageMediaParts } from 'conversationalist';
 
 import { mimeFamilyOf, sourceByteLength } from '../context/media-cost.ts';
 
@@ -199,6 +199,8 @@ export interface InputMediaRequirement {
   readonly mimeFamily?: MimeFamily | undefined;
   readonly byteLength?: number | undefined;
   readonly count: number;
+  /** `true` for a part a tool result carries, which needs the backend's `toolResultModalities`. */
+  readonly inToolResult?: true | undefined;
 }
 
 /** One media part of a conversation and what it requires of a backend. */
@@ -223,9 +225,8 @@ export function locateInputMedia(
   const { ids, messages } = conversation.current;
   for (const id of ids) {
     const message = messages[id];
-    if (message === undefined || message.hidden || typeof message.content === 'string') continue;
-    message.content.forEach((part, partIndex) => {
-      if (!isMediaContent(part)) return;
+    if (message === undefined || message.hidden) continue;
+    for (const { part, partIndex, inToolResult } of messageMediaParts(message)) {
       const resolved = resolvedSources?.get(`${message.id}:${partIndex}`);
       const effective: MediaContent =
         resolved === undefined
@@ -236,17 +237,18 @@ export function locateInputMedia(
               ...(resolved.mimeType !== undefined ? { mimeType: resolved.mimeType } : {}),
             };
       const [described] = describeInputMedia([effective]);
-      if (described === undefined) return;
+      if (described === undefined) continue;
+      const requirement = inToolResult ? { ...described, inToolResult: true as const } : described;
       located.push({
         messageId: message.id,
         partIndex,
         part,
         requirement:
           resolved?.byteLength === undefined
-            ? described
-            : { ...described, byteLength: resolved.byteLength },
+            ? requirement
+            : { ...requirement, byteLength: resolved.byteLength },
       });
-    });
+    }
   }
   return located;
 }
@@ -291,6 +293,12 @@ export function evaluateInputMedia(
     const entry = descriptor.modalities[requirement.modality];
     if (!entry.input) {
       return refuse(`${label} accepts no ${requirement.modality} input`);
+    }
+    if (
+      requirement.inToolResult === true &&
+      descriptor.toolResultModalities?.includes(requirement.modality) !== true
+    ) {
+      return refuse(`${label} accepts no ${requirement.modality} in a tool result`);
     }
     if (!entry.sourceForms.includes(requirement.sourceForm)) {
       return refuse(

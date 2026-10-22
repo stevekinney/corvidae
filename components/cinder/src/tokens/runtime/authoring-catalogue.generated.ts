@@ -6184,7 +6184,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.984 -> 0.994 -> 1.000); dark mode runs the same ordering at low lightness.',
+        'Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6340,7 +6340,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 20% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.',
+        'Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6427,7 +6427,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 10%, `border` 20%, `border.strong` 32%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
+        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 5%, `border` 9%, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6757,7 +6757,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 10% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.',
+        'Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6844,7 +6844,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Emphasized structural edge and the resting edge of secondary buttons and button-like chips, whose label already identifies them. A 32% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own.',
+        'Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -7551,7 +7551,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Accent used as text/icon on light surfaces. The light-mode fill accent (L=0.50) reads as a foreground at only ~4.7:1, just clearing AA, so this dedicated, slightly darker foreground token stays necessary for comfortable link/icon legibility. The dark arm matches the dark-mode accent fill.',
+        'Accent used as text/icon on light surfaces. The light-mode fill accent (L=0.52) reads as a foreground at 5.4:1 on the inset surface, which clears AA with little to spare, so this dedicated, slightly darker foreground token stays necessary for comfortable link/icon legibility. The dark arm matches the dark-mode accent fill.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -14673,7 +14673,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'button',
       description:
-        'Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary.',
+        'Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -14712,7 +14712,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/light.tokens.json', path: 'button.border' },
             },
-            inputs: { aliases: ['border.strong'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
           },
         },
         {
@@ -14740,7 +14740,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'button.border' },
             },
-            inputs: { aliases: ['border.strong'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
           },
         },
       ],

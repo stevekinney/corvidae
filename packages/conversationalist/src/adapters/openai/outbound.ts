@@ -3,7 +3,12 @@ import { baseMimeType } from '../../media-types';
 import type { ContentPartLineage, MediaContent, MultiModalContent } from '../../multi-modal';
 import { isMediaContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
-import type { ConversationHistory as Conversation, Message, ToolCall } from '../../types';
+import type {
+  ConversationHistory as Conversation,
+  Message,
+  ToolCall,
+  ToolResult,
+} from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
 import {
   createMediaExportContext,
@@ -242,6 +247,27 @@ function convertMessage(
   );
 }
 
+/**
+ * A tool message's content. Chat Completions tool messages carry text only, so
+ * a successful result's text parts go as ordered text parts and any media part
+ * is rejected, never described in text.
+ */
+function toOpenAIToolResultContent(
+  toolResult: ToolResult,
+  context: MediaExportContext,
+): string | OpenAITextContentPart[] {
+  if (toolResult.parts === undefined) return stringifyToolResult(toolResult);
+  const parts: OpenAITextContentPart[] = toolResult.parts.map((part, partIndex) =>
+    part.type === 'text'
+      ? { type: 'text', text: part.text }
+      : rejectPart(context, partIndex, part, 'role-not-accepted', part.source.kind),
+  );
+  // A non-success result leads with its canonical outcome, which a tool message has no field for.
+  return toolResult.outcome === 'success'
+    ? parts
+    : [{ type: 'text', text: stringifyToolResult({ ...toolResult, content: null }) }, ...parts];
+}
+
 function convertMessageByRole(message: Message, context: MediaExportContext): OpenAIMessage | null {
   switch (message.role) {
     case 'system':
@@ -282,7 +308,7 @@ function convertMessageByRole(message: Message, context: MediaExportContext): Op
       }
       return {
         role: 'tool',
-        content: stringifyToolResult(message.toolResult),
+        content: toOpenAIToolResultContent(message.toolResult, context),
         tool_call_id: message.toolResult.callId,
       };
 

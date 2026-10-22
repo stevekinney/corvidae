@@ -10,12 +10,8 @@
   import type { ScheduleAuthoringMode, ScheduleIntervalUnit } from './schedule-builder.types.ts';
   import { INTERVAL_UNITS, WEEKDAYS } from './schedule-builder.utilities.ts';
 
-  type PresetKind = 'every' | 'daily' | 'weekly' | 'monthly';
+  type PresetKind = 'daily' | 'weekly' | 'monthly';
 
-  const presetUnitOptions = [
-    { value: 'minutes', label: 'Minutes' },
-    { value: 'hours', label: 'Hours' },
-  ] as const;
   const intervalUnitLabels: Record<ScheduleIntervalUnit, string> = {
     minutes: 'Minutes',
     hours: 'Hours',
@@ -36,15 +32,11 @@
     onAuthoringModeChange,
     presetKind,
     onPresetKindChange,
-    presetEveryValue,
-    presetEveryUnit,
     presetDailyTime,
     presetWeeklyDays,
     presetWeeklyTime,
     presetMonthlyDay,
     presetMonthlyTime,
-    onPresetEveryValueChange,
-    onPresetEveryUnitChange,
     onPresetDailyTimeChange,
     onToggleWeeklyDay,
     onPresetWeeklyTimeChange,
@@ -68,15 +60,11 @@
     onAuthoringModeChange: (mode: ScheduleAuthoringMode) => void;
     presetKind: PresetKind;
     onPresetKindChange: (kind: PresetKind) => void;
-    presetEveryValue: number;
-    presetEveryUnit: 'minutes' | 'hours';
     presetDailyTime: string;
     presetWeeklyDays: number[];
     presetWeeklyTime: string;
     presetMonthlyDay: number;
     presetMonthlyTime: string;
-    onPresetEveryValueChange: (value: number | null) => void;
-    onPresetEveryUnitChange: (event: Event) => void;
     onPresetDailyTimeChange: (value: string | undefined) => void;
     onToggleWeeklyDay: (day: number) => void;
     onPresetWeeklyTimeChange: (value: string | undefined) => void;
@@ -130,30 +118,12 @@
       onValueChange={onPresetKindChange}
       class="cinder-schedule-builder__preset-kind"
     >
-      <Segment id={`${baseId}-preset-kind-every`} value="every">Every N</Segment>
       <Segment id={`${baseId}-preset-kind-daily`} value="daily">Daily</Segment>
       <Segment id={`${baseId}-preset-kind-weekly`} value="weekly">Weekly</Segment>
       <Segment id={`${baseId}-preset-kind-monthly`} value="monthly">Monthly</Segment>
     </SegmentedControl>
 
-    {#if presetKind === 'every'}
-      <div class="cinder-schedule-builder__field-row">
-        <NumberInput
-          id={`${baseId}-preset-every-value`}
-          label="Every"
-          min={1}
-          step={1}
-          bind:value={() => presetEveryValue, onPresetEveryValueChange}
-        />
-        <Select
-          id={`${baseId}-preset-every-unit`}
-          label="Unit"
-          options={presetUnitOptions}
-          value={presetEveryUnit}
-          onchange={onPresetEveryUnitChange}
-        />
-      </div>
-    {:else if presetKind === 'daily'}
+    {#if presetKind === 'daily'}
       <TimeField
         id={`${baseId}-preset-daily-time`}
         label="At"

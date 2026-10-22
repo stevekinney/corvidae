@@ -1,12 +1,12 @@
 import { getMessages } from '../conversation/index';
 import type { ConversationEnvironment } from '../environment';
-import { isMediaContent } from '../multi-modal';
+import { messageMediaParts } from '../multi-modal';
 import { isStreamingMessage } from '../streaming';
 import type { ConversationHistory, Message } from '../types';
 import type { CompactionOptions, CompactionPreservePolicy } from './types';
 
 function hasMediaPart(message: Message): boolean {
-  return typeof message.content !== 'string' && message.content.some(isMediaContent);
+  return messageMediaParts(message).length > 0;
 }
 
 function isPolicyPreservedMessage(

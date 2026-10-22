@@ -62,7 +62,7 @@ describe('decodeChatStreamEvents stream-level invariants (CIN-507)', () => {
       encodeChatStreamEvent({
         type: 'run.completed',
         conversation: {
-          schemaVersion: 6,
+          schemaVersion: 7,
           id: 'conversation-1',
           status: 'active',
           metadata: {},

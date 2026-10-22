@@ -133,6 +133,54 @@ describe('read exit code', () => {
 });
 
 describe('runGate with a fake runner', () => {
+  test('runs the affected-only check without waiting for the lock, which it runs beside', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'gate-run-shared-'));
+    try {
+      const configPath = join(sandbox, 'config.json');
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          repository: 'o/n',
+          defaultBranch: 'main',
+          worktreeRoots: { claude: '/c', codex: '/x' },
+          manifestName: 'n',
+          installCommand: 'true',
+          gateCommand: 'the-check',
+          affectedCheckCommand: 'the-check',
+          lockPattern: '^held',
+          mergeMethod: 'squash',
+        }),
+      );
+      const commands: string[][] = [];
+      const runner: Runner = (command) => {
+        commands.push(command);
+        if (command[0] === 'pgrep') return { code: 0, stdout: '77 held lock\n', stderr: '' };
+        if (command[1] === 'status') return { code: 0, stdout: '', stderr: '' };
+        if (command[0] === 'git') return { code: 0, stdout: 'abc123\n', stderr: '' };
+        return { code: 0, stdout: '', stderr: '' };
+      };
+      const result = runGate(
+        { configPath, worktree: sandbox, log: join(sandbox, 'gate.log') },
+        { runner, load: () => 1, sleep: () => undefined },
+      );
+      expect(result.waits).toBe(0);
+      expect(commands.some((command) => command[0] === 'pgrep')).toBe(false);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test("this repository's lock pattern matches a locked stage and not a shared check", () => {
+    const { lockPattern } = JSON.parse(
+      readFileSync(join(import.meta.dir, 'repository.json'), 'utf8'),
+    ) as { lockPattern: string };
+    const pattern = new RegExp(lockPattern);
+    expect(pattern.test('bun scripts/run-exclusively.ts bun run lint:root && turbo run lint')).toBe(
+      true,
+    );
+    expect(pattern.test('bun scripts/run-exclusively.ts --shared bun run lint:root')).toBe(false);
+  });
+
   test('records the head and load first, waits out the lock, and appends the final exit code', () => {
     const sandbox = mkdtempSync(join(tmpdir(), 'gate-run-fast-'));
     try {

@@ -224,10 +224,10 @@ Background and surface tokens for the three core elevations — page background,
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-surface-canvas` | `light-dark(oklch(98.4% 0.003 255), oklch(15% 0.035 245))` | Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.984 -> 0.994 -> 1.000); dark mode runs the same ordering at low lightness. |
-| `--cinder-surface` | `light-dark(oklch(99.4% 0.002 255), oklch(21% 0.04 245))` | Default semantic surface. Theme modifiers provide its dark value. |
+| `--cinder-surface-canvas` | `light-dark(oklch(99.5% 0 255), oklch(15% 0.035 245))` | Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness. |
+| `--cinder-surface` | `light-dark(oklch(99.8% 0 255), oklch(21% 0.04 245))` | Default semantic surface. Theme modifiers provide its dark value. |
 | `--cinder-surface-raised` | `light-dark(oklch(100% 0 255), oklch(28% 0.045 245))` | Elevated semantic surface. Theme modifiers provide its dark value. |
-| `--cinder-surface-inset` | `light-dark(oklch(96% 0.005 255), oklch(11% 0.03 245))` | Sunken region inside a card body (code blocks, wells, recessed sub-regions). |
+| `--cinder-surface-inset` | `light-dark(oklch(96% 0.008 270), oklch(11% 0.03 245))` | Sunken region inside a card body (code blocks, wells, recessed sub-regions). |
 | `--cinder-surface-hover` | `light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 2.5%) )` | Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp. |
 | `--cinder-surface-pressed` | `light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 12%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 6%) )` | Pressed state of the default surface. Same accent-wash rationale as `surface.hover`, at a stronger mix percentage. |
 | `--cinder-surface-raised-hover` | `light-dark( color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 2.5%) )` | Hover state of the raised surface. Light mode washes toward the accent; dark mode mixes toward white. |
@@ -284,10 +284,10 @@ Foreground colors keyed to readability against the surface tokens. `--cinder-tex
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-border-ink` | `light-dark(oklch(20% 0.02 255), oklch(86% 0.065 250))` | The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 10%, `border` 20%, `border.strong` 32%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. |
-| `--cinder-border-muted` | `color-mix(in oklch, var(--cinder-border-ink), transparent 90%)` | Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 10% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`. |
-| `--cinder-border` | `color-mix(in oklch, var(--cinder-border-ink), transparent 80%)` | Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 20% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead. |
-| `--cinder-border-strong` | `color-mix(in oklch, var(--cinder-border-ink), transparent 68%)` | Emphasized structural edge and the resting edge of secondary buttons and button-like chips, whose label already identifies them. A 32% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own. |
+| `--cinder-border-ink` | `light-dark(oklch(20% 0.02 255), oklch(86% 0.065 250))` | The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 5%, `border` 9%, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. |
+| `--cinder-border-muted` | `color-mix(in oklch, var(--cinder-border-ink), transparent 95%)` | Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`. |
+| `--cinder-border` | `color-mix(in oklch, var(--cinder-border-ink), transparent 91%)` | Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead. |
+| `--cinder-border-strong` | `color-mix(in oklch, var(--cinder-border-ink), transparent 85%)` | Emphasized structural edge for containers and dividers that need more weight than `border`. A 15% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own, so a bordered button or chip reads `border.control` instead. |
 | `--cinder-border-control` | `color-mix(in oklch, var(--cinder-border-ink), transparent 52%)` | Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes. |
 | `--cinder-border-control-hover` | `color-mix(in oklch, var(--cinder-border-ink), transparent 42%)` | Hovered control boundary, one step heavier than `border.control`. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface. |
 | `--cinder-border-faint` | `light-dark(oklch(92% 0.003 255), oklch(33% 0.03 245))` | Decorative-only hairline. Never use as a control boundary: it is intentionally below the WCAG 1.4.11 3:1 non-text threshold. |
@@ -300,9 +300,9 @@ Foreground colors keyed to readability against the surface tokens. `--cinder-tex
 
 `--cinder-border-faint` is for decorative internal hairlines only. It is intentionally below the 3:1 non-text contrast floor and must not be used to define a control boundary.
 
-A neutral border does one of two jobs. A **structural** edge separates regions or outlines a container, and is identified by the content and surface it bounds, so it can be quiet: `--cinder-border-muted` (interior dividers), `--cinder-border` (container outer edges), and `--cinder-border-strong` (emphasized structure, and the secondary Button and button-like chips). A **control** boundary is the only visible outline of something you type into, check, or drag, so it must clear WCAG 1.4.11's 3:1: `--cinder-border-control` and `--cinder-border-control-hover`, which text-entry controls reach through the control frame. [`documentation/css-audit/translucent-border-seams.md`](./css-audit/translucent-border-seams.md) has the full rubric for choosing a tier.
+A neutral border does one of two jobs. A **structural** edge separates regions or outlines a container, and is identified by the content and surface it bounds, so it can be quiet: `--cinder-border-muted` (interior dividers), `--cinder-border` (container outer edges), and `--cinder-border-strong` (emphasized structure). A **control** boundary is the only visible outline of something you type into, check, drag, or press, so it must clear WCAG 1.4.11's 3:1: `--cinder-border-control` and `--cinder-border-control-hover`, which text-entry controls reach through the control frame, and which the secondary Button (`--cinder-button-border`) and every other bordered button and toggle chip read at rest. [`documentation/css-audit/translucent-border-seams.md`](./css-audit/translucent-border-seams.md) has the full rubric for choosing a tier.
 
-None of the five is authored separately. Each is one alpha step over `--cinder-border-ink`: 10%, 20%, 32%, 48%, and 58%, with the ink carrying the light/dark polarity so the same percentages serve both arms. The generator materializes every theme's copy from the one recipe, so a retune is a single edit to the base token. Retinting all five at once means overriding one token:
+None of the five is authored separately. Each is one alpha step over `--cinder-border-ink`: 5%, 9%, 15%, 48%, and 58%, with the ink carrying the light/dark polarity so the same percentages serve both arms. The generator materializes every theme's copy from the one recipe, so a retune is a single edit to the base token. Retinting all five at once means overriding one token:
 
 ```css
 :root {
@@ -315,9 +315,9 @@ That works at `:root`, and on any `[data-theme]` element, because those are the 
 ```css
 .branded-region {
   --cinder-border-ink: oklch(50% 0.12 30);
-  --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 90%);
-  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 80%);
-  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 68%);
+  --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 95%);
+  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 91%);
+  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 85%);
   --cinder-border-control: color-mix(in oklch, var(--cinder-border-ink), transparent 52%);
   --cinder-border-control-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 42%);
 }
@@ -353,9 +353,9 @@ The brand color and its derivatives. `hover` and `active` are computed from `--c
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-accent-solid` | `light-dark(oklch(50% 0.22 270), oklch(72% 0.14 270))` | Brand accent fill color. |
+| `--cinder-accent-solid` | `light-dark(oklch(52% 0.24 272), oklch(72% 0.14 270))` | Brand accent fill color. |
 | `--cinder-accent-contrast` | `light-dark(oklch(100% 0 0), oklch(15% 0.035 245))` | Label color for solid accent fills. Light arm flips to white (the indigo fill is dark enough); dark arm keeps dark ink against the bright dark-mode fill. |
-| `--cinder-accent-text` | `light-dark(oklch(45% 0.22 270), oklch(72% 0.14 270))` | Accent used as text/icon on light surfaces. The light-mode fill accent (L=0.50) reads as a foreground at only ~4.7:1, just clearing AA, so this dedicated, slightly darker foreground token stays necessary for comfortable link/icon legibility. The dark arm matches the dark-mode accent fill. |
+| `--cinder-accent-text` | `light-dark(oklch(45% 0.22 270), oklch(72% 0.14 270))` | Accent used as text/icon on light surfaces. The light-mode fill accent (L=0.52) reads as a foreground at 5.4:1 on the inset surface, which clears AA with little to spare, so this dedicated, slightly darker foreground token stays necessary for comfortable link/icon legibility. The dark arm matches the dark-mode accent fill. |
 | `--cinder-accent-text-hover` | `oklch(from var(--cinder-accent-text) calc(l - 0.08) c h)` | Hover step for text/icon links, derived as a darker step of `accent.text` (not the bright fill-derived `accent.solid.hover`, which is lighter than the resting text color and drops below WCAG AA on near-white). |
 | `--cinder-accent-solid-hover` | `oklch(from var(--cinder-accent-solid) calc(l - 0.08) c h)` | Hover step for solid accent fills, derived as a darker step of `accent.solid` (l - 0.08, c and h held constant). |
 | `--cinder-accent-solid-active` | `oklch(from var(--cinder-accent-solid) calc(l - 0.15) c h)` | Active/pressed step for solid accent fills, derived as a darker step of `accent.solid` (l - 0.15, c and h held constant). |
@@ -363,9 +363,9 @@ The brand color and its derivatives. `hover` and `active` are computed from `--c
 
 <!-- END GENERATED TOKEN TABLE -->
 
-`--cinder-accent-text` is the brand color used _as_ text/icon on a light surface. `--cinder-accent-solid` is a deep indigo fill (`oklch(50% 0.22 270)` in light mode) that carries the white `--cinder-accent-contrast` label at 6.45:1; its bright periwinkle dark-mode arm carries the dark-ink label at 7.77:1. Foreground usages (links, accent chip/badge labels, active tab labels, selected rows, toast actions, and the current-step marker) use the dedicated `--cinder-accent-text` token, which clears 4.5:1 on every light surface. `--cinder-accent-text-hover` darkens that foreground by 0.08 lightness (light arm ≈7.9:1 on white) so links get darker on hover; links must not use the fill-derived `--cinder-accent-solid-hover`, which does not preserve the foreground contrast contract.
+`--cinder-accent-text` is the brand color used _as_ text/icon on a light surface. `--cinder-accent-solid` is a deep, vivid indigo fill (`oklch(52% 0.24 272)` in light mode) that carries the white `--cinder-accent-contrast` label at 6.01:1; its bright periwinkle dark-mode arm carries the dark-ink label at 7.77:1. Foreground usages (links, accent chip/badge labels, active tab labels, selected rows, toast actions, and the current-step marker) use the dedicated `--cinder-accent-text` token, which clears 4.5:1 on every light surface. `--cinder-accent-text-hover` darkens that foreground by 0.08 lightness (light arm ≈7.9:1 on white) so links get darker on hover; links must not use the fill-derived `--cinder-accent-solid-hover`, which does not preserve the foreground contrast contract.
 
-`--cinder-accent-solid-active-on-fill` is the pressed fill for solid accent surfaces that carry `--cinder-accent-contrast` labels (primary `Button`, `FloatingAction`). It darkens the light indigo arm by 0.11 to `L=0.39`, increasing white-label contrast to 10.5:1, while retaining a separate token so label-bearing and non-label consumers can diverge when needed. Accent surfaces that do not bear an on-fill label keep using `--cinder-accent-solid-active`.
+`--cinder-accent-solid-active-on-fill` is the pressed fill for solid accent surfaces that carry `--cinder-accent-contrast` labels (primary `Button`, `FloatingAction`). It darkens the light indigo arm by 0.11 to `L=0.41`, increasing white-label contrast to 9.9:1, while retaining a separate token so label-bearing and non-label consumers can diverge when needed. Accent surfaces that do not bear an on-fill label keep using `--cinder-accent-solid-active`.
 
 ## Semantic aliases
 
@@ -392,21 +392,21 @@ Single-value status tokens for solid fills like badges and dot indicators. For s
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-status-info-solid` | `light-dark(oklch(50% 0.098 230), oklch(78% 0.13 230))` | Info status fill color. |
-| `--cinder-status-success-solid` | `light-dark(oklch(50% 0.157 145), oklch(78% 0.14 145))` | Success status fill color. |
-| `--cinder-status-warning-solid` | `light-dark(oklch(54% 0.113 75), oklch(82% 0.156 75))` | Warning status fill color. |
-| `--cinder-status-danger-solid` | `light-dark(oklch(50% 0.202 25), oklch(67% 0.19 27))` | Danger status fill color. |
+| `--cinder-status-info-solid` | `light-dark(oklch(55% 0.122 238), oklch(78% 0.13 230))` | Info status fill color. |
+| `--cinder-status-success-solid` | `light-dark(oklch(60% 0.174 148), oklch(78% 0.14 145))` | Success status fill color. |
+| `--cinder-status-warning-solid` | `light-dark(oklch(79% 0.167 75), oklch(82% 0.156 75))` | Warning status fill color. |
+| `--cinder-status-danger-solid` | `light-dark(oklch(57% 0.23 27), oklch(67% 0.19 27))` | Danger status fill color. |
 | `--cinder-status-danger-contrast` | `light-dark(oklch(100% 0 0), oklch(12% 0.02 25))` | Label color for solid danger fills. Dark-mode danger is ~72% lightness; pure white fails WCAG AA on it, so the dark arm uses a near-black ink instead. |
-| `--cinder-status-danger-solid-hover` | `light-dark(oklch(42% 0.171 25), oklch(61% 0.19 27))` | Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. |
-| `--cinder-status-danger-solid-active` | `light-dark(oklch(35% 0.142 25), oklch(59% 0.18 27))` | Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1. |
-| `--cinder-status-info-solid-hover` | `light-dark(oklch(42% 0.079 230), oklch(70% 0.13 230))` | Hover step for solid info fills. |
-| `--cinder-status-info-solid-active` | `light-dark(oklch(35% 0.065 230), oklch(62% 0.12 230))` | Active/pressed step for solid info fills. |
-| `--cinder-status-success-solid-hover` | `light-dark(oklch(42% 0.12 145), oklch(70% 0.14 145))` | Hover step for solid success fills. |
-| `--cinder-status-success-solid-active` | `light-dark(oklch(35% 0.1 145), oklch(62% 0.14 145))` | Active/pressed step for solid success fills. |
-| `--cinder-status-warning-solid-hover` | `light-dark(oklch(42% 0.08 75), oklch(74% 0.156 75))` | Hover step for solid warning fills. |
-| `--cinder-status-warning-solid-active` | `light-dark(oklch(38% 0.07 75), oklch(66% 0.13 75))` | Active/pressed step for solid warning fills. |
-| `--cinder-status-success-contrast` | `light-dark(oklch(100% 0 0), oklch(15% 0.03 145))` | Label color for solid success fills. |
-| `--cinder-status-warning-contrast` | `light-dark(oklch(100% 0 0), oklch(20% 0.04 75))` | Label color for solid warning fills. |
+| `--cinder-status-danger-solid-hover` | `light-dark(oklch(49% 0.201 27), oklch(61% 0.19 27))` | Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. |
+| `--cinder-status-danger-solid-active` | `light-dark(oklch(42% 0.173 27), oklch(59% 0.18 27))` | Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1. |
+| `--cinder-status-info-solid-hover` | `light-dark(oklch(47% 0.105 238), oklch(70% 0.13 230))` | Hover step for solid info fills. |
+| `--cinder-status-info-solid-active` | `light-dark(oklch(40% 0.09 238), oklch(62% 0.12 230))` | Active/pressed step for solid info fills. |
+| `--cinder-status-success-solid-hover` | `light-dark(oklch(64% 0.174 148), oklch(70% 0.14 145))` | Hover step for solid success fills. |
+| `--cinder-status-success-solid-active` | `light-dark(oklch(68% 0.174 148), oklch(62% 0.14 145))` | Active/pressed step for solid success fills. |
+| `--cinder-status-warning-solid-hover` | `light-dark(oklch(71% 0.15 75), oklch(74% 0.156 75))` | Hover step for solid warning fills. |
+| `--cinder-status-warning-solid-active` | `light-dark(oklch(64% 0.135 75), oklch(66% 0.13 75))` | Active/pressed step for solid warning fills. |
+| `--cinder-status-success-contrast` | `light-dark(oklch(15% 0.03 148), oklch(15% 0.03 145))` | Label color for solid success fills. |
+| `--cinder-status-warning-contrast` | `light-dark(oklch(22% 0.05 70), oklch(20% 0.04 75))` | Label color for solid warning fills. |
 | `--cinder-status-info-contrast` | `light-dark(oklch(100% 0 0), oklch(15% 0.03 230))` | Label color for solid info fills. |
 | `--cinder-severity-critical` | `light-dark(oklch(38% 0.18 25), oklch(95% 0.04 25))` | Highest-severity badge foreground. |
 | `--cinder-severity-critical-background` | `light-dark(oklch(93% 0.045 25), oklch(24% 0.11 25))` | Highest-severity badge background. |
@@ -423,17 +423,17 @@ Foreground / background / border triples for soft tinted surfaces. Use these in 
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-status-info-background` | `light-dark(oklch(94.5% 0.03 230), oklch(28% 0.057 230))` | Soft info-tinted surface background. |
-| `--cinder-status-info-text` | `light-dark(oklch(40% 0.079 230), oklch(88% 0.071 230))` | Foreground color on the soft info surface. |
+| `--cinder-status-info-background` | `light-dark(oklch(95% 0.028 235), oklch(28% 0.057 230))` | Soft info-tinted surface background. |
+| `--cinder-status-info-text` | `light-dark(oklch(46% 0.103 238), oklch(88% 0.071 230))` | Foreground color on the soft info surface. |
 | `--cinder-status-info-border` | `light-dark(oklch(80% 0.05 230), oklch(45% 0.08 230))` | Border color on the soft info surface. |
-| `--cinder-status-success-background` | `light-dark(oklch(94.5% 0.045 145), oklch(28% 0.07 145))` | Soft success-tinted surface background. |
-| `--cinder-status-success-text` | `light-dark(oklch(40% 0.127 145), oklch(88% 0.11 145))` | Foreground color on the soft success surface. |
+| `--cinder-status-success-background` | `light-dark(oklch(94.5% 0.075 148), oklch(28% 0.07 145))` | Soft success-tinted surface background. |
+| `--cinder-status-success-text` | `light-dark(oklch(44% 0.128 148), oklch(88% 0.11 145))` | Foreground color on the soft success surface. |
 | `--cinder-status-success-border` | `light-dark(oklch(80% 0.05 145), oklch(45% 0.09 145))` | Border color on the soft success surface. |
-| `--cinder-status-warning-background` | `light-dark(oklch(94.5% 0.042 75), oklch(28% 0.06 75))` | Soft warning-tinted surface background. |
-| `--cinder-status-warning-text` | `light-dark(oklch(40% 0.085 75), oklch(90% 0.08 75))` | Foreground color on the soft warning surface. |
+| `--cinder-status-warning-background` | `light-dark(oklch(95.5% 0.053 88), oklch(28% 0.06 75))` | Soft warning-tinted surface background. |
+| `--cinder-status-warning-text` | `light-dark(oklch(47% 0.109 62), oklch(90% 0.08 75))` | Foreground color on the soft warning surface. |
 | `--cinder-status-warning-border` | `light-dark(oklch(80% 0.06 75), oklch(50% 0.1 75))` | Border color on the soft warning surface. |
-| `--cinder-status-danger-background` | `light-dark(oklch(94.5% 0.026 25), oklch(28% 0.09 25))` | Soft danger-tinted surface background. |
-| `--cinder-status-danger-text` | `light-dark(oklch(42% 0.16 25), oklch(90% 0.05 25))` | Foreground color on the soft danger surface. |
+| `--cinder-status-danger-background` | `light-dark(oklch(95% 0.025 25), oklch(28% 0.09 25))` | Soft danger-tinted surface background. |
+| `--cinder-status-danger-text` | `light-dark(oklch(49% 0.201 27), oklch(90% 0.05 25))` | Foreground color on the soft danger surface. |
 | `--cinder-status-danger-border` | `light-dark(oklch(80% 0.06 25), oklch(50% 0.11 25))` | Border color on the soft danger surface. |
 | `--cinder-status-neutral-background` | `light-dark(oklch(94.5% 0.004 255), oklch(28% 0.04 245))` | Soft neutral-tinted surface background. Neutral retains the status-triple shape so components never need ad hoc surface mixing for the default variant. |
 | `--cinder-status-neutral-text` | `var(--cinder-text-default)` | Foreground color on the soft neutral surface. |
@@ -566,7 +566,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | --- | --- | --- |
 | `--cinder-button-background` | `var(--cinder-surface-raised)` | Secondary (default) button fill. |
 | `--cinder-button-foreground` | `var(--cinder-text-default)` | Secondary (default) button label color. |
-| `--cinder-button-border` | `var(--cinder-border-strong)` | Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary. |
+| `--cinder-button-border` | `var(--cinder-border-control)` | Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint. |
 | `--cinder-button-radius` | `var(--cinder-radius-md)` | Default button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->

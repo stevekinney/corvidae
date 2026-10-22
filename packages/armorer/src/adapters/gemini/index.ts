@@ -5,6 +5,7 @@ import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
 import { normalizeToSerializedDefinitions, type ToolRegistryLike } from '../shared';
+import { geminiToolResultParts, toolResultParts } from '../tool-result-parts';
 import type {
   GeminiFunctionDeclaration,
   GeminiFunctionResponsePart,
@@ -112,12 +113,7 @@ export function formatGeminiToolResults(
     }
   }
 
-  return resultList.map((result) => ({
-    functionResponse: {
-      name: resolveGeminiToolName(result, options),
-      response: normalizeGeminiResponse(result),
-    },
-  }));
+  return resultList.map((result) => toFunctionResponsePart(result, options));
 }
 
 export async function formatGeminiToolResultsAsync(
@@ -128,10 +124,9 @@ export async function formatGeminiToolResultsAsync(
   return Promise.all(
     resultList.map(async (result) => {
       const stream = getStreamingPayload(result) ?? null;
-      const content =
-        stream === null
-          ? result.content
-          : normalizeAsyncContent(await collectAsyncIterable(stream));
+      // A settled result, parts included, formats exactly as the synchronous formatter does.
+      if (stream === null) return toFunctionResponsePart(result, options);
+      const content = normalizeAsyncContent(await collectAsyncIterable(stream));
       return {
         functionResponse: {
           name: resolveGeminiToolName(result, options),
@@ -189,6 +184,28 @@ function convertFunctionCall(
     name: functionCall.name,
     arguments: functionCall.args ?? {},
   };
+}
+
+function toFunctionResponsePart(
+  result: ToolResultLike,
+  options: GeminiFormatToolResultsOptions,
+): GeminiFunctionResponsePart {
+  const name = resolveGeminiToolName(result, options);
+  const parts = toolResultParts(result);
+  if (parts === undefined) {
+    return { functionResponse: { name, response: normalizeGeminiResponse(result) } };
+  }
+  const { output, parts: media } = geminiToolResultParts(parts);
+  const response =
+    result.outcome === 'success'
+      ? { output }
+      : {
+          output,
+          outcome: result.outcome,
+          ...(result.error ? { error: result.error } : {}),
+          ...(result.action ? { action: result.action } : {}),
+        };
+  return { functionResponse: { name, response, parts: media } };
 }
 
 function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown> {

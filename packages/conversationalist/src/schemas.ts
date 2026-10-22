@@ -1,7 +1,14 @@
 import { z } from 'zod';
 
 import { isDecodableBase64, isWellFormedDataUrl, mimeTypeFitsModality } from './media-types';
-import type { ContentSource, Modality, MultiModalContent } from './multi-modal';
+import type {
+  ContentSource,
+  Modality,
+  MultiModalContent,
+  TextContent,
+  ToolResultPart,
+} from './multi-modal';
+import { twoMediaListsProblem } from './multi-modal';
 import type {
   ConversationHistory as Conversation,
   ConversationStatus,
@@ -141,7 +148,8 @@ const mediaContentFields = {
   metadata: z.record(z.string(), jsonValueSchema).exactOptional(),
 };
 
-const multiModalContentUnion = z.discriminatedUnion('type', [
+// Text and media: the portable parts a message or a tool result can carry.
+const portablePartSchemas = [
   z.object({
     type: z.literal('text'),
     text: z.string(),
@@ -160,6 +168,30 @@ const multiModalContentUnion = z.discriminatedUnion('type', [
     .object({ type: z.literal('document'), ...mediaContentFields })
     .refine(...mediaTypeFitsModality('document')),
   z.object({ type: z.literal('file'), ...mediaContentFields }),
+] as const;
+
+/** Drops an absent text `citations` rather than carrying `key: undefined`. */
+function withoutAbsentCitations<Part extends { type: string }>(
+  value: Part | { type: 'text'; text: string; citations?: JSONValue | undefined },
+): Part | TextContent {
+  if (value.type !== 'text') return value as Part;
+  const text = value as { type: 'text'; text: string; citations?: JSONValue | undefined };
+  return {
+    type: 'text',
+    text: text.text,
+    ...(text.citations !== undefined ? { citations: text.citations } : {}),
+  };
+}
+
+/** Zod schema for one part of a tool result: a text part or a media part. */
+export const toolResultPartSchema = z
+  .discriminatedUnion('type', [...portablePartSchemas])
+  .transform((value): ToolResultPart =>
+    withoutAbsentCitations(value),
+  ) satisfies z.ZodType<ToolResultPart>;
+
+const multiModalContentUnion = z.discriminatedUnion('type', [
+  ...portablePartSchemas,
   z.object({
     type: z.literal('thinking'),
     thinking: z.string(),
@@ -211,14 +243,7 @@ export const multiModalContentSchema = multiModalContentUnion.transform(
   (value): MultiModalContent => {
     // Drop absent optional fields rather than carrying `key: undefined`, so the
     // output matches the interfaces under `exactOptionalPropertyTypes`.
-    if (value.type === 'text') {
-      return {
-        type: 'text',
-        text: value.text,
-        ...(value.citations !== undefined ? { citations: value.citations } : {}),
-      };
-    }
-    return value;
+    return withoutAbsentCitations(value);
   },
 ) satisfies z.ZodType<MultiModalContent>;
 
@@ -386,6 +411,7 @@ export const toolResultSchema = z
     callId: z.string(),
     outcome: z.enum(['success', 'error', 'action_required']),
     content: jsonValueSchema,
+    parts: z.array(toolResultPartSchema).min(1).optional(),
     error: toolErrorSchema.optional(),
     action: toolActionSchema.optional(),
     inputDigest: z.string().optional(),
@@ -404,6 +430,14 @@ export const tokenUsageSchema = z.object({
   cacheReadTokens: z.number().int().min(0).optional(),
 }) satisfies z.ZodType<TokenUsage>;
 
+function rejectTwoMediaLists(
+  message: Parameters<typeof twoMediaListsProblem>[0],
+  context: z.RefinementCtx,
+): void {
+  const problem = twoMediaListsProblem(message);
+  if (problem !== undefined) context.addIssue({ code: 'custom', message: problem });
+}
+
 /**
  * Zod schema for message input payloads.
  */
@@ -419,7 +453,8 @@ export const messageInputSchema = z
     goalCompleted: z.boolean().optional(),
     cacheBoundary: z.boolean().optional(),
   })
-  .strict() satisfies z.ZodType<MessageInput>;
+  .strict()
+  .superRefine(rejectTwoMediaLists) satisfies z.ZodType<MessageInput>;
 
 /**
  * Zod schema for messages.
@@ -439,7 +474,8 @@ export const messageSchema = z
     goalCompleted: z.boolean().optional(),
     cacheBoundary: z.boolean().optional(),
   })
-  .strict() satisfies z.ZodType<Message>;
+  .strict()
+  .superRefine(rejectTwoMediaLists) satisfies z.ZodType<Message>;
 
 /**
  * Zod schema for conversation status values.

@@ -3,7 +3,11 @@ import type { ContentPartLineage } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { ConversationHistory as Conversation, Message } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
-import { createMediaExportContext, type MediaExportOptions } from '../media';
+import {
+  createMediaExportContext,
+  type MediaExportContext,
+  type MediaExportOptions,
+} from '../media';
 import {
   extractSystemInstruction,
   toFunctionCallPart,
@@ -122,7 +126,11 @@ function convertGeminiMessage(
       };
     case 'tool-call':
     case 'tool-result':
-      return convertToolGeminiMessage(message, toolCallNames);
+      return convertToolGeminiMessage(
+        message,
+        toolCallNames,
+        createMediaExportContext('gemini', message, lineage, options),
+      );
     default:
       return undefined;
   }
@@ -135,6 +143,7 @@ function shouldSkipGeminiMessage(message: Message): boolean {
 function convertToolGeminiMessage(
   message: Message,
   toolCallNames: ReadonlyMap<string, string>,
+  context: MediaExportContext,
 ): { role: 'user' | 'model'; parts: GeminiPart[] } | undefined {
   if (message.role === 'tool-call') {
     return message.toolCall
@@ -148,6 +157,7 @@ function convertToolGeminiMessage(
           toFunctionResponsePart(
             message.toolResult,
             toolCallNames.get(message.toolResult.callId) ?? 'unknown',
+            context,
           ),
         ],
       }

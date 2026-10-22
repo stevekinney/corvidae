@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 
-import type { McpSessionManager } from '../../mcp/session.ts';
+import type { McpEndpoint } from '../../mcp/http.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/index.ts';
@@ -90,7 +90,7 @@ export interface ServerContext {
   readonly workflowEventFeed: WorkflowEventFeed;
   readonly fleetEventFeed: FleetEventFeed;
   readonly activeJsonRpcSessions: Set<JsonRpcWebSocketSession>;
-  readonly mcpSessionManager: McpSessionManager;
+  readonly mcpEndpoint: McpEndpoint;
   readonly authenticatorPromise: Promise<Authenticator> | null;
   /**
    * Per-key request rate limiter, or `null` when `serve()` was called without

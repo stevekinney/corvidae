@@ -41,14 +41,26 @@ export function runRowHolderId(runId: string, rowId: string): string {
   return `run-row:${encodeURIComponent(runId)}:${encodeURIComponent(rowId)}`;
 }
 
-/** The asset ids of the managed-asset sources a row's content references, once each. */
-export function managedAssetIdsOf(content: unknown): string[] {
-  if (!Array.isArray(content)) return [];
+/** A conversation row as the claim walker reads it: its content and, for a tool result, its parts. */
+export interface ClaimableRow {
+  readonly id: string;
+  readonly content: unknown;
+  readonly toolResult?: { readonly parts?: unknown } | undefined;
+}
+
+/**
+ * The asset ids of the managed-asset sources a row references, once each: in its content and in
+ * a tool result's parts (COR-792), so claiming and releasing walk the same references.
+ */
+export function managedAssetIdsOf(row: Omit<ClaimableRow, 'id'>): string[] {
   const ids = new Set<string>();
-  for (const part of content as ReadonlyArray<{ source?: { kind?: string; assetId?: string } }>) {
-    const source = part?.source;
-    if (source?.kind === 'managed-asset' && typeof source.assetId === 'string') {
-      ids.add(source.assetId);
+  for (const list of [row.content, row.toolResult?.parts]) {
+    if (!Array.isArray(list)) continue;
+    for (const part of list as ReadonlyArray<{ source?: { kind?: string; assetId?: string } }>) {
+      const source = part?.source;
+      if (source?.kind === 'managed-asset' && typeof source.assetId === 'string') {
+        ids.add(source.assetId);
+      }
     }
   }
   return [...ids];
@@ -93,12 +105,12 @@ export async function claimRowAssets(
   assets: AssetService,
   principalId: string,
   holderOf: (rowId: string) => string,
-  rows: Iterable<{ readonly id: string; readonly content: unknown }>,
+  rows: Iterable<ClaimableRow>,
   reports: RowClaimReports,
   alreadyClaimed?: Set<string>,
 ): Promise<void> {
   for (const row of rows) {
-    for (const assetId of managedAssetIdsOf(row.content)) {
+    for (const assetId of managedAssetIdsOf(row)) {
       const holderId = holderOf(row.id);
       const key = `${holderId}\u0000${assetId}`;
       if (alreadyClaimed?.has(key)) continue;
@@ -125,12 +137,12 @@ export async function releaseRowAssetClaims(
   assets: AssetService,
   principalId: string,
   holderOf: (rowId: string) => string,
-  rows: Iterable<{ readonly id: string; readonly content: unknown }>,
+  rows: Iterable<ClaimableRow>,
   onFailure: (assetId: string, error: unknown, rowId: string) => void,
   claimed?: Set<string>,
 ): Promise<void> {
   for (const row of rows) {
-    for (const assetId of managedAssetIdsOf(row.content)) {
+    for (const assetId of managedAssetIdsOf(row)) {
       const holderId = holderOf(row.id);
       claimed?.delete(`${holderId}\u0000${assetId}`);
       try {

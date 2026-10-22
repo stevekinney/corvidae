@@ -29,7 +29,7 @@ function toolCallMessage(id: string): Message {
 
 function conversation(messages: Message[]): ConversationHistory {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: 'conversation',
     status: 'active',
     metadata: {},

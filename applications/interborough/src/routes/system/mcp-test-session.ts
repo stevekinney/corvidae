@@ -1,13 +1,13 @@
 /**
  * Drives one real MCP `initialize` handshake against `POST {origin}/mcp`
  * (plan §9.7 T7.3: "interactive 'Test MCP session' panel showing full
- * headers/body incl. Mcp-Session-Id/Mcp-Session-Token flow"). Verified wire
- * contract against `weft/src/mcp/http.ts` v0.11.0: an `initialize` request
- * with no `Mcp-Session-Id` header creates a new session, and the response
- * carries `Mcp-Session-Id` + `Mcp-Session-Token` (the token disclosed only
- * on this first response — see that module's `maybeSessionHeaders` doc for
- * why: "the token is disclosed only here, so a leaked id alone cannot
- * continue another caller's anonymous session").
+ * headers/body"). Weft serves `/mcp` through the official MCP SDK: protocol
+ * 2026-07-28 on its modern lane, and 2025-era clients such as this one on the
+ * SDK's stateless legacy lane, which answers `initialize` in the revision the
+ * client asked for when the SDK supports it (`2025-03-26` here) and keeps no
+ * session, so the response carries no `Mcp-Session-Id`.
+ * `mcp-test-session.integration.test.ts` holds that contract against a real
+ * `serve()`.
  *
  * A scoped `fetch()`, not `HttpClient`, for the same reason as
  * `discovery-client.ts`: `/mcp` is outside `HttpClient`'s modeled surface.

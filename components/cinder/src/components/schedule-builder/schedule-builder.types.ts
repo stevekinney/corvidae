@@ -66,7 +66,7 @@ export type ScheduleBuilderProps = Omit<
   /**
    * The current recurrence value (controlled). Pass the value returned from
    * `onValueChange` back in to commit an edit. When omitted, the component starts
-   * from a sensible default (`interval`, every 15 minutes).
+   * from a sensible default (Presets, daily at 09:00: the cron value `0 9 * * *`).
    */
   value?: ScheduleValue | undefined;
   /**
@@ -126,7 +126,7 @@ export type ScheduleValueSchema =
 export type ScheduleBuilderSchemaProps = {
   /**
    * The current recurrence value (controlled). When omitted, the component
-   * starts from a sensible default (`interval`, every 15 minutes).
+   * starts from a sensible default (Presets, daily at 09:00: the cron value `0 9 * * *`).
    * @schemaObject
    */
   value?: ScheduleValueSchema | undefined;

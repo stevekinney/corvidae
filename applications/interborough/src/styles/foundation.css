@@ -158,7 +158,7 @@
   min-width: 300px;
   flex: 0 1 auto;
   padding: 7px 11px;
-  border: 1px solid var(--cinder-border-strong);
+  border: 1px solid var(--cinder-border-control);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-inset);
   color: var(--cinder-text-subtle);

@@ -675,6 +675,7 @@ const modelSchema = z.object({
   mediaLimits: z.array(z.json()),
   mediaCounts: z.array(z.object({ modality: z.string(), maxPerRequest: z.number() })),
   providerFetchesRemoteUrls: z.boolean(),
+  toolResultModalities: z.array(z.string()).optional(),
   generatedAssetBehavior: z.array(z.json()).optional(),
   contextWindowTokens: z.number(),
   maxOutputTokens: z.number(),

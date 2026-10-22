@@ -173,7 +173,7 @@
   }
 
   .cinder-dropdown-item[data-cinder-variant='danger'] {
-    --_cinder-dropdown-item-ring: var(--cinder-status-danger-solid);
+    --_cinder-dropdown-item-ring: var(--cinder-status-danger-text);
     color: var(--cinder-status-danger-text);
   }
 

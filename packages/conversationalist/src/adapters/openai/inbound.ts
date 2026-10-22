@@ -7,7 +7,12 @@ import type {
   ToolResult,
 } from '../../types';
 import { createMediaPart, modalityFromMimeType, parseDataUrl, sourceFromUrl } from '../media';
-import { parseJSONValue, parseToolResultText } from '../shared';
+import {
+  fromCanonicalToolResultPayload,
+  isCanonicalToolResultPayload,
+  parseJSONValue,
+  parseToolResultText,
+} from '../shared';
 import type { OpenAIContentPart, OpenAIMessage, OpenAITextContentPart } from './types';
 
 function toConversationContent(
@@ -62,9 +67,32 @@ function parseToolArguments(value: string): JSONValue {
 }
 
 function parseToolResult(callId: string, content: string | OpenAITextContentPart[]): ToolResult {
+  if (typeof content !== 'string') {
+    const withParts = parseOutcomeWithParts(callId, content);
+    if (withParts !== undefined) return withParts;
+  }
   const serialized =
     typeof content === 'string' ? content : content.map((part) => part.text).join('\n\n');
   return parseToolResultText(callId, serialized);
+}
+
+/**
+ * The inverse of how a non-success result with parts is exported: a leading text part holding
+ * the canonical outcome payload (with `content: null`), then the parts' text.
+ */
+function parseOutcomeWithParts(
+  callId: string,
+  content: OpenAITextContentPart[],
+): ToolResult | undefined {
+  const [lead, ...rest] = content;
+  if (lead === undefined || rest.length === 0) return undefined;
+  const parsed = parseJSONValue(lead.text);
+  if (parsed === undefined || !isCanonicalToolResultPayload(parsed)) return undefined;
+  if (parsed.outcome === 'success' || parsed.content !== null) return undefined;
+  return {
+    ...fromCanonicalToolResultPayload(callId, parsed),
+    parts: rest.map((part) => ({ type: 'text', text: part.text })),
+  };
 }
 
 function toMessageInputs(messages: ReadonlyArray<OpenAIMessage>): MessageInput[] {
