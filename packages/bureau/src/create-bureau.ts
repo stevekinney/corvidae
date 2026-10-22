@@ -9129,6 +9129,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // COR-297 — the cancels of runs prepared and never launched, which the task reconciliation
       // after this pass must see terminal: nothing else settles those runs' tasks.
       const preparedCancellations: Promise<void>[] = [];
+      // COR-297 — what a recovered record's state says about Weft's two-phase start. Weft recovers
+      // a `pending` record without resuming it. It is crash residue only when no other process
+      // holds a live claim on it: under `workflow-lease` ownership the process that prepared it may
+      // still be running the start hook. A read that fails is diagnosed and reported as unknown.
+      const preparedState = async (
+        runId: string,
+      ): Promise<'never-launched' | 'preparing-elsewhere' | 'not-pending' | 'unknown'> => {
+        try {
+          const record = await durable.engine.get(runId);
+          if (record?.status !== 'pending') return 'not-pending';
+          const claim = await durable.engine.claimHolder(runId);
+          return claim?.heldByAnyProcess === true && !claim.heldByThisProcess
+            ? 'preparing-elsewhere'
+            : 'never-launched';
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not read the durable record of recovered run "${runId}"; classifying it without its status: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return 'unknown';
+        }
+      };
+      const cancelNeverLaunched = (runId: string, cancel: Promise<void>): void => {
+        orphanCancellations.push({ runId, cancel });
+        preparedCancellations.push(cancel.catch(() => undefined));
+      };
       const sessionStore = runtime.sessionStore;
       for (const { handle, metadata, ...rest } of resolved) {
         // The awaited recovery hook already registered owned interactive runs
@@ -9142,7 +9170,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // run is skipped, so it is never re-classified by the session-ownership
         // logic below (which would treat its absent session as "orphaned" and
         // cancel it).
-        if (await runtime.isCatalogRecoveredRun(handle.id)) continue;
+        if (await runtime.isCatalogRecoveredRun(handle.id)) {
+          // COR-297 — a catalog run prepared and never launched has no monitor (Weft calls no
+          // recovery hook for a `pending` record), so it is cancelled here and its task settles
+          // with the reconciliation after this pass.
+          if ((await preparedState(handle.id)) === 'never-launched') {
+            dispatchRecoveryClassification(handle.id, {
+              verdict: 'cancel',
+              rejection: 'prepared-not-launched',
+            });
+            cancelNeverLaunched(handle.id, durable.engine.cancel(handle.id));
+          }
+          continue;
+        }
 
         // COR-851: a goal's controller workflow carries `{ goalRunId }`, not an
         // agent run's input, so the classification below would read it as a
@@ -9250,28 +9290,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         };
         let classification = classifyRecoveredRunDetailed(classificationArgs);
         // COR-297 — a run that would reattach may be a record its process prepared and never
-        // launched (Weft's two-phase start): Weft recovers a `pending` record without resuming it,
-        // so reattaching would leave a run whose result never settles. Its status is read only
-        // here, for a would-be reattach; a read that fails leaves the verdict as it was.
+        // launched: reattaching it would leave a run whose result never settles. Its state is read
+        // only here, for a would-be reattach; one another live process is still preparing is left
+        // to it, and a read that fails leaves the verdict as it was.
         if (
           classification.verdict === 'reattach' ||
           classification.verdict === 'reattach-version-mismatch'
         ) {
-          try {
-            const record = await durable.engine.get(handle.id);
-            if (record !== null) {
-              classification = classifyRecoveredRunDetailed({
-                ...classificationArgs,
-                engineRecordStatus: record.status,
-              });
-            }
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'recovery',
-              message: `[bureau] Could not read the durable record of recovered run "${handle.id}"; classifying it without its status: ${serializeUnknownError(error)}`,
-              cause: error,
+          const prepared = await preparedState(handle.id);
+          if (prepared === 'never-launched') {
+            classification = classifyRecoveredRunDetailed({
+              ...classificationArgs,
+              engineRecordStatus: 'pending',
             });
+          } else if (prepared === 'preparing-elsewhere') {
+            classification = { verdict: 'skip' };
           }
         }
         // The session says the run is running, and no later boot could repair that once the record
@@ -9478,9 +9511,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               }
               return undefined;
             });
-            orphanCancellations.push({ runId: handle.id, cancel });
             if (classification.rejection === 'prepared-not-launched') {
-              preparedCancellations.push(cancel.catch(() => undefined));
+              cancelNeverLaunched(handle.id, cancel);
+            } else {
+              orphanCancellations.push({ runId: handle.id, cancel });
             }
           }
           // 'skip' — ownership unknown; leave the run to resume without live visibility.

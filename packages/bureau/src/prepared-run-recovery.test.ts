@@ -178,7 +178,7 @@ async function prepareWithoutLaunching(configuration: StorageConfiguration | Sto
   expect(await durableStatus(crashed, run.id)).toBe('pending');
   const session = await crashed.getSession(run.sessionId);
   expect(session?.metadata['lastRunStatus']).toBe('running');
-  return run;
+  return { ...run, crashed, release: hook.release };
 }
 
 async function durableStatus(
@@ -279,6 +279,69 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     const session = await restarted.getSession(run.sessionId);
     expect(session?.metadata['lastRunId']).toBe('another-run');
     expect(session?.metadata['lastRunStatus']).toBe('running');
+  });
+
+  it('leaves a pending run to the live process still preparing it', async () => {
+    const fixture = newFixture();
+    const run = await prepareWithoutLaunching(fixture.configuration);
+    const realClaimHolder = Engine.prototype.claimHolder;
+    const claimHolder = spyOn(Engine.prototype, 'claimHolder').mockImplementation(function (
+      this: Engine,
+      workflowId: string,
+    ) {
+      // Under `workflow-lease` ownership, the process that prepared the run still holds its claim.
+      if (workflowId === run.id) {
+        return Promise.resolve({ heldByThisProcess: false, heldByAnyProcess: true });
+      }
+      return realClaimHolder.call(this, workflowId);
+    });
+    cleanups.push(() => claimHolder.mockRestore());
+    const recovery = {
+      attempted: [] as Array<[string, string]>,
+      rejected: [] as Array<[string, string]>,
+    };
+
+    const restarted = await open(fixture.configuration, { recovery });
+    await restarted.waitForRecovery!();
+    claimHolder.mockRestore();
+
+    expect(recovery.attempted).toContainEqual([run.id, 'skip']);
+    expect(recovery.rejected.filter(([runId]) => runId === run.id)).toEqual([]);
+    expect(await durableStatus(restarted, run.id)).toBe('pending');
+    const session = await restarted.getSession(run.sessionId);
+    expect(session?.metadata['lastRunStatus']).toBe('running');
+
+    // The run is still the held process's: once its hook settles, it ends there.
+    run.release();
+    await waitForCondition(async () => {
+      const settled = await run.crashed.getSession(run.sessionId);
+      return settled?.metadata['lastRunStatus'] !== 'running';
+    }, 'the held process never settled its run');
+  });
+
+  it('cancels a catalog run prepared and never launched, and settles its task', async () => {
+    const fixture = newFixture();
+    const hook = heldStartHook();
+    const crashed = await open(fixture.configuration, { hooks: hook.hooks });
+    bureaus.splice(bureaus.indexOf(crashed), 1);
+    cleanups.push(async () => {
+      hook.release();
+      await crashed.dispose();
+    });
+    const run = crashed.run('researcher', 'prepared, never launched');
+    const runId = run.snapshot().id;
+    await waitForCondition(
+      async () => (await durableStatus(crashed, runId)) === 'pending',
+      'the catalog run was never prepared',
+    );
+
+    const restarted = await open(fixture.configuration);
+    const report = await restarted.waitForRecovery!();
+
+    expect(report.perRunFailures).toContainEqual({ runId, reason: 'prepared-not-launched' });
+    expect(await durableStatus(restarted, runId)).toBe('cancelled');
+    const task = await restarted.tasks.get(runId);
+    expect(task?.status).toBe('canceled');
   });
 
   it('dispatches a cancel verdict with the prepared-not-launched rejection, never a reattach', async () => {
