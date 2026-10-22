@@ -326,6 +326,48 @@ export function failingWrites(marker: string, times: number) {
 }
 
 /**
+ * Wraps a storage so that, once armed, the next scan of the durable event feed (`fleet-event:`)
+ * rejects as a transient read fault does, and the scans after it go through.
+ */
+export function failingFeedRead() {
+  let armed = false;
+  let failed = 0;
+  return {
+    arm(): void {
+      armed = true;
+    },
+    get failed(): number {
+      return failed;
+    },
+    wrap(storage: Storage): Storage {
+      return new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            if (
+              property === 'scan' &&
+              armed &&
+              typeof args[0] === 'string' &&
+              args[0].startsWith('fleet-event')
+            ) {
+              armed = false;
+              failed += 1;
+              return {
+                [Symbol.asyncIterator]: () => ({
+                  next: () => Promise.reject(new Error('simulated feed read fault')),
+                }),
+              };
+            }
+            return (member as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      });
+    },
+  };
+}
+
+/**
  * A storage whose process dies between a fire step's session write, which carries `marker`, and
  * the step's commit: the journal write of the step is held for good, so the hook has run and the
  * request has been announced, and the step never commits. `reached` resolves at the hold.
