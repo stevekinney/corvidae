@@ -65,7 +65,11 @@ import {
   STATE_HEADERS_KEY,
   type User,
 } from '@a2a-js/sdk/server';
-import { createDefaultRuntimeServices, type RuntimeTimers } from '@lostgradient/lifecycle';
+import {
+  createDefaultRuntimeServices,
+  type RuntimeServices,
+  type RuntimeTimers,
+} from '@lostgradient/lifecycle';
 import type { Principal } from '@lostgradient/weft';
 import { requestSignalOf } from '@lostgradient/weft/a2a';
 
@@ -93,6 +97,14 @@ import {
   replyMessageId,
 } from './a2a-task-projection.ts';
 import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
+import {
+  COMMAND_RECEIPTS_EXTENSION_URI,
+  CommandReceiptError,
+  CommandTimeoutError,
+  readCommandReceiptsRequest,
+  receiptMetadata,
+  type SendReceiptState,
+} from './a2a-command-receipts.ts';
 import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
@@ -126,11 +138,34 @@ const SETTLE_POLL_MS = 1_000;
 /** What a send's ledger entry claims: nothing beyond the binding itself. */
 export type A2ASendClaim = Record<string, never>;
 
-/** A send once admitted: the task it created or continued, and how its responses show it. */
-type Admitted = { readonly taskId: string; readonly shape: ProjectionShape };
+/** Which path a send took: a new task, an answer to a wait, or input to a working task. */
+type SendPath = 'create' | 'answer' | 'input';
 
-/** What a completed send's ledger entry holds: the task it created or continued. */
-export type A2ASendResult = { readonly taskId: string };
+/** A command's receipt as its response reports it. */
+type Receipt = {
+  readonly path: SendPath;
+  readonly state: SendReceiptState;
+  readonly commandId: string;
+  readonly reason?: string | undefined;
+};
+
+/** A send once admitted: the task it created or continued, and how its responses show it. */
+type Admitted = {
+  readonly taskId: string;
+  readonly shape: ProjectionShape;
+  readonly receipt: Receipt;
+  /** Epoch milliseconds by which a blocking send must be answered, if the command set one. */
+  readonly deadline: number | undefined;
+};
+
+/** What a completed send's ledger entry holds: the task, and the receipt the command earned. */
+export type A2ASendResult = {
+  readonly taskId: string;
+  /** Absent in an entry written before receipts were recorded; read as a new task's `applied`. */
+  readonly path?: SendPath | undefined;
+  readonly state?: SendReceiptState | undefined;
+  readonly reason?: string | undefined;
+};
 
 /** The ledger A2A sends record their bindings in. */
 export type A2ASendLedger = CommandLedger<A2ASendClaim, A2ASendResult>;
@@ -166,7 +201,14 @@ export type A2ABureau = Pick<
 > & {
   readonly tasks: Pick<
     TaskRegistry,
-    'get' | 'record' | 'cancel' | 'list' | 'onSettled' | 'onChanged'
+    | 'get'
+    | 'record'
+    | 'cancel'
+    | 'list'
+    | 'onSettled'
+    | 'onChanged'
+    | 'recordAdmission'
+    | 'recordSettled'
   >;
 };
 
@@ -182,6 +224,8 @@ export type BureauA2ARequestHandlerOptions = {
   readonly respond: (principal: Principal, input: TasksRespondInput) => Promise<unknown>;
   /** The timers a blocking send's safety-net poll runs on. Defaults to the process's own. */
   readonly timers?: RuntimeTimers | undefined;
+  /** The clock a command's deadline is read against, and the identifiers an expired task takes. */
+  readonly runtime?: Pick<RuntimeServices, 'clock' | 'identifiers'> | undefined;
   /** How long a cancel waits for the run's cleanup to acknowledge before it answers. */
   readonly cancelWaitMilliseconds?: number;
 };
@@ -314,6 +358,23 @@ function historyEntryOf(message: Message, taskId: string, contextId: string): A2
   return Message.toJSON({ ...message, taskId, contextId }) as A2AWireMessage;
 }
 
+/** The receipt a session input's admission state reads as. */
+function inputReceiptState(state: string): SendReceiptState {
+  switch (state) {
+    case 'accepted':
+    case 'queued':
+      return 'accepted';
+    case 'promoted':
+      return 'applied';
+    case 'expired':
+      return 'expired';
+    case 'superseded':
+      return 'superseded';
+    default:
+      return 'failed';
+  }
+}
+
 /** Creates the request handler that serves one published agent. */
 export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
@@ -321,6 +382,7 @@ export function createBureauA2ARequestHandler(
   const { agentName, bureau, records, ledger } = options;
   const cancelWait = options.cancelWaitMilliseconds ?? 0;
   const timers = options.timers ?? createDefaultRuntimeServices().timers;
+  const runtime = options.runtime ?? createDefaultRuntimeServices();
   const declared = declaredExtensionsOf(options.card());
   /** Sends being admitted in this process, by binding: an identical send waits for the first. */
   const inFlight = new Map<string, Promise<Admitted>>();
@@ -364,7 +426,11 @@ export function createBureauA2ARequestHandler(
   }
 
   /** The task as one response shows it, folding a completed task's reply into its history once. */
-  async function respondWith(view: TaskView, shape: ProjectionShape): Promise<Task> {
+  async function respondWith(
+    view: TaskView,
+    shape: ProjectionShape,
+    receipt?: Receipt,
+  ): Promise<Task> {
     const reply = await replyOf(view);
     let record = await records.read(view.id);
     if (record !== undefined && isTerminal(view.status) && !record.replyRecorded) {
@@ -387,10 +453,39 @@ export function createBureauA2ARequestHandler(
       );
     }
     const stored = await bureau.tasks.record(view.id);
-    return projectTask(
+    const task = projectTask(
       { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
       shape,
     );
+    if (receipt !== undefined && shape.activated.has(COMMAND_RECEIPTS_EXTENSION_URI)) {
+      task.metadata = {
+        ...task.metadata,
+        [COMMAND_RECEIPTS_EXTENSION_URI]: receiptMetadata(
+          currentState(receipt, view),
+          receipt.commandId,
+          revisionOf(view.id),
+          receipt.reason,
+        ),
+      };
+    }
+    return task;
+  }
+
+  /** The task's revision: its run's liveness revision, while the run is held here. */
+  function revisionOf(taskId: string): string | undefined {
+    const run = bureau.getRun(taskId);
+    return run === undefined ? undefined : String(run.liveness.revision);
+  }
+
+  /**
+   * How far a command has gone now. A new task's command is `accepted` until its run starts,
+   * `applied` once it has, and `observed` once the task's end is in its history; an answer or an
+   * input keeps the state its admission reported, which a retry reads again.
+   */
+  function currentState(receipt: Receipt, view: TaskView): SendReceiptState {
+    if (receipt.path !== 'create' || receipt.state === 'expired') return receipt.state;
+    if (isTerminal(view.status)) return 'observed';
+    return view.status === 'submitted' ? 'accepted' : 'applied';
   }
 
   /**
@@ -428,6 +523,44 @@ export function createBureauA2ARequestHandler(
       stopSettled();
       stopChanged();
       signal?.removeEventListener('abort', notify);
+    }
+  }
+
+  /**
+   * {@link settledView}, bounded by the command's deadline: a blocking send its deadline
+   * overtakes is a `TIMEOUT` error, and the task goes on.
+   */
+  async function settledUntil(
+    taskId: string,
+    context: ServerCallContext | undefined,
+    deadline: number | undefined,
+    commandId: string,
+  ): Promise<TaskView> {
+    const signal = context === undefined ? undefined : requestSignalOf(context);
+    if (deadline === undefined) return settledView(taskId, signal);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = timers.setTimeout(
+      () => {
+        timedOut = true;
+        controller.abort();
+      },
+      Math.max(0, deadline - runtime.clock.now()),
+    );
+    const forward = () => controller.abort();
+    signal?.addEventListener('abort', forward, { once: true });
+    try {
+      const view = await settledView(taskId, controller.signal);
+      if (timedOut && !isSettled(view.status)) {
+        throw new CommandTimeoutError('The command’s deadline passed before the task settled.', {
+          commandId,
+          taskId,
+        });
+      }
+      return view;
+    } finally {
+      timers.clearTimeout(timer);
+      signal?.removeEventListener('abort', forward);
     }
   }
 
@@ -481,6 +614,38 @@ export function createBureauA2ARequestHandler(
     return run.id;
   }
 
+  /**
+   * A task whose creating command's deadline passed before it could start: recorded as failed
+   * with a deadline reason, and no run is created for it.
+   */
+  async function createExpiredTask(message: Message, owner: Owner): Promise<string> {
+    const taskId = runtime.identifiers.next('run');
+    const contextId =
+      message.contextId === '' ? runtime.identifiers.next('session') : message.contextId;
+    await bureau.tasks.recordAdmission({
+      taskId,
+      contextId,
+      incarnation: '',
+      agentName,
+      owner,
+      message: textOf(message),
+    });
+    await bureau.tasks.recordSettled(taskId, {
+      at: new Date(runtime.clock.now()).toISOString(),
+      status: 'failed',
+      finishReason: 'deadline-exceeded',
+      message: 'The command’s deadline passed before the task started.',
+    });
+    await records.create({
+      recordVersion: 1,
+      taskId,
+      contextId,
+      history: [historyEntryOf(message, taskId, contextId)],
+      replyRecorded: false,
+    });
+    return taskId;
+  }
+
   /** The continuation's checks that run before anything is admitted. */
   async function checkContinuation(message: Message, owner: Owner): Promise<TaskView> {
     const view = await ownTask(message.taskId, owner);
@@ -504,7 +669,9 @@ export function createBureauA2ARequestHandler(
     view: TaskView,
     owner: Owner,
     principal: Principal,
-  ): Promise<void> {
+    deadline: number | undefined,
+  ): Promise<{ readonly path: SendPath; readonly state: SendReceiptState }> {
+    let answered: { readonly path: SendPath; readonly state: SendReceiptState };
     if (view.status === 'input-required') {
       const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
       const decision = data?.decision;
@@ -535,7 +702,11 @@ export function createBureauA2ARequestHandler(
       if (!input.success)
         throw invalid(input.error.issues[0]?.message ?? 'The answer is not valid.');
       try {
-        await options.respond(principal, input.data);
+        const result = (await options.respond(principal, input.data)) as { receipt?: unknown };
+        answered = {
+          path: 'answer',
+          state: result.receipt === 'superseded' ? 'superseded' : 'applied',
+        };
       } catch (error) {
         const fault = error as { code?: unknown; message?: unknown } | null;
         if (typeof fault?.code !== 'string') throw error;
@@ -556,6 +727,7 @@ export function createBureauA2ARequestHandler(
         principal: owner,
         deliveryMode: mode,
         payload: text,
+        ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
       });
       if (outcome.outcome === 'not-found') throw taskNotFound(view.id);
       if (outcome.outcome === 'conflict') {
@@ -571,12 +743,14 @@ export function createBureauA2ARequestHandler(
           `The message could not be admitted (${outcome.outcome}).`,
         );
       }
+      answered = { path: 'input', state: inputReceiptState(outcome.receipt.state) };
     }
     await records.update(view.id, (current) => {
       const entry = historyEntryOf(message, view.id, view.contextId);
       const already = current.history.some((held) => held['messageId'] === message.messageId);
       return already ? undefined : { ...current, history: [...current.history, entry] };
     });
+    return answered;
   }
 
   async function admit(
@@ -601,15 +775,38 @@ export function createBureauA2ARequestHandler(
       includeArtifacts: true,
       activated,
     };
+    const receiptsActive = activated.has(COMMAND_RECEIPTS_EXTENSION_URI);
+    // Extension fields are ignored unless the request activated the extension.
+    const request = receiptsActive
+      ? readCommandReceiptsRequest(message.metadata)
+      : { expectedRevision: undefined, deadline: undefined };
+    const admitted = (result: A2ASendResult): Admitted => ({
+      taskId: result.taskId,
+      shape,
+      receipt: {
+        path: result.path ?? 'create',
+        state: result.state ?? 'applied',
+        commandId: message.messageId,
+        ...(result.reason === undefined ? {} : { reason: result.reason }),
+      },
+      deadline: request.deadline,
+    });
+    /** The answer to a reused `messageId`: typed for a client that activated receipts. */
+    const conflict = (original: A2ASendResult | undefined): Error => {
+      const text = `messageId '${message.messageId}' was already used with a different payload.`;
+      if (!receiptsActive) return invalid(text);
+      return new CommandReceiptError('CONFLICT', text, {
+        commandId: message.messageId,
+        ...(original === undefined
+          ? {}
+          : { taskId: original.taskId, receiptState: original.state ?? 'applied' }),
+      });
+    };
     // The caller's own binding first: an exact retry is owed its task whatever has changed since.
     const located = await ledger.locate(identity);
     if (located.state === 'retained' && located.entry.state === 'completed') {
-      if (located.entry.payloadDigest !== digest) {
-        throw invalid(
-          `messageId '${message.messageId}' was already used with a different payload.`,
-        );
-      }
-      return { taskId: located.entry.result.taskId, shape };
+      if (located.entry.payloadDigest !== digest) throw conflict(located.entry.result);
+      return admitted(located.entry.result);
     }
 
     if (params.configuration?.taskPushNotificationConfig !== undefined) {
@@ -618,37 +815,77 @@ export function createBureauA2ARequestHandler(
       );
     }
     const continued = continuing ? await checkContinuation(message, owner) : undefined;
+    if (continued !== undefined && request.expectedRevision !== undefined) {
+      const current = revisionOf(continued.id);
+      if (current !== request.expectedRevision) {
+        throw new CommandReceiptError(
+          'STALE_REVISION',
+          `expectedRevision ${request.expectedRevision} is stale.`,
+          {
+            commandId: message.messageId,
+            taskId: continued.id,
+            expectedRevision: request.expectedRevision,
+            currentRevision: current ?? '',
+          },
+        );
+      }
+    }
 
     let claimed;
     try {
       claimed = await ledger.claim(identity, digest, {});
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
-        throw invalid(
-          `messageId '${message.messageId}' was already used with a different payload.`,
+        const original = await ledger.locate(identity);
+        throw conflict(
+          original.state === 'retained' && original.entry.state === 'completed'
+            ? original.entry.result
+            : undefined,
         );
       }
       throw error;
     }
     if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
-      return { taskId: claimed.entry.result.taskId, shape };
+      return admitted(claimed.entry.result);
     }
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
-    let taskId: string;
+    const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
+    let result: A2ASendResult;
     try {
       if (continued === undefined) {
-        taskId = await createTask(message, owner, version);
+        result = expired
+          ? {
+              taskId: await createExpiredTask(message, owner),
+              path: 'create',
+              state: 'expired',
+              reason: 'deadline-exceeded',
+            }
+          : { taskId: await createTask(message, owner, version), path: 'create', state: 'applied' };
+      } else if (expired) {
+        // An expired continuation leaves the task as it is, still waiting if it was.
+        result = {
+          taskId: continued.id,
+          path: 'input',
+          state: 'expired',
+          reason: 'deadline-exceeded',
+        };
       } else {
-        await continueTask(message, continued, owner, user.principal);
-        taskId = continued.id;
+        const answered = await continueTask(
+          message,
+          continued,
+          owner,
+          user.principal,
+          request.deadline,
+        );
+        result = { taskId: continued.id, ...answered };
       }
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
       if (claimed.outcome === 'claimed') await ledger.release(entry).catch(() => undefined);
       throw error;
     }
-    await ledger.complete(entry, { taskId });
-    return { taskId, shape };
+    await ledger.complete(entry, result);
+    return admitted(result);
   }
 
   /**
@@ -687,13 +924,14 @@ export function createBureauA2ARequestHandler(
     taskId: string,
     shape: ProjectionShape,
     context: ServerCallContext | undefined,
+    receipt?: Receipt,
   ): AsyncGenerator<StreamResponse> {
     return followTask({
       bureau,
       taskId,
       lastEventId: headerOf(context, 'last-event-id'),
       durableHistoryActive: shape.activated.has(DURABLE_HISTORY_EXTENSION_URI),
-      snapshot: (view) => respondWith(view, shape),
+      snapshot: (view) => respondWith(view, shape, receipt),
       replyOf,
       timers,
       signal: context === undefined ? undefined : requestSignalOf(context),
@@ -710,20 +948,20 @@ export function createBureauA2ARequestHandler(
     },
 
     async sendMessage(params, context) {
-      const { taskId, shape } = await admitOnce(params, context);
+      const { taskId, shape, receipt, deadline } = await admitOnce(params, context);
       const view =
         params.configuration?.returnImmediately === true
           ? await bureau.tasks.get(taskId)
-          : await settledView(taskId, context === undefined ? undefined : requestSignalOf(context));
+          : await settledUntil(taskId, context, deadline, receipt.commandId);
       if (view === undefined) throw taskNotFound(taskId);
-      return respondWith(view, shape);
+      return respondWith(view, shape, receipt);
     },
 
     async *sendMessageStream(params, context) {
       // `returnImmediately` has no effect on a stream, which stays open through INPUT_REQUIRED
       // and AUTH_REQUIRED and closes only once the task is terminal.
-      const { taskId, shape } = await admitOnce(params, context);
-      yield* follow(taskId, shape, context);
+      const { taskId, shape, receipt } = await admitOnce(params, context);
+      yield* follow(taskId, shape, context, receipt);
     },
 
     async *resubscribe(params: SubscribeToTaskRequest, context) {

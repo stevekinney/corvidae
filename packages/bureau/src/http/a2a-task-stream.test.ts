@@ -62,15 +62,14 @@ function follow(bureau: A2AStreamBureau, buffer?: number) {
     taskId: 'task-1',
     lastEventId: undefined,
     durableHistoryActive: true,
-    snapshot: async (view) =>
-      ({
-        id: view.id,
-        contextId: view.contextId,
-        status: undefined,
-        artifacts: [],
-        history: [],
-        metadata: undefined,
-      }),
+    snapshot: async (view) => ({
+      id: view.id,
+      contextId: view.contextId,
+      status: undefined,
+      artifacts: [],
+      history: [],
+      metadata: undefined,
+    }),
     replyOf: async () => undefined,
     timers: createDefaultRuntimeServices().timers,
     signal: undefined,

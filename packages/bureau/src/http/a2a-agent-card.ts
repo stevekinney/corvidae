@@ -12,8 +12,9 @@
  * - `skills` are the agent's skill descriptors, or one skill standing for the agent itself.
  * - `capabilities.streaming` is `true`; `pushNotifications` is `false` until COR-1543 serves it,
  *   and `extendedAgentCard` is `false`.
- * - The extensions are cleanup, A2UI's, and durable history where the Bureau keeps a durable
- *   event history. Every one is `required: false`.
+ * - The extensions are cleanup, A2UI's, and, where the Bureau keeps durable stores (a persistent
+ *   ledger and event history), durable history and command receipts. Every one is
+ *   `required: false`.
  *
  * @module a2a-agent-card
  */
@@ -23,6 +24,7 @@ import type { A2AAgentCardInput, A2ASecurityDeclaration } from '@lostgradient/we
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
 
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
+import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 
 /** The A2UI A2A extension of the pinned A2UI release (`v0.9.1`). */
@@ -60,6 +62,14 @@ const DURABLE_HISTORY_EXTENSION: AgentExtension = {
   uri: DURABLE_HISTORY_EXTENSION_URI,
   description:
     'Resumes SubscribeToTask from a durable cursor: the current Task first, then only later events.',
+  required: false,
+  params: {},
+};
+
+const COMMAND_RECEIPTS_EXTENSION: AgentExtension = {
+  uri: COMMAND_RECEIPTS_EXTENSION_URI,
+  description:
+    'Reports each send’s receipt and the task’s revision, takes expectedRevision and a deadline, and types a reused messageId.',
   required: false,
   params: {},
 };
@@ -126,7 +136,7 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
       extendedAgentCard: false,
       extensions: [
         CLEANUP_EXTENSION,
-        ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION] : []),
+        ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION, COMMAND_RECEIPTS_EXTENSION] : []),
         A2UI_EXTENSION,
       ].map((extension) => ({ ...extension, params: {} })),
     },
