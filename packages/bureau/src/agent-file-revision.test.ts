@@ -12,8 +12,14 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
-import { decode, resolveStorage, type Storage } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  decode,
+  MemoryStorage,
+  resolveStorage,
+  type Storage,
+  textValueStore,
+} from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { hashAgentFileBytes } from './agent-file';
