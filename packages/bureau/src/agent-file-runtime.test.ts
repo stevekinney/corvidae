@@ -3,6 +3,7 @@
  * resolved against the catalogs as they are now, and a typed failure, never the current file, when
  * the snapshot is gone or can no longer be rebuilt.
  */
+import { readGenerationProfile } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentSnapshotError, type AgentFileDefinition } from './agent-file';
@@ -11,6 +12,7 @@ import {
   createFileAgentRuntime,
   UNSTARTED_RUN_REFERENCE_GRACE_MILLISECONDS,
 } from './agent-file-runtime';
+import { AGENT_REVISION_KEY_PREFIX } from './agent-revision-store';
 import {
   AGENT_RUN_REFERENCE_KEY_PREFIX,
   AGENT_SNAPSHOT_KEY_PREFIX,
@@ -77,6 +79,26 @@ describe('agentForRecordedRun', () => {
     expect(binding).toEqual({ id: 'helper', hash: 'aa', definition: DEFINITION });
     expect(readFileAgentBinding(agent)?.definition.instructions).toBe('Recorded instructions.\n');
     expect(agent).not.toBe(fixture.catalog.find('helper'));
+  });
+
+  it('rebuilds the agent with the revision the run recorded, whatever revision the file has reached', async () => {
+    const { fixture, runtime } = await start();
+    await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL }, 'Current file.\n'));
+    await fixture.catalog.refresh();
+    await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL }, 'Edited file.\n'));
+    await fixture.catalog.refresh();
+    await fixture.put('helper.md', agentFileText({ model: KNOWN_MODEL }, 'Edited again.\n'));
+    await fixture.catalog.refresh();
+    const current = fixture.catalog.find('helper');
+    await runtime.snapshots.recordRun(
+      { id: 'helper', hash: 'aa', definition: DEFINITION },
+      'run-1',
+    );
+
+    const { agent } = await runtime.agentForRecordedRun('helper', 'aa', 2);
+
+    expect(current && readGenerationProfile(current).revision).toBe(3);
+    expect(readGenerationProfile(agent).revision).toBe(2);
   });
 
   it('rebuilds a snapshot whose file is gone, and whose name a code agent has since taken', async () => {
@@ -151,9 +173,19 @@ describe('the persisted keys', () => {
       'steering-log:v1',
       'webhook-delivery:v1:',
     ];
-    const ours = [AGENT_SNAPSHOT_KEY_PREFIX, AGENT_RUN_REFERENCE_KEY_PREFIX];
-    expect(AGENT_SNAPSHOT_KEY_PREFIX.startsWith(AGENT_RUN_REFERENCE_KEY_PREFIX)).toBe(false);
-    expect(AGENT_RUN_REFERENCE_KEY_PREFIX.startsWith(AGENT_SNAPSHOT_KEY_PREFIX)).toBe(false);
+    const ours = [
+      AGENT_SNAPSHOT_KEY_PREFIX,
+      AGENT_RUN_REFERENCE_KEY_PREFIX,
+      AGENT_REVISION_KEY_PREFIX,
+    ];
+    for (const [left, right] of [
+      [AGENT_SNAPSHOT_KEY_PREFIX, AGENT_RUN_REFERENCE_KEY_PREFIX],
+      [AGENT_SNAPSHOT_KEY_PREFIX, AGENT_REVISION_KEY_PREFIX],
+      [AGENT_RUN_REFERENCE_KEY_PREFIX, AGENT_REVISION_KEY_PREFIX],
+    ] as const) {
+      expect(left.startsWith(right)).toBe(false);
+      expect(right.startsWith(left)).toBe(false);
+    }
     for (const prefix of ours) {
       expect(prefix).toMatch(/:v1:$/);
       for (const other of OTHER_PREFIXES) {
