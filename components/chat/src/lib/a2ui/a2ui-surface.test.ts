@@ -758,6 +758,33 @@ describe('review fixes', () => {
     });
     await flush();
 
-    expect(screen.getByRole('button', { name: 'Open dialog' })).not.toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Open dialog' });
+    await fireEvent.click(trigger);
+    await flush();
+    expect(screen.getByRole('dialog', { name: 'Dialog' })).not.toBeNull();
+  });
+
+  test('a Modal trigger Button with a failing check stays disabled', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'checked-trigger',
+        components: [
+          { id: 'root', component: 'Column', children: ['modal'] },
+          { id: 'modal', component: 'Modal', trigger: 'open', content: 'body' },
+          {
+            id: 'open',
+            component: 'Button',
+            child: 'open-text',
+            action: { event: { name: 'open' } },
+            checks: [{ condition: false, message: 'Fill in the form first' }],
+          },
+          { id: 'open-text', component: 'Text', text: 'Review' },
+          { id: 'body', component: 'Text', text: 'Details' },
+        ],
+      },
+    });
+    await flush();
+
+    expect(screen.getByRole('button', { name: 'Review' }).hasAttribute('disabled')).toBe(true);
   });
 });

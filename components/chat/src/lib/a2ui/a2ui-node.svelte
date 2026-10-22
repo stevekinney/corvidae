@@ -197,34 +197,35 @@
     typeof prop('trigger') === 'string' ? context.component(prop('trigger') as string) : undefined,
   );
 
-  /** A Modal's title: the trigger's own text, so the dialog is named after what opened it. */
-  function triggerTitle(trigger: A2uiComponent | undefined, seen: readonly string[] = []): string {
-    if (trigger === undefined || seen.includes(trigger.id)) return 'Dialog';
-    if (trigger.component === 'Text') return plainText(resolveString(trigger['text'], evaluation));
-    if (trigger.component === 'Button' && typeof trigger['child'] === 'string') {
-      return triggerTitle(context.component(trigger['child']), [...seen, trigger.id]);
-    }
-    return 'Dialog';
-  }
-
   /**
-   * The name of the button a non-interactive Modal trigger is wrapped in: the
-   * trigger's explicit name, else its own text, image description, or icon
-   * name, else a generic one, so the button is never unnamed.
+   * What a Modal's trigger is called, or `''`: its explicit name, else its own
+   * text, image description, or icon name (a Button's, its child's). Both the
+   * dialog's title and the name of the button a trigger is wrapped in come from
+   * here, each with its own fallback, so neither is ever empty.
    */
-  function wrappedTriggerName(trigger: A2uiComponent): string {
+  function triggerName(trigger: A2uiComponent | undefined, seen: readonly string[] = []): string {
+    if (trigger === undefined || seen.includes(trigger.id)) return '';
     const accessibility = trigger['accessibility'];
     const explicit =
       typeof accessibility === 'object' && accessibility !== null
-        ? plainText(resolveString(Reflect.get(accessibility, 'label'), evaluation))
+        ? plainText(resolveString(Reflect.get(accessibility, 'label'), evaluation)).trim()
         : '';
-    const own =
-      trigger.component === 'Text'
-        ? plainText(resolveString(trigger['text'], evaluation))
-        : trigger.component === 'Image'
-          ? plainText(resolveString(trigger['description'], evaluation))
-          : (iconButtonLabel(trigger.id) ?? '');
-    return explicit.trim() || own.trim() || 'Open dialog';
+    if (explicit !== '') return explicit;
+    switch (trigger.component) {
+      case 'Text':
+        return plainText(resolveString(trigger['text'], evaluation)).trim();
+      case 'Image':
+        return plainText(resolveString(trigger['description'], evaluation)).trim();
+      case 'Icon':
+        return iconButtonLabel(trigger.id) ?? '';
+      case 'Button':
+        return triggerName(
+          typeof trigger['child'] === 'string' ? context.component(trigger['child']) : undefined,
+          [...seen, trigger.id],
+        );
+      default:
+        return '';
+    }
   }
 
   /** An icon-only Button's name: its icon's name in words, since the icon itself is hidden. */
@@ -440,7 +441,7 @@
             variant="secondary"
             onclick={openModal}
             class="a2ui-leaf"
-            aria-label={wrappedTriggerName(triggerComponent)}
+            aria-label={triggerName(triggerComponent) || 'Open dialog'}
           >
             {@render child(prop('trigger'), scope, true)}
           </Button>
@@ -451,7 +452,11 @@
           <Button variant="secondary" onclick={openModal} class="a2ui-leaf">Open</Button>
         {/if}
       </span>
-      <Modal bind:open={modalOpen} title={triggerTitle(triggerComponent)} triggerRef={modalTrigger}>
+      <Modal
+        bind:open={modalOpen}
+        title={triggerName(triggerComponent) || 'Dialog'}
+        triggerRef={modalTrigger}
+      >
         {@render child(prop('content'))}
       </Modal>
     {:else if type === 'Button'}
@@ -462,7 +467,7 @@
           prop('variant'),
           report,
         )}
-        disabled={activate === undefined && checkMessage !== undefined}
+        disabled={checkMessage !== undefined}
         title={checkMessage}
         {...optional('aria-label', accessibleName ?? iconButtonLabel())}
         {...describedBy}
