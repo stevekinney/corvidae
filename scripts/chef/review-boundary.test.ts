@@ -15,7 +15,9 @@ import {
   capture,
   normalizeConfiguration,
   normalizeRelativePath,
+  parseCommandLine,
   readManifest,
+  UsageError,
   verify,
   type Accounting,
   type Manifest,
@@ -299,5 +301,48 @@ describe('readManifest', () => {
     const badPath = join(scratchRoot, '..', 'bad-manifest.json');
     writeFileSync(badPath, JSON.stringify({ not: 'a manifest' }));
     expect(() => readManifest(badPath)).toThrow(BoundaryError);
+  });
+});
+
+describe('parseCommandLine', () => {
+  const bad: string[][] = [
+    [],
+    ['bogus'],
+    ['capture'],
+    ['capture', '--configuration', 'c'],
+    ['verify', '--configuration', 'c'],
+    ['verify', '--before', 'b'],
+    // An unknown option is refused, not silently accepted.
+    ['capture', '--configuration', 'c', '--output', 'o', '--bogus', 'x'],
+    // A boolean-looking flag must not swallow the next argument and pass.
+    ['capture', '--configuration', 'c', '--output', 'o', '--json'],
+    ['verify', '--json', '--configuration', 'c', '--before', 'b'],
+    ['capture', '--configuration', 'c', '--output', 'o', 'stray'],
+    ['capture', '--configuration'],
+    // An option that lost its value to the next option.
+    ['capture', '--configuration', 'c', '--output', '--configuration', 'd'],
+    // `--accounting` belongs to verify only.
+    ['capture', '--configuration', 'c', '--output', 'o', '--accounting', 'a'],
+  ];
+  for (const argv of bad) {
+    test(`rejects ${JSON.stringify(argv)} as a usage error`, () => {
+      expect(() => parseCommandLine(argv)).toThrow(UsageError);
+    });
+  }
+
+  test('accepts the documented forms', () => {
+    const capture = parseCommandLine(['capture', '--configuration', 'c', '--output', 'o']);
+    expect(capture.command).toBe('capture');
+    expect(capture.options.values).toEqual({ configuration: 'c', output: 'o' });
+    const verify = parseCommandLine([
+      'verify',
+      '--configuration',
+      'c',
+      '--before',
+      'b',
+      '--accounting',
+      'a',
+    ]);
+    expect(verify.options.values).toEqual({ configuration: 'c', before: 'b', accounting: 'a' });
   });
 });

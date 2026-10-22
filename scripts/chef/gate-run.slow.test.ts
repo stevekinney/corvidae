@@ -81,6 +81,68 @@ describe('runGate', () => {
     },
   );
 
+  scenarios.scenario(
+    'records a clean tree at both ends, ignoring a log under an ignored directory',
+    () => {
+      writeFileSync(join(repository, '.gitignore'), 'tmp/\n');
+      defaultRunner(['git', 'add', '.'], { cwd: repository });
+      defaultRunner(['git', 'commit', '-q', '-m', 'ignore tmp'], {
+        cwd: repository,
+        env: gitEnvironment,
+      });
+      const log = join(repository, 'tmp', 'gate.log');
+      const result = runGate({
+        configPath,
+        worktree: repository,
+        log,
+        command: 'echo built > tmp/artifact',
+      });
+      expect(result.startClean).toBe(true);
+      expect(result.endClean).toBe(true);
+      expect(result.endHead).toBe(repositoryHead());
+      const summary = readGateLog(readFileSync(log, 'utf8'));
+      expect(summary.treeStart).toEqual({ clean: true, head: repositoryHead() });
+      expect(summary.treeEnd).toEqual({ clean: true, head: repositoryHead() });
+    },
+  );
+
+  scenarios.scenario(
+    'records a dirty start, a gate that dirties the tree, and a gate that moves HEAD',
+    () => {
+      writeFileSync(join(repository, 'untracked.txt'), 'dirt');
+      const dirtyStart = runGate({ configPath, worktree: repository, log: join(sandbox, 'a.log') });
+      expect(dirtyStart.startClean).toBe(false);
+      expect(readGateLog(readFileSync(join(sandbox, 'a.log'), 'utf8')).treeStart?.clean).toBe(
+        false,
+      );
+      rmSync(join(repository, 'untracked.txt'));
+
+      const dirtied = runGate({
+        configPath,
+        worktree: repository,
+        log: join(sandbox, 'b.log'),
+        command: 'echo changed > file.txt',
+      });
+      expect(dirtied.startClean).toBe(true);
+      expect(dirtied.endClean).toBe(false);
+      defaultRunner(['git', 'checkout', '--', 'file.txt'], { cwd: repository });
+
+      const before = repositoryHead();
+      const moved = runGate({
+        configPath,
+        worktree: repository,
+        log: join(sandbox, 'c.log'),
+        command: 'git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m moved',
+      });
+      expect(moved.head).toBe(before);
+      expect(moved.endHead).toBe(repositoryHead());
+      expect(moved.endHead).not.toBe(before);
+      const summary = readGateLog(readFileSync(join(sandbox, 'c.log'), 'utf8'));
+      expect(summary.treeStart?.head).toBe(before);
+      expect(summary.treeEnd?.head).toBe(repositoryHead());
+    },
+  );
+
   scenarios.scenario('--command overrides the configured gate, and the wrapper prefixes it', () => {
     writeConfig({ gateWrapper: 'env CHEF_WRAPPED=yes' });
     const log = join(sandbox, 'gate.log');
@@ -99,7 +161,9 @@ describe('runGate', () => {
     () => {
       const log = join(sandbox, 'gate.log');
       runGate({ configPath, worktree: repository, log, command: 'printf partial' });
-      expect(readFileSync(log, 'utf8')).toContain('partial\nGATE_RC=0\n');
+      expect(readFileSync(log, 'utf8')).toMatch(
+        /partial\nTREE_END clean=true head=[0-9a-f]{40}\nGATE_RC=0\n$/,
+      );
     },
   );
 

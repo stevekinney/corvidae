@@ -19,7 +19,7 @@
 
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { parseOptions, UsageError } from './process-runner.ts';
+import { emitResult, parseOptions, UsageError } from './process-runner.ts';
 
 export const LINE_WARNING_THRESHOLD = 300;
 
@@ -337,7 +337,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

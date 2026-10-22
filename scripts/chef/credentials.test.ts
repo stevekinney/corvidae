@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  createExecute,
   defaultKeychainServices,
+  isUsableValue,
   parseEnvironmentFile,
   resolveCredential,
   run,
@@ -288,5 +290,158 @@ describe('usage errors', () => {
     expect(() => run(['exec', 'K', '--'], dependencies)).toThrow(UsageError);
     expect(() => run(['exec', '--', 'true'], dependencies)).toThrow(UsageError);
     expect(() => run(['exec', 'K', '--json', '--', 'true'], dependencies)).toThrow(UsageError);
+  });
+});
+
+describe('a comment after an empty or unquoted value', () => {
+  test('starts at a hash at the start of the value or after whitespace, never inside a token', () => {
+    expect(parseEnvironmentFile('A= # just a comment\nB=# also a comment\nC=   #x')).toEqual({
+      A: '',
+      B: '',
+      C: '',
+    });
+    expect(parseEnvironmentFile('D=value # trailing\nE=a#b\nF=a\t# tab comment')).toEqual({
+      D: 'value',
+      E: 'a#b',
+      F: 'a',
+    });
+    // A quoted value keeps its hash, and what follows the closing quote is still ignored.
+    expect(parseEnvironmentFile('G="# kept" # dropped')).toEqual({ G: '# kept' });
+  });
+
+  test('an empty value is unavailable instead of resolving to the comment text', () => {
+    const { dependencies } = world({ files: { '/w/.env': 'K= # comment' }, worktreeRoot: '/w' });
+    expect(resolveCredential('K', {}, dependencies).source).toBe('unavailable');
+  });
+});
+
+describe('values that are not printable ASCII', () => {
+  test('isUsableValue accepts printable ASCII only', () => {
+    expect(isUsableValue(SECRET)).toBe(true);
+    for (const bad of [
+      '',
+      'a b',
+      ' a',
+      'a\n',
+      'a\tb',
+      'a\u0000b',
+      'caf\u00e9',
+      '\u201csecret\u201d',
+    ]) {
+      expect(isUsableValue(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  const badValues: Record<string, string> = {
+    'an embedded newline': `${SECRET}\n${SECRET}`,
+    'curly quotes': `\u201c${SECRET}\u201d`,
+    'an inner space': `${SECRET} ${SECRET}`,
+    'a NUL character': `${SECRET}\u0000`,
+  };
+
+  for (const [label, value] of Object.entries(badValues)) {
+    test(`an environment value with ${label} is ignored, and only its source is named`, () => {
+      const { dependencies } = world({ environment: { LINEAR_API_KEY: value } });
+      const resolution = resolveCredential('LINEAR_API_KEY', {}, dependencies);
+      expect(resolution).toEqual({
+        source: 'unavailable',
+        value: undefined,
+        rejected: ['environment'],
+      });
+      const resolve = run(['resolve', 'LINEAR_API_KEY'], dependencies);
+      expect(resolve.code).toBe(1);
+      expect(resolve.output).toContain(
+        'unavailable (the value in environment is not printable ASCII',
+      );
+      const json = run(['resolve', 'LINEAR_API_KEY', '--json'], dependencies);
+      expect(JSON.parse(json.output)).toEqual({
+        name: 'LINEAR_API_KEY',
+        source: 'unavailable',
+        found: false,
+        rejected: ['environment'],
+      });
+      const exec = run(['exec', 'LINEAR_API_KEY', '--', 'true'], dependencies);
+      expect(exec.code).toBe(3);
+      expect(exec.output).toContain('the value in environment is not printable ASCII');
+      for (const text of [resolve.output, json.output, exec.output]) {
+        expect(text).not.toContain(SECRET);
+      }
+    });
+  }
+
+  test('a .env value with an escaped newline or curly quotes is rejected without echoing it', () => {
+    const { dependencies } = world({
+      files: {
+        '/w/.env': [`ESCAPED="${SECRET}\\n${SECRET}"`, `CURLY=\u201c${SECRET}\u201d`].join('\n'),
+      },
+      worktreeRoot: '/w',
+    });
+    for (const name of ['ESCAPED', 'CURLY']) {
+      const resolution = run(['resolve', name], dependencies);
+      expect(resolution.code).toBe(1);
+      expect(resolution.output).toBe(
+        'unavailable (the value in .env:/w/.env is not printable ASCII without whitespace, so it was ignored)',
+      );
+      expect(resolution.output).not.toContain(SECRET);
+    }
+  });
+
+  test('a rejected source falls through to the next one, which supplies a usable value', () => {
+    const { dependencies } = world({
+      environment: { LINEAR_API_KEY: `${SECRET}\n` },
+      keychain: { 'linear-api/LINEAR_API_KEY': 'from-keychain-0123456789' },
+    });
+    expect(resolveCredential('LINEAR_API_KEY', {}, dependencies)).toEqual({
+      source: 'keychain',
+      value: 'from-keychain-0123456789',
+      rejected: ['environment'],
+    });
+    const result = run(['resolve', 'LINEAR_API_KEY'], dependencies);
+    expect(result).toEqual({ code: 0, output: 'keychain' });
+  });
+
+  test('exec never starts the command with a value that is not usable', () => {
+    const { dependencies, executed } = world({ environment: { K: 'two words' } });
+    expect(run(['exec', 'K', '--', 'true'], dependencies).code).toBe(3);
+    expect(executed).toEqual([]);
+  });
+});
+
+describe('createExecute', () => {
+  test('reports a spawn failure by name and code, never by a message that quotes the value', () => {
+    const messages: string[] = [];
+    const execute = createExecute(
+      () => {
+        throw Object.assign(new Error(`env value '${SECRET}' contains a NUL byte`), {
+          code: 'ERR_INVALID_ARG_VALUE',
+        });
+      },
+      (text) => messages.push(text),
+    );
+    expect(execute(['tool', '--flag'], { K: SECRET })).toBe(127);
+    expect(messages).toEqual(['could not run tool (Error ERR_INVALID_ARG_VALUE)\n']);
+    expect(messages.join('')).not.toContain(SECRET);
+  });
+
+  test('passes the added environment and inherits the streams, returning the exit code', () => {
+    const seen: unknown[] = [];
+    const execute = createExecute(
+      (command, options) => {
+        seen.push({ command, options });
+        return { exitCode: 5 };
+      },
+      () => undefined,
+    );
+    expect(execute(['tool'], { K: 'v' })).toBe(5);
+    expect(seen[0]).toMatchObject({
+      command: ['tool'],
+      options: { env: { K: 'v' }, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' },
+    });
+    expect(
+      createExecute(
+        () => ({ exitCode: null }),
+        () => undefined,
+      )(['tool'], {}),
+    ).toBe(1);
   });
 });

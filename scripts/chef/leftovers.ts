@@ -10,12 +10,21 @@
 //
 // `--config` (default `scripts/chef/repository.json`) supplies `lockPattern`. Worktree lookups use
 // `lsof +D`, which walks the whole directory tree, so a worktree with a large `node_modules`
-// takes a while.
+// takes a while. `lsof` exits 1 with no output when nothing matches; any other failure (not
+// installed, killed, an error on standard error) leaves the worktree unchecked, and an unchecked
+// worktree is reported with the reason and counted as found, never as empty.
 //
-// Exit codes: 0 nothing found, 1 something found, 2 invalid CLI usage.
+// Exit codes: 0 nothing found, 1 something found or a worktree could not be checked, 2 invalid CLI
+// usage.
 
 import { existsSync, realpathSync } from 'node:fs';
-import { defaultRunner, parseOptions, type Runner, UsageError } from './process-runner.ts';
+import {
+  defaultRunner,
+  emitResult,
+  parseOptions,
+  type Runner,
+  UsageError,
+} from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 
 export { UsageError };
@@ -28,7 +37,12 @@ export interface FoundProcess {
 export interface WorktreeLeftovers {
   path: string;
   processes: FoundProcess[];
+  /** Why the worktree could not be checked; present only then, and it counts as found. */
+  error?: string;
 }
+
+/** A lookup that could not run, so its absence of results says nothing. */
+export class ProbeError extends Error {}
 
 export interface PidStatus {
   pid: number;
@@ -97,7 +111,10 @@ export function findLockProcesses(
   return parsePgrep(result.stdout).filter((item) => item.pid !== ownPid);
 }
 
-/** Processes whose working directory or open files lie inside `directory`. */
+/**
+ * Processes whose working directory or open files lie inside `directory`. Throws `ProbeError` when
+ * `lsof` cannot answer: exit 1 with no output at all is the only "nothing found".
+ */
 export function findWorktreeProcesses(
   directory: string,
   runner: Runner = defaultRunner,
@@ -106,6 +123,11 @@ export function findWorktreeProcesses(
   // lsof compares against resolved paths, so a symlinked directory (macOS /tmp) must be resolved.
   const resolved = existsSync(directory) ? realpathSync(directory) : directory;
   const result = runner(['lsof', '-F', 'pc', '+D', resolved]);
+  const nothing = result.code === 1 && result.stdout.trim() === '' && result.stderr.trim() === '';
+  if (!nothing && result.code !== 0 && result.stdout.trim() === '') {
+    const detail = result.stderr.trim().split('\n').slice(-1)[0] ?? '';
+    throw new ProbeError(`lsof could not check ${resolved} (exit ${result.code}): ${detail}`);
+  }
   return parseLsofFields(result.stdout).filter((item) => item.pid !== ownPid);
 }
 
@@ -124,14 +146,18 @@ export function findLeftovers(
   const ownPid = dependencies.ownPid ?? process.pid;
   const lockProcesses =
     request.lockPattern === undefined ? [] : findLockProcesses(request.lockPattern, runner, ownPid);
-  const worktrees = (request.worktrees ?? []).map((path) => ({
-    path,
-    processes: findWorktreeProcesses(path, runner, ownPid),
-  }));
+  const worktrees = (request.worktrees ?? []).map((path): WorktreeLeftovers => {
+    try {
+      return { path, processes: findWorktreeProcesses(path, runner, ownPid) };
+    } catch (error) {
+      if (!(error instanceof ProbeError)) throw error;
+      return { path, processes: [], error: error.message };
+    }
+  });
   const pids = (request.pids ?? []).map((pid) => ({ pid, alive: isAlive(pid) }));
   const found =
     lockProcesses.length > 0 ||
-    worktrees.some((item) => item.processes.length > 0) ||
+    worktrees.some((item) => item.processes.length > 0 || item.error !== undefined) ||
     pids.some((item) => item.alive);
   return { lockProcesses, worktrees, pids, found };
 }
@@ -148,7 +174,11 @@ export function renderLeftovers(report: LeftoversReport): string {
   lines.push(`lock processes: ${report.lockProcesses.length}`);
   for (const item of report.lockProcesses) lines.push(renderProcess(item));
   for (const worktree of report.worktrees) {
-    lines.push(`worktree ${worktree.path}: ${worktree.processes.length} process(es)`);
+    lines.push(
+      worktree.error === undefined
+        ? `worktree ${worktree.path}: ${worktree.processes.length} process(es)`
+        : `worktree ${worktree.path}: could not be checked (${worktree.error})`,
+    );
     for (const item of worktree.processes) lines.push(renderProcess(item));
   }
   if (report.pids.length > 0) {
@@ -192,7 +222,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

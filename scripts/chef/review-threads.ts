@@ -19,7 +19,13 @@
 // TOTAL, GitHub failed, or a target is still unresolved, 2 invalid CLI usage.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { defaultRunner, parseOptions, type Runner, UsageError } from './process-runner.ts';
+import {
+  defaultRunner,
+  emitResult,
+  parseOptions,
+  type Runner,
+  UsageError,
+} from './process-runner.ts';
 
 export { UsageError };
 export type { Runner };
@@ -407,7 +413,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

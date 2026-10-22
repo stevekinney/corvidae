@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { rejectionOf, throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   blockIssue,
+  commentPageLimit,
   createClient,
   LinearError,
   normalizeMarkdown,
@@ -85,6 +86,12 @@ function fakeLinear() {
     mangleComment: false,
     dropRelation: false,
     ignoreDescription: false,
+    /** Linear reformats a comment the way it reformats a description. */
+    reformatComment: false,
+    /** More comments than the pages the reader will walk. */
+    endlessComments: false,
+    /** More relations than one page holds, in either direction. */
+    pagedRelations: false,
   };
   let counter = 100;
 
@@ -121,7 +128,10 @@ function fakeLinear() {
           issue: {
             comments: {
               nodes,
-              pageInfo: { hasNextPage: false, endCursor: null },
+              pageInfo: {
+                hasNextPage: switches.endlessComments,
+                endCursor: switches.endlessComments ? 'more' : null,
+              },
             },
           },
         };
@@ -143,7 +153,11 @@ function fakeLinear() {
         const comment = {
           id: `c-${(counter += 1)}`,
           issueId: variables['issueId'],
-          body: switches.mangleComment ? `${variables['body']}!!` : variables['body'],
+          body: switches.mangleComment
+            ? `${variables['body']}!!`
+            : switches.reformatComment
+              ? String(variables['body']).replace(/^\* /gm, '- ').replace(/_/g, '\\_')
+              : variables['body'],
           createdAt: `2026-10-22T11:${String(comments.length).padStart(2, '0')}:00Z`,
         };
         comments.push(comment);
@@ -241,6 +255,7 @@ function fakeLinear() {
                   type: relation.type,
                   relatedIssue: brief(find(relation.relatedIssueId)!),
                 })),
+              pageInfo: { hasNextPage: switches.pagedRelations },
             },
             inverseRelations: {
               nodes: relations
@@ -249,6 +264,7 @@ function fakeLinear() {
                   type: relation.type,
                   issue: brief(find(relation.issueId)!),
                 })),
+              pageInfo: { hasNextPage: false },
             },
           },
         };
@@ -395,6 +411,81 @@ describe('the client', () => {
   });
 });
 
+describe('a credential never reaches an output', () => {
+  // Bun's fetch rejects an invalid header with a message that quotes the whole value.
+  const quoting: FetchLike = async () => {
+    throw new TypeError(`Header 'Authorization' has invalid value: '${SECRET}'`);
+  };
+
+  test('a fetch error that quotes the key is reported by name only, in text and in JSON', async () => {
+    for (const argv of [
+      ['read', 'COR-1'],
+      ['read', 'COR-1', '--json'],
+    ]) {
+      const result = await run(argv, {
+        fetch: quoting,
+        environment: { LINEAR_API_KEY: SECRET },
+      });
+      expect(result.code).toBe(1);
+      expect(result.output).toContain('Linear request failed (TypeError)');
+      expect(result.output).not.toContain(SECRET);
+    }
+    const error = await rejectionOf(
+      createClient({ fetch: quoting, environment: { LINEAR_API_KEY: SECRET } }).request(
+        'query X { a }',
+      ),
+    );
+    expect(error).toBeInstanceOf(LinearError);
+    expect(String(error)).not.toContain(SECRET);
+  });
+
+  test('a key that is not printable ASCII is never sent, and is not echoed', async () => {
+    for (const bad of [
+      `${SECRET}\n`,
+      `${SECRET} ${SECRET}`,
+      `\u201c${SECRET}\u201d`,
+      `${SECRET}\u0000`,
+    ]) {
+      let sent = 0;
+      const counting: FetchLike = async () => {
+        sent += 1;
+        return Response.json({ data: {} });
+      };
+      const error = await rejectionOf(
+        run(['read', 'COR-1'], {
+          fetch: counting,
+          environment: { LINEAR_API_KEY: bad },
+          resolveKey: () => undefined,
+        }),
+      );
+      expect(error).toBeInstanceOf(UsageError);
+      expect((error as Error).message).toContain('not printable ASCII');
+      expect((error as Error).message).not.toContain(SECRET);
+      expect(sent).toBe(0);
+    }
+  });
+
+  test('an unusable environment value falls back to the resolver, which supplies a usable key', async () => {
+    const fake = fakeLinear();
+    const result = await run(['read', 'COR-1'], {
+      fetch: fake.fetch,
+      environment: { LINEAR_API_KEY: `${SECRET}\n` },
+      resolveKey: () => SECRET,
+    });
+    expect(result.code).toBe(0);
+    expect(fake.log.every((entry) => entry.authorization === SECRET)).toBe(true);
+    // A resolver that itself returns an unusable value is refused too.
+    const error = await rejectionOf(
+      run(['read', 'COR-1'], {
+        fetch: fake.fetch,
+        environment: {},
+        resolveKey: () => `${SECRET} two`,
+      }),
+    );
+    expect(error).toBeInstanceOf(UsageError);
+  });
+});
+
 describe('read', () => {
   test('reports state, updatedAt, the comment count and the first line of the last 3 comments in order', async () => {
     const fake = fakeLinear();
@@ -459,6 +550,18 @@ describe('comment', () => {
     expect(result.code).toBe(0);
     expect(fake.comments[0]!.body).toBe('  hello\n\n');
     expect(fake.log.some((entry) => entry.operation === 'CommentRead')).toBe(true);
+  });
+
+  test('accepts a comment Linear stored with its Markdown reformatted', async () => {
+    const fake = fakeLinear();
+    fake.switches.reformatComment = true;
+    const result = await run(
+      ['comment', 'COR-1', '--file', file('c.md', '* item_one\n* item_two\n')],
+      dependencies(fake),
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('posted (read back)');
+    expect(fake.comments[0]!.body).toBe('- item\\_one\n- item\\_two\n');
   });
 
   test('exits 1 when the stored comment differs', async () => {
@@ -609,6 +712,34 @@ describe('create', () => {
       ),
     ).toBe(1);
     expect(fake.issues).toHaveLength(2);
+  });
+});
+
+describe('reads that could silently omit entries', () => {
+  test('blockers fails loudly when a relation list has another page', async () => {
+    const fake = fakeLinear();
+    fake.switches.pagedRelations = true;
+    const result = await run(['blockers', 'COR-1'], dependencies(fake));
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('more than 100 relations');
+    expect(result.output).toContain('refusing to report a partial list');
+    const jsonResult = await run(['blockers', 'COR-1', '--json'], dependencies(fake));
+    expect(JSON.parse(jsonResult.output).ok).toBe(false);
+    // `block` reads the same lists, so it stops rather than add to a list it cannot see whole.
+    const blocked = await run(['block', 'COR-1', '--by', 'COR-2'], dependencies(fake));
+    expect(blocked.code).toBe(1);
+    expect(fake.relations).toEqual([]);
+  });
+
+  test('read fails loudly instead of reporting a partial comment list', async () => {
+    const fake = fakeLinear();
+    fake.switches.endlessComments = true;
+    const result = await run(['read', 'COR-1'], dependencies(fake));
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('more than 10000 comments');
+    expect(fake.log.filter((entry) => entry.operation === 'IssueComments')).toHaveLength(
+      commentPageLimit,
+    );
   });
 });
 

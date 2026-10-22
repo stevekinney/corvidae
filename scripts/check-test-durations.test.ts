@@ -110,6 +110,49 @@ describe('laneProblems', () => {
     expect(laneProblems('.', fanOut, false)).toEqual([]);
   });
 
+  test('requires every root slow file to be named by a test:self:slow pattern', () => {
+    const scripts = {
+      test: 'turbo run test:self test',
+      'test:self': "bun scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+      'test:self:slow': 'bun test ./scripts/chef/*.slow.test.ts',
+    };
+    const listed = ['scripts/chef/a.slow.test.ts', 'scripts/chef/b.slow.test.ts'];
+    expect(laneProblems('.', scripts, true, listed)).toEqual([]);
+    // A slow file elsewhere is ignored by the fast lane and unlisted by the slow lane.
+    const problems = laneProblems('.', scripts, true, [
+      ...listed,
+      'scripts/terminal/c.slow.test.ts',
+    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('scripts/terminal/c.slow.test.ts');
+    expect(problems[0]).toContain('test:self:slow does not run');
+    // Listing the directory, with or without quotes, covers it.
+    expect(
+      laneProblems(
+        '.',
+        {
+          ...scripts,
+          'test:self:slow':
+            "bun test './scripts/chef/*.slow.test.ts' ./scripts/terminal/*.slow.test.ts",
+        },
+        true,
+        [...listed, 'scripts/terminal/c.slow.test.ts'],
+      ),
+    ).toEqual([]);
+    // A workspace other than the root is not judged by the root's script.
+    expect(
+      laneProblems(
+        'w',
+        {
+          test: "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+          'test:slow': 'bun test .slow.test.ts',
+        },
+        true,
+        ['elsewhere/x.slow.test.ts'],
+      ),
+    ).toEqual([]);
+  });
+
   test('accepts the playground runner, which splits lanes by file name itself', () => {
     expect(
       laneProblems(

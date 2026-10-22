@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnWithHangGuard } from '../hang-guard.ts';
-import { defaultRunner } from './process-runner.ts';
+import { defaultRunner, type Runner } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import { createWorktree, Refusal, removeWorktree, run, UsageError } from './worktree.ts';
 
@@ -219,20 +219,74 @@ describe('removeWorktree', () => {
     expect(git(checkout, 'branch', '--list', 'feature/alpha')).not.toBe('');
   });
 
-  scenarios.scenario(
-    'refuses while a process has its working directory inside the worktree',
-    async () => {
-      const created = create();
-      const child = spawnWithHangGuard(['sleep', '30'], { cwd: join(created.path, 'src') });
-      children.push(child);
-      await Bun.sleep(150);
-      expect(() => remove()).toThrow(`${child.pid} sleep`);
-      expect(existsSync(created.path)).toBe(true);
-      child.kill();
-      await child.exited;
-      expect(remove().path).toBe(created.path);
-    },
-  );
+  /** Real Git; GitHub is answered by `pullRequest` so no test reaches the network. */
+  function removeWith(
+    pullRequest: { state: string; headRefOid: string } | undefined,
+    retired = false,
+  ) {
+    const runner: Runner = (command, options) =>
+      command[0] === 'gh'
+        ? pullRequest === undefined
+          ? { code: 1, stdout: '', stderr: 'no pull requests found' }
+          : { code: 0, stdout: JSON.stringify(pullRequest), stderr: '' }
+        : defaultRunner(command, options);
+    return removeWorktree(
+      { configPath, provider: 'claude', name: 'alpha', keepRemote: false, retired },
+      { checkout, runner },
+    );
+  }
+
+  function commitInWorktree(path: string) {
+    writeFileSync(join(path, 'src', 'work.txt'), 'unmerged work');
+    git(path, 'add', '.');
+    git(path, 'commit', '-q', '-m', 'work');
+    git(path, 'push', '-q', 'origin', 'feature/alpha');
+    return git(path, 'rev-parse', 'HEAD');
+  }
+
+  scenarios.scenario('refuses a branch with unmerged work and destroys nothing', () => {
+    const created = create();
+    const tip = commitInWorktree(created.path);
+    expect(() => removeWith({ state: 'OPEN', headRefOid: tip })).toThrow('is not delivered');
+    expect(existsSync(created.path)).toBe(true);
+    expect(git(checkout, 'rev-parse', 'refs/heads/feature/alpha')).toBe(tip);
+    expect(git(checkout, 'ls-remote', '--heads', 'origin', 'feature/alpha')).toContain(tip);
+  });
+
+  scenarios.scenario('removes a branch whose commits reached the default branch', () => {
+    const created = create();
+    const tip = commitInWorktree(created.path);
+    git(created.path, 'push', '-q', 'origin', `${tip}:main`);
+    expect(removeWith(undefined).branch).toBe('feature/alpha');
+    expect(git(checkout, 'branch', '--list', 'feature/alpha')).toBe('');
+  });
+
+  scenarios.scenario('removes a squash-merged branch only at the merged head', () => {
+    const created = create();
+    const tip = commitInWorktree(created.path);
+    // A squash merge puts the same content on main as a different commit.
+    git(checkout, 'fetch', '-q', 'origin');
+    const squash = join(sandbox, 'squash');
+    git(sandbox, 'clone', '-q', origin, squash);
+    mkdirSync(join(squash, 'src'), { recursive: true });
+    writeFileSync(join(squash, 'src', 'work.txt'), 'unmerged work');
+    git(squash, 'add', '.');
+    git(squash, 'commit', '-q', '-m', 'squashed');
+    git(squash, 'push', '-q', 'origin', 'HEAD:main');
+    expect(() => removeWith({ state: 'MERGED', headRefOid: 'f'.repeat(40) })).toThrow(
+      'not the local tip',
+    );
+    expect(existsSync(created.path)).toBe(true);
+    expect(removeWith({ state: 'MERGED', headRefOid: tip }).branch).toBe('feature/alpha');
+    expect(existsSync(created.path)).toBe(false);
+  });
+
+  scenarios.scenario('--retired removes a branch with unmerged work', () => {
+    const created = create();
+    commitInWorktree(created.path);
+    expect(removeWith({ state: 'OPEN', headRefOid: 'x' }, true).remoteDeleted).toBe(true);
+    expect(git(checkout, 'branch', '--list', 'feature/alpha')).toBe('');
+  });
 
   scenarios.scenario('refuses a name that is not a worktree', () => {
     expect(() => remove('ghost')).toThrow('is not a worktree under the claude root');
@@ -311,6 +365,32 @@ describe('run', () => {
     expect(() => runCli([])).toThrow(UsageError);
     expect(() => runCli(['create', '--config', configPath])).toThrow(UsageError);
   });
+});
+
+/**
+ * Last on purpose. Observed on Bun 1.4.2: in every run of this file, and in none when this
+ * scenario is removed, a command that starts about five seconds after the `sleep` child below was
+ * spawned is killed with SIGTERM by something outside the test (the cause is not identified). A
+ * scenario that ran after it would see a random `git` or `lsof` die, so nothing runs after it.
+ */
+describe('removeWorktree with a busy worktree', () => {
+  const remove = (name = 'alpha', keepRemote = false) =>
+    removeWorktree({ configPath, provider: 'claude', name, keepRemote }, { checkout });
+
+  scenarios.scenario(
+    'refuses while a process has its working directory inside the worktree',
+    async () => {
+      const created = create();
+      const child = spawnWithHangGuard(['sleep', '30'], { cwd: join(created.path, 'src') });
+      children.push(child);
+      await Bun.sleep(150);
+      expect(() => remove()).toThrow(`${child.pid} sleep`);
+      expect(existsSync(created.path)).toBe(true);
+      child.kill();
+      await child.exited;
+      expect(remove().path).toBe(created.path);
+    },
+  );
 });
 
 await scenarios.settled();

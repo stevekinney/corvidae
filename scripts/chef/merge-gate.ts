@@ -11,7 +11,9 @@
 //   1. fetch          `git fetch origin <default>`;
 //   2. head           the worktree's HEAD equals the pull request's `headRefOid`, and it is open;
 //   3. contains-base  HEAD contains `origin/<default>`;
-//   4. gate           the gate log's exit code is 0 and its HEAD equals the pull request's head;
+//   4. gate           the gate log's exit code is 0, its HEAD equals the pull request's head, and the
+//                     worktree was clean (`git status --porcelain` empty) at the start and at the end
+//                     of the run with HEAD unmoved (start head = end head = the pull request's head);
 //   5. threads        every review thread is resolved, and SEEN equals TOTAL;
 //   6. comment        post the comment file (skipped with --dry-run);
 //   7. refetch        fetch again; HEAD still contains `origin/<default>`;
@@ -28,6 +30,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readGateLog } from './gate-run.ts';
 import {
   defaultRunner,
+  emitResult,
   parseOptions,
   requireOption,
   type Runner,
@@ -174,13 +177,36 @@ export function mergeGate(
   const summary = readGateLog(readFileSync(options.gateLog, 'utf8'));
   report.gateRc = summary.exitCode ?? null;
   if (summary.exitCode === undefined)
-    return fail('gate', `${options.gateLog} holds no exit code (still running or cut off).`);
+    return fail(
+      'gate',
+      `${options.gateLog} holds no exit code (${summary.problem ?? 'still running or cut off'}).`,
+    );
   if (summary.exitCode !== 0) return fail('gate', `the gate exited ${summary.exitCode}.`);
   if (summary.head !== head)
     return fail(
       'gate',
       `the gate ran at ${summary.head?.slice(0, 12) ?? 'an unknown commit'}, not at ${head.slice(0, 12)}.`,
     );
+  for (const [label, tree] of [
+    ['start', summary.treeStart],
+    ['end', summary.treeEnd],
+  ] as const) {
+    if (tree === undefined)
+      return fail(
+        'gate',
+        `the gate log records no single TREE_${label.toUpperCase()} line, so the tree at the ${label} is unknown.`,
+      );
+    if (tree.clean !== true)
+      return fail(
+        'gate',
+        `the worktree was ${tree.clean === false ? 'dirty' : 'in an unknown state'} at the ${label} of the gate run, so the result may not describe the commit.`,
+      );
+    if (tree.head !== head)
+      return fail(
+        'gate',
+        `HEAD was ${tree.head.slice(0, 12)} at the ${label} of the gate run, not ${head.slice(0, 12)}.`,
+      );
+  }
 
   // 5. threads
   let listing;
@@ -325,7 +351,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

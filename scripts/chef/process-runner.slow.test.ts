@@ -40,4 +40,26 @@ scenarios.scenario('shellQuote round-trips awkward text through a shell', () => 
   expect(defaultRunner(['sh', '-c', `printf %s ${shellQuote(text)}`]).stdout).toBe(text);
 });
 
+scenarios.scenario(
+  'defaultRunner reports a spawn that throws without quoting the environment value',
+  () => {
+    // Bun rejects a NUL byte in an environment value and quotes the value in the error it throws.
+    const SECRET = 'FAKE-credential-0123456789';
+    const result = defaultRunner(['true'], { env: { CHEF_PLUMBING_TEST: `${SECRET}\u0000` } });
+    expect(result.code).toBe(127);
+    expect(result.stderr).toContain('could not start the command');
+    expect(result.stderr).not.toContain(SECRET);
+    expect(result.stdout).not.toContain(SECRET);
+  },
+);
+
+scenarios.scenario(
+  'defaultRunner reports a process killed by a signal as 128 plus the signal',
+  () => {
+    const result = defaultRunner(['sh', '-c', 'kill -TERM $$']);
+    expect(result.code).toBe(143);
+    expect(result.stderr).toContain('terminated by signal SIGTERM');
+  },
+);
+
 await scenarios.settled();

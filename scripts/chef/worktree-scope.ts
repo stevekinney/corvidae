@@ -9,7 +9,8 @@
 //   bun scripts/chef/worktree-scope.ts capture --configuration <json> --output <json>
 //   bun scripts/chef/worktree-scope.ts verify --configuration <json> --before <json>
 //
-// Exit codes: 0 accepted, 1 scope or evidence failure, 2 invalid CLI usage.
+// Exit codes: 0 accepted, 1 scope or evidence failure, 2 invalid CLI usage (an unknown command or
+// option, a missing required option or value). The report is one JSON object on stdout.
 
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -23,6 +24,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, resolve as resolvePath, sep } from 'node:path';
+import { parseOptions, requireOption, UsageError, type ParsedOptions } from './process-runner.ts';
+
+export { UsageError };
 
 export interface ScopeConfiguration {
   root: string;
@@ -63,7 +67,6 @@ export interface ScopeReport {
 }
 
 export class ScopeError extends Error {}
-export class UsageError extends Error {}
 
 const permissionMask = 0o777;
 
@@ -384,22 +387,33 @@ export function verify(config: ScopeConfiguration, before: ScopeEvidence): Scope
 
 // --- CLI ------------------------------------------------------------------------
 
-function parseFlags(argv: string[]): Record<string, string> {
-  const flags: Record<string, string> = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token?.startsWith('--')) throw new UsageError(`unexpected argument: ${token}`);
-    const value = argv[index + 1];
-    if (value === undefined || value.startsWith('--'))
-      throw new UsageError(`missing value for ${token}`);
-    flags[token.slice(2)] = value;
-    index += 1;
+/** The command and its options; an unknown command or option or a missing required one is a `UsageError`. */
+export function parseCommandLine(argv: string[]): {
+  command: 'capture' | 'verify';
+  options: ParsedOptions;
+} {
+  const [command, ...rest] = argv;
+  if (command !== 'capture' && command !== 'verify') {
+    throw new UsageError(
+      `unknown command: ${command ?? '<none>'}. Expected 'capture' or 'verify'.`,
+    );
   }
-  return flags;
+  const options = parseOptions(rest, {
+    values: command === 'capture' ? ['configuration', 'output'] : ['configuration', 'before'],
+  });
+  if (options.positionals.length > 0)
+    throw new UsageError(`unexpected argument: ${options.positionals[0]}`);
+  // An option followed by another option has lost its value; `--output --configuration x` must not
+  // create a file named `--configuration`.
+  for (const [name, value] of Object.entries(options.values)) {
+    if (value.startsWith('--')) throw new UsageError(`missing value for --${name}`);
+  }
+  requireOption(options, 'configuration');
+  requireOption(options, command === 'capture' ? 'output' : 'before');
+  return { command, options };
 }
 
-function readConfiguration(flagValue: string | undefined): ScopeConfiguration {
-  if (!flagValue) throw new UsageError('missing required --configuration argument');
+function readConfiguration(flagValue: string): ScopeConfiguration {
   let raw: string;
   try {
     raw = readFileSync(flagValue, 'utf8');
@@ -416,26 +430,20 @@ function readConfiguration(flagValue: string | undefined): ScopeConfiguration {
 }
 
 export function main(argv: string[]): number {
-  const [command, ...rest] = argv;
   try {
-    if (command !== 'capture' && command !== 'verify') {
-      throw new UsageError(
-        `unknown command: ${command ?? '<none>'}. Expected 'capture' or 'verify'.`,
-      );
-    }
-    const flags = parseFlags(rest);
-    const configuration = readConfiguration(flags['configuration']);
+    const { command, options } = parseCommandLine(argv);
+    const configuration = readConfiguration(requireOption(options, 'configuration'));
 
     if (command === 'capture') {
-      if (!flags['output']) throw new UsageError('missing required --output argument');
-      const evidence = capture(configuration, flags['output']);
+      const output = requireOption(options, 'output');
+      const evidence = capture(configuration, output);
       console.log(
         JSON.stringify(
           {
             ok: true,
             captureId: evidence.captureId,
             head: evidence.head,
-            output: resolvePath(flags['output']),
+            output: resolvePath(output),
           },
           null,
           2,
@@ -444,8 +452,7 @@ export function main(argv: string[]): number {
       return 0;
     }
 
-    if (!flags['before']) throw new UsageError('missing required --before argument');
-    const report = verify(configuration, readEvidence(flags['before']));
+    const report = verify(configuration, readEvidence(requireOption(options, 'before')));
     console.log(JSON.stringify(report, null, 2));
     return report.errors.length > 0 ? 1 : 0;
   } catch (error) {
@@ -463,5 +470,5 @@ export function main(argv: string[]): number {
 }
 
 if (import.meta.main) {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = main(process.argv.slice(2));
 }

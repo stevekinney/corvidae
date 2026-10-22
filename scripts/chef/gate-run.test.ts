@@ -21,6 +21,50 @@ describe('readGateLog', () => {
   test('ignores an exit-code lookalike that is not on its own line, and takes the last one', () => {
     expect(readGateLog('the GATE_RC=0 string inside output\n').exitCode).toBeUndefined();
     expect(readGateLog('GATE_RC=1\nmore\nGATE_RC=0\n').exitCode).toBe(0);
+    expect(readGateLog('GATE_RC=0\nmore\n').exitCode).toBeUndefined();
+  });
+
+  test('withholds the head and exit code from a log that holds two runs', () => {
+    // Pairing the first run's failing head with the second run's passing code is the defect.
+    const summary = readGateLog('HEAD aaa LOAD 1\nGATE_RC=1\nHEAD bbb LOAD 2\nGATE_RC=0\n');
+    expect(summary.head).toBeUndefined();
+    expect(summary.load).toBeUndefined();
+    expect(summary.exitCode).toBeUndefined();
+    expect(summary.problem).toContain('2 HEAD lines');
+    expect(renderGateSummary(summary)).toContain('2 HEAD lines');
+    expect(readGateLog('HEAD aaa LOAD 1\nGATE_RC=0\n').problem).toBeUndefined();
+  });
+
+  test('takes the exit code only from the last non-empty line', () => {
+    // The gate printed an exit-code lookalike and then more output, or was cut off after it.
+    expect(
+      readGateLog('HEAD a LOAD 1\nGATE_RC=0\nthe gate kept printing\n').exitCode,
+    ).toBeUndefined();
+    expect(readGateLog('HEAD a LOAD 1\nvalidate exit=0\n(fail) later\n').exitCode).toBeUndefined();
+    expect(readGateLog('HEAD a LOAD 1\nGATE_RC=3\n\n  \n').exitCode).toBe(3);
+  });
+
+  test('reads the tree state at the start and end, and only from exactly one line of each', () => {
+    const log = [
+      'HEAD abc LOAD 1',
+      'TREE_START clean=true head=abc',
+      'output',
+      'TREE_END clean=false head=def',
+      'GATE_RC=0',
+    ].join('\n');
+    const summary = readGateLog(log);
+    expect(summary.treeStart).toEqual({ clean: true, head: 'abc' });
+    expect(summary.treeEnd).toEqual({ clean: false, head: 'def' });
+    expect(renderGateSummary(summary)).toContain('tree: start clean at abc, end dirty at def');
+    expect(readGateLog('TREE_START clean=unknown head=abc\nGATE_RC=0\n').treeStart).toEqual({
+      clean: undefined,
+      head: 'abc',
+    });
+    const duplicated = readGateLog(
+      'HEAD abc LOAD 1\nTREE_START clean=true head=abc\nTREE_START clean=true head=abc\nGATE_RC=0\n',
+    );
+    expect(duplicated.treeStart).toBeUndefined();
+    expect(readGateLog('HEAD abc LOAD 1\nGATE_RC=0\n').treeEnd).toBeUndefined();
   });
 
   test('reads head and load from the first line', () => {
@@ -79,6 +123,8 @@ describe('read exit code', () => {
       expect(code('HEAD abc LOAD 1\nGATE_RC=2\n')).toBe(1);
       // Still running, or cut off: never inferred to have passed.
       expect(code('HEAD abc LOAD 1\nstill going\n')).toBe(1);
+      // Two runs in one file: neither exit code can be attributed to a head.
+      expect(code('HEAD a LOAD 1\nGATE_RC=1\nHEAD b LOAD 1\nGATE_RC=0\n')).toBe(1);
       expect(run(['read', join(sandbox, 'gate.log')]).output).toContain('exit code: none');
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
@@ -109,6 +155,8 @@ describe('runGate with a fake runner', () => {
       );
       const commands: string[][] = [];
       let lockChecks = 0;
+      let statusCalls = 0;
+      let headCalls = 0;
       const runner: Runner = (command) => {
         commands.push(command);
         if (command[0] === 'pgrep') {
@@ -117,7 +165,16 @@ describe('runGate with a fake runner', () => {
             ? { code: 0, stdout: '77 held lock\n', stderr: '' }
             : { code: 1, stdout: '', stderr: '' };
         }
-        if (command[0] === 'git') return { code: 0, stdout: 'abc123\n', stderr: '' };
+        if (command[1] === 'status') {
+          statusCalls += 1;
+          // Clean before the gate, a modified file after it.
+          return { code: 0, stdout: statusCalls === 1 ? '' : ' M changed.ts\n', stderr: '' };
+        }
+        if (command[0] === 'git') {
+          headCalls += 1;
+          // The gate moves HEAD: the first two reads precede it, the third follows it.
+          return { code: 0, stdout: headCalls <= 2 ? 'abc123\n' : 'def456\n', stderr: '' };
+        }
         return { code: 4, stdout: '', stderr: '' };
       };
       const log = join(sandbox, 'gate.log');
@@ -125,12 +182,24 @@ describe('runGate with a fake runner', () => {
         { configPath, worktree, log },
         { runner, load: () => 1.5, sleep: () => undefined },
       );
-      expect(result).toEqual({ code: 4, head: 'abc123', waits: 1 });
+      expect(result).toEqual({
+        code: 4,
+        head: 'abc123',
+        waits: 1,
+        startClean: true,
+        endClean: false,
+        endHead: 'def456',
+      });
       const text = readFileSync(log, 'utf8');
       expect(text.split('\n')[0]).toBe('HEAD abc123 LOAD 1.50');
       expect(text).toContain('lock held by 77');
-      expect(text.endsWith('GATE_RC=4\n')).toBe(true);
-      const gate = commands.at(-1) ?? [];
+      expect(text.endsWith('TREE_END clean=false head=def456\nGATE_RC=4\n')).toBe(true);
+      expect(text).toContain('TREE_START clean=true head=abc123\n');
+      const summary = readGateLog(text);
+      expect(summary.treeStart).toEqual({ clean: true, head: 'abc123' });
+      expect(summary.treeEnd).toEqual({ clean: false, head: 'def456' });
+      expect(summary.exitCode).toBe(4);
+      const gate = commands.find((command) => command[0] === 'sh') ?? [];
       expect(gate.slice(0, 2)).toEqual(['sh', '-c']);
       expect(gate[2]).toStartWith("wrap sh -c 'the-gate' >> ");
     } finally {

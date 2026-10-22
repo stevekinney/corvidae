@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { rejectionOf } from '../promise-outcome.test-support.ts';
 import {
   buildQuestion,
   defaultThreshold,
@@ -230,10 +231,30 @@ describe('decide', () => {
     expect(owner.code).toBe(1);
     expect(owner.output).toContain('BELOW THRESHOLD');
     expect(owner.output).toContain('threshold=0.90 kind=owner');
-    const override = await run([...yesNo, '--kind', 'owner', '--threshold', '0.8'], {
+    // A threshold may be raised for one call: 0.87 clears 0.86 for a routine call, not 0.95.
+    const raised = await run([...yesNo, '--threshold', '0.95'], {
       ...server([answer()]).dependencies,
     });
-    expect(override.code).toBe(0);
+    expect(raised.code).toBe(1);
+    expect(raised.output).toContain('threshold=0.95');
+    const raisedOwner = await run([...yesNo, '--kind', 'owner', '--threshold', '0.9'], {
+      ...server([answer()]).dependencies,
+    });
+    expect(raisedOwner.code).toBe(1);
+  });
+
+  test('--threshold below the kind default is a usage error and sends nothing', async () => {
+    const { dependencies, sent } = server([wireResponse({ type: 'noul', noul: 0.87 })]);
+    for (const extra of [
+      ['--threshold', '0.8'],
+      ['--kind', 'routine', '--threshold', '0.84'],
+      ['--kind', 'owner', '--threshold', '0.89'],
+      ['--kind', 'owner', '--threshold', '0.85'],
+    ]) {
+      const error = await rejectionOf(run([...yesNo, ...extra], dependencies));
+      expect(error, extra.join(' ')).toBeInstanceOf(UsageError);
+    }
+    expect(sent).toEqual([]);
   });
 
   test('a confident no is a decision too', async () => {
@@ -442,6 +463,7 @@ describe('usage', () => {
       [...base, '--yes-no', '--choice', 'a=1', '--choice', 'b=2'],
       [...base, '--yes-no', '--kind', 'boss'],
       [...base, '--yes-no', '--threshold', '2'],
+      [...base, '--yes-no', '--threshold', '0.5'],
       [...base, '--choice', 'a=1'],
       [...base, '--scale', 'a'],
       ['decide', '--question', 'Q?', '--state', 's', '--state-file', 'f', '--yes-no'],

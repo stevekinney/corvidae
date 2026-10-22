@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import {
   findLeftovers,
   findLockProcesses,
+  findWorktreeProcesses,
   parseLsofFields,
   parsePgrep,
+  ProbeError,
   renderLeftovers,
   run,
   UsageError,
@@ -127,5 +129,56 @@ describe('run', () => {
     expect(text.split('\n').length).toBeLessThanOrEqual(8);
     expect(text).toContain('...');
     expect(text).toContain('pids gone: 3');
+  });
+});
+
+describe('findWorktreeProcesses fails closed', () => {
+  const answer =
+    (code: number, stdout: string, stderr: string): Runner =>
+    () => ({ code, stdout, stderr });
+
+  test('lsof exiting 1 with no output at all means nothing is there', () => {
+    expect(findWorktreeProcesses(sandbox, answer(1, '', ''), 0)).toEqual([]);
+  });
+
+  test('lsof output is parsed whether it exited 0 or 1 with warnings', () => {
+    const found = [{ pid: 10, command: 'sleep' }];
+    expect(findWorktreeProcesses(sandbox, answer(0, 'p10\ncsleep\n', ''), 0)).toEqual(found);
+    expect(findWorktreeProcesses(sandbox, answer(1, 'p10\ncsleep\n', 'lsof: WARNING'), 0)).toEqual(
+      found,
+    );
+  });
+
+  test('a missing lsof (exit 127) or an error on stderr is unknown, not empty', () => {
+    for (const runner of [
+      answer(127, '', 'could not start the command (Error ENOENT)'),
+      answer(1, '', 'lsof: no pwd entry for UID 501'),
+      answer(2, '', ''),
+    ]) {
+      const error = (() => {
+        try {
+          findWorktreeProcesses(sandbox, runner, 0);
+        } catch (reason) {
+          return reason;
+        }
+        return undefined;
+      })();
+      expect(error).toBeInstanceOf(ProbeError);
+      expect((error as Error).message).toContain('lsof could not check');
+    }
+  });
+
+  test('findLeftovers reports an unchecked worktree as found, with the reason', () => {
+    const report = findLeftovers(
+      { worktrees: [sandbox] },
+      { runner: answer(127, '', 'could not start the command (Error ENOENT)') },
+    );
+    expect(report.found).toBe(true);
+    expect(report.worktrees[0]?.processes).toEqual([]);
+    expect(report.worktrees[0]?.error).toContain('lsof could not check');
+    const text = renderLeftovers(report);
+    expect(text).toContain('could not be checked');
+    expect(text).toContain('Leftovers found.');
+    expect(run(['--worktree', sandbox], { runner: answer(127, '', 'x') }).code).toBe(1);
   });
 });

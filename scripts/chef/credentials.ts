@@ -10,6 +10,20 @@
 //   4. a `.env` file in the main checkout's root (the parent of Git's common directory);
 //   5. unavailable.
 //
+// A value is usable only when it is printable ASCII with no whitespace and no control character.
+// Anything else (a trailing newline, curly quotes pasted into a `.env`, a NUL) would make the HTTP
+// or spawn layer reject it with an error message that quotes the whole value, so the resolver
+// treats that source as holding nothing, goes on to the next one, and names only the source it
+// rejected. No error raised on a path that handles a value reports its message (`describeError`).
+//
+// Bun loads `.env` from the current directory into `process.env` before any script runs, and no
+// setting scoped to these scripts turns that off: `bun --no-env-file` is a flag of the `bun`
+// command, and `env = false` in `bunfig.toml` would change every script in the repository. So a
+// value that came from `./.env` is reported as `environment`, not `.env:<path>`, when the script
+// runs from a directory that holds one. The value and its precedence are unchanged; only the label
+// differs. Pass `--no-env-file` to `bun` (`bun --no-env-file scripts/chef/credentials.ts ...`) to
+// see the true source.
+//
 // Usage:
 //   bun scripts/chef/credentials.ts resolve <NAME> [--keychain-service <service>] [--json]
 //   bun scripts/chef/credentials.ts exec <NAME> [--keychain-service <service>] -- <command...>
@@ -29,7 +43,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
-import { defaultRunner, parseOptions, type Runner, UsageError } from './process-runner.ts';
+import {
+  defaultRunner,
+  describeError,
+  emitResult,
+  parseOptions,
+  type Runner,
+  UsageError,
+} from './process-runner.ts';
 import { resolveMainCheckout, resolveWorktreeRoot } from './repository-locations.ts';
 
 export const defaultKeychainServices: Readonly<Record<string, string>> = {
@@ -46,6 +67,13 @@ export interface Resolution {
   source: CredentialSource;
   /** Held in memory for the caller to pass on; no function in this module prints or logs it. */
   value: string | undefined;
+  /** Sources that held a value that is not printable ASCII and were skipped; absent when none. */
+  rejected?: CredentialSource[];
+}
+
+/** Whether `value` is printable ASCII with no whitespace or control character: safe in a header. */
+export function isUsableValue(value: string): boolean {
+  return /^[\x21-\x7e]+$/.test(value);
 }
 
 export interface CredentialDependencies {
@@ -121,7 +149,8 @@ function parseValue(rest: string): string {
     }
     return value;
   }
-  const comment = /\s#/.exec(rest);
+  // A comment starts at a `#` that begins the value or follows whitespace; `b#c` is one token.
+  const comment = /(?:^|\s)#/.exec(rest);
   return (comment === null ? rest : rest.slice(0, comment.index)).trim();
 }
 
@@ -138,9 +167,19 @@ export function resolveCredential(
 ): Resolution {
   validateName(name);
   const dependencies = { ...defaultCredentialDependencies(), ...partial };
-  const fromEnvironment = dependencies.environment[name];
-  if (fromEnvironment !== undefined && fromEnvironment !== '')
-    return { source: 'environment', value: fromEnvironment };
+  const rejected: CredentialSource[] = [];
+  const extra = () => (rejected.length === 0 ? {} : { rejected });
+  /** The value when it is usable; otherwise the source is recorded as rejected, by name only. */
+  const usable = (source: CredentialSource, value: string | undefined): string | undefined => {
+    if (value === undefined || value === '') return undefined;
+    if (isUsableValue(value)) return value;
+    rejected.push(source);
+    return undefined;
+  };
+
+  const fromEnvironment = usable('environment', dependencies.environment[name]);
+  if (fromEnvironment !== undefined)
+    return { source: 'environment', value: fromEnvironment, ...extra() };
 
   const service = options.keychainService ?? defaultKeychainServices[name];
   if (service !== undefined && dependencies.platform === 'darwin' && dependencies.hasSecurity()) {
@@ -153,8 +192,8 @@ export function resolveCredential(
       name,
       '-w',
     ]);
-    const value = result.stdout.trim();
-    if (result.code === 0 && value !== '') return { source: 'keychain', value };
+    const value = usable('keychain', result.code === 0 ? result.stdout.trim() : undefined);
+    if (value !== undefined) return { source: 'keychain', value, ...extra() };
   }
 
   const roots: string[] = [];
@@ -165,10 +204,19 @@ export function resolveCredential(
     const path = join(root, '.env');
     const text = dependencies.readFile(path);
     if (text === undefined) continue;
-    const value = parseEnvironmentFile(text)[name];
-    if (value !== undefined && value !== '') return { source: `.env:${path}`, value };
+    const source: CredentialSource = `.env:${path}`;
+    const value = usable(source, parseEnvironmentFile(text)[name]);
+    if (value !== undefined) return { source, value, ...extra() };
   }
-  return { source: 'unavailable', value: undefined };
+  return { source: 'unavailable', value: undefined, ...extra() };
+}
+
+/** Why a resolution skipped sources, for a message: names the sources, never the values. */
+export function describeRejected(resolution: Resolution): string {
+  const sources = resolution.rejected ?? [];
+  return sources.length === 0
+    ? ''
+    : `the value in ${sources.join(' and ')} is not printable ASCII without whitespace, so it was ignored`;
 }
 
 export interface CredentialRunDependencies extends CredentialDependencies {
@@ -176,15 +224,37 @@ export interface CredentialRunDependencies extends CredentialDependencies {
   execute: (command: string[], environment: Record<string, string>) => number;
 }
 
-function defaultExecute(command: string[], environment: Record<string, string>): number {
-  const result = Bun.spawnSync(command, {
-    env: { ...rootScriptEnvironment(), ...environment },
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
-  return result.exitCode ?? 1;
+type Spawn = (
+  command: string[],
+  options: Parameters<typeof Bun.spawnSync>[1],
+) => { exitCode: number | null };
+
+/**
+ * Run a command with `environment` added to this process's, inheriting its streams. `Bun.spawnSync`
+ * can quote a rejected environment value in the error it throws, so a failure is reported by the
+ * error's name and code and the exit code is 127.
+ */
+export function createExecute(
+  spawn: Spawn = (command, options) => Bun.spawnSync(command, options),
+  writeError: (text: string) => unknown = (text) => process.stderr.write(text),
+): (command: string[], environment: Record<string, string>) => number {
+  return (command, environment) => {
+    try {
+      const result = spawn(command, {
+        env: { ...rootScriptEnvironment(), ...environment },
+        stdin: 'inherit',
+        stdout: 'inherit',
+        stderr: 'inherit',
+      });
+      return result.exitCode ?? 1;
+    } catch (error) {
+      writeError(`could not run ${command[0] ?? 'the command'} (${describeError(error)})\n`);
+      return 127;
+    }
+  };
 }
+
+const defaultExecute = createExecute();
 
 export function run(
   argv: string[],
@@ -211,11 +281,19 @@ export function run(
 
   if (command === 'resolve') {
     const found = resolution.source !== 'unavailable';
+    const rejected = resolution.rejected ?? [];
     return {
       code: found ? 0 : 1,
       output: parsed.flags.has('json')
-        ? JSON.stringify({ name, source: resolution.source, found })
-        : resolution.source,
+        ? JSON.stringify({
+            name,
+            source: resolution.source,
+            found,
+            ...(rejected.length === 0 ? {} : { rejected }),
+          })
+        : found || rejected.length === 0
+          ? resolution.source
+          : `${resolution.source} (${describeRejected(resolution)})`,
     };
   }
 
@@ -224,7 +302,12 @@ export function run(
   if (resolution.value === undefined)
     return {
       code: 3,
-      output: `${name} is unavailable: checked the environment, the Keychain and .env files.`,
+      output: [
+        `${name} is unavailable: checked the environment, the Keychain and .env files.`,
+        describeRejected(resolution),
+      ]
+        .filter((line) => line !== '')
+        .join(' '),
     };
   const execute = partial.execute ?? defaultExecute;
   return { code: execute(program, { [name]: resolution.value }), output: '' };
@@ -233,7 +316,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    if (output !== '') (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

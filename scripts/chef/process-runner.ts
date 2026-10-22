@@ -3,10 +3,13 @@
 // command (`git`, `gh`, `pgrep`, `lsof`, a repository's gate command). A script takes a `Runner`
 // and defaults to `defaultRunner`, so its tests substitute a fake and never reach a real
 // repository, host or process. The module also holds the pieces every script shares: the
-// `UsageError` that maps to exit 2, a shell-quoting helper, and a small option parser.
+// `UsageError` that maps to exit 2, a shell-quoting helper, a small option parser, the
+// `describeError` that keeps a credential out of a failure message, and `emitResult`, which decides
+// whether a script's result goes to standard output or standard error.
 //
 // This module is a library; it has no command line.
 
+import { constants as osConstants } from 'node:os';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
 
 export class UsageError extends Error {}
@@ -35,6 +38,23 @@ function definedEntries(environment: Record<string, string | undefined>): Record
 }
 
 /**
+ * The exit code and standard error of a finished process. One killed by a signal has no exit code;
+ * reporting it as exit 1 with nothing on standard error made a killed `lsof` look like "no process
+ * found", so it is the shell's `128 + signal` with the signal named.
+ */
+function exitStatus(result: {
+  exitCode: number | null;
+  signalCode?: string | null;
+  stderr: { toString(): string };
+}): { code: number; stderr: string } {
+  const stderr = result.stderr.toString();
+  if (result.exitCode !== null) return { code: result.exitCode, stderr };
+  const signal = result.signalCode ?? 'unknown';
+  const number = (osConstants.signals as Record<string, number | undefined>)[signal] ?? 0;
+  return { code: 128 + number, stderr: `${stderr}terminated by signal ${signal}\n` };
+}
+
+/**
  * Run `command` to completion with `Bun.spawnSync`. A command that cannot start (a missing
  * program, a missing working directory) is reported as exit 127 with the reason in `stderr`
  * rather than thrown, so callers have one failure path.
@@ -51,14 +71,60 @@ export const defaultRunner: Runner = (command, options = {}) => {
       stderr: 'pipe',
     });
     return {
-      code: result.exitCode ?? 1,
+      ...exitStatus(result),
       stdout: result.stdout.toString(),
-      stderr: result.stderr.toString(),
     };
   } catch (error) {
-    return { code: 127, stdout: '', stderr: String(error) };
+    // `Bun.spawnSync` can put a rejected environment value in its message, and `options.env` may
+    // carry a credential, so the failure is reported by name and code only.
+    return {
+      code: 127,
+      stdout: '',
+      stderr: `could not start the command (${describeError(error)})`,
+    };
   }
 };
+
+/**
+ * A failure described without its message, which can carry a secret: Bun's `Header
+ * 'Authorization' has invalid value: '<the whole value>'` and a rejected spawn environment both
+ * echo the value they refused. Only the error's name and, when it has one, its string `code` are
+ * kept. Use this for any error raised on a path that handles a credential.
+ */
+export function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return 'unknown error';
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && /^[A-Z0-9_]+$/.test(code)
+    ? `${error.name} ${code}`
+    : error.name;
+}
+
+export interface ResultStreams {
+  stdout: { write: (text: string) => unknown };
+  stderr: { write: (text: string) => unknown };
+}
+
+/** Whether `--json` appears among the options of `argv`, ignoring a wrapped command after `--`. */
+export function wantsJson(argv: string[]): boolean {
+  const separator = argv.indexOf('--');
+  return (separator === -1 ? argv : argv.slice(0, separator)).includes('--json');
+}
+
+/**
+ * Write a script's result. With `--json` the result object goes to standard output whatever the
+ * exit code, so a caller that parses it can read a failure the same way as a success; without
+ * `--json` a non-zero result is a diagnostic and goes to standard error. Usage errors never come
+ * through here: they stay on standard error with exit 2.
+ */
+export function emitResult(
+  argv: string[],
+  result: { code: number; output: string },
+  streams: ResultStreams = process,
+): void {
+  if (result.output === '') return;
+  const stream = result.code === 0 || wantsJson(argv) ? streams.stdout : streams.stderr;
+  stream.write(`${result.output}\n`);
+}
 
 /** Quote `value` as one POSIX shell word. */
 export function shellQuote(value: string): string {

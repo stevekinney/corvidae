@@ -10,7 +10,7 @@
 //       --branch <branch> [--base <ref>] [--install-log <file>]
 //       [--scope-paths <p,p> --scope-output <json>] [--json]
 //   bun scripts/chef/worktree.ts remove [--config <json>] --provider claude|codex --name <name>
-//       [--keep-remote] [--json]
+//       [--keep-remote] [--retired] [--json]
 //
 // `create` runs the default-branch ownership preflight (it never attaches the default branch),
 // fetches the default branch, adds the worktree on a new branch from `--base` (default
@@ -21,8 +21,16 @@
 //
 // `remove` refuses, changing nothing, when the worktree has uncommitted or untracked changes, when
 // any process has its working directory or open files inside it, or when it is not a worktree
-// under the provider's root. Otherwise it removes the worktree, deletes its branch, and unless
-// `--keep-remote` deletes the remote branch when one exists.
+// under the provider's root. It also refuses, because the branch is deleted with `git branch -D` and
+// the remote branch with `git push --delete`, unless the branch's work is delivered: its tip is an
+// ancestor of `origin/<default branch>` (after a fetch), or `gh pr view <branch>` reports `MERGED`
+// with a `headRefOid` equal to the local tip (a squash merge leaves the tip outside the default
+// branch's history, so the pull request is the evidence). A branch with an open pull request, an
+// unpushed commit or a tip that differs from the merged head is refused. `--retired` states that the
+// branch is deliberately abandoned and skips that check; nothing else does. Otherwise it removes the
+// worktree, deletes its branch, and unless `--keep-remote` deletes the remote branch when one exists.
+//
+// With `--json` a refusal is printed as `{ ok: false, error }` on standard output.
 //
 // Exit codes: 0 done, 1 refused or a step failed, 2 invalid CLI usage.
 
@@ -36,9 +44,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
-import { findWorktreeProcesses } from './leftovers.ts';
+import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
+  emitResult,
   parseOptions,
   requireOption,
   type Runner,
@@ -257,12 +266,58 @@ export interface RemoveOptions {
   provider: string;
   name: string;
   keepRemote: boolean;
+  /** The branch is deliberately abandoned: skip the check that its work was delivered. */
+  retired?: boolean;
 }
 
 export interface RemoveResult {
   path: string;
   branch: string | undefined;
   remoteDeleted: boolean;
+}
+
+/**
+ * Why `branch` cannot be shown to be delivered, or `undefined` when it is: its tip is an ancestor of
+ * `origin/<default>` after a fetch, or its pull request is `MERGED` at exactly that tip.
+ */
+function undeliveredReason(
+  runner: Runner,
+  checkout: string,
+  config: RepositoryConfig,
+  branch: string,
+): string | undefined {
+  const base = `origin/${config.defaultBranch}`;
+  const tipResult = git(runner, checkout, 'rev-parse', '--verify', `refs/heads/${branch}`);
+  const tip = tipResult.stdout.trim();
+  if (tipResult.code !== 0 || tip === '')
+    return `its branch "${branch}" has no local tip to compare (${failure('git rev-parse', tipResult).message})`;
+  const fetched = git(runner, checkout, 'fetch', 'origin', config.defaultBranch);
+  if (fetched.code !== 0)
+    return `it could not be checked against ${base} (${failure(`git fetch origin ${config.defaultBranch}`, fetched).message})`;
+  const ancestor = git(runner, checkout, 'merge-base', '--is-ancestor', tip, base);
+  if (ancestor.code === 0) return undefined;
+  if (ancestor.code !== 1)
+    return `it could not be checked against ${base} (${failure('git merge-base --is-ancestor', ancestor).message})`;
+  const view = runner(
+    ['gh', 'pr', 'view', branch, '--repo', config.repository, '--json', 'state,headRefOid'],
+    { cwd: checkout },
+  );
+  let pullRequest: { state?: unknown; headRefOid?: unknown } | undefined;
+  if (view.code === 0) {
+    try {
+      pullRequest = JSON.parse(view.stdout) as typeof pullRequest;
+    } catch {
+      pullRequest = undefined;
+    }
+  }
+  if (pullRequest?.state === 'MERGED' && pullRequest.headRefOid === tip) return undefined;
+  const found =
+    pullRequest === undefined
+      ? 'no pull request was found for it'
+      : pullRequest.state === 'MERGED'
+        ? `its pull request merged ${String(pullRequest.headRefOid).slice(0, 12)}, not the local tip ${tip.slice(0, 12)}`
+        : `its pull request is ${String(pullRequest.state)}`;
+  return `its branch "${branch}" (${tip.slice(0, 12)}) is not delivered: it is not in ${base} and ${found}; merge it, or pass --retired to discard it`;
 }
 
 /** Remove a worktree and its branch; throws `Refusal` listing every reason, changing nothing. */
@@ -296,11 +351,21 @@ export function removeWorktree(
       `it has ${status.stdout.trim().split('\n').length} uncommitted or untracked path(s)`,
     );
   }
-  const holders = findWorktreeProcesses(path, runner);
-  if (holders.length > 0) {
-    reasons.push(
-      `processes are inside it: ${holders.map((item) => `${item.pid} ${item.command}`).join(', ')}`,
-    );
+  try {
+    const holders = findWorktreeProcesses(path, runner);
+    if (holders.length > 0) {
+      reasons.push(
+        `processes are inside it: ${holders.map((item) => `${item.pid} ${item.command}`).join(', ')}`,
+      );
+    }
+  } catch (error) {
+    // An `lsof` that could not run proves nothing about the worktree, so it blocks the removal.
+    if (!(error instanceof ProbeError)) throw error;
+    reasons.push(`it could not be checked for processes (${error.message})`);
+  }
+  if (branch !== undefined && branch !== config.defaultBranch && options.retired !== true) {
+    const undelivered = undeliveredReason(runner, checkout, config, branch);
+    if (undelivered !== undefined) reasons.push(undelivered);
   }
   if (reasons.length > 0) throw new Refusal(`Refusing to remove ${path}: ${reasons.join('; ')}.`);
 
@@ -340,7 +405,7 @@ export function run(
       'scope-paths',
       'scope-output',
     ],
-    flags: ['keep-remote', 'json'],
+    flags: ['keep-remote', 'retired', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
@@ -376,7 +441,13 @@ export function run(
       };
     }
     const result = removeWorktree(
-      { configPath, provider, name, keepRemote: parsed.flags.has('keep-remote') },
+      {
+        configPath,
+        provider,
+        name,
+        keepRemote: parsed.flags.has('keep-remote'),
+        retired: parsed.flags.has('retired'),
+      },
       dependencies,
     );
     return {
@@ -392,7 +463,11 @@ export function run(
           ].join('\n'),
     };
   } catch (error) {
-    if (error instanceof Refusal) return { code: 1, output: error.message };
+    if (error instanceof Refusal)
+      return {
+        code: 1,
+        output: json ? JSON.stringify({ ok: false, error: error.message }) : error.message,
+      };
     throw error;
   }
 }
@@ -400,7 +475,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

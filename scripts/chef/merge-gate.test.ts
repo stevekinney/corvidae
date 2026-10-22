@@ -10,6 +10,20 @@ const OTHER = 'b'.repeat(40);
 const BASE = 'c'.repeat(40);
 const MERGE = 'd'.repeat(40);
 
+/** A log as `gate-run.ts run` writes it; each part can be overridden to build a bad one. */
+function gateLog(
+  parts: { head?: string; start?: string; end?: string; exit?: string } = {},
+): string {
+  return [
+    `HEAD ${parts.head ?? HEAD} LOAD 1.00`,
+    parts.start ?? `TREE_START clean=true head=${HEAD}`,
+    'gate output',
+    parts.end ?? `TREE_END clean=true head=${HEAD}`,
+    parts.exit ?? 'GATE_RC=0',
+    '',
+  ].join('\n');
+}
+
 let sandbox: string;
 let options: MergeGateOptions;
 
@@ -29,7 +43,7 @@ beforeEach(() => {
       mergeMethod: 'squash',
     }),
   );
-  writeFileSync(join(sandbox, 'gate.log'), `HEAD ${HEAD} LOAD 1.00\nGATE_RC=0\n`);
+  writeFileSync(join(sandbox, 'gate.log'), gateLog());
   writeFileSync(join(sandbox, 'comment.md'), 'Gate passed at the head.\n');
   options = {
     configPath,
@@ -244,8 +258,8 @@ describe('mergeGate', () => {
   test('the gate log must hold exit code 0 at the pull request head', () => {
     const cases: [string, string][] = [
       [`HEAD ${HEAD} LOAD 1\nstill running\n`, 'no exit code'],
-      [`HEAD ${HEAD} LOAD 1\nGATE_RC=1\n`, 'exited 1'],
-      [`HEAD ${OTHER} LOAD 1\nGATE_RC=0\n`, 'not at'],
+      [gateLog({ exit: 'GATE_RC=1' }), 'exited 1'],
+      [gateLog({ head: OTHER }), 'not at'],
       ['GATE_RC=0\n', 'unknown commit'],
     ];
     for (const [log, message] of cases) {
@@ -256,6 +270,36 @@ describe('mergeGate', () => {
       expect(report.detail, log).toContain(message);
       expect(world.merged()).toBe(false);
     }
+  });
+
+  test('the worktree must be clean at the start and end of the gate run, with HEAD unmoved', () => {
+    const cases: [string, string][] = [
+      [gateLog({ start: `TREE_START clean=false head=${HEAD}` }), 'dirty at the start'],
+      [gateLog({ end: `TREE_END clean=false head=${HEAD}` }), 'dirty at the end'],
+      [gateLog({ start: `TREE_START clean=unknown head=${HEAD}` }), 'unknown state at the start'],
+      [gateLog({ end: `TREE_END clean=true head=${OTHER}` }), 'at the end of the gate run, not'],
+      [gateLog({ start: `TREE_START clean=true head=${OTHER}` }), 'at the start of the gate run'],
+      // A log from before the tree lines were written has no basis to call the tree clean.
+      [`HEAD ${HEAD} LOAD 1.00\nGATE_RC=0\n`, 'no single TREE_START line'],
+      [gateLog({ end: '' }).replace('\n\n', '\n'), 'no single TREE_END line'],
+    ];
+    for (const [log, message] of cases) {
+      writeFileSync(options.gateLog, log);
+      const world = fake();
+      const report = mergeGate(options, { runner: world.runner });
+      expect(report.failedStep, log).toBe('gate');
+      expect(report.detail, log).toContain(message);
+      expect(world.posted(), log).toBe(false);
+      expect(world.merged(), log).toBe(false);
+    }
+  });
+
+  test('a log of two runs is refused even when the last run passed at the right head', () => {
+    // The first run failed at another head; pairing its head with the second run's pass is the bug.
+    writeFileSync(options.gateLog, `HEAD ${OTHER} LOAD 1\nGATE_RC=1\n${gateLog()}`);
+    const report = mergeGate(options, { runner: fake().runner });
+    expect(report.failedStep).toBe('gate');
+    expect(report.detail).toContain('2 HEAD lines');
   });
 
   test('an unresolved thread, and a listing short of the total, both stop the merge', () => {

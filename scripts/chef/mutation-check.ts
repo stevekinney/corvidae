@@ -21,7 +21,13 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
-import { defaultRunner, parseOptions, type Runner, UsageError } from './process-runner.ts';
+import {
+  defaultRunner,
+  emitResult,
+  parseOptions,
+  type Runner,
+  UsageError,
+} from './process-runner.ts';
 
 export { UsageError };
 
@@ -314,7 +320,7 @@ if (import.meta.main) {
     const { code, output } = run(Bun.argv.slice(2), {
       shouldStop: () => interrupted,
     });
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

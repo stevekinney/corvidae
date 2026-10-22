@@ -23,8 +23,8 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
-import { resolveCredential } from './credentials.ts';
-import { parseOptions, UsageError } from './process-runner.ts';
+import { isUsableValue, resolveCredential } from './credentials.ts';
+import { describeError, emitResult, parseOptions, UsageError } from './process-runner.ts';
 
 /** The API rejected a request or answered with something unusable. */
 export class LinearError extends Error {}
@@ -51,10 +51,14 @@ export function createClient(dependencies: LinearDependencies = {}): LinearClien
   const resolveKey = dependencies.resolveKey ?? (() => resolveCredential('LINEAR_API_KEY').value);
   return {
     async request<T>(document: string, variables: Record<string, unknown> = {}): Promise<T> {
-      const key = environment['LINEAR_API_KEY'] || resolveKey();
-      if (key === undefined || key === '')
+      // A value that is not printable ASCII would be echoed whole by the HTTP layer's error.
+      const fromEnvironment = environment['LINEAR_API_KEY'];
+      const environmentRejected =
+        fromEnvironment !== undefined && fromEnvironment !== '' && !isUsableValue(fromEnvironment);
+      const key = fromEnvironment && !environmentRejected ? fromEnvironment : resolveKey();
+      if (key === undefined || key === '' || !isUsableValue(key))
         throw new UsageError(
-          'LINEAR_API_KEY is unavailable: it is not in the environment, the macOS Keychain (service linear-api) or a .env file; see credentials.ts.',
+          `LINEAR_API_KEY is unavailable: it is not in the environment, the macOS Keychain (service linear-api) or a .env file; see credentials.ts.${environmentRejected ? ' The value in the environment is not printable ASCII without whitespace, so it was ignored.' : ''}`,
         );
       let response: Response;
       try {
@@ -64,7 +68,8 @@ export function createClient(dependencies: LinearDependencies = {}): LinearClien
           body: JSON.stringify({ query: document, variables }),
         });
       } catch (error) {
-        throw new LinearError(`Linear request failed: ${String(error)}`);
+        // The HTTP layer's message can quote the Authorization value, so report the name only.
+        throw new LinearError(`Linear request failed (${describeError(error)}).`);
       }
       let payload: { data?: T; errors?: { message?: string }[] };
       try {
@@ -137,10 +142,13 @@ export interface CommentSummary {
   createdAt: string;
 }
 
+/** Pages of 100 comments read before `fetchComments` gives up rather than return a partial list. */
+export const commentPageLimit = 100;
+
 async function fetchComments(client: LinearClient, identifier: string): Promise<CommentSummary[]> {
   const comments: CommentSummary[] = [];
   let after: string | null = null;
-  for (let page = 0; page < 100; page += 1) {
+  for (let page = 0; page < commentPageLimit; page += 1) {
     const data: {
       issue: {
         comments: {
@@ -154,11 +162,16 @@ async function fetchComments(client: LinearClient, identifier: string): Promise<
     );
     if (data.issue === null) throw new LinearError(`No issue ${identifier}.`);
     comments.push(...data.issue.comments.nodes);
-    if (!data.issue.comments.pageInfo.hasNextPage) break;
+    if (!data.issue.comments.pageInfo.hasNextPage) {
+      // The API's default order is not guaranteed, so "the last three" is decided here.
+      return comments.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+    }
     after = data.issue.comments.pageInfo.endCursor;
   }
-  // The API's default order is not guaranteed, so "the last three" is decided here.
-  return comments.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // A partial list would misreport the count and the last comments, so stop instead.
+  throw new LinearError(
+    `${identifier} has more than ${commentPageLimit * 100} comments; refusing to report a partial list.`,
+  );
 }
 
 export interface Outcome {
@@ -286,7 +299,7 @@ export async function postComment(
   });
   const verified =
     back.comment !== null &&
-    back.comment.body.trim() === body.trim() &&
+    normalizeMarkdown(back.comment.body) === normalizeMarkdown(body) &&
     back.comment.issue?.identifier === issue.identifier;
   return {
     ok: verified,
@@ -465,22 +478,32 @@ interface RelatedIssue {
   state: { name: string };
 }
 
+interface PageInfo {
+  hasNextPage: boolean;
+}
+
 interface RelationRead {
   issue: {
     id: string;
     identifier: string;
-    relations: { nodes: { type: string; relatedIssue: RelatedIssue }[] };
-    inverseRelations: { nodes: { type: string; issue: RelatedIssue }[] };
+    relations: { nodes: { type: string; relatedIssue: RelatedIssue }[]; pageInfo: PageInfo };
+    inverseRelations: { nodes: { type: string; issue: RelatedIssue }[]; pageInfo: PageInfo };
   } | null;
 }
 
-const relationDocument = `query IssueRelations($id: String!) { issue(id: $id) { id identifier relations(first: 100) { nodes { type relatedIssue { identifier title state { name } } } } inverseRelations(first: 100) { nodes { type issue { identifier title state { name } } } } } }`;
+const relationDocument = `query IssueRelations($id: String!) { issue(id: $id) { id identifier relations(first: 100) { nodes { type relatedIssue { identifier title state { name } } } pageInfo { hasNextPage } } inverseRelations(first: 100) { nodes { type issue { identifier title state { name } } } pageInfo { hasNextPage } } } }`;
 
 async function fetchRelations(client: LinearClient, identifier: string) {
   const data = await client.request<RelationRead>(relationDocument, {
     id: identifier,
   });
   if (data.issue === null) throw new LinearError(`No issue ${identifier}.`);
+  // Only the first 100 of each direction are read; a blocker list that silently omits some would
+  // let a blocked issue look unblocked.
+  if (data.issue.relations.pageInfo.hasNextPage || data.issue.inverseRelations.pageInfo.hasNextPage)
+    throw new LinearError(
+      `${identifier} has more than 100 relations in one direction; refusing to report a partial list.`,
+    );
   return {
     id: data.issue.id,
     blockedBy: data.issue.inverseRelations.nodes
@@ -662,7 +685,7 @@ export async function run(
 if (import.meta.main) {
   try {
     const { code, output } = await run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

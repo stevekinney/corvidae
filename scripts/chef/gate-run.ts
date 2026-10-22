@@ -10,13 +10,19 @@
 //                                   --iterations <n> --log <tsv> [--json]
 //
 // `run` waits while any process matches the configuration's `lockPattern` (checked every 15
-// seconds, each wait written to the log), records `HEAD <sha> LOAD <load>` as the log's first line,
-// runs the wrapped gate command in the worktree with all output going to the log, appends
-// `GATE_RC=<n>`, and exits with the gate's code.
+// seconds, each wait written to the log), records `HEAD <sha> LOAD <load>` as the log's first line
+// and `TREE_START clean=<true|false|unknown> head=<sha>` before the gate, runs the wrapped gate
+// command in the worktree with all output going to the log, appends `TREE_END clean=... head=...`
+// and `GATE_RC=<n>`, and exits with the gate's code. `clean` is whether `git status --porcelain`
+// printed nothing, so ignored files (logs under `tmp/`, `test-output/`) are not dirt.
 //
-// `read` summarizes a log: its head, exit code, failed tasks, the first failing tests and the
-// over-budget count. It also reads older logs that end in `VALIDATE_RC=<n>` or `validate exit=<n>`.
-// A log with no exit code is reported as such and never inferred to have passed.
+// `read` summarizes a log: its head, the tree state at the start and end, the exit code, failed
+// tasks, the first failing tests and the over-budget count. It also reads older logs that end in
+// `VALIDATE_RC=<n>` or `validate exit=<n>`. A log fails closed: it has no exit code unless the
+// recognized exit-code line is the last non-empty line, and it has no head or exit code at all when
+// it holds more than one `HEAD` line (two runs appended to one file), so a failing head is never
+// paired with another run's passing code. A log with no exit code is reported as such and never
+// inferred to have passed.
 //
 // `control` runs a command alternately in a candidate and a base tree and compares how often each
 // fails, which tells a shared or pre-existing failure from one the candidate introduced.
@@ -40,6 +46,7 @@ import { dirname } from 'node:path';
 import { findLockProcesses } from './leftovers.ts';
 import {
   defaultRunner,
+  emitResult,
   parseOptions,
   requireOption,
   type Runner,
@@ -53,6 +60,12 @@ export { UsageError };
 export const lockPollMilliseconds = 15_000;
 const failedTestLimit = 10;
 
+/** `clean` is `undefined` when the status could not be read: unknown is never clean. */
+export interface TreeState {
+  clean: boolean | undefined;
+  head: string;
+}
+
 export interface GateLogSummary {
   /** The commit the gate ran at, from the log's `HEAD <sha> LOAD <load>` line. */
   head: string | undefined;
@@ -60,6 +73,12 @@ export interface GateLogSummary {
   load: number | undefined;
   /** The gate's exit code, or `undefined` when the log holds none (still running or cut off). */
   exitCode: number | undefined;
+  /** The worktree before the gate ran, from the log's one `TREE_START` line; `undefined` otherwise. */
+  treeStart: TreeState | undefined;
+  /** The worktree after the gate ran, from the log's one `TREE_END` line; `undefined` otherwise. */
+  treeEnd: TreeState | undefined;
+  /** Why the head and exit code were withheld, when the log could not be trusted. */
+  problem: string | undefined;
   failedTasks: string[];
   /** The first failing test names, package prefix stripped. */
   failedTests: string[];
@@ -70,27 +89,38 @@ export interface GateLogSummary {
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, 'g');
 
+const exitCodePatterns = [/^(?:GATE_RC|VALIDATE_RC)=(\d+)\s*$/, /^validate exit=(\d+)\s*$/];
+const treePattern = /^TREE_(START|END) clean=(true|false|unknown) head=(\S+)\s*$/;
+
 /** Parse a gate log. Pure: the whole of `read`, exported for `merge-gate.ts`. */
 export function readGateLog(text: string): GateLogSummary {
-  const lines = text.replace(ansiPattern, '').split('\n');
-  let head: string | undefined;
-  let load: number | undefined;
-  let exitCode: number | undefined;
+  const lines = text
+    .replace(ansiPattern, '')
+    .split('\n')
+    .map((raw) => raw.replace(/\r$/, ''));
+  const headLines: { head: string; load: number | undefined }[] = [];
+  const treeLines: { which: string; state: TreeState }[] = [];
   const failedTasks: string[] = [];
   const failedTests: string[] = [];
   let overBudget = 0;
-  for (const raw of lines) {
-    const line = raw.replace(/\r$/, '');
+  for (const line of lines) {
     const headMatch = /^HEAD (\S+) LOAD (\S+)/.exec(line);
-    if (headMatch && head === undefined) {
-      head = headMatch[1];
+    if (headMatch) {
       const parsed = Number(headMatch[2]);
-      load = Number.isFinite(parsed) ? parsed : undefined;
+      headLines.push({
+        head: headMatch[1] as string,
+        load: Number.isFinite(parsed) ? parsed : undefined,
+      });
     }
-    // The last exit-code line wins, so an old log that was appended to reads its final run.
-    const codeMatch =
-      /^(?:GATE_RC|VALIDATE_RC)=(\d+)\s*$/.exec(line) ?? /^validate exit=(\d+)\s*$/.exec(line);
-    if (codeMatch) exitCode = Number(codeMatch[1]);
+    const treeMatch = treePattern.exec(line);
+    if (treeMatch)
+      treeLines.push({
+        which: treeMatch[1] as string,
+        state: {
+          clean: treeMatch[2] === 'unknown' ? undefined : treeMatch[2] === 'true',
+          head: treeMatch[3] as string,
+        },
+      });
     const failedMatch = /^\s*Failed:\s+(\S+)/.exec(line);
     if (failedMatch?.[1] !== undefined) failedTasks.push(failedMatch[1]);
     const errorMatch = /\bERROR\b.*\bcommand \(([^)]*)\).*\bexited \((\d+)\)/.exec(line);
@@ -110,11 +140,32 @@ export function readGateLog(text: string): GateLogSummary {
     }
     if (line.includes('over budget')) overBudget += 1;
   }
+  // The exit code counts only as the log's last non-empty line, where `run` writes it; a lookalike
+  // inside the gate's own output, or a line followed by more output, is not the gate's result.
+  const last = lines.findLast((line) => line.trim() !== '');
+  const codeMatch =
+    last === undefined
+      ? null
+      : (exitCodePatterns.map((pattern) => pattern.exec(last)).find((match) => match !== null) ??
+        null);
+  // More than one `HEAD` line means two runs share the file, and which head goes with which exit
+  // code cannot be told; withhold both rather than pair a failing head with a passing code.
+  const problem =
+    headLines.length > 1
+      ? `the log holds ${headLines.length} HEAD lines (more than one run), so no head or exit code can be trusted`
+      : undefined;
+  const single = <T>(which: string): T | undefined => {
+    const matching = treeLines.filter((entry) => entry.which === which);
+    return matching.length === 1 ? (matching[0]?.state as T) : undefined;
+  };
   const distinctTests = [...new Set(failedTests)];
   return {
-    head,
-    load,
-    exitCode,
+    head: problem === undefined ? headLines[0]?.head : undefined,
+    load: problem === undefined ? headLines[0]?.load : undefined,
+    exitCode: problem === undefined && codeMatch ? Number(codeMatch[1]) : undefined,
+    treeStart: problem === undefined ? single<TreeState>('START') : undefined,
+    treeEnd: problem === undefined ? single<TreeState>('END') : undefined,
+    problem,
     failedTasks: [...new Set(failedTasks)],
     failedTests: distinctTests.slice(0, failedTestLimit),
     failedTestCount: distinctTests.length,
@@ -122,12 +173,19 @@ export function readGateLog(text: string): GateLogSummary {
   };
 }
 
+function renderTree(state: TreeState | undefined): string {
+  if (state === undefined) return 'unknown';
+  const clean = state.clean === undefined ? 'unknown' : state.clean ? 'clean' : 'dirty';
+  return `${clean} at ${state.head.slice(0, 12)}`;
+}
+
 export function renderGateSummary(summary: GateLogSummary): string {
   const lines = [
     `head: ${summary.head ?? 'unknown'}  load: ${summary.load?.toFixed(2) ?? 'unknown'}`,
     summary.exitCode === undefined
-      ? 'exit code: none (the gate is still running, or the log was cut off; not a pass)'
+      ? `exit code: none (${summary.problem ?? 'the gate is still running, or the log was cut off'}; not a pass)`
       : `exit code: ${summary.exitCode}`,
+    `tree: start ${renderTree(summary.treeStart)}, end ${renderTree(summary.treeEnd)}`,
   ];
   if (summary.failedTasks.length > 0) lines.push(`failed tasks: ${summary.failedTasks.join(', ')}`);
   if (summary.failedTestCount > 0) {
@@ -185,6 +243,29 @@ export interface GateRunResult {
   code: number;
   head: string;
   waits: number;
+  /** Whether the worktree had no uncommitted or untracked (non-ignored) path before the gate. */
+  startClean: boolean | undefined;
+  /** The same after the gate. */
+  endClean: boolean | undefined;
+  /** HEAD after the gate; it differs from `head` when the gate moved it. */
+  endHead: string;
+}
+
+/** `git status --porcelain` emptiness and HEAD; an unreadable status is `undefined`, never clean. */
+function snapshotTree(
+  runner: Runner,
+  worktree: string,
+): { clean: boolean | undefined; head: string } {
+  const status = runner(['git', 'status', '--porcelain'], { cwd: worktree });
+  const head = runner(['git', 'rev-parse', 'HEAD'], { cwd: worktree });
+  return {
+    clean: status.code === 0 ? status.stdout.trim() === '' : undefined,
+    head: head.code === 0 && head.stdout.trim() !== '' ? head.stdout.trim() : 'unknown',
+  };
+}
+
+function treeLine(which: 'START' | 'END', tree: { clean: boolean | undefined; head: string }) {
+  return `TREE_${which} clean=${tree.clean === undefined ? 'unknown' : tree.clean} head=${tree.head}\n`;
 }
 
 /** Wait out the lock, record the head and load, run the gate into the log, append its exit code. */
@@ -217,15 +298,27 @@ export function runGate(
   const head = headResult.stdout.trim();
   // The head line goes first, after the wait, so it names the commit the gate actually ran at.
   const waitLines = readFileSync(options.log, 'utf8');
-  writeFileSync(options.log, `HEAD ${head} LOAD ${dependencies.load().toFixed(2)}\n${waitLines}`);
+  const start = snapshotTree(runner, options.worktree);
+  writeFileSync(
+    options.log,
+    `HEAD ${head} LOAD ${dependencies.load().toFixed(2)}\n${waitLines}${treeLine('START', start)}`,
+  );
   const gate = `sh -c ${shellQuote(options.command ?? config.gateCommand)}`;
   const wrapped = config.gateWrapper === undefined ? gate : `${config.gateWrapper} ${gate}`;
   const result = runner(['sh', '-c', `${wrapped} >> ${shellQuote(options.log)} 2>&1`], {
     cwd: options.worktree,
   });
   if (!endsWithNewline(options.log)) appendFileSync(options.log, '\n');
-  appendFileSync(options.log, `GATE_RC=${result.code}\n`);
-  return { code: result.code, head, waits };
+  const end = snapshotTree(runner, options.worktree);
+  appendFileSync(options.log, `${treeLine('END', end)}GATE_RC=${result.code}\n`);
+  return {
+    code: result.code,
+    head,
+    waits,
+    startClean: start.clean,
+    endClean: end.clean,
+    endHead: end.head,
+  };
 }
 
 export interface ControlOptions {
@@ -372,7 +465,7 @@ export function run(
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

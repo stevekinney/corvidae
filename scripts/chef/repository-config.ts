@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
-import { UsageError } from './process-runner.ts';
+import { emitResult, UsageError } from './process-runner.ts';
 
 export { UsageError };
 
@@ -158,7 +158,7 @@ export function run(argv: string[]): { code: number; output: string } {
 if (import.meta.main) {
   try {
     const { code, output } = run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

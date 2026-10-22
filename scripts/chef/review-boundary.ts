@@ -6,19 +6,25 @@
 // Usage:
 //   bun scripts/chef/review-boundary.ts capture --configuration <json> --output <json>
 //   bun scripts/chef/review-boundary.ts verify --configuration <json> --before <json> [--accounting <json>]
+//
+// Exit codes: 0 accepted, 1 an unaccounted removal or an evidence failure, 2 invalid CLI usage (an
+// unknown command or option, a missing required option). The report is one JSON object on stdout.
 
 import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
   lstatSync,
   openSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, resolve as resolvePath, sep } from 'node:path';
+import { parseOptions, requireOption, UsageError, type ParsedOptions } from './process-runner.ts';
+
+export { UsageError };
 
 export interface BoundaryConfiguration {
   root: string;
@@ -450,10 +456,7 @@ export function verify(
 
 // --- CLI ------------------------------------------------------------------
 
-function readJsonArgument(flagValue: string | undefined, flagName: string): unknown {
-  if (!flagValue) {
-    throw new BoundaryError(`missing required --${flagName} argument`);
-  }
+function readJsonArgument(flagValue: string, flagName: string): unknown {
   try {
     return JSON.parse(readFileSync(flagValue, 'utf8'));
   } catch {
@@ -467,35 +470,48 @@ function readJsonArgument(flagValue: string | undefined, flagName: string): unkn
   }
 }
 
-function parseFlags(argv: string[]): Record<string, string> {
-  const flags: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (token?.startsWith('--')) {
-      const name = token.slice(2);
-      const value = argv[i + 1];
-      flags[name] = value ?? '';
-      i += 1;
-    }
+/** The command and its options; an unknown command or option or a missing required one is a `UsageError`. */
+export function parseCommandLine(argv: string[]): {
+  command: 'capture' | 'verify';
+  options: ParsedOptions;
+} {
+  const [command, ...rest] = argv;
+  if (command !== 'capture' && command !== 'verify')
+    throw new UsageError(
+      `unknown command: ${command ?? '<none>'}. Expected 'capture' or 'verify'.`,
+    );
+  const options = parseOptions(rest, {
+    values:
+      command === 'capture'
+        ? ['configuration', 'output']
+        : ['configuration', 'before', 'accounting'],
+  });
+  if (options.positionals.length > 0)
+    throw new UsageError(`unexpected argument: ${options.positionals[0]}`);
+  // An option followed by another option has lost its value; `--output --configuration x` must not
+  // create a file named `--configuration`.
+  for (const [name, value] of Object.entries(options.values)) {
+    if (value.startsWith('--')) throw new UsageError(`missing value for --${name}`);
   }
-  return flags;
+  requireOption(options, 'configuration');
+  requireOption(options, command === 'capture' ? 'output' : 'before');
+  return { command, options };
 }
 
-function main(argv: string[]): number {
-  const [command, ...rest] = argv;
-  const flags = parseFlags(rest);
-
+export function main(argv: string[]): number {
   try {
+    const { command, options } = parseCommandLine(argv);
+    const config = readJsonArgument(
+      requireOption(options, 'configuration'),
+      'configuration',
+    ) as BoundaryConfiguration;
+
     if (command === 'capture') {
-      const config = readJsonArgument(
-        flags['configuration'],
-        'configuration',
-      ) as BoundaryConfiguration;
-      if (!flags['output']) throw new BoundaryError('missing required --output argument');
-      const manifest = capture(config, flags['output']);
+      const output = requireOption(options, 'output');
+      const manifest = capture(config, output);
       console.log(
         JSON.stringify(
-          { ok: true, captureId: manifest.captureId, output: resolvePath(flags['output']) },
+          { ok: true, captureId: manifest.captureId, output: resolvePath(output) },
           null,
           2,
         ),
@@ -503,24 +519,19 @@ function main(argv: string[]): number {
       return 0;
     }
 
-    if (command === 'verify') {
-      const config = readJsonArgument(
-        flags['configuration'],
-        'configuration',
-      ) as BoundaryConfiguration;
-      if (!flags['before']) throw new BoundaryError('missing required --before argument');
-      const beforeManifest = readManifest(flags['before']);
-      const accounting = flags['accounting']
-        ? (readJsonArgument(flags['accounting'], 'accounting') as Accounting)
-        : undefined;
-      const report = verify(config, beforeManifest, accounting);
-      console.log(JSON.stringify(report, null, 2));
-      return report.errors.length > 0 ? 1 : 0;
-    }
-
-    console.error(`unknown command: ${command ?? '<none>'}. Expected 'capture' or 'verify'.`);
-    return 2;
+    const beforeManifest = readManifest(requireOption(options, 'before'));
+    const accounting =
+      options.values['accounting'] === undefined || options.values['accounting'] === ''
+        ? undefined
+        : (readJsonArgument(options.values['accounting'], 'accounting') as Accounting);
+    const report = verify(config, beforeManifest, accounting);
+    console.log(JSON.stringify(report, null, 2));
+    return report.errors.length > 0 ? 1 : 0;
   } catch (error) {
+    if (error instanceof UsageError) {
+      console.error(`usage error: ${error.message}`);
+      return 2;
+    }
     if (error instanceof BoundaryError) {
       console.error(`error: ${error.message}`);
       return 1;
@@ -531,5 +542,5 @@ function main(argv: string[]): number {
 }
 
 if (import.meta.main) {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = main(process.argv.slice(2));
 }

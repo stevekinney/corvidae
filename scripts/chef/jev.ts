@@ -9,8 +9,8 @@
 //        (--yes-no | --choice <key>=<description> ... | --scale <level>,<level>,...)
 //        [--threshold <p>] [--kind routine|owner] [--record <jsonl>] [--json]
 //
-// Thresholds: 0.85 for `--kind routine` (the default), 0.9 for `--kind owner`; `--threshold`
-// overrides either. For a yes/no question the answer is the likelier side, and its probability is
+// Thresholds: 0.85 for `--kind routine` (the default), 0.9 for `--kind owner`; `--threshold` may
+// raise either for one call and is a usage error (exit 2) below the kind's default. For a yes/no question the answer is the likelier side, and its probability is
 // that side's: P(yes) of 0.04 is a "no" at 0.96. For a scale question the answer is the level
 // nearest Jev's score, and its probability is that level's.
 //
@@ -34,7 +34,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolveCredential } from './credentials.ts';
-import { parseOptions, UsageError } from './process-runner.ts';
+import { emitResult, parseOptions, UsageError } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
 
 export const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
@@ -407,6 +407,10 @@ export async function run(
     parsed.values['threshold'] === undefined
       ? defaultThreshold(kind)
       : parseThreshold(parsed.values['threshold']);
+  if (threshold < defaultThreshold(kind))
+    throw new UsageError(
+      `--threshold ${threshold} is below the ${defaultThreshold(kind)} default for --kind ${kind}; a call may raise the threshold, never lower it.`,
+    );
 
   const modes = [
     parsed.flags.has('yes-no'),
@@ -456,7 +460,7 @@ export async function run(
 if (import.meta.main) {
   try {
     const { code, output } = await run(Bun.argv.slice(2));
-    (code === 0 ? process.stdout : process.stderr).write(`${output}\n`);
+    emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

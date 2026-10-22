@@ -50,7 +50,7 @@ A choice that the repository, the code, or an instruction already settles is dec
 
 - Routine calls: Jev decides at a probability of 0.85 or above (`--kind routine`, the default).
 - Owner decisions: Jev decides at 0.9 or above (`--kind owner`). Below that, ask the owner and show Jev's probabilities as the recommendation.
-- Pass `--threshold <p>` only to raise a threshold for a specific call, never to lower one.
+- Pass `--threshold <p>` only to raise a threshold for a specific call, never to lower one; a value below the kind's default is a usage error (exit 2).
 
 ### Never Jev's to decide
 
@@ -186,18 +186,18 @@ For concurrency, replay, retry, or state-machine work, require an outcome matrix
 
 ## Plumbing scripts
 
-Each script lives in `scripts/chef/`, runs with `bun` from the repository root, prints a few lines (or one JSON object with `--json`), and exits 0 on success, 1 when the checked condition fails, and 2 on invalid usage. `credentials.ts` and `jev.ts` add exit 3 for an unavailable credential or decision model. Repository specifics come from `scripts/chef/repository.json`, which is every script's default `--config`: the default branch, the worktree roots for each provider, the manifest name, the install, gate, and affected-check commands, the exclusive-lock pattern, and the merge method. The main checkout is resolved from Git, never written down. Pass `--config <json>` only to point a script at a different repository. In this repository the gate is `bun run validate`, the affected-only check is `bun run check`, and the lock is the `scripts/run-exclusively.ts` lock that every worktree on the host shares.
+Each script lives in `scripts/chef/`, runs with `bun` from the repository root, prints a few lines (or one JSON object with `--json`), and exits 0 on success, 1 when the checked condition fails, and 2 on invalid usage. With `--json` the result object goes to standard output whatever the exit code, so a caller parses a failure the same way as a success; without it, a non-zero result is a diagnostic on standard error. A usage error is always plain text on standard error. `credentials.ts` and `jev.ts` add exit 3 for an unavailable credential or decision model. Repository specifics come from `scripts/chef/repository.json`, which is every script's default `--config`: the default branch, the worktree roots for each provider, the manifest name, the install, gate, and affected-check commands, the exclusive-lock pattern, and the merge method. The main checkout is resolved from Git, never written down. Pass `--config <json>` only to point a script at a different repository. In this repository the gate is `bun run validate`, the affected-only check is `bun run check`, and the lock is the `scripts/run-exclusively.ts` lock that every worktree on the host shares.
 
 | Script | Replaces | Use |
 | --- | --- | --- |
-| `gate-run.ts` | Launching a gate, then reading its log by hand | `run` waits for the lock, records head and load, and writes the exit code. Launch it as a background command. `read` reports the exit code, failed tasks, and failing tests, and treats a missing exit code as unknown, never as a pass. `control` alternates a test on candidate and base for a load-sensitive failure. |
-| `leftovers.ts` | Several `pgrep` and `lsof` checks | Reports the lock holder, processes inside each worktree, and recorded PIDs still alive. Run it before accepting a submission and before removing a worktree. |
-| `worktree.ts` | Preflight, fetch, add, manifest check, install, scope capture, then the cleanup checks | `create` runs the main-branch ownership preflight, checks the manifest before installing, and can capture the scope baseline. `remove` refuses a dirty or busy worktree, then deletes the worktree and both branches. |
+| `gate-run.ts` | Launching a gate, then reading its log by hand | `run` waits for the lock, records head and load, records whether the worktree was clean (`git status --porcelain` empty) and where HEAD was before and after the gate, and writes the exit code. Launch it as a background command. `read` reports the exit code, the tree state, failed tasks, and failing tests, and treats a missing exit code as unknown, never as a pass; a log that holds more than one `HEAD` line, or whose last non-empty line is not the exit code, has no trustworthy result. `control` alternates a test on candidate and base for a load-sensitive failure. |
+| `leftovers.ts` | Several `pgrep` and `lsof` checks | Reports the lock holder, processes inside each worktree, and recorded PIDs still alive. Run it before accepting a submission and before removing a worktree. When `lsof` cannot run it reports the worktree as unchecked, never as empty. |
+| `worktree.ts` | Preflight, fetch, add, manifest check, install, scope capture, then the cleanup checks | `create` runs the main-branch ownership preflight, checks the manifest before installing, and can capture the scope baseline. `remove` refuses a dirty or busy worktree, and a branch whose work is not delivered (its tip is not in `origin/<default>` and no pull request for it is `MERGED` at exactly that tip); then it deletes the worktree and both branches. `--retired` states that the branch is deliberately abandoned and skips the delivery check. |
 | `note.ts` | Inline scripts that edit the work-history note | `state` rewrites a section of the bounded note, `log` appends to its sibling log, `row` updates one batch-table cell, and `stats` reports both sizes. |
 | `linear.ts` | Tracker calls without read-back | `read`, `state`, `comment`, `append`, `create` (which refuses a duplicate title), `blockers`, and `block`, each read back after writing. It resolves `LINEAR_API_KEY` itself through `credentials.ts` when the environment lacks it. |
 | `review-threads.ts` | Paginated thread queries, replies, and resolves | `list` pages every thread and fails when SEEN differs from TOTAL. `resolve` takes a TSV keyed by thread id, replies, resolves, and re-lists. |
 | `mutation-check.ts` | Revert, run, and restore by hand | Applies a mutation, runs the test, always restores the file and verifies its hash, and fails when a mutation survives. `--spec` runs several. |
-| `merge-gate.ts` | The whole merge sequence | Checks the head matches the pull request, contains the default branch, has a passing gate log at that head, and has every thread resolved. Then it posts the gate comment, merges pinned to the head, and confirms the merged tree equals the gated tree. `--dry-run` runs only the checks. |
+| `merge-gate.ts` | The whole merge sequence | Checks the head matches the pull request, contains the default branch, has a passing gate log at that head from a clean worktree whose HEAD did not move during the run, and has every thread resolved. Then it posts the gate comment, merges pinned to the head, and confirms the merged tree equals the gated tree. `--dry-run` runs only the checks. |
 | `transcript-usage.ts` | Guessing at spend | Token use, context size, and full-context cache rewrites per transcript, for Claude Code and Codex. |
 | `credentials.ts` | Hand-built credential wrappers | `resolve` names where a credential comes from, never its value. `exec` runs a command with the credential set. See [Credentials](#credentials). |
 | `jev.ts` | Asking the owner a question a decision model can settle | `decide` asks Jev a yes/no, choice, or scale question and reports the probability against a threshold. See [Decisions and Jev](#decisions-and-jev). |
@@ -222,6 +222,10 @@ The lookup order is fixed:
 - a `.env` file in the current worktree's root;
 - a `.env` file in the main checkout's root;
 - unavailable.
+
+A value is usable only when it is printable ASCII with no whitespace and no control character. Anything else (a trailing newline, curly quotes pasted into a `.env`) would make the HTTP or spawn layer fail with an error message that quotes the whole value, so the resolver skips that source, goes on to the next, and reports only the source it skipped. Scripts report a network or spawn failure by the error's name, never its message.
+
+Bun loads `.env` from the current directory into the environment before a script runs, and nothing scoped to these scripts turns that off (`bun --no-env-file` and `env = false` in `bunfig.toml` are global). From a directory that holds a `.env`, a value that came from it is therefore reported as `environment`; the precedence is unchanged, only the label differs.
 
 `linear.ts` and `jev.ts` call this resolver themselves, so a wrapper is only needed for other commands. Personal wrappers such as `with-turborepo-cache` and `with-linear-credentials` are conveniences that one machine may have; do not depend on them in a charter, and do not assume a teammate has them.
 
