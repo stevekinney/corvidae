@@ -110,11 +110,11 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.86, 0.065, 250],
-        "alpha": 0.2
+        "alpha": 0.09
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 80%)"
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 91%)"
         }
       }
     },
@@ -148,11 +148,11 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.86, 0.065, 250],
-        "alpha": 0.1
+        "alpha": 0.05
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 90%)"
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 95%)"
         }
       }
     },
@@ -160,11 +160,11 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.86, 0.065, 250],
-        "alpha": 0.32
+        "alpha": 0.15
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)"
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 85%)"
         }
       }
     }
@@ -615,7 +615,7 @@
     },
     "border": {
       "$type": "color",
-      "$value": "{border.strong}"
+      "$value": "{border.control}"
     }
   },
   "toggle": {

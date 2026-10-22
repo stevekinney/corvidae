@@ -8,7 +8,7 @@
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine } from '../core/engine.ts';
 import { getEnginePayloadSizeMaxBytes } from '../core/engine/payload-size-policy.ts';
-import { createMcpSessionManager } from '../mcp/session.ts';
+import { createMcpEndpoint } from '../mcp/http.ts';
 import { createMetricsCollectorExporter, MetricsCollector } from '../observability/metrics.ts';
 import { resolveServerEnvironment } from '../runtime/environment-configuration.ts';
 import { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
@@ -394,7 +394,7 @@ export function buildServerContext(
     workflowEventFeed: createWorkflowEventFeed(eventFeedBackend),
     fleetEventFeed: createFleetEventFeed(options.engine.storage),
     activeJsonRpcSessions: new Set(),
-    mcpSessionManager: createMcpSessionManager(engine),
+    mcpEndpoint: createMcpEndpoint(engine),
     // The authenticator is initialized asynchronously (key import) but the
     // promise is created eagerly and resolved before the first request completes.
     authenticatorPromise: createServerAuthenticator(options),
@@ -517,7 +517,7 @@ export function registerStackDisposers(
   stack.defer(async () => {
     await closeJsonRpcSessionsForShutdown(context.activeJsonRpcSessions);
   });
-  stack.defer(() => context.mcpSessionManager[Symbol.asyncDispose]());
+  stack.defer(() => context.mcpEndpoint[Symbol.asyncDispose]());
 
   // Registry-erase the widened `ServeOptions.engine` back to the plain
   // default `Engine` `registerWorkflowEventLifecycle` expects — see the

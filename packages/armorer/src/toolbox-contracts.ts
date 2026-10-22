@@ -39,7 +39,7 @@ import type {
 } from './is-tool';
 import type { ToolSettledEvent } from './tool-lifecycle-events';
 import type { Toolbox } from './toolbox-contracts-advanced';
-import type { ToolCall, ToolExecutionResult } from './types';
+import type { RedactedToolExecutionResult, ToolCall, ToolExecutionResult } from './types';
 export type ToolboxContext = Record<string, unknown>;
 
 export type ToolboxRuntimeContext<Ctx extends ToolboxContext = ToolboxContext> = Ctx & {
@@ -199,7 +199,7 @@ export interface ToolboxEvents {
     parentContext?: OpenTelemetryContext;
     spanLinks?: OpenTelemetrySpanLink[];
   };
-  complete: { tool: Tool; result: ToolExecutionResult } & ToolExecutionIdentity;
+  complete: { tool: Tool; result: RedactedToolExecutionResult } & ToolExecutionIdentity;
   error: { tool?: Tool; result: ToolExecutionResult } & ToolExecutionIdentity;
   'not-found': ToolCall;
   query: { criteria?: ToolQuery; results: QuerySelectionResult };

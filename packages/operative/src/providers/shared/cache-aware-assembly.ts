@@ -1,5 +1,5 @@
 import type { ConversationHistory, Message } from 'conversationalist';
-import { appendMessages, createProjection, isMediaContent } from 'conversationalist';
+import { appendMessages, createProjection, messageMediaParts } from 'conversationalist';
 
 import { createCatalogMediaCostEstimator } from '../../context/media-cost.ts';
 import type { TokenBudget } from '../../context/token-budget.ts';
@@ -92,9 +92,9 @@ function refuseOmittedMedia(
   );
   const reported = new Set(refused.map((cost) => `${cost.messageId}:${cost.partIndex}`));
   for (const message of context.conversation.getMessages()) {
-    if (message.hidden || kept.has(message.id) || typeof message.content === 'string') continue;
-    message.content.forEach((part, partIndex) => {
-      if (!isMediaContent(part) || reported.has(`${message.id}:${partIndex}`)) return;
+    if (message.hidden || kept.has(message.id)) continue;
+    for (const { part, partIndex } of messageMediaParts(message)) {
+      if (reported.has(`${message.id}:${partIndex}`)) continue;
       refused.push({
         messageId: message.id,
         partIndex,
@@ -102,7 +102,7 @@ function refuseOmittedMedia(
         outcome: 'unsupported',
         reason: 'media-over-budget',
       });
-    });
+    }
   }
   if (refused.length > 0) {
     // A part that was costed and admitted beside a refusal means the message is not one the model

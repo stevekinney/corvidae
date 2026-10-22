@@ -185,7 +185,7 @@ describe('resolved-value reader', () => {
   it('reads both theme arms of a real token from resolved output', () => {
     const accentArms = readOklchToken('--cinder-accent-solid');
     // Sourced from the published resolved contexts, not re-derived from CSS.
-    expect(accentArms.light).toEqual({ l: 0.5, c: 0.22, h: 270 });
+    expect(accentArms.light).toEqual({ l: 0.52, c: 0.24, h: 272 });
     expect(accentArms.dark).toEqual({ l: 0.72, c: 0.14, h: 270 });
   });
 

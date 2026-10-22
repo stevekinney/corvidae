@@ -330,7 +330,7 @@ describe('registerStackDisposers', () => {
 
     // Capture the registered disposers rather than driving a full server
     // teardown: the other disposers touch collaborators (workflowEventFeed,
-    // mcpSessionManager, the engine) that a minimal context does not provide.
+    // mcpEndpoint, the engine) that a minimal context does not provide.
     // We only need to prove the timer-cleanup disposer — registered last, so
     // LIFO-disposed first — calls taskQueue[Symbol.dispose].
     const deferred: Array<() => void | Promise<void>> = [];

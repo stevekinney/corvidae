@@ -239,6 +239,11 @@ export function buildAnthropicRow(model: string, freshness: string): BackendDesc
     mediaLimits: ANTHROPIC_MEDIA_LIMITS,
     mediaCounts: anthropicMediaCounts(limits.contextWindowTokens),
     providerFetchesRemoteUrls: true,
+    // https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use,
+    // checked 2026-10-22: a tool_result's content may hold text, image, and document blocks.
+    // Chat Completions tool messages (OpenAI) are text only, and the Gemini 2.x rows here
+    // have no documented multimodal function response, so those rows declare none.
+    toolResultModalities: ['image', 'document'],
     contextWindowTokens: limits.contextWindowTokens,
     maxOutputTokens: limits.maxOutputTokens,
     streaming: true,

@@ -15,9 +15,12 @@
  * ramp by building UP from near-black. The light-mode mirror of that is not
  * building DOWN from white.
  *
- * The light arm is now anchored at white and compressed — inset 0.960 → bg 0.984 →
- * surface 0.994 → raised 1.000 — with separation carried by border and shadow, the
- * model GitHub, Stripe, Linear and Vercel all use. This file gates THAT, and it
+ * The light arm is now anchored at white and compressed — inset 0.960 → bg 0.995 →
+ * surface 0.998 → raised 1.000 — with separation carried by border and shadow, the
+ * model GitHub, Stripe, Linear and Vercel all use. COR-1552 moved the three white tiers
+ * to that last, whitest form (they were 0.984, 0.994 and 1.000) and gave the inset a faint
+ * indigo tint (chroma 0.008, hue 270) instead of grey; the strict order inset < canvas <
+ * surface < raised below is what keeps three near-identical whites distinct. This file gates THAT, and it
  * gates the properties that make it correct rather than the specific numbers:
  * the canvas reads as white, the well stays a well and not a plate, the neutrals
  * stay neutral, and no interaction state collides with a resting tier.

@@ -153,18 +153,22 @@
 
   .cinder-toast[data-cinder-variant='info'] {
     --_cinder-toast-accent: var(--cinder-status-info-solid);
+    --_cinder-toast-accent-text: var(--cinder-status-info-text);
   }
 
   .cinder-toast[data-cinder-variant='success'] {
     --_cinder-toast-accent: var(--cinder-status-success-solid);
+    --_cinder-toast-accent-text: var(--cinder-status-success-text);
   }
 
   .cinder-toast[data-cinder-variant='warning'] {
     --_cinder-toast-accent: var(--cinder-status-warning-solid);
+    --_cinder-toast-accent-text: var(--cinder-status-warning-text);
   }
 
   .cinder-toast[data-cinder-variant='danger'] {
     --_cinder-toast-accent: var(--cinder-status-danger-solid);
+    --_cinder-toast-accent-text: var(--cinder-status-danger-text);
   }
 
   .cinder-toast__icon {
@@ -172,7 +176,7 @@
     align-items: center;
     flex-shrink: 0;
     line-height: 0;
-    color: var(--_cinder-toast-accent, var(--cinder-text-muted));
+    color: var(--_cinder-toast-accent-text, var(--cinder-text-muted));
   }
 
   .cinder-toast__spinner {
@@ -183,7 +187,7 @@
     border: 1.5px solid color-mix(in srgb, currentColor 25%, transparent);
     border-top-color: currentColor;
     border-radius: 50%;
-    color: var(--_cinder-toast-accent, var(--cinder-text-muted));
+    color: var(--_cinder-toast-accent-text, var(--cinder-text-muted));
     animation: cinder-toast-spinner-spin var(--cinder-duration-spin) linear infinite;
   }
 

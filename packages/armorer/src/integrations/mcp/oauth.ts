@@ -388,7 +388,7 @@ export function isMcpUnauthorizedError(error: unknown): boolean {
  */
 export async function fromMcpClientTools(
   client: Client,
-  options: Pick<FromMCPToolsOptions, 'formatResult' | 'progress'> = {},
+  options: Pick<FromMCPToolsOptions, 'formatResult' | 'progress' | 'serverId'> = {},
 ): Promise<Tool[]> {
   const { tools } = await client.listTools();
   return fromMcpTools(tools, {

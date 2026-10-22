@@ -109,7 +109,7 @@ describe('the Create palette panel', () => {
     await type('palette-seed', '#0ea5e9');
     expect(proposed('light')).toEqual([
       'oklch(0.68469 0.14787 237.322)',
-      'oklch(0.63469 0.139 237.322)',
+      'oklch(0.61469 0.13419 237.322)',
     ]);
     expect(proposed('dark')).toHaveLength(2);
     expect(target.textContent).toContain('Original (oklch)');

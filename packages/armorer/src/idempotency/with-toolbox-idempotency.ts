@@ -3,6 +3,7 @@ import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradien
 
 import type { JsonValue } from '../core/serialization/json';
 import { stableStringifyJson } from '../core/serialization/json';
+import { successContent } from '../create-tool/content';
 import type { ToolRequestContext } from '../execution-context';
 import {
   approvalConsumeSymbol,
@@ -10,6 +11,7 @@ import {
   policyAuthorizationOnlySymbol,
   policyAuthorizationResultSymbol,
 } from '../internal/approval-resume';
+import { isToolContent } from '../protocol';
 import type { AnyToolbox } from '../toolbox-interface';
 import type { ToolApprovalAction, ToolCallInput, ToolExecutionResult } from '../types';
 import { normalizeConcurrency } from '../utilities/concurrency';
@@ -587,7 +589,12 @@ export function withToolboxIdempotency(
     return {
       callId: fields.id,
       outcome: 'success',
-      content: typeof cached.result === 'string' ? cached.result : JSON.stringify(cached.result),
+      ...(isToolContent(cached.result)
+        ? successContent(cached.result)
+        : {
+            content:
+              typeof cached.result === 'string' ? cached.result : JSON.stringify(cached.result),
+          }),
       toolCallId: fields.id,
       toolName: cached.toolName,
       result: cached.result,
