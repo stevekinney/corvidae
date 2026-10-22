@@ -172,7 +172,8 @@ export interface AgentFileCatalog extends AgentFileWriter {
   /**
    * One file agent as it is on disk now: its state and problem, its hash, its exact text, and
    * its parsed definition. `undefined` when the catalog lists no file with that identifier. The
-   * hash, the text, and the state all describe the same bytes.
+   * hash, the text, the state, and the revision all describe the same bytes: a file changed since
+   * the last scan is settled first.
    */
   detail(id: string): Promise<AgentFileDetail | undefined>;
   /** The deployment's tool catalog, by name, as an agent file may name its tools. */
@@ -254,6 +255,9 @@ function sameSignature(left: FileEntry, right: FileEntry): boolean {
     left.definitionRevision === right.definitionRevision
   );
 }
+
+/** How many times `detail` settles a file that changed under it before it serves the read as it is. */
+const DETAIL_SETTLE_ATTEMPTS = 3;
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const operations = options.operations ?? nodeAgentFileOperations;
@@ -577,31 +581,41 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
 
     async detail(id) {
-      const known = directoryWatcher.entries().get(id);
-      if (known === undefined) return undefined;
-      const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
-      const revision = options.modelCatalog.catalog().revision;
-      let entry: FileEntry;
-      let text: string | undefined;
-      try {
-        const size = await operations.size(path);
-        if (size === undefined) return undefined;
-        if (size > AGENT_FILE_SIZE_LIMIT) {
-          entry = tooLarge(id, size, revision);
-        } else {
-          const bytes = await operations.read(path);
-          if (bytes === undefined) return undefined;
-          const hash = hashAgentFileBytes(bytes);
-          entry =
-            known.hash === hash && known.revision === revision
-              ? known
-              : evaluate(id, bytes, hash, revision);
-          text = decodeAgentFile(bytes);
+      // A file edited since the last scan is settled first, so the text, the hash, and the
+      // revision it returns describe one content: serving the new text at the previous scan's
+      // revision would pair a revision with content it does not name. A file that keeps changing
+      // under the reads is served as evaluated now, as an unsettled read.
+      for (let attempt = 0; ; attempt += 1) {
+        const known = directoryWatcher.entries().get(id);
+        if (known === undefined) return undefined;
+        const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
+        const revision = options.modelCatalog.catalog().revision;
+        let entry: FileEntry;
+        let text: string | undefined;
+        try {
+          const size = await operations.size(path);
+          if (size === undefined) return undefined;
+          if (size > AGENT_FILE_SIZE_LIMIT) {
+            entry = tooLarge(id, size, revision);
+          } else {
+            const bytes = await operations.read(path);
+            if (bytes === undefined) return undefined;
+            const hash = hashAgentFileBytes(bytes);
+            if (known.hash !== hash && attempt < DETAIL_SETTLE_ATTEMPTS) {
+              await refresh();
+              continue;
+            }
+            entry =
+              known.hash === hash && known.revision === revision
+                ? known
+                : evaluate(id, bytes, hash, revision);
+            text = decodeAgentFile(bytes);
+          }
+        } catch (error) {
+          entry = unreadable(id, error, revision);
         }
-      } catch (error) {
-        entry = unreadable(id, error, revision);
+        return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
       }
-      return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
     },
 
     tools() {
