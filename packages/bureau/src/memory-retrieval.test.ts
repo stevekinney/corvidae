@@ -13,6 +13,7 @@ import { MemoryStorage } from '@lostgradient/weft';
 import type { InputDetector, ToolRequestContext } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { MEMORY_EVIDENCE_METADATA_KEY } from './memory-evidence-metadata';
 import { waitForRunState } from './test';
@@ -86,7 +87,7 @@ interface Recalled {
  */
 describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
   let memory: GovernedMemory;
-  let bureau: Bureau;
+  let bureau: Bureau<AgentDefinitions>;
   const recalled: (Recalled | undefined)[] = [];
 
   const generate: GenerateFunction = async (context) => {
@@ -124,7 +125,7 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
       }),
       runtime,
     });
-    bureau = await createBureau({
+    bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
       agents: { scout: createAgent({ generate }) },
       memory,
