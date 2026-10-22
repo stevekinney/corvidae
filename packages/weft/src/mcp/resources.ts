@@ -6,7 +6,6 @@ import {
   type McpAccessContext,
 } from './access.ts';
 import { parseMcpListFilterFromSearchParams } from './list-filter.ts';
-import type { McpSession } from './session.ts';
 
 /** MCP resource definition. */
 export type McpResourceDefinition = {
@@ -116,23 +115,6 @@ export async function readMcpResource(
       throw new Error(`Unknown Weft resource URI kind: ${JSON.stringify(exhaustiveCheck)}`);
     }
   }
-}
-
-/** Subscribe to updates for a visible resource. */
-export async function subscribeMcpResource(
-  uri: string,
-  session: McpSession,
-  context: McpAccessContext,
-): Promise<boolean> {
-  const result = await readMcpResource(uri, context);
-  if (result === null) return false;
-  session.subscriptions.add(uri);
-  return true;
-}
-
-/** Remove a resource subscription. */
-export function unsubscribeMcpResource(uri: string, session: McpSession): void {
-  session.subscriptions.delete(uri);
 }
 
 function jsonResource(uri: string, value: unknown): McpResourceReadResult {

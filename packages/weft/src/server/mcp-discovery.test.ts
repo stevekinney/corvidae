@@ -10,7 +10,8 @@ describe('MCP discovery document', () => {
     expect(document).toEqual({
       schemaVersion: 1,
       protocol: 'model-context-protocol',
-      protocolVersion: '2025-11-25',
+      protocolVersion: '2026-07-28',
+      legacyProtocolVersion: '2025-11-25',
       serverInfo: {
         name: 'weft',
         version: VERSION,
@@ -18,8 +19,7 @@ describe('MCP discovery document', () => {
       transports: {
         streamableHttp: {
           url: 'https://api.example.com/api/mcp',
-          methods: ['POST', 'GET', 'DELETE'],
-          sessionHeader: 'Mcp-Session-Id',
+          methods: ['POST'],
           protocolVersionHeader: 'Mcp-Protocol-Version',
         },
         stdio: {

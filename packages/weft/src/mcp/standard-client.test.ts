@@ -1,7 +1,7 @@
 /**
  * A spec-compliant MCP client against `/mcp` on a `serve()` with a static API
- * key. The official SDK knows nothing about Weft's `Mcp-Session-Token`, so the
- * session has to stay usable by the API key it presents on every request.
+ * key, in its default 2025-era mode. The endpoint keeps no session, so every
+ * request authenticates with the key it presents.
  */
 
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
@@ -41,7 +41,7 @@ describe('the official MCP SDK client over a static API key', () => {
     return server;
   }
 
-  it('connects and lists tools with no Mcp-Session-Token', async () => {
+  it('connects and lists tools with the key in X-API-Key', async () => {
     const running = start();
     const transport = new StreamableHTTPClientTransport(new URL(`${running.url}/mcp`), {
       requestInit: { headers: { 'X-API-Key': STATIC_KEY } },

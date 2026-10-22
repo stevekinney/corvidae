@@ -6,7 +6,6 @@ import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
-import { MCP_TOOLS_LIST_CHANGED_NOTIFICATION } from './protocol.ts';
 import { runMcpStdioSession } from './stdio.ts';
 
 type ParsedLine = {
@@ -168,6 +167,139 @@ describe('runMcpStdioSession', () => {
     engine[Symbol.dispose]();
   });
 
+  it('refuses to start without an admission mode', async () => {
+    const engine = createEngine();
+    const result = await runMcpStdioSession({
+      input: controllableInput().stream,
+      output: collectingOutput().stream,
+      engine,
+      admission: { kind: 'require-one' },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.reason).toContain('--startup-token');
+    engine[Symbol.dispose]();
+  });
+
+  it('exits with the failure when the output cannot be written', async () => {
+    const engine = createEngine();
+    const input = controllableInput();
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: new WritableStream<Uint8Array>({
+        write() {
+          throw new Error('stdout closed');
+        },
+      }),
+      engine,
+      admission: { kind: 'startup-token', token: 'secret-token' },
+    });
+    input.send({
+      jsonrpc: '2.0',
+      id: 'auth',
+      method: 'weft.authenticate',
+      params: { token: 'secret-token' },
+    });
+
+    expect(await session).toEqual({ exitCode: 1, reason: 'stdout closed' });
+    engine[Symbol.dispose]();
+  });
+
+  it('ends the session when the input closes before the authenticate frame', async () => {
+    const engine = createEngine();
+    const input = controllableInput();
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: collectingOutput().stream,
+      engine,
+      admission: { kind: 'startup-token', token: 'secret-token' },
+    });
+    input.close();
+
+    expect(await session).toEqual({
+      exitCode: 2,
+      reason: 'stdio session closed before authenticate frame',
+    });
+    engine[Symbol.dispose]();
+  });
+
+  it('answers unparseable and oversize frames and keeps serving', async () => {
+    const engine = createEngine();
+    const input = controllableInput();
+    const output = collectingOutput();
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: output.stream,
+      engine,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+      maxFrameBytes: 512,
+    });
+
+    input.sendRaw('{not-json}\n');
+    const parseError = await waitForLine(output, (line) => line.error?.code === -32700);
+    expect(parseError).toMatchObject({ id: null, error: { message: 'Parse error' } });
+
+    input.sendRaw('x'.repeat(600));
+    const oversize = await waitForLine(output, (line) => line.error?.code === -32600);
+    expect(oversize).toMatchObject({ id: null, error: { message: 'frame exceeds maxFrameBytes' } });
+
+    input.send({
+      jsonrpc: '2.0',
+      id: 'init',
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'stdio-test', version: '1.0.0' },
+      },
+    });
+    await waitForLine(output, (line) => line.id === 'init' && line.result !== undefined);
+
+    input.close();
+    expect(await session).toEqual({ exitCode: 0 });
+    engine[Symbol.dispose]();
+  });
+
+  it('lets a request read before the input ends finish before the session ends', async () => {
+    const engine = createEngine();
+    const input = controllableInput();
+    const output = collectingOutput();
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: output.stream,
+      engine,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+    });
+
+    input.send({
+      jsonrpc: '2.0',
+      id: 'init',
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'stdio-test', version: '1.0.0' },
+      },
+    });
+    await waitForLine(output, (line) => line.id === 'init' && line.result !== undefined);
+    input.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    // The last frame carries no trailing newline and arrives just before the input ends.
+    input.sendRaw(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'last-call',
+        method: 'tools/call',
+        params: { name: 'echo_workflow', arguments: { input: { value: 'drained' } } },
+      }),
+    );
+    input.close();
+
+    expect(await session).toEqual({ exitCode: 0 });
+    const callLine = output.lines().find((line) => line.id === 'last-call');
+    expect(toolText(callLine?.result)).toMatchObject({ result: { echoed: 'drained' } });
+    engine[Symbol.dispose]();
+  });
+
   it('accepts startup-token admission and then runs the MCP initialize handshake', async () => {
     const engine = createEngine();
     const input = controllableInput();
@@ -192,7 +324,11 @@ describe('runMcpStdioSession', () => {
       jsonrpc: '2.0',
       id: 'init',
       method: 'initialize',
-      params: { protocolVersion: '2025-11-25', capabilities: {} },
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'stdio-test', version: '1.0.0' },
+      },
     });
     await waitForLine(output, (line) => line.id === 'init' && line.result !== undefined);
 
@@ -221,7 +357,11 @@ describe('runMcpStdioSession', () => {
       jsonrpc: '2.0',
       id: 'init',
       method: 'initialize',
-      params: { protocolVersion: '2025-11-25', capabilities: {} },
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'stdio-test', version: '1.0.0' },
+      },
     });
     const initializeLine = await waitForLine(
       output,
@@ -247,7 +387,7 @@ describe('runMcpStdioSession', () => {
 
     const notificationLine = await waitForLine(
       output,
-      (line) => line.method === MCP_TOOLS_LIST_CHANGED_NOTIFICATION,
+      (line) => line.method === 'notifications/tools/list_changed',
     );
     expect(notificationLine.params).toBeUndefined();
 
@@ -285,6 +425,20 @@ describe('runMcpStdioSession', () => {
         error: { code: -32010, message: 'first frame was not valid JSON' },
       },
       expectedReason: 'first frame was not valid JSON',
+    });
+
+    await expectRejectedStartupTokenAdmission({
+      frame: {
+        jsonrpc: '2.0',
+        id: 'string-params',
+        method: 'weft.authenticate',
+        params: 'secret-token',
+      },
+      expectedLine: {
+        id: 'string-params',
+        error: { code: -32010, message: 'startup token mismatch' },
+      },
+      expectedReason: 'startup token mismatch',
     });
 
     await expectRejectedStartupTokenAdmission({
@@ -344,51 +498,6 @@ describe('runMcpStdioSession', () => {
     engine[Symbol.dispose]();
   });
 
-  it('rejects regular MCP traffic until initialize and notifications/initialized complete', async () => {
-    const engine = createEngine();
-    const input = controllableInput();
-    const output = collectingOutput();
-
-    const session = runMcpStdioSession({
-      input: input.stream,
-      output: output.stream,
-      engine,
-      admission: { kind: 'allow-unauthenticated-local-admin' },
-    });
-
-    input.send({ jsonrpc: '2.0', id: 'before-init', method: 'tools/list', params: {} });
-    const beforeInit = await waitForLine(output, (line) => line.id === 'before-init');
-    expect(beforeInit.error).toMatchObject({
-      code: -32000,
-      message: 'MCP session must be initialized before requests',
-    });
-
-    input.send({
-      jsonrpc: '2.0',
-      id: 'init',
-      method: 'initialize',
-      params: { protocolVersion: '2025-11-25', capabilities: {} },
-    });
-    await waitForLine(output, (line) => line.id === 'init' && line.result !== undefined);
-
-    input.send({ jsonrpc: '2.0', id: 'before-ready', method: 'tools/list', params: {} });
-    const beforeReady = await waitForLine(output, (line) => line.id === 'before-ready');
-    expect(beforeReady.error).toMatchObject({
-      code: -32000,
-      message: 'MCP session must receive notifications/initialized before requests',
-    });
-
-    input.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    input.send({ jsonrpc: '2.0', id: 'after-ready', method: 'tools/list', params: {} });
-    const afterReady = await waitForLine(output, (line) => line.id === 'after-ready');
-    expect(afterReady.error).toBeUndefined();
-    expect(afterReady.result).toMatchObject({ tools: expect.any(Array) });
-
-    input.close();
-    expect(await session).toEqual({ exitCode: 0 });
-    engine[Symbol.dispose]();
-  });
-
   it('initializes, lists tools, calls workflow tools, and exits cleanly', async () => {
     const engine = createEngine();
     const input = controllableInput();
@@ -439,22 +548,16 @@ describe('runMcpStdioSession', () => {
     engine[Symbol.dispose]();
   });
 
-  it('keeps resource subscriptions alive after the idle timeout when stdio is active', async () => {
+  it('notifies a 2025-era stdio connection about the resources it subscribed to', async () => {
     const engine = createEngine();
     const input = controllableInput();
     const output = collectingOutput();
-    let now = 0;
 
     const session = runMcpStdioSession({
       input: input.stream,
       output: output.stream,
       engine,
       admission: { kind: 'allow-unauthenticated-local-admin' },
-      sessionManagerOptions: {
-        maximumSessions: 1,
-        sessionIdleTimeoutMilliseconds: 100,
-        currentTimeMilliseconds: () => now,
-      },
     });
 
     input.send({
@@ -484,7 +587,6 @@ describe('runMcpStdioSession', () => {
     });
     await waitForLine(output, (line) => line.id === 'subscribe' && line.result !== undefined);
 
-    now = 150;
     await engine.signal(handle.id, 'release', 'done');
 
     const notification = await waitForLine(
@@ -497,13 +599,22 @@ describe('runMcpStdioSession', () => {
       params: { uri: resourceUri },
     });
 
+    input.send({
+      jsonrpc: '2.0',
+      id: 'unsubscribe',
+      method: 'resources/unsubscribe',
+      params: { uri: resourceUri },
+    });
+    const unsubscribed = await waitForLine(output, (line) => line.id === 'unsubscribe');
+    expect(unsubscribed.result).toEqual({});
+
     input.close();
     const result = await session;
     expect(result.exitCode).toBe(0);
     engine[Symbol.dispose]();
   });
 
-  it('processes cancellation notifications while a workflow tool call is in flight', async () => {
+  it('cancels the workflow of an in-flight tool call when the client cancels the request', async () => {
     const engine = createEngine();
     const input = controllableInput();
     const output = collectingOutput();
@@ -559,12 +670,12 @@ describe('runMcpStdioSession', () => {
       { timeoutMs: 2_000, intervalMs: 10, label: 'stdio workflow cancellation' },
     );
 
-    const cancelledLine = await waitForLine(output, (line) => line.id === 'pending');
-    expect((cancelledLine.result as { isError?: boolean }).isError).toBe(true);
-
+    // The SDK follows the MCP rule that a cancelled request gets no response,
+    // and the session still ends cleanly instead of waiting for one.
     input.close();
     const result = await session;
     expect(result.exitCode).toBe(0);
+    expect(output.lines().some((line) => line.id === 'pending')).toBe(false);
     engine[Symbol.dispose]();
   });
 
