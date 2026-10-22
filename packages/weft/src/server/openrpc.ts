@@ -134,7 +134,8 @@ export function generateOpenRpcDocument(options: OpenRpcOptions): Record<string,
       registryProvidesDiscover = true;
     }
     const method = buildMethod(operation);
-    if (operation.mcpExposable && options.includeMcpMetadata !== false) {
+    // Only an engine-served workflow tool (with `mcpTool`) has a live tool to resolve here.
+    if (operation.mcpTool !== undefined && options.includeMcpMetadata !== false) {
       const metadata = buildMethodMcpMetadata(operation, options.mcpTools);
       method['x-weft-mcp'] = metadata;
       mcpTools.push({ toolName: metadata.toolName });

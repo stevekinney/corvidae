@@ -1,5 +1,6 @@
 import type {
   DispatchResult,
+  ErasedOperation,
   executeSubscription,
   OperationRegistry,
 } from '../operation-catalog.ts';
@@ -7,23 +8,58 @@ import type { Principal } from '../principal.ts';
 import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX } from '../route-model.ts';
 
 /**
+ * One registered operation as a mounted adapter sees it: what it needs to
+ * describe the operation in its own protocol (an MCP bridge lists tools from
+ * these), and nothing that would let it run the operation outside the pipeline.
+ */
+export type OperationHandlerMountOperation = Pick<
+  ErasedOperation,
+  | 'name'
+  | 'summary'
+  | 'description'
+  | 'mcpExposable'
+  | 'mcpTool'
+  | 'destructive'
+  | 'inputSchema'
+  | 'outputSchema'
+  | 'unknownKeyPolicy'
+  | 'kind'
+>;
+
+/**
+ * Which transport a mounted adapter's dispatch is attributed to. `http-rest` is the default;
+ * `mcp` admits exactly the operations the catalog marks `mcpExposable`.
+ */
+export type OperationHandlerMountDispatchOptions = {
+  readonly transport?: 'http-rest' | 'mcp';
+};
+
+/**
  * What an adapter mounted on the operation handler receives with each request.
  *
  * An adapter translates its protocol and the catalog executes: `dispatch` and
  * `subscribe` run the full catalog pipeline (transport, access policy,
  * parsing, `authorize`, output validation) as the resolved `principal`, over
- * the `http-rest` transport. An adapter that bypassed them and reached into the
- * host directly would also bypass access policy.
+ * the `http-rest` transport unless the adapter names `mcp`. An adapter that
+ * bypassed them and reached into the host directly would also bypass access
+ * policy.
  */
 export type OperationHandlerMountContext = {
   /** The caller `authenticate` resolved, or the anonymous principal on a public path. */
   readonly principal: Principal;
+  /** Every registered operation, in registration order. */
+  readonly operations: ReadonlyArray<OperationHandlerMountOperation>;
   /** Runs one unary catalog operation through the full pipeline, as this principal. */
-  readonly dispatch: (operationName: string, input: unknown) => Promise<DispatchResult<unknown>>;
+  readonly dispatch: (
+    operationName: string,
+    input: unknown,
+    options?: OperationHandlerMountDispatchOptions,
+  ) => Promise<DispatchResult<unknown>>;
   /** Runs one `subscription` catalog operation through the full pipeline, as this principal. */
   readonly subscribe: (
     operationName: string,
     input: unknown,
+    options?: OperationHandlerMountDispatchOptions,
   ) => ReturnType<typeof executeSubscription>;
 };
 
