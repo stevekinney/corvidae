@@ -54,6 +54,11 @@ export type BureauA2AOptions = {
 export type BureauA2AMountOptions = BureauA2AOptions & {
   readonly bureau: A2ABureau & { readonly id: string };
   readonly publication: { readonly includes: (agentName: string) => boolean };
+  /**
+   * Whether any task of the agent is still addressable. A withdrawn agent that has one keeps a
+   * tombstone at its path until the last has passed its retention.
+   */
+  readonly hasTasks: (agentName: string) => Promise<boolean>;
   /** The card source of a catalog agent, or `undefined` when the catalog has none. */
   readonly describe: (
     agentName: string,
@@ -109,6 +114,19 @@ const probeCard = createBureauAgentCard({
   durableHistory: false,
 });
 
+/** The card source a tombstone's handler is built with: its card is never served. */
+function tombstoneSource(
+  agentName: string,
+): Omit<A2AAgentCardSource, 'security' | 'durableHistory'> {
+  return {
+    catalogName: agentName,
+    displayName: undefined,
+    description: undefined,
+    definitionRevision: -1,
+    skillDescriptors: undefined,
+  };
+}
+
 /** Creates the mount that serves every published agent over A2A. */
 export function createBureauA2AMount(options: BureauA2AMountOptions): OperationHandlerMount {
   const publicUrl = trimTrailingSlash(options.publicUrl);
@@ -145,11 +163,15 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     return durableHistory;
   };
 
-  async function handlerOf(agentName: string): Promise<A2AHandler | undefined> {
-    const source = options.describe(agentName);
-    if (source === undefined) return undefined;
+  async function handlerOf(agentName: string, published: boolean): Promise<A2AHandler | undefined> {
     const held = handlers.get(agentName);
-    if (held !== undefined && held.revision === source.definitionRevision) return held.handler;
+    // A tombstone serves only tasks, so the handler the agent had, or one with a bare card, does.
+    const source =
+      options.describe(agentName) ?? (published ? undefined : tombstoneSource(agentName));
+    if (source === undefined) return undefined;
+    if (held !== undefined && (!published || held.revision === source.definitionRevision)) {
+      return held.handler;
+    }
     const agentCard = createBureauAgentCard({
       ...source,
       security: options.security,
@@ -162,6 +184,7 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       records: options.records,
       ledger: options.ledger,
       respond: options.respond,
+      acceptsNewTasks: () => options.publication.includes(agentName),
     });
     const handler = createA2AHandler({
       requestHandler,
@@ -187,8 +210,13 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     async fetch(request, context) {
       const pathname = new URL(request.url).pathname;
       const agentName = agentOf(pathname);
-      if (agentName === undefined || !options.publication.includes(agentName)) return notFound();
-      const handler = await handlerOf(agentName);
+      if (agentName === undefined) return notFound();
+      const published = options.publication.includes(agentName);
+      // A withdrawn agent's tombstone serves its remaining tasks, never its card.
+      if (!published && (PUBLIC_ROUTE.test(pathname) || !(await options.hasTasks(agentName)))) {
+        return notFound();
+      }
+      const handler = await handlerOf(agentName, published);
       if (handler === undefined) return notFound();
       // Without signing there is no key to publish; the kit would read the path as JSON-RPC.
       if (options.signing === undefined && pathname.endsWith('/.well-known/jwks.json')) {

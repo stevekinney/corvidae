@@ -241,6 +241,12 @@ export type BureauA2ARequestHandlerOptions = {
   readonly runtime?: Pick<RuntimeServices, 'clock' | 'identifiers'> | undefined;
   /** How long a cancel waits for the run's cleanup to acknowledge before it answers. */
   readonly cancelWaitMilliseconds?: number;
+  /**
+   * Whether the agent takes a new task: `false` once it is withdrawn. A withdrawn agent's tasks
+   * are still served, and an exact retry of a send whose binding is retained still resolves to
+   * its original task. Defaults to always.
+   */
+  readonly acceptsNewTasks?: (() => boolean) | undefined;
 };
 
 type Owner = string;
@@ -894,6 +900,15 @@ export function createBureauA2ARequestHandler(
       if (located.entry.payloadDigest !== digest) throw conflict(located.entry.result);
       return admitted(located.entry.result);
     }
+    // A claim an earlier attempt left pending already took effect, or may have: it is finished
+    // by the path it was admitted on, and the task's state since does not refuse it.
+    const pending =
+      located.state === 'retained' && located.entry.state === 'pending'
+        ? located.entry.claim
+        : undefined;
+    if (!continuing && pending === undefined && options.acceptsNewTasks?.() === false) {
+      throw new TaskNotFoundError(`Agent '${agentName}' was withdrawn and takes no new task.`);
+    }
 
     if (params.configuration?.taskPushNotificationConfig !== undefined) {
       throw new PushNotificationNotSupportedError(
@@ -906,12 +921,6 @@ export function createBureauA2ARequestHandler(
         `This agent answers only in ${A2A_OUTPUT_MODES.join(', ')}, which acceptedOutputModes excludes.`,
       );
     }
-    // A claim an earlier attempt left pending already took effect, or may have: it is finished
-    // by the path it was admitted on, and the task's state since does not refuse it.
-    const pending =
-      located.state === 'retained' && located.entry.state === 'pending'
-        ? located.entry.claim
-        : undefined;
     const continued = !continuing
       ? undefined
       : pending === undefined

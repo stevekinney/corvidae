@@ -1734,6 +1734,11 @@ const DEFAULT_EVENT_RETENTION_MS = 7 * 86_400_000;
 /** COR-1477 — {@link BureauOptions.taskRetention}'s default window: 30 days. */
 const DEFAULT_TASK_RETENTION_MS = 30 * 86_400_000;
 
+/** {@link BureauOptions.taskRetention}, or its default window when none was given. */
+function taskRetentionOf(options: { readonly taskRetention?: RetentionWindowOption | undefined }) {
+  return options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+}
+
 /**
  * COR-625 — `BureauOptions.checkpointRetention`'s `{ keepLast }` form feeds
  * weft's `Engine.pruneCheckpoints` (COR-11), whose own contract requires a
@@ -18065,7 +18070,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const bureau: Bureau<D> = {
     id: bureauId,
     hasExplicitId: options.id !== undefined,
-    taskRetention: options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS },
+    taskRetention: taskRetentionOf(options),
     hasDurableEngine: runCreationLedger !== undefined,
     eventFeed,
     runEventFeeds,

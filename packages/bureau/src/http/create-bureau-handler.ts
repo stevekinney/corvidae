@@ -738,6 +738,10 @@ function createA2AMount(
     ...(options.signing === undefined ? {} : { signing: options.signing }),
     bureau,
     publication: createPublication(bureau, publish),
+    hasTasks: async (agentName) => {
+      const page = await bureau.tasks.enumerate({ agentName, limit: 1, offset: 0 });
+      return page.tasks.length > 0;
+    },
     describe: (agentName) => {
       const described = publishedAgentsOf(bureau, publish).find(
         (agent) => agent.name === agentName,
