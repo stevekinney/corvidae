@@ -349,9 +349,7 @@ export {
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
-export {
-  SessionForkRefusedError,
-} from './session-fork';
+export { SessionForkRefusedError } from './session-fork';
 export type {
   ForkSessionRequest,
   ForkSessionResult,

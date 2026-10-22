@@ -10,10 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForRunState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
-import {
-  type FileBureauHarness,
-  startFileBureau,
-} from './testing/agent-file-bureau.test-support';
+import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauDiagnostic } from './types';
 
 const harnesses: FileBureauHarness[] = [];
@@ -52,7 +49,12 @@ function recordingResolver(options: { readonly cannotSetUp?: string } = {}) {
       };
     };
   };
-  return { calls, resolveAgentGenerate, entered: entered.promise, release: () => release.resolve() };
+  return {
+    calls,
+    resolveAgentGenerate,
+    entered: entered.promise,
+    release: () => release.resolve(),
+  };
 }
 
 async function start(
@@ -184,11 +186,7 @@ describe('an override that can no longer be used', () => {
     const diagnostics: BureauDiagnostic[] = [];
     const resolver = recordingResolver();
     resolver.release();
-    const harness = await start(
-      resolver,
-      PICKER(`[${KNOWN_MODEL}, openai/gpt-4.1]`),
-      diagnostics,
-    );
+    const harness = await start(resolver, PICKER(`[${KNOWN_MODEL}, openai/gpt-4.1]`), diagnostics);
     const first = await runPicker(harness);
     await waitForRunState(harness.bureau, first.id);
     const switched = await steer(harness, first.sessionId, 'switch', GPT_4_1);

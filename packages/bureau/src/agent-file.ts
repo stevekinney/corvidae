@@ -108,31 +108,31 @@ function isModelEntry(entry: string): boolean {
  */
 export const agentFileFrontmatterSchema = z
   .looseObject({
-  /** A display label. Defaults to the identifier. Need not be unique. */
-  name: z.string().trim().min(1).nullish(),
-  description: z.string().nullish(),
-  /** `<provider>/<model-or-alias>`, split on the first `/`; checked against the model catalog. */
-  model: z.string().min(1),
-  /**
-   * The models a session of this agent may be switched to (COR-1559), each written like `model`.
-   * It narrows the choice; without it the deployment's catalog applies. Checked by
-   * {@link checkModelsList} when the file is parsed, never against the catalog.
-   */
-  models: z.array(z.string()).nullish(),
-  /** Names from the deployment's tool catalog. */
-  tools: z
-    .array(z.string().min(1))
-    .refine(unique, { message: 'tool names must be unique' })
-    .nullish(),
-  /** Descriptive Agent Card skills (COR-1301), never executable skills. */
-  skills: z
-    .array(agentSkillDescriptorSchema)
-    .refine((skills) => unique(skills.map((skill) => skill.id)), {
-      message: 'skill ids must be unique',
-    })
-    .nullish(),
-  /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
-  published: z.boolean().nullish(),
+    /** A display label. Defaults to the identifier. Need not be unique. */
+    name: z.string().trim().min(1).nullish(),
+    description: z.string().nullish(),
+    /** `<provider>/<model-or-alias>`, split on the first `/`; checked against the model catalog. */
+    model: z.string().min(1),
+    /**
+     * The models a session of this agent may be switched to (COR-1559), each written like `model`.
+     * It narrows the choice; without it the deployment's catalog applies. Checked by
+     * {@link checkModelsList} when the file is parsed, never against the catalog.
+     */
+    models: z.array(z.string()).nullish(),
+    /** Names from the deployment's tool catalog. */
+    tools: z
+      .array(z.string().min(1))
+      .refine(unique, { message: 'tool names must be unique' })
+      .nullish(),
+    /** Descriptive Agent Card skills (COR-1301), never executable skills. */
+    skills: z
+      .array(agentSkillDescriptorSchema)
+      .refine((skills) => unique(skills.map((skill) => skill.id)), {
+        message: 'skill ids must be unique',
+      })
+      .nullish(),
+    /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
+    published: z.boolean().nullish(),
   })
   .superRefine((frontmatter, context) => checkModelsList(frontmatter, context));
 

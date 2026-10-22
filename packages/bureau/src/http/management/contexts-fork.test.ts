@@ -28,7 +28,10 @@ const agent = createAgent({
     const history = context.conversation.current;
     const last = history.messages[history.ids.at(-1) ?? ''];
     if (last?.toolResult === undefined) {
-      return { content: 'thinking', toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }] };
+      return {
+        content: 'thinking',
+        toolCalls: [{ id: `c-${history.ids.length}`, name: 'noop', arguments: {} }],
+      };
     }
     return { content: 'the answer', toolCalls: [] };
   },
@@ -68,7 +71,9 @@ describe('bureau.contexts.fork', () => {
       const run = await finishedSession(opened);
       const through = `${run.id}:step:1`;
 
-      const body = await forkCall(opened, run.sessionId, 'alice-key', { throughMessageId: through });
+      const body = await forkCall(opened, run.sessionId, 'alice-key', {
+        throughMessageId: through,
+      });
 
       expect(body.error).toBeUndefined();
       expect(body.result).toMatchObject({ carriedOverride: null });
@@ -117,7 +122,9 @@ describe('bureau.contexts.fork', () => {
         { contextId: body.result?.['contextId'] },
         'alice-key',
       );
-      expect(get.result).toMatchObject({ model: { provider: 'anthropic', model: 'claude-opus-5' } });
+      expect(get.result).toMatchObject({
+        model: { provider: 'anthropic', model: 'claude-opus-5' },
+      });
     });
   });
 
@@ -163,7 +170,10 @@ describe('bureau.contexts.fork', () => {
         throughMessageId: 'no-such-message',
       });
 
-      expect(user.error?.data).toMatchObject({ weftCode: 'Conflict', reason: 'not-a-branch-point' });
+      expect(user.error?.data).toMatchObject({
+        weftCode: 'Conflict',
+        reason: 'not-a-branch-point',
+      });
       expect(missing.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'message' });
     });
   });
@@ -173,7 +183,9 @@ describe('bureau.contexts.fork', () => {
       const run = await finishedSession(opened);
       const through = `${run.id}:step:1`;
 
-      const foreign = await forkCall(opened, run.sessionId, 'bob-key', { throughMessageId: through });
+      const foreign = await forkCall(opened, run.sessionId, 'bob-key', {
+        throughMessageId: through,
+      });
       const missing = await forkCall(opened, 'no-such-context', 'alice-key');
       const operator = await forkCall(opened, run.sessionId, 'contexts-writer-key', {
         commandId: 'operator-fork',

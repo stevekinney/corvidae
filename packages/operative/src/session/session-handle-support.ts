@@ -11,8 +11,8 @@ import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import { normalizeAgentRunWorkflowResult } from '../durable/run-workflow-result';
 import { toAgentRunError } from '../errors';
 import type { RunOutcome, RunResult } from '../types';
-import { ForkThroughMessageError } from './session-handle-types';
 import { createRunConversationBoundary } from './run-conversation-boundary';
+import { ForkThroughMessageError } from './session-handle-types';
 import type { SessionStore } from './types';
 
 export function historyOrEmpty(

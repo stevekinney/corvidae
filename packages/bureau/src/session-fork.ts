@@ -128,14 +128,20 @@ export async function assertBranchPoint(
     record.contextId !== session.id ||
     !belongsToIncarnation(record, session.incarnation)
   ) {
-    return refuse('not-a-branch-point', 'The run that made this reply is not known to this context.');
+    return refuse(
+      'not-a-branch-point',
+      'The run that made this reply is not known to this context.',
+    );
   }
   const final = history.ids.findLast((id) => {
     const parsed = parseAssistantMessageIdentifier(id);
     return parsed?.runId === runId && history.messages[id]?.role === 'assistant';
   });
   if (final !== throughMessageId) {
-    return refuse('not-a-branch-point', 'Only the final assistant reply of a run can be branched from.');
+    return refuse(
+      'not-a-branch-point',
+      'Only the final assistant reply of a run can be branched from.',
+    );
   }
   const approvals = await evidence.pendingApprovals(runId);
   if (approvals.length > 0) {
@@ -163,10 +169,7 @@ export async function assertBranchPoint(
     );
   });
   if (unresolved) {
-    return refuse(
-      'branch-with-unresolved-tool-call',
-      'The reply has a tool call with no result.',
-    );
+    return refuse('branch-with-unresolved-tool-call', 'The reply has a tool call with no result.');
   }
 }
 

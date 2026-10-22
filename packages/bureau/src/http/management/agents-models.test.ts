@@ -79,17 +79,20 @@ describe('bureau.agents.models for a code-defined agent', () => {
   });
 
   it('lists the whole catalog for a selectable profile that names no candidates', async () => {
-    const everything = createLazyAgent(async () => createAgent({ name: 'everything', generate: answer }), {
-      label: 'everything',
-      generationProfile: {
-        mode: 'selectable',
-        revision: 1,
-        projection: 'privileged',
-        descriptors: [],
-        freshness: '2026-10-22T00:00:00.000Z',
-        selector: 'unavailable',
+    const everything = createLazyAgent(
+      async () => createAgent({ name: 'everything', generate: answer }),
+      {
+        label: 'everything',
+        generationProfile: {
+          mode: 'selectable',
+          revision: 1,
+          projection: 'privileged',
+          descriptors: [],
+          freshness: '2026-10-22T00:00:00.000Z',
+          selector: 'unavailable',
+        },
       },
-    });
+    );
     const served = await serve({ agents: { ...agents(), everything } });
 
     const { result } = await modelsOf(served, 'everything');
@@ -210,7 +213,12 @@ describe('bureau.agents.models access', () => {
   it('asks only that the caller be authenticated: a caller with no scope reads it', async () => {
     const served = await serve({ agents: agents() });
 
-    const body = await rpc(served.keyed, 'bureau.agents.models', { agentName: 'fixed' }, 'alice-key');
+    const body = await rpc(
+      served.keyed,
+      'bureau.agents.models',
+      { agentName: 'fixed' },
+      'alice-key',
+    );
 
     expect(body.error).toBeUndefined();
     expect(body.result?.['selectable']).toBe(false);

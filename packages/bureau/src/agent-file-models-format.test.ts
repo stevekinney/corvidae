@@ -71,7 +71,9 @@ describe('the models field', () => {
   });
 
   it('names a repeated entry at its own index', () => {
-    const problem = problemOf(file([`model: ${DEFAULT}`, `models: [${DEFAULT}, openai/gpt-4.1, ${DEFAULT}]`]));
+    const problem = problemOf(
+      file([`model: ${DEFAULT}`, `models: [${DEFAULT}, openai/gpt-4.1, ${DEFAULT}]`]),
+    );
 
     expect(problem.code).toBe('invalid-frontmatter');
     expect(problem.issues?.map((issue) => issue.path)).toEqual(['models.2']);
@@ -88,9 +90,7 @@ describe('the models field', () => {
     const problem = problemOf(file([`model: ${DEFAULT}`, 'models: [openai/gpt-4.1]']));
 
     expect(problem.code).toBe('invalid-frontmatter');
-    expect(problem.issues).toEqual([
-      { path: 'models', message: expect.stringContaining(DEFAULT) },
-    ]);
+    expect(problem.issues).toEqual([{ path: 'models', message: expect.stringContaining(DEFAULT) }]);
   });
 
   it('compares the default by literal string, so an alias of it is not it', () => {
@@ -103,9 +103,9 @@ describe('the models field', () => {
 
   it('refuses a list that is not a list of text', () => {
     expect(problemOf(file([`model: ${DEFAULT}`, 'models: 7'])).code).toBe('invalid-frontmatter');
-    expect(problemOf(file([`model: ${DEFAULT}`, `models: [${DEFAULT}, 3]`])).issues?.[0]?.path).toBe(
-      'models.1',
-    );
+    expect(
+      problemOf(file([`model: ${DEFAULT}`, `models: [${DEFAULT}, 3]`])).issues?.[0]?.path,
+    ).toBe('models.1');
   });
 });
 
@@ -125,13 +125,10 @@ describe('writing the models field', () => {
   });
 
   it('resolves a definition with its list', () => {
-    expect(resolveAgentFileDefinition('picker', input).models).toEqual([
-      DEFAULT,
-      'openai/gpt-4.1',
-    ]);
-    expect(resolveAgentFileDefinition('picker', { ...input, models: undefined })).not.toHaveProperty(
-      'models',
-    );
+    expect(resolveAgentFileDefinition('picker', input).models).toEqual([DEFAULT, 'openai/gpt-4.1']);
+    expect(
+      resolveAgentFileDefinition('picker', { ...input, models: undefined }),
+    ).not.toHaveProperty('models');
   });
 
   it('removes the list when an update omits it, as it does tools', () => {

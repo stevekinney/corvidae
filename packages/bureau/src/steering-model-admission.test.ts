@@ -10,10 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForRunState } from './test';
-import {
-  readSteeringLogEntries,
-  readSteeringLogHead,
-} from './steering-log';
+import { readSteeringLogEntries, readSteeringLogHead } from './steering-log';
 import {
   createSteppedGenerate,
   GPT_4_1,
@@ -49,8 +46,7 @@ async function openBureau(
     allowed?: Parameters<typeof createAgent>[0]['allowedCandidates'];
   } = {},
 ) {
-  const generate =
-    options.generate ?? (async () => ({ content: 'ok', toolCalls: [] as never[] }));
+  const generate = options.generate ?? (async () => ({ content: 'ok', toolCalls: [] as never[] }));
   const picker =
     options.allowed === undefined
       ? pickerAgent(generate)
@@ -63,7 +59,8 @@ async function openBureau(
   const bureau = await createBureau<AgentDefinitions>({
     agents: { picker },
     stopWhen: stopWhen.noToolCalls(),
-    storage: options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
+    storage:
+      options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
     ...(options.durable === false ? {} : { durableExecution: true }),
     ...(options.catalog === undefined ? {} : { modelCatalog: options.catalog }),
   });

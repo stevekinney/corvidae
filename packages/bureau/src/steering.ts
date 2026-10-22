@@ -1302,7 +1302,9 @@ export function createSteeringGate(
         // COR-1559: a `model` override carries the provider it names, which is part of its
         // value: the same model under another provider is a different request.
         const requestedProvider =
-          target === 'model' ? (command.requestedValue as { provider?: string }).provider : undefined;
+          target === 'model'
+            ? (command.requestedValue as { provider?: string }).provider
+            : undefined;
         // Idempotent at the value, matching the pause/resume rule directly
         // above: re-requesting the value the session already desires is
         // accepted with no new `configVersion` and no state change, so a

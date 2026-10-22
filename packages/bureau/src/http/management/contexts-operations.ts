@@ -43,7 +43,12 @@ import { holdsScope } from './tasks-operations.ts';
 export type BureauContextsOperationHost = BureauOwnershipHost & {
   readonly contexts: Pick<
     Bureau,
-    'getSession' | 'deleteSession' | 'getOwner' | 'lifecycle' | 'listSessions' | 'getSessionSteering'
+    | 'getSession'
+    | 'deleteSession'
+    | 'getOwner'
+    | 'lifecycle'
+    | 'listSessions'
+    | 'getSessionSteering'
   > & {
     readonly sessionStore: Bureau['sessionStore'];
   };

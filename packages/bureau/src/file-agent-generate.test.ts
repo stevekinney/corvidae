@@ -17,7 +17,9 @@ import { createFileAgentGenerate, ModelOverrideUnusableError } from './file-agen
 
 const rows = createModelCatalog().descriptors;
 const row = (provider: string, model: string): BackendDescriptor => {
-  const found = rows.find((candidate) => candidate.provider === provider && candidate.model === model);
+  const found = rows.find(
+    (candidate) => candidate.provider === provider && candidate.model === model,
+  );
   if (found === undefined) throw new Error(`The catalog has no ${provider}/${model}.`);
   return found;
 };

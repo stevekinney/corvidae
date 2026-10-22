@@ -6,8 +6,8 @@
  * is rebuilt from the bodies rather than refused.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
-import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
 import { createSessionStore, summarizeSession } from './create-session-store';
@@ -155,9 +155,10 @@ describe('the summary index at format version 3', () => {
       parentContextId: null,
       forkedFromMessageId: null,
     });
-    expect((JSON.parse((await backing.get(SUMMARY_INDEX_KEY))!) as { formatVersion: number }).formatVersion).toBe(
-      3,
-    );
+    expect(
+      (JSON.parse((await backing.get(SUMMARY_INDEX_KEY))!) as { formatVersion: number })
+        .formatVersion,
+    ).toBe(3);
   });
 });
 
@@ -256,9 +257,9 @@ describe('session.fork() through a message', () => {
     await expect(handle.fork({ throughMessageId: ids[1]!, id: 'taken' })).rejects.toBeInstanceOf(
       ForkIdentifierInUseError,
     );
-    await expect(handle.fork({ throughMessageId: ids[3]!, id: 'planned-id' })).rejects.toBeInstanceOf(
-      ForkIdentifierInUseError,
-    );
+    await expect(
+      handle.fork({ throughMessageId: ids[3]!, id: 'planned-id' }),
+    ).rejects.toBeInstanceOf(ForkIdentifierInUseError);
     const kept = await store.load('planned-id');
     expect(kept?.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]).toBe(ids[1]);
   });

@@ -109,13 +109,19 @@ describe('the refusal reasons', () => {
 
   it('reads a model-not-allowed refusal Bureau decided before the gate', () => {
     expect(
-      isReadableSteeringLogEvent(refused({ failedAt: NOW, reason: 'model-not-allowed' }, value), SESSION),
+      isReadableSteeringLogEvent(
+        refused({ failedAt: NOW, reason: 'model-not-allowed' }, value),
+        SESSION,
+      ),
     ).toBe(true);
   });
 
   it('still reads policy-denied, and still refuses a reason no process logs as a refusal', () => {
     expect(
-      isReadableSteeringLogEvent(refused({ failedAt: NOW, reason: 'policy-denied' }, value), SESSION),
+      isReadableSteeringLogEvent(
+        refused({ failedAt: NOW, reason: 'policy-denied' }, value),
+        SESSION,
+      ),
     ).toBe(true);
     for (const reason of ['deadline-passed', 'run-terminal', 'session-terminal', 'bogus']) {
       expect(isReadableSteeringLogEvent(refused({ failedAt: NOW, reason }, value), SESSION)).toBe(

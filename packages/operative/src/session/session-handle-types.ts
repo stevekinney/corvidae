@@ -488,7 +488,9 @@ export class ForkIdentifierInUseError extends Error {
   readonly forkId: string;
 
   constructor(sessionId: string, forkId: string) {
-    super(`Session "${forkId}" already exists and is not a fork of "${sessionId}" at this message.`);
+    super(
+      `Session "${forkId}" already exists and is not a fork of "${sessionId}" at this message.`,
+    );
     this.name = 'ForkIdentifierInUseError';
     this.sessionId = sessionId;
     this.forkId = forkId;

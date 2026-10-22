@@ -146,7 +146,12 @@ describe('bureau.contexts.get model and configVersion', () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId: run.sessionId }, 'bob-key');
+      const body = await rpc(
+        opened.handler,
+        'bureau.contexts.get',
+        { contextId: run.sessionId },
+        'bob-key',
+      );
 
       expect(body.error?.data).toMatchObject({ weftCode: 'NotFound' });
     });

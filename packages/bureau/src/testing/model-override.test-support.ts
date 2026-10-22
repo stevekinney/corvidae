@@ -83,7 +83,10 @@ export function createSteppedGenerate() {
     const history = context.conversation.current;
     const last = history.messages[history.ids.at(-1) ?? ''];
     if (last?.toolResult !== undefined) return { content: 'done', toolCalls: [] };
-    return { content: '', toolCalls: [{ id: `call-${observed.length}`, name: 'noop', arguments: {} }] };
+    return {
+      content: '',
+      toolCalls: [{ id: `call-${observed.length}`, name: 'noop', arguments: {} }],
+    };
   };
   return {
     generate,

@@ -13355,7 +13355,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError('This Bureau keeps no sessions to branch.', 'BAD_REQUEST');
     }
     const session = await sessions.load(sessionId);
-    if (session === undefined) throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    if (session === undefined)
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     // A command already answered is answered again without judging the branch point afresh: the
     // parent may have changed since, and the retry must see what the first attempt made.
     const located = await forkLedger.locate(identity);

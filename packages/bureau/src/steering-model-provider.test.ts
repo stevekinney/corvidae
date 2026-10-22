@@ -119,7 +119,10 @@ describe('a model override that names its provider', () => {
     const gate = createSteeringGate('session-1');
     gate.promoteForNewRun('run-1');
 
-    gate.admit(modelCommand('c1', 'claude-opus-5-5', 'openai'), { liveRunIds: ['run-1'], now: NOW });
+    gate.admit(modelCommand('c1', 'claude-opus-5-5', 'openai'), {
+      liveRunIds: ['run-1'],
+      now: NOW,
+    });
 
     const seen = gate.forRun('run-1').getDesiredState();
     expect(seen.model).toBe('claude-opus-5-5');

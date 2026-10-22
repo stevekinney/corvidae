@@ -37,7 +37,17 @@ describe('parseAssistantMessageIdentifier', () => {
   });
 
   it('is undefined for an id in no such form, without throwing', () => {
-    for (const id of ['', 'step:1', ':step:1', 'run:step:', 'run:step:x', 'run:step:-1', 'run:step:1.5', 'conversation-1-abc', 'run:step:1 ']) {
+    for (const id of [
+      '',
+      'step:1',
+      ':step:1',
+      'run:step:',
+      'run:step:x',
+      'run:step:-1',
+      'run:step:1.5',
+      'conversation-1-abc',
+      'run:step:1 ',
+    ]) {
       expect(parseAssistantMessageIdentifier(id)).toBeUndefined();
     }
   });
