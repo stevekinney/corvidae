@@ -11,11 +11,13 @@ import {
   ToolsExecutedEvent,
   ToolsExecutingEvent,
 } from './events';
+import type { StepGeneratedMediaAdmitter } from './generated-media';
 import type { ErrorRecoveryAction } from './hooks/types';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import { explicitAbortReason } from './run-step-utilities';
+import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
 import type { GenerateResponse } from './types';
 
 export interface ToolExecutionDependencies {
@@ -31,6 +33,8 @@ export interface ToolExecutionDependencies {
   emittedSettledCallIds: Set<string>;
   stepAbortController: AbortController;
   stepToolbox: AnyToolbox;
+  /** The step's media admitter: tool-result media is admitted through it before it is kept. */
+  admitter?: StepGeneratedMediaAdmitter | undefined;
   /**
    * Metadata for the first tool-call message, when the step appended no
    * assistant message to carry it (a response with tool calls and no text).
@@ -59,11 +63,38 @@ export async function executeTools(
     emittedSettledCallIds,
     stepAbortController,
     firstToolCallMetadata,
+    admitter,
   } = input;
+  const mediaContext = { step, runId: deps.runId };
   const { hooks } = deps;
   let materializedToolCalls: ToolCall[] = [];
   let results: ToolExecutionResult[] = [];
   const resultRowScope = { runId: deps.runId, step };
+  /**
+   * Admits a step's result rows, appends them, then claims the managed assets they now point at,
+   * so none expires under its row. Every committed row passes through admission here, whatever a
+   * hook did to it on the way; media admitted already is a managed asset and passes unchanged.
+   * An append failure throws; a retention failure is returned, for the caller to report.
+   */
+  const commitToolResults = async (
+    unadmitted: ToolExecutionResult[],
+  ): Promise<{ error: unknown } | undefined> => {
+    const rows = await admitToolResultMedia(admitter, unadmitted, mediaContext);
+    if (deps.collectAsync) {
+      await conversation.appendToolResultsAsync(rows, resultRowBatch(resultRowScope, rows));
+    } else {
+      conversation.appendToolResults(rows, resultRowBatch(resultRowScope, rows));
+    }
+    try {
+      await retainToolResultMedia(
+        { admitter: deps.generatedMediaAdmitter, runId: deps.runId, conversation },
+        rows,
+      );
+      return undefined;
+    } catch (error) {
+      return { error };
+    }
+  };
 
   if (toolCallInputs.length > 0) {
     materializedToolCalls = materializeToolCalls(toolCallInputs);
@@ -258,7 +289,11 @@ export async function executeTools(
           eventTarget?.removeEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);
         }
 
-        executedResults = Array.isArray(executeResult) ? executeResult : [executeResult];
+        executedResults = await admitToolResultMedia(
+          admitter,
+          Array.isArray(executeResult) ? executeResult : [executeResult],
+          mediaContext,
+        );
         // COR-1628 — a call the toolbox answers without executing it (a refusal by the active
         // skills' `allowed-tools` gate) never emits a toolbox `settled` event, so settle it
         // here. A call whose settlement was already forwarded is skipped by the shared set.
@@ -373,10 +408,18 @@ export async function executeTools(
                 results,
                 elicit,
               });
-              if (validated !== undefined && validated !== currentResult) {
-                emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, validated));
-                currentResult = validated;
-              }
+              const replaced = validated !== undefined && validated !== currentResult;
+              // A hook can replace the result or mutate it in place, so whatever it leaves is
+              // admitted before the event shows it or the row keeps it; media admitted already
+              // is a managed asset and passes through unchanged.
+              const [admitted] = await admitToolResultMedia(
+                admitter,
+                [replaced ? validated : currentResult],
+                mediaContext,
+              );
+              const next = admitted ?? (replaced ? validated : currentResult);
+              if (replaced) emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, next));
+              currentResult = next;
             }
             validatedResults.push(currentResult);
           }
@@ -385,23 +428,18 @@ export async function executeTools(
           // Validation failed, but the underlying tool execution already
           // produced real results — seal the tool calls with those
           // (unvalidated) results rather than leaving them dangling.
-          if (deps.collectAsync) {
-            await conversation.appendToolResultsAsync(
-              results,
-              resultRowBatch(resultRowScope, results),
-            );
-          } else {
-            conversation.appendToolResults(results, resultRowBatch(resultRowScope, results));
-          }
+          // The rows are admitted and retained as the normal path's are, whatever a hook did to
+          // them before it threw; the validation error is what the step reports either way.
+          await commitToolResults(results);
           emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
           return { kind: 'error', error, errorKind: 'tool' };
         }
       }
 
-      if (deps.collectAsync) {
-        await conversation.appendToolResultsAsync(results, resultRowBatch(resultRowScope, results));
-      } else {
-        conversation.appendToolResults(results, resultRowBatch(resultRowScope, results));
+      const retention = await commitToolResults(results);
+      if (retention !== undefined) {
+        emitter?.dispatch(new RunErrorEvent(step, retention.error, 'tool'));
+        return { kind: 'error', error: retention.error, errorKind: 'tool' };
       }
 
       emitter?.dispatch(new ToolsExecutedEvent(step, callsToExecute, executedResults));

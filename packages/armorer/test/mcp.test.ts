@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test';
 import { PassThrough } from 'node:stream';
 import { z } from 'zod';
 import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
+import { toolContent } from '../src/protocol';
 
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
@@ -1208,7 +1209,16 @@ describe('createMCP', () => {
         handler: async () => ({ content: [...mixedContent] }),
       },
     ]);
-    expect(await mixedTool.execute({})).toEqual([...mixedContent]);
+    expect(await mixedTool.execute({})).toEqual(
+      toolContent([
+        { type: 'text', text: '{"ok":true}' },
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'inline', data: 'x', encoding: 'base64' },
+        },
+      ]),
+    );
 
     const [singleTextTool = requiredValue<never>(undefined, 'single text tool')] = fromMcpTools([
       {

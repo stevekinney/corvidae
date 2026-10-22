@@ -1,6 +1,7 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { ClearScheduledTimeout, ScheduleTimeout, ToolConfiguration } from '../is-tool';
+import { isToolContent, toolContent, type ToolResultPart } from '../protocol';
 import {
   createTruncatingAsyncIterable,
   DEFAULT_MAX_CHARACTERS,
@@ -268,6 +269,19 @@ export function createTruncationMiddleware(options?: ToolResultTruncationOptions
         return truncateToolResultContent(result, options);
       }
 
+      // COR-792: a `toolContent` result's text is in its parts; each text part is truncated,
+      // and media parts pass through for the run's admission.
+      if (isToolContent(result)) {
+        return toolContent(
+          result.parts.map((part) =>
+            part.type === 'text'
+              ? { ...part, text: truncateToolResultContent(part.text, options) }
+              : part,
+          ),
+          result.value === undefined ? {} : { value: result.value },
+        );
+      }
+
       if (result && typeof result === 'object') {
         const obj = result as Record<string, unknown>;
 
@@ -373,6 +387,19 @@ function fenceToolResult(result: unknown, options: Required<UntrustedOutputFenci
     return fenceText(result, options);
   }
 
+  // COR-792: a `toolContent` result's model-facing payload is its parts, so they are fenced
+  // as one block: the preamble and delimiters around them, every text the model reads escaped.
+  if (isToolContent(result)) {
+    return toolContent(
+      [
+        { type: 'text', text: `${options.preamble}\n${options.startDelimiter}` },
+        ...result.parts.map((part) => escapeFencePart(part, options.endDelimiter)),
+        { type: 'text', text: options.endDelimiter },
+      ],
+      result.value === undefined ? {} : { value: result.value },
+    );
+  }
+
   if (isAsyncIterable(result)) {
     return createFencedAsyncIterable(result, options);
   }
@@ -418,6 +445,17 @@ async function* createFencedAsyncIterable<T>(
     }
   }
   yield `\n${options.endDelimiter}`;
+}
+
+/** A part with every text the model reads (its text, or a media part's text fields) escaped. */
+function escapeFencePart(part: ToolResultPart, endDelimiter: string): ToolResultPart {
+  if (part.type === 'text') return { ...part, text: escapeFenceText(part.text, endDelimiter) };
+  const escaped = { ...part };
+  for (const field of ['name', 'alt', 'caption', 'transcript', 'extractedText'] as const) {
+    const value = part[field];
+    if (value !== undefined) escaped[field] = escapeFenceText(value, endDelimiter);
+  }
+  return escaped;
 }
 
 function escapeFenceText(text: string, endDelimiter: string): string {

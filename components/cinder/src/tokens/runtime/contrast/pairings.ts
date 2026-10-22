@@ -8,7 +8,15 @@
  * to token paths.
  */
 
-import { DECORATIVE_BORDER, FAINT_BORDER, type ContrastClassification } from './thresholds.ts';
+import {
+  DECORATIVE_BORDER,
+  FAINT_BORDER,
+  NEUTRAL_STATUS_BORDER,
+  STRUCTURAL_BORDER,
+  STRUCTURAL_MUTED_BORDER,
+  STRUCTURAL_STRONG_BORDER,
+  type ContrastClassification,
+} from './thresholds.ts';
 
 /** `wcag` pairings set a normative threshold; `cinder-advisory` ones are Cinder's stricter floors. */
 export type PairingScope = 'wcag' | 'cinder-advisory';
@@ -146,22 +154,27 @@ function decorativePairings(): ContrastPairing[] {
   });
   // The structural tiers separate regions and outline containers; the region
   // is identified by its surface and content, so WCAG 1.4.11 does not apply
-  // and their floors only keep each one perceptible. `border.muted` is an
-  // interior hairline and takes the faint floor; `border` and `border.strong`
-  // take the decorative one. That the structural tiers stay BELOW the control
-  // tier is asserted separately (check-token-contrast-borders.test.ts).
+  // and their floors only keep each one perceptible. Each tier has its own
+  // floor, pinned to the weight it ships at (COR-1552: 5%, 9% and 15% of the
+  // ink). That the structural tiers stay BELOW the control tier is asserted
+  // separately (check-token-contrast-borders.test.ts).
   const pairings: ContrastPairing[] = [
-    ...onSurfaces('border:muted', '--cinder-border-muted', advisory(FAINT_BORDER), 'Muted border'),
+    ...onSurfaces(
+      'border:muted',
+      '--cinder-border-muted',
+      advisory(STRUCTURAL_MUTED_BORDER),
+      'Muted border',
+    ),
     ...onSurfaces(
       'border:structural',
       '--cinder-border',
-      advisory(DECORATIVE_BORDER),
+      advisory(STRUCTURAL_BORDER),
       'Structural border',
     ),
     ...onSurfaces(
       'border:strong',
       '--cinder-border-strong',
-      advisory(DECORATIVE_BORDER),
+      advisory(STRUCTURAL_STRONG_BORDER),
       'Strong structural border',
     ),
     ...onSurfaces('border:faint', '--cinder-border-faint', advisory(FAINT_BORDER), 'Faint border'),
@@ -174,7 +187,7 @@ function decorativePairings(): ContrastPairing[] {
     },
     {
       id: 'border:neutral-status',
-      ...advisory(DECORATIVE_BORDER, 'status'),
+      ...advisory(NEUTRAL_STATUS_BORDER, 'status'),
       foreground: '--cinder-status-neutral-border',
       background: '--cinder-status-neutral-background',
       description: 'Neutral status border on its background',

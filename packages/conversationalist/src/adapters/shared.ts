@@ -98,10 +98,12 @@ export function fromCanonicalToolResultPayload(
     outputDigest?: string;
   },
 ): ToolResult {
+  const parts = canonicalToolResultSchema.safeParse(payload).data?.parts;
   return {
     callId,
     outcome: payload.outcome,
     content: payload.content,
+    ...(parts ? { parts } : {}),
     ...(payload.error ? { error: payload.error } : {}),
     ...(payload.action ? { action: payload.action } : {}),
     ...(typeof payload.inputDigest === 'string' ? { inputDigest: payload.inputDigest } : {}),

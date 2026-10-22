@@ -23,7 +23,7 @@
   }
 
   .diff-review-toolbar-error {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
   }
 
   /* Narrow default: everything stacked in document order (files, diff, review). */

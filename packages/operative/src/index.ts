@@ -229,6 +229,7 @@ export {
 } from './response-parts';
 export * from './runnable-agent';
 export * from './selection-gate';
+export { admitToolResultMedia } from './tool-result-media';
 // RuntimeServices is part of this package's public execution contract.
 // Its implementation and types have one source owner: @lostgradient/lifecycle,
 // a private workspace inlined into this package rather than one a consumer
@@ -280,7 +281,12 @@ export type {
   ToolEventStamp,
 } from './events';
 // COR-581 — effective-context epochs
-export { createContextEpochSealer, digestText, epochSourcesUnchanged } from './context-epoch';
+export {
+  MEMORY_EVIDENCE_METADATA_KEY,
+  createContextEpochSealer,
+  digestText,
+  epochSourcesUnchanged,
+} from './context-epoch';
 export type {
   ContextEpochConsumer,
   ContextEpochSealInput,
@@ -292,6 +298,7 @@ export type {
   ContextSourceTrust,
   CreateContextEpochSealerOptions,
   EffectiveContextEpoch,
+  MemoryEvidenceMessageMetadata,
   SkillActivationBinding,
   SkillActivationContext,
 } from './context-epoch';

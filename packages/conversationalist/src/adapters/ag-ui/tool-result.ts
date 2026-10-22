@@ -64,6 +64,7 @@ export function toAGUIToolMessage(
 
 function hasExtras(result: Readonly<ToolResult>): boolean {
   return (
+    result.parts !== undefined ||
     result.error !== undefined ||
     result.action !== undefined ||
     result.inputDigest !== undefined ||

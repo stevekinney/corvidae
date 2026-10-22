@@ -259,6 +259,7 @@ export {
   copyMultiModalContent,
   isMediaContent,
   mediaDisplayUrl,
+  messageMediaParts,
   renderMediaPlaceholder,
 } from './multi-modal';
 export type {
@@ -284,6 +285,7 @@ export type {
   ServerToolUseContent,
   TextContent,
   ThinkingContent,
+  ToolResultPart,
   VideoContent,
   WebSearchToolResultContent,
 } from './multi-modal';

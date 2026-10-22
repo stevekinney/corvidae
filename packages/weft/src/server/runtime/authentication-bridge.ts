@@ -184,8 +184,7 @@ async function dispatchServerFetchRequest(
   if (url.pathname === MCP_STREAMABLE_HTTP_PATH) {
     return handleMcpHttpRequest({
       request,
-      engine: options.engine,
-      sessionManager: context.mcpSessionManager,
+      endpoint: context.mcpEndpoint,
       authRequired: context.authenticatorPromise !== null,
       ...(authentication.authContext !== undefined
         ? { principal: authContextToPrincipal(authentication.authContext) }

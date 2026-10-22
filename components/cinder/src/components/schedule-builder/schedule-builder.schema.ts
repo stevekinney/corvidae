@@ -38,7 +38,7 @@ const schema = {
         },
       ],
       description:
-        'The current recurrence value (controlled). When omitted, the component\nstarts from a sensible default (`interval`, every 15 minutes).',
+        'The current recurrence value (controlled). When omitted, the component\nstarts from a sensible default (Presets, daily at 09:00: the cron value `0 9 * * *`).',
     },
     previewCount: {
       type: 'integer',

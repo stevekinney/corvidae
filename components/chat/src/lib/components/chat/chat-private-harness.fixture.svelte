@@ -951,7 +951,7 @@
       {#if !parsedToolArguments.ok}
         <span
           data-testid="tool-arguments-error"
-          style="color: var(--cinder-status-danger-solid); font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));"
+          style="color: var(--cinder-status-danger-text); font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));"
         >
           Arguments must be valid JSON.
         </span>

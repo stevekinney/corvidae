@@ -182,13 +182,68 @@ export function toFunctionCallPart(toolCall: ToolCall): GeminiFunctionCallPart {
 }
 
 /**
+ * A function response for a result that carries parts. Gemini takes media in
+ * `functionResponse.parts` as inline bytes, and text only in `response`, so
+ * `response.output` keeps the parts' order: each text part as its string, and
+ * each media part as `{ $ref: displayName }`, the reference form the Gemini
+ * API documents for naming a `FunctionResponsePart` from the response
+ * (https://ai.google.dev/gemini-api/docs/generate-content/function-calling,
+ * checked 2026-10-22).
+ */
+function toMultimodalFunctionResponsePart(
+  toolResult: ToolResult,
+  parts: NonNullable<ToolResult['parts']>,
+  functionName: string,
+  context: MediaExportContext,
+): GeminiFunctionResponsePart {
+  const media: Array<{ inlineData: { mimeType: string; data: string; displayName: string } }> = [];
+  const output = parts.map((part, partIndex) => {
+    if (part.type === 'text') return part.text;
+    const converted = toGeminiMediaPart(part, partIndex, context);
+    if (!('inlineData' in converted)) {
+      // The Gemini API does not accept URI-based data in a function response.
+      return rejectPart(context, partIndex, part, 'source-form-not-accepted', part.source.kind);
+    }
+    const displayName = `part-${partIndex}`;
+    media.push({ inlineData: { ...converted.inlineData, displayName } });
+    return { $ref: displayName };
+  });
+  // A non-success result keeps its outcome beside the parts, as the canonical payload does.
+  const response =
+    toolResult.outcome === 'success'
+      ? { output }
+      : {
+          output,
+          outcome: toolResult.outcome,
+          ...(toolResult.error ? { error: toolResult.error } : {}),
+          ...(toolResult.action ? { action: toolResult.action } : {}),
+        };
+  return { functionResponse: { name: functionName, response, parts: media } };
+}
+
+/**
  * Converts an internal ToolResult to Gemini functionResponse part.
  * Note: Gemini needs the function name, which we track via a map from the conversation.
  */
 export function toFunctionResponsePart(
   toolResult: ToolResult,
   functionName: string,
+  context?: MediaExportContext,
 ): GeminiFunctionResponsePart {
+  if (toolResult.parts !== undefined) {
+    return toMultimodalFunctionResponsePart(
+      toolResult,
+      toolResult.parts,
+      functionName,
+      context ??
+        createMediaExportContext(
+          'gemini',
+          { id: toolResult.callId, role: 'tool-result' },
+          [],
+          undefined,
+        ),
+    );
+  }
   return {
     functionResponse: {
       name: functionName,

@@ -1,3 +1,5 @@
+import type { AnthropicToolResultContentBlock } from '../tool-result-parts';
+
 /**
  * JSON Schema property definition.
  */
@@ -53,7 +55,8 @@ export interface AnthropicToolUseBlock {
 export interface AnthropicToolResultBlock {
   type: 'tool_result';
   tool_use_id: string;
-  content: string;
+  /** Text, or ordered text, image, and PDF blocks for a result that carries parts. */
+  content: string | AnthropicToolResultContentBlock[];
   is_error?: boolean;
 }
 
