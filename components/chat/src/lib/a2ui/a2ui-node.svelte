@@ -207,6 +207,26 @@
     return 'Dialog';
   }
 
+  /**
+   * The name of the button a non-interactive Modal trigger is wrapped in: the
+   * trigger's explicit name, else its own text, image description, or icon
+   * name, else a generic one, so the button is never unnamed.
+   */
+  function wrappedTriggerName(trigger: A2uiComponent): string {
+    const accessibility = trigger['accessibility'];
+    const explicit =
+      typeof accessibility === 'object' && accessibility !== null
+        ? plainText(resolveString(Reflect.get(accessibility, 'label'), evaluation))
+        : '';
+    const own =
+      trigger.component === 'Text'
+        ? plainText(resolveString(trigger['text'], evaluation))
+        : trigger.component === 'Image'
+          ? plainText(resolveString(trigger['description'], evaluation))
+          : (iconButtonLabel(trigger.id) ?? '');
+    return explicit.trim() || own.trim() || 'Open dialog';
+  }
+
   /** An icon-only Button's name: its icon's name in words, since the icon itself is hidden. */
   function iconButtonLabel(childId: unknown = prop('child')): string | undefined {
     const childComponent = typeof childId === 'string' ? context.component(childId) : undefined;
@@ -420,7 +440,7 @@
             variant="secondary"
             onclick={openModal}
             class="a2ui-leaf"
-            {...optional('aria-label', iconButtonLabel(prop('trigger')))}
+            aria-label={wrappedTriggerName(triggerComponent)}
           >
             {@render child(prop('trigger'), scope, true)}
           </Button>

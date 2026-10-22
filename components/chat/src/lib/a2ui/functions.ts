@@ -20,6 +20,11 @@ export type A2uiEvaluationContext = {
   readonly locale?: string | undefined;
   /** Hears a function that failed or does not exist. */
   readonly report: (message: string) => void;
+  /**
+   * Whether this evaluation runs a user-activated action (a Button press).
+   * `openUrl` runs only then, never while a property's value resolves.
+   */
+  readonly activated?: boolean | undefined;
   /** Opens a URL in a new browsing context; `window.open` when omitted. */
   readonly openUrl?: ((url: string) => void) | undefined;
   /** What a relative URL resolves against; `window.location.href` when omitted. */
@@ -202,6 +207,10 @@ function pluralize(args: Arguments, locale: string | undefined): string {
 }
 
 function openUrl(url: string, context: A2uiEvaluationContext): void {
+  if (context.activated !== true) {
+    context.report('openUrl runs only from a user-activated action');
+    return;
+  }
   let resolved: URL;
   try {
     resolved = new URL(url, context.baseUrl ?? globalThis.location?.href);

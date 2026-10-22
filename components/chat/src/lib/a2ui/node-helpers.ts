@@ -149,7 +149,9 @@ export function runAction(
   }
   if (typeof functionCall === 'object' && functionCall !== null) {
     const call: unknown = Reflect.get(functionCall, 'call');
-    if (typeof call === 'string') callFunction(call, Reflect.get(functionCall, 'args'), evaluation);
+    if (typeof call === 'string') {
+      callFunction(call, Reflect.get(functionCall, 'args'), { ...evaluation, activated: true });
+    }
   }
 }
 

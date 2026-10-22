@@ -743,4 +743,21 @@ describe('review fixes', () => {
 
     expect(container.querySelector('[data-a2ui-id="echo"]')?.textContent).toBe('');
   });
+
+  test('a wrapped Modal trigger with no text of its own is still named', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'unnamed-trigger',
+        components: [
+          { id: 'root', component: 'Column', children: ['modal'] },
+          { id: 'modal', component: 'Modal', trigger: 'blank', content: 'body' },
+          { id: 'blank', component: 'Text', text: '' },
+          { id: 'body', component: 'Text', text: 'Details' },
+        ],
+      },
+    });
+    await flush();
+
+    expect(screen.getByRole('button', { name: 'Open dialog' })).not.toBeNull();
+  });
 });

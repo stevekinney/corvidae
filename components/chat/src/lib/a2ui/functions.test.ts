@@ -145,8 +145,15 @@ describe('basic catalog functions', () => {
     );
   });
 
-  it('openUrl opens only http and https, resolving relative URLs', () => {
+  it('openUrl runs only from a user-activated action, never while a value resolves', () => {
     const scope = context();
+    callFunction('openUrl', { url: 'https://example.test/' }, scope);
+    expect(scope.opened).toEqual([]);
+    expect(scope.reports).toEqual([expect.stringContaining('user-activated')]);
+  });
+
+  it('openUrl opens only http and https, resolving relative URLs', () => {
+    const scope = context({}, { activated: true });
     callFunction('openUrl', { url: '/help' }, scope);
     callFunction('openUrl', { url: 'javascript:alert(1)' }, scope);
     callFunction('openUrl', { url: 'data:text/html,hi' }, scope);
@@ -166,7 +173,7 @@ describe('basic catalog functions', () => {
       callFunction(
         'openUrl',
         { url: 'https://example.test/' },
-        context({}, { openUrl: undefined }),
+        context({}, { openUrl: undefined, activated: true }),
       );
     } finally {
       globalThis.open = original;
