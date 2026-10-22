@@ -236,6 +236,12 @@ describe('a start that has not been held', () => {
   });
 });
 
+/** The revision a run's reference holds, or `undefined`. */
+async function revisionOf(store: ReturnType<typeof setup>['store'], runId: string) {
+  const reference = await store.reference(runId);
+  return reference?.revision;
+}
+
 describe('the revision a run started at (COR-1584)', () => {
   it('is kept on the run’s reference, with the hash it belongs to', async () => {
     const { store } = setup();
@@ -248,8 +254,8 @@ describe('the revision a run started at (COR-1584)', () => {
       'run-2',
     );
 
-    expect((await store.reference('run-1'))?.revision).toBe(2);
-    expect((await store.reference('run-2'))?.revision).toBe(4);
+    expect(await revisionOf(store, 'run-1')).toBe(2);
+    expect(await revisionOf(store, 'run-2')).toBe(4);
   });
 
   it('is absent from a reference written without one, which still reads', async () => {
@@ -268,7 +274,8 @@ describe('the revision a run started at (COR-1584)', () => {
 
     expect(reference).toMatchObject({ id: 'helper', hash: 'aa' });
     expect(reference?.revision).toBeUndefined();
-    expect((await store.unsettledReferences()).map((entry) => entry.runId)).toEqual(['run-old']);
+    const open = await store.unsettledReferences();
+    expect(open.map((entry) => entry.runId)).toEqual(['run-old']);
   });
 
   it.each([0, -1, 1.5, '2', null])('is dropped from a reference that holds %p', async (stored) => {
@@ -314,7 +321,7 @@ describe('the revision a run started at (COR-1584)', () => {
 
     await store.recordRun({ id: 'helper', hash: 'aa', definition: definition('one') }, 'run-1');
 
-    expect((await store.reference('run-1'))?.revision).toBe(3);
+    expect(await revisionOf(store, 'run-1')).toBe(3);
   });
 });
 
