@@ -12,6 +12,13 @@ describe('Locale formatting', () => {
     expect(getInput(container).value).toBe('1,234.5');
   });
 
+  test('an invalid locale falls back instead of throwing', () => {
+    const { container } = render(NumberInput, {
+      props: { id: 'n', value: 1234.5, locale: 'not_a_locale' },
+    });
+    expect(getInput(container).value).toBe('1,234.5');
+  });
+
   test('de-DE: 1234.5 → "1.234,5"', () => {
     const { container } = render(NumberInput, {
       props: { id: 'n', value: 1234.5, locale: 'de-DE' },

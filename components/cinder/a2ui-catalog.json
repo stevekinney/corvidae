@@ -132,6 +132,10 @@
             "value": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
               "description": "Current measurement value. Defaults to 0."
+            },
+            "valueText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Human-readable text exposed via `aria-valuetext`.\nWhen omitted, `aria-valuetext` is not rendered.\nExample: `50% (6 hours remaining)`. Maps to Cinder 'ariaValueText'."
             }
           },
           "required": ["component", "label"]
@@ -361,10 +365,6 @@
             "labelVisible": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Whether the label is visibly rendered. Set `false` for icon-only or\ninline contexts — it stays the accessible name."
-            },
-            "value": {
-              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
-              "description": "Value submitted for the hidden checkbox when `checked` and `name` is set.\nMirrors native checkbox semantics: the pair `name=value` is sent only while\nchecked. Defaults to `'on'`. Ignored when `name` is unset."
             }
           },
           "required": ["component", "label"]

@@ -116,6 +116,24 @@ describe('buildA2uiCatalog', () => {
     );
   });
 
+  it("keeps Meter's value text, and drops Toggle's value, which needs the excluded name", () => {
+    const propertiesOf = (name: string) => {
+      const allOf = catalog.components[name]?.['allOf'] as
+        Array<{ properties?: Record<string, { description?: string }> }> | undefined;
+      return allOf?.[1]?.properties ?? {};
+    };
+    expect(propertiesOf('Meter')['valueText']?.description).toContain("Cinder 'ariaValueText'");
+    expect(Object.keys(propertiesOf('Toggle'))).not.toContain('value');
+  });
+
+  it('refuses to drop an ARIA property it has no decision for', () => {
+    const inputs = syntheticInputs();
+    const meter = inputs.schemas['meter'];
+    if (meter === undefined) throw new Error('expected the synthetic meter');
+    meter.properties['ariaValueNow'] = { type: 'number' };
+    expect(() => buildA2uiCatalog(inputs)).toThrow("'ariaValueNow'");
+  });
+
   it("keeps Progress's value text under valueText instead of dropping it", () => {
     const allOf = catalog.components['Progress']?.['allOf'] as Array<{
       properties?: Record<string, { description?: string }>;

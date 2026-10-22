@@ -64,9 +64,9 @@ export const A2UI_CATALOG_PLACEHOLDER_ID = 'https://a2ui.org/specification/v0_9/
  * receive ambient authority: styling hooks (`class`, `style`), DOM identity and
  * form association (`id`, `form`, `name`), anything that fetches or navigates
  * (`href`, `src`), and raw markup (`html`). Event handlers (`on*`, either
- * case, since Svelte's are lowercase), `aria-*`
- * attributes, and `data-*` attributes are dropped by pattern (see
- * {@link isExcludedProperty}), and anything under a schema's
+ * case, since Svelte's are lowercase), ARIA references to other elements
+ * ({@link ARIA_REFERENCE_PROPERTIES}), and `data-*` attributes are dropped by
+ * pattern (see {@link isExcludedProperty}), and anything under a schema's
  * `metadata.unsupportedProps` is dropped too.
  */
 export const EXCLUDED_CINDER_PROPERTIES: ReadonlySet<string> = new Set([
@@ -104,14 +104,34 @@ export const ACCESSIBLE_NAME_OVERRIDES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Name candidates that carry something other than a name on a component, and
- * the A2UI property each maps to instead. Other name candidates are dropped,
- * since the A2UI `label` already carries the name. Progress's `label` is its
- * `aria-valuetext`, which A2UI calls `valueText`.
+ * Per-component decisions the name-based rules below cannot make, applied
+ * before them: a string maps the Cinder property to that A2UI property, and
+ * `null` drops it. Every one is a reviewed exception:
+ *
+ * - Progress's `label` and Meter's `ariaValueText` are `aria-valuetext`, not a
+ *   name, so both map to `valueText`.
+ * - Toggle's `value` is submitted only with `name`, which the catalog excludes,
+ *   so on its own it does nothing.
  */
-export const RENAMED_NAME_CANDIDATES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  progress: { label: 'valueText' },
-};
+export const PROPERTY_DECISIONS: Readonly<Record<string, Readonly<Record<string, string | null>>>> =
+  {
+    meter: { ariaValueText: 'valueText' },
+    progress: { label: 'valueText' },
+    toggle: { value: null },
+  };
+
+/**
+ * ARIA properties that name or describe a component by reference to other
+ * elements, which an agent's message cannot point at. They are dropped; any
+ * other ARIA property must have a {@link PROPERTY_DECISIONS} entry, so a
+ * property that carries content is never dropped by its name alone.
+ */
+export const ARIA_REFERENCE_PROPERTIES: ReadonlySet<string> = new Set([
+  'ariaLabelledby',
+  'aria-labelledby',
+  'ariaDescribedby',
+  'aria-describedby',
+]);
 
 /** The A2UI property that carries the accessible name on every entry. */
 export const A2UI_LABEL_PROPERTY = 'label';
@@ -186,7 +206,7 @@ export function isExcludedProperty(name: string): boolean {
   return (
     EXCLUDED_CINDER_PROPERTIES.has(name) ||
     /^on[a-zA-Z]/.test(name) ||
-    /^aria[-A-Z]/.test(name) ||
+    ARIA_REFERENCE_PROPERTIES.has(name) ||
     name.startsWith('data-')
   );
 }
@@ -270,23 +290,29 @@ function buildEntry(
     };
   }
 
-  const renames = RENAMED_NAME_CANDIDATES[id] ?? {};
+  const decisions = PROPERTY_DECISIONS[id] ?? {};
   const mapped: Record<string, JsonObject> = {};
   for (const [name, source] of Object.entries(schema.properties)) {
-    if (name === nameSource) continue;
-    if (isExcludedProperty(name) || unsupported.has(name)) continue;
-    const renamed = renames[name];
-    if (renamed !== undefined) {
+    const decision = decisions[name];
+    if (decision === null) continue;
+    if (decision !== undefined) {
       const property = mapProperty(source);
       if (property === undefined) {
         return { error: `${info.name} (${id}): renamed property '${name}' has no A2UI mapping` };
       }
       property['description'] =
         `${typeof property['description'] === 'string' ? `${property['description']} ` : ''}Maps to Cinder '${name}'.`;
-      mapped[renamed] = property;
+      mapped[decision] = property;
       continue;
     }
+    if (name === nameSource) continue;
+    if (isExcludedProperty(name) || unsupported.has(name)) continue;
     if (ACCESSIBLE_NAME_SOURCES.includes(name)) continue;
+    if (/^aria[-A-Z]/.test(name)) {
+      return {
+        error: `${info.name} (${id}): ARIA property '${name}' needs a PROPERTY_DECISIONS entry (map it or drop it)`,
+      };
+    }
     if (name === 'component' || name === 'accessibility') {
       return {
         error: `${info.name} (${id}): property '${name}' collides with an A2UI common property`,
@@ -308,7 +334,7 @@ function buildEntry(
 
   const required = new Set<string>(['component', A2UI_LABEL_PROPERTY]);
   for (const name of schema.required ?? []) {
-    const target = renames[name] ?? name;
+    const target = decisions[name] ?? name;
     if (target in mapped) required.add(target);
   }
 
