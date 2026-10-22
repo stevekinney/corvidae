@@ -11,11 +11,13 @@ import {
   ToolsExecutedEvent,
   ToolsExecutingEvent,
 } from './events';
+import type { StepGeneratedMediaAdmitter } from './generated-media';
 import type { ErrorRecoveryAction } from './hooks/types';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import { explicitAbortReason } from './run-step-utilities';
+import { admitToolResultMedia } from './tool-result-media';
 import type { GenerateResponse } from './types';
 
 export interface ToolExecutionDependencies {
@@ -31,6 +33,8 @@ export interface ToolExecutionDependencies {
   emittedSettledCallIds: Set<string>;
   stepAbortController: AbortController;
   stepToolbox: AnyToolbox;
+  /** The step's media admitter: tool-result media is admitted through it before it is kept. */
+  admitter?: StepGeneratedMediaAdmitter | undefined;
   /**
    * Metadata for the first tool-call message, when the step appended no
    * assistant message to carry it (a response with tool calls and no text).
@@ -59,7 +63,9 @@ export async function executeTools(
     emittedSettledCallIds,
     stepAbortController,
     firstToolCallMetadata,
+    admitter,
   } = input;
+  const mediaContext = { step, runId: deps.runId };
   const { hooks } = deps;
   let materializedToolCalls: ToolCall[] = [];
   let results: ToolExecutionResult[] = [];
@@ -258,7 +264,11 @@ export async function executeTools(
           eventTarget?.removeEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);
         }
 
-        executedResults = Array.isArray(executeResult) ? executeResult : [executeResult];
+        executedResults = await admitToolResultMedia(
+          admitter,
+          Array.isArray(executeResult) ? executeResult : [executeResult],
+          mediaContext,
+        );
         // COR-1628 — a call the toolbox answers without executing it (a refusal by the active
         // skills' `allowed-tools` gate) never emits a toolbox `settled` event, so settle it
         // here. A call whose settlement was already forwarded is skipped by the shared set.
@@ -380,7 +390,8 @@ export async function executeTools(
             }
             validatedResults.push(currentResult);
           }
-          results = validatedResults;
+          // A hook may have replaced a result with one that carries new media.
+          results = await admitToolResultMedia(admitter, validatedResults, mediaContext);
         } catch (error) {
           // Validation failed, but the underlying tool execution already
           // produced real results — seal the tool calls with those

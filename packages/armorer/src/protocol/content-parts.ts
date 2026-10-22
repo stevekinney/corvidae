@@ -194,3 +194,98 @@ export function isToolContent(value: unknown): value is ToolContent {
     isRecord(value) && value['kind'] === TOOL_CONTENT_KIND && isToolResultParts(value['parts'])
   );
 }
+
+// ── Redaction: what events, logs, and audit may show of a part ──────────
+
+/**
+ * A media part as events, logs, and audit records show it: its type, MIME
+ * type, name, and where it lives, with no bytes and no URL or path. A managed
+ * asset keeps its identity; inline bytes keep only their length.
+ */
+export interface RedactedMediaPart {
+  readonly type: MediaContent['type'];
+  readonly mimeType?: string;
+  readonly name?: string;
+  readonly redacted: true;
+  readonly source: {
+    readonly kind: ContentSource['kind'];
+    readonly assetId?: string;
+    readonly revision?: number;
+    readonly serverId?: string;
+    readonly provider?: string;
+    readonly byteLength?: number;
+  };
+}
+
+function base64ByteLength(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return Math.floor((data.length * 3) / 4) - padding;
+}
+
+function redactedSource(source: ContentSource): RedactedMediaPart['source'] {
+  switch (source.kind) {
+    case 'inline':
+      return {
+        kind: 'inline',
+        byteLength:
+          source.encoding === 'base64'
+            ? base64ByteLength(source.data)
+            : new TextEncoder().encode(source.data).length,
+      };
+    case 'managed-asset':
+      return {
+        kind: 'managed-asset',
+        assetId: source.assetId,
+        ...(source.revision === undefined ? {} : { revision: source.revision }),
+      };
+    case 'mcp-resource':
+      return { kind: 'mcp-resource', serverId: source.serverId };
+    case 'provider-file':
+      return { kind: 'provider-file', provider: source.provider };
+    default:
+      return { kind: source.kind };
+  }
+}
+
+/** A part as events, logs, and audit may show it: text unchanged, media as {@link RedactedMediaPart}. */
+export function redactToolResultPart(part: ToolResultPart): TextContent | RedactedMediaPart {
+  if (part.type === 'text') return part;
+  return {
+    type: part.type,
+    ...(part.mimeType === undefined ? {} : { mimeType: part.mimeType }),
+    ...(part.name === undefined ? {} : { name: part.name }),
+    redacted: true,
+    source: redactedSource(part.source),
+  };
+}
+
+/**
+ * A tool's return value as events, logs, and audit may show it: a
+ * {@link ToolContent} with its media parts redacted, and any other value
+ * unchanged.
+ */
+export function redactToolContent(value: unknown): unknown {
+  if (!isToolContent(value)) return value;
+  return { ...value, parts: value.parts.map(redactToolResultPart) };
+}
+
+/**
+ * A tool result as events, logs, and audit may show it: its `parts`, and a
+ * {@link ToolContent} raw `result`, with media redacted. A result without
+ * parts is returned as it is.
+ */
+export function redactToolResultMedia<
+  Result extends {
+    readonly parts?: readonly ToolResultPart[] | undefined;
+    readonly result?: unknown;
+  },
+>(
+  result: Result,
+): Result | (Omit<Result, 'parts'> & { parts?: Array<TextContent | RedactedMediaPart> }) {
+  if (result.parts === undefined && !isToolContent(result.result)) return result;
+  return {
+    ...result,
+    ...(result.parts === undefined ? {} : { parts: result.parts.map(redactToolResultPart) }),
+    ...('result' in result ? { result: redactToolContent(result.result) } : {}),
+  };
+}

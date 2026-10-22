@@ -7,7 +7,7 @@ import type {
   Subscription,
 } from '@lostgradient/lifecycle';
 import type { ToolboxEvents, ToolExecutionResult } from 'armorer';
-import type { ToolCall } from 'armorer/protocol';
+import { redactToolContent, type ToolCall } from 'armorer/protocol';
 import type { Conversation, ConversationActionType, MultiModalContent } from 'conversationalist';
 
 import type { CostBudgetExceededEvent, CostBudgetThresholdEvent } from './cost-budget-monitor';
@@ -890,7 +890,9 @@ export class ToolSettledBubbleEvent extends Event {
     this.toolCallId = detail.toolCallId;
     this.status = detail.status;
     this.durationMs = detail.durationMs;
-    this.result = detail.result;
+    // COR-792: a settled tool can return media before the run admits it; the event shows its
+    // parts' types, sizes, and asset identities, never their bytes.
+    this.result = redactToolContent(detail.result);
     this.error = detail.error;
   }
 }

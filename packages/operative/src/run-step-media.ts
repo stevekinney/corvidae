@@ -58,7 +58,7 @@ import type {
   ResolvedMediaSource,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { isMediaContent, mimeTypeFitsModality, parseDataUrl } from 'conversationalist';
+import { mimeTypeFitsModality, parseDataUrl } from 'conversationalist';
 
 import { createCatalogMediaCostEstimator, sourceByteLength } from './context/media-cost';
 import type { MediaCostEstimator, MediaCostOutcome, UnadmittedMediaCost } from './context/types';
@@ -73,6 +73,7 @@ import {
   evaluateInputMedia,
   type InputMediaRequirement,
   locateInputMedia,
+  messageMediaParts,
 } from './providers/selection';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { explicitAbortReason } from './run-step-utilities';
@@ -121,10 +122,10 @@ interface LocatedMedia {
 function locateMedia(conversation: Conversation): LocatedMedia[] {
   const located: LocatedMedia[] = [];
   for (const message of conversation.getMessages()) {
-    if (message.hidden || typeof message.content === 'string') continue;
-    message.content.forEach((part, partIndex) => {
-      if (isMediaContent(part)) located.push({ part, messageId: message.id, partIndex });
-    });
+    if (message.hidden) continue;
+    for (const { part, partIndex } of messageMediaParts(message)) {
+      located.push({ part, messageId: message.id, partIndex });
+    }
   }
   return located;
 }

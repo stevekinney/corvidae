@@ -199,6 +199,30 @@ export interface InputMediaRequirement {
   readonly mimeFamily?: MimeFamily | undefined;
   readonly byteLength?: number | undefined;
   readonly count: number;
+  /** `true` for a part a tool result carries, which needs the backend's `toolResultModalities`. */
+  readonly inToolResult?: true | undefined;
+}
+
+/**
+ * A message's media parts and where each sits: its own content, then, for a
+ * tool-result row, its result's `parts`. A row's two lists never both hold
+ * media (a tool-result row's content is empty), so `partIndex` stays unique
+ * within the message and keys a resolved source the same way an adapter reads it.
+ */
+export function messageMediaParts(message: {
+  readonly content: string | readonly MultiModalContent[];
+  readonly toolResult?: { readonly parts?: readonly MultiModalContent[] | undefined } | undefined;
+}): Array<{ part: MediaContent; partIndex: number; inToolResult: boolean }> {
+  const found: Array<{ part: MediaContent; partIndex: number; inToolResult: boolean }> = [];
+  if (typeof message.content !== 'string') {
+    message.content.forEach((part, partIndex) => {
+      if (isMediaContent(part)) found.push({ part, partIndex, inToolResult: false });
+    });
+  }
+  message.toolResult?.parts?.forEach((part, partIndex) => {
+    if (isMediaContent(part)) found.push({ part, partIndex, inToolResult: true });
+  });
+  return found;
 }
 
 /** One media part of a conversation and what it requires of a backend. */
@@ -223,9 +247,8 @@ export function locateInputMedia(
   const { ids, messages } = conversation.current;
   for (const id of ids) {
     const message = messages[id];
-    if (message === undefined || message.hidden || typeof message.content === 'string') continue;
-    message.content.forEach((part, partIndex) => {
-      if (!isMediaContent(part)) return;
+    if (message === undefined || message.hidden) continue;
+    for (const { part, partIndex, inToolResult } of messageMediaParts(message)) {
       const resolved = resolvedSources?.get(`${message.id}:${partIndex}`);
       const effective: MediaContent =
         resolved === undefined
@@ -236,17 +259,18 @@ export function locateInputMedia(
               ...(resolved.mimeType !== undefined ? { mimeType: resolved.mimeType } : {}),
             };
       const [described] = describeInputMedia([effective]);
-      if (described === undefined) return;
+      if (described === undefined) continue;
+      const requirement = inToolResult ? { ...described, inToolResult: true as const } : described;
       located.push({
         messageId: message.id,
         partIndex,
         part,
         requirement:
           resolved?.byteLength === undefined
-            ? described
-            : { ...described, byteLength: resolved.byteLength },
+            ? requirement
+            : { ...requirement, byteLength: resolved.byteLength },
       });
-    });
+    }
   }
   return located;
 }
@@ -291,6 +315,12 @@ export function evaluateInputMedia(
     const entry = descriptor.modalities[requirement.modality];
     if (!entry.input) {
       return refuse(`${label} accepts no ${requirement.modality} input`);
+    }
+    if (
+      requirement.inToolResult === true &&
+      descriptor.toolResultModalities?.includes(requirement.modality) !== true
+    ) {
+      return refuse(`${label} accepts no ${requirement.modality} in a tool result`);
     }
     if (!entry.sourceForms.includes(requirement.sourceForm)) {
       return refuse(

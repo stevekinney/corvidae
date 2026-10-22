@@ -3,6 +3,9 @@ export {
   assertToolResultParts,
   isToolContent,
   isToolResultParts,
+  redactToolContent,
+  redactToolResultMedia,
+  redactToolResultPart,
   toolContent,
 } from './content-parts';
 export type {
@@ -14,6 +17,7 @@ export type {
   MediaContent,
   MediaContentFields,
   Modality,
+  RedactedMediaPart,
   TextContent,
   ToolContent,
   ToolResultPart,
