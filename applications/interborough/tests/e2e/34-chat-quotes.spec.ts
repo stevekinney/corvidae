@@ -55,7 +55,8 @@ async function selectInReply(page: Page, index: number, text: string): Promise<v
 
 /** The text of each block quote in `row`, in the order it appears. */
 async function quotesOf(row: Locator): Promise<string[]> {
-  return (await row.locator('blockquote').allTextContents()).map((text) => text.trim());
+  const texts = await row.locator('blockquote').allTextContents();
+  return texts.map((text) => text.trim());
 }
 
 for (const viewport of VIEWPORTS) {
