@@ -16,12 +16,12 @@ import { abandonWorkflowAfterCheckpointConflict } from './checkpoint-conflict-ab
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
 import { EngineDisposedError } from './errors.ts';
-import { currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import { EngineDeposedError } from './lease-errors.ts';
 import { failWorkflow, type TerminationCallbacks } from './termination.ts';
 import {
   captureTerminatedRun,
+  engineHoldsRun,
   settleRunFromStoredRecord,
   type TerminatedRun,
   waiterForRun,
@@ -87,8 +87,7 @@ function terminalBookkeepingDone(
   workflowId: string,
   run: TerminatedRun,
 ): boolean {
-  const holding = currentExecutionAttempt(internals, workflowId)?.workflowExecutionToken;
-  return run.held && holding !== run.workflowExecutionToken;
+  return run.held && !engineHoldsRun(internals, workflowId, run);
 }
 
 /**
@@ -103,9 +102,10 @@ function failingLeftRunUnfinished(
   workflowId: string,
   run: TerminatedRun,
 ): boolean {
-  if (isTerminalWaiterPending(internals, workflowId, run)) return true;
-  const holding = currentExecutionAttempt(internals, workflowId)?.workflowExecutionToken;
-  return run.held && holding === run.workflowExecutionToken;
+  return (
+    isTerminalWaiterPending(internals, workflowId, run) ||
+    engineHoldsRun(internals, workflowId, run)
+  );
 }
 
 /** The error a run ends with when a write failed: the typed error itself, or one wrapping `cause`. */

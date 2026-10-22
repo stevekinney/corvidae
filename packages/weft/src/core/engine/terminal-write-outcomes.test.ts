@@ -25,6 +25,7 @@ import { createTerminationCallbacks } from './callback-creators-core.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
 import {
   abandonedExecutionAttemptCount,
+  beginExecutionAttempt,
   currentExecutionAttempt,
   retireExecutionAttempt,
 } from './execution-attempts.ts';
@@ -42,6 +43,7 @@ import { endRunAfterFailedWrite } from './terminal-run-exit.ts';
 import type { TerminationCallbacks } from './termination.ts';
 import {
   captureTerminatedRun,
+  engineHoldsRun,
   settleRunFromStoredRecord,
 } from './termination/settle-refused-terminal.ts';
 
@@ -349,6 +351,28 @@ describe('a run nobody asked the result of', () => {
       expect(failures).toHaveLength(1);
     },
   );
+});
+
+describe('whether the engine still holds a run', () => {
+  it('needs an attempt to exist, so a released run recorded before execution tokens is not held', async () => {
+    const id = 'pre-token-holds';
+    const run = await startParkedUnobserved(steps, id);
+    await using engine = run.engine;
+    const internals = getInternals(engine);
+    // A run from before execution tokens: no token on the run, and none on the attempt that holds it.
+    const preToken = {
+      workflowExecutionToken: undefined,
+      waiter: undefined,
+      held: true,
+      claimEpoch: null,
+    };
+    beginExecutionAttempt(internals, id, undefined);
+    expect(engineHoldsRun(internals, id, preToken)).toBe(true);
+
+    // Released, the engine reads no token at all, which must not pass for the run's missing one.
+    retireExecutionAttempt(internals, id);
+    expect(engineHoldsRun(internals, id, preToken)).toBe(false);
+  });
 });
 
 describe('a result() first asked for while the engine is ending the run', () => {

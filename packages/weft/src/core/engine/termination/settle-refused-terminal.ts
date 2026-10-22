@@ -30,6 +30,25 @@ export type TerminatedRun = {
   readonly claimEpoch: number | null;
 };
 
+/**
+ * Whether this engine still holds an execution attempt for `run` itself: it held one when the run
+ * was captured, it holds one now, and that one carries the run's token. The attempt must exist: a
+ * run recorded before execution tokens existed has no token, and an engine that holds no attempt
+ * reads no token either, so comparing tokens alone would mistake a released run for a held one.
+ */
+export function engineHoldsRun(
+  internals: EngineInternals,
+  workflowId: string,
+  run: TerminatedRun,
+): boolean {
+  const attempt = currentExecutionAttempt(internals, workflowId);
+  return (
+    run.held &&
+    attempt !== undefined &&
+    attempt.workflowExecutionToken === run.workflowExecutionToken
+  );
+}
+
 export function captureTerminatedRun(
   internals: EngineInternals,
   workflowId: string,
@@ -72,8 +91,7 @@ export async function settleTerminatedRunAfterRefusal(
     if (!TERMINAL_WORKFLOW_STATUSES.has(state.status)) return;
     settleFromState(waiter, state);
     releaseWaiterEntry(internals, workflowId, waiter);
-    const holding = currentExecutionAttempt(internals, workflowId)?.workflowExecutionToken;
-    if (run.held && holding === run.workflowExecutionToken) {
+    if (engineHoldsRun(internals, workflowId, run)) {
       cleanupTerminalWorkflowImmediately(internals, workflowId, callbacks);
     }
     return;
@@ -206,8 +224,7 @@ function releaseHeldRun(
   callbacks: TerminationCallbacks,
   run: TerminatedRun,
 ): void {
-  const holding = currentExecutionAttempt(internals, workflowId)?.workflowExecutionToken;
-  if (run.held && holding === run.workflowExecutionToken) {
+  if (engineHoldsRun(internals, workflowId, run)) {
     cleanupTerminalWorkflowImmediately(internals, workflowId, callbacks);
   }
 }
