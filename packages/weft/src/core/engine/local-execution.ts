@@ -129,6 +129,16 @@ export function recordLaunchPending(internals: EngineInternals, workflowId: stri
 }
 
 /**
+ * A launch recorded its record before the commit that makes its run visible as `running`, and that
+ * commit did not land: the record is settled, through its own record, and nothing else changes. The
+ * claim the launch held before the commit is untouched, since the launch never took it; the commit's
+ * own failure path reports the loss.
+ */
+export function settleUncommittedLaunch(internals: EngineInternals, launch: PendingLaunch): void {
+  settleOwnPendingLaunch(internals, launch);
+}
+
+/**
  * The launching start launched. An inline launch has queued its start, which took the record over
  * under the same id, so the queue now owns it; a worker launch has handed the run to the worker,
  * which never enqueues, so its own record is settled here. A `start-new` replacement that recorded

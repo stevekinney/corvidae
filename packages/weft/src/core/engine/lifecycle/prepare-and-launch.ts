@@ -63,6 +63,7 @@ import {
   handOverPendingLaunch,
   letGoOfPendingLaunch,
   recordLaunchPending,
+  settleUncommittedLaunch,
   type PendingLaunch,
 } from '../local-execution.ts';
 import { validateInboundPayload } from '../payload-validation.ts';
@@ -510,19 +511,30 @@ async function commitPendingToRunning(
       : []),
   ];
 
-  // Ownership was already acquired when `prepareWorkflow()`'s create batch
-  // committed (unlike a delayed start's create batch, which is deliberately
-  // claim-less) — fence on the already-held epoch, exactly like any other
-  // write this engine makes for a workflow it already owns.
-  await commitFencedEngineWrite(
-    internals,
-    workflowId,
-    operations,
-    [],
-    () => new Error(`Launch transition for workflow "${workflowId}" lost its CAS race.`),
-  );
-  // Running and launching from this turn: a reclaim that lists this run's claim defers (COR-1625).
-  return { state: nextRunningState, launch: recordLaunchPending(internals, workflowId) };
+  // Launching before the commit that makes the run visible as `running`, under the claim held
+  // since `prepare()`: a reclaim that lists that claim and resumes once the batch has applied, in
+  // the turns before this continuation, already finds the marker and defers (COR-1625). While the
+  // run is still `pending` the record changes nothing a reader sees.
+  const launch = recordLaunchPending(internals, workflowId);
+  try {
+    // Ownership was already acquired when `prepareWorkflow()`'s create batch
+    // committed (unlike a delayed start's create batch, which is deliberately
+    // claim-less) — fence on the already-held epoch, exactly like any other
+    // write this engine makes for a workflow it already owns.
+    await commitFencedEngineWrite(
+      internals,
+      workflowId,
+      operations,
+      [],
+      () => new Error(`Launch transition for workflow "${workflowId}" lost its CAS race.`),
+    );
+  } catch (error) {
+    // The run is not running under this launch: settle only the record. The claim stays as
+    // `prepare()` left it, and the error reaches the caller as it always did.
+    settleUncommittedLaunch(internals, launch);
+    throw error;
+  }
+  return { state: nextRunningState, launch };
 }
 
 /**

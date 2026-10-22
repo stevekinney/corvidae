@@ -16,9 +16,10 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createDeferred, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { workflow, type EngineOptions, type WorkflowServicesResolution } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
@@ -53,6 +54,16 @@ class RacingStorage extends MemoryStorage {
   /** When set, the next conditional batch that writes the run as `failed` throws once. */
   failNextFailedWrite = false;
   failedWriteFaults = 0;
+  /** When set, the next conditional batch that writes the run as `running` is refused once. */
+  refuseNextRunningWrite = false;
+  refusedRunningWrites = 0;
+  /** Scans of the run's async-activity records: a reclaim reloads them only once it has decided to replay. */
+  asyncActivityScans = 0;
+  /**
+   * When set, runs once storage has applied a conditional batch that writes the run as `running`,
+   * before that batch call returns to the launch: a continuation it queues runs ahead of the launch's.
+   */
+  onRunningWriteApplied: (() => void) | null = null;
 
   releaseHeldRead(): void {
     this.#heldRead.resolve();
@@ -68,26 +79,30 @@ class RacingStorage extends MemoryStorage {
       this.reachedHolderScan.resolve();
       await gate.promise;
     }
+    if (prefix.startsWith(KEYS.asyncActivity(WORKFLOW_ID, ''))) this.asyncActivityScans++;
     yield* super.scan(prefix, options);
   }
 
-  /** The hold and the fault apply to a key however it is read: `get`, or `has` (`storageHas`). */
-  async #interceptRead(key: string): Promise<void> {
+  /**
+   * The hold and the fault apply to a key however it is read: `get`, or `has` (`storageHas`). A held
+   * read resumes as promptly as a backend can answer, in the turn after its release.
+   */
+  #interceptRead(key: string): Promise<void> {
     if (key === this.holdReadOf) {
       this.holdReadOf = null;
       this.reachedHeldRead.resolve();
-      await this.#heldRead.promise;
+      return this.#heldRead.promise;
     }
     if (key === this.failReadOf) {
       this.failReadOf = null;
       this.readReadFailures++;
-      throw new Error('transient storage error in the launch window');
+      return Promise.reject(new Error('transient storage error in the launch window'));
     }
+    return Promise.resolve();
   }
 
-  override async get(key: string): Promise<Uint8Array | null> {
-    await this.#interceptRead(key);
-    return super.get(key);
+  override get(key: string): Promise<Uint8Array | null> {
+    return this.#interceptRead(key).then(() => super.get(key));
   }
 
   override async has(key: string): Promise<boolean> {
@@ -99,16 +114,27 @@ class RacingStorage extends MemoryStorage {
     ...args: Parameters<MemoryStorage['conditionalBatch']>
   ): ReturnType<MemoryStorage['conditionalBatch']> {
     const [, operations] = args;
-    const writesFailed = operations.some(
-      (operation) =>
-        operation.type === 'put' &&
-        operation.key === KEYS.workflow(WORKFLOW_ID) &&
-        decodeWorkflowState(operation.value).status === 'failed',
+    const written = operations.find(
+      (operation): operation is BatchOperation & { type: 'put' } =>
+        operation.type === 'put' && operation.key === KEYS.workflow(WORKFLOW_ID),
     );
-    if (this.failNextFailedWrite && writesFailed) {
+    const status = written === undefined ? undefined : decodeWorkflowState(written.value).status;
+    if (this.failNextFailedWrite && status === 'failed') {
       this.failNextFailedWrite = false;
       this.failedWriteFaults++;
       throw new Error('transient storage error on the terminal write');
+    }
+    if (this.refuseNextRunningWrite && status === 'running') {
+      this.refuseNextRunningWrite = false;
+      this.refusedRunningWrites++;
+      return false;
+    }
+    if (this.onRunningWriteApplied !== null && status === 'running') {
+      const applied = this.onRunningWriteApplied;
+      this.onRunningWriteApplied = null;
+      const committed = await super.conditionalBatch(...args);
+      applied();
+      return committed;
     }
     return super.conditionalBatch(...args);
   }
@@ -334,6 +360,102 @@ describe('a reclaim that lists a prepared start between its commit and its launc
     expect(runsBeforeTheLaunch).toBe(0);
     expect(result.reclaim).toMatchObject(RECLAIMED);
     expect(window).toEqual(LAUNCHING_WINDOW);
+  });
+});
+
+describe('a reclaim that resumes inside the commit that makes a launch visible as running', () => {
+  // The listing's exclude set predates the start's claim, and the pass resumes once storage has
+  // applied the launch's `running` batch and before that batch call returns to the launch, so the
+  // pass's continuation runs ahead of the launch's own (Codex 4343853738). The pass must defer at
+  // its first check: a pass that decides to replay reloads the run's async-activity records first,
+  // and its replay then defers again on the marker, so the reload is what shows the first check met
+  // a run with no marker.
+  it('defers to a prepared launch at its first check, and the launch drives the run once', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    await using engine = await createInlineEngine(storage, clock);
+    const probe = probeFor(storage);
+    probe.hold = Promise.withResolvers<void>();
+    const counts = countEvents(engine);
+
+    const listing = await holdReclaimListing(engine, storage);
+    const prepared = await engine.prepare('counted', null, {
+      id: WORKFLOW_ID,
+      services: { owner: 'prepared' },
+    });
+    // The pass lists the prepared run's claim, which this engine holds, and reaches its last
+    // storage read before the drive, the run's state; that read is held until the launch's
+    // `running` batch has applied, so the pass resumes with the run running and no turn to spare.
+    storage.holdReadOf = KEYS.workflow(WORKFLOW_ID);
+    listing.release();
+    await storage.reachedHeldRead.promise;
+    storage.onRunningWriteApplied = () => storage.releaseHeldRead();
+    const handle = await prepared.launch();
+    const result = await listing.pass;
+    await engine.flushInlineLaunches();
+    await waitForCondition(() => probe.runs >= 1, { label: 'the launch drives the run' });
+    await letOtherDrivesStart();
+    probe.hold.resolve();
+    expect(await handle.result()).toBe('ran');
+    expect(result.reclaim).toMatchObject(RECLAIMED);
+    expect(storage.asyncActivityScans).toBe(0);
+    expect(probe.runs).toBe(1);
+    expect(counts).toEqual({ started: 1, resumed: 0 });
+  });
+
+  it('defers to a delayed fire at its first check, and the fire drives the run once', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    await using engine = await createInlineEngine(storage, clock);
+    const probe = probeFor(storage);
+    probe.hold = Promise.withResolvers<void>();
+    const counts = countEvents(engine);
+    await engine.start('counted', null, { id: WORKFLOW_ID, startAt: START_AT });
+    clock.now = START_AT;
+
+    const listing = await holdReclaimListing(engine, storage);
+    storage.onRunningWriteApplied = listing.release;
+    await engine.scheduler.tick(clock.now);
+    const result = await listing.pass;
+    await engine.flushInlineLaunches();
+    await waitForCondition(() => probe.runs >= 1, { label: 'the fire drives the run' });
+    await letOtherDrivesStart();
+    probe.hold.resolve();
+    expect(await engine.getHandle(WORKFLOW_ID).result()).toBe('ran');
+    expect(result.reclaim).toMatchObject(RECLAIMED);
+    expect(storage.asyncActivityScans).toBe(0);
+    expect(probe.runs).toBe(1);
+    expect(counts).toEqual({ started: 1, resumed: 0 });
+  });
+});
+
+describe('a prepared launch whose commit loses its race', () => {
+  it('settles the record it made before the commit, and keeps the claim and the pending run', async () => {
+    const storage = new RacingStorage();
+    const clock = createClock();
+    await using engine = await createInlineEngine(storage, clock);
+    const internals = getInternals(engine);
+    const probe = probeFor(storage);
+    const prepared = await engine.prepare('counted', null, {
+      id: WORKFLOW_ID,
+      services: { owner: 'prepared' },
+    });
+    const epochAfterPrepare = internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID);
+    expect(epochAfterPrepare).not.toBeNull();
+
+    storage.refuseNextRunningWrite = true;
+    const rejection = await rejectionOf(prepared.launch());
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain('lost its CAS race');
+
+    expect(storage.refusedRunningWrites).toBe(1);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, WORKFLOW_ID)).toBe(false);
+    expect(internals.workflowClaimRegistry!.currentEpoch(WORKFLOW_ID)).toBe(epochAfterPrepare);
+    expect(await statusOf(storage)).toBe('pending');
+    const reported = await engine.get(WORKFLOW_ID);
+    expect(reported?.status).toBe('pending');
+    await engine.flushInlineLaunches();
+    expect(probe.runs).toBe(0);
   });
 });
 
