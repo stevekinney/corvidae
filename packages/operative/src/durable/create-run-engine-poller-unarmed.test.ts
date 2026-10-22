@@ -59,6 +59,11 @@ const PARKED_SLEEP_MILLISECONDS = 50;
 // when ctx.sleep() ran (bounded by whenever the test executes, far short of
 // this constant), so any sufficiently distant future instant works.
 const FAR_FUTURE_EPOCH_MILLISECONDS = 4_102_444_800_000; // 2100-01-01T00:00:00.000Z
+// COR-1610: the engine that parks a run reads this frozen clock instead of the host's. Weft fixes a
+// sleep's deadline when the run starts and completes an already-due sleep at once, writing no timer,
+// so on a loaded host a 50 ms sleep could expire before it parked. A frozen clock keeps the run parked
+// until a test fires it; the scheduler spies, not the clock, are what prove a poller unarmed.
+const FROZEN_ENGINE_NOW_MILLISECONDS = 1_000_000;
 
 // Logged by makeSleepingWorkflow on the step BEFORE ctx.sleep. Observing it via
 // the onLog sink is positive proof the generator actually reached the sleep —
@@ -127,6 +132,7 @@ describe('createRunEngine — poller-unarmed proof (#590)', () => {
     const { engine } = await createRunEngine({
       storage: new MemoryStorage(),
       runWorkflow: makeSleepingWorkflow(PARKED_SLEEP_MILLISECONDS),
+      getNow: () => FROZEN_ENGINE_NOW_MILLISECONDS,
       recover: false,
       onLog: (record) => {
         if (record.message === REACHED_SLEEP_MARKER) reachedSleep.push(record);
@@ -150,6 +156,7 @@ describe('createRunEngine — poller-unarmed proof (#590)', () => {
     const { engine } = await createRunEngine({
       storage: new MemoryStorage(),
       runWorkflow: makeSleepingWorkflow(PARKED_SLEEP_MILLISECONDS),
+      getNow: () => FROZEN_ENGINE_NOW_MILLISECONDS,
       recover: true,
       startScheduler: false,
       onLog: (record) => {

@@ -34,6 +34,7 @@ function advanceHostClockAnHourPerRead(): void {
 
 describe('createParkedRunEngine — parked runs ignore the host clock (COR-1610)', () => {
   it('keeps the run parked on its durable sleep however far the host clock moves', async () => {
+    // Installed before the engine is created: Weft captures `Date.now` when the engine is constructed.
     advanceHostClockAnHourPerRead();
     const storage = new MemoryStorage();
     const runId = 'parked-run-clock:0';
