@@ -244,6 +244,38 @@ describe('a durable run whose result rejects with an unclassified error', () => 
   });
 });
 
+describe('a durable run whose result rejects with a CheckpointCommitFailedError (COR-1626)', () => {
+  // The engine gave up on a refused checkpoint or workflow-state write: it failed the run as a
+  // `system` failure, or, when even the failure write was refused, abandoned the run locally and
+  // rejected `result()`, including a `result()` requested afterwards. The error is not exported
+  // from the Weft root, so the driver sees only its code, as it does for any other Weft error it
+  // has no case for. Neither driver treats it like a disposed engine or a lost checkpoint race,
+  // which stay write-free: this run is over for this process, so its session must end too.
+  const refused = () =>
+    Object.assign(
+      new Error('Workflow "run" failure write was refused by storage on all 5 attempts: refused'),
+      { code: 'CheckpointCommitFailedError', write: 'failure', attempts: 5 },
+    );
+
+  for (const driver of drivers) {
+    it(`settles the session as error: run.error, then one run.completed (${driver.name})`, async () => {
+      const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+      const terminalEvents = observeTerminalLifecycle(emitter);
+
+      const result = await driver.settle(refused(), emitter, stateAfterReplay);
+      await macrotask();
+
+      expect(result.finishReason).toBe('error');
+      expect(messageOf(result.error)).toContain('refused by storage on all 5 attempts');
+      expect(terminalEvents).toEqual([
+        { type: RunErrorEvent.type, error: messageOf(result.error) },
+        { type: RunCompletedEvent.type, finishReason: 'error', error: messageOf(result.error) },
+      ]);
+      expect(unhandledRejections).toEqual([]);
+    });
+  }
+});
+
 describe('a durable run whose result rejects with a WorkflowTimeoutError', () => {
   const timeout = () =>
     Object.assign(new Error('workflow timed out'), { code: 'WorkflowTimeoutError' });
