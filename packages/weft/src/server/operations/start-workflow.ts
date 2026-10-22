@@ -14,6 +14,7 @@ import type { SearchAttributeSchema, StartOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
+import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import {
   invalidParamsFault,
   workerStartOverrideRejectedFault,
@@ -93,7 +94,8 @@ function validateStartWorkflowInput(
  *   4. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
  *   5. WorkerDeploymentVersionRemovedError → Conflict (`reason: "version-removed"`)
  *   6. StartWorkflowValidationError → InvalidParams
- *   7. otherwise                    → EngineFailure
+ *   7. StandardSchemaValidationError → InvalidParams (declared input schema)
+ *   8. otherwise                    → EngineFailure
  */
 function resolveStartWorkflowAccess(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -121,6 +123,8 @@ function resolveStartWorkflowAccess(error: unknown): never {
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }
+  const schemaFault = standardSchemaValidationFault(error);
+  if (schemaFault !== undefined) throw schemaFault;
 
   const fault: OperationFault = {
     code: 'EngineFailure',

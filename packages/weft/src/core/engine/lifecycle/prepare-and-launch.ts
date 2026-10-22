@@ -64,6 +64,7 @@ import {
   recordLaunchPending,
   settleLaunchPending,
 } from '../local-execution.ts';
+import { validateInboundPayload } from '../payload-validation.ts';
 import { selectPersistedWorkflowStartHeaders } from '../state-utilities.ts';
 import { loadWorkflowState, runSerializedWorkflowStateWrite } from '../storage-io.ts';
 import { buildWorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
@@ -202,6 +203,7 @@ export async function prepareWorkflow(
       resolvedRevision,
     } = await resolveAndReserveStartRegistration(internals, type, undefined, callbacks);
     inFlightRevision = reservedRevision;
+    await validateInboundPayload(internals, 'start', registration.inputSchema, input);
     const workflowConcurrency = registration.concurrency;
     const revision =
       resolveCachedStartRevision(internals, type, resolvedRevision) ??

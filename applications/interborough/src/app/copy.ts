@@ -524,6 +524,11 @@ export const CHAT_COPY = {
   humanRequestTitle: 'The agent is asking',
   humanRequestFallback: 'The agent is waiting for your answer.',
   humanRequestHint: 'Your next message answers it.',
+  /** Said while a message waits for the answers sent before it to be applied. */
+  answersNotApplied:
+    'Your earlier answers have not been applied yet. Your message was not sent; send it again in a moment.',
+  /** The typing indicator's label from a Stop until the turn has ended. */
+  stopping: 'Stopping…',
   approve: 'Approve',
   deny: 'Deny',
   failureTitle: 'The agent did not answer',

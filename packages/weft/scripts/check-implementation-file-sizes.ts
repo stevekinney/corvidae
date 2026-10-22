@@ -273,6 +273,14 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'admission, reservation, and ownership semantics separately.',
   },
   {
+    path: 'src/core/engine/lifecycle/start.ts',
+    classification: 'justified-exception',
+    rationale:
+      'startWorkflow() is the one admission, reservation, and create-commit path every start ' +
+      'funnels through, and prepare-and-launch.ts is derived from it; splitting its ordered ' +
+      'checks across files would hide the order the duplicate-id and revision fences depend on.',
+  },
+  {
     path: 'src/core/engine/internals.ts',
     classification: 'justified-exception',
     rationale:
