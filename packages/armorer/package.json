@@ -16,6 +16,7 @@
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "devDependencies": {
+    "@google/genai": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",
