@@ -1,0 +1,12 @@
+{
+  "description": "Exports allowed to lack a documentation comment, checked by scripts/check-documentation-coverage.ts. The list can only shrink: --shrink drops stale entries, --seed refuses to run once this file has entries.",
+  "entries": [
+    ". InputRefusal",
+    ". InputResult",
+    ". ResizeResult",
+    ". TerminalConnectFailure",
+    ". TerminalProps",
+    ". TerminalTransportEvent",
+    ". TerminalWebSocketClientOptions"
+  ]
+}

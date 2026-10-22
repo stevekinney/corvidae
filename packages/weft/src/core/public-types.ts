@@ -136,6 +136,8 @@ export type {
   UpdateDefinition,
   UpdateMap,
   UpdatePayload,
+  UsedActivityDefinition,
+  UsesMapInput,
   WorkerReplayOperationFailure,
   WorkerReplayOperationSignature,
   WorkflowAlreadyRegistered,

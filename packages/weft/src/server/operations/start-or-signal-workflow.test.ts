@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Engine } from '../../core/engine.ts';
 import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
 import type { AnyActivityDefinition, WorkflowContext } from '../../core/types.ts';
-import { activity, workflow } from '../../core/types.ts';
+import { activity, signal, workflow } from '../../core/types.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
@@ -85,9 +85,16 @@ async function waitForRecordedFinalizerState(engine: Engine, workflowId: string)
   );
 }
 
+const declaredRelease = workflow({ name: 'declared-release' })
+  .signals({ release: signal<string>('release') })
+  .execute(async function* (ctx: WorkflowContext) {
+    return yield* ctx.waitForSignal<string>('release');
+  });
+
 function createEngine(): Engine {
   const engine = new Engine({ storage: new MemoryStorage() });
   engine.register(waitForRelease);
+  engine.register(declaredRelease);
   engine.register(completesImmediately);
   engine.register(waitWithSearchAttributes);
   return engine;
@@ -108,6 +115,24 @@ describe('weft.workflows.startorsignal', () => {
       await engine[Symbol.asyncDispose]();
       engine = undefined;
     }
+  });
+
+  it('answers 422 and creates nothing for a signal name the workflow does not declare', async () => {
+    engine = createEngine();
+
+    const response = await handleRequest(
+      startOrSignalRequest({
+        type: 'declared-release',
+        signalName: 'reject',
+        signalId: 'sig-undeclared',
+        id: 'sos-rest-undeclared',
+      }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(422);
+    expect(await engine.storage.get(KEYS.workflow('sos-rest-undeclared'))).toBeNull();
   });
 
   it('creates the workflow and returns 201 with its id when the target is absent', async () => {
