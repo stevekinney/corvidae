@@ -74,10 +74,10 @@ describe('the task list', () => {
     );
   });
 
-  test('asks for a page of fifty, newest first as the Bureau orders them', async () => {
+  test('asks for a first page of fifty, in the order the Bureau lists them', async () => {
     const { container } = open('/tasks', { tasks: THREE });
     await waitFor(() => expect(rows(container).length).toBe(3));
-    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({ limit: 50, offset: 0 });
+    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({ limit: 50 });
   });
 
   test('reads the filters from the address, and sends each to the Bureau', async () => {
@@ -90,7 +90,6 @@ describe('the task list', () => {
       status: 'failed',
       contextId: 'session-a',
       limit: 50,
-      offset: 0,
     });
     expect(container.querySelector<HTMLInputElement>('input[name="agent"]')?.value).toBe(
       'assistant',
@@ -125,7 +124,7 @@ describe('the task list', () => {
     );
   });
 
-  test('pages with load more, and takes the next page from where the Bureau says it ends', async () => {
+  test('pages with load more, and asks for the next page with the token the Bureau gave', async () => {
     const many = Array.from({ length: 60 }, (_, index) =>
       taskFixture({ id: `run-${String(index).padStart(2, '0')}` }),
     );
@@ -134,10 +133,10 @@ describe('the task list', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Load more' }));
     await waitFor(() => expect(rows(container).length).toBe(60));
-    expect(stub?.callsTo('bureau.tasks.list').map((call) => call.params['offset'])).toEqual([
+    expect(stub?.callsTo('bureau.tasks.list').map((call) => call.params['pageToken'])).toEqual([
       undefined, // the view frame's probe asks for one task and nothing about a page
-      0,
-      50,
+      undefined,
+      '50',
     ]);
     expect(queryByRole('button', { name: 'Load more' })).toBeNull();
   });

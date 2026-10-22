@@ -193,7 +193,7 @@ describe('quoting an agent’s reply', () => {
       {
         'bureau.agents.list': () => ({ agents: [AGENT] }),
         'bureau.contexts.get': () => ({ ...CONTEXT, id: 'thread-1', title: 'Quoting' }),
-        'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
+        'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
       },
       (url, init) => {
         if (!url.includes('/ag-ui/agents/')) return undefined;
@@ -326,7 +326,7 @@ describe('an existing session', () => {
             openWaits: [],
           },
         ],
-        nextOffset: null,
+        nextPageToken: null,
       }),
     });
     restore = stub.restore;
@@ -340,7 +340,6 @@ describe('an existing session', () => {
     expect(stub.calls.find((call) => call.method === 'bureau.tasks.list')?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
-      offset: 0,
     });
   });
 

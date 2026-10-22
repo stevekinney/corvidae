@@ -89,16 +89,18 @@ test('a task created between the poll’s page reads is not repeated, and the pa
   await fireEvent.click(view.getByRole('button', { name: 'Load more' }));
   await until(() => expect(rows(view.container)).toBe(60));
 
-  // The poll reads page 0, then a task is created, then it reads page 1 from page 0's offset: the
-  // page now starts with the row page 0 ended with.
+  // The poll reads the first page, then a task is created, then it reads the next page with the
+  // first page's token, which names the listing as the first page saw it.
+  let listed = world.tasks;
   stub.on('bureau.tasks.list', (params) => {
-    const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
-    const page = world.tasks.slice(offset, offset + 50);
+    const start = typeof params['pageToken'] === 'string' ? Number(params['pageToken']) : 0;
+    if (start === 0) listed = world.tasks;
+    const page = listed.slice(start, start + 50);
     const answer = {
       tasks: page,
-      nextOffset: offset + page.length < world.tasks.length ? offset + page.length : null,
+      nextPageToken: start + page.length < listed.length ? String(start + page.length) : null,
     };
-    if (offset === 0) world.tasks = [taskFixture({ id: 'run-new' }), ...world.tasks];
+    if (start === 0) world.tasks = [taskFixture({ id: 'run-new' }), ...world.tasks];
     return answer;
   });
   jest.advanceTimersByTime(5_000);
@@ -129,7 +131,7 @@ test('a poll that fails after the rows loaded keeps them, with the fault beside 
 
   // Retry asks again, and a Bureau that answers takes the banner away.
   const asked = stub.callsTo('bureau.tasks.list').length;
-  stub.on('bureau.tasks.list', () => ({ tasks: world.tasks, nextOffset: null }));
+  stub.on('bureau.tasks.list', () => ({ tasks: world.tasks, nextPageToken: null }));
   await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
   await until(() => expect(view.container.querySelector('[role="alert"]')).toBeNull());
   expect(stub.callsTo('bureau.tasks.list').length).toBeGreaterThan(asked);
@@ -145,7 +147,7 @@ test('a first load that fails shows the error state in place of the table', asyn
   stub.on('bureau.tasks.list', () => {
     reads += 1;
     if (reads > 1) throw new Error('The Bureau restarted.');
-    return { tasks: world.tasks.slice(0, 1), nextOffset: null };
+    return { tasks: world.tasks.slice(0, 1), nextPageToken: null };
   });
   const view = openTasks();
   await until(() => expect(view.container.textContent).toContain('The tasks could not be loaded'));
