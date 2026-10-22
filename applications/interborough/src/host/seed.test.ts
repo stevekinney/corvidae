@@ -44,19 +44,21 @@ afterEach(async () => {
 });
 
 describe('the seeded agents', () => {
-  test('are the five the host defines, and the host publishes all but internal', async () => {
+  test('are the six the host defines, and the host publishes all but internal', async () => {
     const host = await start();
     for (const name of SEEDED_AGENT_NAMES) expect(host.bureau.agents.has(name)).toBe(true);
     expect([...SEEDED_AGENT_NAMES].toSorted()).toEqual([
       'assistant',
       'echo',
       'internal',
+      'model-switcher',
       'request-human-input',
       'tool-runner',
     ]);
     expect([...PUBLISHED_AGENT_NAMES].toSorted()).toEqual([
       'assistant',
       'echo',
+      'model-switcher',
       'request-human-input',
       'tool-runner',
     ]);

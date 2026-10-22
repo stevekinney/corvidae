@@ -24,6 +24,8 @@ const context = (id: string) => ({
   agentName: 'assistant',
   title: null,
   lastMessagePreview: null,
+  parentContextId: null,
+  forkedFromMessageId: null,
   messageCount: 1,
   createdAt: '2026-10-19T00:00:00.000Z',
   updatedAt: '2026-10-19T00:00:00.000Z',

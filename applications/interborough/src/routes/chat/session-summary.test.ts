@@ -9,6 +9,8 @@ const context: ChatContext = {
   agentName: 'assistant',
   title: 'Plan the week',
   lastMessagePreview: 'Sounds good.',
+  parentContextId: null,
+  forkedFromMessageId: null,
   messageCount: 4,
   createdAt: '2026-10-19T08:00:00.000Z',
   updatedAt: '2026-10-19T09:00:00.000Z',
