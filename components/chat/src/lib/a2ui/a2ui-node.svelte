@@ -9,7 +9,7 @@
     /** Renders text as inline phrasing (inside a button or a label). */
     inline?: boolean;
     /** Replaces a Button's action, as a Modal does for its trigger. */
-    activate?: (() => void) | undefined;
+    activate?: ((event: MouseEvent) => void) | undefined;
   };
 </script>
 
@@ -209,7 +209,9 @@
   // ── Tabs ──
   let selectedTab = $state('0');
 
-  function openModal(): void {
+  /** Opens the dialog, remembering the control that opened it so focus can return there. */
+  function openModal(event: MouseEvent): void {
+    modalTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
     modalOpen = true;
   }
 </script>
@@ -344,7 +346,7 @@
         orientation={mapEnum(A2UI_ENUM_MAPPINGS.Divider.axis, 'Divider.axis', prop('axis'), report)}
       />
     {:else if type === 'Modal'}
-      <span bind:this={modalTrigger} class="a2ui-modal-trigger">
+      <span class="a2ui-modal-trigger">
         {#if triggerComponent?.component === 'Button'}
           <Self id={triggerComponent.id} {scope} ancestry={lineage} activate={openModal} />
         {:else if triggerComponent !== undefined && ['Text', 'Icon', 'Image'].includes(triggerComponent.component)}
@@ -374,8 +376,8 @@
         title={checkMessage}
         {...optional('aria-label', iconButtonLabel())}
         class="a2ui-leaf"
-        onclick={() => {
-          if (activate !== undefined) activate();
+        onclick={(event: MouseEvent) => {
+          if (activate !== undefined) activate(event);
           else runAction(prop('action'), component, context, evaluation);
         }}
       >

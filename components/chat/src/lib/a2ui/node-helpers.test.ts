@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { dateTimeForControl, iconLabel, matchesPattern } from './node-helpers.ts';
+import { dateTimeForControl, elementId, iconLabel, matchesPattern } from './node-helpers.ts';
+import type { A2uiRenderContext } from './render-context.ts';
 
 describe('node helpers', () => {
   test('dateTimeForControl shapes ISO values for each control', () => {
@@ -23,5 +24,14 @@ describe('node helpers', () => {
   test('iconLabel turns an icon name into words', () => {
     expect(iconLabel('shoppingCart')).toBe('Shopping cart');
     expect(iconLabel('add')).toBe('Add');
+  });
+
+  test('elementId never gives two different components the same id', () => {
+    const context = { idPrefix: 'a2ui' } as A2uiRenderContext;
+    const ids = ['field/a', 'field_a', 'field-a', 'field.a'].map((id) =>
+      elementId(context, id, ''),
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(elementId(context, 'row', '/items/0')).not.toBe(elementId(context, 'row', '/items_0'));
   });
 });

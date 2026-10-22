@@ -56,6 +56,7 @@ test.describe('a11y regressions', () => {
     for (const [trigger, title, body] of [
       ['Show details', 'Show details', 'Ships in two business days.'],
       ['Read the terms', 'Read the terms', 'Returns are accepted within thirty days.'],
+      ['Open', 'Dialog', 'We send at most one email a month.'],
     ] as const) {
       await surface.getByRole('button', { name: trigger }).click();
       const dialog = page.getByRole('dialog', { name: title });
