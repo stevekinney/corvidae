@@ -1198,7 +1198,7 @@
   @media (hover: none) or (pointer: coarse) {
     :global(.chat-message-action-button) {
       background: var(--cinder-surface-raised);
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-border-control);
     }
   }
 

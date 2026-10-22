@@ -237,7 +237,7 @@ describe('COR-1552: bordered button resting edges keep the 3:1 control tier', ()
       );
       for (const value of values) {
         expect(value).not.toContain('--cinder-border-strong');
-        expect(value).toContain('var(--cinder-border-control)');
+        expect(value).toMatch(/var\(--cinder-border-control[,)]/);
       }
     });
   }

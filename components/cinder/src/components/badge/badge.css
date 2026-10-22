@@ -47,46 +47,53 @@
  * Color variants
  * ---------------------------------------- */
 
+  /* A badge draws no visible outline (COR-1552): the border stays in the box so its size does not
+   * change, and each variant paints it in its own background. The `--cinder-status-*-border`
+   * tokens are untouched, because Chip and the danger Button still read them. */
+
   .cinder-badge[data-cinder-variant='neutral'] {
     background: var(--cinder-status-neutral-background);
     color: var(--cinder-status-neutral-text);
-    border-color: var(--cinder-status-neutral-border);
+    border-color: var(--cinder-status-neutral-background);
   }
 
   .cinder-badge[data-cinder-variant='success'] {
     background: var(--cinder-status-success-background);
     color: var(--cinder-status-success-text);
-    border-color: var(--cinder-status-success-border);
+    border-color: var(--cinder-status-success-background);
   }
 
   .cinder-badge[data-cinder-variant='warning'] {
     background: var(--cinder-status-warning-background);
     color: var(--cinder-status-warning-text);
-    border-color: var(--cinder-status-warning-border);
+    border-color: var(--cinder-status-warning-background);
   }
 
   .cinder-badge[data-cinder-variant='danger'] {
     background: var(--cinder-status-danger-background);
     color: var(--cinder-status-danger-text);
-    border-color: var(--cinder-status-danger-border);
+    border-color: var(--cinder-status-danger-background);
   }
 
   .cinder-badge[data-cinder-variant='info'] {
     background: var(--cinder-status-info-background);
     color: var(--cinder-status-info-text);
-    border-color: var(--cinder-status-info-border);
+    border-color: var(--cinder-status-info-background);
   }
 
   .cinder-badge[data-cinder-variant='accent'] {
     background: var(--cinder-accent-background);
     color: var(--cinder-accent-text);
-    border-color: var(--cinder-accent-border);
+    border-color: var(--cinder-accent-background);
   }
 
   .cinder-badge[data-cinder-severity='critical'] {
     background: var(--cinder-severity-critical-background, var(--cinder-status-danger-background));
     color: var(--cinder-severity-critical, var(--cinder-status-danger-text));
-    border-color: var(--cinder-severity-critical, var(--cinder-status-danger-border));
+    border-color: var(
+      --cinder-severity-critical-background,
+      var(--cinder-status-danger-background)
+    );
   }
 
   /* ----------------------------------------

@@ -67,6 +67,12 @@ async function openToggle(page: Page, fixtureName: 'assertion' | 'on'): Promise<
   await page.goto(fixtureRoute('toggle', { fixtureName }), { waitUntil: 'load' });
   const button = page.locator(TOGGLE).first();
   await button.waitFor({ state: 'visible' });
+  // The fixture page has text and a button around the Toggle, within a few pixels of its box. They
+  // keep their layout but stop painting, so the painted region read below is the track alone.
+  await page.addStyleTag({
+    content:
+      'p, button:not(.cinder-toggle), .cinder-toggle-field__label { visibility: hidden !important; }',
+  });
   await page.evaluate(
     'document.activeElement instanceof HTMLElement && document.activeElement.blur()',
   );

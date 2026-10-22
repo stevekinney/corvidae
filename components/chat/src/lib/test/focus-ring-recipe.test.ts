@@ -263,9 +263,11 @@ describe('Chat composer controls (COR-1552)', () => {
     expect(hitArea).toBeDefined();
     expect(declarationValue(hitArea!, 'content')).toBe("''");
     expect(declarationValue(hitArea!, 'position')).toBe('absolute');
-    expect(declarationValue(hitArea!, 'inset')).toBe(
-      'calc((var(--cinder-touch-target-min) - 2rem) / -2)',
+    expect(declarationValue(hitArea!, 'inset')).toContain(
+      '(var(--cinder-touch-target-min) - 2rem) / -2',
     );
+    // The stop state draws a 1px border, which the extension is measured inside of.
+    expect(declarationValue(hitArea!, 'inset')).toContain('var(--_cinder-chat-send-edge)');
     const base = findRules(styles.input, '.chat-input-send').find(
       (rule) => !isUnderForcedColors(rule) && !isUnderMedia(rule, COARSE_POINTER),
     );

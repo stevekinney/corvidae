@@ -80,10 +80,13 @@ describe('status token usage', () => {
       /\.cinder-badge\[data-cinder-severity='critical'\]\s*\{([^}]*)\}/,
     );
     const criticalBody = critical?.[1] ?? '';
-    expect(declarationValue(criticalBody, 'border-color')).toBe(
-      declarationValue(criticalBody, 'background'),
+    // Prettier may wrap the nested `var()`, so compare ignoring whitespace.
+    const unspaced = (value: string) => value.replace(/\s+/g, '');
+    expect(unspaced(declarationValue(criticalBody, 'border-color'))).toBe(
+      unspaced(declarationValue(criticalBody, 'background')),
     );
-    expect(badgeSource).not.toMatch(/-border\)/);
+    // Neither the status border tokens nor the accent border token is read by a Badge any more.
+    expect(badgeSource).not.toMatch(/--cinder-(?:status-[a-z]+|accent|severity-critical)-border\b/);
   });
 
   test('derived status tiers retain the polarity-aware relative-color formula', async () => {

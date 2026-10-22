@@ -133,7 +133,7 @@
   import { classNames } from '../../../utilities/class-names.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
-  import { ArrowUp, Paperclip, Square, Tooltip, X, Button } from '@lostgradient/cinder';
+  import { Paperclip, SendHorizontal, Square, Tooltip, X, Button } from '@lostgradient/cinder';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 
@@ -1133,7 +1133,7 @@
             ></path>
           </svg>
         {:else}
-          <ArrowUp class="cinder-icon-sm" />
+          <SendHorizontal class="cinder-icon-sm" />
         {/if}
       </button>
       <Tooltip
@@ -1323,17 +1323,23 @@
     }
   }
 
-  /* Send button - circular icon button
-   * Uses --cinder-touch-target-min (44px) for WCAG 2.2 AA touch target compliance */
+  /* Send button: a 32px icon button. A coarse pointer keeps the 44px WCAG 2.2 AA touch target
+   * (--cinder-touch-target-min) as its hit area, not its drawn size: the ::after below extends the
+   * element's own hit-testable box, so a tap within 6px of the button still lands on it. */
   .chat-input-send {
+    /* An absolutely positioned ::after is measured from the PADDING box, so the stop state's 1px
+     * border has to come back out of the extension for the hit area to be the full 44px. */
+    --_cinder-chat-send-edge: 0px;
+
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--cinder-touch-target-min);
-    height: var(--cinder-touch-target-min);
+    width: 2rem;
+    height: 2rem;
     padding: 0;
     border: none;
-    border-radius: var(--cinder-radius-full);
+    border-radius: var(--cinder-radius-md);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     cursor: pointer;
@@ -1353,9 +1359,24 @@
   }
 
   .chat-input-send:disabled {
-    background: var(--cinder-surface-inset);
+    background: transparent;
+    box-shadow: none;
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
+  }
+
+  @media (pointer: coarse) {
+    .chat-input-send::after {
+      content: '';
+      position: absolute;
+      inset: calc((var(--cinder-touch-target-min) - 2rem) / -2 - var(--_cinder-chat-send-edge));
+    }
+
+    /* Send and Stop sit side by side while a follow-up is allowed, so their extended hit areas must
+     * not overlap: the gap has to be at least the two 6px extensions. */
+    .chat-input-footer-right {
+      gap: var(--cinder-space-3);
+    }
   }
 
   .chat-input-send:focus-visible {
@@ -1379,6 +1400,8 @@
 
   /* Stop button variant - danger-tinted to signal urgency during streaming */
   .chat-input-send[data-stop] {
+    --_cinder-chat-send-edge: 1px;
+
     background: var(--cinder-status-danger-background);
     color: var(--cinder-status-danger-text);
     border: 1px solid var(--cinder-status-danger-border);

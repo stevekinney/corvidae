@@ -1,6 +1,6 @@
 # ScheduleBuilder
 
-A recurrence-definition control. Users author a schedule via friendly presets (every N minutes/hours, daily, weekly on selected days, or monthly on a day), raw five-field cron, or a fixed interval — all three authoring modes lower to the same portable emitted value: `{ mode: 'cron', expression }` or `{ mode: 'interval', every, unit }`. `mode: 'preset'` never appears in the emitted value; presets are sugar.
+A recurrence-definition control. Users author a schedule via friendly presets (daily, weekly on selected days, or monthly on a day), raw five-field cron, or a fixed interval — all three authoring modes lower to the same portable emitted value: `{ mode: 'cron', expression }` or `{ mode: 'interval', every, unit }`. `mode: 'preset'` never appears in the emitted value; presets are sugar.
 
 `ScheduleBuilder` ships no date, cron-parsing, or scheduling library. The always-visible "next N fires" preview is entirely consumer-supplied via `computeNextFires`, and the preview section is not rendered at all when that prop is omitted. Scope is recurrence only — overlap policy, jitter, and backfill belong to the consumer's surrounding form.
 
@@ -40,13 +40,13 @@ A recurrence-definition control. Users author a schedule via friendly presets (e
 
 ## Authoring modes
 
-Three modes live behind a tablist (`Presets`, `Cron`, `Interval`); presets is the default.
+Three modes live behind a tablist (`Presets`, `Cron`, `Interval`). An omitted `value` opens Presets on the `Daily` kind; an explicit value opens the mode that authors it, so an `interval` value opens Interval and a `cron` value opens Cron.
 
-- **Presets** — a preset-kind selector (`Every N` / `Daily` / `Weekly` / `Monthly`) reveals the matching fields. `Every N` lowers to an `interval` value; `Daily`, `Weekly`, and `Monthly` lower to a `cron` value.
+- **Presets** — a preset-kind selector (`Daily` / `Weekly` / `Monthly`) reveals the matching fields, and all three lower to a `cron` value. The summary reads as a sentence, such as "Repeats every month on the 1st at 09:00".
 - **Cron** — five separate fields (minute, hour, day of month, month, day of week), each validated independently with an inline error and hint. The emitted value is the joined five-field expression.
 - **Interval** — a number and a unit (`minutes` / `hours` / `days` / `weeks`).
 
-Switching modes never emits a change by itself — it re-seeds the destination mode's fields from the last value you actually committed, losslessly _where representable_. A minute or hour interval converts to an equivalent cron step only when the count evenly divides its field cycle (e.g. `*/15 * * * *`); day/week intervals and non-dividing minute/hour intervals (like every 45 minutes) are not faithfully representable as a cron step, so Cron mode seeds a neutral daily default rather than a misleading expression. A cron pattern converts back to an `interval` only when it is such a dividing step pattern.
+Presets cannot author an interval, so switching to Presets, or opening a builder whose `allowedModes` excludes `'interval'` on an interval value, shows the `Daily` default instead. Switching modes never emits a change by itself — it re-seeds the destination mode's fields from the last value you actually committed, losslessly _where representable_. A minute or hour interval converts to an equivalent cron step only when the count evenly divides its field cycle (e.g. `*/15 * * * *`); day/week intervals and non-dividing minute/hour intervals (like every 45 minutes) are not faithfully representable as a cron step, so Cron mode seeds a neutral daily default rather than a misleading expression. A cron pattern converts back to an `interval` only when it is such a dividing step pattern.
 
 Regardless of mode, three things are always visible: a plain-English summary line, the next-fires preview (when `computeNextFires` is supplied), and a timezone display slot (`timezone` snippet, else `timezoneLabel` text, else a "Not set" placeholder).
 
