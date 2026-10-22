@@ -254,6 +254,7 @@ import type {
   SkillSnapshot,
 } from './runtime-composition';
 import {
+  createMaintenanceMemoryAuthority,
   createRuntimeComposition,
   createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
@@ -11924,6 +11925,40 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return 'continue';
   }
 
+  // COR-1629 — the authority the maintenance pass sweeps governed memory's retention under, built
+  // once and only for a Bureau that has memory, so a Bureau without it calls nothing.
+  const maintenanceMemoryAuthority = createMaintenanceMemoryAuthority(runtime.memory, bureauId);
+
+  /**
+   * COR-1629 — expires the tenant's records that have outlived their retention, so a collection that
+   * reached `maxRecordsPerCollection` accepts writes again. Governed memory runs nothing on a timer
+   * of its own, so every maintenance pass calls this before `propagateMemoryDeletions`, which then
+   * starts advancing the deletions the sweep opened. A sweep that throws, or that governed memory
+   * refuses, is reported and never stops the rest of the pass.
+   */
+  async function sweepMemoryRetention(pass: 'Manual' | 'Automatic'): Promise<void> {
+    if (runtime.memory === undefined || maintenanceMemoryAuthority === undefined) return;
+    try {
+      const sweep = await runtime.memory.sweepRetention(maintenanceMemoryAuthority);
+      if (sweep.status !== 'applied') {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message:
+            `[bureau] ${pass} memory retention sweep was ${sweep.status}` +
+            `${sweep.reason === undefined ? '' : ` (${sweep.reason})`}, so no expired record was deleted.`,
+        });
+      }
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] ${pass} memory retention sweep failed: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
   /**
    * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
    * lane and settles the bounded-async targets, which stay pending until something asks. Governed
@@ -12080,6 +12115,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
+      await sweepMemoryRetention('Manual');
       // COR-1546 — governed memory's deletions advance only when asked to.
       try {
         await propagateMemoryDeletions();
@@ -12356,6 +12393,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cause: error,
           });
         }
+        // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
+        await sweepMemoryRetention('Automatic');
         // COR-1546 — governed memory's deletions advance only when asked to.
         try {
           await propagateMemoryDeletions();

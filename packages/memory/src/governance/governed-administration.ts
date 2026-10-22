@@ -177,14 +177,18 @@ export async function sweepRetention(
   const pruned = dryRun
     ? { prunedEvents: 0, prunedReceipts: 0 }
     : await pruneAudit(context, authority.tenantId, now - tenantPolicy.auditReceiptMilliseconds);
-  await context.recordEvent({
-    tenantId: authority.tenantId,
-    type: 'memory.retention.swept',
-    outcome: dryRun ? 'dry-run' : 'applied',
-    attribution: context.attribution(authority, operationId),
-    recordIds: candidates.map((candidate) => candidate.id),
-    details: { policyRevision: policy.revision, ...pruned },
-  });
+  // A sweep that deleted and pruned nothing records nothing, so a host that sweeps on a timer does
+  // not fill the ledger with idle events. A dry run is asked for, so it always records its report.
+  if (dryRun || deletionIds.length > 0 || pruned.prunedEvents > 0 || pruned.prunedReceipts > 0) {
+    await context.recordEvent({
+      tenantId: authority.tenantId,
+      type: 'memory.retention.swept',
+      outcome: dryRun ? 'dry-run' : 'applied',
+      attribution: context.attribution(authority, operationId),
+      recordIds: candidates.map((candidate) => candidate.id),
+      details: { policyRevision: policy.revision, ...pruned },
+    });
+  }
   return sweepResult(operationId, policy.revision, {
     dryRun,
     expired: candidates,
