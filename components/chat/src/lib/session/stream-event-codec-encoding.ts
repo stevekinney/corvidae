@@ -1,4 +1,5 @@
 import { isConversationHistory } from '../components/chat/builders.ts';
+import { projectLegacyWireConversation } from './stream-event-codec-conversation-schema.ts';
 import {
   isAssistantStepEvent,
   isBlockStreamEvent,
@@ -270,7 +271,8 @@ function projectTextDelta(
     content: requireString(event.content, 'content'),
     accumulated: requireString(event.accumulated, 'accumulated'),
   };
-  if (envelope.wireVersion !== 3) return { ...body, ...envelope };
+  if (envelope.wireVersion === undefined || envelope.wireVersion < 3)
+    return { ...body, ...envelope };
   return {
     ...body,
     messageId: requireString(event.messageId, 'messageId'),
@@ -355,8 +357,8 @@ function projectRunEvent(
   envelope: Partial<WireEnvelope>,
 ): ProjectedChatStreamEvent {
   if (event.type === 'run.started') {
-    if (envelope.wireVersion !== 3)
-      throw new Error('Invalid chat stream event: run.started requires wire version 3');
+    if (envelope.wireVersion !== 3 && envelope.wireVersion !== 4)
+      throw new Error('Invalid chat stream event: run.started requires wire version 3 or later');
     return {
       type: event.type,
       runId: requireString(event.runId, 'runId'),
@@ -394,7 +396,8 @@ function projectCompletedRun(
     throw new Error('Invalid chat stream event: conversation is not a valid ConversationHistory');
   return {
     type: event.type,
-    conversation,
+    conversation:
+      envelope.wireVersion === 4 ? conversation : projectLegacyWireConversation(conversation),
     content: requireString(event.content, 'content'),
     usage: projectTokenUsage(event.usage),
     finishReason: requireString(event.finishReason, 'finishReason'),
