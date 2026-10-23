@@ -3,7 +3,7 @@
  * golden file that the browser fixture renders with `A2uiSurface`
  * (`scripts/browser-fixtures/src/fixtures/a2ui-a2a-part.golden.json`). This test builds the part
  * from a real surface and requires it to equal the file, so the renderer's end-to-end test and
- * Bureau's emitter cannot drift apart. Set `UPDATE_A2UI_GOLDEN=1` to rewrite the file.
+ * Bureau's emitter cannot drift apart. Delete the file and run the test to regenerate it (then format it with Prettier).
  */
 import { Part } from '@a2a-js/sdk';
 import { describe, expect, it } from 'bun:test';
@@ -51,7 +51,7 @@ describe('the A2UI data part of an A2A task', () => {
     expect(parts).toHaveLength(1);
     const wire: unknown = JSON.parse(JSON.stringify(Part.toJSON(parts[0]!)));
 
-    if (process.env['UPDATE_A2UI_GOLDEN'] === '1') {
+    if (!(await Bun.file(GOLDEN).exists())) {
       await Bun.write(GOLDEN, `${JSON.stringify(wire, null, 2)}\n`);
     }
     expect(wire).toEqual(JSON.parse(await Bun.file(GOLDEN).text()));
