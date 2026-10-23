@@ -121,8 +121,12 @@ export interface GoalConversations {
   verify(record: GoalState, attemptIndex: number): Promise<string | undefined>;
   /** Records the attempt's run in its session. Idempotent per run id. */
   recordStart(record: GoalState, request: AttemptSeatRequest): Promise<void>;
-  /** Commits a terminal attempt's transcript to its session. A no-op for a run that has not ended. */
-  settle(record: GoalState, attemptIndex: number, runId: string): Promise<void>;
+  /**
+   * Commits a terminal attempt's transcript to its session, and answers the session as committed
+   * (COR-1630: the forwarder claims its rows before it lets the run's claims go). Nothing is
+   * committed again for an attempt already committed.
+   */
+  settle(record: GoalState, attemptIndex: number, runId: string): Promise<AgentSession>;
 }
 
 const describe = (error: unknown): string =>
@@ -234,7 +238,11 @@ export function createGoalConversations(
     return session;
   }
 
-  async function settle(record: GoalState, attemptIndex: number, runId: string): Promise<void> {
+  async function settle(
+    record: GoalState,
+    attemptIndex: number,
+    runId: string,
+  ): Promise<AgentSession> {
     const sessionId = attemptSessionId(
       record.goalRunId,
       record.conversationPolicy.kind,
@@ -249,12 +257,12 @@ export function createGoalConversations(
     // `recordStart` has just written this ref, so one that is not there is a
     // store that lags or fails, not a transcript with nothing to commit: returning
     // would tell the caller it is committed. The activity retries the read.
-    if (ref === undefined) {
+    if (session === undefined || ref === undefined) {
       throw new Error(
         `The run "${runId}" of session "${sessionId}" cannot be read back to commit its transcript.`,
       );
     }
-    if (ref.status !== 'running') return;
+    if (ref.status !== 'running') return session;
     const durable = getDurable();
     // Returning here would read as a transcript committed: the forwarder would
     // then tell the controller the attempt ended without it.
@@ -274,6 +282,14 @@ export function createGoalConversations(
       ref,
       { requireConversation: true },
     );
+    // The session as committed, not as it was read before: its history now holds the transcript.
+    const committed = await sessionStore.load(sessionId);
+    if (committed === undefined) {
+      throw new Error(
+        `Session "${sessionId}" cannot be read back after committing the transcript of run "${runId}".`,
+      );
+    }
+    return owned(record, committed);
   }
 
   /** The trunk with attempt `attemptIndex`'s transcript committed, or an error if it cannot be. */

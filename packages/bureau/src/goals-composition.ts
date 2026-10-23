@@ -10,6 +10,7 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type AgentSession,
   type CleanupAcknowledgement,
   createSessionStore,
   type DurableActiveRunContext,
@@ -20,6 +21,7 @@ import {
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
+import type { CatalogRunAssetReleaser } from './catalog-run-asset-release';
 import type { DurableEventHistory } from './durable-event-history';
 import { createGoalAttemptFence, type GoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalConversations } from './goal-conversation';
@@ -69,6 +71,14 @@ export interface GoalsCompositionDependencies {
   ) => Promise<GoalAttemptClaimFence>;
   /** Where the self-fence the attempts' runs are registered with is bound, once the store and the reader exist. */
   readonly fenceHost: GoalAttemptFenceHost;
+  /**
+   * COR-1630 — takes the `session-row` claims of a goal session's rows; see
+   * `AttemptForwarderDependencies.claimSessionAssets`. Absent when the bureau has no asset service.
+   */
+  readonly claimSessionAssets?: ((session: AgentSession) => Promise<void>) | undefined;
+  /** COR-1630 — releases an ended attempt run's `run-row` claims; absent when the bureau has no asset service. */
+  readonly releaseAssets?:
+    Pick<CatalogRunAssetReleaser, 'releaseConversation' | 'releaseEndedRun'> | undefined;
   /** Applies checkpoint retention to a terminal controller or attempt workflow; see `BureauGoalsDependencies`. */
   readonly cleanupWorkflow: (workflowId: string) => Promise<CleanupAcknowledgement>;
   readonly isClosing: () => boolean;
@@ -201,6 +211,8 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     getDurable,
     resolveCostEstimation,
     conversations,
+    claimSessionAssets: dependencies.claimSessionAssets,
+    releaseAssets: dependencies.releaseAssets,
     isClosing: dependencies.isClosing,
     diagnose,
   });

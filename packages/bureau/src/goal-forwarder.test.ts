@@ -6,6 +6,7 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type AgentSession,
   createActiveRun,
   createCheckpointStore,
   createRunEngine,
@@ -23,7 +24,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import { createAttemptForwarder } from './goal-forwarder';
-import { attemptSignalId, createGoalState } from './goal-state';
+import { attemptSignalId, createGoalState, goalTransitionId } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { BureauDiagnostic } from './types';
@@ -87,6 +88,10 @@ async function world(
     handleResultFailures?: number;
     /** The runtime services the forwarder's timers come from. */
     runtime?: typeof runtime;
+    /** The principal the goal (and so its attempts' claims) belong to. */
+    principal?: string;
+    /** Runs in place of the session claim, after it is logged; a rejection is a failed claim. */
+    claimSessionAssets?: (session: AgentSession) => Promise<void>;
   } = {},
 ) {
   const storage = new MemoryStorage();
@@ -139,6 +144,11 @@ async function world(
     },
   });
   const settled: Array<{ attemptIndex: number; runId: string }> = [];
+  const claimed: string[] = [];
+  const releases: Array<
+    | { kind: 'conversation'; runId: string; principalId: string; rows: number }
+    | { kind: 'ended-run'; runId: string; principalId: string }
+  > = [];
   const durable: DurableActiveRunContext = { engine: spy, checkpointStore };
   const store: GoalStore = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(
@@ -150,6 +160,7 @@ async function world(
       conversationPolicy: { kind: 'continue' },
       bounds: { maximumAttempts: 2, maximumTotalSteps: 10, ...goalOverrides },
       now: NOW,
+      ...(forwarding.principal === undefined ? {} : { principal: forwarding.principal }),
     }),
   );
   const diagnostics: BureauDiagnostic[] = [];
@@ -168,6 +179,27 @@ async function world(
         order.push('settle');
         settled.push({ attemptIndex, runId });
         await forwarding.settle?.(attemptIndex, runId);
+        return { id: `session-of-${runId}` } as AgentSession;
+      },
+    },
+    claimSessionAssets: async (session) => {
+      order.push('claim');
+      claimed.push(session.id);
+      await forwarding.claimSessionAssets?.(session);
+    },
+    releaseAssets: {
+      releaseConversation: async (run) => {
+        order.push('release');
+        releases.push({
+          kind: 'conversation',
+          runId: run.runId,
+          principalId: run.principalId,
+          rows: run.conversation.getMessages({ includeHidden: true }).length,
+        });
+      },
+      releaseEndedRun: async (run) => {
+        order.push('release-ended');
+        releases.push({ kind: 'ended-run', runId: run.runId, principalId: run.principalId });
       },
     },
     ...(forwarding.retryDelaysMs === undefined ? {} : { retryDelaysMs: forwarding.retryDelaysMs }),
@@ -181,6 +213,8 @@ async function world(
     sent,
     order,
     settled,
+    claimed,
+    releases,
     forwarder,
     diagnostics,
     costRunIds,
@@ -192,6 +226,9 @@ async function world(
 }
 
 const target = { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' } as const;
+
+/** What a stubbed `settle` answers: the session the transcript was committed to. */
+const committedSession = { id: 'goal-session' } as AgentSession;
 
 const finishedRun = async (context: DurableActiveRunContext, content = 'all done') =>
   startDurableRunResult(context, {
@@ -252,7 +289,7 @@ describe('createAttemptForwarder', () => {
 
     await forwarder.reconcile(target);
 
-    expect(order).toEqual(['settle', 'signal']);
+    expect(order).toEqual(['settle', 'claim', 'release', 'signal']);
     expect(settled).toEqual([{ attemptIndex: 0, runId: 'goal-g1-a0' }]);
   });
 
@@ -463,7 +500,8 @@ describe('createAttemptForwarder', () => {
     expect(await forwarder.reconcile(target)).toBe('not-needed');
 
     expect(settled).toEqual([]);
-    expect(order).toEqual([]);
+    // The goal is over, so no session row is left to protect: the run's claims go at once.
+    expect(order).toEqual(['release']);
     expect(sent).toEqual([]);
   });
 
@@ -502,7 +540,7 @@ describe('createAttemptForwarder', () => {
       runtime,
       getDurable: () => undefined,
       resolveCostEstimation: () => Promise.resolve(undefined),
-      conversations: { settle: () => Promise.resolve() },
+      conversations: { settle: () => Promise.resolve(committedSession) },
       isClosing: () => false,
       diagnose: () => {},
     });
@@ -532,7 +570,7 @@ describe('createAttemptForwarder', () => {
       runtime,
       getDurable: () => failing,
       resolveCostEstimation: () => Promise.resolve(undefined),
-      conversations: { settle: () => Promise.resolve() },
+      conversations: { settle: () => Promise.resolve(committedSession) },
       isClosing: () => false,
       diagnose: (diagnostic) => diagnostics.push(diagnostic),
     });
@@ -748,7 +786,9 @@ describe('shutting down with a watcher paused between tries', () => {
       conversations: {
         settle: () => {
           tries += 1;
-          return tries < 2 ? Promise.reject(new Error('hiccup')) : Promise.resolve();
+          return tries < 2
+            ? Promise.reject(new Error('hiccup'))
+            : Promise.resolve(committedSession);
         },
       },
       retryDelaysMs: [60_000],
@@ -762,5 +802,190 @@ describe('shutting down with a watcher paused between tries', () => {
     await pollUntil(() => tries === 2);
 
     expect(tries).toBe(2);
+  });
+});
+
+/**
+ * COR-1630 — an attempt's `run-row` claims are let go once its goal's session holds the rows.
+ *
+ * `forward()` decides by how it returns:
+ *
+ * - after `settle` returns (including a recovered attempt, which returns `signal-resent` the same
+ *   way): claim the session's rows, then release the run's; a claim that throws releases nothing
+ *   and warns once, and the signal is still sent;
+ * - the goal is terminal before the read, or canceled between the read and the commit: nothing is
+ *   left to protect, so release at once, without claiming;
+ * - the bureau is closing, before the read or after it: nothing, because the next boot forwards the
+ *   attempt again;
+ * - `missing` and `watching`: nothing, because the run has not ended.
+ */
+describe('createAttemptForwarder — releasing the attempt’s claims (COR-1630)', () => {
+  it('claims the goal session’s rows, then releases the run’s, then tells the controller', async () => {
+    const { durable, order, claimed, releases, forwarder } = await world(
+      {},
+      { principal: 'alice' },
+    );
+    await finishedRun(durable);
+
+    expect(await forwarder.reconcile(target)).toBe('signal-resent');
+
+    expect(order).toEqual(['settle', 'claim', 'release', 'signal']);
+    expect(claimed).toEqual([`session-of-${target.runId}`]);
+    // The rows are the run's own conversation, read from the ended run.
+    expect(releases).toEqual([
+      { kind: 'conversation', runId: target.runId, principalId: 'alice', rows: 2 },
+    ]);
+  });
+
+  it('releases as the local principal when the goal has none', async () => {
+    const { durable, releases, forwarder } = await world();
+    await finishedRun(durable);
+
+    await forwarder.reconcile(target);
+
+    expect(releases).toEqual([
+      expect.objectContaining({ principalId: 'anonymous:local', runId: target.runId }),
+    ]);
+  });
+
+  it('does the same when the live watcher forwards the ending', async () => {
+    const { durable, order, sent, forwarder } = await world();
+    await finishedRun(durable);
+
+    forwarder.watch(target);
+    await pollUntil(() => sent.length === 1);
+
+    expect(order).toEqual(['settle', 'claim', 'release', 'signal']);
+  });
+
+  it('releases nothing, and warns once naming the attempt, when the session claim throws, and still sends the signal', async () => {
+    const { durable, order, releases, sent, forwarder, diagnostics } = await world(
+      {},
+      {
+        claimSessionAssets: async () => {
+          throw new Error('the asset store is down');
+        },
+      },
+    );
+    await finishedRun(durable);
+
+    expect(await forwarder.reconcile(target)).toBe('signal-resent');
+
+    expect(order).toEqual(['settle', 'claim', 'signal']);
+    expect(releases).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ level: 'warn', scope: 'goals' });
+    expect(diagnostics[0]?.message).toContain('g1');
+    expect(diagnostics[0]?.message).toContain('attempt 0');
+    expect(diagnostics[0]?.message).toContain('the asset store is down');
+  });
+
+  it('releases at once, without claiming or committing, when the goal ended before the attempt was forwarded', async () => {
+    const { durable, order, claimed, releases, settled, sent, forwarder, store } = await world();
+    await finishedRun(durable);
+    const ended = await store.applyTransition({
+      goalRunId: 'g1',
+      seq: 1,
+      transitionId: goalTransitionId('g1', 1),
+      to: 'failed',
+      at: NOW,
+      cause: 'to-failed',
+      terminalReason: 'attempt-run-failed',
+    });
+    expect(ended.status).toBe('applied');
+
+    expect(await forwarder.reconcile(target)).toBe('not-needed');
+
+    expect(order).toEqual(['release-ended']);
+    expect(releases).toEqual([
+      { kind: 'ended-run', runId: target.runId, principalId: 'anonymous:local' },
+    ]);
+    expect([claimed, settled, sent]).toEqual([[], [], []]);
+  });
+
+  it('releases at once, without claiming, when the goal is canceled between the read of the run and the commit', async () => {
+    const { durable, order, claimed, releases, settled, sent, forwarder, store } = await world(
+      { maximumTotalCostUsd: 5 },
+      {
+        resolveCostEstimation: async () => {
+          await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+          return { model: 'gpt-4o' };
+        },
+      },
+    );
+    await finishedRun(durable);
+
+    expect(await forwarder.reconcile(target)).toBe('not-needed');
+
+    expect(order).toEqual(['release']);
+    expect(releases).toEqual([
+      { kind: 'conversation', runId: target.runId, principalId: 'anonymous:local', rows: 2 },
+    ]);
+    expect([claimed, settled, sent]).toEqual([[], [], []]);
+  });
+
+  it('releases nothing when the bureau is closing before the run is read', async () => {
+    const { durable, order, sent, forwarder, close } = await world();
+    await finishedRun(durable);
+    close();
+
+    expect(await forwarder.reconcile(target)).toBe('not-needed');
+
+    expect([order, sent]).toEqual([[], []]);
+  });
+
+  it('releases nothing when the bureau began closing while the run was read', async () => {
+    let close: () => void = () => {};
+    const {
+      durable,
+      order,
+      sent,
+      forwarder,
+      close: begin,
+    } = await world(
+      { maximumTotalCostUsd: 5 },
+      {
+        resolveCostEstimation: async () => {
+          close();
+          return { model: 'gpt-4o' };
+        },
+      },
+    );
+    close = begin;
+    await finishedRun(durable);
+
+    expect(await forwarder.reconcile(target)).toBe('not-needed');
+
+    expect([order, sent]).toEqual([[], []]);
+  });
+
+  it('releases nothing for a run that is not there or has not ended', async () => {
+    const { durable, order, forwarder } = await world();
+
+    expect(await forwarder.reconcile(target)).toBe('missing');
+
+    startDurableRunResult(durable, {
+      runId: target.runId,
+      sessionId: target.runId,
+      options: options(() => new Promise(() => {})),
+      prompt: 'go',
+    }).catch(() => undefined);
+    await pollUntil(async () => (await durable.engine.get(target.runId)) !== null);
+
+    expect(await forwarder.reconcile(target)).toBe('watching');
+    expect(order).toEqual([]);
+  });
+
+  it('releases the same attempt once more, harmlessly, when the signal has to be sent again', async () => {
+    const { durable, releases, claimed, forwarder } = await world();
+    await finishedRun(durable);
+
+    await forwarder.reconcile(target);
+    await forwarder.reconcile(target);
+
+    // The forwarder asks again; the release step itself releases only what is still held.
+    expect(releases).toHaveLength(2);
+    expect(claimed).toHaveLength(2);
   });
 });

@@ -37,11 +37,28 @@
  * the controller no longer waits for it, and nothing is sent once the bureau
  * is closing: a run ended by shutdown is a crash for the next process to
  * recover, never a verdict for the goal.
+ *
+ * ## The attempt's asset claims (COR-1630)
+ *
+ * An attempt's run holds the assets its rows reference under `run-row` holders, and nothing else
+ * lets them go. This is the one place that does, because an attempt's rows must be held by the
+ * goal's session first: the next attempt is seeded from them, and an asset with no claim could
+ * be collected, past the retention floor, between the two attempts. By how `forward()` returns:
+ *
+ * - after `conversations.settle` (a live attempt, or a recovered one that ends in
+ *   `signal-resent`): the session `settle` committed to takes its `session-row` claims at once
+ *   (`claimSessionAssets`), then the run's claims are released. If the session's claim throws,
+ *   the run's claims stay, one `warn` names the attempt, and the signal is still sent;
+ * - the goal is terminal, or canceled while the run was read: no session row is left to protect,
+ *   so the run's claims are released without a claim;
+ * - the bureau is closing, or the run is missing or still going: nothing, because the run has
+ *   not ended or the next boot forwards it again.
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type AgentRun,
+  type AgentSession,
   type DurableActiveRunContext,
   type FinishReason,
   type GoalAttemptTerminalSignal,
@@ -50,9 +67,11 @@ import {
   type RunOptions,
 } from '@lostgradient/operative';
 
+import type { CatalogRunAssetReleaser } from './catalog-run-asset-release';
 import type { GoalConversations } from './goal-conversation';
 import { attemptSignalId, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type { GoalStore } from './goal-store';
+import { ownerOrLocal } from './owner-of-record';
 import type { DiagnosticSink } from './types';
 
 export interface AttemptTarget {
@@ -73,6 +92,15 @@ export interface AttemptForwarderDependencies {
   readonly resolveCostEstimation: (runId: string) => Promise<RunOptions['costEstimation']>;
   /** Commits a finished attempt's transcript to its session before the controller is told it ended. */
   readonly conversations: Pick<GoalConversations, 'settle'>;
+  /**
+   * COR-1630 — takes the `session-row` claims of a goal session's rows (Bureau's
+   * `claimSessionAssets`), so the rows an attempt left are held before its run lets them go.
+   * Absent for a Bureau with no asset service. A rejection is a claim that failed.
+   */
+  readonly claimSessionAssets?: ((session: AgentSession) => Promise<void>) | undefined;
+  /** COR-1630 — releases an ended attempt run's `run-row` claims. Absent for a Bureau with no asset service. */
+  readonly releaseAssets?:
+    Pick<CatalogRunAssetReleaser, 'releaseConversation' | 'releaseEndedRun'> | undefined;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
   /**
@@ -114,6 +142,7 @@ export function createAttemptForwarder(
 ): AttemptForwarder {
   const { store, runtime, getDurable, resolveCostEstimation, conversations, isClosing, diagnose } =
     dependencies;
+  const { claimSessionAssets, releaseAssets } = dependencies;
   const retryDelaysMs = dependencies.retryDelaysMs ?? DEFAULT_FORWARD_RETRY_DELAYS_MS;
   const watching = new Map<string, Promise<void>>();
   const sending = new Set<Promise<unknown>>();
@@ -134,6 +163,14 @@ export function createAttemptForwarder(
       isTerminalGoalStatus(record.status) ||
       record.cancellation !== undefined
     ) {
+      // The goal is over, so no session row is left to protect. The run may not have ended
+      // (it is read here, not assumed), and a run still going keeps its claims.
+      if (record !== undefined) {
+        await releaseAssets?.releaseEndedRun({
+          runId: target.runId,
+          principalId: ownerOrLocal(record.principal),
+        });
+      }
       return 'not-needed';
     }
     // The result is always rebuilt with the estimator the run was started with,
@@ -159,12 +196,23 @@ export function createAttemptForwarder(
       isTerminalGoalStatus(current.status) ||
       current.cancellation !== undefined
     ) {
+      // The run has ended (it was just read) and the goal's session is not this forwarder's to
+      // change, so nothing needs the run's claims to be handed on: let them go.
+      if (current !== undefined) {
+        await releaseAssets?.releaseConversation({
+          runId: target.runId,
+          principalId: ownerOrLocal(current.principal),
+          conversation: reading.result.conversation,
+        });
+      }
       return 'not-needed';
     }
     // Before the controller can start the next attempt or the validator, so a
     // retry always finds this attempt's transcript in the session. Idempotent,
     // so a recovery that sends the signal again commits nothing twice.
-    await conversations.settle(current, target.attemptIndex, target.runId);
+    const session = await conversations.settle(current, target.attemptIndex, target.runId);
+    // The session takes the rows' claims, and only then does the run let go of them.
+    await handOverClaims(current, target, session, reading.result.conversation);
 
     const finishReason: FinishReason = reading.result.finishReason;
     const cost = reading.result.costEstimate?.totalCost;
@@ -188,6 +236,41 @@ export function createAttemptForwarder(
       throw error;
     }
     return 'signal-resent';
+  }
+
+  /**
+   * Claims the rows of the session the attempt's transcript was committed to, then releases the
+   * run's own claims on them. Never rejects: a claim or a release only changes how long an asset
+   * lives, so a failure is diagnosed and the signal still goes out. A claim that fails keeps the
+   * run's claims, so the next attempt's seed is never left without one.
+   */
+  async function handOverClaims(
+    record: { readonly principal?: string | undefined; readonly goalRunId: string },
+    attempt: AttemptTarget,
+    session: AgentSession,
+    conversation: Parameters<
+      NonNullable<typeof releaseAssets>['releaseConversation']
+    >[0]['conversation'],
+  ): Promise<void> {
+    if (releaseAssets === undefined) return;
+    if (claimSessionAssets !== undefined) {
+      try {
+        await claimSessionAssets(session);
+      } catch (error) {
+        diagnose({
+          level: 'warn',
+          scope: 'goals',
+          message: `[bureau] Could not claim the assets of the session holding attempt ${attempt.attemptIndex} of goal "${attempt.goalRunId}", so run "${attempt.runId}" keeps its own retention claims: ${describe(error)}`,
+          cause: error,
+        });
+        return;
+      }
+    }
+    await releaseAssets.releaseConversation({
+      runId: attempt.runId,
+      principalId: ownerOrLocal(record.principal),
+      conversation,
+    });
   }
 
   /** The goal ended or was canceled, so no controller is waiting on an attempt. */

@@ -97,6 +97,7 @@ import {
   SKILL_TOOL_DENIED_CODE,
   admitToolResultMedia,
   createStepGeneratedMediaAdmitter,
+  readDurableRunResult,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -280,6 +281,10 @@ import {
   serializeUnknownError,
 } from './serialization';
 import { createCatalogTaskSettler } from './catalog-task-settlement';
+import {
+  createCatalogRunAssetReleaser,
+  createRecoveredRunReleaseListener,
+} from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
   type CatalogRunSettlement,
@@ -4365,6 +4370,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
     return ends[state.status] ?? 'in-flight';
   };
+  /**
+   * COR-1630 — lets go of the `run-row` claims a catalog run holds on managed assets when the run
+   * ends (`catalog-run-asset-release.ts`). A fresh dispatch is released by the catalog dispatcher
+   * (`onCatalogRunEnded`), a recovered run by the settlement hook below, and a goal attempt by the
+   * goal forwarder, after the goal's session holds its rows.
+   */
+  const catalogRunAssets = createCatalogRunAssetReleaser({
+    assets: () => assetServiceHolder.current,
+    durableEnd: catalogDurableEnd,
+    readEnded: async (runId) => {
+      const durable = runtime.durable;
+      if (durable === undefined) return { status: 'missing' };
+      const reading = await readDurableRunResult(durable, runId, { runtime: runtimeServices });
+      if (reading.status === 'completed' || reading.status === 'ended') {
+        return { status: 'ended', conversation: reading.result.conversation };
+      }
+      return { status: reading.status === 'missing' ? 'missing' : 'running' };
+    },
+    isShuttingDown: () => shutdownPromise !== undefined,
+    diagnose,
+  });
+  catalogRunSettlements.subscribe(
+    createRecoveredRunReleaseListener({
+      releaser: catalogRunAssets,
+      loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+      ownerOf: ownerOrLocal,
+      diagnose,
+    }),
+  );
   /**
    * Whether a run is a child run rather than a task: the child topology holds it, or, failing
    * that, its identifier is not a catalog run's.
@@ -17960,6 +17994,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }),
       );
     },
+    // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
+    onCatalogRunEnded: ({ runId, principal, settled }) =>
+      catalogSettlements.follow(
+        catalogRunAssets.releaseAfterHandle({
+          runId,
+          principalId: ownerOrLocal(principal),
+          settled,
+        }),
+      ),
     fileAgents,
     // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
     humanInput: options.humanInput === true && runtime.durable !== undefined,
@@ -18167,6 +18210,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     fenceClaim: (runId, owner, tombstonedAt) =>
       runtime.fenceGoalAttemptRecoveryRecord(runId, owner, tombstonedAt),
     fenceHost: goalAttemptFenceHost,
+    // COR-1630 — an attempt's run lets go of its asset claims once the goal's session holds them.
+    claimSessionAssets,
+    releaseAssets: catalogRunAssets,
     // Not the memoized, audited step runs get: that records a run's cleanup
     // under a run id, and a goal's controller is not a run. An attempt's run is
     // one, but a goal prunes it at close, once its terminal checkpoint has been
