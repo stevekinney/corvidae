@@ -59,6 +59,9 @@ export function* runWorkflowPark(
   ctx: WorkflowParkContext,
   state: WorkflowParkState,
 ): WorkflowOperation<boolean> {
+  // Not `isFailureFinishReason` (COR-1627): while a run is parked its `finishReason` is the loop's
+  // default, `maximum-steps`, which is where a run waiting on a sleep or a signal stands and so
+  // not a failure here. An abort is not a failure by that predicate either, but it still ends the run.
   const isFailureOutcome =
     state.finishReason === 'error' ||
     state.finishReason === 'aborted' ||

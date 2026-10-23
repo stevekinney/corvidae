@@ -6,6 +6,7 @@
  * is on a condition or a frame, never a delay.
  */
 import { EventType } from '@ag-ui/core';
+import { AgentRunError } from '@lostgradient/operative';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import {
@@ -135,6 +136,27 @@ describe('the stream of a run that stops at its step limit', () => {
           delta: 'Out of steps.',
         });
         expect(tail[3]).toMatchObject({ code: 'MAXIMUM_STEPS', message: MESSAGE });
+      },
+    );
+  });
+
+  it('ends with RUN_ERROR, not RUN_FINISHED, for a thrown error that only carries the step-limit code', async () => {
+    const thrown = new AgentRunError('Not a step limit.', {
+      kind: 'policy',
+      code: 'MAXIMUM_STEPS',
+    });
+    await withPeers(
+      { ...STEP_LIMIT, script: [{ kind: 'fail', error: thrown }] },
+      async (harness) => {
+        const started = await startOn(harness.handler);
+        await started.reader.rest();
+        const frames = started.reader.received;
+
+        expect(typesOf(frames)).not.toContain(EventType.RUN_FINISHED);
+        expect(frames.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          message: 'Not a step limit.',
+        });
       },
     );
   });

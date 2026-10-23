@@ -1102,6 +1102,55 @@ describe('createDurableHeartbeat', () => {
     }
   });
 
+  it.each(['maximum-steps', 'budget-exceeded', 'elicitation-denied', 'aborted'] as const)(
+    'records the durable tick of a run that ends with %s (COR-1627)',
+    async (finishReason) => {
+      const { engine } = await createRunEngine({
+        storage: new MemoryStorage(),
+        runWorkflow: createAgentRunProbeWorkflow(),
+        recover: false,
+        startScheduler: false,
+      });
+      const { scheduler } = createRecordingScheduler({
+        ...createRunResult('heartbeat tick'),
+        finishReason,
+        error: undefined,
+      });
+      const completedTicks: DurableHeartbeatTickResult[] = [];
+      const failureErrors: unknown[] = [];
+      engine.addEventListener(weft.WorkflowCompletedEvent.type, (event) => {
+        const result = event.result;
+        if (isDurableHeartbeatTickResult(result)) completedTicks.push(result);
+      });
+      const heartbeat = await createDurableHeartbeat(engine, {
+        scheduler,
+        scheduleId: `heartbeat-${finishReason}`,
+        spec: { every: '1h' },
+        createHeartbeatRun: () => ({ conversation: new Conversation() }),
+        onFailure: (error) => {
+          failureErrors.push(error);
+        },
+      });
+
+      try {
+        await fireSchedule(engine, `heartbeat-${finishReason}`);
+
+        // A failure finish reason is a failed tick; an abort is the heartbeat's own
+        // cancellation, so it is not.
+        const failed = finishReason !== 'aborted';
+        expect(completedTicks).toHaveLength(1);
+        expect(completedTicks[0]).toMatchObject({
+          scheduleId: `heartbeat-${finishReason}`,
+          status: failed ? 'failed' : 'completed',
+        });
+        expect(failureErrors).toHaveLength(failed ? 1 : 0);
+      } finally {
+        await heartbeat.cancel();
+        engine[Symbol.dispose]();
+      }
+    },
+  );
+
   it('does not write agent-run checkpoints under an undefined run id', async () => {
     const storage = new MemoryStorage();
     const { engine, checkpointStore } = await createRunEngine({

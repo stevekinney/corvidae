@@ -196,7 +196,16 @@ export class RunProjector {
         }
         return { events: this.maximumStepsTail(data), terminal: this.ending('completed', detail) };
       case RECORDED.runError:
-        if (errorOf(detail).code === MAXIMUM_STEPS_CODE) return { events: [] };
+        // Only a `run.error` the run itself classifies as a step limit is deferred to the
+        // `run.completed` that follows: a thrown error that merely carries the code is a plain
+        // `error` there, and ends the stream here. A record from before the payload carried a
+        // finish reason is deferred by its code, as it was.
+        if (
+          errorOf(detail).code === MAXIMUM_STEPS_CODE &&
+          (data['finishReason'] === undefined || data['finishReason'] === 'maximum-steps')
+        ) {
+          return { events: [] };
+        }
         return { events: [], terminal: this.ending('error', detail) };
       case RECORDED.runAborted:
         return { events: [], terminal: this.ending('aborted', detail) };

@@ -237,6 +237,27 @@ describe('a run that stopped at its step limit (COR-1627)', () => {
     });
   });
 
+  it('does not end on a run.error whose payload says the run finished at its step limit', () => {
+    expect(
+      projector().handleRecorded(RECORDED.runError, {
+        ...stepLimitError,
+        finishReason: 'maximum-steps',
+      }),
+    ).toEqual({ events: [] });
+  });
+
+  it('ends on a run.error that carries the step-limit code but finished as a plain error', () => {
+    // A thrown `AgentRunError` with the code `MAXIMUM_STEPS` is not a step limit: the run
+    // classifies it as `error`, and no `run.completed` of `maximum-steps` follows to end it.
+    const ended = projector().handleRecorded(RECORDED.runError, {
+      ...stepLimitError,
+      finishReason: 'error',
+    });
+
+    expect(ended.terminal).toMatchObject({ outcome: 'error' });
+    expect(errorOf(ended.terminal?.detail)).toMatchObject({ code: 'MAXIMUM_STEPS' });
+  });
+
   it('still ends on any other run.error', () => {
     const ended = projector().handleRecorded(RECORDED.runError, {
       error: JSON.stringify({ message: 'boom', code: 'UNKNOWN' }),
