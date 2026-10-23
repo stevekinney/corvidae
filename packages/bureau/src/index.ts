@@ -618,3 +618,34 @@ export {
   createInteractiveSurfaces,
   INTERACTIVE_SURFACE_EVENT_KINDS,
 } from './interactive-surface/store';
+// Experimental (COR-837): the A2UI v0.9.1 adapter, pinned until a stable A2UI 1.0 review.
+export type {
+  A2uiAcceptance,
+  A2uiAdapter,
+  A2uiApplyReceipt,
+  A2uiApplyRequest,
+  A2uiRejection,
+} from './a2ui/adapter';
+export { createA2uiAdapter } from './a2ui/adapter';
+export {
+  A2UI_BASIC_CATALOG_ID,
+  A2UI_CINDER_CATALOG_ID,
+  A2UI_SPECIFICATION_VERSION,
+  A2UI_SUPPORT_STATUS,
+  offeredCatalogIds,
+  supportedCatalogIdsOf,
+} from './a2ui/catalogs';
+export type { A2uiActionContext, A2uiClientAction, A2uiClientMessage } from './a2ui/client-actions';
+export { parseClientMessage, toActionRequest } from './a2ui/client-actions';
+export type { A2uiIssue } from './a2ui/graph';
+export type {
+  A2uiComponent,
+  A2uiCreateSurfaceMessage,
+  A2uiDeleteSurfaceMessage,
+  A2uiServerMessage,
+  A2uiUpdateComponentsMessage,
+  A2uiUpdateDataModelMessage,
+} from './a2ui/messages';
+export { a2uiMessagesOf } from './a2ui/messages';
+export type { ProposeA2uiSurfaceToolOptions } from './a2ui/propose-surface-tool';
+export { createProposeA2uiSurfaceTool } from './a2ui/propose-surface-tool';

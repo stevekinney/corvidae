@@ -25,3 +25,27 @@ describe('the vendored A2UI basic catalog', () => {
     expect(provenance.commit).toMatch(/^[0-9a-f]{40}$/);
   });
 });
+
+describe("Bureau's other vendored A2UI schemas", () => {
+  const copies: readonly [string, string][] = [
+    ['common-types.schema.json', 'components/cinder/scripts/a2ui/common_types.json'],
+    ['server-to-client.schema.json', 'components/cinder/scripts/a2ui/server_to_client.json'],
+    ['cinder-catalog.schema.json', 'components/cinder/a2ui-catalog.json'],
+  ];
+
+  for (const [name, source] of copies) {
+    test(`${name} is byte-identical to ${source} and its digest is recorded`, async () => {
+      const copy = join(root, 'packages/bureau/src/a2ui', name);
+      const [bytes, original] = await Promise.all([
+        Bun.file(copy).arrayBuffer(),
+        Bun.file(join(root, source)).arrayBuffer(),
+      ]);
+      expect(Buffer.from(bytes).equals(Buffer.from(original))).toBe(true);
+      const provenance = (await Bun.file(
+        join(root, 'packages/bureau/src/a2ui/PROVENANCE.json'),
+      ).json()) as { files: Record<string, { sha256: string }> };
+      const digest = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+      expect(provenance.files[name]?.sha256).toBe(digest);
+    });
+  }
+});
