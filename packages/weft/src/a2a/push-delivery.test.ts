@@ -155,7 +155,9 @@ describe('deleting a push configuration', () => {
       status: 'requested',
       receipt: { state: 'cancellation-requested' },
     });
-    const deliveryId = cancellations[0]!.receipt.deliveryId;
+    const cancelled = cancellations[0]!;
+    if (cancelled.status === 'unknown') throw new Error('The cancellation named no delivery.');
+    const deliveryId = cancelled.receipt.deliveryId;
     // Delete returned only once the aborted attempt settled, and then purged its record.
     expect(await fixture.outbox.list()).toEqual([]);
     expect(await fixture.outbox.receipt(deliveryId)).toBeNull();

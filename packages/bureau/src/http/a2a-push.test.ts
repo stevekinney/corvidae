@@ -7,6 +7,7 @@
 import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 
@@ -112,9 +113,10 @@ describe('the sweep interval', () => {
   it('accepts a positive integer and refuses anything else at construction', async () => {
     await fixtureOf(answering('done'), { sweepIntervalMs: 60_000 });
     for (const bad of [0, -1, 1.5, Number.NaN, 2_147_483_648]) {
-      await expect(openPushBureau(answering('done'), { sweepIntervalMs: bad })).rejects.toThrow(
-        /sweepIntervalMs/,
+      const failure = await throwingRejectionOf(
+        openPushBureau(answering('done'), { sweepIntervalMs: bad }),
       );
+      expect(failure).toThrow(/sweepIntervalMs/);
     }
   });
 });
