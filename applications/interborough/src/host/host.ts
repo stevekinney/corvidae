@@ -77,7 +77,6 @@ import {
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
-import { isShellNavigation } from './shell-request.ts';
 import { createHostMemory } from './memory.ts';
 import {
   createCatalogGenerate,
@@ -95,6 +94,7 @@ import {
   SEEDED_AGENT_NAMES,
   type SeededAgents,
 } from './seed.ts';
+import { isShellNavigation } from './shell-request.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
