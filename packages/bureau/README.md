@@ -619,7 +619,7 @@ The handler has no run-starting operation of its own, so the host starts the run
 - Authentication other than an API key, and the `bureau.deliveries.*` management operations.
 - Wiring a human-input form from an agent file or the catalog (COR-1674). An author can configure `inputSchemas` on Operative's `requestHumanInput` tool today, and the form is projected to the A2UI data part the extension row describes.
 
-**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key. The `ListTasks` request names `status: TaskState.TASK_STATE_UNSPECIFIED` explicitly because the server answers an undefined status with an empty list, which [COR-1679](https://linear.app/lost-gradient/issue/COR-1679) tracks; the example works around it.
+**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key.
 
 ```typescript
 import { type Message, Role, TaskState } from '@a2a-js/sdk';
@@ -735,7 +735,7 @@ console.log(TaskState[fetched.status?.state ?? 0]); // 'TASK_STATE_COMPLETED'
 const listed = await summarizer.listTasks({
   tenant: '',
   contextId: '', // empty filters match everything
-  status: TaskState.TASK_STATE_UNSPECIFIED,
+  status: TaskState.TASK_STATE_UNSPECIFIED, // no state filter
   pageToken: '',
   statusTimestampAfter: undefined,
 });
