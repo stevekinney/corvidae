@@ -1,27 +1,33 @@
 <script lang="ts">
   /**
-   * `/agents/:id`: one agent's details, a New chat action when it is published, and the chats the
-   * caller has had with it. A file agent's model, tools and skills come from its definition. An
-   * agent defined in code has no file and no route exposes its catalog entry, so it shows what
-   * `bureau.agents.list` says of it (name, description, kind, revision, publish state) and has no
-   * model, tools or skills section at all, not an empty one.
+   * `/agents/:id`: one agent, with its name once, its description, what it is made of (its model
+   * when the Bureau can tell, its tools and skills), a Memory action that carries how many memories it has, a New
+   * chat action when it is published, and the chats the caller has had with it.
+   *
+   * An agent file shows the version of the file it runs, with a link to the history that lives in
+   * its editor. An agent defined in code has no file, so it shows no version and no Edit action.
+   * An agent whose listing carries no tools is not claimed to have none: see `agent-facts.svelte`.
+   * The only badge an agent carries is "Not published".
    */
   import { untrack } from 'svelte';
 
-  import { Badge, Button } from '@lostgradient/cinder';
+  import { Button } from '@lostgradient/cinder';
   import { ChatConversationList } from '@lostgradient/chat';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_EDITOR_COPY, CHAT_COPY, MEMORY_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENTS_COPY, CHAT_COPY } from '../../app/copy.ts';
   import { agentEditPath, agentMemoryPath } from '../../lib/agent-paths.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import { listMemories, MEMORY_PAGE_SIZE } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { agentsByName, sessionSummary } from '../chat/session-summary.ts';
-  import { canChat, newChatPath, publishLabel } from './agent-presentation.ts';
+  import AgentFacts from './agent-facts.svelte';
+  import AgentNotPublished from './agent-not-published.svelte';
+  import { canChat, memoryActionText, newChatPath, shortVersion } from './agent-presentation.ts';
 
   const PAGE_SIZE = 20;
   const id = untrack(() => router.current.params['id'] ?? '');
@@ -41,6 +47,7 @@
     }),
     undefined,
   );
+  const fileVersion = $derived(definition.data?.hash ?? undefined);
 
   const sessions = createInfiniteQuery(
     () => ({
@@ -53,6 +60,30 @@
     }),
     undefined,
   );
+
+  // The memory page's own query, so a visit to either warms the other. A failure drops the count
+  // and keeps the action: the memory page itself says why it cannot show memories.
+  const memories = createInfiniteQuery(
+    () => ({
+      queryKey: queryKeys.memory.list(id),
+      queryFn: ({ pageParam, signal }) =>
+        listMemories(id, { limit: MEMORY_PAGE_SIZE, offset: pageParam }, { signal }),
+      initialPageParam: 0,
+      getNextPageParam: (last) => last.nextOffset ?? undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+  const memoryCount = $derived(
+    memories.data === undefined
+      ? undefined
+      : combinePages(
+          memories.data.pages,
+          (page) => page.memories,
+          (memory) => memory.id,
+        ).length,
+  );
+  const memoryLabel = $derived(memoryActionText(memoryCount, memories.hasNextPage));
 
   const rows = $derived(
     combinePages(
@@ -79,13 +110,24 @@
 </script>
 
 {#if agent}
-  <article class="weft-agent" aria-labelledby="weft-agent-title">
-    <header class="weft-chat-sessions__header">
-      <div>
-        <h1 id="weft-agent-title" class="weft-chat-header__title">{agent.displayName}</h1>
-        <p class="weft-chat-header__agent">{agent.name}</p>
+  <article class="ib-agent" aria-labelledby="weft-agent-title">
+    <header class="ib-agent__header">
+      <div class="ib-agent__heading">
+        <h1
+          id="weft-agent-title"
+          class="weft-chat-header__title"
+          data-identifier={agent.displayName === agent.name ? '' : undefined}
+        >
+          {agent.displayName}
+        </h1>
+        {#if agent.displayName !== agent.name}
+          <code class="ib-agent-id">{agent.name}</code>
+        {/if}
+        {#if !canChat(agent)}
+          <AgentNotPublished />
+        {/if}
       </div>
-      <div class="weft-agent__actions">
+      <div class="ib-agent__actions">
         <!-- An agent defined in code has no file, so there is nothing to edit. -->
         {#if agent.kind === 'file'}
           <Button
@@ -99,7 +141,7 @@
           href={router.href(memoryPath)}
           variant="secondary"
           size="sm"
-          onclick={(event) => goTo(event, memoryPath)}>{MEMORY_COPY.link}</Button
+          onclick={(event) => goTo(event, memoryPath)}>{memoryLabel}</Button
         >
         {#if canChat(agent)}
           <Button
@@ -112,38 +154,25 @@
       </div>
     </header>
 
-    <div class="weft-agents__badges">
-      <Badge variant="neutral" size="sm">{CHAT_COPY.agentKind[agent.kind]}</Badge>
-      <Badge variant={canChat(agent) ? 'success' : 'warning'} size="sm">{publishLabel(agent)}</Badge
-      >
-    </div>
     {#if agent.description}
-      <p class="weft-agents__description">{agent.description}</p>
+      <p class="ib-agent__description">{agent.description}</p>
     {/if}
 
-    <dl class="weft-agent__facts">
-      <dt>{CHAT_COPY.agentRevision}</dt>
-      <dd>{agent.definitionRevision}</dd>
-      {#if definition.data?.definition}
-        <dt>{CHAT_COPY.agentModel}</dt>
-        <dd>{definition.data.definition.model}</dd>
-        <dt>{CHAT_COPY.agentTools}</dt>
-        <dd>
-          {definition.data.definition.tools.length === 0
-            ? CHAT_COPY.noneListed
-            : definition.data.definition.tools.join(', ')}
-        </dd>
-        <dt>{CHAT_COPY.agentSkills}</dt>
-        <dd>
-          {definition.data.definition.skills.length === 0
-            ? CHAT_COPY.noneListed
-            : definition.data.definition.skills.map((skill) => skill.name).join(', ')}
-        </dd>
-      {/if}
-    </dl>
+    <AgentFacts {agent} detailed />
+
+    {#if agent.kind === 'file' && fileVersion !== undefined}
+      <p class="ib-agent__version" data-testid="agent-file-version">
+        {AGENTS_COPY.fileVersion}
+        <code title={fileVersion}>{shortVersion(fileVersion)}</code>
+        ·
+        <a href={router.href(editPath)} onclick={(event) => goTo(event, editPath)}
+          >{AGENTS_COPY.history}</a
+        >
+      </p>
+    {/if}
 
     <section aria-labelledby="weft-agent-sessions">
-      <h2 id="weft-agent-sessions" class="weft-agent__subheading">{CHAT_COPY.agentSessions}</h2>
+      <h2 id="weft-agent-sessions" class="ib-agent__subheading">{CHAT_COPY.agentSessions}</h2>
       <ChatConversationList
         conversations={rows}
         ariaLabel={CHAT_COPY.agentSessions}
@@ -157,11 +186,3 @@
     </section>
   </article>
 {/if}
-
-<style>
-  .weft-agent__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-</style>
