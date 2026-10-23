@@ -870,6 +870,16 @@ describe('correcting a memory', () => {
     expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title })).toBeNull();
   });
 
+  test('lets the person dismiss the note that the memory was replaced', async () => {
+    const corrected = { ...WINDOW, content: 'The user prefers the exit row.' };
+    const { view } = await correctWith(() => ({ id: AISLE.id, memory: corrected }));
+    await view.findByText(MEMORY_COPY.correct.saved.title);
+
+    await fireEvent.click(view.getByRole('button', { name: /dismiss/i }));
+
+    expect(view.queryByText(MEMORY_COPY.correct.saved.title)).toBeNull();
+  });
+
   test('corrects from the row, starting from the memory’s own words', async () => {
     const corrected = { ...WINDOW, content: 'The user prefers the exit row.' };
     const served = bureau({ 'bureau.memory.correct': () => ({ id: AISLE.id, memory: corrected }) });
