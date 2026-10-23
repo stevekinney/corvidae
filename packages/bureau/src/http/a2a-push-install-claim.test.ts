@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { completeSend, owedInstallOf, type OwedInstallInput } from './a2a-push-install-claim.ts';
 
 const base: OwedInstallInput = {
@@ -71,9 +72,11 @@ describe('the install a send owes', () => {
       complete: async (_entry: string, result: string) => void completed.push(result),
     };
 
-    await expect(
+    const refusal = await rejectionOf(
       completeSend(ledger, 'entry', 'result', { pushOwed: true, pushCursor: '-1' }, false),
-    ).rejects.toThrow('cannot complete');
+    );
+    expect(refusal).toBeInstanceOf(Error);
+    expect((refusal as Error).message).toContain('cannot complete');
     expect(completed).toEqual([]);
 
     await completeSend(ledger, 'entry', 'installed', { pushOwed: true, pushCursor: '-1' }, true);
