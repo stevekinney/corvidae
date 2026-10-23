@@ -945,3 +945,31 @@
   flex-direction: column;
   gap: var(--cinder-space-2);
 }
+
+/* ---------------------------------------------------------------------- */
+/* In-process engine (no worker connected)                                */
+/* ---------------------------------------------------------------------- */
+
+.weft-workers-in-process {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  max-width: 48rem;
+}
+
+.weft-workers-in-process__sentence {
+  margin: 0;
+  font-size: var(--cinder-text-md);
+}
+
+.weft-workers-in-process__how {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+}
+
+.weft-workers-in-process__text {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  color: var(--cinder-text-muted);
+}

@@ -33,6 +33,8 @@ import { realClient, ScriptedFetch } from './workers-route-test-support.test-sup
 
 let scripted: ScriptedFetch | undefined;
 
+const IN_PROCESS_SENTENCE = 'This engine runs its work in-process. Remote workers are not configured.';
+
 function happyDomAPI(): DetachedWindowAPI {
   if (!(window instanceof Window)) {
     throw new Error('expected the test window to be backed by happy-dom');
@@ -92,7 +94,7 @@ describe('Workers route — fault title mapping', () => {
     };
     try {
       const view = await renderWorkersRoute();
-      await view.findByText('No workers connected');
+      await view.findByText(IN_PROCESS_SENTENCE);
       view.unmount();
       router.navigate('/workers?tab=queues');
       await act();
