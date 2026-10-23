@@ -36,6 +36,7 @@
 
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -43,7 +44,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
@@ -194,7 +195,6 @@ export function createWorktree(
     throw new UsageError('--scope-paths and --scope-output go together.');
   const base = options.base ?? `origin/${config.defaultBranch}`;
   const path = join(root, name);
-
   // Main-branch ownership preflight: a new worktree never gets the default branch.
   const listing = git(runner, checkout, 'worktree', 'list', '--porcelain');
   if (listing.code !== 0) throw failure('git worktree list', listing);
@@ -205,6 +205,20 @@ export function createWorktree(
     );
   }
   if (existsSync(path)) throw new Refusal(`${path} already exists.`);
+
+  // A relative --install-log is the caller's path, not the worktree's: the install runs inside the
+  // worktree, where a relative log would land (or fail to) somewhere the caller never looks.
+  const resolvedInstallLog = resolve(
+    options.installLog ?? join(dirname(path), `${name}-install.log`),
+  );
+  try {
+    mkdirSync(dirname(resolvedInstallLog), { recursive: true });
+    writeFileSync(resolvedInstallLog, '');
+  } catch (error) {
+    throw new Refusal(
+      `Cannot write the install log ${resolvedInstallLog}: ${error instanceof Error ? error.message : String(error)}. Nothing was created.`,
+    );
+  }
 
   const fetch = git(runner, checkout, 'fetch', 'origin', config.defaultBranch);
   if (fetch.code !== 0) throw failure(`git fetch origin ${config.defaultBranch}`, fetch);
@@ -227,7 +241,7 @@ export function createWorktree(
     );
 
   const head = git(runner, path, 'rev-parse', 'HEAD').stdout.trim();
-  const installLog = options.installLog ?? join(dirname(path), `${name}-install.log`);
+  const installLog = resolvedInstallLog;
   const install = runner(
     ['sh', '-c', `(${config.installCommand}) > ${shellQuote(installLog)} 2>&1`],
     { cwd: path },
