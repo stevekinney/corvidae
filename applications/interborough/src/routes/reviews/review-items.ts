@@ -7,7 +7,6 @@
 import type { CompletedReviewEntry, PendingReviewEntry } from '@lostgradient/weft';
 
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
-import { chatSessionPath } from '../../lib/identifier-paths.ts';
 
 export type ReviewItem =
   | {
@@ -50,29 +49,4 @@ export function mergePendingReviews(
 /** One of the engine's reviews as an item, whichever list it is in. */
 export function weftReviewItem(entry: PendingReviewEntry | CompletedReviewEntry): ReviewItem {
   return { source: 'weft', key: `weft:${entry.reviewId}`, requestedAt: entry.createdAt, entry };
-}
-
-/** What a Bureau review's link goes to, or `undefined` while it is not yet known. */
-export type BureauReviewTarget = {
-  readonly kind: 'chat' | 'task' | 'run';
-  readonly path: string;
-};
-
-/**
- * Where a Bureau review links: the chat when it names a session, otherwise its task when the Bureau
- * answers for the review's run, otherwise the run. `taskExists` is `undefined` until the Bureau has
- * been asked, and a review that needs the answer has no target until then.
- */
-export function bureauReviewTarget(
-  review: BureauReview,
-  taskExists: boolean | undefined,
-): BureauReviewTarget | undefined {
-  if (review.sessionId !== undefined) {
-    return { kind: 'chat', path: chatSessionPath(review.sessionId) };
-  }
-  if (taskExists === undefined) return undefined;
-  const runId = encodeURIComponent(review.runId);
-  return taskExists
-    ? { kind: 'task', path: `/tasks/${runId}` }
-    : { kind: 'run', path: `/runs/${runId}` };
 }

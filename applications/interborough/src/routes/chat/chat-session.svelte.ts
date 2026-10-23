@@ -79,6 +79,8 @@ export class ChatSessionState {
    */
   readonly adapter: ChatSessionController['adapter'];
   #attachment: Promise<void> = Promise.resolve();
+  /** Whether the last attach could not read the thread. */
+  #attachFailed = false;
   /** Whether the turn on screen carried files, which decides what the door's `INVALID_INPUT` is about. */
   #turnHadAttachments = false;
   /**
@@ -267,6 +269,27 @@ export class ChatSessionState {
     if (announced.length > 0) this.conversation = withAssetParts(this.conversation, announced);
   }
 
+  /**
+   * Reads the thread again and shows what the Bureau holds, replacing the rows on screen. A decision
+   * made somewhere else (`/reviews`, a run's page, another tab) is written into the conversation by
+   * the Bureau, and the rows here still show the approval as parked. A turn that is going, or a read
+   * in progress, is left alone: it is the page's own.
+   *
+   * What the run waits on is not in the transcript, so it is read again the way the page reads it
+   * when it opens (`attach`): a question answered elsewhere is no longer owed, and one the run still
+   * waits on comes back. Without that, the person's next message would be sent as the answer to a
+   * question the Bureau has settled, and the Bureau would refuse it.
+   */
+  async refresh(): Promise<boolean> {
+    if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
+    const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
+    if (history === undefined || this.streaming || this.attaching) return false;
+    this.conversation = history;
+    await this.attach({ rereading: true });
+    // A read that failed has not said what the run waits on, so the caller reads again.
+    return !this.#attachFailed;
+  }
+
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
@@ -294,6 +317,7 @@ export class ChatSessionState {
    */
   async #attach(rereading: boolean): Promise<boolean> {
     this.attaching = true;
+    this.#attachFailed = false;
     try {
       const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
       if (restored === undefined) {
@@ -314,6 +338,7 @@ export class ChatSessionState {
     } catch (error) {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
       // rejection with an empty transcript.
+      this.#attachFailed = true;
       if (!rereading) this.failure = error instanceof Error ? error.message : String(error);
       return false;
     } finally {
