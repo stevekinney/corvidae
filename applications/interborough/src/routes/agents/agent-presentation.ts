@@ -79,7 +79,7 @@ export type AgentFacts = {
 };
 
 export function agentFacts(
-  agent: Pick<AgentSummary, 'kind' | 'media' | 'tools'>,
+  agent: Pick<AgentSummary, 'kind' | 'media'> & { readonly tools?: readonly string[] | undefined },
   definition: AgentDetail['definition'] | undefined,
   models: AgentModels | undefined,
 ): AgentFacts {
