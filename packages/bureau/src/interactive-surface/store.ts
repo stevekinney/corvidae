@@ -1201,7 +1201,11 @@ export function createInteractiveSurfaces(
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
-      const result = await freezeTask(taskId, 'cancelled', commandId);
+      // A task that already ended keeps the reason its ending gives: an abort records `cancelled`
+      // only for a task that is still running or was itself cancelled.
+      const reason =
+        task.settled === 'completed' || task.settled === 'failed' ? 'task-ended' : 'cancelled';
+      const result = await freezeTask(taskId, reason, commandId);
       return {
         contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
         outcome: 'accepted' as const,

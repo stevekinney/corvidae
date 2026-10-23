@@ -1123,6 +1123,24 @@ describe('closing, cancellation, and cleanup', () => {
     });
   });
 
+  it('freezes an unseen completed task’s surface as task-ended when it is aborted', async () => {
+    const { surfaces, table } = harness();
+    await surfaces.create(createCommand());
+    table.set(TASK, { owner: OWNER, contextId: 'session-1', settled: 'completed' });
+
+    await surfaces.abort({
+      type: 'surface.owner-abort',
+      contractVersion: version,
+      commandId: 'abort-ended',
+      taskId: TASK,
+    });
+
+    expect(await snapshotOf(surfaces)).toMatchObject({
+      liveness: 'frozen',
+      closeResult: { reason: 'task-ended' },
+    });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

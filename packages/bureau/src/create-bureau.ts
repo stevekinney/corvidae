@@ -10065,14 +10065,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError('Cannot delete a running run', 'CONFLICT');
     }
 
-    // COR-1631: the run's surfaces go first. Nothing else has been removed yet, so a failure
-    // leaves the run in place and a second delete retries, instead of orphaning the surfaces.
-    await surfaces?.removeTask(id);
-
     await revokePendingApprovalsForRun(id, {
       status: 'revoked',
       principal: 'system:run-deletion',
     });
+    // COR-1631: the run's surfaces go after the fallible review revocation above, which leaves
+    // them intact if it fails, and before anything is removed, so a failure here leaves the run in
+    // place and a second delete retries, instead of orphaning the surfaces.
+    await surfaces?.removeTask(id);
     const sessionId = getRunSessionIdentifier(runState);
     const ownerPrincipal = runAttribution.get(id)?.principal;
     const ownerIncarnation = runSessionIncarnations.get(id);
