@@ -417,7 +417,8 @@ describe('ScheduleDetail', () => {
     // One run is started; stop the schedule from starting another, then cancel the one running.
     let runId: string | undefined;
     await waitForServerState(async () => {
-      runId = (await client.list({ scheduleId: 'cancelled-probe', limit: 5 })).items[0]?.id;
+      const started = await client.list({ scheduleId: 'cancelled-probe', limit: 5 });
+      runId = started.items[0]?.id;
       return runId !== undefined;
     }, 'cancelled-probe has started a run');
     await handle.pause();
