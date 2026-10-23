@@ -109,6 +109,22 @@ describe('following a task', () => {
     expect(current.artifact).toEqual(artifact);
   });
 
+  test('applies a resync as a status: a repaired task settles and keeps its answer', async () => {
+    const { follower: current, sleeper } = follow();
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    const artifact = { artifactId: 'run-1:result', text: 'Repaired answer', truncated: false };
+    stub?.streams[0]?.push(
+      statusElement('run-1', '40', 'completed', { kind: 'task.resynced', artifact, revision: 2 }),
+    );
+    stub?.streams[0]?.end();
+    await waitFor(() => expect(current.state).toBe('ended'));
+    expect(current.lastStatus).toBe('completed');
+    expect(current.lastCursor).toBe('40');
+    expect(current.artifact).toEqual(artifact);
+    expect(sleeper.pending()).toBe(0);
+    expect(stub?.streams.length).toBe(1);
+  });
+
   test('takes the answer of a catalog task from its snapshot', async () => {
     const { follower: current } = follow();
     await waitFor(() => expect(stub?.streams.length).toBe(1));

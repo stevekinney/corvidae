@@ -38,7 +38,7 @@ import type { DurableEventEnvelope } from '@lostgradient/operative';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import { TERMINAL_RUN_EVENT_KINDS } from '../task-resync.ts';
+import { bearsSettlement } from '../task-resync.ts';
 import type { Bureau } from '../types.ts';
 import { formsOf, type WaitForm } from './a2a-input-forms.ts';
 import {
@@ -264,6 +264,19 @@ export function eventsOf(
   return [statusUpdate(view, state, timestamp)];
 }
 
+/**
+ * A status element, or a `task.resynced` read as one (it restates the status a failed append lost,
+ * COR-1669); `undefined` for any other element.
+ */
+export function statusElementOf(
+  element: TaskEvent | undefined,
+): Extract<TaskEvent, { kind: 'task.status' }> | undefined {
+  if (element?.kind === 'task.status') return element;
+  if (element?.kind !== 'task.resynced') return undefined;
+  const { revision: _revision, ...status } = element;
+  return { ...status, kind: 'task.status' };
+}
+
 /** Reads a task's retained durable events to their end, or `undefined` without a history. */
 export async function readRetained(
   bureau: A2AStreamBureau,
@@ -333,8 +346,7 @@ export function createFoldProjector(
   initial: TaskView,
   retained: RetainedEvents | undefined,
 ) {
-  const terminalRetained =
-    retained?.events.some((event) => TERMINAL_RUN_EVENT_KINDS.has(event.kind)) ?? false;
+  const terminalRetained = retained?.events.some((event) => bearsSettlement(event)) ?? false;
   return createTaskEventProjector(taskId, {
     status: terminalRetained || !isTerminal(initial.status) ? 'working' : initial.status,
     finishReason: initial.finishReason,
@@ -359,8 +371,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   const projector = createFoldProjector(taskId, initial, retained);
   let folded: Extract<TaskEvent, { kind: 'task.status' }> | undefined;
   for (const event of retained?.events ?? []) {
-    const element = projector.project(event);
-    if (element?.kind === 'task.status') folded = element;
+    const element = statusElementOf(projector.project(event));
+    if (element !== undefined) folded = element;
   }
   const cursor =
     retained === undefined
@@ -530,8 +542,9 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           mapping = chained(mapping, async () => queue.end());
           return;
         }
-        if (element.kind !== 'task.status') return;
-        lastStatus = element.status;
+        const status = statusElementOf(element);
+        if (status === undefined) return;
+        lastStatus = status.status;
         // Whether this element ended the task, read now: a later event may end it before this
         // one is mapped.
         const endsTask = projector.ended;
@@ -539,8 +552,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         // overtake an earlier one.
         mapping = chained(mapping, async () => {
           const view = (await bureau.tasks.get(taskId)) ?? initial;
-          const reply = element.status === 'completed' ? await options.replyOf(view) : undefined;
-          const events = eventsOf(view, element, reply, await formsOf(bureau, view));
+          const reply = status.status === 'completed' ? await options.replyOf(view) : undefined;
+          const events = eventsOf(view, status, reply, await formsOf(bureau, view));
           for (const [index, mapped] of events.entries()) {
             // Only the last event of a durable one carries its cursor, so a resume never skips
             // the part of it a reader had not received.
