@@ -264,6 +264,7 @@ test.describe('a tab opened before the host was rebuilt', () => {
     pageErrors.expect({
       pattern: loggedFailedResponse(404, /\/assets\/.*\.js/),
       reason: 'the test removes a route’s chunk for good',
+      count: 2,
     });
     await page.goto('/chat');
     await expect(page.locator('[data-view="chat"]')).toBeVisible();

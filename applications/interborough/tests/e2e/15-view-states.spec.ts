@@ -105,6 +105,18 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   engine: jsonRpcProbe('weft.system.registry'),
 };
 
+/**
+ * How many error responses Chromium logs for a view's probe: one per request. These views send the
+ * probe twice before they settle on the failure (measured, stable across runs); the rest send it
+ * once. The default is one.
+ */
+const LOGGED_RESPONSES_PER_PROBE: Partial<Record<ViewName, number>> = {
+  workflows: 2,
+  runs: 2,
+  reviews: 2,
+  workers: 2,
+};
+
 /** Answer the view's probe as the server would for `outcome`; every other request goes through. */
 async function drive(
   page: Page,
@@ -120,7 +132,7 @@ async function drive(
     pageErrors.expect({
       pattern: loggedFailedResponse(status, probe.url),
       reason: `the test answers the ${view} probe with a ${status}`,
-      count: 2,
+      count: LOGGED_RESPONSES_PER_PROBE[view] ?? 1,
     });
   }
   await page.route('**/*', async (route: Route) => {

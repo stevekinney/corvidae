@@ -343,6 +343,7 @@ test.describe('a Bureau that fails', () => {
     pageErrors.expect({
       pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
       reason: 'the test answers the Bureau’s review list with a 500',
+      count: 3,
     });
     await page.route('**/bureau/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
