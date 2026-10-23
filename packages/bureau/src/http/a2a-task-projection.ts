@@ -153,17 +153,11 @@ function a2uiDataPart(messages: A2uiMessage[]): Part {
   };
 }
 
-/** The part that deletes the surface of a form wait that is over. */
-function closedFormPart(reviewId: string): Part {
-  return a2uiDataPart([inputFormDeletion(formSurfaceId(reviewId))]);
-}
-
 /** What an `INPUT_REQUIRED` task's status message names, so a continuation can address it. */
 export function waitingMessage(
   view: TaskView,
   forms: readonly WaitForm[] = [],
   a2ui = false,
-  closedFormReviewId?: string,
 ): Message {
   const signalNames = view.openWaits
     .filter(
@@ -195,8 +189,9 @@ export function waitingMessage(
   });
   // One data part per form, carrying its A2UI messages as an array (the A2UI extension's data
   // encoding), only for a request that activated A2UI: the text above names the wait for the
-  // rest. A repeated wait is a new surface, and the earlier form's closes first; a task waiting on
-  // something that is not a form closes the last one.
+  // rest. A repeated wait is a new surface, and the earlier form's closes first. COR-1674 item 4
+  // (closing a form when the task leaves input-required) is not applicable: form surfaces appear
+  // only in activated read snapshots, and a snapshot does not carry deletes.
   if (a2ui) {
     for (const form of forms) {
       message.parts.push(
@@ -207,9 +202,6 @@ export function waitingMessage(
           ...inputFormMessages(formSurfaceId(form.reviewId), form.inputSchema),
         ]),
       );
-    }
-    if (forms.length === 0 && closedFormReviewId !== undefined) {
-      message.parts.push(closedFormPart(closedFormReviewId));
     }
   }
   return message;
@@ -254,8 +246,6 @@ export type ProjectionInput = {
   readonly acknowledgement: TaskCleanupAcknowledgement | undefined;
   /** The input forms the task's open waits ask for; none when it is not waiting on one. */
   readonly forms?: readonly WaitForm[] | undefined;
-  /** The review of the form wait that ended before this status, whose surface is still open. */
-  readonly closedFormReviewId?: string | undefined;
   /** The task's interactive surfaces (COR-837); only the `a2ui` ones are projected. */
   readonly surfaces?: readonly InteractiveSurface[] | undefined;
 };
@@ -338,23 +328,7 @@ export function projectTask(input: ProjectionInput, shape: ProjectionShape): Tas
       view.statusMessage ?? view.finishReason ?? 'The task failed.',
     );
   } else if (view.status === 'input-required') {
-    statusMessage = waitingMessage(
-      view,
-      input.forms,
-      shape.activated.has(A2UI_EXTENSION_URI),
-      input.closedFormReviewId,
-    );
-  }
-  if (
-    input.closedFormReviewId !== undefined &&
-    view.status !== 'input-required' &&
-    shape.activated.has(A2UI_EXTENSION_URI)
-  ) {
-    const closing = closedFormPart(input.closedFormReviewId);
-    statusMessage =
-      statusMessage === undefined
-        ? agentMessage(task, `${view.id}:form-closed:${input.closedFormReviewId}`, [closing])
-        : { ...statusMessage, parts: [...statusMessage.parts, closing] };
+    statusMessage = waitingMessage(view, input.forms, shape.activated.has(A2UI_EXTENSION_URI));
   }
   // The task's A2UI surfaces ride on its status message, whatever the state: a frozen surface of a
   // finished task is still readable. They are not part of the reply artifact.

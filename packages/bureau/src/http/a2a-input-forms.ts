@@ -65,14 +65,23 @@ async function formReviewBefore(
 }
 
 /**
- * The review id of the form wait that closed last, for a task that is no longer waiting on a form:
- * the surface it opened is still on the client's screen until something deletes it.
+ * Adds to each form the review of the run's previous form wait, whose surface the form replaces.
+ * Only a client that renders forms needs it, so a read that activated A2UI calls it and no other
+ * caller pays for it. The audit trail has no newest-first order or review-kind filter, so this
+ * reads the run's records (bounded by the query's limit) and then one review per earlier wait,
+ * newest first, until a form is found.
  */
-export async function lastClosedFormReviewId(
+export async function withPreviousForms(
   bureau: FormsBureau,
   view: TaskView,
-): Promise<string | undefined> {
-  return formReviewBefore(bureau, view.id, Number.POSITIVE_INFINITY);
+  forms: readonly WaitForm[],
+): Promise<WaitForm[]> {
+  return Promise.all(
+    forms.map(async (form) => ({
+      ...form,
+      previousReviewId: await formReviewBefore(bureau, view.id, parkOrdinalOf(form.reviewId)),
+    })),
+  );
 }
 
 /**
@@ -92,7 +101,6 @@ export async function formsOf(bureau: FormsBureau, view: TaskView): Promise<Wait
         signalName: wait.signalName,
         prompt: review.prompt,
         inputSchema: review.inputSchema,
-        previousReviewId: await formReviewBefore(bureau, view.id, parkOrdinalOf(wait.reviewId)),
       };
     }),
   );

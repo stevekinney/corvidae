@@ -11,7 +11,7 @@ import { Message, type Task } from '@a2a-js/sdk';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
-import { formsOf, lastClosedFormReviewId } from './a2a-input-forms.ts';
+import { formsOf, withPreviousForms } from './a2a-input-forms.ts';
 import {
   type A2ATaskRecord,
   type A2ATaskRecords,
@@ -192,12 +192,10 @@ export function createTaskReader(options: {
     }
     const reply = await resolveReply(view);
     record = await foldReply(view, record, reply);
-    const forms = await formsOf(bureau, view);
-    // A task that is not waiting on a form closes the one it last showed, for a client that renders them.
-    const closedFormReviewId =
-      forms.length === 0 && shape.activated.has(A2UI_EXTENSION_URI)
-        ? await lastClosedFormReviewId(bureau, view)
-        : undefined;
+    const found = await formsOf(bureau, view);
+    const forms = shape.activated.has(A2UI_EXTENSION_URI)
+      ? await withPreviousForms(bureau, view, found)
+      : found;
     const task = projectTask(
       {
         view,
@@ -205,7 +203,6 @@ export function createTaskReader(options: {
         reply: reply?.parts,
         acknowledgement: stored?.cleanupAcknowledgement,
         forms,
-        closedFormReviewId,
         surfaces: await bureau.surfaces?.list(view.id),
       },
       shape,

@@ -204,35 +204,6 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
     }
   });
 
-  it('closes the form’s surface on the status message once the task leaves input-required', async () => {
-    const fixture = await open(deploySchema);
-    try {
-      const task = await fixture.start();
-      await fixture.send(userMessage('m-submit', task.id, { data: { environment: 'staging' } }));
-      await waitForCondition(
-        async () => (await statusOf(fixture.bureau, task.id)) === 'completed',
-        'the answered task never completed',
-      );
-
-      const activated = await fixture.read(task.id, [A2UI_EXTENSION_URI]);
-      const plain = await fixture.read(task.id, []);
-
-      const deletions = (candidate: Task) =>
-        (candidate.status?.message?.parts ?? [])
-          .filter((part) => part.content?.$case === 'data')
-          .flatMap((part) => (part.content?.$case === 'data' ? (part.content.value as any[]) : []));
-      expect(deletions(activated)).toEqual([
-        {
-          version: 'v0.9',
-          deleteSurface: { surfaceId: `input-form:human-wait:${task.id}:deploy:0` },
-        },
-      ]);
-      expect(deletions(plain)).toEqual([]);
-    } finally {
-      await fixture.opened.dispose();
-    }
-  });
-
   it('is the plain waiting message, with no form, when the wait has no schema', async () => {
     const fixture = await open(undefined);
     try {
