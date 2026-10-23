@@ -557,6 +557,39 @@ function submittedValuesOf(data: unknown, form: WaitForm): Record<string, unknow
 }
 
 /**
+ * The answer a send owes: the one its pending claim recorded, else the surface action's, which is
+ * admitted only for a command that can still apply (an expired one admits nothing, COR-1681).
+ */
+async function answerOwedOf(
+  recorded: TasksRespondInput | undefined,
+  expired: boolean,
+  fromSurface: () => Promise<TasksRespondInput | undefined>,
+): Promise<TasksRespondInput | undefined> {
+  return recorded ?? (expired ? undefined : await fromSurface());
+}
+
+/**
+ * Whether the binding provably names none of `admitted`. A claim whose write failed ambiguously
+ * may have committed, and the pending claim then names these assets for the retry to deliver; a
+ * binding that cannot be read is not proof, so the assets are kept.
+ */
+async function claimHoldsNone(
+  ledger: A2ASendLedger,
+  identity: CommandLedgerIdentity,
+  admitted: readonly AdmittedAsset[],
+): Promise<boolean> {
+  if (admitted.length === 0) return true;
+  try {
+    const found = await ledger.locate(identity);
+    if (found.state !== 'retained' || found.entry.state !== 'pending') return true;
+    const held = new Set((found.entry.claim.assets ?? []).map((asset) => asset.assetId));
+    return !admitted.some((asset) => held.has(asset.assetId));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The answer an A2UI surface action stands for, or `undefined` when the message is not one. A
  * refusal is thrown before the ledger is touched; a stale revision is typed `STALE_REVISION`.
  */
@@ -1285,6 +1318,10 @@ export function createBureauA2ARequestHandler(
       located.state === 'retained' && located.entry.state === 'pending'
         ? located.entry.claim
         : undefined;
+    const passed = () => request.deadline !== undefined && runtime.clock.now() >= request.deadline;
+    // An expired command applies nothing, so it admits nothing: a surface action admitted before
+    // the claim would leave an admitted event with no answer applied to the task (COR-1681).
+    const expiredBeforeAdmission = pending === undefined && passed();
     if (!continuing && pending === undefined && options.acceptsNewTasks?.() === false) {
       throw new TaskNotFoundError(`Agent '${agentName}' was withdrawn and takes no new task.`);
     }
@@ -1328,12 +1365,13 @@ export function createBureauA2ARequestHandler(
     const answerOwed =
       continued === undefined || path !== 'answer'
         ? undefined
-        : (pending?.answer ??
-          (await surfaceAnswerOf({ bureau, message, view: continued, activated })));
+        : await answerOwedOf(pending?.answer, expiredBeforeAdmission, () =>
+            surfaceAnswerOf({ bureau, message, view: continued, activated }),
+          );
     const command: ContinuationCommand | undefined =
       answerOwed !== undefined
         ? { path: 'answer', input: answerOwed }
-        : continued === undefined || path === undefined
+        : continued === undefined || path === undefined || expiredBeforeAdmission
           ? undefined
           : parseContinuation(
               message,
@@ -1374,7 +1412,6 @@ export function createBureauA2ARequestHandler(
     // The install this send owes is decided here, once, and recorded in the claim: a retry of a
     // claim left pending reads it back, so it installs the same configuration at the same cursor
     // whatever the task has become since.
-    const passed = () => request.deadline !== undefined && runtime.clock.now() >= request.deadline;
     // Inline bytes are admitted as the caller's assets before the claim, and the claim records
     // them: a retry of a claim left pending reads them back instead of admitting the bytes again.
     // An expired command applies nothing, so it admits nothing; and admission can outlast the
@@ -1415,8 +1452,8 @@ export function createBureauA2ARequestHandler(
         ...(answerOwed === undefined ? {} : { answer: answerOwed }),
       });
     } catch (error) {
-      await discardMine();
       if (error instanceof BureauLedgerConflictError) {
+        await discardMine();
         const original = await ledger.locate(identity);
         throw conflict(
           original.state === 'retained' && original.entry.state === 'completed'
@@ -1424,6 +1461,11 @@ export function createBureauA2ARequestHandler(
             : undefined,
         );
       }
+      // Any other rejection is ambiguous: the write may have committed with its response lost, and
+      // the pending claim then names these assets for the retry to deliver. They are deleted only
+      // when the binding provably does not hold them; a binding that cannot be read keeps them.
+      if (!(await claimHoldsNone(ledger, identity, mine))) throw error;
+      await discardMine();
       throw error;
     }
     // The assets this send delivers are the claim's: another attempt's claim wins over this one's.
