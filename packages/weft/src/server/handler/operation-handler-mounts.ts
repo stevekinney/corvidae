@@ -42,6 +42,13 @@ export type OperationHandlerMount = {
    * `/.well-known/agent-card.json`. The mount also handles them.
    */
   readonly publicPaths?: ReadonlyArray<string>;
+  /**
+   * Decides, for a path under `pathPrefix`, whether it skips `authenticate`: for routes a fixed
+   * list cannot name, such as an Agent Card at `<prefix>/<agent>/.well-known/agent-card.json`
+   * for an agent published after construction. It is consulted only for paths the prefix covers,
+   * so a mount cannot make another route public.
+   */
+  readonly isPublicPath?: (pathname: string) => boolean;
   readonly fetch: (request: Request, context: OperationHandlerMountContext) => Promise<Response>;
 };
 
@@ -87,6 +94,8 @@ export type ResolvedMounts = {
   readonly match: (pathname: string) => OperationHandlerMount | undefined;
   /** Every mount public path, normalized. */
   readonly publicPaths: ReadonlySet<string>;
+  /** Whether `pathname` skips authentication: a public path, or one its mount's predicate passes. */
+  readonly isPublic: (pathname: string) => boolean;
 };
 
 /**
@@ -172,6 +181,11 @@ export function resolveMounts(mounts: ReadonlyArray<OperationHandlerMount>): Res
   const publicPaths = new Set(normalized.flatMap((entry) => entry.publicPaths));
   return {
     publicPaths,
+    isPublic(pathname) {
+      if (publicPaths.has(pathname)) return true;
+      const owner = normalized.find((entry) => isAtOrUnder(pathname, entry.pathPrefix));
+      return owner?.mount.isPublicPath?.(pathname) === true;
+    },
     match(pathname) {
       for (const entry of normalized) {
         if (isAtOrUnder(pathname, entry.pathPrefix) || entry.publicPaths.includes(pathname)) {

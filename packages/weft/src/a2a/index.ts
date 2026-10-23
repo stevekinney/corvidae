@@ -57,6 +57,7 @@ export {
   type A2ASecurityDeclaration,
   type A2ASecurityTransportEvidence,
 } from './security-schemes.ts';
+export { requestSignalOf } from './sse-response.ts';
 export {
   A2APushConfigurationConflictError,
   A2AStoreConflictError,
