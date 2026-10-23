@@ -30,6 +30,7 @@ import type { AgentSkillDescriptor } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
 
+import { agentExamplesSchema } from './agent-examples';
 import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 
 /** What an agent's identifier must look like: it doubles as a path segment later. */
@@ -44,7 +45,11 @@ export const AGENT_FILE_EXTENSION = '.md';
 /** The largest agent file Bureau reads, in bytes. A larger one is `invalid`. */
 export const AGENT_FILE_SIZE_LIMIT = 256 * 1024;
 
-/** The frontmatter fields Bureau knows. Any other top-level key is kept and ignored. */
+/**
+ * The frontmatter fields Bureau knows and writes. Any other top-level key is kept and ignored.
+ * `examples` is read (it reaches `bureau.agents.list`) but is not written, so it is not listed: a
+ * rewrite keeps it in the file as it keeps any key outside this list.
+ */
 export const AGENT_FILE_KNOWN_KEYS = [
   'name',
   'description',
@@ -133,6 +138,11 @@ export const agentFileFrontmatterSchema = z
       .nullish(),
     /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
     published: z.boolean().nullish(),
+    /**
+     * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
+     * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
+     */
+    examples: agentExamplesSchema.nullish(),
   })
   .superRefine((frontmatter, context) => checkModelsList(frontmatter, context));
 
@@ -198,6 +208,8 @@ export const agentFileDefinitionSchema = z.object({
   tools: z.array(z.string().min(1)).default([]),
   skills: z.array(agentSkillDescriptorSchema).default([]),
   published: z.boolean().default(false),
+  /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
+  examples: agentExamplesSchema.optional(),
   instructions: z.string(),
 });
 
@@ -218,6 +230,11 @@ export interface AgentFileDefinition {
   readonly tools: readonly string[];
   readonly skills: readonly AgentSkillDescriptor[];
   readonly published: boolean;
+  /**
+   * Prompts that show what a person might ask the agent, as the file's `examples` lists them.
+   * Absent when it lists none. A caller never supplies them: they stay in the file through a write.
+   */
+  readonly examples?: readonly string[];
   readonly instructions: string;
 }
 
@@ -323,6 +340,7 @@ function toDefinition(
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     skills: (frontmatter.skills ?? []) as readonly AgentSkillDescriptor[],
     published: frontmatter.published ?? false,
+    ...(frontmatter.examples == null ? {} : { examples: frontmatter.examples }),
     instructions,
   };
 }
@@ -462,8 +480,10 @@ export function serializeUpdatedAgentFile(
 ): Uint8Array | undefined {
   const next = resolveAgentFileDefinition(id, input);
   const before = existing.definition;
+  // `examples` is the file's own and an input never carries it, so it is not a change.
+  const { examples: _kept, ...beforeKnown } = before;
   const frontmatterChanged = !isDeepStrictEqual(
-    { ...before, instructions: '' },
+    { ...beforeKnown, instructions: '' },
     { ...next, instructions: '' },
   );
   if (!frontmatterChanged && next.instructions === existing.body) return undefined;

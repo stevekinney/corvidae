@@ -64,6 +64,23 @@ describe('the seeded agents', () => {
     ]);
   });
 
+  test('each published agent suggests one prompt, which the agent list carries to a new chat', async () => {
+    const host = await start();
+    const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.agents.list', params: {} }),
+    });
+    const body = (await response.json()) as {
+      result?: { agents: { name: string; examples?: string[] }[] };
+    };
+    const examples = new Map(body.result?.agents.map((agent) => [agent.name, agent.examples]));
+    for (const name of PUBLISHED_AGENT_NAMES) {
+      expect(examples.get(name)?.length, name).toBe(1);
+    }
+    expect(examples.get('tool-runner')).toEqual(['Refund order 1234']);
+  });
+
   test('answer from a script, run after run, without calling a model', async () => {
     const host = await start();
     const network: string[] = [];

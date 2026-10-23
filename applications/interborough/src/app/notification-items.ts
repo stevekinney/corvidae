@@ -21,6 +21,7 @@
 import type { BureauReview } from '../lib/bureau-reviews.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
 import { chatSessionPath } from '../lib/identifier-paths.ts';
+import { latestRunByChat } from '../lib/recent-tasks.ts';
 import { CHAT_COPY, NOTIFICATION_COPY } from './copy.ts';
 
 /** How the bell grades an item: `info` never counts toward the badge. */
@@ -229,14 +230,7 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
   );
 
   // The latest run of each chat stands for it; a chat that is waiting on the person says so once.
-  const latest = new Map<string, TaskView>();
-  for (const task of tasks) {
-    const seen = latest.get(task.contextId);
-    if (seen === undefined || Date.parse(task.updatedAt) > Date.parse(seen.updatedAt)) {
-      latest.set(task.contextId, task);
-    }
-  }
-  for (const task of latest.values()) {
+  for (const task of latestRunByChat(tasks).values()) {
     if (!isNews(task) || waiting.has(task.contextId)) continue;
     if (nowMs - Date.parse(task.updatedAt) > RECENT_RUN_WINDOW_MS) continue;
     // A run started without a chat (`bureau.run()` from the catalog) names a context the Bureau

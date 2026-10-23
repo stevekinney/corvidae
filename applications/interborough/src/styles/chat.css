@@ -108,3 +108,272 @@
 .weft-chat-strip[data-tone='danger'] {
   color: var(--cinder-status-danger-text);
 }
+
+/* ── Chat list: flat rows under "Needs you", Today, Yesterday, Earlier ───────── */
+
+/* The outlet pads the page, so none of this adds padding of its own at the edges. */
+.ib-chats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-chats__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ib-chats__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-chat-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+}
+
+.ib-chat-group__title {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--cinder-tracking-wide);
+  text-transform: uppercase;
+}
+
+.ib-chat-group__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-chat-row {
+  border-block-end: 1px solid var(--cinder-border-faint);
+}
+
+.ib-chat-row:last-child {
+  border-block-end: 0;
+}
+
+/* One line where it fits: avatar, title, latest message, chip, time. On a phone the latest
+ * message drops under the title, and the chip and time keep the right edge. */
+.ib-chat-row__link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 16rem) minmax(0, 1fr) auto auto;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  padding-block: var(--cinder-density-pad-block);
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .ib-chat-row__link:hover .ib-chat-row__title {
+    text-decoration: underline;
+  }
+}
+
+.ib-chat-row__title,
+.ib-chat-row__snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ib-chat-row__title {
+  font-size: var(--cinder-text-base);
+  font-weight: 600;
+}
+
+.ib-chat-row__snippet {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-chat-row__time {
+  grid-column: 5;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  white-space: nowrap;
+}
+
+/* The chip and the time keep their own columns, so the times line up whether or not a row has a chip. */
+.ib-chat-row__chip {
+  grid-column: 4;
+}
+
+@media (max-width: 47.99rem) {
+  .ib-chat-row__link {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .ib-chat-row__snippet {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .ib-chat-row__time {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .ib-chat-row__chip {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+  }
+
+  .ib-chat-avatar {
+    grid-row: 1 / span 2;
+  }
+}
+
+/* An agent keeps its colour: eight of Cinder's categorical series, tinted so the initials keep
+ * the text colour's contrast on any of them. */
+.ib-chat-avatar {
+  --ib-avatar-tone: var(--cinder-chart-series-1);
+  border-color: var(--ib-avatar-tone);
+  background: color-mix(in oklch, var(--cinder-surface), var(--ib-avatar-tone) 22%);
+  color: var(--cinder-text-default);
+}
+
+.ib-chat-avatar[data-tone='1'] {
+  --ib-avatar-tone: var(--cinder-chart-series-2);
+}
+
+.ib-chat-avatar[data-tone='2'] {
+  --ib-avatar-tone: var(--cinder-chart-series-3);
+}
+
+.ib-chat-avatar[data-tone='3'] {
+  --ib-avatar-tone: var(--cinder-chart-series-4);
+}
+
+.ib-chat-avatar[data-tone='4'] {
+  --ib-avatar-tone: var(--cinder-chart-series-5);
+}
+
+.ib-chat-avatar[data-tone='5'] {
+  --ib-avatar-tone: var(--cinder-chart-series-6);
+}
+
+.ib-chat-avatar[data-tone='6'] {
+  --ib-avatar-tone: var(--cinder-chart-series-7);
+}
+
+.ib-chat-avatar[data-tone='7'] {
+  --ib-avatar-tone: var(--cinder-chart-series-8);
+}
+
+/* ── New chat: the agent's card and the agents to choose from ────────────────── */
+
+/* The agent list sits in the header beside the title, named for assistive technology only. */
+.weft-chat-header__choice {
+  flex: 0 1 16rem;
+  margin-inline-start: auto;
+  min-width: 0;
+}
+
+@media (max-width: 47.99rem) {
+  .weft-chat-header__choice {
+    flex-basis: 100%;
+  }
+}
+
+.ib-new-chat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-agent-card__name,
+.ib-agent-choice__name {
+  margin: 0;
+  font-size: var(--cinder-text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-card__id,
+.ib-agent-choice__id {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  font-weight: 400;
+}
+
+.ib-agent-card__description,
+.ib-agent-choice__description {
+  margin: 0;
+  color: var(--cinder-text-secondary);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent-card__description {
+  margin-block-end: var(--cinder-space-2);
+}
+
+.ib-agent-card__prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  margin-block-start: var(--cinder-space-3);
+}
+
+/* A prompt is a sentence, not a label: it wraps inside its button (Cinder's buttons never wrap) and
+   a word too long for the line breaks, so a long prompt cannot widen the page. */
+.ib-agent-card__prompts .ib-agent-card__prompt {
+  max-inline-size: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+  line-height: 1.3;
+  padding-block: var(--cinder-space-1);
+}
+
+.ib-agent-card__try {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-new-chat__heading {
+  margin: 0 0 var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+  font-weight: 600;
+  letter-spacing: var(--cinder-tracking-wide);
+  text-transform: uppercase;
+}
+
+.ib-new-chat__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: var(--cinder-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-agent-choice {
+  block-size: 100%;
+  text-align: start;
+}
+
+.ib-agent-choice__name,
+.ib-agent-choice__description {
+  display: block;
+}
+
+.ib-agent-choice__description {
+  margin-block-start: var(--cinder-space-1);
+}
