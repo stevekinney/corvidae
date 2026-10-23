@@ -30,6 +30,7 @@ export {
 } from './http-delivery-adapter.ts';
 export {
   DEFAULT_PUSH_DELIVERY_INTERVAL_MS,
+  openDeliveries,
   startPushDelivery,
   type StartPushDeliveryOptions,
 } from './push-delivery.ts';

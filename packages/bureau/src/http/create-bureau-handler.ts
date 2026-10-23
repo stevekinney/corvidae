@@ -773,7 +773,7 @@ function createA2AMount(
     void records.remove(event.runId).catch(() => undefined);
     // Each configuration is deleted through the sender, which stops its deliveries, and only
     // then its checkpoint.
-    void push?.projector.cleanup(event.runId);
+    void push?.projector.cleanup(event.runId).catch(() => undefined);
   });
   // Message text does not outlive its context: deleting one empties its tasks' A2A history, as
   // it empties their own. Another instance clears a record when it next reads it.

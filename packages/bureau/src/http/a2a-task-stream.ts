@@ -295,6 +295,17 @@ export async function readRetained(
     if (!page.hasMore) break;
     since = page.nextCursor ?? since;
   }
+  // Retention may have advanced past the requested cursor while the pages were read: the replay
+  // skipped that gap without naming it, so look again and report it.
+  if (requested !== undefined && gap === undefined) {
+    const probe = await bureau.eventHistory(owner, { since: requested, limit: 1 });
+    if ('outcome' in probe && probe.outcome === 'gap') {
+      gap = {
+        requestedCursor: requested,
+        firstRetainedCursor: encodeCursor(probe.firstRetainedSequence),
+      };
+    }
+  }
   return { events, gap, reached: since };
 }
 

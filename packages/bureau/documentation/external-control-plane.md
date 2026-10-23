@@ -1,6 +1,6 @@
 # External control plane
 
-> [!NOTE] As built on 2026-10-20 (`main` at `d2972c064`)
+> [!NOTE] As built on 2026-10-23 (`main` at `70daa0063`, with COR-1543 push notifications and the Bureau A2A TCK host)
 >
 > This document began as the COR-901 decision record, accepted on 2026-10-13, and it keeps that history. The management plane, the owner of record, command receipts, and the AG-UI mount shipped, and A2A shipped in part (COR-903's first half). Outbound notifications and the deliveries operations did not, and A2A is outside the first version of Interborough. [As built](#as-built) says what shipped and lists the unsupported behavior and limits, each in its own entry. The rulings below stay as written, because they are decisions.
 
@@ -36,7 +36,7 @@ These follow from the rulings and from the code, so they were decided rather tha
 
 ## As built
 
-This section says what `createBureauHandler` serves on `main` at `d2972c064`, on 2026-10-20, with the schedule-fire review work (COR-1613) merged. `e1bb7730` is the commit the documentation issue was scoped against, and nothing here is described as of that commit. Where it and a later section disagree about what exists, this section is right and the later one is the decision. The [README](../README.md#external-control-plane) has a worked example of the path an outside consumer takes, which runs as `src/external-control-plane-guide.test.ts`.
+This section says what `createBureauHandler` serves on `main` at `70daa0063`, on 2026-10-23, with the schedule-fire review work (COR-1613) and, from this change, COR-1543 push notifications and the A2A TCK host. `e1bb7730` is the commit the documentation issue was scoped against, and nothing here is described as of that commit. Where it and a later section disagree about what exists, this section is right and the later one is the decision. The [README](../README.md#external-control-plane) has a worked example of the path an outside consumer takes, which runs as `src/external-control-plane-guide.test.ts`.
 
 ### What the handler serves
 

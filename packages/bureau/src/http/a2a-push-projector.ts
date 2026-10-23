@@ -38,10 +38,11 @@ import { ServerCallContext, type User } from '@a2a-js/sdk/server';
 import type { RuntimeTimers } from '@lostgradient/lifecycle';
 import {
   createOutboxPushNotificationSender,
+  openDeliveries,
   pushDestinationRef,
   type OutboxPushNotificationSender,
 } from '@lostgradient/weft/a2a';
-import type { ApplicationDeliveryState, Outbox } from '@lostgradient/weft';
+import type { Outbox } from '@lostgradient/weft';
 
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
@@ -59,22 +60,11 @@ import type { TaskEvent } from './management/tasks-events-operation.ts';
 /** How long the projector waits between looks at a configuration's open deliveries. */
 const SETTLE_POLL_MS = 100;
 
-/** How long a failed pump waits before it tries again. */
+/** The longest a failing cleanup waits between attempts. */
+const MAXIMUM_CLEANUP_BACKOFF_MS = 60_000;
+
+/** How long a failed pump, cleanup, or subscription waits before it tries again. */
 const RETRY_MS = 5_000;
-
-/** The delivery states from which an outbox delivery can still move. */
-const OPEN_STATES: readonly ApplicationDeliveryState[] = [
-  'queued',
-  'retry-scheduled',
-  'claimed',
-  'attempting',
-  'cancellation-requested',
-];
-
-/** How many open deliveries one look reads. */
-const OPEN_DELIVERIES_LIMIT = 200;
-
-const ENDING_EVENT_KINDS: ReadonlySet<string> = new Set(['run.removed']);
 
 /** What the projector reads from a Bureau. */
 export type A2APushBureau = A2AStreamBureau & {
@@ -100,6 +90,8 @@ export type A2APushProjectorOptions = {
   readonly timers: RuntimeTimers;
   /** Told of a failure no request is waiting on. Defaults to `console.error`. */
   readonly onError?: ((error: unknown) => void) | undefined;
+  /** How long a failure waits before its retry. Defaults to five seconds. */
+  readonly retryMs?: number | undefined;
 };
 
 /** The projector. */
@@ -136,6 +128,7 @@ function sequenceOf(cursor: string): number {
 /** Creates the projector over `options`. */
 export function createA2APushProjector(options: A2APushProjectorOptions): A2APushProjector {
   const { bureau, checkpoints, delivery, tenant, reader, timers } = options;
+  const retryMs = options.retryMs ?? RETRY_MS;
   const store = delivery.sender.pushStore;
   const stopped = (): boolean => bureau.lifecycle !== 'ready';
   const reportTo =
@@ -147,6 +140,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
   const flights = new Map<string, Promise<unknown>>();
   const dirty = new Set<string>();
   const watching = new Map<string, () => void>();
+  const triggers = new Map<string, () => void>();
 
   /**
    * Runs `work` for `key` once at a time. A request that arrives meanwhile marks the key dirty,
@@ -189,11 +183,8 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
   async function settled(destination: string): Promise<void> {
     for (;;) {
       if (stopped()) throw new Error('The Bureau stopped.');
-      const open = await delivery.outbox.list({
-        states: OPEN_STATES,
-        limit: OPEN_DELIVERIES_LIMIT,
-      });
-      if (!open.some((receipt) => receipt.destinationRef === destination)) return;
+      const open = await openDeliveries(delivery.outbox, destination);
+      if (open.length === 0) return;
       await sleep(SETTLE_POLL_MS);
     }
   }
@@ -222,6 +213,8 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
   async function pumpOnce(taskId: string, configId: string): Promise<boolean> {
     const checkpoint = await checkpoints.read(taskId, configId);
     if (checkpoint === undefined) return true;
+    // Its configuration may not exist yet: recovery or the install itself settles it.
+    if (checkpoint.pending === true) return false;
     const context = contextOf(checkpoint.caller);
     if ((await store.get(taskId, configId, context)) === undefined) {
       await checkpoints.remove(taskId, configId);
@@ -300,6 +293,12 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
 
   /** Pumps every configuration of a task. Resolves whether every story has ended. */
   async function pumpTask(taskId: string): Promise<boolean> {
+    // A configuration installed in the window after its task was removed is cleaned up here, as
+    // the removal listener's own pass could already have finished.
+    if ((await bureau.tasks.get(taskId)) === undefined) {
+      await cleanup(taskId);
+      return true;
+    }
     const configured = await checkpoints.listForTask(taskId);
     const ended = await Promise.all(
       configured.map(async ({ configId }) => {
@@ -323,16 +322,26 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     if (stopped()) return;
     timers.setTimeout(() => {
       void pumpGuarded(taskId, configId).catch(() => retryLater(taskId, configId));
-    }, RETRY_MS);
+    }, retryMs);
   }
 
   function watch(taskId: string): void {
-    if (watching.has(taskId)) return;
+    const existing = triggers.get(taskId);
+    if (existing !== undefined) {
+      // A configuration installed on a task already watched is pumped now.
+      existing();
+      return;
+    }
     const controller = new AbortController();
+    let subscription: AbortController = controller;
     const stop = () => {
       // A watcher that was replaced must not remove the one that replaced it.
-      if (watching.get(taskId) === stop) watching.delete(taskId);
+      if (watching.get(taskId) === stop) {
+        watching.delete(taskId);
+        triggers.delete(taskId);
+      }
       controller.abort();
+      subscription.abort();
     };
     watching.set(taskId, stop);
     let pending = Promise.resolve();
@@ -350,35 +359,77 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
         })
         .catch(report);
     };
-    bureau.subscribeEventHistory(
-      { kind: 'run', id: taskId },
-      (event) => {
-        if (ENDING_EVENT_KINDS.has(event.kind)) {
-          stop();
-          return;
-        }
-        trigger();
-      },
-      {
-        signal: controller.signal,
-        onClosed: (error) => {
-          report(error);
-          stop();
+    triggers.set(taskId, trigger);
+    const subscribe = (): void => {
+      subscription = new AbortController();
+      const current = subscription;
+      bureau.subscribeEventHistory(
+        { kind: 'run', id: taskId },
+        // A removal is pumped too: the pump finds the task gone and cleans up what the removal
+        // listener's own pass did not see.
+        () => trigger(),
+        {
+          signal: current.signal,
+          onClosed: (error) => {
+            if (controller.signal.aborted || current.signal.aborted) return;
+            report(error);
+            // A closed subscription is not the end of the story: look again, then resume it.
+            if (stopped()) return;
+            timers.setTimeout(() => {
+              if (controller.signal.aborted || stopped()) return;
+              subscribe();
+              trigger();
+            }, retryMs);
+          },
         },
-      },
-    );
+      );
+    };
+    subscribe();
     trigger();
   }
 
-  async function cleanup(taskId: string): Promise<void> {
+  async function cleanup(taskId: string, attempt = 0): Promise<void> {
     watching.get(taskId)?.();
-    for (const checkpoint of await checkpoints.listForTask(taskId)) {
-      try {
-        await store.delete(taskId, contextOf(checkpoint.caller), checkpoint.configId);
-        await checkpoints.remove(taskId, checkpoint.configId);
-      } catch (error) {
-        report(error);
+    let failed = false;
+    try {
+      for (const checkpoint of await checkpoints.listForTask(taskId)) {
+        try {
+          await store.delete(taskId, contextOf(checkpoint.caller), checkpoint.configId);
+          await checkpoints.remove(taskId, checkpoint.configId);
+        } catch (error) {
+          failed = true;
+          report(error);
+        }
       }
+    } catch (error) {
+      failed = true;
+      report(error);
+    }
+    // What a failed cleanup left behind is retried, not left for a restart.
+    if (failed && !stopped()) {
+      timers.setTimeout(
+        () => {
+          void cleanup(taskId, attempt + 1);
+        },
+        Math.min(retryMs * 2 ** attempt, MAXIMUM_CLEANUP_BACKOFF_MS),
+      );
+    }
+  }
+
+  /**
+   * Settles checkpoints written ahead of their configuration: one whose configuration was
+   * committed is confirmed, and one whose configuration never was is removed.
+   */
+  async function reconcile(taskId: string): Promise<void> {
+    for (const checkpoint of await checkpoints.listForTask(taskId)) {
+      if (checkpoint.pending !== true) continue;
+      const configuration = await store.get(
+        taskId,
+        checkpoint.configId,
+        contextOf(checkpoint.caller),
+      );
+      if (configuration === undefined) await checkpoints.remove(taskId, checkpoint.configId);
+      else await checkpoints.confirm(taskId, checkpoint.configId);
     }
   }
 
@@ -393,7 +444,10 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     async recover() {
       for (const taskId of await checkpoints.listTaskIds()) {
         if ((await bureau.tasks.get(taskId)) === undefined) await cleanup(taskId);
-        else watch(taskId);
+        else {
+          await reconcile(taskId);
+          watch(taskId);
+        }
       }
     },
 

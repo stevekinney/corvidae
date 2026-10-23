@@ -37,6 +37,12 @@ export interface A2APushCheckpoint {
   /** The last durable-history cursor enqueued; `'-1'` is before the first event. */
   readonly cursor: string;
   readonly caller: A2APushCaller;
+  /**
+   * Written before the configuration it names, and cleared once that configuration exists. A
+   * pending checkpoint is never pumped: a restart either confirms it (the configuration was
+   * committed) or removes it (it was not), so a configuration never exists without a checkpoint.
+   */
+  readonly pending?: true;
 }
 
 /** A stored checkpoint whose `recordVersion` this Bureau does not know: it is never misread. */
@@ -70,6 +76,8 @@ export interface A2APushCheckpoints {
    * `undefined` when the configuration has none.
    */
   advance(taskId: string, configId: string, cursor: string): Promise<A2APushCheckpoint | undefined>;
+  /** Clears a checkpoint's `pending` mark. Resolves the stored checkpoint, or `undefined`. */
+  confirm(taskId: string, configId: string): Promise<A2APushCheckpoint | undefined>;
   /** Every checkpoint of a task. */
   listForTask(taskId: string): Promise<A2APushCheckpoint[]>;
   /** The task identifier of every checkpoint, each once. */
@@ -141,6 +149,23 @@ export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APush
         if (written) return next;
       }
       throw new Error(`The push checkpoint of configuration "${configId}" could not be advanced.`);
+    },
+
+    async confirm(taskId, configId) {
+      const key = keyOf(taskId, configId);
+      for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+        const raw = await kv.get(key);
+        if (raw === null) return undefined;
+        const current = parse(taskId, configId, raw);
+        if (current.pending !== true) return current;
+        const { pending: _pending, ...next } = current;
+        const written = await kv.conditionalBatch(
+          [{ key, expectedValue: raw }],
+          [{ type: 'set', key, value: JSON.stringify(next) }],
+        );
+        if (written) return next;
+      }
+      throw new Error(`The push checkpoint of configuration "${configId}" could not be confirmed.`);
     },
 
     async listForTask(taskId) {

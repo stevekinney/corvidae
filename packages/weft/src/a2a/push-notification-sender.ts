@@ -265,6 +265,7 @@ export function createOutboxPushNotificationSender(
 
   const wrappedStore: WeftPushNotificationStore = {
     create: (taskId, context, config) => pushStore.create(taskId, context, config),
+    check: (taskId, context, config) => pushStore.check(taskId, context, config),
     save: (taskId, context, config) => pushStore.save(taskId, context, config),
     get: (taskId, configId, context) => pushStore.get(taskId, configId, context),
     load: (taskId, context) => pushStore.load(taskId, context),

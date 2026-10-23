@@ -10,10 +10,14 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { MemoryStorage, Outbox, textValueStore } from '@lostgradient/weft';
 import {
+  A2A_PUSH_CONTENT_TYPE,
+  A2A_PUSH_DELIVERY_KIND,
   createEgressPolicy,
   createHttpDeliveryAdapter,
   createOutboxPushNotificationSender,
   createWeftPushNotificationStore,
+  openDeliveries,
+  pushDestinationRef,
   pushNotificationResolvers,
   startPushDelivery,
 } from '@lostgradient/weft/a2a';
@@ -60,10 +64,17 @@ function standIn(initial: DurableEventEnvelope[] = []) {
   const history = [...initial];
   let floor = 0;
   const listeners: Array<(event: DurableEventEnvelope) => void> = [];
-  let view = VIEW;
+  let view: TaskView | undefined = VIEW;
+  let beforeReplay: (() => void) | undefined;
+  const closers: Array<(error?: unknown) => void> = [];
   const bureau: A2APushBureau = {
     lifecycle: 'ready',
     eventHistory: (async (_owner: unknown, options?: { since?: string; limit?: number }) => {
+      if (options?.limit !== 1 && beforeReplay !== undefined) {
+        const hook = beforeReplay;
+        beforeReplay = undefined;
+        hook();
+      }
       const since = options?.since === undefined ? -1 : Number(options.since);
       if (since < floor - 1) return { outcome: 'gap', firstRetainedSequence: floor };
       const events = history.filter((event) => Number(event.cursor) > since);
@@ -75,8 +86,13 @@ function standIn(initial: DurableEventEnvelope[] = []) {
         nextCursor: page.at(-1)?.cursor,
       };
     }) as never,
-    subscribeEventHistory: ((_owner: unknown, listener: (event: DurableEventEnvelope) => void) => {
+    subscribeEventHistory: ((
+      _owner: unknown,
+      listener: (event: DurableEventEnvelope) => void,
+      subscription?: { onClosed?: (error?: unknown) => void },
+    ) => {
       listeners.push(listener);
+      if (subscription?.onClosed !== undefined) closers.push(subscription.onClosed);
       return { unsubscribe: () => undefined };
     }) as never,
     addEventListener: () => undefined,
@@ -102,8 +118,17 @@ function standIn(initial: DurableEventEnvelope[] = []) {
         ...history.filter((event) => Number(event.cursor) >= floor),
       );
     },
-    setView(next: TaskView) {
+    setView(next: TaskView | undefined) {
       view = next;
+    },
+    /** Runs `hook` just before the next paged replay reads the history. */
+    beforeNextReplay(hook: () => void) {
+      beforeReplay = hook;
+    },
+    /** Closes every live subscription with `error`, as a failing history store does. */
+    closeSubscriptions(error: unknown) {
+      for (const close of closers.splice(0)) close(error);
+      listeners.splice(0);
     },
   };
 }
@@ -167,6 +192,7 @@ function harness(initial: DurableEventEnvelope[] = []) {
       },
       timers: createDefaultRuntimeServices().timers,
       onError: (error) => errors.push(error),
+      retryMs: 20,
     });
   const projector = projectorOver();
   const delivery = new AbortController();
@@ -185,16 +211,29 @@ function harness(initial: DurableEventEnvelope[] = []) {
       void startPushDelivery({ outbox, signal: delivery.signal, intervalMs: 10 });
     },
     /** A configuration for the receiver, checkpointed at `cursor`. */
-    async configure(cursor: string, id = 'config-1', taskId = 'task-1') {
-      await pushStore.create(taskId, projector.contextOf(CALLER), {
-        id,
+    async configure(
+      cursor: string,
+      id = 'config-1',
+      taskId = 'task-1',
+      pending: false | 'committed' | 'uncommitted' = false,
+    ) {
+      if (pending !== 'uncommitted')
+        await pushStore.create(taskId, projector.contextOf(CALLER), {
+          id,
+          taskId,
+          url: receiver.url(),
+          token: 'token',
+          authentication: undefined,
+          tenant: '',
+        });
+      await checkpoints.create({
+        recordVersion: 1,
         taskId,
-        url: receiver.url(),
-        token: 'token',
-        authentication: undefined,
-        tenant: '',
+        configId: id,
+        cursor,
+        caller: CALLER,
+        ...(pending === false ? {} : { pending: true as const }),
       });
-      await checkpoints.create({ recordVersion: 1, taskId, configId: id, cursor, caller: CALLER });
     },
     async dispose() {
       delivery.abort();
@@ -324,6 +363,128 @@ describe('the push projector', () => {
       'status:TASK_STATE_INPUT_REQUIRED',
       'status:TASK_STATE_WORKING',
     ]);
+  });
+
+  it('holds the next event behind its own open delivery among more than 200 others', async () => {
+    const fixture = harness([started, requested(1), working(2)]);
+    await fixture.configure('0');
+    // Other configurations' deliveries, older than any this configuration enqueues, fill past
+    // the first 200 an outbox listing returns.
+    for (let index = 0; index < 210; index += 1) {
+      const admission = await fixture.outbox.enqueue({
+        destinationRef: `other-${index}`,
+        credentialRef: `other-${index}`,
+        kind: A2A_PUSH_DELIVERY_KIND,
+        payload: { form: 'inline', value: '{}' },
+        payloadMediaType: A2A_PUSH_CONTENT_TYPE,
+        idempotencyKey: `filler-${index}`,
+        externalIdempotencyKey: `filler-${index}`,
+        unknownOutcomePolicy: 'retry-with-idempotency',
+        maxAttempts: 1,
+      });
+      expect(admission.status).toBe('enqueued');
+    }
+
+    void fixture.projector.pump('task-1', 'config-1');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    // Delivery is not running, so the first event stays open and the second must not be enqueued.
+    const destination = pushDestinationRef(
+      fixture.projector.contextOf(CALLER),
+      'task-1',
+      'config-1',
+    );
+    expect(await openDeliveries(fixture.outbox, destination)).toHaveLength(1);
+  });
+
+  it('confirms a pending checkpoint whose configuration was committed, and delivery resumes', async () => {
+    const fixture = harness([started, requested(1)]);
+    // A crash after the checkpoint was written and the configuration committed, before the confirm.
+    await fixture.configure('0', 'config-1', 'task-1', 'committed');
+    fixture.startDelivery();
+    await fixture.projector.pump('task-1', 'config-1');
+    expect(fixture.receiver.requests).toHaveLength(0);
+
+    await fixture.projectorOver().recover();
+
+    await eventually(() => fixture.receiver.requests.length === 1);
+    const confirmed = await fixture.checkpoints.read('task-1', 'config-1');
+    expect(confirmed?.pending).toBeUndefined();
+  });
+
+  it('removes a pending checkpoint whose configuration was never committed', async () => {
+    const fixture = harness([started, requested(1)]);
+    await fixture.configure('0', 'config-1', 'task-1', 'uncommitted');
+
+    await fixture.projectorOver().recover();
+
+    expect(await fixture.checkpoints.read('task-1', 'config-1')).toBeUndefined();
+  });
+
+  it('cleans up a configuration installed after its task was removed', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0');
+    fixture.setView(undefined);
+
+    fixture.projector.watch('task-1');
+
+    await eventually(
+      async () => (await fixture.checkpoints.read('task-1', 'config-1')) === undefined,
+    );
+    const live = await fixture.pushStore.get(
+      'task-1',
+      'config-1',
+      fixture.projector.contextOf(CALLER),
+    );
+    expect(live).toBeUndefined();
+  });
+
+  it('reports and retries a cleanup that rejects, without an unhandled rejection', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0');
+    let failures = 1;
+    const flaky: A2APushCheckpoints = {
+      ...fixture.checkpoints,
+      listForTask: async (taskId) => {
+        if (failures-- > 0) throw new Error('storage fault');
+        return fixture.checkpoints.listForTask(taskId);
+      },
+    };
+    const projector = fixture.projectorOver(flaky);
+
+    await projector.cleanup('task-1');
+
+    expect(fixture.errors).toHaveLength(1);
+    await eventually(
+      async () => (await fixture.checkpoints.read('task-1', 'config-1')) === undefined,
+    );
+  });
+
+  it('resubscribes after the history subscription closes with an error', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+    fixture.projector.watch('task-1');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    fixture.closeSubscriptions(new Error('history store fault'));
+    fixture.append(requested(1));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    await eventually(() => fixture.receiver.requests.length === 1);
+    expect(fixture.errors).toHaveLength(1);
+  });
+
+  it('sends a repair snapshot when retention advances past the checkpoint during the replay', async () => {
+    const fixture = harness([started, requested(1), working(2), completed(3)]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+    fixture.beforeNextReplay(() => fixture.trim(3));
+
+    await fixture.projector.pump('task-1', 'config-1');
+    await eventually(() => fixture.receiver.requests.length === 1);
+
+    expect(fixture.receiver.kinds()).toEqual(['task:none']);
   });
 
   it('delivers an event that races the creation of a configuration', async () => {

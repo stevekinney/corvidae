@@ -71,7 +71,7 @@ import {
   type RuntimeTimers,
 } from '@lostgradient/lifecycle';
 import type { Principal } from '@lostgradient/weft';
-import { requestSignalOf } from '@lostgradient/weft/a2a';
+import { A2APushConfigurationConflictError, requestSignalOf } from '@lostgradient/weft/a2a';
 
 import {
   BureauLedgerConflictError,
@@ -553,17 +553,48 @@ export function createBureauA2ARequestHandler(
     cursor: string,
   ): Promise<TaskPushNotificationConfig> {
     const { delivery, checkpoints, projector } = requirePush();
-    const stored = await delivery.sender.pushStore.create(taskId, context as ServerCallContext, {
-      ...structuredClone(configuration),
-      taskId,
-    });
-    await checkpoints.create({
+    // The identifier is fixed first so the checkpoint can be written ahead of the configuration,
+    // marked pending: a crash between the two writes leaves a checkpoint that a restart confirms
+    // or removes, never a configuration that no checkpoint knows.
+    const serverContext = context as ServerCallContext;
+    const repeated =
+      configuration.id === ''
+        ? await delivery.sender.pushStore.check(taskId, serverContext, configuration)
+        : undefined;
+    const configId =
+      configuration.id === '' ? (repeated?.id ?? crypto.randomUUID()) : configuration.id;
+    const written = await checkpoints.create({
       recordVersion: 1,
       taskId,
-      configId: stored.id,
+      configId,
       cursor,
       caller: callerOf(context),
+      pending: true,
     });
+    let stored: TaskPushNotificationConfig;
+    try {
+      stored = await delivery.sender.pushStore.create(taskId, serverContext, {
+        ...structuredClone(configuration),
+        id: configId,
+        taskId,
+      });
+    } catch (error) {
+      if (written.pending === true) await checkpoints.remove(taskId, configId);
+      throw error;
+    }
+    if (stored.id !== configId) {
+      // A concurrent create of the same webhook won: its configuration is the one checkpointed.
+      if (written.pending === true) await checkpoints.remove(taskId, configId);
+      await checkpoints.create({
+        recordVersion: 1,
+        taskId,
+        configId: stored.id,
+        cursor,
+        caller: callerOf(context),
+        pending: true,
+      });
+    }
+    await checkpoints.confirm(taskId, stored.id);
     projector.watch(taskId);
     return stored;
   }
@@ -986,7 +1017,24 @@ export function createBureauA2ARequestHandler(
       throw new TaskNotFoundError(`Agent '${agentName}' was withdrawn and takes no new task.`);
     }
 
-    if (inlinePush !== undefined) requirePush();
+    if (inlinePush !== undefined) {
+      const { delivery } = requirePush();
+      // Refused before the claim: a configuration the store refuses once the input is applied
+      // would leave a pending claim whose every exact retry repeats the effect and throws. The
+      // store's conflict is answered as -32602.
+      if (continuing) {
+        try {
+          await delivery.sender.pushStore.check(
+            message.taskId,
+            context as ServerCallContext,
+            structuredClone(inlinePush),
+          );
+        } catch (error) {
+          if (error instanceof A2APushConfigurationConflictError) throw invalid(error.message);
+          throw error;
+        }
+      }
+    }
     const outputModes = params.configuration?.acceptedOutputModes ?? [];
     if (outputModes.length > 0 && !outputModes.some((mode) => A2A_OUTPUT_MODES.includes(mode))) {
       throw new ContentTypeNotSupportedError(
@@ -1038,7 +1086,8 @@ export function createBureauA2ARequestHandler(
     try {
       claimed = await ledger.claim(identity, digest, {
         ...(path === undefined ? {} : { path }),
-        ...(pushCursor === '-1' ? {} : { pushCursor }),
+        // The sentinel is kept too: a replay must install at the cursor originally admitted.
+        ...(inlinePush === undefined || continued === undefined ? {} : { pushCursor }),
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {

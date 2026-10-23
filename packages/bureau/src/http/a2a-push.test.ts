@@ -265,6 +265,52 @@ describe('delivery', () => {
     expect(fixture.receiver.kinds()).not.toContain('status:TASK_STATE_INPUT_REQUIRED');
   });
 
+  it('refuses a continuation that names a deleted or different configuration before it takes effect', async () => {
+    const generate: GenerateFunction = async () => ({
+      content: '',
+      toolCalls: [
+        {
+          id: 'wait-1',
+          name: 'requestHumanInput',
+          arguments: { signalName: 'human-response', prompt: 'Which?' },
+        },
+      ],
+    });
+    const fixture = await fixtureOf(generate, { humanInput: true });
+    const taskId = await startTask(fixture);
+    await eventually(async () => {
+      const task = await call(fixture, 'GetTask', { id: taskId });
+      return task.result.status.state === 'TASK_STATE_INPUT_REQUIRED';
+    });
+    await call(fixture, 'CreateTaskPushNotificationConfig', {
+      taskId,
+      ...webhook(fixture, { id: 'hook-1' }),
+    });
+
+    const different = await call(fixture, 'SendMessage', {
+      message: message('red', { taskId, metadata: { signalName: 'human-response' } }),
+      configuration: {
+        returnImmediately: true,
+        taskPushNotificationConfig: { ...webhook(fixture, { id: 'hook-1' }), token: 'other' },
+      },
+    });
+    expect(different.error.code).toBe(-32602);
+
+    await call(fixture, 'DeleteTaskPushNotificationConfig', { taskId, id: 'hook-1' });
+    const deleted = await call(fixture, 'SendMessage', {
+      message: message('red', { taskId, metadata: { signalName: 'human-response' } }),
+      configuration: {
+        returnImmediately: true,
+        taskPushNotificationConfig: webhook(fixture, { id: 'hook-1' }),
+      },
+    });
+    expect(deleted.error.code).toBe(-32602);
+
+    // Neither refused send answered the wait.
+    const task = await call(fixture, 'GetTask', { id: taskId });
+    expect(task.result.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+  });
+
   it('holds the next event until the previous one is terminal', async () => {
     const fixture = await fixtureOf(answering('done'));
     fixture.receiver.held = [];
