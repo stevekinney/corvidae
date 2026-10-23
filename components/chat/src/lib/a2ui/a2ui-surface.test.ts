@@ -1249,4 +1249,93 @@ describe('control fixes', () => {
     expect(input.getAttribute('min')).toBe('2025-12-16T02:00');
     expect(input.getAttribute('max')).toBe('2025-12-20T12:00');
   });
+
+  test('a multiple-selection ChoicePicker keeps an option whose value is empty', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'empty-multiple',
+        components: [
+          {
+            id: 'root',
+            component: 'ChoicePicker',
+            label: 'Extras',
+            variant: 'multipleSelection',
+            options: [
+              { label: 'None', value: '' },
+              { label: 'Cheese', value: 'cheese' },
+            ],
+            value: { path: '/extras' },
+          },
+        ],
+        dataModel: { extras: [''] },
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect((screen.getByLabelText('None') as HTMLInputElement).checked).toBe(true);
+    expect(diagnostics.some((entry) => entry.message.includes('empty value'))).toBe(false);
+  });
+
+  test('a validation pattern RE2 cannot run is reported, not silently ignored', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'lookahead',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Password',
+            value: 'lowercase',
+            validationRegexp: '^(?=.*[A-Z]).+$',
+          },
+        ],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(
+      diagnostics.some(
+        (entry) => entry.componentId === 'root' && entry.message.includes('validationRegexp'),
+      ),
+    ).toBe(true);
+  });
+
+  test('removing the selected tab from the middle selects the first, and a moved tab stays selected', async () => {
+    const tabs = (titles: string[]): A2uiComponent[] => [
+      {
+        id: 'root',
+        component: 'Tabs',
+        tabs: titles.map((title) => ({ title, child: `panel-${title}` })),
+      },
+      ...titles.map((title): A2uiComponent => ({
+        id: `panel-${title}`,
+        component: 'Text',
+        text: `Panel ${title}`,
+        variant: 'h2',
+      })),
+    ];
+    const selected = () =>
+      screen
+        .getAllByRole('tab')
+        .filter((tab) => tab.getAttribute('aria-selected') === 'true')
+        .map((tab) => tab.textContent?.trim());
+    const view = render(A2uiSurface, {
+      props: { surfaceId: 'middle-tab', components: tabs(['A', 'B', 'C']) },
+    });
+    await flush();
+    await fireEvent.click(screen.getByRole('tab', { name: 'B' }));
+    await flush();
+
+    await view.rerender({ components: tabs(['X', 'A', 'B', 'C']) });
+    await flush();
+    expect(selected()).toEqual(['B']);
+
+    await view.rerender({ components: tabs(['A', 'C']) });
+    await flush();
+    expect(selected()).toEqual(['A']);
+  });
 });

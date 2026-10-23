@@ -117,6 +117,17 @@
       ).control === 'none'
     ) {
       report('a DateTimeInput enables neither a date nor a time, so it renders no control');
+    } else if (
+      problem === undefined &&
+      component?.component === 'TextField' &&
+      typeof prop('validationRegexp') === 'string' &&
+      matchesPattern(prop('validationRegexp') as string, '') === undefined
+    ) {
+      // RE2 runs neither an invalid pattern nor backreferences or lookaround,
+      // so the field is not checked against it; say so rather than pass silently.
+      report(
+        'validationRegexp is not a valid pattern, or needs backreferences or lookaround, which do not run; the field is not checked against it',
+      );
     } else if (problem === 'unsupported' && component !== undefined) {
       context.report(
         'unsupported-component',
@@ -299,8 +310,9 @@
   /**
    * A ChoicePicker's options, each value once: a repeated value would give two
    * controls one key and one id, so the first wins and the rest are reported.
+   * A single-choice control also skips an empty value, which it reads as no selection.
    */
-  function choiceOptions(raw: unknown): { value: string; label: string }[] {
+  function choiceOptions(raw: unknown, single: boolean): { value: string; label: string }[] {
     if (!Array.isArray(raw)) return [];
     const seen = new Set<string>();
     const options: { value: string; label: string }[] = [];
@@ -311,8 +323,8 @@
       }
       const option = entry as { label?: unknown; value?: unknown };
       if (typeof option.value !== 'string') continue;
-      if (option.value === '') {
-        // Cinder's single-choice controls use `''` for no selection, so no control could pick it.
+      if (single && option.value === '') {
+        // Cinder's single-choice controls use `''` for no selection, so none could pick it.
         report('a ChoicePicker option has an empty value; it is skipped');
         continue;
       }
@@ -331,6 +343,8 @@
 
   // ── Tabs ──
   let selectedTab = $state('0');
+  /** The child of the tab the user selected, to follow it when an update moves it. */
+  let selectedChild: unknown;
   const tabs = $derived(
     component?.component === 'Tabs' && Array.isArray(prop('tabs'))
       ? (prop('tabs') as unknown[]).filter(
@@ -340,10 +354,24 @@
       : [],
   );
 
-  // A server update that removes the selected tab leaves the first one selected.
+  // A server update that moves the selected tab keeps it selected; one that
+  // removes it leaves the first selected.
   $effect.pre(() => {
-    if (Number(selectedTab) >= tabs.length) selectedTab = '0';
+    const current = tabs[Number(selectedTab)];
+    if (current !== undefined && (selectedChild === undefined || current.child === selectedChild)) {
+      selectedChild = current.child;
+      return;
+    }
+    const moved = tabs.findIndex((tab) => tab.child === selectedChild);
+    const next = moved === -1 ? 0 : moved;
+    selectedTab = String(next);
+    selectedChild = tabs[next]?.child;
   });
+
+  function selectTab(next: string): void {
+    selectedTab = next;
+    selectedChild = tabs[Number(next)]?.child;
+  }
 
   // ── Number TextField ──
   /**
@@ -522,7 +550,7 @@
     {:else if type === 'Card'}
       <Card class="a2ui-leaf">{@render child(prop('child'))}</Card>
     {:else if type === 'Tabs'}
-      <Tabs bind:value={selectedTab} class="a2ui-leaf">
+      <Tabs bind:value={() => selectedTab, selectTab} class="a2ui-leaf">
         <TabList>
           {#each tabs as tab, index (index)}
             <Tab value={String(index)}>{plainText(resolveString(tab.title, evaluation))}</Tab>
@@ -671,7 +699,6 @@
         onValueChange={(next: boolean) => setLocal('value', next)}
       />
     {:else if type === 'ChoicePicker'}
-      {@const options = choiceOptions(prop('options'))}
       {@const selected = resolveStringList(read('value'), evaluation)}
       {@const control = choicePickerControl(
         mapEnum(
@@ -687,6 +714,10 @@
           report,
         ),
         resolveBoolean(prop('filterable'), evaluation),
+      )}
+      {@const options = choiceOptions(
+        prop('options'),
+        control !== 'checkbox-group' && control !== 'multi-select',
       )}
       {@const label = nameOr(text('label'), 'Options')}
       {#if control === 'checkbox-group'}
