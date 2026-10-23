@@ -383,12 +383,10 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
   await page.goto(memoryAddress);
   const stored = page.locator('.weft-memory__content', { hasText: original });
   await expect(stored).toHaveText(original);
-  await page
-    .locator('[data-memory]', { hasText: original })
-    .getByRole('button', { name: new RegExp(MEMORY_COPY.openDetails) })
-    .click();
-  const detail = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
-  await detail.getByRole('button', { name: MEMORY_COPY.correct.action, exact: true }).click();
+  // The correction starts from the row itself: hover it, then press its Correct.
+  const row = page.locator('[data-memory]', { hasText: original });
+  await row.hover();
+  await row.getByRole('button', { name: new RegExp(`^${MEMORY_COPY.correct.action}:`) }).click();
   const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
   await dialog.getByLabel(MEMORY_COPY.correct.dialog.label).fill(correction);
   await dialog.getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }).click();
