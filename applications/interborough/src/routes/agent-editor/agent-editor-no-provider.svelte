@@ -25,8 +25,12 @@
   const copy = AGENT_EDITOR_COPY.noProvider;
 
   /** The first provider the host accepts, as the example the snippet configures. */
-  const example = $derived(paths?.providers[0]?.name ?? 'anthropic');
-  const snippet = $derived(JSON.stringify({ providers: { [example]: {} } }, null, 2));
+  const snippet = $derived.by(() => {
+    const example = paths?.providers[0]?.name;
+    return example === undefined
+      ? undefined
+      : JSON.stringify({ providers: { [example]: {} } }, null, 2);
+  });
 </script>
 
 <EmptyState
@@ -48,7 +52,9 @@
             />
           </p>
         {/if}
-        <CodeBlock code={snippet} language="json" copyable highlight={false} />
+        {#if snippet !== undefined}
+          <CodeBlock code={snippet} language="json" copyable highlight={false} />
+        {/if}
       </li>
       <li>
         <p class="weft-no-provider__text">{copy.secretStep}</p>
