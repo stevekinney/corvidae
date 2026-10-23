@@ -116,17 +116,23 @@
     onSettled: invalidateDetail,
   }));
 
+  // `requested` is the list the engine was last asked for, so a change is the difference from it and
+  // not from the tags the engine last answered with: two quick edits before the engine answers each
+  // send their own write, and a tag added and removed in between is not lost.
   let tags = $state<string[]>(untrack(() => [...(workflow.tags ?? [])]));
+  let requested: readonly string[] = untrack(() => [...(workflow.tags ?? [])]);
   $effect(() => {
     tags = [...(workflow.tags ?? [])];
+    requested = [...(workflow.tags ?? [])];
   });
 
   function changeTags(next: string[]): void {
-    const current = workflow.tags ?? [];
-    for (const tag of next.filter((candidate) => !current.includes(candidate))) {
+    const before = requested;
+    requested = [...next];
+    for (const tag of next.filter((candidate) => !before.includes(candidate))) {
       addTagMutation.mutate(tag);
     }
-    for (const tag of current.filter((candidate) => !next.includes(candidate))) {
+    for (const tag of before.filter((candidate) => !next.includes(candidate))) {
       removeTagMutation.mutate(tag);
     }
   }

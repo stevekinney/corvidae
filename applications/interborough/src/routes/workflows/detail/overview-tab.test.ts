@@ -214,6 +214,31 @@ describe('OverviewTab', () => {
     expect(added.tag).toBe('urgent');
   });
 
+  test('two edits before the engine answers each send their own write, and a tag added then removed is removed', async () => {
+    const writes: string[] = [];
+    const client = {
+      ...baseClient(),
+      addTags: async (_id: string, tag: string) => {
+        writes.push(`add ${tag}`);
+      },
+      removeTags: async (_id: string, tag: string) => {
+        writes.push(`remove ${tag}`);
+      },
+    };
+    const { getByPlaceholderText, getByRole } = render(OverviewTabHarness, {
+      props: { client, workflow: workflow() },
+    });
+
+    const input = getByPlaceholderText('Add tag');
+    await fireEvent.input(input, { target: { value: 'one' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await fireEvent.input(input, { target: { value: 'two' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await fireEvent.click(getByRole('button', { name: 'Remove one' }));
+
+    expect(writes).toEqual(['add one', 'add two', 'remove one']);
+  });
+
   test('timed-out workflow shows a neutral no-result message', async () => {
     const { getByText } = render(OverviewTabHarness, {
       props: { client: baseClient(), workflow: workflow({ status: 'timed-out' }) },

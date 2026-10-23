@@ -119,7 +119,8 @@ describe('Storage route', () => {
 
     const { findByLabelText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
 
-    expect(((await findByLabelText('Prefix')) as HTMLElement).tagName).toBe('INPUT');
+    const field = await findByLabelText('Prefix');
+    expect(field.tagName).toBe('INPUT');
   });
 
   test('shows the reserved-prefix warning beside the write switch when unlocked, and writes start off', async () => {

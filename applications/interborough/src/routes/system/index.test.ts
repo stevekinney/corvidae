@@ -101,7 +101,8 @@ describe('System route', () => {
     ] as const) {
       resetLocation(`/system?tab=${value}`);
       const opened = await renderSystemRoute();
-      expect((await opened.findByRole('tab', { name })).getAttribute('aria-selected')).toBe('true');
+      const tab = await opened.findByRole('tab', { name });
+      expect(tab.getAttribute('aria-selected')).toBe('true');
       opened.unmount();
     }
   });

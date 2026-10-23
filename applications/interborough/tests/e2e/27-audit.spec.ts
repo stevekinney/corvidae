@@ -44,9 +44,8 @@ for (const width of WIDTHS) {
 
     // The resource of the first record found: one schedule, and nothing else. The picker takes its
     // kind and its id, and builds `schedule:<id>` itself.
-    const resource = (
-      await records(page).first().locator('.weft-audit__resource').innerText()
-    ).trim();
+    const resourceText = await records(page).first().locator('.weft-audit__resource').innerText();
+    const resource = resourceText.trim();
     expect(resource).toMatch(/^schedule:/);
     await resourceKind(page).selectOption('schedule');
     await page

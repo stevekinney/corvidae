@@ -29,7 +29,8 @@ describe('Dashboard', () => {
       props: { client: realClient() },
     });
 
-    expect((await findByRole('heading', { level: 1 })).textContent).toBe('Engine');
+    const heading = await findByRole('heading', { level: 1 });
+    expect(heading.textContent).toBe('Engine');
     expect(queryByText('Operations overview')).toBeNull();
     expect(queryByText(/Cross-domain/)).toBeNull();
   });
