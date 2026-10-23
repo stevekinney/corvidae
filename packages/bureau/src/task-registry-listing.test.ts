@@ -174,6 +174,23 @@ describe('TaskRegistry.list', () => {
     expect(everyone).toHaveLength(6);
   });
 
+  it('reports the snapshot’s size on every page, unchanged by tasks created or removed since', async () => {
+    const harness = build();
+    await admitMany(harness, 5);
+
+    const first = await harness.registry.list({ principal: ALICE, limit: 2 });
+    await admitMany(harness, 1, { prefix: 'late' });
+    await harness.registry.remove('task-00000');
+    const second = await harness.registry.list({
+      principal: ALICE,
+      limit: 2,
+      pageToken: first.nextPageToken ?? '',
+    });
+    const single = await harness.registry.list({ principal: ALICE, status: 'completed', limit: 2 });
+
+    expect([first.totalSize, second.totalSize, single.totalSize]).toEqual([5, 5, 0]);
+  });
+
   it('filters by statusTimestampAfter, strictly', async () => {
     const harness = build();
     await admitMany(harness, 4);

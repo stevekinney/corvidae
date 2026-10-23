@@ -513,8 +513,8 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/mcp/resources.ts',
       {
         reason:
-          'Bun maps the workflow-resource parser closing brace as uncovered after the direct state-URI parsing assertion executes its return path (174); the exhaustive default for an unknown ParsedResourceUri kind is separately unreachable through the validated URI parser, which only ever produces one of the declared kinds (113-116).',
-        lines: new Set([113, 114, 115, 116, 174]),
+          'Bun maps the workflow-resource parser closing brace as uncovered after the direct state-URI parsing assertion executes its return path (187); the exhaustive default for an unknown ParsedResourceUri kind is separately unreachable through the validated URI parser, which only ever produces one of the declared kinds (126-129).',
+        lines: new Set([126, 127, 128, 129, 187]),
         requireUncoveredLines: true,
       },
     ],
@@ -530,9 +530,9 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/mcp/server.ts',
       {
         reason:
-          'A resource-update notification that the SDK fails to send is reported from a promise rejection handler (266); the connection check before it leaves only a transport that closes between the check and the send, which no test can schedule deterministically.',
+          'A resource-update notification that the SDK fails to send is reported from a promise rejection handler (275); the connection check before it leaves only a transport that closes between the check and the send, which no test can schedule deterministically.',
         functions: 1,
-        lines: new Set([266]),
+        lines: new Set([275]),
         requireUncoveredLines: true,
       },
     ],

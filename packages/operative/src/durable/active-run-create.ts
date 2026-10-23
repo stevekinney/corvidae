@@ -143,7 +143,7 @@ export function createDurableActiveRun(
 
   // AB-339: an `abort()` that lands before `driveStarted` ever flips true
   // — i.e. before the deferred microtask below has even run — must not
-  // still let `driveDurableRun` call `context.engine.start(...)`. `abort()`
+  // still let `driveDurableRun` call `context.engine.prepare(...)`. `abort()`
   // itself already treats this exact window as "the workflow doesn't exist
   // and engine.cancel() is a no-op" (see its own comment below); but
   // nothing previously acted on that observation once the deferred
@@ -162,16 +162,18 @@ export function createDurableActiveRun(
   // still inside its own `startRunLifecycle` await" case every other test
   // in this file exercises) already fires `engine.cancel()` via `abort()`'s
   // `if (driveStarted)` branch below — that in-flight cancel must still
-  // resolve against a workflow `engine.start` actually launches. Only the
+  // resolve against the record `engine.prepare` commits, which Weft then
+  // refuses to launch (COR-297). Only the
   // synchronous snapshot taken in the SAME microtask `driveStarted` flips
   // in — captured once, before `drive()` runs — tells the two cases apart.
   const neverLaunched = { value: false };
 
   // AB-361: settles `durablyStarted` (below) exactly once, from inside
-  // `driveDurableRun` — resolved the moment `context.engine.start(...)`
-  // durably commits this run's initial workflow record (or, on a path that
-  // never reaches that call at all — `startError`/`abortedBeforeDrive` —
-  // resolved immediately, since there is then no durable write to await),
+  // `driveDurableRun` — resolved the moment `context.engine.prepare(...)`
+  // durably commits this run's initial workflow record, before the start
+  // lifecycle runs (COR-297), or, on the `abortedBeforeDrive` path that never
+  // reaches that call, resolved immediately, since there is then no durable
+  // write to await,
   // rejected on any failure that precedes that commit. Never called twice:
   // each `driveDurableRun` invocation reaches exactly one of its call sites
   // for these callbacks.
@@ -179,7 +181,7 @@ export function createDurableActiveRun(
   // AB-361 review (codex P2 PRRT_kwDORvupsc6gXHn8): split into two
   // functions rather than one `(error?: unknown) => void` discriminated on
   // `error !== undefined`. That discriminator resolved the gate on a
-  // rejection value of literal `undefined` (e.g. `engine.start` rejecting
+  // rejection value of literal `undefined` (e.g. `engine.prepare` rejecting
   // with no reason, or a caller's `onServices` doing `throw undefined`) —
   // silently reporting success for a durable write that never happened.
   // `rejectDurablyStarted` is unconditional: every call site that reaches
@@ -206,7 +208,7 @@ export function createDurableActiveRun(
   });
   // A caller of `createActiveRun` is not obligated to read `durablyStarted`
   // — only `createRunFromRequest`'s durable branch does. Without this, a
-  // rejecting `engine.start` (e.g. a genuine persistence failure) would
+  // rejecting `engine.prepare` (e.g. a genuine persistence failure) would
   // surface as an unhandled rejection for every OTHER durable caller
   // (scheduler, session-handle, tests) that never awaits this field. A
   // caller that DOES await it still observes the rejection normally.

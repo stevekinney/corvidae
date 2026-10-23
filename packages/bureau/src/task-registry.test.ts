@@ -619,6 +619,27 @@ describe('cancel', () => {
     }
   });
 
+  it('keeps the acknowledgement’s status and reason on the record, and never its error', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await admit(registry, 'run-2');
+
+    await registry.watchCleanup(
+      'run-1',
+      Promise.resolve({ status: 'unresolved', reason: 'unreachable', error: new Error('secret') }),
+    );
+    await registry.watchCleanup('run-2', Promise.resolve({ status: 'failed', error: 'detail' }));
+    await registry.flush();
+
+    const unresolved = await registry.record('run-1');
+    const failed = await registry.record('run-2');
+    expect(unresolved?.cleanupAcknowledgement).toEqual({
+      status: 'unresolved',
+      reason: 'unreachable',
+    });
+    expect(failed?.cleanupAcknowledgement).toEqual({ status: 'failed' });
+  });
+
   it('rejects a task that finished without being canceled, and reports a repeated cancel of a canceled one', async () => {
     const { registry, held } = build();
     await admit(registry, 'run-done');

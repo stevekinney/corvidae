@@ -84,8 +84,9 @@ export interface ActiveRun {
   describeHookPlan: () => HookPlanDescription | undefined;
   /**
    * AB-361 — settles once this run's initial durable workflow record is
-   * committed (the write `driveDurableRun`'s `await context.engine.start(...)`
-   * performs in `durable/active-run-adapter.ts`). `undefined` on the
+   * committed (the write `driveDurableRun`'s `await context.engine.prepare(...)`
+   * performs in `durable/active-run-driver.ts`), before the start lifecycle
+   * and the `onRunStart` hook run (COR-297). `undefined` on the
    * in-memory branch — there is no durable write to await, which is itself
    * the proof that the in-memory branch's `result`/return timing is
    * unaffected by this field's existence. A reattached/recovered durable run
@@ -97,7 +98,7 @@ export interface ActiveRun {
    * control contract (AB-34/AB-15): an acknowledged durable run must be
    * durable, so a process killed any time after the caller holds the
    * identifier is recoverable. Never rejects for a caller that does not
-   * await it — settlement failure (a rejecting `engine.start`) is only
+   * await it — settlement failure (a rejecting `engine.prepare`) is only
    * observed by a caller that explicitly awaits this field.
    */
   durablyStarted?: Promise<void> | undefined;
@@ -798,7 +799,7 @@ export interface DurableRunRouting extends DurableActiveRunContext {
   emitter?: OperativeEventEmitter | undefined;
   /**
    * Synchronous hook invoked with the freshly-built per-run `DurableRunDeps`
-   * (`ctx.services`) right before `engine.start`. See
+   * (`ctx.services`) right before `engine.prepare`, so before `onRunStart`. See
    * `DurableActiveRunOptions.onServices`.
    */
   onServices?: ((services: DurableRunDeps) => void) | undefined;
