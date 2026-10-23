@@ -227,7 +227,9 @@ describe('the sidebar on a narrow viewport', () => {
       expect(document.querySelector('.weft-shell-sidebar--mobile')).not.toBeNull();
       // A click on the dialog itself is a click on its backdrop, which dismisses the drawer.
       await fireEvent.click(dialog);
-      await waitFor(() => expect(document.querySelector('.weft-shell-sidebar--mobile')).toBeNull());
+      await waitFor(() =>
+        expect(document.querySelector('.weft-shell-sidebar--mobile')?.outerHTML ?? null).toBeNull(),
+      );
     } finally {
       window.matchMedia = original;
     }
