@@ -66,8 +66,8 @@ async function main(): Promise<number> {
     if (!/connected/i.test(line) || /failed|not connected/i.test(line)) {
       problems.push(`claude mcp list did not report ${serverName} as connected`);
     }
-    // The run inspector MCP App (COR-910): the endpoint lists the `ui://` resource, reads it as
-    // an MCP App page, and links `bureau.tasks.inspect` to it.
+    // The MCP Apps (COR-910): the endpoint reads each `ui://` resource as an MCP App page and links
+    // a tool to it.
     const rpc = async (id: number, method: string, params: Record<string, unknown>) => {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -81,20 +81,26 @@ async function main(): Promise<number> {
       const text = await response.text();
       return JSON.parse(text.startsWith('{') ? text : (text.match(/^data: (.*)$/m)?.[1] ?? 'null'));
     };
-    const uri = 'ui://bureau/run-inspector/v1';
-    const read = await rpc(2, 'resources/read', { uri });
-    const content = read?.result?.contents?.[0];
-    if (content?.mimeType !== 'text/html;profile=mcp-app' || typeof content?.text !== 'string') {
-      problems.push(`resources/read ${uri} did not answer an MCP App page`);
-    }
+    const apps = [
+      { uri: 'ui://bureau/run-inspector/v1', tool: 'bureau.tasks.inspect' },
+      { uri: 'ui://bureau/pending-review/v1', tool: 'bureau.reviews.list' },
+    ];
     const tools = await rpc(3, 'tools/list', {});
-    const linked = tools?.result?.tools?.find(
-      (tool: { name: string }) => tool.name === 'bureau.tasks.inspect',
-    );
-    if (linked?._meta?.ui?.resourceUri !== uri) {
-      problems.push('bureau.tasks.inspect is not linked to the run inspector resource');
+    let id = 10;
+    for (const { uri, tool } of apps) {
+      const read = await rpc((id += 1), 'resources/read', { uri });
+      const content = read?.result?.contents?.[0];
+      if (content?.mimeType !== 'text/html;profile=mcp-app' || typeof content?.text !== 'string') {
+        problems.push(`resources/read ${uri} did not answer an MCP App page`);
+      }
+      const linked = tools?.result?.tools?.find(
+        (candidate: { name: string }) => candidate.name === tool,
+      );
+      if (linked?._meta?.ui?.resourceUri !== uri) {
+        problems.push(`${tool} is not linked to ${uri}`);
+      }
+      console.log(`[smoke:claude-code-mcp] ${uri} -> ${content?.text?.length ?? 0} bytes`);
     }
-    console.log(`[smoke:claude-code-mcp] ${uri} -> ${content?.text?.length ?? 0} bytes`);
     await claude(['mcp', 'remove', serverName, '-s', 'local'], configDirectory);
   } finally {
     await host.close();

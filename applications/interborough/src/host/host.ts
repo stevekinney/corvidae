@@ -76,6 +76,7 @@ import {
   type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
 import {
   createCatalogGenerate,
@@ -84,7 +85,6 @@ import {
   type ModelSelection,
 } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
-import { runInspectorMount } from './run-inspector-resource.ts';
 import {
   createAgentFileTools,
   createSeededAgents,
@@ -377,7 +377,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // what a local caller does as `anonymous:local`, which the engine's relayed principal is not.
       // Its run inspector is an MCP App (COR-910): the page is built here, in this application, and
       // handed to the adapter as an injected `ui://` resource linked to `bureau.tasks.inspect`.
-      mcp: await runInspectorMount(),
+      mcp: await mcpAppMounts(),
     });
     let engineUpstream: ((upstream: EngineUpstream) => void) | undefined;
     const upstream = new Promise<EngineUpstream>((resolve) => {

@@ -27,7 +27,8 @@ export const RUN_INSPECTOR_UI_META = {
   prefersBorder: false,
 };
 
-const STYLES = `
+/** The styles every MCP App page shares: system colors, visible focus, and no motion on request. */
+export const MCP_APP_BASE_STYLES = `
 :root{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif}
 body{margin:0;padding:12px 16px;background:Canvas;color:CanvasText}
 h1{font-size:1.1rem;margin:0 0 .5rem}h2{font-size:.95rem;margin:1rem 0 .25rem}
@@ -46,7 +47,7 @@ export function buildRunInspectorPage(): Promise<BuiltMcpApp> {
   built ??= buildMcpAppPage({
     entry: new URL('../mcp-apps/run-inspector/app.ts', import.meta.url).href,
     title: 'Run inspector',
-    styles: STYLES,
+    styles: MCP_APP_BASE_STYLES,
   });
   return built;
 }

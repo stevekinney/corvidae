@@ -15,7 +15,12 @@ type ToolHandler = (args: Record<string, unknown>) => unknown;
 type ReferenceHost = {
   calls: { name: string; arguments: Record<string, unknown> }[];
   handlers: Record<string, ToolHandler>;
-  mount(html: string, csp: McpUiResourceCsp, toolInput: Record<string, unknown>): Promise<void>;
+  mount(
+    html: string,
+    csp: McpUiResourceCsp,
+    toolInput: Record<string, unknown>,
+    title?: string,
+  ): Promise<void>;
   teardown(): Promise<void>;
   initialized: boolean;
 };
@@ -49,9 +54,9 @@ const host: ReferenceHost = {
   calls: [],
   handlers: {},
   initialized: false,
-  async mount(html, csp, toolInput) {
+  async mount(html, csp, toolInput, title = 'Run inspector') {
     frame = document.createElement('iframe');
-    frame.title = 'Run inspector';
+    frame.title = title;
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.srcdoc = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${policy(csp).replaceAll('"', '&quot;')}">${html}`;
     document.body.append(frame);
@@ -73,7 +78,13 @@ const host: ReferenceHost = {
       if (handler === undefined) {
         return { isError: true, content: [{ type: 'text', text: 'unknown tool' }] };
       }
-      const value = handler(params.arguments ?? {});
+      let value: unknown;
+      try {
+        value = handler(params.arguments ?? {});
+      } catch (error) {
+        // A handler that throws is a tool that answered with an error.
+        return { isError: true, content: [{ type: 'text', text: String(error) }] };
+      }
       return {
         content: [{ type: 'text', text: JSON.stringify(value) }],
         structuredContent: value as Record<string, unknown>,
