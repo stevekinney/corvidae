@@ -1,7 +1,8 @@
 import type { MultiModalContent } from 'conversationalist';
 
 import type { AgentRunErrorCode, AgentRunErrorKind } from '../errors';
-import { BudgetExceededError, ElicitationDeniedError, GuardrailTripwireError } from '../errors';
+import { GuardrailTripwireError } from '../errors';
+import { finishReasonOfError } from '../finish-reason';
 import {
   InvalidRunResultError,
   UnsupportedRunResultLegacyFieldError,
@@ -208,10 +209,7 @@ export function serializeError(error: unknown): string {
  * `budget-exceeded` from a plain `error` exactly as the in-memory loop does.
  */
 export function classifyErrorFinishReason(error: unknown): FinishReason {
-  if (error instanceof ElicitationDeniedError) return 'elicitation-denied';
-  if (error instanceof BudgetExceededError) return 'budget-exceeded';
-  if (error instanceof GuardrailTripwireError) return 'tripwire';
-  return 'error';
+  return finishReasonOfError(error);
 }
 
 /**

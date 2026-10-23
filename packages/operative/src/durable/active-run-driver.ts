@@ -4,7 +4,7 @@ import type { AnyToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { GeneratedMediaAdmission } from '../generated-media';
 
-import { AgentRunError, MaximumStepsExceededError, toAgentRunError } from '../errors';
+import { AgentRunError, toAgentRunError } from '../errors';
 import { type OperativeEventEmitter, RunErrorEvent } from '../events';
 import { UnsupportedRunResultVersionError } from '../run-envelope';
 import { makeErrorResult, startRunLifecycle } from '../run-lifecycle';
@@ -395,10 +395,14 @@ export async function driveDurableRun(
   // outside anything replay re-runs. A process that dies before this line never fires it; its
   // recovered run goes through the reattach driver, which announces the marked one instead, so no
   // path fires two. A live `run.error` already seen is not repeated.
-  let terminalError =
+  // `reconstructRunResult` always gives a step-limit result its `MaximumStepsExceededError`.
+  const terminalError =
     terminalErrorFromEvent ?? (result.error instanceof AgentRunError ? result.error : undefined);
-  if (terminalErrorFromEvent === undefined && result.finishReason === 'maximum-steps') {
-    terminalError ??= new MaximumStepsExceededError(runState.steps.length);
+  if (
+    terminalErrorFromEvent === undefined &&
+    result.finishReason === 'maximum-steps' &&
+    terminalError !== undefined
+  ) {
     // The loose dispatcher the run lifecycle's own terminal helpers take.
     const dispatcher: EventDispatcher = emitter;
     dispatcher.dispatch(new RunErrorEvent(runState.steps.length, terminalError, 'policy'));

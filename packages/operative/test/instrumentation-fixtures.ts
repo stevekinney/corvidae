@@ -23,6 +23,10 @@ export class RecordingSpan implements Span {
   public readonly events: RecordedEvent[] = [];
   public readonly exceptions: Exception[] = [];
   public ended = false;
+  /** How many times `end` was called; a real span is ended once. */
+  public endCount = 0;
+  /** The writes made after `end`, which a real span drops (COR-1627). */
+  public readonly writesAfterEnd: string[] = [];
   public readonly kind: SpanKind | undefined;
   public readonly name: string;
   public readonly parentContext: Context | undefined;
@@ -60,6 +64,7 @@ export class RecordingSpan implements Span {
   }
 
   public end(_endTime?: TimeInput): void {
+    this.endCount += 1;
     this.ended = true;
   }
 
@@ -72,18 +77,30 @@ export class RecordingSpan implements Span {
   }
 
   public setAttribute(key: string, value: SpanAttributeValue): this {
+    if (this.ended) {
+      this.writesAfterEnd.push(key);
+      return this;
+    }
     this.attributes[key] = value;
     return this;
   }
 
   public setAttributes(attributes: SpanAttributes): this {
     for (const [key, value] of Object.entries(attributes)) {
+      if (this.ended) {
+        this.writesAfterEnd.push(key);
+        continue;
+      }
       this.attributes[key] = value;
     }
     return this;
   }
 
   public setStatus(status: SpanStatus): this {
+    if (this.ended) {
+      this.writesAfterEnd.push('status');
+      return this;
+    }
     this.status = status;
     return this;
   }

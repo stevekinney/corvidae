@@ -1,3 +1,9 @@
+import {
+  BudgetExceededError,
+  ElicitationDeniedError,
+  GuardrailTripwireError,
+  MaximumStepsExceededError,
+} from './errors';
 import type { FinishReason } from './types';
 
 /**
@@ -30,4 +36,19 @@ export function isFailureFinishReason(value: unknown): boolean {
     Object.hasOwn(FAILURE_BY_FINISH_REASON, value) &&
     FAILURE_BY_FINISH_REASON[value as FinishReason]
   );
+}
+
+/**
+ * The finish reason a run that ended on `error` finishes with (COR-1627): the one classification
+ * `makeErrorResult` (a fresh run), `classifyErrorFinishReason` (a durable run's checkpoint), and
+ * Bureau's `run.error` payload all read, so an error is the same finish reason wherever it is
+ * reported. An elicitation denial, a spent budget, a tripwire, and a step limit are their own
+ * reasons; any other error is `error`.
+ */
+export function finishReasonOfError(error: unknown): FinishReason {
+  if (error instanceof ElicitationDeniedError) return 'elicitation-denied';
+  if (error instanceof BudgetExceededError) return 'budget-exceeded';
+  if (error instanceof GuardrailTripwireError) return 'tripwire';
+  if (error instanceof MaximumStepsExceededError) return 'maximum-steps';
+  return 'error';
 }

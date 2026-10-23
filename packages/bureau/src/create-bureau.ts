@@ -4404,11 +4404,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     readonly detail: unknown;
     readonly timestamp: number;
   }): void {
-    if (
-      action.type !== 'run.completed' &&
-      action.type !== 'run.error' &&
-      action.type !== 'run.aborted'
-    ) {
+    // `run.error` is not a settlement of its own: Operative announces it before the
+    // `run.completed` (or `run.aborted`) that ends the run and carries its finish reason, so
+    // the one write comes from that. A `run.error` with no such end is another process's, which
+    // `isCommittedElsewhere` keeps from reaching here.
+    if (action.type !== 'run.completed' && action.type !== 'run.aborted') {
       return;
     }
     const detail =
@@ -4418,11 +4418,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const finishReason =
       typeof detail['finishReason'] === 'string' ? detail['finishReason'] : undefined;
     const status =
-      action.type === 'run.completed'
-        ? settledTaskState('completed', finishReason)
-        : action.type === 'run.error'
-          ? 'failed'
-          : 'canceled';
+      action.type === 'run.completed' ? settledTaskState('completed', finishReason) : 'canceled';
     const failure = detail['error'];
     // Every cancellation terminal, a shutdown's abort included, follows its run's cleanup the
     // way an API cancellation does, so the task reports what the cleanup actually did.

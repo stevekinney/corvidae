@@ -233,7 +233,10 @@ export function createTaskEventProjector(
         case 'run.error':
           settlement = {
             status: 'failed',
-            finishReason: null,
+            // The event carries the reason it ends the run with (COR-1627), so a stream that
+            // ends here reports `maximum-steps` and not a run that has not said how it finished.
+            // A `run.error` recorded before the payload carried it reads `null`, as it did.
+            finishReason: textField(event.payload, 'finishReason') ?? null,
             message: boundedMessage(textField(event.payload, 'error') ?? 'The task failed.'),
             artifact: null,
           };

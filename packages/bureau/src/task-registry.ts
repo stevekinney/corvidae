@@ -1104,8 +1104,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   }
 
   /**
-   * Tells whoever waits that the task has settled. A listener is told once, and a task not yet
-   * settled (a write that changed something else) tells no one. A listener that throws is its
+   * Tells whoever waits that the task has settled. A listener is told once, however many
+   * settlements are written back to back, and a task not yet settled (a write that changed
+   * something else) tells no one. A listener that throws is its
    * own failure, never the write's.
    */
   async function announceSettled(taskId: string): Promise<void> {
@@ -1117,6 +1118,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     if (view.status !== 'completed' && view.status !== 'failed' && view.status !== 'canceled') {
       return;
     }
+    // A settlement written while this call awaited was announced by its own call, which took
+    // these listeners: two back-to-back settlements tell each listener once, not twice.
+    if (settledListeners.get(taskId) !== waiting) return;
     settledListeners.delete(taskId);
     for (const listener of waiting) {
       try {

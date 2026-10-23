@@ -1,5 +1,5 @@
 import { stopWhen, waitForCondition } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type BatchOperation } from '@lostgradient/weft';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -99,8 +99,8 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
     const records = (await bureau.auditTrail?.query({ runId: run.id })) ?? [];
     expect(records.filter((record) => record.type === 'run.error')).toHaveLength(1);
     expect(records.filter((record) => record.type === 'run.completed')).toHaveLength(1);
-    // The task has one settlement: the `run.error` and the `run.completed` that follows it write
-    // the same record, which reads the step-limit error.
+    // The task reads the step-limit error. That it was settled once, and announced once, is
+    // asserted by the settlement tests below.
     const task = await bureau.tasks.get(run.id);
     expect(task?.status).toBe('failed');
     expect(task?.statusMessage).toContain('Agent run exceeded maximumSteps (2).');
@@ -119,6 +119,114 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
     expect(bureau.getRunReport(run.id)?.status).toBe('failed');
   });
+});
+
+/** A memory storage that counts each time a task record's `settled` stops reading what it did. */
+class SettlementCountingStorage extends MemoryStorage {
+  readonly settlements: unknown[] = [];
+  readonly #lastSettled = new Map<string, string>();
+
+  #observe(key: string, value: Uint8Array): void {
+    if (!key.startsWith('bureau-task:v1:')) return;
+    const record = JSON.parse(new TextDecoder().decode(value)) as { settled?: unknown };
+    if (record.settled === undefined) return;
+    const serialized = JSON.stringify(record.settled);
+    if (this.#lastSettled.get(key) === serialized) return;
+    this.#lastSettled.set(key, serialized);
+    this.settlements.push(record.settled);
+  }
+
+  #observeAll(operations: BatchOperation[]): void {
+    for (const operation of operations) {
+      if (operation.type === 'put') this.#observe(operation.key, operation.value);
+    }
+  }
+
+  override async put(key: string, value: Uint8Array): Promise<void> {
+    await super.put(key, value);
+    this.#observe(key, value);
+  }
+
+  override async batch(operations: BatchOperation[]): Promise<void> {
+    await super.batch(operations);
+    this.#observeAll(operations);
+  }
+
+  override async conditionalBatch(
+    conditions: Parameters<MemoryStorage['conditionalBatch']>[0],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    const applied = await super.conditionalBatch(conditions, operations);
+    if (applied) this.#observeAll(operations);
+    return applied;
+  }
+}
+
+/** The runs whose second step fails or never ends: a step limit, and a plain error. */
+const FAILURES: readonly (readonly [string, Partial<BureauOptions>])[] = [
+  ['a step limit', {}],
+  [
+    'a plain error',
+    {
+      generate: async () => {
+        throw new Error('The model refused.');
+      },
+    },
+  ],
+];
+
+const SETTLING_EXECUTIONS = [
+  ['in process', (storage: MemoryStorage) => ({ persistence: textValueStore(storage) })],
+  ['durably', (storage: MemoryStorage) => ({ storage, durableExecution: true })],
+] as const;
+
+describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_name, configure) => {
+  it.each(FAILURES)(
+    'settles once and is announced once when it ends at %s',
+    async (_kind, over) => {
+      const storage = new SettlementCountingStorage();
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const bureau = await createBureau({
+        agents: {},
+        generate: async (input) => {
+          await gate;
+          const generate =
+            over.generate ??
+            (async () => ({
+              content: 'still going',
+              toolCalls: [{ name: 'next', arguments: {} }],
+            }));
+          return generate(input);
+        },
+        toolbox: createToolbox([nextTool]),
+        maximumSteps: 2,
+        stopWhen: stopWhen.noToolCalls(),
+        ...configure(storage),
+      });
+      bureaus.push(bureau);
+      const run = await bureau.createRun({ message: 'Never settles', principal: 'alice' });
+      const announced: string[] = [];
+      bureau.tasks.onSettled(run.id, (view) => announced.push(view.status));
+      release();
+
+      await waitForCondition(async () => {
+        const records = (await bureau.auditTrail?.query({ runId: run.id })) ?? [];
+        return records.some((record) => record.type === 'run.completed');
+      }, 'the audit trail never recorded the run’s completion');
+      await waitForCondition(
+        () => announced.length > 0,
+        'the settled listener was never told the task ended',
+      );
+      // Let any second settlement the run's remaining terminal actions would write land.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(announced).toEqual(['failed']);
+      expect(storage.settlements).toHaveLength(1);
+    },
+  );
 });
 
 describe('a durable run that crashes before its step limit and is recovered (COR-1627)', () => {

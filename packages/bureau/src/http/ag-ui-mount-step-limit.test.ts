@@ -165,6 +165,51 @@ describe('the stream of a run that stops at its step limit', () => {
   });
 });
 
+describe('a retry of the start of a run that already stopped at its step limit', () => {
+  // A plain attach to a settled run answers RUN_NOT_FOUND by design. What re-streams the ended
+  // run is the exact retry of its start: the same runId over the same rows.
+  it.each([
+    ['without an answer', undefined, undefined],
+    ['with an onMaximumSteps answer', async () => 'Out of steps.', 'Out of steps.'],
+  ] as const)(
+    'streams the ended run again, ending with RUN_ERROR, code MAXIMUM_STEPS, %s',
+    async (_name, onMaximumSteps, answer) => {
+      await withPeers(
+        {
+          ...STEP_LIMIT,
+          script: [say('one'), say('two')],
+          ...(onMaximumSteps === undefined ? {} : { onMaximumSteps }),
+        },
+        async (harness) => {
+          const first = await startOn(harness.handler);
+          await first.reader.rest();
+          expect(harness.bureau.listRuns()[0]!.status).toBe('error');
+
+          const retry = await startOn(harness.handler);
+          await retry.reader.rest();
+          const frames = retry.reader.received;
+
+          expect(harness.bureau.listRuns()).toHaveLength(1);
+          expect(retry.nativeRunId).toBe(first.nativeRunId);
+          expect(typesOf(frames)).not.toContain(EventType.RUN_FINISHED);
+          expect(frames.at(-1)!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            code: 'MAXIMUM_STEPS',
+            message: MESSAGE,
+          });
+          if (answer !== undefined) {
+            expect(
+              frames
+                .map((frame) => frame.event)
+                .some((event) => 'delta' in event && event.delta === answer),
+            ).toBe(true);
+          }
+        },
+      );
+    },
+  );
+});
+
 describe('a peer stream of a run that stops at its step limit', () => {
   /** Follows the holder's run from a peer, releases it, and returns the frames the peer read. */
   async function followFromPeer(
