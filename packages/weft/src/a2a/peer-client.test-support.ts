@@ -188,7 +188,18 @@ export function createScriptedPeer(options: ScriptedPeerOptions = {}) {
     }
     requests.push({ method, headers: request.headers, url: request.url });
     const real = async () => handler(request);
-    return (await options.intercept?.(request, method, real)) ?? real();
+    const response = (await options.intercept?.(request, method, real)) ?? (await real());
+    const location = response.headers.get('location');
+    if (
+      request.redirect === 'follow' &&
+      response.status >= 300 &&
+      response.status < 400 &&
+      location
+    ) {
+      // A client that lets fetch follow redirects reaches the new URL, as a real fetch would.
+      requests.push({ method: 'redirected', headers: request.headers, url: location });
+    }
+    return response;
   }) as typeof fetch;
   return {
     fetch: fetchImpl,

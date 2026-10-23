@@ -34,9 +34,20 @@ export interface PeerFetchOptions {
   readonly requestTimeoutMs: number;
 }
 
-/** Throws `egress-denied` or retryable `unreachable` unless `policy` allows `url`. */
+/**
+ * Throws `egress-denied` or retryable `unreachable` unless `policy` allows `url`. Without a
+ * policy only `https:` URLs pass.
+ */
 export async function checkEgress(policy: EgressPolicy | undefined, url: string): Promise<void> {
-  if (policy === undefined) return;
+  if (policy === undefined) {
+    if (new URL(url).protocol !== 'https:') {
+      throw new A2APeerError(
+        'egress-denied',
+        `Only https: URLs are contacted without an egress policy; refused ${url}.`,
+      );
+    }
+    return;
+  }
   const decision = await policy.check(url);
   if (decision.status === 'blocked') {
     throw new A2APeerError('egress-denied', `Egress to ${url} is blocked: ${decision.reason}`);
@@ -83,6 +94,7 @@ async function attempt(
       new Request(base.clone(), {
         headers: withCredentials(base, credentials),
         signal: AbortSignal.any([base.signal, timeout.signal]),
+        redirect: 'manual',
       }),
     );
   } catch (error) {
@@ -110,6 +122,15 @@ async function answerChallenge(
 }
 
 async function rejectFailure(response: Response, url: string): Promise<void> {
+  // Redirects are never followed: the egress and origin checks ran on `url` only, and a
+  // redirect would replay the request and its credentials against an unchecked host.
+  if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+    await response.body?.cancel();
+    throw new A2APeerError(
+      'egress-denied',
+      `The peer redirected ${url} (HTTP ${response.status}); redirects are not followed.`,
+    );
+  }
   const refused = isRefusal(response.status);
   const outage = response.status === 429 || response.status >= 500;
   if (!refused && !outage) return;

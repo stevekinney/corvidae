@@ -35,7 +35,7 @@ export type { A2APeerChallenge } from './peer-fetch.ts';
 export interface A2APeerClientOptions {
   /**
    * The peer's base URL: the Agent Card is read from `/.well-known/agent-card.json` under it.
-   * Only `https:` is contacted unless `egressPolicy` allows more.
+   * Only `https:` is contacted unless `egressPolicy` allows more. Redirects are never followed.
    */
   readonly url: string;
   /** The `fetch` to use. Defaults to the global one. */

@@ -151,6 +151,22 @@ describe('A2A peer client', () => {
     expect(second).toMatchObject({ state: 'completed', message: 'resumed', taskId: first.taskId });
   });
 
+  test('continues an input-required task against a non-streaming peer', async () => {
+    const { client } = connect({
+      card: withCard((card) => {
+        if (card.capabilities !== undefined) card.capabilities.streaming = false;
+      }),
+    });
+    const first = await sendAndSettle(client, { text: 'wait' });
+    expect(first.state).toBe('input-required');
+    const second = await sendAndSettle(client, {
+      text: 'the blue one',
+      taskId: first.taskId,
+      contextId: first.contextId,
+    });
+    expect(second).toMatchObject({ state: 'completed', message: 'resumed' });
+  });
+
   describe('Agent Card validation', () => {
     test('refuses a required extension it does not support before any RPC', async () => {
       const { peer, client } = connect({
@@ -227,6 +243,43 @@ describe('A2A peer client', () => {
       expect(cardRequests()).toBe(2);
       await client.card({ refresh: true });
       expect(cardRequests()).toBe(3);
+    });
+  });
+
+  describe('egress', () => {
+    const redirect = new Response(null, {
+      status: 307,
+      headers: { location: 'https://other.example/steal' },
+    });
+    const reachedOther = (peer: { requests: readonly { url: string }[] }) =>
+      peer.requests.some((entry) => entry.url.startsWith('https://other.example'));
+
+    test('does not follow a redirect from the card URL', async () => {
+      const { peer, client } = connect({
+        intercept: (_request, method) => (method === 'card' ? redirect.clone() : undefined),
+      });
+      expect(await codeOf(client.card())).toBe('egress-denied');
+      expect(reachedOther(peer)).toBe(false);
+    });
+
+    test('does not follow a redirect from the interface', async () => {
+      const { peer, client } = connect({
+        intercept: (_request, method) =>
+          method === 'SendStreamingMessage' ? redirect.clone() : undefined,
+      });
+      expect(await codeOf(client.send({ text: 'hi' }))).toBe('egress-denied');
+      expect(reachedOther(peer)).toBe(false);
+    });
+
+    test('refuses an http: URL unless an egress policy allows it', async () => {
+      const peer = createScriptedPeer();
+      const client = createA2APeerClient({
+        url: 'http://agents.example.com/a2a',
+        fetch: peer.fetch,
+        sleep: immediate,
+      });
+      expect(await codeOf(client.card())).toBe('egress-denied');
+      expect(peer.requests).toHaveLength(0);
     });
   });
 

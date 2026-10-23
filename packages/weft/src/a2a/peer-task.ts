@@ -334,7 +334,7 @@ export async function startPeerTask(
     context.peer,
     request,
     context.artifactLimit,
-    context.streaming && request.taskId !== undefined,
+    request.taskId !== undefined,
   );
   const run = new PeerTaskRun(context, tracker);
   await run.open({

@@ -64,10 +64,12 @@ export class PeerTaskTracker {
   private cancellation: LocalCancel | undefined;
   private fresh: boolean;
   private headSeen = false;
+  private stamp = '';
+  private headStamp = '';
 
   /**
-   * `awaitFollowUp` is true for a streamed continuation, whose first event is a snapshot of the
-   * state the task was in before the new message: a stop state counts only once an event follows.
+   * `awaitFollowUp` is true for a continuation, whose first response is a snapshot of the
+   * state the task was in before the new message: a stop state counts only once the status differs from that snapshot.
    */
   constructor(
     private readonly peer: Omit<A2APeerProvenance, 'taskId'>,
@@ -116,6 +118,7 @@ export class PeerTaskTracker {
   /** Records that the first response has been applied. */
   markHeadSeen(): void {
     this.headSeen = true;
+    this.headStamp = this.stamp;
   }
 
   /** Whether the task is cancelled here. */
@@ -142,7 +145,6 @@ export class PeerTaskTracker {
 
   /** Applies one stream event. */
   apply(event: PeerStreamEvent): void {
-    if (this.headSeen) this.fresh = true;
     const payload = event.payload;
     if (payload === undefined) return;
     switch (payload.$case) {
@@ -212,6 +214,8 @@ export class PeerTaskTracker {
 
   private setStatus(status: Task['status']): void {
     this.current = peerStateOf(status?.state);
+    this.stamp = `${this.current}|${status?.timestamp ?? ''}`;
+    if (this.headSeen && this.stamp !== this.headStamp) this.fresh = true;
     if (status?.message !== undefined) this.lastMessage = textOfMessage(status.message);
     this.emit();
   }
