@@ -28,7 +28,7 @@
  * @module a2a-task-stream
  */
 
-import type { Artifact, StreamResponse, Task, TaskState } from '@a2a-js/sdk';
+import type { Artifact, Part, StreamResponse, Task, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
 import type { RuntimeTimers } from '@lostgradient/lifecycle';
 import { decodeCursor, encodeCursor } from '@lostgradient/weft';
@@ -36,7 +36,10 @@ import { withStreamEventCursor } from '@lostgradient/weft/a2a';
 
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 
+import { A2UI_EXTENSION_URI, offeredCatalogIds } from '../a2ui/catalogs.ts';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
+import { INTERACTIVE_SURFACE_EVENT_KINDS } from '../interactive-surface/store.ts';
+import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import { bearsSettlement } from '../task-resync.ts';
 import type { Bureau } from '../types.ts';
@@ -47,8 +50,10 @@ import {
   isTerminal,
   replyMessageId,
   publishedReplyParts,
+  deleteSurfacePart,
   type ReplyParts,
   resultArtifactId,
+  surfaceParts,
   waitingMessage,
 } from './a2a-task-projection.ts';
 import { createTaskEventProjector, type TaskEvent } from './management/tasks-events-operation.ts';
@@ -78,6 +83,31 @@ export type A2AStreamBureau = Pick<
   readonly tasks: Pick<TaskRegistry, 'get' | 'onSettled' | 'onChanged'>;
 };
 
+/** The durable event kinds that change a surface: each one makes a stream re-read its surfaces. */
+const SURFACE_KINDS: ReadonlySet<string> = new Set([
+  INTERACTIVE_SURFACE_EVENT_KINDS.created,
+  INTERACTIVE_SURFACE_EVENT_KINDS.updated,
+  INTERACTIVE_SURFACE_EVENT_KINDS.closed,
+  INTERACTIVE_SURFACE_EVENT_KINDS.frozen,
+]);
+
+/**
+ * How a stream follows a task's A2UI surfaces (COR-837, part 3). Supplied only for a request that
+ * activated A2UI's extension: any other client gets no per-revision surface frames.
+ */
+export type FollowSurfaces = {
+  /** The task's surfaces as the stream's owner may see them. */
+  readonly list: (taskId: string) => Promise<readonly InteractiveSurface[]>;
+  /** The catalogs the client declared; `undefined` offers the basic catalog only. */
+  readonly supportedCatalogIds: readonly string[] | undefined;
+};
+
+/** What the opening snapshot hands back: the task, and the surfaces it showed. */
+export type OpeningSnapshot = {
+  readonly task: Task;
+  readonly surfaces: readonly InteractiveSurface[];
+};
+
 /** What one stream needs beyond the Bureau. */
 export type FollowTaskOptions = {
   readonly bureau: A2AStreamBureau;
@@ -87,7 +117,9 @@ export type FollowTaskOptions = {
   /** Whether the request activated the durable-history extension. */
   readonly durableHistoryActive: boolean;
   /** Builds the `Task` a snapshot sends, from the task's view with the folded status. */
-  readonly snapshot: (view: TaskView) => Promise<Task>;
+  readonly snapshot: (view: TaskView) => Promise<OpeningSnapshot>;
+  /** Present when the request activated A2UI: the stream then delivers each surface revision once. */
+  readonly surfaces?: FollowSurfaces | undefined;
   /** The agent's reply on a completed task, for its artifact and final status message. */
   readonly replyOf: (view: TaskView) => Promise<ReplyParts | undefined>;
   readonly timers: RuntimeTimers;
@@ -387,7 +419,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           finishReason: folded.finishReason,
           statusMessage: folded.message,
         };
-  const task = await options.snapshot(snapshotView);
+  const { task, surfaces: shownInSnapshot } = await options.snapshot(snapshotView);
   if (options.durableHistoryActive && cursor !== undefined) {
     task.metadata = {
       ...task.metadata,
@@ -409,6 +441,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     options.buffer ?? A2A_STREAM_BUFFER,
   );
   let lastStatus = snapshotView.status;
+  const reconciler = createSurfaceReconciler(options.surfaces, shownInSnapshot);
   const stops: Array<() => void> = [];
   const abort = () => queue.end();
   signal?.addEventListener('abort', abort, { once: true });
@@ -537,6 +570,16 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           return;
         }
         const element = projector.project(event);
+        if (SURFACE_KINDS.has(event.kind)) {
+          // A surface event is a trigger, not a payload: the surfaces are re-read as they stand,
+          // and each revision above what was sent goes out once, under this event's cursor.
+          mapping = chained(mapping, async () => {
+            const view = (await bureau.tasks.get(taskId)) ?? initial;
+            const frame = await reconciler.reconcile(view, lastStatus, event.emittedAtMs);
+            if (frame !== undefined) queue.push({ event: frame, cursor: event.cursor });
+          }).catch((error: unknown) => queue.fail(error));
+          return;
+        }
         if (element === undefined) return;
         if (element.kind === 'task.removed') {
           mapping = chained(mapping, async () => queue.end());
@@ -554,15 +597,22 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           const view = (await bureau.tasks.get(taskId)) ?? initial;
           const reply = status.status === 'completed' ? await options.replyOf(view) : undefined;
           const events = eventsOf(view, status, reply, await formsOf(bureau, view));
+          // One last reconcile before the stream ends, so a surface the task froze or closed with
+          // its end is delivered; it follows the status, which is what the client already holds.
+          const closing = endsTask
+            ? await reconciler.reconcile(view, status.status, status.emittedAtMs)
+            : undefined;
           for (const [index, mapped] of events.entries()) {
             // Only the last event of a durable one carries its cursor, so a resume never skips
             // the part of it a reader had not received.
+            const last = index === events.length - 1;
             queue.push({
               event: mapped,
-              ...(index === events.length - 1 ? { cursor: event.cursor } : {}),
-              ends: endsTask && index === events.length - 1,
+              ...(last ? { cursor: event.cursor } : {}),
+              ends: endsTask && last && closing === undefined,
             });
           }
+          if (closing !== undefined) queue.push({ event: closing, ends: true });
         }).catch((error: unknown) => queue.fail(error));
       },
       {
@@ -589,4 +639,76 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     signal?.removeEventListener('abort', abort);
     for (const stop of stops) stop();
   }
+}
+
+/** What a client holds of one surface: the revision sent, and whether it was A2UI data. */
+type SentSurface = { readonly revision: number; readonly data: boolean };
+
+/**
+ * Re-reads a task's surfaces and frames what the client has not been sent. `sent` starts as the
+ * surfaces the opening snapshot showed, so a revision in the snapshot is never sent again; a
+ * reconcile emits only revisions above what was sent, as one `statusUpdate` whose message carries
+ * the same parts a read does (`surfaceParts`), and a `deleteSurface` envelope for a surface the
+ * client holds that was torn down. It runs inside the stream's serial mapping chain.
+ */
+function createSurfaceReconciler(
+  surfaces: FollowSurfaces | undefined,
+  shown: readonly InteractiveSurface[],
+) {
+  if (surfaces === undefined) {
+    return {
+      reconcile: async (..._arguments: unknown[]): Promise<StreamResponse | undefined> => undefined,
+    };
+  }
+  const offered = offeredCatalogIds(surfaces.supportedCatalogIds);
+  const delivered = (surface: InteractiveSurface): boolean =>
+    surface.representation?.kind === 'a2ui' && offered.includes(surface.representation.catalogId);
+  const sent = new Map<string, SentSurface>();
+  for (const surface of shown) {
+    if (surface.kind === 'a2ui') {
+      sent.set(surface.surfaceId, { revision: surface.revision, data: delivered(surface) });
+    }
+  }
+  const activated: ReadonlySet<string> = new Set([A2UI_EXTENSION_URI]);
+  return {
+    async reconcile(
+      view: Pick<TaskView, 'id' | 'contextId'>,
+      state: TaskView['status'],
+      emittedAtMs: number,
+    ): Promise<StreamResponse | undefined> {
+      const parts: Part[] = [];
+      const revisions: string[] = [];
+      for (const surface of await surfaces.list(view.id)) {
+        if (surface.kind !== 'a2ui') continue;
+        const before = sent.get(surface.surfaceId);
+        if (before !== undefined && before.revision >= surface.revision) continue;
+        if (surface.representation === null) {
+          sent.set(surface.surfaceId, { revision: surface.revision, data: false });
+          // A client that never held the surface learns nothing of its end.
+          if (before?.data !== true) continue;
+          parts.push(deleteSurfacePart(surface));
+        } else {
+          sent.set(surface.surfaceId, { revision: surface.revision, data: delivered(surface) });
+          parts.push(...surfaceParts([surface], activated, surfaces.supportedCatalogIds));
+        }
+        revisions.push(`${surface.surfaceId}@${surface.revision}`);
+      }
+      if (parts.length === 0) return undefined;
+      return {
+        payload: {
+          $case: 'statusUpdate',
+          value: {
+            taskId: view.id,
+            contextId: view.contextId,
+            status: {
+              state: a2aStateOf(state),
+              message: agentMessage(view, `${view.id}:surfaces:${revisions.join(',')}`, parts),
+              timestamp: new Date(emittedAtMs).toISOString(),
+            },
+            metadata: undefined,
+          },
+        },
+      };
+    },
+  };
 }
