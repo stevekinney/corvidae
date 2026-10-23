@@ -117,7 +117,7 @@ interface Scripted {
 }
 
 async function scriptRemoteRun(page: Page): Promise<Scripted> {
-  await page.goto('/runs');
+  await page.goto('/workflows/order-processing/runs');
   const link = page
     .getByRole('row', { name: /order-processing/ })
     .first()

@@ -32,7 +32,7 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   page,
   checkA11y,
 }) => {
-  await page.goto('/runs?type=order-processing');
+  await page.goto('/workflows/order-processing/runs');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content.
   await expect(page.getByRole('table', { name: 'Workflows' })).toBeVisible();
@@ -119,7 +119,7 @@ test('the revision surfaces are usable across supported widths and themes', asyn
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto('/runs?type=order-processing');
+      await page.goto('/workflows/order-processing/runs');
 
       const orderRow = page.getByRole('row', { name: /order-processing/ }).first();
       await expect(orderRow).toBeVisible();
