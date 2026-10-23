@@ -707,28 +707,35 @@ export function createBureauA2ARequestHandler(
     // instead of recording a second one.
     const digest = await crypto.subtle.digest(
       'SHA-256',
-      new TextEncoder().encode(`${owner}\0${version}\0${message.messageId}`),
+      new TextEncoder().encode(`${owner}\0${agentName}\0${version}\0${message.messageId}`),
     );
     const taskId = `agent-run-expired-${[...new Uint8Array(digest).slice(0, 16)]
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join('')}`;
-    if ((await bureau.tasks.get(taskId)) !== undefined) return taskId;
+    // A retry after a failed step resumes it: each step below is skipped once it has happened.
+    const existing = await bureau.tasks.get(taskId);
     const contextId =
-      message.contextId === '' ? runtime.identifiers.next('session') : message.contextId;
-    await bureau.tasks.recordAdmission({
-      taskId,
-      contextId,
-      incarnation: '',
-      agentName,
-      owner,
-      message: textOf(message),
-    });
-    await bureau.tasks.recordSettled(taskId, {
-      at: new Date(runtime.clock.now()).toISOString(),
-      status: 'failed',
-      finishReason: 'deadline-exceeded',
-      message: 'The command’s deadline passed before the task started.',
-    });
+      existing?.contextId ??
+      (message.contextId === '' ? runtime.identifiers.next('session') : message.contextId);
+    if (existing === undefined) {
+      await bureau.tasks.recordAdmission({
+        taskId,
+        contextId,
+        incarnation: '',
+        agentName,
+        owner,
+        message: textOf(message),
+      });
+    }
+    if (existing === undefined || !['completed', 'failed', 'canceled'].includes(existing.status)) {
+      await bureau.tasks.recordSettled(taskId, {
+        at: new Date(runtime.clock.now()).toISOString(),
+        status: 'failed',
+        finishReason: 'deadline-exceeded',
+        message: 'The command’s deadline passed before the task started.',
+      });
+    }
+    if ((await records.read(taskId)) !== undefined) return taskId;
     await records.create({
       recordVersion: 1,
       taskId,

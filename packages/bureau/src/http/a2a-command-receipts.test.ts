@@ -269,4 +269,8 @@ describe('readCommandReceiptsRequest', () => {
     }
     expect(read('2026-02-28T12:30:00+02:00').deadline).toBe(Date.parse('2026-02-28T10:30:00Z'));
   });
+
+  it('accepts the leap second the published schema permits', () => {
+    expect(read('1990-12-31T23:59:60Z').deadline).toBe(Date.parse('1990-12-31T23:59:59Z'));
+  });
 });

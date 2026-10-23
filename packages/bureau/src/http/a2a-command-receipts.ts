@@ -42,7 +42,8 @@ const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d
 
 /** Whether the timestamp parses and names a day that exists, which `Date.parse` rolls over. */
 function isRealDate(timestamp: string): boolean {
-  if (Number.isNaN(Date.parse(timestamp))) return false;
+  // RFC 3339 allows a leap second, which Date.parse refuses: it is judged as the second before.
+  if (Number.isNaN(Date.parse(timestamp.replace(/:60(?=[.Z+-])/, ':59')))) return false;
   const [year, month, day] = timestamp.slice(0, 10).split('-').map(Number) as [
     number,
     number,
@@ -83,7 +84,8 @@ export function readCommandReceiptsRequest(
   }
   return {
     expectedRevision,
-    deadline: deadline === undefined ? undefined : Date.parse(deadline),
+    deadline:
+      deadline === undefined ? undefined : Date.parse(deadline.replace(/:60(?=[.Z+-])/, ':59')),
   };
 }
 

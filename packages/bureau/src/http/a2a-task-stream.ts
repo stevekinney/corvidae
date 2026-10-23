@@ -344,8 +344,11 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     };
   }
   const opening: StreamResponse = { payload: { $case: 'task', value: task } };
-  yield cursor === undefined ? opening : withStreamEventCursor(opening, cursor);
-  if (isTerminal(snapshotView.status) || signal?.aborted === true) return;
+  const first = cursor === undefined ? opening : withStreamEventCursor(opening, cursor);
+  if (isTerminal(snapshotView.status) || signal?.aborted === true) {
+    yield first;
+    return;
+  }
 
   const queue = createQueue<{ event: StreamResponse; cursor?: string; ends?: boolean }>(
     options.buffer ?? A2A_STREAM_BUFFER,
@@ -513,6 +516,9 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   }
 
   try {
+    // The snapshot goes out only now, with every watcher already listening and buffering, so a
+    // change between the snapshot and the consumer's next read is not lost.
+    yield first;
     for (;;) {
       const next = await queue.next();
       if (next === undefined) return;
