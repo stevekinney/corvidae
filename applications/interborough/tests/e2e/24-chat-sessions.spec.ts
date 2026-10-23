@@ -160,9 +160,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     made.push(fireContextId);
 
     const every = await bureau<{ contexts: Context[] }>(request, 'bureau.contexts.list', {});
-    expect(every.contexts.find((context) => context.id === fireContextId)?.origin).toBe(
-      'schedule',
-    );
+    expect(every.contexts.find((context) => context.id === fireContextId)?.origin).toBe('schedule');
     // Newest first: the fire is above the chat, which is above the goal's session.
     const order = every.contexts.map((context) => context.id);
     expect(order.indexOf(fireContextId)).toBeLessThan(order.indexOf(chatId));

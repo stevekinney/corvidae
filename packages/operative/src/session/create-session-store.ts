@@ -1246,7 +1246,8 @@ export function createSessionStore(
           (s) =>
             (!listOptions?.agentName || s.agentName === listOptions.agentName) &&
             (listOptions?.owner === undefined || s.owner === listOptions.owner) &&
-            (listOptions?.origin === undefined || sessionOriginOf(s.metadata) === listOptions.origin),
+            (listOptions?.origin === undefined ||
+              sessionOriginOf(s.metadata) === listOptions.origin),
         );
 
         // Sort

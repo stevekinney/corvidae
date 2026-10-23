@@ -260,9 +260,7 @@
               {#if row.origin.session}
                 {@const session = row.origin.session}
                 ·
-                <a
-                  href={router.href(session.href)}
-                  onclick={(event) => open(event, session.href)}
+                <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
                   >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
                 >
               {/if}

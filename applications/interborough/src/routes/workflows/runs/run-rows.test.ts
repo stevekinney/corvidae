@@ -118,9 +118,9 @@ describe('the session a run ran in', () => {
       chats: [fire, chat],
     });
 
-    expect(
-      filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id),
-    ).toEqual(['run-fire']);
+    expect(filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id)).toEqual(
+      ['run-fire'],
+    );
     expect(parseRunFilter(new URLSearchParams('startedBy=schedule'))).toEqual({
       startedBy: 'schedule',
     });
