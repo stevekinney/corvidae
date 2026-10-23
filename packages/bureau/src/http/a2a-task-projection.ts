@@ -260,7 +260,7 @@ function historyMessage(wire: A2AWireMessage): Message {
 export function surfaceParts(
   surfaces: readonly InteractiveSurface[] | undefined,
   activated: ReadonlySet<string>,
-  supportedCatalogIds?: readonly string[] | undefined,
+  supportedCatalogIds?: readonly string[],
 ): Part[] {
   const shown = (surfaces ?? []).filter(
     (surface) => surface.kind === 'a2ui' && surface.representation !== null,

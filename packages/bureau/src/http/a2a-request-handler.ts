@@ -552,6 +552,24 @@ function submittedValuesOf(data: unknown, form: WaitForm): Record<string, unknow
   return data as Record<string, unknown>;
 }
 
+/**
+ * The answer an A2UI surface action stands for, or `undefined` when the message is not one. A
+ * refusal is thrown before the ledger is touched; a stale revision is typed `STALE_REVISION`.
+ */
+async function surfaceAnswerOf(
+  options: Parameters<typeof surfaceActionOf>[0],
+): Promise<TasksRespondInput | undefined> {
+  const found = await surfaceActionOf(options);
+  if (found === undefined) return undefined;
+  if (found.ok) return found.input;
+  if (found.stale === undefined) throw invalid(found.message);
+  throw new CommandReceiptError('STALE_REVISION', found.message, {
+    taskId: options.message.taskId,
+    surfaceId: found.stale.surfaceId,
+    currentRevision: String(found.stale.currentRevision),
+  });
+}
+
 /** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
 type ContinuationCommand =
   | { readonly path: 'answer'; readonly input: TasksRespondInput }
@@ -1293,21 +1311,11 @@ export function createBureauA2ARequestHandler(
         : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
     // An A2UI action on one of the task's surfaces is admitted by the surface store first; the
     // answer it stands for then travels the same path as any other answer.
-    const surfaceAction =
-      continued === undefined || path !== 'answer' || pending?.answer !== undefined
-        ? undefined
-        : await surfaceActionOf({ bureau, message, view: continued, activated });
-    if (surfaceAction?.ok === false) {
-      throw surfaceAction.stale === undefined
-        ? invalid(surfaceAction.message)
-        : new CommandReceiptError('STALE_REVISION', surfaceAction.message, {
-            taskId: message.taskId,
-            surfaceId: surfaceAction.stale.surfaceId,
-            currentRevision: String(surfaceAction.stale.currentRevision),
-          });
-    }
     const answerOwed =
-      pending?.answer ?? (surfaceAction?.ok === true ? surfaceAction.input : undefined);
+      continued === undefined || path !== 'answer'
+        ? undefined
+        : (pending?.answer ??
+          (await surfaceAnswerOf({ bureau, message, view: continued, activated })));
     const command: ContinuationCommand | undefined =
       answerOwed !== undefined
         ? { path: 'answer', input: answerOwed }
