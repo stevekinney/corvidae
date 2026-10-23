@@ -270,6 +270,17 @@
     !loadFailed && !noProvider && editor === undefined && invalidAgent === undefined,
   );
 
+  /**
+   * The header holds the delete only for a file the form cannot show, and only once the page knows
+   * that is the state it is in: not while the catalog is still being read, and not when it failed.
+   */
+  const deleteInHeader = $derived(
+    currentHash !== null &&
+      editor === undefined &&
+      !loadFailed &&
+      (invalidAgent !== undefined || noProvider),
+  );
+
   /** Reads the catalog and the host's paths again, so a provider added since shows its models. */
   function reloadProviders(): void {
     void catalog.refetch();
@@ -281,7 +292,7 @@
   <PageHeader title={heading} headingLevel={1}>
     {#snippet actions()}
       <!-- With the form on screen, its footer holds the delete; a file the form cannot show keeps it here. -->
-      {#if currentHash !== null && editor === undefined}
+      {#if deleteInHeader}
         <Button variant="danger" disabled={busy} onclick={() => (confirmingDelete = true)}>
           {copy.deleteAction}
         </Button>
@@ -366,7 +377,9 @@
   {/if}
 
   {#if agentId !== undefined && !loadFailed}
-    <AgentRevisionHistory id={agentId} />
+    <div class="weft-agent-editor__history">
+      <AgentRevisionHistory id={agentId} />
+    </div>
   {/if}
 </div>
 
@@ -389,6 +402,15 @@
   /* The outlet pads the page, so Cinder's page header sits flush with the form under it. */
   .weft-agent-editor :global(.cinder-page-header__row) {
     padding-inline: 0;
+  }
+
+  /*
+   * The form's footer reaches down through the outlet's bottom padding (`--cinder-space-6`) so it
+   * can sit on the outlet's edge. What follows the form starts that far lower, which leaves the
+   * page's own gap between the footer and the history instead of the history under the footer.
+   */
+  .weft-agent-editor__history {
+    margin-block-start: var(--cinder-space-6);
   }
 
   .weft-agent-editor__path {

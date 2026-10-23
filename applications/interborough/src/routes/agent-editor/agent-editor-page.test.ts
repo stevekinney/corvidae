@@ -580,6 +580,54 @@ describe('deleting an agent', () => {
   });
 });
 
+describe('the delete in the page header', () => {
+  const deleteButton = { name: AGENT_EDITOR_COPY.deleteAction };
+
+  test('is not shown while the catalog is still being read, and the footer holds it once the form is built', async () => {
+    const calls = bureau();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    calls.on('bureau.agents.catalog', async () => {
+      await held;
+      return catalogFixture();
+    });
+    const { findByRole, queryAllByRole, container } = mountEditor('researcher');
+
+    try {
+      // The agent has arrived and the catalog has not: the page does not know yet which state it is in.
+      await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.get')).toHaveLength(1));
+      await waitFor(() => expect(container.querySelector('[role="status"]')).not.toBeNull());
+      expect(queryAllByRole('button', deleteButton).length).toBe(0);
+    } finally {
+      // A failed assertion must not leave the catalog held, or the test never ends.
+      release();
+    }
+    await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
+    // One delete, in the form's footer, not a second one in the header.
+    expect(queryAllByRole('button', deleteButton).length).toBe(1);
+    expect(container.querySelector('.weft-agent-form__footer')?.textContent).toContain(
+      AGENT_EDITOR_COPY.deleteAction,
+    );
+  });
+
+  test('is not shown when the catalog cannot be read', async () => {
+    const calls = bureau();
+    calls.on('bureau.agents.catalog', () => {
+      throw new StubFault('EngineFailure', 500, 'The Bureau is down.');
+    });
+    const { findByText, queryAllByRole } = mountEditor('researcher');
+    expect(await findByText(AGENT_EDITOR_COPY.loadFailed.title)).not.toBeNull();
+    expect(queryAllByRole('button', deleteButton).length).toBe(0);
+  });
+
+  test('is shown for an existing agent when no provider means the form cannot be', async () => {
+    bureau({ catalog: catalogFixture({ models: [] }) });
+    const { findByRole, queryAllByRole } = mountEditor('researcher');
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    expect(queryAllByRole('button', deleteButton).length).toBe(1);
+  });
+});
+
 describe('a file the Bureau cannot use', () => {
   const invalid = readyAgent({
     state: 'invalid',

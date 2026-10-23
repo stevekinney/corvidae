@@ -48,6 +48,21 @@ function editor(page: Page) {
   return page.locator('[data-view="agent-editor"]');
 }
 
+/**
+ * Nothing on the page scrolls sideways. The shell clips the document (`.weft-shell` is
+ * `overflow: hidden`), so a page that is too wide scrolls the outlet instead and a measurement of
+ * the document passes; the outlet is what must not overflow, as in `15-view-states.spec.ts`.
+ */
+async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> {
+  const outlet = await page.locator('main.weft-shell-outlet').evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(outlet.scrollWidth, `${where} scrolls the outlet sideways`).toBeLessThanOrEqual(
+    outlet.clientWidth,
+  );
+}
+
 const copy = AGENT_EDITOR_COPY;
 
 test.describe('a new agent', () => {
@@ -169,10 +184,7 @@ test.describe('a new agent', () => {
 
       await row.getByRole('button', { name: copy.toolDisclosure }).click();
       await expect(row.getByTestId('agent-tool-full')).toHaveText(created?.description ?? '');
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-        'no horizontal scroll',
-      ).toBe(true);
+      await expectNoSidewaysScroll(page, 'the form with a tool opened');
       await checkA11y(`new agent with a tool opened at ${width}px`);
     });
   }
@@ -251,10 +263,7 @@ test.describe('a new agent on a host with no model provider', () => {
       await expect(editor(page).getByRole('combobox')).toHaveCount(0);
       await expect(editor(page).getByRole('checkbox')).toHaveCount(0);
       await expect(page.getByRole('button', { name: copy.createAction })).toHaveCount(0);
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-        'no horizontal scroll',
-      ).toBe(true);
+      await expectNoSidewaysScroll(page, 'the no-provider state');
       await checkA11y(`new agent with no provider at ${width}px`);
 
       // Reloading asks again; there is still no provider, so the state stays.
@@ -293,6 +302,21 @@ test.describe('an agent that exists', () => {
         page.getByRole('heading', { level: 2, name: copy.revisions.heading }),
       ).toBeVisible();
       await expect(page.getByTestId('agent-revisions-empty')).toHaveText(copy.revisions.empty);
+      await expectNoSidewaysScroll(page, 'the edit page');
+
+      // The footer sticks to the foot of the outlet, so scrolled all the way down the revision
+      // history must start below it, not under its last pixels.
+      await page
+        .locator('main.weft-shell-outlet')
+        .evaluate((element) => void (element.scrollTop = element.scrollHeight));
+      const footer = await page.locator('.weft-agent-form__footer').boundingBox();
+      const history = await page.locator('.weft-agent-revisions').boundingBox();
+      expect(footer, 'the footer is on the page').not.toBeNull();
+      expect(history, 'the revision history is on the page').not.toBeNull();
+      expect(
+        history?.y ?? 0,
+        'the revision history starts below the footer, not under it',
+      ).toBeGreaterThanOrEqual((footer?.y ?? 0) + (footer?.height ?? 0));
       await checkA11y(`edit agent at ${width}px`);
 
       await page.getByRole('textbox', { name: /^Instructions/ }).fill('Edited in the browser.');
