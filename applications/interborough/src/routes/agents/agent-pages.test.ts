@@ -42,6 +42,7 @@ describe('the list of agents', () => {
     id,
     agentName,
     updatedAt,
+    origin: 'chat' as 'chat' | 'goal' | 'schedule',
   });
 
   test('shows each agent’s model, tools and use, badges only one that is not published, and offers New chat only for a published one', async () => {
@@ -67,12 +68,18 @@ describe('the list of agents', () => {
           instructions: '',
         },
       }),
-      'bureau.contexts.list': () => ({
+      // The Bureau filters by origin before it pages, so a goal's or a schedule's session is in
+      // the count only when the request asks for them.
+      'bureau.contexts.list': (params) => ({
         contexts: [
           chat('session-1', 'assistant', '2026-10-19T09:00:00.000Z'),
           chat('session-2', 'assistant', recently),
           chat('session-3', 'researcher', '2026-10-18T09:00:00.000Z'),
-        ],
+          { ...chat('goal-session', 'assistant', recently), origin: 'goal' as const },
+          { ...chat('fire-session', 'researcher', recently), origin: 'schedule' as const },
+        ].filter(
+          (context) => params['origin'] === undefined || context.origin === params['origin'],
+        ),
         nextOffset: null,
       }),
     });
@@ -102,6 +109,10 @@ describe('the list of agents', () => {
       'Last chat 3m ago',
     );
     expect(text('researcher')).toContain('1 chat');
+    // Only the chats a person started are counted, asked of the Bureau so it filters before paging.
+    const listed = served.calls.filter((call) => call.method === 'bureau.contexts.list');
+    expect(listed.length).toBeGreaterThan(0);
+    for (const call of listed) expect(call.params).toMatchObject({ origin: 'chat' });
     expect(rows('internal')?.querySelector('[data-testid="agent-chat-count"]')?.textContent).toBe(
       'No chats yet',
     );
@@ -384,7 +395,7 @@ describe('one agent’s page', () => {
     await findByText('Plan the week');
     expect(
       served.calls.find((call) => call.method === 'bureau.contexts.list')?.params,
-    ).toMatchObject({ agentName: 'researcher' });
+    ).toMatchObject({ agentName: 'researcher', origin: 'chat' });
   });
 
   test('shows two skills that share a name, which only their identifiers tell apart', async () => {

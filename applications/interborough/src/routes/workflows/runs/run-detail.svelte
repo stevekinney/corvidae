@@ -27,6 +27,7 @@
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
     getTask,
+    isScheduleFire,
     isTerminalState,
     type TaskCleanup,
     type TaskView,
@@ -262,9 +263,7 @@
         </div>
         <p class="ib-run__origin">
           {#if chat.isSuccess}
-            {chat.data.origin === 'schedule'
-              ? TASK_COPY.startedFromSchedule
-              : TASK_COPY.startedFromChat}
+            {isScheduleFire(current) ? TASK_COPY.startedFromSchedule : TASK_COPY.startedFromChat}
             <a
               href={router.href(chatSessionPath(current.contextId))}
               onclick={(event) => {
@@ -280,6 +279,8 @@
                 router.navigate(chatSessionPath(current.contextId));
               }}>{chat.data.title ?? TASK_COPY.untitledChat}</a
             >
+          {:else if isScheduleFire(current)}
+            {TASK_COPY.startedFromSchedule}
           {:else}
             {TASK_COPY.startedDirectly}
           {/if}

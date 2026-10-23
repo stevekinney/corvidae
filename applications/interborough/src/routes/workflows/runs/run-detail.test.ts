@@ -17,7 +17,7 @@ import {
   taskFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
-import type { TaskView } from '../../../lib/bureau-tasks.ts';
+import { SCHEDULER_ACTOR, type TaskView } from '../../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -100,7 +100,14 @@ describe('where a run came from', () => {
 
   test('a run a schedule’s fire started is said so, and opens the session rather than a chat', async () => {
     const view = open('/runs/run-1', {
-      tasks: [taskFixture({ id: 'run-1', contextId: 'fire-1', agentName: 'echo' })],
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          contextId: 'fire-1',
+          agentName: 'echo',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
     });
     stub?.on('bureau.contexts.get', () => ({
       ...contextDetailFixture('fire-1', { title: 'Daily summary' }),
@@ -114,6 +121,42 @@ describe('where a run came from', () => {
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
     expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('fire-1');
+  });
+
+  test('a fire that continued a chat session is still said to be a schedule’s', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          contextId: 'chat-1',
+          agentName: 'echo',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
+    });
+    stub?.on('bureau.contexts.get', () => ({
+      ...contextDetailFixture('chat-1', { title: 'Refund order 1234' }),
+      origin: 'chat',
+    }));
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
+    );
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedFromChat);
+  });
+
+  test('a run a person started in a session a schedule created is said to be from a chat', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', contextId: 'fire-1', agentName: 'echo' })],
+    });
+    stub?.on('bureau.contexts.get', () => ({
+      ...contextDetailFixture('fire-1', { title: 'Daily summary' }),
+      origin: 'schedule',
+    }));
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromChat),
+    );
   });
 
   test('a run no chat has is said to have started directly, and an unnamed agent is “An agent”', async () => {

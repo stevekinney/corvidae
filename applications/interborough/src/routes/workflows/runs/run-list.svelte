@@ -244,13 +244,16 @@
                 >{row.origin.title === '' ? TASK_COPY.untitledChat : row.origin.title}</a
               >
             {:else if row.origin.kind === 'schedule'}
-              <a
-                href={router.href(row.origin.href)}
-                onclick={(event) =>
-                  open(event, row.origin.kind === 'schedule' ? row.origin.href : '')}
-                >{row.origin.title === '' ? TASK_COPY.untitledChat : row.origin.title}</a
-              >
-              ({TASK_COPY.schedule})
+              {@const scheduled = row.origin}
+              {#if scheduled.href === null}
+                {TASK_COPY.schedule}
+              {:else}
+                {@const href = scheduled.href}
+                <a href={router.href(href)} onclick={(event) => open(event, href)}
+                  >{scheduled.title === '' ? TASK_COPY.untitledChat : scheduled.title}</a
+                >
+                ({TASK_COPY.schedule})
+              {/if}
             {:else if row.origin.kind === 'goal'}
               <a
                 href={router.href(row.origin.href)}

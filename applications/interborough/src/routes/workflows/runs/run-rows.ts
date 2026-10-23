@@ -7,12 +7,17 @@
  *
  * A run's session is not listed on `/chat` when a goal or a schedule's fire started it (the
  * session's `origin`), so this list is where it is reached: a goal's row and a fire's row each link
- * to the session the run ran in, while the session still exists.
+ * to the session the run ran in.
  */
 import { TASK_COPY } from '../../../app/copy.ts';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
-import { isTerminalState, type TaskState, type TaskView } from '../../../lib/bureau-tasks.ts';
+import {
+  isScheduleFire,
+  isTerminalState,
+  type TaskState,
+  type TaskView,
+} from '../../../lib/bureau-tasks.ts';
 import { chatSessionPath } from '../../../lib/identifier-paths.ts';
 
 export type RunOrigin =
@@ -24,8 +29,12 @@ export type RunOrigin =
       readonly href: string;
       readonly session: { readonly title: string; readonly href: string } | null;
     }
-  /** A schedule's fire: the session it ran in, named by the text the schedule delivered. */
-  | { readonly kind: 'schedule'; readonly title: string; readonly href: string }
+  /**
+   * A schedule's fire (the task's own `actor`, not the session's origin, which a fire that
+   * continues a chat keeps as `chat`): the session it ran in, named by the text the schedule
+   * delivered, or no link when the Bureau no longer has the session.
+   */
+  | { readonly kind: 'schedule'; readonly title: string; readonly href: string | null }
   | { readonly kind: 'none' };
 
 export type RunRow = {
@@ -79,6 +88,18 @@ function waitSummary(task: TaskView): string {
   return wait.kind === 'tool-approval' ? TASK_COPY.waiting.approval : TASK_COPY.waiting.answer;
 }
 
+function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
+  // The task says what started it. A schedule may continue a chat session, which keeps its `chat`
+  // origin, so the session cannot be asked.
+  if (isScheduleFire(task)) {
+    return chat === undefined
+      ? { kind: 'schedule', title: '', href: null }
+      : { kind: 'schedule', title: chat.title ?? '', href: chatSessionPath(chat.id) };
+  }
+  if (chat === undefined) return { kind: 'none' };
+  return { kind: 'chat', title: chat.title ?? '', href: chatSessionPath(chat.id) };
+}
+
 function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRow {
   const chat = chats.get(task.contextId);
   const startedAt = Date.parse(task.createdAt);
@@ -93,15 +114,7 @@ function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRo
     id: task.id,
     agentName: task.agentName,
     status: task.status,
-    origin:
-      chat === undefined
-        ? { kind: 'none' }
-        : {
-            // A fire's session is the schedule's, not a chat a person started.
-            kind: chat.origin === 'schedule' ? 'schedule' : 'chat',
-            title: chat.title ?? '',
-            href: chatSessionPath(chat.id),
-          },
+    origin: taskOrigin(task, chat),
     summary,
     startedAt,
     updatedAt,
@@ -121,7 +134,10 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
   return goal.attempts.map((attempt) => {
     const startedAt = Date.parse(attempt.startedAt);
     const completedAt = attempt.completedAt === null ? null : Date.parse(attempt.completedAt);
-    const session = chats.get(attempt.sessionId);
+    // The link comes from the attempt itself: for a principal with operator reach the goals are
+    // every owner's, and the sessions listed are only the caller's. `bureau.contexts.get` decides
+    // whether the session opens.
+    const title = chats.get(attempt.sessionId)?.title ?? '';
     return {
       id: attempt.runId,
       agentName: goal.agentName,
@@ -131,9 +147,7 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
         name: goal.goalRunId,
         href: '/goals',
         session:
-          session === undefined
-            ? null
-            : { title: session.title ?? '', href: chatSessionPath(session.id) },
+          attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
       },
       summary: attempt.status === 'passed' ? '' : (attempt.finishReason ?? ''),
       startedAt,

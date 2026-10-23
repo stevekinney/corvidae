@@ -356,7 +356,7 @@ describe('the lists and details the chat and agents views read', () => {
     expect(page.contexts.map((context) => context.origin)).toEqual(['goal', 'chat']);
   });
 
-  test('listContexts refuses an origin that is none of the three', async () => {
+  test('listContexts keeps a session whose origin it does not know, as one that is not a chat', async () => {
     const stub = answering(
       result({
         contexts: [
@@ -364,10 +364,11 @@ describe('the lists and details the chat and agents views read', () => {
             id: 'c1',
             owner: null,
             agentName: 'assistant',
-            title: null,
+            title: 'Kept',
             lastMessagePreview: null,
             parentContextId: null,
             forkedFromMessageId: null,
+            // A Bureau newer than this browser may name a fourth way to start a session.
             origin: 'cron',
             messageCount: 0,
             createdAt: '2026-10-19T00:00:00.000Z',
@@ -379,9 +380,9 @@ describe('the lists and details the chat and agents views read', () => {
       }),
     );
 
-    const error = await failureOf(withStub(stub.fetch, () => listContexts()));
+    const page = await withStub(stub.fetch, () => listContexts());
 
-    expect(String(error)).toContain('origin');
+    expect(page.contexts.map((context) => [context.id, context.origin])).toEqual([['c1', 'other']]);
   });
 
   test('listContexts refuses a page that is not one', async () => {
