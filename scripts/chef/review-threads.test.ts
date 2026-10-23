@@ -417,7 +417,7 @@ function asThread(fake: FakeThread): ReviewThread {
 describe('defect classes', () => {
   const classes = loadDefectClasses();
 
-  test('the shipped file defines the nine classes with valid patterns', () => {
+  test('the shipped file defines the ten classes with valid patterns', () => {
     expect(classes.map((defectClass) => defectClass.name)).toEqual([
       'adapter-drop',
       'pre-commit-exposure',
@@ -428,6 +428,7 @@ describe('defect classes', () => {
       'boundary-validation',
       'unsnapshotted-input',
       'spec-contradiction',
+      'state-machine',
     ]);
     for (const defectClass of classes) {
       expect(defectClass.description).not.toBe('');
@@ -437,6 +438,10 @@ describe('defect classes', () => {
 
   test('each class tags its own typical finding, case-insensitively', () => {
     const findings: [string, string][] = [
+      [
+        'state-machine',
+        'A retry after the task already settled runs the shutdown path twice, and the run never leaves its running state.',
+      ],
       ['adapter-drop', 'The projection DROPS the metadata field when it maps to the wire format.'],
       ['pre-commit-exposure', 'This publishes the event before the transaction commits.'],
       ['unfenced-check-then-act', 'A classic check-then-act race: two callers can both pass.'],
