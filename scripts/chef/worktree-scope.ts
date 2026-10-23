@@ -156,6 +156,16 @@ function currentHead(root: string): string {
   return runGit(root, ['rev-parse', 'HEAD']).toString('utf8').trim();
 }
 
+/** Whether `ancestor` is reachable from `head`, so `head` only moved forward from it. */
+function descendsFrom(root: string, head: string, ancestor: string): boolean {
+  try {
+    runGit(root, ['merge-base', '--is-ancestor', ancestor, head]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function assertNoSubmodules(root: string, listed: string[]) {
   const staged = splitNull(runGit(root, ['ls-files', '-z', '--stage']));
   for (const record of staged) {
@@ -337,8 +347,13 @@ export function verify(config: ScopeConfiguration, before: ScopeEvidence): Scope
     );
   }
   const head = currentHead(normalized.root);
-  if (head !== before.head) {
-    errors.push(`HEAD differs from the captured baseline: ${head} vs ${before.head}`);
+  // A worker in a dedicated worktree commits its own work, so HEAD moving forward from the capture
+  // is expected; the inventory below still compares every file's content, committed or not. Only a
+  // HEAD that does not descend from the capture (a reset, a checkout of another branch) is an error.
+  if (head !== before.head && !descendsFrom(normalized.root, head, before.head)) {
+    errors.push(
+      `HEAD does not descend from the captured baseline: ${head} is not after ${before.head}`,
+    );
   }
 
   const beforeByPath = new Map(before.entries.map((entry) => [entry.path, entry]));

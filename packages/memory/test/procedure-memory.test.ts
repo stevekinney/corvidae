@@ -24,6 +24,7 @@ import {
   type ProcedureValidator,
   promoteProcedure,
 } from '../src/procedure-promotion';
+import { retrieveProcedures } from '../src/procedure-retrieval';
 import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   createTransitionEngine,
@@ -971,5 +972,227 @@ describe('procedure payload versions (COR-770)', () => {
     });
     expect(procedurePayload.safeParse(reviewed('user')).success).toBe(true);
     expect(procedurePayload.safeParse(reviewed('agent')).success).toBe(false);
+  });
+});
+
+describe('procedure retrieval (COR-770)', () => {
+  const searcher = makeWriteAuthority({
+    capabilities: ['memory:write', 'memory:revoke', 'memory:search'],
+  });
+  let harness: TransitionHarness;
+
+  async function promoted(id: string, overrides: Partial<ProcedureDraft> = {}, seed = id) {
+    const evidence = makeInlineEvidence(`run-${seed}`, { text: `Run ${seed} transcript.` });
+    await harness.storage.commit({
+      tenantId: TENANT,
+      evidence: [evidence],
+      projections: [episode(`episode-${seed}`, evidence, `Run ${seed} worked.`)],
+    });
+    const candidate = await extractProcedureCandidate({
+      storage: harness.storage,
+      tenantId: TENANT,
+      namespace: NAMESPACE,
+      draft: draft(overrides),
+      successfulEpisodes: [{ id: `episode-${seed}`, revision: 1 }],
+    });
+    const promotion = await promoteProcedure({
+      engine: harness.engine,
+      authority: searcher,
+      candidate,
+      id,
+      operationId: `promote-${id}`,
+      projectorRevision: 'procedure-projector:1',
+      validator: validator(),
+    });
+    expect(promotion.status).toBe('promoted');
+  }
+
+  const retrieve = (overrides: Partial<Parameters<typeof retrieveProcedures>[0]> = {}) =>
+    retrieveProcedures({
+      storage: harness.storage,
+      authority: searcher,
+      namespace: NAMESPACE,
+      query: 'rotate the staging certificate',
+      environment: [{ name: 'certbot', version: '2.11.4' }],
+      capabilities: ['tools:execute'],
+      now: harness.clock.now,
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    harness = createHarness(TRANSITION_BACKENDS[0]![1]);
+  });
+
+  it('returns a fitting procedure with its proof, freshness, confidence, and known failures', async () => {
+    await promoted('procedure-1');
+    const retrieval = await retrieve();
+    expect(retrieval.matches).toHaveLength(1);
+    const [match] = retrieval.matches;
+    expect(match).toMatchObject({
+      procedure: { id: 'procedure-1', revision: 1 },
+      status: 'active',
+      proof: { validation: { outcome: 'passed', evaluator: { name: 'replay' } } },
+      knownFailures: [{ signature: 'rate limit exceeded' }],
+      confidence: 0.5,
+    });
+    expect(match?.proof.sources.map((source) => source.evidenceId)).toEqual(['run-procedure-1']);
+    expect(match?.freshness.ageMilliseconds).toBe(0);
+  });
+
+  it('filters by environment version and capabilities before scoring, with a reason for each', async () => {
+    await promoted('procedure-1');
+    await promoted(
+      'procedure-2',
+      { title: 'Rotate with the new client', environment: [{ name: 'certbot', version: '3.0' }] },
+      'b',
+    );
+    await promoted(
+      'procedure-3',
+      { title: 'Rotate with a privileged key', requiredCapabilities: ['secrets:read'] },
+      'c',
+    );
+    const retrieval = await retrieve();
+    expect(retrieval.matches.map((match) => match.procedure.id)).toEqual(['procedure-1']);
+    expect(
+      Object.fromEntries(retrieval.exclusions.map((item) => [item.procedure.id, item.reason])),
+    ).toEqual({
+      'procedure-2': 'environment-mismatch',
+      'procedure-3': 'capability-missing',
+    });
+    const missing = await retrieve({ environment: [] });
+    expect(missing.exclusions.map((item) => item.reason)).toContain('environment-missing');
+  });
+
+  it('finds a procedure by a known failure signature, and leaves out one whose preconditions do not hold', async () => {
+    await promoted('procedure-1');
+    const bySignature = await retrieve({ query: 'rate limit exceeded' });
+    expect(bySignature.matches.map((match) => match.procedure.id)).toEqual(['procedure-1']);
+    const unmet = await retrieve({ satisfiedPreconditions: [] });
+    expect(unmet.exclusions.map((item) => item.reason)).toEqual(['precondition-unmet']);
+  });
+
+  it('excludes a quarantined or revoked procedure, and ranks a demoted one with its lineage', async () => {
+    await promoted('procedure-1');
+    await promoted('procedure-2', { title: 'Rotate the staging certificate twice' }, 'b');
+    harness.clock.advance(1000);
+    await retireProcedure({
+      engine: harness.engine,
+      authority: searcher,
+      namespace: NAMESPACE,
+      procedure: { id: 'procedure-1', revision: 1 },
+      operationId: 'quarantine-1',
+      change: 'quarantine',
+      reason: 'suspected-poisoning',
+    });
+    await recordProcedureOutcome({
+      engine: harness.engine,
+      authority: searcher,
+      namespace: NAMESPACE,
+      procedure: { id: 'procedure-2', revision: 1 },
+      operationId: 'outcome-2',
+      episodeId: 'episode-failure-2',
+      outcome: 'failed',
+      summary: 'It hit the rate limit.',
+      projectorRevision: 'episode-projector:1',
+      at: harness.clock.now(),
+    });
+    const retrieval = await retrieve();
+    expect(retrieval.matches.map((match) => [match.procedure.id, match.status])).toEqual([
+      ['procedure-2', 'demoted'],
+    ]);
+    expect(retrieval.matches[0]?.lineage).toEqual({
+      demotedBy: { id: 'episode-failure-2', revision: 1 },
+    });
+  });
+
+  it('reports a rebuilt replacement with the revision it replaced', async () => {
+    await promoted('procedure-1');
+    harness.clock.advance(1000);
+    const candidate = await extractProcedureCandidate({
+      storage: harness.storage,
+      tenantId: TENANT,
+      namespace: NAMESPACE,
+      draft: draft(),
+      successfulEpisodes: [{ id: 'episode-procedure-1', revision: 1 }],
+    });
+    await promoteProcedure({
+      engine: harness.engine,
+      authority: searcher,
+      candidate,
+      id: 'procedure-1',
+      operationId: 'replace-1',
+      projectorRevision: 'procedure-projector:1',
+      validator: validator(),
+      replaces: 1,
+    });
+    const replaced = await retrieve();
+    const [match] = replaced.matches;
+    expect(match).toMatchObject({ procedure: { revision: 2 }, lineage: { replaces: 1 } });
+    expect(match?.freshness.ageMilliseconds).toBe(0);
+  });
+
+  it('returns nothing to a caller that may not search', async () => {
+    await promoted('procedure-1');
+    expect(await retrieve({ authority: makeWriteAuthority() })).toEqual({
+      matches: [],
+      exclusions: [],
+      stopReason: 'unavailable',
+    });
+  });
+
+  it('reports a demotion on a retried failure that already committed it', async () => {
+    await promoted('procedure-1');
+    const outcome = {
+      engine: harness.engine,
+      authority: searcher,
+      namespace: NAMESPACE,
+      procedure: { id: 'procedure-1', revision: 1 },
+      operationId: 'outcome-1',
+      episodeId: 'episode-failure-1',
+      outcome: 'failed' as const,
+      summary: 'It failed.',
+      projectorRevision: 'episode-projector:1',
+      at: harness.clock.now(),
+    };
+    const first = await recordProcedureOutcome(outcome);
+    expect(first.demoted).toBe(true);
+    harness.clock.advance(5000);
+    const retried = await recordProcedureOutcome(outcome);
+    expect(retried.demoted).toBe(true);
+    expect(
+      retried.results.every((result) => result.outcome === 'committed' && result.replayed),
+    ).toBe(true);
+
+    // A demotion revised later still replays from its receipt.
+    await retireProcedure({
+      engine: harness.engine,
+      authority: searcher,
+      namespace: NAMESPACE,
+      procedure: { id: 'procedure-1', revision: 2 },
+      operationId: 'revoke-after-demotion',
+      change: 'revoke',
+      reason: 'superseded',
+    });
+    const afterRevocation = await recordProcedureOutcome(outcome);
+    expect(afterRevocation.demoted).toBe(true);
+    expect(afterRevocation.results).toHaveLength(3);
+  });
+
+  it('fits a dependency the environment lists more than once, by any of its versions', async () => {
+    await promoted('procedure-1');
+    const retrieval = await retrieve({
+      environment: [
+        { name: 'certbot', version: '2.10.1' },
+        { name: 'certbot', version: '2.11.4' },
+      ],
+    });
+    expect(retrieval.matches.map((match) => match.procedure.id)).toEqual(['procedure-1']);
+  });
+
+  it('refuses a limit that is not a positive integer', async () => {
+    for (const limit of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN]) {
+      const error = await rejectionOf(retrieve({ limit }));
+      expect(error).toBeInstanceOf(RangeError);
+    }
   });
 });

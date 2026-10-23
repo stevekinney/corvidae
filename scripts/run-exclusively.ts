@@ -42,6 +42,14 @@
  * defaults. `bun run check`, the per-pull-request gate, uses it: it checks only the affected
  * workspaces, so parallel sessions run it side by side rather than queue behind a full validate.
  *
+ * A shared run has no queue, so nothing stops a dozen of them starting together and loading the
+ * host past the point where tests time out at random. Before it runs, it therefore backs off while
+ * the one-minute load average is above twice the processor count: it polls every 15 seconds,
+ * prints one `shared run waiting for load <x> to fall below <y>` line each time the observed load
+ * changes, and gives up waiting after 20 minutes, since a host that stays busy that long will not
+ * get quieter by waiting longer. The load reader, the clock, and the sleep are injectable. A
+ * locked run never reads the load: the lock already serializes it.
+ *
  * Usage: `bun scripts/run-exclusively.ts [--shared] '<shell command>' [arguments...]`. Arguments
  * reach the command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes
  * them.
@@ -49,7 +57,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
-import { constants, cpus, totalmem } from 'node:os';
+import { constants, cpus, loadavg, totalmem } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
 import { rootScriptEnvironment } from './environment-configuration';
@@ -447,7 +455,59 @@ async function waitForTurn(
   }
 }
 
-export type RunExclusivelyOptions = {
+/** How often a shared run that is backing off from a loaded host reads the load again. */
+export const loadPollIntervalMs = 15_000;
+
+/** The longest a shared run waits for the load to fall before it runs anyway. */
+export const loadWaitLimitMs = 20 * 60 * 1000;
+
+/** A shared run waits while the one-minute load average is above this many times the processors. */
+export const loadPerProcessorLimit = 2;
+
+export type LoadBackoffOptions = {
+  /** The one-minute load average; defaults to the host's. */
+  readonly loadAverage?: () => number;
+  /** The processor count the limit scales with; defaults to the host's. */
+  readonly processors?: number;
+  /** Milliseconds on a monotonic or fake clock; defaults to `Date.now`. */
+  readonly now?: () => number;
+  /** Resolves after `milliseconds`; defaults to a timer. */
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly report?: (line: string) => void;
+};
+
+/**
+ * Waits while the one-minute load average is above `processors × 2`, polling every 15 seconds for
+ * at most 20 minutes, and prints a line each time the observed load changes. Resolves once the
+ * load is at or below the limit or the limit on waiting is reached, whichever comes first.
+ */
+export async function waitForLowLoad(options: LoadBackoffOptions = {}): Promise<void> {
+  const loadAverage = options.loadAverage ?? (() => loadavg()[0] ?? 0);
+  const limit = (options.processors ?? cpus().length) * loadPerProcessorLimit;
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((milliseconds: number) => delay(milliseconds, undefined));
+  const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
+  const startedAt = now();
+  let lastReported: string | undefined;
+  for (;;) {
+    const load = loadAverage();
+    if (load <= limit) return;
+    if (now() - startedAt >= loadWaitLimitMs) {
+      report(
+        `run-exclusively: load ${load.toFixed(2)} is still above ${limit.toFixed(2)} after ${loadWaitLimitMs / 60_000} minutes; running anyway`,
+      );
+      return;
+    }
+    const line = `run-exclusively: shared run waiting for load ${load.toFixed(2)} to fall below ${limit.toFixed(2)}`;
+    if (line !== lastReported) {
+      lastReported = line;
+      report(line);
+    }
+    await sleep(loadPollIntervalMs);
+  }
+}
+
+export type RunExclusivelyOptions = LoadBackoffOptions & {
   /** Resolving it may fail; the command then runs without the lock rather than not at all. */
   readonly lockDirectory: string | Promise<string>;
   readonly script: string;
@@ -500,7 +560,10 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
   let lock: HeldHostLock | undefined;
   const environment = options.environment ?? rootScriptEnvironment();
   try {
-    if (options.shared) return await runInProcessGroup(options, undefined, report, undefined);
+    if (options.shared) {
+      await waitForLowLoad({ ...options, report });
+      return await runInProcessGroup(options, undefined, report, undefined);
+    }
     const lockDirectory = await options.lockDirectory;
     // A parent run that already holds the lock exported its token; a stage it started reuses the
     // lock rather than queueing behind its own parent.
