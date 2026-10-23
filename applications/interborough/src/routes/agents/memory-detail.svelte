@@ -202,6 +202,15 @@
     gap: var(--cinder-space-2);
   }
 
+  .weft-memory-detail__alert-title {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .weft-memory-detail__alert-body {
+    margin: var(--cinder-space-1) 0;
+  }
+
   .weft-memory-detail__code {
     font-family: var(--cinder-font-mono);
   }

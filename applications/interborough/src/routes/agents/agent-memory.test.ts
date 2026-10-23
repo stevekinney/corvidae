@@ -183,7 +183,7 @@ describe('the list and the search', () => {
     await findByText(`${MEMORY_COPY.relevance}: 0.80`);
     expect(queryByText(AISLE.content)).toBeNull();
     // The count says what the Bureau ranked, and the word searched for is marked in the text.
-    expect(textOf(getByTestId('memory-match-count'))).toBe(MEMORY_COPY.closest(1, 'window'));
+    expect(textOf(getByTestId('memory-match-count'))).toBe(MEMORY_COPY.matchCount(1, 2, false));
     expect(container.querySelector('mark')?.textContent).toBe('window');
     expect(served.callsTo('bureau.memory.search')[0]?.params).toEqual({
       agentId: 'assistant',
@@ -196,8 +196,58 @@ describe('the list and the search', () => {
     expect(queryByText(new RegExp(MEMORY_COPY.relevance))).toBeNull();
   });
 
-  test('says no memory matches an empty search, and lists everything again from its action', async () => {
-    bureau();
+  test('counts only the memories with a relevance above zero, and says how many of the agent’s there are', async () => {
+    // The Bureau ranks every memory and has no score floor: a memory that shares nothing with the
+    // query comes back with a relevance of 0, and is not a match.
+    bureau({
+      'bureau.memory.search': () => ({
+        hits: [
+          { memory: WINDOW, score: 0.8 },
+          { memory: AISLE, score: 0 },
+        ],
+      }),
+    });
+    const { findByText, getByRole, getByLabelText, getByTestId, queryByText } = open();
+    await findByText(AISLE.content);
+
+    await fireEvent.input(getByLabelText(MEMORY_COPY.searchLabel), { target: { value: 'window' } });
+    await fireEvent.click(getByRole('button', { name: MEMORY_COPY.searchAction }));
+
+    await findByText(`${MEMORY_COPY.relevance}: 0.80`);
+    expect(queryByText(AISLE.content)).toBeNull();
+    expect(textOf(getByTestId('memory-match-count'))).toBe('1 of 2 memories match');
+  });
+
+  test('says how many match without a total while the agent’s list has pages left, and that more may', async () => {
+    bureau({
+      'bureau.memory.list': () => ({ memories: [AISLE, WINDOW], nextOffset: 2 }),
+      'bureau.memory.search': () => ({
+        hits: Array.from({ length: 20 }, (_, index) => ({
+          memory: { ...AISLE, id: `memory-${index}`, content: `Match ${index}` },
+          score: 0.5,
+        })),
+      }),
+    });
+    const { findByText, getByRole, getByLabelText, getByTestId } = open();
+    await findByText(AISLE.content);
+
+    await fireEvent.input(getByLabelText(MEMORY_COPY.searchLabel), { target: { value: 'match' } });
+    await fireEvent.click(getByRole('button', { name: MEMORY_COPY.searchAction }));
+
+    await waitFor(() =>
+      expect(textOf(getByTestId('memory-match-count'))).toBe('20+ memories match'),
+    );
+  });
+
+  test('says no memory matches when every memory ranks at zero, and lists everything again from its action', async () => {
+    bureau({
+      'bureau.memory.search': () => ({
+        hits: [
+          { memory: AISLE, score: 0 },
+          { memory: WINDOW, score: 0 },
+        ],
+      }),
+    });
     const { findByText, getByRole, getByLabelText, getByTestId, queryByTestId } = open();
     await findByText(AISLE.content);
 
@@ -541,7 +591,8 @@ describe('forgetting a memory', () => {
 
   /** Forgets the first memory straight from its row, confirming the question. */
   async function forgetFromRow(view: ReturnType<typeof open>, content: string) {
-    const row = (await view.findByText(content)).closest('li') as HTMLElement;
+    const text = await view.findByText(content);
+    const row = text.closest('li') as HTMLElement;
     await fireEvent.click(
       within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(content) }),
     );
@@ -739,7 +790,8 @@ describe('correcting a memory', () => {
     const corrected = { ...WINDOW, content: 'The user prefers the exit row.' };
     const served = bureau({ 'bureau.memory.correct': () => ({ id: AISLE.id, memory: corrected }) });
     const view = open();
-    const row = (await view.findByText(AISLE.content)).closest('li') as HTMLElement;
+    const text = await view.findByText(AISLE.content);
+    const row = text.closest('li') as HTMLElement;
 
     await fireEvent.click(
       within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }),

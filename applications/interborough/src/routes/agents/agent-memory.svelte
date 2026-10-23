@@ -69,7 +69,9 @@
         (memory) => memory.id,
       ).map((memory) => ({ memory, score: null }));
     }
-    return (search.data ?? []).map((hit) => ({ memory: hit.memory, score: hit.score }));
+    return (search.data ?? [])
+      .filter((hit) => hit.score > 0)
+      .map((hit) => ({ memory: hit.memory, score: hit.score }));
   });
 
   function applySearch(event: SubmitEvent): void {
@@ -108,7 +110,7 @@
 
   const backPath = agentPath(agentId);
 
-  /** What the agent remembers, from the pages read so far: exact once the last page is in. */
+  /** What the agent remembers, from the pages read so far. */
   const loaded = $derived(
     combinePages(
       list.data?.pages,
@@ -116,6 +118,12 @@
       (memory) => memory.id,
     ).length,
   );
+
+  /** The agent's memory count once every page of it has been read, and unknown before. */
+  const total = $derived(list.hasNextPage || loaded === 0 ? undefined : loaded);
+
+  /** Whether the search filled its page with matches, so more may match than are shown. */
+  const searchFilled = $derived(rows.length >= PAGE_SIZE);
 
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -183,7 +191,7 @@
         {#if applied !== ''}
           <p class="weft-memory__count" role="status" data-testid="memory-match-count">
             {#if rows.length > 0}
-              {MEMORY_COPY.closest(rows.length, applied)}
+              {MEMORY_COPY.matchCount(rows.length, total, searchFilled)}
             {:else}
               {MEMORY_COPY.noMatch(applied)}
             {/if}

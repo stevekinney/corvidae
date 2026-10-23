@@ -635,11 +635,15 @@ export const MEMORY_COPY = {
   count: (shown: number, more: boolean): string =>
     `${shown}${more ? '+' : ''} ${shown === 1 && !more ? 'memory' : 'memories'}`,
   /**
-   * What a search answered. The Bureau ranks every memory the agent has and has no score floor, so
-   * a hit is the closest memories and not a filtered set: the words say "closest", never "match".
+   * What a search found. The Bureau ranks every memory the agent has and has no score floor, so
+   * one that shares nothing with the query comes back with a relevance of 0: only the memories
+   * with a relevance above 0 are matches. `total` is the agent's memory count when every page of
+   * it has been read, and `more` says the search filled its page, so more may match than are shown.
    */
-  closest: (shown: number, query: string): string =>
-    `${shown} closest ${shown === 1 ? 'memory' : 'memories'} to “${query}”, best first`,
+  matchCount: (matched: number, total: number | undefined, more: boolean): string =>
+    total !== undefined
+      ? `${matched} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
+      : `${matched}${more ? '+' : ''} ${matched === 1 && !more ? 'memory matches' : 'memories match'}`,
   noMatch: (query: string): string => `No memory matches “${query}”`,
   /** The action under an empty search that lists everything again. */
   clearMatch: 'Show all memories',

@@ -66,17 +66,17 @@ test.describe('the memory page', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(MEMORY_COPY.heading);
     await expect(rowOf(page, label)).toHaveCount(1);
 
-    // A search ranks every memory the agent has, best first, says how many it ranked, and how
-    // relevant each is.
+    // A search lists the memories that match, best first, says how relevant each is and how many
+    // of the agent's memories match, and marks the words it was given.
     await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
     await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
     await expect(page.locator('[data-memory]').first()).toContainText(label);
     await expect(page.locator('[data-memory]').first()).toContainText(MEMORY_COPY.relevance);
-    const ranked = await page.locator('[data-memory]').count();
     await expect(page.getByTestId('memory-match-count')).toHaveText(
-      MEMORY_COPY.closest(ranked, label),
+      /^\d+\+? (of \d+ )?memor(y matches|ies match)$/,
     );
     await expect(page.locator('mark').first()).toHaveText(label.split(' ')[0] ?? '');
+    await expect(page.locator('[data-memory]', { hasText: 'Aisle' })).toHaveCount(0);
 
     await openDetails(page, label);
     const detail = detailOf(page);
@@ -225,9 +225,21 @@ for (const width of WIDTHS) {
       await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
       await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
 
-      await expect(page.getByTestId('memory-match-count')).toContainText(label);
+      await expect(page.getByTestId('memory-match-count')).toContainText('match');
       await expect(page.locator('mark').first()).toBeVisible();
       await checkA11y(`a memory search at ${width}px`);
+
+      // A query that shares nothing with any memory matches none, and says so with a way back.
+      const nonsense = `qzxv${crypto.randomUUID().replaceAll('-', '')}`;
+      await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(nonsense);
+      await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
+      await expect(page.getByTestId('memory-match-count')).toHaveText(
+        MEMORY_COPY.noMatch(nonsense),
+      );
+      await expect(page.locator('[data-memory]')).toHaveCount(0);
+      await checkA11y(`an empty memory search at ${width}px`);
+      await page.getByRole('button', { name: MEMORY_COPY.clearMatch }).click();
+      await expect(rowOf(page, label)).toHaveCount(1);
     });
 
     test('corrects a memory and the list shows the correction in its place', async ({
