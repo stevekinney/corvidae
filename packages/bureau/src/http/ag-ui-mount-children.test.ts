@@ -94,7 +94,7 @@ async function withParentAndChild<T>(
     if (dispatched.outcome !== 'started') throw new Error('expected a started child');
     await script.reached('child-hold');
     return await body({
-      bureau: bureau as unknown as Bureau,
+      bureau: bureau,
       handler,
       parent,
       parentRunId,

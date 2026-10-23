@@ -145,7 +145,7 @@ async function start(
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
     agents: {
-      ...(options.agents ?? {}),
+      ...options.agents,
       default: createAgent({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
         stopWhen: stopWhen.noToolCalls(),

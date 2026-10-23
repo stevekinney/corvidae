@@ -4900,7 +4900,8 @@ async function buildRuntimeComposition(
     // none; `createBureau` always wires one) has no named agents, so the name is a label and the
     // fire runs the composition's own `generate`, as a recovered session run does.
     let fireAgent: SessionAgentRun | undefined;
-    if ((await awaitCatalogAgentRunOptionsResolver(runId)).status !== 'absent') {
+    const catalogWiring = await awaitCatalogAgentRunOptionsResolver(runId);
+    if (catalogWiring.status !== 'absent') {
       const agentResolution =
         agentName === defaultBureauAgentName
           ? undefined

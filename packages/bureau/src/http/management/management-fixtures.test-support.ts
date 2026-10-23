@@ -226,7 +226,7 @@ export async function openBureau(
   const bureau = await createBureau<AgentDefinitions>({
     id: options.id ?? 'management-bureau',
     agents: {
-      ...(options.agents ?? {}),
+      ...options.agents,
       default: createAgent({
         generate: options.generate ?? parkingUntilAborted,
         toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),

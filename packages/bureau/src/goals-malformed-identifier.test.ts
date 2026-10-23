@@ -46,7 +46,7 @@ async function boot(): Promise<Bureau> {
     durableExecution: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
-  const typed = bureau as unknown as Bureau;
+  const typed = bureau;
   open.push(typed);
   return typed;
 }

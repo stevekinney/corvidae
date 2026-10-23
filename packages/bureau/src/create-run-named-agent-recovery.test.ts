@@ -64,7 +64,6 @@ async function bureauOver(
   databasePath: string,
   options: {
     readonly scribe?: GenerateFunction;
-    readonly wide?: GenerateFunction;
     readonly revision?: number;
     readonly warnings?: string[];
   },
@@ -77,23 +76,18 @@ async function bureauOver(
           toolbox: createToolbox([next]),
           stopWhen: stopWhen.noToolCalls(),
         });
-  const bureau = await createBureau<AgentDefinitions>({
-    agents: {
-      ...(scribe === undefined
-        ? {}
+  const agents: AgentDefinitions = {};
+  if (scribe !== undefined) {
+    agents['scribe'] =
+      options.revision === undefined
+        ? scribe
         : {
-            scribe:
-              options.revision === undefined
-                ? scribe
-                : {
-                    ...scribe,
-                    generationProfile: { ...scribe.generationProfile, revision: options.revision },
-                  },
-          }),
-    },
-    ...(options.wide === undefined
-      ? {}
-      : { generate: options.wide, toolbox: createToolbox([next]) }),
+            ...scribe,
+            generationProfile: { ...scribe.generationProfile, revision: options.revision },
+          };
+  }
+  const bureau = await createBureau<AgentDefinitions>({
+    agents,
     ...(options.warnings === undefined
       ? {}
       : {
@@ -120,7 +114,6 @@ async function startRunThatDies(databasePath: string) {
       reachedStep1 = true;
       return new Promise<never>(() => {});
     },
-    wide: async () => ({ content: 'wide never answers', toolCalls: [] }),
   });
   const run = await crashed.createRun({ message: 'Recover me', agentName: 'scribe' });
   await pollUntil(() => reachedStep1);
@@ -130,17 +123,12 @@ async function startRunThatDies(databasePath: string) {
 }
 
 describe('a named session run after a restart', () => {
-  it('resumes with the agent’s own script, not the Bureau-wide one', async () => {
+  it('resumes with the agent’s own script', async () => {
     const databasePath = nextDatabasePath();
     const run = await startRunThatDies(databasePath);
-    const wideCalls: number[] = [];
 
     const restarted = await bureauOver(databasePath, {
       scribe: async ({ step }) => ({ content: `scribe resumed at ${step}`, toolCalls: [] }),
-      wide: async ({ step }) => {
-        wideCalls.push(step);
-        return { content: 'wide answered', toolCalls: [] };
-      },
     });
     await pollUntil(async () => {
       const session = await restarted.getSession(run.sessionId);
@@ -151,16 +139,13 @@ describe('a named session run after a restart', () => {
       'scribe step 0',
       'scribe resumed at 1',
     ]);
-    expect(wideCalls).toEqual([]);
   });
 
   it('fails as the catalog path does when its agent has left the catalog', async () => {
     const databasePath = nextDatabasePath();
     const run = await startRunThatDies(databasePath);
 
-    const restarted = await bureauOver(databasePath, {
-      wide: async () => ({ content: 'wide answered', toolCalls: [] }),
-    });
+    const restarted = await bureauOver(databasePath, {});
     await pollUntil(async () => {
       const session = await restarted.getSession(run.sessionId);
       return session?.metadata['lastRunStatus'] !== 'running';

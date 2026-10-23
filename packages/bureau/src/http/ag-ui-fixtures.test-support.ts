@@ -232,7 +232,7 @@ async function build(
     });
   let restarted = false;
   return {
-    bureau: bureau as unknown as Bureau,
+    bureau: bureau,
     handler: mount(options.agUi),
     generate,
     seam,

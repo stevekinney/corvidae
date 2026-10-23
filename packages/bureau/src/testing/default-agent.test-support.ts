@@ -40,7 +40,7 @@ export function withDefaultAgent<
 >(options: T): Omit<T, (typeof FIELD_NAMES)[number]> & { agents: AgentDefinitions } {
   const { generate, toolbox, stopWhen, guardrails, skills, maximumSteps, systemPrompt, ...rest } =
     options;
-  const agents: AgentDefinitions = { ...(rest.agents ?? {}) };
+  const agents: AgentDefinitions = { ...rest.agents };
   if (generate !== undefined && agents[DEFAULT_AGENT_NAME] === undefined) {
     agents[DEFAULT_AGENT_NAME] = createAgent({
       generate,
@@ -52,9 +52,7 @@ export function withDefaultAgent<
       ...(systemPrompt === undefined ? {} : { instructions: systemPrompt }),
     } as CreateAgentOptions);
   }
-  return { ...rest, agents } as Omit<T, (typeof FIELD_NAMES)[number]> & {
-    agents: AgentDefinitions;
-  };
+  return { ...rest, agents };
 }
 
 /**
