@@ -1484,7 +1484,10 @@ export function createBureauA2ARequestHandler(
     ): Promise<TaskPushNotificationConfig> {
       const { projector } = requirePush();
       const view = await ownTask(params.taskId, ownerOf(context));
-      const { delivery } = requirePush();
+      const { delivery, ready } = requirePush();
+      // Start-up recovery reconciles tasks under their fences, so it settles before this one is
+      // taken: an install holding the fence while it waited on recovery would deadlock with it.
+      await ready;
       // Under the task's fence, with the cursor read before the configuration exists so an event
       // that lands meanwhile reaches it.
       return projector.fence(view.id, async () => {
