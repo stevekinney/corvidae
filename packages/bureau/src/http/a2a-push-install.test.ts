@@ -217,8 +217,10 @@ describe('the push install', () => {
     await first.install('1', input);
     await second.install('1', input);
 
-    const one = (await first.checkpoints.read('task-1', 'cfg'))?.fingerprint;
-    const two = (await second.checkpoints.read('task-1', 'cfg'))?.fingerprint;
+    const oneCheckpoint = await first.checkpoints.read('task-1', 'cfg');
+    const twoCheckpoint = await second.checkpoints.read('task-1', 'cfg');
+    const one = oneCheckpoint?.fingerprint;
+    const two = twoCheckpoint?.fingerprint;
     expect(one).toMatch(/^[0-9a-f]{64}$/);
     expect(one).not.toBe(plain);
     expect(one).not.toBe(two);
