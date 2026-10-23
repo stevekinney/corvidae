@@ -1484,9 +1484,42 @@ export function createBureauA2ARequestHandler(
     ): Promise<TaskPushNotificationConfig> {
       const { projector } = requirePush();
       const view = await ownTask(params.taskId, ownerOf(context));
-      // Read before the configuration exists, so an event that lands meanwhile reaches it.
-      const cursor = (await projector.tailOf(view.id)) ?? '-1';
-      return installPush(view.id, params, context, cursor);
+      const { delivery, ready } = requirePush();
+      // Start-up recovery reconciles tasks under their fences, so it settles before this one is
+      // taken: an install holding the fence while it waited on recovery would deadlock with it.
+      await ready;
+      // Under the task's fence, with the cursor read before the configuration exists so an event
+      // that lands meanwhile reaches it.
+      return projector.fence(view.id, async () => {
+        const cursor = (await projector.tailOf(view.id)) ?? '-1';
+        // A withdrawn agent's tombstone keeps its tasks readable and their webhooks flowing, but
+        // starts no new delivery for a task that has ended (COR-1669). The task is read again
+        // after the cursor: one that ended before the cursor is refused here, and one that ends
+        // later has its terminal event after the cursor, so the new webhook receives it. Nothing
+        // is committed before this check. A retry of a create that committed while the task was
+        // live names an existing configuration, which is replayed rather than refused.
+        if (options.acceptsNewTasks?.() === false) {
+          const current = await ownTask(params.taskId, ownerOf(context));
+          if (isTerminal(current.status)) {
+            let existing: TaskPushNotificationConfig | undefined;
+            try {
+              existing = await delivery.sender.pushStore.check(
+                view.id,
+                context,
+                structuredClone(params),
+              );
+            } catch (error) {
+              if (error instanceof A2APushConfigurationConflictError) throw invalid(error.message);
+              throw error;
+            }
+            if (existing !== undefined) return existing;
+            throw new UnsupportedOperationError(
+              `Agent '${agentName}' was withdrawn, and task '${view.id}' has ended.`,
+            );
+          }
+        }
+        return installPush(view.id, params, context, cursor, true);
+      });
     },
 
     async getTaskPushNotificationConfig(
