@@ -68,7 +68,8 @@ function hasExtras(result: Readonly<ToolResult>): boolean {
     result.error !== undefined ||
     result.action !== undefined ||
     result.inputDigest !== undefined ||
-    result.outputDigest !== undefined
+    result.outputDigest !== undefined ||
+    result.providerCallId !== undefined
   );
 }
 

@@ -81,7 +81,14 @@ function normalizeMarkdownToolCall(value: unknown): unknown {
     record['arguments'] === undefined
   )
     return undefined;
-  return { id: record['id'], name: record['name'], arguments: record['arguments'] };
+  return {
+    id: record['id'],
+    name: record['name'],
+    arguments: record['arguments'],
+    ...(typeof record['providerCallId'] === 'string' && record['providerCallId'] !== ''
+      ? { providerCallId: record['providerCallId'] }
+      : {}),
+  };
 }
 
 function normalizeMarkdownToolResult(value: unknown): unknown {
@@ -103,6 +110,9 @@ function normalizeMarkdownToolResult(value: unknown): unknown {
     action: record['action'],
     ...(typeof record['inputDigest'] === 'string' ? { inputDigest: record['inputDigest'] } : {}),
     ...(typeof record['outputDigest'] === 'string' ? { outputDigest: record['outputDigest'] } : {}),
+    ...(typeof record['providerCallId'] === 'string'
+      ? { providerCallId: record['providerCallId'] }
+      : {}),
   };
 }
 

@@ -6,7 +6,7 @@ describe('run.* terminal frames (CIN-507)', () => {
   test('validates the conversation it projected, not the one it was handed', () => {
     const identities = ['conversation-1', 42];
     const conversation = {
-      schemaVersion: 7,
+      schemaVersion: 8,
       status: 'active',
       metadata: {},
       ids: [],

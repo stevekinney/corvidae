@@ -12,7 +12,6 @@ import {
   isCanonicalToolResultPayload,
   toJSONValue,
 } from '../shared';
-import { GEMINI_FUNCTION_CALL_ID_METADATA_KEY } from './content';
 import type {
   GeminiConversation,
   GeminiFileDataPart,
@@ -197,13 +196,11 @@ function toMessageInputs(payload: GeminiConversation): MessageInput[] {
         inputs.push({
           role: 'tool-call',
           content: '',
-          ...(issuedId !== undefined
-            ? { metadata: { [GEMINI_FUNCTION_CALL_ID_METADATA_KEY]: issuedId } }
-            : {}),
           toolCall: {
             id: callId,
             name: part.functionCall.name,
             arguments: parseFunctionArguments(part.functionCall.args),
+            ...(issuedId !== undefined ? { providerCallId: issuedId } : {}),
           },
         });
         continue;

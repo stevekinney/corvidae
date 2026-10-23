@@ -1,5 +1,6 @@
 import { createToolCall } from './create-tool';
 import type { ExecutionHandle } from './execution-lifecycle';
+import { providerCallIdField } from './provider-call-id';
 import { normalizeToolCallArguments } from './toolbox-normalization';
 import { isAsyncIterable } from './type-guards';
 import type { ToolCall, ToolCallInput, ToolExecutionResult } from './types';
@@ -7,7 +8,10 @@ import type { ToolCall, ToolCallInput, ToolExecutionResult } from './types';
 export function normalizeToolCall(call: ToolCallInput): ToolCall {
   const args = Object.prototype.hasOwnProperty.call(call, 'arguments') ? call.arguments : {};
   const id = typeof call.id === 'string' && call.id.length ? call.id : undefined;
-  return createToolCall(call.name, normalizeToolCallArguments(args), id);
+  return {
+    ...createToolCall(call.name, normalizeToolCallArguments(args), id),
+    ...providerCallIdField(call),
+  };
 }
 
 export function resolveResultStream(
