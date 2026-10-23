@@ -143,7 +143,7 @@ describe('parseGeminiToolCalls', () => {
         { functionCall: undefined },
       ]),
     ).toEqual([
-      { id: 'call-1', name: 'search', arguments: { query: 'id' } },
+      { id: 'call-1', providerCallId: 'call-1', name: 'search', arguments: { query: 'id' } },
       { name: 'list', arguments: {} },
     ]);
   });
@@ -254,10 +254,10 @@ describe('formatGeminiToolResults', () => {
     ]);
   });
 
-  it('echoes a provider-issued id on a result with parts and never an unseen id', () => {
-    parseGeminiToolCalls([{ functionCall: { id: 'gem-parts', name: 'lookup', args: {} } }]);
+  it('echoes a provider-issued id on a result with parts and never an Armorer-generated id', () => {
     const withParts = formatGeminiToolResults({
       callId: 'gem-parts',
+      providerCallId: 'gem-parts',
       outcome: 'success',
       content: 'text',
       toolName: 'lookup',
@@ -271,6 +271,21 @@ describe('formatGeminiToolResults', () => {
       toolName: 'lookup',
     });
     expect(generated[0]?.functionResponse).not.toHaveProperty('id');
+  });
+
+  it('formats the marker alone, with no prior parse in this module state', async () => {
+    const result = {
+      callId: 'never-parsed-here',
+      providerCallId: 'never-parsed-here',
+      outcome: 'success' as const,
+      content: { n: 1 },
+      toolName: 'lookup',
+    };
+    expect(formatGeminiToolResults(result)[0]?.functionResponse.id).toBe('never-parsed-here');
+    const asyncParts = await formatGeminiToolResultsAsync(result);
+    expect(asyncParts[0]?.functionResponse.id).toBe('never-parsed-here');
+    const { providerCallId: _marker, ...unmarked } = result;
+    expect(formatGeminiToolResults(unmarked)[0]?.functionResponse).not.toHaveProperty('id');
   });
 
   it('resolves tool names from explicit mappings and defaults', () => {

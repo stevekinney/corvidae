@@ -168,6 +168,12 @@ export interface ToolCall {
 
 export interface ToolCallInput {
   id?: string | undefined;
+  /**
+   * Marks `id` as one the model provider issued, so a provider formatter may echo it back (Gemini's
+   * `functionResponse.id`). Absent when Armorer generated the id. Execution carries it onto the
+   * result's `providerCallId`.
+   */
+  providerCallId?: string | undefined;
   name: string;
   arguments?: unknown;
 }
@@ -186,6 +192,8 @@ export interface ToolResult {
   action?: ToolAction | undefined;
   inputDigest?: string | undefined;
   outputDigest?: string | undefined;
+  /** The id the model provider issued for the originating call; absent for an Armorer-generated id. */
+  providerCallId?: string | undefined;
 }
 
 export interface ToolResultInput {
@@ -197,6 +205,8 @@ export interface ToolResultInput {
   action?: ToolActionInput | undefined;
   inputDigest?: string | undefined;
   outputDigest?: string | undefined;
+  /** The id the model provider issued for the originating call; absent for an Armorer-generated id. */
+  providerCallId?: string | undefined;
   result?: unknown;
   stream?: AsyncIterable<unknown> | undefined;
 }

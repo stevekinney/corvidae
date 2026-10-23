@@ -44,7 +44,7 @@ export function createExecutionTask(
     errorMode,
     callIndex,
   } = context;
-  return async () => {
+  const run = async (): Promise<ToolExecutionResult> => {
     let toolCall = normalizeToolCall(call);
     if (executionHandle.snapshot().abortSource === 'deadline') {
       return createDeadlineResult(toolCall, createToolError);
@@ -103,6 +103,13 @@ export function createExecutionTask(
       deferredSettlement,
     );
   };
+  // Carry the provider's call-id provenance onto whatever result the call settles with.
+  const providerCallId =
+    typeof call.providerCallId === 'string' && call.providerCallId.length > 0
+      ? call.providerCallId
+      : undefined;
+  if (providerCallId === undefined) return run;
+  return async () => ({ ...(await run()), providerCallId });
 }
 
 async function runToolInvocation(
