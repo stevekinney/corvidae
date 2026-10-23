@@ -389,8 +389,10 @@ export interface MemoryDeletionPropagationResult {
  * that records its result leaves the target pending, and the next pass calls
  * it again; two passes running one open receipt at once can both call it,
  * and only one of their receipt writes lands. An implementation must
- * therefore be idempotent per `deletionId`: a repeat call deletes nothing
- * new and reports the same outcome.
+ * therefore be idempotent per `deletionId`: a repeat call is safe and deletes
+ * nothing twice, but it reports current progress, so a call that returned
+ * `pending` while an asynchronous purge ran may return `completed` once it
+ * finishes.
  */
 export interface MemoryDeletionPropagator {
   propagate(request: MemoryDeletionPropagationRequest): Promise<MemoryDeletionPropagationResult>;
