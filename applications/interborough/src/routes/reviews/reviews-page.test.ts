@@ -491,7 +491,7 @@ describe('an engine review', () => {
       reviewId: 'weft-review-1',
       body: { decision: 'approved', reviewer: 'ops@example.com' },
     });
-    await waitFor(() => expect(container.querySelector('.ib-reviews__engine')).toBeNull());
+    await waitFor(() => expect(container.querySelectorAll('.ib-reviews__engine').length).toBe(0));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
 
