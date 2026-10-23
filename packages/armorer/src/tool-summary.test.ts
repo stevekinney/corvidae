@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
+import { z } from 'zod';
 
-import { createApprovalPolicyHooks } from './approval-policy';
-import { createToolCall } from './create-tool';
+import { createApprovalPolicyHooks, withToolSummary } from './approval-policy';
+import { createTool, createToolCall } from './create-tool';
 import type { ToolPolicyContext } from './is-tool';
 import { renderToolSummary } from './tool-summary';
 
@@ -29,28 +30,44 @@ describe('renderToolSummary', () => {
   });
 });
 
-describe('createApprovalPolicyHooks with a summary', () => {
-  const context = (parameters: unknown): ToolPolicyContext =>
-    ({
-      toolName: 'issue-refund',
-      toolCall: createToolCall('issue-refund', parameters as Record<string, unknown>),
-      params: parameters,
-      metadata,
-    }) as ToolPolicyContext;
+describe('the approval policy with a summary', () => {
+  const tool = createTool({
+    name: 'issue-refund',
+    description: 'Refund an order.',
+    input: z.object({ orderId: z.string(), cents: z.number().optional() }),
+    metadata,
+    execute: async () => ({ ok: true }),
+  });
+  const context = (parameters: { orderId: string; cents?: number }): ToolPolicyContext => ({
+    toolName: tool.name,
+    toolCall: createToolCall(tool.name, parameters),
+    params: parameters,
+    configuration: tool.configuration,
+    metadata,
+  });
 
-  it('carries the summary as the approval message and keeps the reason', async () => {
+  test('carries the summary as the approval message and keeps the reason', () => {
+    const decision = withToolSummary(
+      { allow: false, status: 'needs_approval', reason: 'Tool requires approval.' },
+      context({ orderId: 'order-1001', cents: 4200 }),
+    );
+    expect(decision.action?.message).toBe('Refund order order-1001 for $42.00');
+    expect(decision.reason).toBe('Tool requires approval.');
+  });
+
+  test('adds no message when the summary cannot be written, or the decision is not an approval', () => {
+    const asked = { allow: false, status: 'needs_approval', reason: 'r' } as const;
+    expect(withToolSummary(asked, context({ orderId: 'order-1001' }))).toBe(asked);
+    const allowed = { allow: true, status: 'allow' } as const;
+    expect(withToolSummary(allowed, context({ orderId: 'order-1001', cents: 4200 }))).toBe(allowed);
+  });
+
+  test('is what the on-mutation hook decides for a mutating call', async () => {
     const decision = await createApprovalPolicyHooks({ mode: 'on-mutation' }).beforeExecute?.(
       context({ orderId: 'order-1001', cents: 4200 }),
     );
-    expect(decision?.status).toBe('needs_approval');
-    expect(decision?.action?.message).toBe('Refund order order-1001 for $42.00');
-    expect(decision?.reason).toContain('requires approval');
-  });
-
-  it('adds no message when the summary cannot be written', async () => {
-    const decision = await createApprovalPolicyHooks({ mode: 'on-mutation' }).beforeExecute?.(
-      context({ orderId: 'order-1001' }),
+    expect(typeof decision === 'object' && decision.action?.message).toBe(
+      'Refund order order-1001 for $42.00',
     );
-    expect(decision?.action).toBeUndefined();
   });
 });
