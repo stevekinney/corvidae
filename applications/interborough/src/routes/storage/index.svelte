@@ -8,7 +8,7 @@
    */
   import { untrack } from 'svelte';
 
-  import { Callout, EmptyState, Tabs } from '@lostgradient/cinder';
+  import { EmptyState, Tabs } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
 
   import { createQuery } from '@tanstack/svelte-query';
@@ -62,13 +62,6 @@
       {#snippet icon()}<Lock aria-hidden="true" size={22} />{/snippet}
     </EmptyState>
   {:else}
-    <Callout variant="warning" semantic="note" class="weft-storage-reserved-banner">
-      Keys under Weft-reserved prefixes (<code class="weft-storage-inline-code">wf:</code>,
-      <code class="weft-storage-inline-code">state:</code>,
-      <code class="weft-storage-inline-code">lease:</code>, and others) are used internally by the
-      engine. Writing to or deleting them directly may disrupt recovery.
-    </Callout>
-
     <Tabs bind:value={activeTab} fill>
       <Tabs.List label="Storage views">
         <Tabs.Trigger value="browser">KV browser</Tabs.Trigger>

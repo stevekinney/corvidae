@@ -12,10 +12,6 @@
   font-weight: 600;
 }
 
-.weft-storage-reserved-banner {
-  max-width: 720px;
-}
-
 .weft-storage-inline-code {
   font-family: var(--cinder-font-mono);
   font-size: 0.9em;
@@ -44,6 +40,22 @@
 
 .weft-storage-op-picker {
   grid-area: picker;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+}
+
+/* The switch and the warning about what it unlocks, as one group under the operation picker. */
+.weft-storage-writes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+}
+
+.weft-storage-writes__warning {
+  margin: 0;
+  font-size: var(--cinder-text-xs);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-storage-form {

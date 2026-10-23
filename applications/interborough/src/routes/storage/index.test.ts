@@ -84,12 +84,20 @@ describe('Storage route', () => {
     expect(queryByText('Storage access requires storage:admin')).toBeNull();
   });
 
-  test('shows the reserved-prefix awareness banner when unlocked', async () => {
+  test('shows the reserved-prefix warning beside the write switch when unlocked, and writes start off', async () => {
     activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
 
-    const { getByText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    const { getByText, getByRole, queryByRole } = render(StorageRouteHarness, {
+      props: { client: fakeClient() },
+    });
 
     expect(getByText(/used internally by the/)).not.toBeNull();
+    expect(getByRole('switch', { name: 'Allow writes' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(queryByRole('tab', { name: 'Put' })).toBeNull();
+    expect(queryByRole('tab', { name: 'Delete' })).toBeNull();
+    expect(queryByRole('tab', { name: 'Batch' })).toBeNull();
   });
 
   test('reads the capabilities from weft.storage.capabilities and never probes with a batch', async () => {
@@ -141,6 +149,7 @@ describe('Storage route', () => {
   test('offers conditional batching only when the backend reports it', async () => {
     activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
     const supported = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    await fireEvent.click(supported.getByRole('switch', { name: 'Allow writes' }));
     await fireEvent.click(supported.getByText('Batch'));
     expect(
       await supported.findByRole('switch', { name: 'Conditional (compare-and-swap)' }),
@@ -152,14 +161,17 @@ describe('Storage route', () => {
       capabilitiesHandler({ ...CAPABILITIES, conditionalBatch: false }),
     );
     const unsupported = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    await fireEvent.click(unsupported.getByRole('switch', { name: 'Allow writes' }));
     await fireEvent.click(unsupported.getByText('Batch'));
     await unsupported.findByText('Apply batch · confirm');
     // The capabilities read has settled once the Capabilities tab shows its rows.
     await fireEvent.click(unsupported.getByText('Capabilities'));
     await unsupported.findByText('Conditional batch');
     await fireEvent.click(unsupported.getByText('KV browser'));
-    // Returning to the KV browser remounts it on its default operation, so Batch is chosen again:
-    // without this the assertion below would hold whatever the backend reported.
+    // Returning to the KV browser remounts it on its default operation, read-only again, so writes are
+    // allowed and Batch is chosen again: without this the assertion below would hold whatever the
+    // backend reported.
+    await fireEvent.click(unsupported.getByRole('switch', { name: 'Allow writes' }));
     await fireEvent.click(unsupported.getByText('Batch'));
     await unsupported.findByText('Apply batch · confirm');
     expect(
