@@ -300,7 +300,11 @@ describe.each(eras)('injected resources and tool metadata ($era era)', ({ mode }
     });
     const listed = await client.listResources();
     expect(listed.resources).toEqual([]);
-    await expect(client.readResource({ uri: page.uri })).rejects.toThrow();
+    const outcome = await client.readResource({ uri: page.uri }).then(
+      () => 'read',
+      () => 'refused',
+    );
+    expect(outcome).toBe('refused');
   });
 });
 
