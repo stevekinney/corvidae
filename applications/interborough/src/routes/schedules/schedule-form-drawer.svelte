@@ -388,11 +388,7 @@
       {/key}
     {/if}
     {#if mode === 'create'}
-      <Collapsible
-        bind:open={workflowOpen}
-        trigger={SCHEDULE_COPY.form.advancedWorkflowLabel}
-        animated={false}
-      >
+      <Collapsible bind:open={workflowOpen} trigger={SCHEDULE_COPY.form.advancedWorkflowLabel}>
         {#if form}
           <!-- Mounted only while the disclosure is open, so each opening is a fresh mount of the fields. -->
           {#key form}

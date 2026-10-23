@@ -126,7 +126,7 @@
   </section>
 
   {#if creating}
-    <Collapsible bind:open={advancedOpen} trigger={copy.advancedLabel} animated={false}>
+    <Collapsible bind:open={advancedOpen} trigger={copy.advancedLabel}>
       <div class="weft-schedule-form__section">
         <Input
           id="weft-agent-schedule-session"

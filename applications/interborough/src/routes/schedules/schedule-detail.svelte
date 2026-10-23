@@ -357,7 +357,7 @@
       <code class="ib-identifier">{schedule.cronExpression}</code>
     {/snippet}
 
-    <Collapsible bind:open={engineOpen} trigger={SCHEDULE_COPY.engine} animated={false}>
+    <Collapsible bind:open={engineOpen} trigger={SCHEDULE_COPY.engine}>
       <div class="ib-schedule__engine">
         <DescriptionList
           items={[
