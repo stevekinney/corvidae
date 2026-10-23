@@ -1,0 +1,77 @@
+{
+  "data": [
+    {
+      "version": "v0.9.1",
+      "createSurface": {
+        "surfaceId": "panel",
+        "catalogId": "https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json"
+      }
+    },
+    {
+      "version": "v0.9.1",
+      "updateComponents": {
+        "surfaceId": "panel",
+        "components": [
+          {
+            "id": "title",
+            "component": "Text",
+            "text": "Confirm the window"
+          },
+          {
+            "id": "note",
+            "component": "TextField",
+            "label": "Note",
+            "value": {
+              "path": "/note"
+            }
+          },
+          {
+            "id": "go-label",
+            "component": "Text",
+            "text": "Confirm"
+          },
+          {
+            "id": "go",
+            "component": "Button",
+            "child": "go-label",
+            "action": {
+              "event": {
+                "name": "confirm",
+                "context": {
+                  "note": {
+                    "path": "/note"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "title",
+              "note",
+              "go"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "version": "v0.9.1",
+      "updateDataModel": {
+        "surfaceId": "panel",
+        "path": "/",
+        "value": {
+          "note": "ready"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "mimeType": "application/a2ui+json",
+    "surfaceId": "panel",
+    "a2uiSurfaceRevision": 2
+  },
+  "mediaType": "application/a2ui+json"
+}
