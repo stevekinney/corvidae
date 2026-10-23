@@ -50,7 +50,7 @@ export interface GeminiFunctionCallPart {
 
 export interface GeminiFunctionResponsePart {
   functionResponse: {
-    /** The originating `functionCall.id`, so Gemini pairs the response with the right call. */
+    /** The originating `functionCall.id`, so Gemini pairs the response with the right call. Armorer-generated when Gemini's `functionCall` carried none. */
     id: string;
     name: string;
     response: Record<string, unknown>;
