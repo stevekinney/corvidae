@@ -381,6 +381,17 @@ export interface MemoryDeletionPropagationResult {
   readonly detail?: string;
 }
 
+/**
+ * Deletes one bounded-async target's copies of a deletion's records.
+ *
+ * It is called at least once per `deletionId` and target, not exactly once:
+ * a process that dies between `propagate()` returning and the receipt write
+ * that records its result leaves the target pending, and the next pass calls
+ * it again; two passes running one open receipt at once can both call it,
+ * and only one of their receipt writes lands. An implementation must
+ * therefore be idempotent per `deletionId`: a repeat call deletes nothing
+ * new and reports the same outcome.
+ */
 export interface MemoryDeletionPropagator {
   propagate(request: MemoryDeletionPropagationRequest): Promise<MemoryDeletionPropagationResult>;
 }

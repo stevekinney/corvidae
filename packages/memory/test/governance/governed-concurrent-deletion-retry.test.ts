@@ -9,6 +9,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import type {
+  MemoryDeletionPropagation,
+  MemoryDeletionPropagationRequest,
+} from '../../src/governance/governed-memory-types';
 import type { MemoryGovernanceLedger } from '../../src/governance/ledger';
 import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
 import { DEFAULT_DELETION_BOUND_MILLISECONDS } from '../../src/governance/policy';
@@ -91,6 +95,37 @@ function parkedAfterReceiptRead(
       return stored;
     },
   });
+}
+
+/**
+ * A real `external-processors` propagator shared by several actors: it records every call, and
+ * reports `pending` or `completed` (parking once first, when asked) as `mode` says at the time.
+ */
+function recordingPropagator() {
+  const state = {
+    calls: [] as MemoryDeletionPropagationRequest[],
+    mode: 'pending' as 'pending' | 'completed' | 'park',
+    parked: park(),
+  };
+  const propagation: MemoryDeletionPropagation = {
+    caches: 'not-retained',
+    'managed-asset-bytes': 'not-retained',
+    'durable-snapshots': 'not-retained',
+    'external-processors': {
+      async propagate(request) {
+        state.calls.push(request);
+        if (state.mode === 'park') {
+          state.mode = 'completed';
+          await state.parked.wait();
+          return { status: 'completed', detail: 'processor purged (after parking)' };
+        }
+        return state.mode === 'pending'
+          ? { status: 'pending', detail: 'processor purge queued' }
+          : { status: 'completed', detail: 'processor purged' };
+      },
+    },
+  };
+  return Object.assign(state, { propagation });
 }
 
 for (const backend of ['in-memory', 'weft'] as const satisfies readonly GovernedBackend[]) {
@@ -237,6 +272,55 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       expect(await eventCount(fixture, 'memory.deletion.propagated', failed.deletionId)).toBe(
         propagatedBefore + 1,
       );
+      expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
+    });
+    it('calls a propagator again when two passes run one open receipt, and closes the receipt once', async () => {
+      const fixture = await createGovernedFixture(backend);
+      const recorder = recordingPropagator();
+      const actor = () => fixture.restart({ propagation: recorder.propagation });
+      const recordId = await recordIdOf(
+        fixture.memory.write(principalA, 'The gate code is 4471.', {
+          collection: 'notes',
+          source: 'conversation',
+        }),
+      );
+      await fixture.runtime.advance(91 * DAY);
+
+      // The deletion removes the record; the external processor has only queued its purge.
+      const swept = await actor().sweepRetention(retentionService);
+      const [deletionId] = swept.deletionIds;
+      expect(deletionId).toBeDefined();
+      const open = await fixture.ledger.getReceipt(deletionId!);
+      expect(open).toMatchObject({ open: true });
+      expect(statusOf(open, 'external-processors')).toBe('pending');
+      const settledEvents = async () => {
+        const events = await fixture.ledger.listEvents({
+          tenantId: 'tenant-a',
+          type: 'memory.deletion.propagated',
+        });
+        return events.filter(
+          (event) => event.details?.['deletionId'] === deletionId && event.outcome === 'settled',
+        ).length;
+      };
+      expect(await settledEvents()).toBe(0);
+
+      // Two passes run the open receipt: the first stalls inside the propagator, the second completes.
+      recorder.mode = 'park';
+      const first = actor().processDeletionPropagation();
+      await recorder.parked.reached;
+      const [closed] = await actor().processDeletionPropagation();
+      expect(closed).toMatchObject({ deletionId, open: false });
+      expect(statusOf(closed, 'external-processors')).toBe('completed');
+
+      recorder.parked.release();
+      expect(await first).toEqual([closed!]);
+      const passCalls = recorder.calls.slice(1);
+      expect(passCalls.map((call) => [call.deletionId, call.target])).toEqual([
+        [deletionId!, 'external-processors'],
+        [deletionId!, 'external-processors'],
+      ]);
+      expect(await fixture.ledger.getReceipt(deletionId!)).toEqual(closed);
+      expect(await settledEvents()).toBe(1);
       expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
     });
   });

@@ -896,7 +896,9 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
    * Runs the receipt's pending rows and writes what they settled over the
    * receipt as `stored` read it. Two processes can run one receipt at once
    * (two propagation passes, or a pass and a retry), and every row is
-   * idempotent, so both may do the work; only the first to write moves the
+   * idempotent (a configured propagator by the at-least-once contract on
+   * {@link MemoryDeletionPropagator}), so both may do the work; only the
+   * first to write moves the
    * receipt on. The other's outcome, decided from an older read, is dropped
    * in favor of the stored receipt, and anything it did that the stored
    * receipt does not record is redone by the next pass. Returns the receipt
