@@ -9,15 +9,19 @@
 // model call in the transcript at `transcript_path` (`lastContext` in `transcript-usage.ts`), and
 // answers:
 //   - at or below the warn threshold (default 250000): allows the call, prints nothing;
-//   - above it: allows the call and adds context telling the agent to write its handoff brief;
+//   - above it, up to the urgent threshold (default 325000): allows the call and adds context
+//     telling the agent to write its handoff brief;
+//   - above the urgent threshold: allows the call and adds a stronger warning that the session is
+//     blocked at the block threshold and must write its brief and hand off now;
 //   - above the block threshold (default 400000): denies every call except what a handoff needs:
 //     writing a file under `tmp/chef/`, the session-start and handoff tools, `SendMessage`, the
 //     turn wrap-up tools, `git` status, add, commit, push, log, diff and rev-parse, and the
 //     `ToolSearch` that loads those deferred tools (a `select:` query naming only tools in that
 //     set; any keyword search or other name is denied).
 //
-// Environment: CHEF_CONTEXT_WARN_TOKENS, CHEF_CONTEXT_BLOCK_TOKENS (positive integers; an invalid
-// value keeps the default) and CHEF_CONTEXT_CEILING=off to disable the hook.
+// Environment: CHEF_CONTEXT_WARN_TOKENS, CHEF_CONTEXT_URGENT_TOKENS, CHEF_CONTEXT_BLOCK_TOKENS
+// (positive integers; an invalid value keeps the default; the urgent threshold is kept between
+// the warn and block thresholds) and CHEF_CONTEXT_CEILING=off to disable the hook.
 //
 // It fails open: an unreadable or missing transcript, a transcript with no model call, malformed
 // input, a subagent call (its own context is small; the transcript is the parent's), or any
@@ -31,12 +35,14 @@ import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { claudeCodeCalls, contextOf } from './transcript-usage.ts';
 
 export const defaultWarnTokens = 250_000;
+export const defaultUrgentTokens = 325_000;
 export const defaultBlockTokens = 400_000;
 const initialWindowBytes = 256 * 1024;
 const maximumWindowBytes = 16 * 1024 * 1024;
 
 export interface Thresholds {
   warn: number;
+  urgent: number;
   block: number;
 }
 
@@ -49,7 +55,9 @@ function positiveInteger(value: string | undefined): number | undefined {
 export function thresholdsFrom(environment: Record<string, string | undefined>): Thresholds {
   const warn = positiveInteger(environment['CHEF_CONTEXT_WARN_TOKENS']) ?? defaultWarnTokens;
   const block = positiveInteger(environment['CHEF_CONTEXT_BLOCK_TOKENS']) ?? defaultBlockTokens;
-  return block >= warn ? { warn, block } : { warn, block: Math.max(defaultBlockTokens, warn) };
+  const resolvedBlock = block >= warn ? block : Math.max(defaultBlockTokens, warn);
+  const urgent = positiveInteger(environment['CHEF_CONTEXT_URGENT_TOKENS']) ?? defaultUrgentTokens;
+  return { warn, urgent: Math.min(Math.max(urgent, warn), resolvedBlock), block: resolvedBlock };
 }
 
 /**
@@ -168,7 +176,7 @@ export function decide(
   if (environment['CHEF_CONTEXT_CEILING'] === 'off') return undefined;
   if (typeof input.agent_id === 'string' && input.agent_id !== '') return undefined;
   if (typeof input.transcript_path !== 'string' || input.transcript_path === '') return undefined;
-  const { warn, block } = thresholdsFrom(environment);
+  const { warn, urgent, block } = thresholdsFrom(environment);
   const context = read(input.transcript_path);
   if (context === undefined || context <= warn) return undefined;
   const toolName = typeof input.tool_name === 'string' ? input.tool_name : '';
@@ -178,6 +186,14 @@ export function decide(
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
         permissionDecisionReason: `This session's context is ${kilo(context)} tokens, past the ${kilo(block)} ceiling (AGENTS.md "Parallel runs"). Stop the work. Write a handoff brief under tmp/chef/ (the task, what is done, what is left, the branch, commit and pull request, the exact next commands and evidence paths), commit and push any work, then start a fresh session from that brief and end this one. Only that handoff is allowed now: Write or Edit under tmp/chef/, git status/add/commit/push/log/diff, SendMessage, the session-start and handoff tools, and a ToolSearch select: query that loads only those tools.`,
+      },
+    };
+  if (context > urgent)
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'allow',
+        additionalContext: `URGENT: context is ${kilo(context)} tokens, past the ${kilo(urgent)} urgent threshold (AGENTS.md "Parallel runs"). This session will be blocked at ${kilo(block)} and then can only hand off. Write your handoff brief under tmp/chef/ and hand off to a fresh session now; do not start new work.`,
       },
     };
   return {

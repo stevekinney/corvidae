@@ -7,6 +7,7 @@ import {
   currentContext,
   decide,
   defaultBlockTokens,
+  defaultUrgentTokens,
   defaultWarnTokens,
   isHandoffCall,
   thresholdsFrom,
@@ -42,16 +43,34 @@ function withTranscript(lines: string[], body: (path: string) => void): void {
 
 describe('thresholdsFrom', () => {
   test('defaults, overrides, and invalid values', () => {
-    expect(thresholdsFrom({})).toEqual({ warn: defaultWarnTokens, block: defaultBlockTokens });
+    expect(thresholdsFrom({})).toEqual({
+      warn: defaultWarnTokens,
+      urgent: defaultUrgentTokens,
+      block: defaultBlockTokens,
+    });
     expect(
       thresholdsFrom({ CHEF_CONTEXT_WARN_TOKENS: '100', CHEF_CONTEXT_BLOCK_TOKENS: '200' }),
-    ).toEqual({ warn: 100, block: 200 });
+    ).toEqual({ warn: 100, urgent: 200, block: 200 });
     expect(
       thresholdsFrom({ CHEF_CONTEXT_WARN_TOKENS: 'abc', CHEF_CONTEXT_BLOCK_TOKENS: '-4' }),
     ).toEqual({
       warn: defaultWarnTokens,
+      urgent: defaultUrgentTokens,
       block: defaultBlockTokens,
     });
+  });
+
+  test.each([
+    ['an override inside the band', { CHEF_CONTEXT_URGENT_TOKENS: '300000' }, 300_000],
+    ['an override below warn is raised to warn', { CHEF_CONTEXT_URGENT_TOKENS: '10' }, 250_000],
+    [
+      'an override above block is lowered to block',
+      { CHEF_CONTEXT_URGENT_TOKENS: '9999999' },
+      400_000,
+    ],
+    ['an invalid override keeps the default', { CHEF_CONTEXT_URGENT_TOKENS: 'x' }, 325_000],
+  ])('the urgent threshold: %s', (_label, environment, expected) => {
+    expect(thresholdsFrom(environment).urgent).toBe(expected);
   });
 
   test('a block threshold below the warn threshold never blocks before it warns', () => {
@@ -168,6 +187,20 @@ describe('decide', () => {
     const decision = decide(input('Bash'), {}, at(250_001));
     expect(decision?.hookSpecificOutput.permissionDecision).toBe('allow');
     expect(decision?.hookSpecificOutput.additionalContext).toContain('handoff brief');
+  });
+
+  test.each([
+    ['just above warn', 250_001, 'handoff threshold'],
+    ['at the urgent threshold', 325_000, 'handoff threshold'],
+    ['just above urgent', 325_001, 'URGENT'],
+    ['at the block threshold', 400_000, 'URGENT'],
+  ])('escalates the warning by band: %s', (_label, tokens, expected) => {
+    const decision = decide(input('Bash'), {}, at(tokens));
+    expect(decision?.hookSpecificOutput.permissionDecision).toBe('allow');
+    const text = decision?.hookSpecificOutput.additionalContext ?? '';
+    expect(text).toContain(expected);
+    if (expected === 'URGENT') expect(text).toContain('blocked at 400K');
+    else expect(text).not.toContain('URGENT');
   });
 
   test('denies other calls above the block threshold and allows a handoff', () => {
