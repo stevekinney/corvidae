@@ -1,6 +1,7 @@
 /**
- * `/reviews`: the Bureau's pending reviews and the engine's in one list, with the decision forms
- * each kind needs, over a Bureau that answers from a table (`bureau-world.test-support.ts`).
+ * `/reviews`: the Bureau's pending reviews as a to-do list, each its own sentence with its decision
+ * inline, and the engine's pending reviews in their own section, over a Bureau that answers from a
+ * table (`bureau-world.test-support.ts`).
  */
 import { HttpClient, type PendingReviewEntry, type ReviewListEntry } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -64,35 +65,49 @@ const QUESTION = humanWaitFixture({ sessionId: 'session-2', requestedAt: Date.no
 
 function countOf(container: HTMLElement): string | undefined {
   return container
-    .querySelector('.weft-reviews-inbox__count')
+    .querySelector('.ib-reviews__count')
     ?.textContent?.replace(/\s+/g, ' ')
     .trim();
 }
 
 function rows(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll<HTMLElement>('.weft-reviews-inbox__list > li')];
+  return [...container.querySelectorAll<HTMLElement>('.ib-review')];
 }
 
 describe('the reviews page', () => {
-  test('lists the Bureau’s reviews and the engine’s in one list, with one count', async () => {
-    const { container } = open({
+  test('lists the Bureau’s reviews as sentences, and the engine’s in their own section, with one count', async () => {
+    const { container, getByRole } = open({
       reviews: [APPROVAL, QUESTION],
       weftReviews: [weftPending()],
     });
-    await waitFor(() => expect(rows(container).length).toBe(3));
+    await waitFor(() => expect(rows(container).length).toBe(2));
     expect(container.querySelector('h1')?.textContent).toBe('Reviews');
-    expect(countOf(container)).toBe('3 pending');
-    // The longest-waiting first, across both sources.
-    expect(rows(container)[0]?.dataset['kind'] ?? rows(container)[0]?.textContent).toBeDefined();
-    expect(rows(container)[0]?.textContent).toContain('issue-refund');
-    expect(rows(container)[2]?.textContent).toContain('Contract approval');
+    expect(countOf(container)).toBe('3 waiting on you');
+    // The longest-waiting first, and each item is the question itself.
+    expect(rows(container)[0]?.textContent).toContain('Refund order-1001?');
+    expect(rows(container)[1]?.textContent).toContain('asks:');
+    expect(getByRole('heading', { level: 2, name: REVIEWS_COPY.engineHeading })).not.toBeNull();
+    expect(container.querySelector('.ib-reviews__engine')?.textContent).toContain(
+      'Contract approval',
+    );
   });
 
-  test('has no Archive, because no operation lists the Bureau’s resolved reviews', async () => {
+  test('has no state tabs, no Live toggle, and no Archive', async () => {
     const { container, queryByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    expect(queryByRole('radio', { name: 'Archive' })).toBeNull();
+    for (const name of ['Archive', 'Decided', 'Timed out']) {
+      expect(queryByRole('radio', { name })).toBeNull();
+    }
+    expect(container.textContent).not.toContain('Live');
     expect(container.textContent).not.toContain('Archive');
+    expect(container.querySelector('.ib-reviews__engine')).toBeNull();
+  });
+
+  test('shows no string twice, and no raw policy string', async () => {
+    const { container } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    const reason = APPROVAL.approval.reason ?? '';
+    if (reason !== '') expect(container.textContent?.split(reason).length).toBe(1);
   });
 
   test('reads the engine’s reviews only when the principal holds reviews:read', async () => {
@@ -110,7 +125,8 @@ describe('the reviews page', () => {
       reviews: [APPROVAL, QUESTION],
       weftReviews: [weftPending()],
     });
-    await waitFor(() => expect(rows(withScope.container).length).toBe(3));
+    await waitFor(() => expect(rows(withScope.container).length).toBe(2));
+    await waitFor(() => expect(withScope.container.textContent).toContain('Contract approval'));
     expect(stub?.weftRequests.length).toBeGreaterThan(0);
   });
 
@@ -133,13 +149,13 @@ describe('deciding a Bureau tool approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(0));
   });
 
-  test('rejects only with a reason, and sends it', async () => {
+  test('denies with a note as a rejection carrying the note, and without one as a plain denial', async () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    const reject = await findByRole('button', { name: 'Reject' });
-    expect(reject.hasAttribute('disabled')).toBe(true);
-    await fireEvent.input(getByLabelText(/Reason/), { target: { value: 'Wrong order.' } });
-    await fireEvent.click(reject);
+    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+      target: { value: 'Wrong order.' },
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Deny' }));
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
@@ -165,7 +181,7 @@ describe('deciding a Bureau tool approval', () => {
       throw new Error('The Bureau broke.');
     });
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-    await findByText('The decision was not recorded');
+    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
     expect(rows(container).length).toBe(1);
   });
 });
@@ -192,8 +208,8 @@ describe('one source failing', () => {
       { weftReviews: [weftPending()] },
     );
     await findByText('The Bureau broke.');
-    await waitFor(() => expect(rows(container).length).toBe(1));
-    expect(getAllByText('Contract approval').length).toBeGreaterThan(0);
+    await waitFor(() => expect(getAllByText('Contract approval').length).toBeGreaterThan(0));
+    expect(container.querySelector('.ib-reviews__engine')).not.toBeNull();
     // The page itself is up: the frame did not turn the Bureau's failure into an error for it.
     expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
       'ready',
@@ -211,7 +227,7 @@ describe('one source failing', () => {
   });
 });
 
-describe('the approval pane', () => {
+describe('the approval’s details', () => {
   test('shows what the approval would run: the command, the patch, and the files', async () => {
     const approval = toolApprovalFixture({
       requestedAt: Date.now() - 120_000,
@@ -225,7 +241,8 @@ describe('the approval pane', () => {
         },
       },
     });
-    const { container, findByText } = open({ reviews: [approval] });
+    const { container, findByRole, findByText } = open({ reviews: [approval] });
+    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.details }));
     await findByText('bun run deploy');
     expect(container.textContent).toContain('dist/app.js');
     expect(container.textContent).toContain(REVIEWS_COPY.operation.command);
@@ -248,7 +265,8 @@ describe('the approval pane', () => {
         },
       },
     });
-    const { container, findByText } = open({ reviews: [approval] });
+    const { container, findByRole, findByText } = open({ reviews: [approval] });
+    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.details }));
     await findByText('bun run deploy');
     expect(container.textContent).not.toContain('Something went wrong');
     expect(container.textContent).toContain('dist/app.js');
@@ -285,7 +303,7 @@ describe('a decision that took effect', () => {
       const world = emptyBureauWorld({ reviews: others === 0 ? [decided] : [decided, other] });
       stub = installBureauWorld(world);
       router.navigate('/reviews', { replace: true });
-      const { container, findByRole, findByText, queryByText } = render(Harness, {
+      const { container, findAllByRole, findByText, queryByText } = render(Harness, {
         props: {
           client: new HttpClient({ baseUrl: 'http://localhost/api' }),
           scopes: AUTHORIZATION_SCOPES,
@@ -295,7 +313,7 @@ describe('a decision that took effect', () => {
       writeFails(world, decided.id);
       const reads = stub.callsTo('bureau.reviews.list').length;
 
-      await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+      await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
 
       // The refetch drops the decided review, and the warning is still on the page.
       await waitFor(() => expect(rows(container).length).toBe(others));
@@ -303,8 +321,8 @@ describe('a decision that took effect', () => {
       expect(container.textContent).toContain(REVIEWS_COPY.outcomeNotWritten.message);
       expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull();
       expect(stub.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads);
-      // The other review, if any, has not taken the alert into its own pane.
-      expect(container.querySelectorAll('.weft-review-detail [role="alert"]').length).toBe(0);
+      // The other review, if any, has not taken the alert into its own item.
+      expect(container.querySelectorAll('.ib-review [role="alert"]').length).toBe(0);
     });
   }
 
@@ -339,7 +357,7 @@ describe('a decision that took effect', () => {
       });
     });
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-    await findByText(REVIEWS_COPY.decisionFailed);
+    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
   });
 });
 
@@ -357,26 +375,16 @@ describe('what became of a decision', () => {
       sessionId: 'session-b',
       requestedAt: Date.now() - 100_000,
     });
-    const { container, findByRole, findByText, queryByText } = open({ reviews: [first, second] });
+    const { container, findAllByRole, findByText } = open({ reviews: [first, second] });
     await waitFor(() => expect(rows(container).length).toBe(2));
     stub?.on('bureau.reviews.resolve', () => {
       throw new Error('The Bureau broke.');
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-    await findByText(REVIEWS_COPY.decisionFailed);
+    await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
+    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
 
-    const other = rows(container)[1]?.querySelector('button');
-    if (other === null || other === undefined) throw new Error('Expected a second row.');
-    await fireEvent.click(other);
-    await waitFor(() =>
-      expect(queryByText(REVIEWS_COPY.decisionFailed)?.textContent ?? null).toBeNull(),
-    );
-
-    // Back on the first review, what became of it is still told.
-    const again = rows(container)[0]?.querySelector('button');
-    if (again === null || again === undefined) throw new Error('Expected a first row.');
-    await fireEvent.click(again);
-    await findByText(REVIEWS_COPY.decisionFailed);
+    expect(rows(container)[0]?.textContent).toContain(REVIEWS_COPY.decisionFailed);
+    expect(rows(container)[1]?.textContent).not.toContain(REVIEWS_COPY.decisionFailed);
   });
 });
 
@@ -445,7 +453,7 @@ describe('answering a Bureau question', () => {
     });
     await fireEvent.input(await findByLabelText('Your answer'), { target: { value: 'staging' } });
     await fireEvent.click(getByRole('button', { name: 'Send answer' }));
-    await findByText(REVIEWS_COPY.answerFailed);
+    await findByText(new RegExp(REVIEWS_COPY.answerFailed));
     expect(rows(container).length).toBe(1);
   });
 
@@ -477,7 +485,7 @@ describe('an engine review', () => {
     const { container, findByRole, getByLabelText } = open({
       weftReviews: [weftPending()],
     });
-    await waitFor(() => expect(rows(container).length).toBe(1));
+    await waitFor(() => expect(container.querySelector('.ib-reviews__engine')).not.toBeNull());
     await fireEvent.click(await findByRole('radio', { name: 'Approve' }));
     await fireEvent.input(getByLabelText(/Reviewer/), { target: { value: 'ops@example.com' } });
     await fireEvent.click(await findByRole('button', { name: 'Submit decision' }));
@@ -486,7 +494,7 @@ describe('an engine review', () => {
       reviewId: 'weft-review-1',
       body: { decision: 'approved', reviewer: 'ops@example.com' },
     });
-    await waitFor(() => expect(rows(container).length).toBe(0));
+    await waitFor(() => expect(container.querySelector('.ib-reviews__engine')).toBeNull());
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
 
@@ -494,7 +502,7 @@ describe('an engine review', () => {
     const { container, findByRole, getByLabelText } = open({
       weftReviews: [weftPending()],
     });
-    await waitFor(() => expect(rows(container).length).toBe(1));
+    await waitFor(() => expect(container.querySelector('.ib-reviews__engine')).not.toBeNull());
     expect(await findByRole('button', { name: 'Submit decision' })).not.toBeNull();
     expect(getByLabelText(/Reviewer/)).not.toBeNull();
     // It is not the Bureau's form: there is no Deny, and no reason to give.
@@ -503,13 +511,13 @@ describe('an engine review', () => {
 
   test('links to the run it is a review of', async () => {
     const { container } = open({ weftReviews: [weftPending()] });
-    await waitFor(() => expect(rows(container).length).toBe(1));
+    await waitFor(() => expect(container.querySelector('.ib-reviews__engine')).not.toBeNull());
     expect(container.querySelector('.weft-review-detail a')?.getAttribute('href')).toBe(
       '/runs/wf_4a9f8c31e7b2d05a6f912c10',
     );
   });
 
-  test('shows the decided and timed-out states for the engine’s own reviews', async () => {
+  test('leaves out a decided review, because the page lists only what waits on someone', async () => {
     const decided: ReviewListEntry = {
       status: 'completed',
       reviewId: 'weft-review-2',
@@ -523,10 +531,9 @@ describe('an engine review', () => {
       reviewer: 'ops@example.com',
       timestamp: 2,
     };
-    const { container, findByRole } = open({ reviews: [APPROVAL], weftReviews: [decided] });
+    const { container } = open({ reviews: [APPROVAL], weftReviews: [decided] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click(await findByRole('radio', { name: 'Decided' }));
-    await waitFor(() => expect(container.textContent).toContain('wf_decid'));
-    expect(container.textContent).not.toContain('issue-refund');
+    expect(container.querySelector('.ib-reviews__engine')).toBeNull();
+    expect(container.textContent).not.toContain('wf_decid');
   });
 });

@@ -74,7 +74,7 @@ describe('the route table', () => {
     }
     expect(
       routes.filter((route) => route.redirect !== undefined).map((route) => route.pattern),
-    ).toEqual(['/']);
+    ).toEqual(['/', '/tasks', '/tasks/:id']);
   });
 
   test('gives the route that redirects a component file too, which the outlet never mounts', () => {
@@ -178,11 +178,11 @@ describe('the route table', () => {
 });
 
 describe('the retired Tasks routes', () => {
-  test('/tasks and /tasks/:id redirect, and name no view, so nothing in the navigation shows them', async () => {
+  test('/tasks and /tasks/:id redirect, and the navigation has no entry of their own for them', () => {
     for (const pattern of ['/tasks', '/tasks/:id']) {
       const route = routes.find((candidate) => candidate.pattern === pattern);
-      expect(route?.view, pattern).toBeUndefined();
       expect(route?.redirect, pattern).toBeDefined();
+      expect(route?.view, pattern).toBe('runs');
     }
   });
 

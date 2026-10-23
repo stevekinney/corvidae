@@ -47,6 +47,7 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -153,7 +154,7 @@
   function openAgent(event: MouseEvent, name: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     event.preventDefault();
-    router.navigate(`/agents/${encodeURIComponent(name)}`);
+    router.navigate(agentPath(name));
   }
 
   function chooseAgent(value: string): void {
@@ -315,7 +316,7 @@
     {#if !choosing}
       <a
         class="weft-chat-header__agent"
-        href={router.href(`/agents/${encodeURIComponent(agent)}`)}
+        href={router.href(agentPath(agent))}
         onclick={(event) => openAgent(event, agent)}>{agent}</a
       >
       {#if context.data?.parentContextId}
@@ -418,13 +419,9 @@
       {/snippet}
       {#snippet row({ message }, renderDefault)}
         {@const group = activity.groups.get(message.id)}
-        {#if activity.absorbed.has(message.id)}
-          <!-- Rendered with the first call of its run of tool rows. -->
-        {:else if group !== undefined}
-          <ToolCalls
-            id={`tools-${message.id}`}
-            entries={group.entries}
-          >
+        {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
+        {#if group !== undefined}
+          <ToolCalls id={`tools-${message.id}`} entries={group.entries}>
             {#snippet decision(entry)}
               {@const question = approvalsByCall.get(entry.callId)}
               {#if question !== undefined}
@@ -437,14 +434,12 @@
               {/if}
             {/snippet}
           </ToolCalls>
-        {:else}
-        {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
-        <!-- A message of only files has no bubble to show. A row with no file is Chat's own. -->
-        {#if assets.length === 0 || hasContent(message)}
+        {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
+          <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
+               later call of a run of tool rows is shown with the first (`tool-activity.ts`). -->
           {@render renderDefault()}
         {/if}
         <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />
-        {/if}
       {/snippet}
       {#snippet messagePart(part, renderDefault)}
         {#if part.type !== 'tool-approval'}

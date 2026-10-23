@@ -77,7 +77,7 @@ function navigationLabel(container: HTMLElement): string {
 
 function countOf(container: HTMLElement): string | undefined {
   return container
-    .querySelector('.weft-reviews-inbox__count')
+    .querySelector('.ib-reviews__count')
     ?.textContent?.replace(/\s+/g, ' ')
     .trim();
 }
@@ -153,15 +153,15 @@ describe('the count in the navigation', () => {
   });
 
   test('changes at once after a decision this application makes, with no time advanced', async () => {
-    const { container, findByRole } = open('/reviews', {
+    const { container, findAllByRole } = open('/reviews', {
       reviews: [approval('a'), approval('b')],
     });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 2'));
     await until(() =>
-      expect(container.querySelectorAll('.weft-reviews-inbox__list > li').length).toBe(2),
+      expect(container.querySelectorAll('.ib-review').length).toBe(2),
     );
 
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1);
   });
@@ -173,7 +173,7 @@ describe('answering a question in the inbox', () => {
     const { container, findByRole, findByLabelText } = open('/reviews', { reviews: [question] });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     await until(() =>
-      expect(container.querySelectorAll('.weft-reviews-inbox__list > li').length).toBe(1),
+      expect(container.querySelectorAll('.ib-review').length).toBe(1),
     );
     stub?.on('bureau.tasks.respond', () => {
       world.reviews = [];
@@ -197,12 +197,12 @@ describe('answering a question in the inbox', () => {
 
 describe('the list on /reviews', () => {
   const rows = (container: HTMLElement) =>
-    container.querySelectorAll('.weft-reviews-inbox__list > li').length;
+    container.querySelectorAll('.ib-review').length;
 
   test('shows a review that arrives after five seconds, and says how many wait', async () => {
     const { container } = open('/reviews', { reviews: [approval('a')] });
     await until(() => expect(rows(container)).toBe(1));
-    expect(countOf(container)).toBe('1 pending');
+    expect(countOf(container)).toBe('1 waiting on you');
 
     world.reviews = [...world.reviews, approval('b')];
     jest.advanceTimersByTime(4_000);
@@ -210,7 +210,7 @@ describe('the list on /reviews', () => {
     expect(rows(container)).toBe(1);
     jest.advanceTimersByTime(1_000);
     await until(() => expect(rows(container)).toBe(2));
-    expect(countOf(container)).toBe('2 pending');
+    expect(countOf(container)).toBe('2 waiting on you');
   });
 
   test('drops a review that was resolved elsewhere after five seconds', async () => {

@@ -1,9 +1,10 @@
 /**
- * `/reviews` against the real host: the Bureau's tool approvals and questions, listed with the
- * engine's reviews, decided and answered there. Approving `tool-runner`'s review runs its tool; chat
- * and the inbox agree about an approval whichever one decides it; and a question is answered with
- * one text field. Sessions are started through the AG-UI mount, the way a client other than the page
- * would.
+ * `/reviews` against the real host: a to-do list of the Bureau's tool approvals and questions, each
+ * its own sentence with its decision inline, followed by the engine's reviews when it has any.
+ * Approving `tool-runner`'s review runs its tool; a chat that is already open agrees about an
+ * approval whichever one decides it, within a few seconds and with no reload; and a question is
+ * answered with one text field. Sessions are started through the AG-UI mount, the way a client other
+ * than the page would.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
@@ -17,7 +18,7 @@ const WIDTHS = [375, 1280] as const;
 
 /** The Bureau's row for a session's review: the one list item that links to that session's chat. */
 const rowOfSession = (page: Page, threadId: string) =>
-  page.locator('.weft-reviews-inbox__list > li').filter({
+  page.locator('.ib-review').filter({
     has: page.locator(`a[href="/chat/${threadId}"]`),
   });
 
@@ -39,19 +40,24 @@ test.describe('a tool approval', () => {
     await page.goto('/reviews');
     const row = rowOfSession(page, threadId);
     await expect(row).toBeVisible();
-    await expect(row).toContainText('issue-refund');
-    await row.getByRole('button').click();
-    await expect(page.getByRole('heading', { level: 2, name: 'Tool approval' })).toBeVisible();
-    await expect(page.getByText('order-1001').first()).toBeVisible();
+    // The item is the question itself, with the order and the amount, and says where it came from.
+    await expect(row).toContainText('Refund order order-1001 for $42.00?');
+    await expect(row).toContainText('tool-runner');
+    await expect(row).toContainText('Refund order-1001');
+    // No raw policy string, no state tabs, and no Live toggle for an engine with no reviews.
+    await expect(page.getByText(/requires approval/)).toHaveCount(0);
+    await expect(page.getByText('Decided', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Timed out', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Live')).toHaveCount(0);
     await checkA11y('a tool approval in the inbox');
-    await page.getByRole('button', { name: 'Approve' }).click();
+    await row.getByRole('button', { name: 'Approve' }).click();
 
     await expect(row).toHaveCount(0);
     // The row going is not the evidence: the tool ran, and its result is in the conversation.
     await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
   });
 
-  test('rejected from the inbox needs a reason, and the tool never runs', async ({
+  test('denied from the inbox with a note never runs the tool', async ({
     page,
     request,
   }) => {
@@ -60,11 +66,8 @@ test.describe('a tool approval', () => {
 
     await page.goto('/reviews');
     const row = rowOfSession(page, threadId);
-    await row.getByRole('button').click();
-    const reject = page.getByRole('button', { name: 'Reject' });
-    await expect(reject).toBeDisabled();
-    await page.getByLabel(/Reason/).fill('Wrong customer.');
-    await reject.click();
+    await row.getByLabel('Note to the agent (optional)').fill('Wrong customer.');
+    await row.getByRole('button', { name: 'Deny' }).click();
 
     await expect(row).toHaveCount(0);
     expect(refundRan(await threadMessages(request, threadId))).toBe(false);
@@ -81,8 +84,7 @@ test.describe('a tool approval', () => {
     await expect(rowOfSession(page, threadId)).toBeVisible();
 
     await page.goto(`/chat/${threadId}`);
-    const alert = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
-    await alert.getByRole('button', { name: 'Approve' }).click();
+    await page.locator('.ib-decision').getByRole('button', { name: 'Approve' }).click();
     // The run goes on after the approval and reports what it did.
     await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
 
@@ -104,19 +106,39 @@ test.describe('a tool approval', () => {
 
     await page.goto('/reviews');
     const row = rowOfSession(page, threadId);
-    await row.getByRole('button').click();
-    await page.getByRole('button', { name: 'Approve' }).click();
+    await row.getByRole('button', { name: 'Approve' }).click();
     await expect(row).toHaveCount(0);
 
     // A chat opened afterwards reads the conversation the decision wrote into.
     await page.goto(`/chat/${threadId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Refund order-1001');
-    await expect(page.getByRole('alert').filter({ hasText: 'Needs your approval' })).toHaveCount(0);
-    // The refund shows as a tool call that succeeded, with its result to open.
+    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    // The refund shows as a tool call that succeeded, with its result under Details.
+    await expect(page.getByText('Used 2 tools')).toBeVisible();
+    await page.getByRole('button', { name: 'Show' }).click();
     await expect(page.getByText('issue-refund').first()).toBeVisible();
-    await expect(page.getByText('Succeeded', { exact: true })).toHaveCount(2);
-    await page.getByRole('button', { name: 'Result' }).last().click();
-    await expect(page.getByText(/refundedCents/)).toBeVisible();
+    await page.getByRole('button', { name: 'Details' }).last().click();
+    await expect(page.getByText('refundedCents')).toBeVisible();
+  });
+
+  test('decided in the inbox updates a chat that is already open, with no reload', async ({
+    page,
+    request,
+    context,
+  }) => {
+    const threadId = newThreadId('reviews-open-chat');
+    await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await page.goto(`/chat/${threadId}`);
+    await expect(page.locator('.ib-decision')).toContainText('Refund order order-1001 for $42.00?');
+
+    const inbox = await context.newPage();
+    await inbox.goto('/reviews');
+    await rowOfSession(inbox, threadId).getByRole('button', { name: 'Approve' }).click();
+    await expect(rowOfSession(inbox, threadId)).toHaveCount(0);
+
+    // The page that was already open reads the decision within five seconds.
+    await expect(page.locator('.ib-decision')).toHaveCount(0, { timeout: 5_000 });
+    await expect(page.getByText('1 run is waiting on you')).toHaveCount(0, { timeout: 5_000 });
   });
 });
 
@@ -131,11 +153,13 @@ test.describe('a question a run asks', () => {
 
     await page.goto('/reviews');
     const row = rowOfSession(page, threadId);
-    await expect(row).toContainText('Which environment should the release go to?');
-    await row.getByRole('button').click();
+    await expect(row).toContainText(
+      'request-human-input asks: Which environment should the release go to?',
+    );
+    await expect(row).toContainText('The agent continues with your answer.');
     await checkA11y('a question in the inbox');
-    await page.getByLabel('Your answer').fill('staging');
-    await page.getByRole('button', { name: 'Send answer' }).click();
+    await row.getByLabel('Your answer').fill('staging');
+    await row.getByRole('button', { name: 'Send answer' }).click();
 
     await expect(row).toHaveCount(0);
     const task = await taskOfSession(request, threadId);
@@ -204,17 +228,16 @@ test.describe('a scheduled run’s human wait', () => {
     const question = fire;
 
     await page.goto('/reviews');
-    const row = page.locator('.weft-reviews-inbox__list > li').filter({
+    const row = page.locator('.ib-review').filter({
       has: page.locator(
         question.sessionId === undefined
-          ? `a[href="/tasks/${question.runId}"]`
+          ? `a[href="/runs/${question.runId}"]`
           : `a[href="/chat/${question.sessionId}"]`,
       ),
     });
     await expect(row).toContainText(HUMAN_INPUT_PROMPT);
-    await row.getByRole('button').click();
-    await page.getByLabel('Your answer').fill('staging');
-    await page.getByRole('button', { name: 'Send answer' }).click();
+    await row.getByLabel('Your answer').fill('staging');
+    await row.getByRole('button', { name: 'Send answer' }).click();
 
     await expect(row).toHaveCount(0);
     // The run the wait belongs to goes on and finishes.
@@ -250,8 +273,8 @@ test.describe('a Bureau that fails', () => {
 
     await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible();
-    // The engine's seeded reviews are still listed beside it.
-    await expect(page.locator('.weft-reviews-inbox__list > li').first()).toBeVisible();
+    // The engine's seeded reviews are still listed beside it, in their own section.
+    await expect(page.getByRole('heading', { level: 2, name: 'Engine reviews' })).toBeVisible();
     await checkA11y('the inbox with the Bureau failing');
   });
 });
@@ -300,7 +323,7 @@ for (const width of WIDTHS) {
 
     await page.goto('/reviews');
 
-    await expect(page.locator('.weft-reviews-inbox__list > li').first()).toBeVisible();
+    await expect(page.locator('.ib-review').first()).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

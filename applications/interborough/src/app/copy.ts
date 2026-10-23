@@ -938,6 +938,7 @@ export const REVIEWS_COPY = {
   unknownAgent: 'An agent',
   untitledChat: 'Untitled chat',
   asks: 'asks:',
+  details: 'Details',
   questionFallback: 'It is waiting for your answer.',
   waiting: (count: number): string => `${String(count)} waiting on you`,
   engineHeading: 'Engine reviews',

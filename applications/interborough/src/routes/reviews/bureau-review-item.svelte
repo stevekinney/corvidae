@@ -18,7 +18,7 @@
    * the call comes from the tool's own summary, or else from its name and arguments
    * (`lib/tool-text.ts`).
    */
-  import { Alert } from '@lostgradient/cinder';
+  import { Alert, Collapsible } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
@@ -30,7 +30,8 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
+  import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+  import BureauReviewOperation from './bureau-review-operation.svelte';
 
   interface BureauReviewItemProps {
     readonly review: BureauReview;
@@ -97,6 +98,22 @@
       failure={undefined}
       onSend={onAnswer}
     />
+  {/if}
+  {#if review.kind === 'tool-approval'}
+    {@const operation = review.approval.action.type === 'approval' ? review.approval.action.operation : undefined}
+    <div class="ib-review__details">
+      <Collapsible trigger={REVIEWS_COPY.details}>
+        <dl class="ib-tool__details">
+          {#each argumentEntries(review.approval.arguments) as [key, value] (key)}
+            <dt>{key}</dt>
+            <dd>{value}</dd>
+          {/each}
+        </dl>
+        {#if operation !== undefined}
+          <BureauReviewOperation {operation} />
+        {/if}
+      </Collapsible>
+    </div>
   {/if}
   <p class="ib-review__origin">
     <span>{agent}</span>

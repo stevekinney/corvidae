@@ -306,7 +306,7 @@ describe('an existing session', () => {
     expect(reads).toBeLessThanOrEqual(2);
   });
 
-  test('lists the tasks of the session, each linking to its page, and asks for those of this session alone', async () => {
+  test('says what became of the session’s runs, linking to the run, and asks for those of this session alone', async () => {
     const stub = bureau({
       'bureau.contexts.get': () => CONTEXT,
       'bureau.tasks.list': () => ({
@@ -317,7 +317,7 @@ describe('an existing session', () => {
             agentName: 'assistant',
             owner: 'anonymous:local',
             actor: null,
-            status: 'completed',
+            status: 'failed',
             finishReason: null,
             statusMessage: null,
             createdAt: '2026-10-19T08:00:00.000Z',
@@ -336,7 +336,8 @@ describe('an existing session', () => {
       title: 'Plan the week',
       agentName: 'assistant',
     });
-    await waitFor(() => expect(container.querySelector('a[href="/tasks/run-7"]')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('a[href="/runs/run-7"]')).not.toBeNull());
+    expect(container.querySelector('a[href="/runs/run-7"]')?.textContent).toBe('Run failed');
     expect(stub.calls.find((call) => call.method === 'bureau.tasks.list')?.params).toEqual({
       contextId: 'session-1',
       limit: 50,
@@ -503,7 +504,7 @@ describe('a run that waits on a tool approval', () => {
     },
   ];
 
-  test('is decided in the alert, and the decision makes the inbox read again at once', async () => {
+  test('is decided in its row under the call, and the decision makes the inbox read again at once', async () => {
     const bodies: Array<{ resume?: unknown }> = [];
     restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
@@ -525,14 +526,17 @@ describe('a run that waits on a tool approval', () => {
       ]);
     }).restore;
     landAt('/chat/session-1');
-    const { container, findByRole } = mount({
+    const { container, findByRole, findByText } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
       agentName: 'assistant',
     });
     await sendMessage(container, 'Refund it');
-    const alert = await findByRole('alert');
-    expect(alert.textContent).toContain('Needs your approval');
+    // The approval is one flat row with the question it asks, which is the approval's own message
+    // here. No run identifier and no policy string reaches the page.
+    expect(await findByText('Refund order-1001?')).not.toBeNull();
+    expect(container.textContent).not.toContain('requires approval');
+    expect(container.textContent).not.toMatch(/run-\d/);
 
     const invalidated = spyOn(QueryClient.prototype, 'invalidateQueries');
     try {

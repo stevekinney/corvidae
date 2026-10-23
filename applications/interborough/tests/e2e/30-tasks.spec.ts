@@ -1,15 +1,16 @@
 /**
- * Tasks at `/tasks` and `/tasks/:id` against the real host: a chat session lists its tasks and each
- * links to its page; a task that waits on a question is answered with one text field and goes on;
- * the page follows a task's stream across a dropped connection and across a reload, resuming from
- * the last cursor each time; and cancelling a task shows where its cleanup stands. The sessions are
+ * Runs at `/runs` and `/runs/:id` against the real host, in the words of a task: the list says which
+ * agent ran and what started it, and a run's page shows its answer, answers a question it waits on
+ * with one text field, follows the run's stream across a dropped connection and across a reload,
+ * resuming from the last cursor each time, and cancels it after a confirmation, showing where its
+ * cleanup stands. `/tasks` and `/tasks/:id` go to their runs. The sessions are
  * started through the AG-UI mount, the way a client other than the page would, and the runs that
  * must still be going when Playwright acts are held on the barrier (`barrier-agent.ts`).
  */
 import type { BrowserContext, Page } from '@playwright/test';
 
 import { TASK_COPY } from '../../src/app/copy.ts';
-import { taskCursorKey } from '../../src/routes/tasks/task-follower.svelte.ts';
+import { taskCursorKey } from '../../src/routes/workflows/runs/task-follower.svelte.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession } from './task-support.ts';
@@ -102,51 +103,70 @@ async function runningBarrierTask(
   return { threadId, taskId: task.id, abort: () => held.abort() };
 }
 
-test.describe('a chat session’s tasks', () => {
-  test('are listed in the session, and following one opens its page with the answer', async ({
+const heading = (page: Page) => page.locator('.ib-run__heading');
+
+test.describe('the runs of a chat', () => {
+  test('are listed with their agent, their chat, and their status, and a row opens the run with its answer', async ({
     page,
     request,
     checkA11y,
   }) => {
-    const threadId = newThreadId('tasks-link');
+    const threadId = newThreadId('runs-link');
     await runToEnd(request, 'assistant', threadId, 'Say hello');
     const task = await taskOfSession(request, threadId);
 
-    await page.goto(`/chat/${threadId}`);
-    const tasks = page.getByRole('region', { name: 'Tasks in this chat' });
-    await expect(tasks).toBeVisible();
-    await tasks.getByRole('link').first().click();
+    await page.goto('/runs');
+    const row = page.locator(`[data-run="${task.id}"]`);
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute('data-status', 'Done');
+    await expect(row.getByRole('link', { name: 'Say hello' })).toHaveAttribute(
+      'href',
+      `/chat/${threadId}`,
+    );
+    await checkA11y('the runs list');
+    await row.getByRole('link', { name: 'assistant' }).click();
 
-    await expect(page).toHaveURL(new RegExp(`/tasks/${task.id}$`));
-    await expect(page.locator('[data-view="tasks"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('assistant task');
-    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
-    // The answer is the stream's: the task view the Bureau serves has none.
+    await expect(page).toHaveURL(new RegExp(`/runs/${task.id}$`));
+    await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('assistant');
+    await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
+    // Open chat is the first action, and the answer is the stream's: the task view has none.
+    await expect(page.getByRole('link', { name: 'Open chat' })).toHaveAttribute(
+      'href',
+      `/chat/${threadId}`,
+    );
     await expect(page.getByRole('heading', { level: 2, name: 'Answer' })).toBeVisible();
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
-    await expect(page.getByText(/history/i)).toHaveCount(0);
-    await checkA11y('a completed task');
+    // What only an operator uses is on the Engine tab, and not on this one.
+    await expect(page.getByRole('button', { name: /Restart|Send signal|Send update/ })).toHaveCount(
+      0,
+    );
+    await checkA11y('a completed run');
   });
 
-  test('are the list at /tasks, narrowed by session, and /tasks stays out of the navigation', async ({
+  test('narrow by what started them, and /tasks goes to the runs without being in the navigation', async ({
     page,
     request,
   }) => {
-    const threadId = newThreadId('tasks-list');
+    const threadId = newThreadId('runs-list');
     await runToEnd(request, 'assistant', threadId, 'Say hello');
     const task = await taskOfSession(request, threadId);
 
-    await page.goto(`/tasks?session=${threadId}`);
+    await page.goto('/runs?startedBy=chat');
+    await expect(page.locator(`[data-run="${task.id}"]`)).toBeVisible();
+    await expect(page.locator('[data-run^="goal-"]')).toHaveCount(0);
 
-    await expect(page.getByRole('row')).toHaveCount(2);
-    await expect(page.locator(`a[href="/tasks/${task.id}"]`)).toBeVisible();
+    await page.goto('/tasks');
+    await expect(page).toHaveURL(/\/runs\?startedBy=chat$/);
+    await page.goto(`/tasks/${task.id}`);
+    await expect(page).toHaveURL(new RegExp(`/runs/${task.id}$`));
     await expect(
-      page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Tasks/ }),
+      page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /Tasks/ }),
     ).toHaveCount(0);
   });
 });
 
-test.describe('a task that waits on a question', () => {
+test.describe('a run that waits on a question', () => {
   test('is answered with one text field, and the task goes on', async ({
     page,
     request,
@@ -157,16 +177,16 @@ test.describe('a task that waits on a question', () => {
     const task = await taskOfSession(request, threadId);
     expect(task.status).toBe('input-required');
 
-    await page.goto(`/tasks/${task.id}`);
+    await page.goto(`/runs/${task.id}`);
 
-    await expect(page.getByText('Waiting for input', { exact: true })).toBeVisible();
+    await expect(heading(page).getByText('Needs you', { exact: true })).toBeVisible();
     await expect(page.getByText('Which environment should the release go to?')).toBeVisible();
-    await checkA11y('a task waiting on a question');
+    await checkA11y('a run waiting on a question');
     await page.getByLabel('Your answer').fill('staging');
     await page.getByRole('button', { name: 'Send answer' }).click();
 
     // The page reads the task again, and the stream carries what the run answers.
-    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
     await expect(page.getByText(HUMAN_INPUT_THANKS)).toBeVisible();
     await expect(page.getByLabel('Your answer')).toHaveCount(0);
   });
@@ -190,7 +210,7 @@ test.describe('following a task', () => {
       }
     });
 
-    await page.goto(`/tasks/${taskId}`);
+    await page.goto(`/runs/${taskId}`);
     await expect(page.getByText('Which environment should the release go to?')).toBeVisible();
     // The first stream has no position to resume from, and it gives the page one.
     expect(resumes).toEqual([undefined]);
@@ -216,7 +236,7 @@ test.describe('following a task', () => {
 
     // With the network back, the stream resumes from the position the page had, and carries on.
     await context.setOffline(false);
-    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
     await expect(page.getByText(HUMAN_INPUT_THANKS)).toBeVisible();
     expect(resumes.at(-1)).toBe(before);
     const after = await keptCursor(page, taskId);
@@ -226,14 +246,14 @@ test.describe('following a task', () => {
     // a stream resumed from a position does not send again.
     resumes.length = 0;
     await page.reload();
-    await expect(page.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
     await expect(page.getByText(HUMAN_INPUT_THANKS)).toBeVisible();
     await expect.poll(() => resumes.length).toBeGreaterThanOrEqual(1);
     expect(resumes[0]).toBe(after);
   });
 });
 
-test.describe('cancelling a task', () => {
+test.describe('cancelling a run', () => {
   test('shows the cancellation until its cleanup is done, and then says it is cleaned up', async ({
     page,
     request,
@@ -241,16 +261,17 @@ test.describe('cancelling a task', () => {
   }) => {
     const { taskId, abort } = await runningBarrierTask(request, 'tasks-cancel');
     try {
-      await page.goto(`/tasks/${taskId}`);
-      await expect(page.getByText('Working', { exact: true })).toBeVisible();
-      await checkA11y('a task that can be cancelled');
+      await page.goto(`/runs/${taskId}`);
+      await expect(heading(page).getByText('Working', { exact: true })).toBeVisible();
+      await checkA11y('a run that can be cancelled');
 
-      await page.getByRole('button', { name: 'Cancel task' }).click();
+      await page.getByRole('button', { name: 'Cancel run' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Cancel run' }).click();
 
       await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
-      await expect(page.getByText('Canceled', { exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Cancel task' })).toHaveCount(0);
-      await checkA11y('a task that was cleaned up');
+      await expect(heading(page).getByText('Canceled', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Cancel run' })).toHaveCount(0);
+      await checkA11y('a run that was cleaned up');
     } finally {
       abort();
       await releaseBarrier(request);
@@ -259,7 +280,7 @@ test.describe('cancelling a task', () => {
 });
 
 for (const width of WIDTHS) {
-  test(`a task’s page fits at ${width} pixels, and passes axe`, async ({
+  test(`a run’s page fits at ${width} pixels, and passes axe`, async ({
     page,
     request,
     checkA11y,
@@ -269,13 +290,13 @@ for (const width of WIDTHS) {
     await runToEnd(request, 'request-human-input', threadId, 'Release it');
     const task = await taskOfSession(request, threadId);
 
-    await page.goto(`/tasks/${task.id}`);
+    await page.goto(`/runs/${task.id}`);
 
     await expect(page.getByLabel('Your answer')).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await checkA11y(`a task waiting on a question at ${width}px`);
+    await checkA11y(`a run waiting on a question at ${width}px`);
   });
 }

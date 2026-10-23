@@ -671,3 +671,7 @@
   font-size: var(--cinder-text-md);
   font-weight: 600;
 }
+
+.ib-review__details {
+  padding-inline: var(--cinder-space-3);
+}

@@ -69,9 +69,10 @@ export const routes: readonly RouteDefinition[] = [
   { pattern: '/schedules', view: 'schedules', load: schedulesArea },
   { pattern: '/schedules/:id', view: 'schedules', load: schedulesArea },
   // A task is a run. Old addresses for one go to the run's page, or to the runs a chat started.
-  { pattern: '/tasks', load: placeholder, redirect: () => Promise.resolve('/runs?startedBy=chat') },
+  { pattern: '/tasks', view: 'runs', load: placeholder, redirect: () => Promise.resolve('/runs?startedBy=chat') },
   {
     pattern: '/tasks/:id',
+    view: 'runs',
     load: placeholder,
     redirect: ({ params }) => Promise.resolve(`/runs/${encodeURIComponent(params['id'] ?? '')}`),
   },

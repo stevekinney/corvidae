@@ -1,6 +1,6 @@
 /**
  * Chat at `/chat/:sessionId` against the real host: a message sent, a follow-up sent while the run
- * is going (held on the barrier so nothing depends on a clock), an approval decided in the page,
+ * is going (held on the barrier so nothing depends on a clock), an approval decided in its row under the call,
  * and a reload while a run is going. Sessions are started through the AG-UI mount, the way a client
  * other than the page would, because starting one from the page belongs to `/chat/new`.
  */
@@ -89,7 +89,7 @@ test.describe('a tool approval', () => {
     return threadId;
   }
 
-  test('raised by a run the page started is decided in the alert above the transcript', async ({
+  test('raised by a run the page started is one flat row under its call, and deciding it continues the run', async ({
     page,
     request,
     checkA11y,
@@ -99,9 +99,16 @@ test.describe('a tool approval', () => {
 
     await send(page, 'Refund order-1001 again');
 
-    const alert = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
+    const alert = page.locator('.ib-decision');
     await expect(alert).toBeVisible();
-    await expect(page.getByText('lookup-order').first()).toBeVisible();
+    // One flat row: the question in the call's own words, with Deny and Approve, and none of the
+    // policy's string or the run's identifier anywhere in the view's text.
+    await expect(alert).toContainText('Refund order order-1001 for $42.00?');
+    const text = (await transcript(page).innerText()) ?? '';
+    expect(text).not.toMatch(/requires approval|mutating tier|run-\d/);
+    // The turn's two calls are folded to one line, and the call that needs a decision is not in it.
+    await expect(page.getByText('Used 2 tools · 1 needs you')).toBeVisible();
+    await expect(page.getByText('issue-refund').first()).toBeVisible();
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
     await expect(page.getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
@@ -123,7 +130,7 @@ test.describe('a tool approval', () => {
 
     await page.goto(`/chat/${threadId}`);
 
-    const alert = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
+    const alert = page.locator('.ib-decision');
     await expect(alert).toBeVisible();
     await alert.getByRole('button', { name: 'Deny' }).click();
     await expect(page.getByText(NOT_ISSUED)).toHaveCount(1);
@@ -145,7 +152,7 @@ test.describe('a tool approval', () => {
     });
     await page.goto(`/chat/${threadId}`);
     await send(page, 'Refund the order');
-    const alert = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
+    const alert = page.locator('.ib-decision');
     await expect(alert).toBeVisible();
 
     // The run has stopped on the approval, so nothing is going to deliver this follow-up.
@@ -163,25 +170,26 @@ test.describe('a tool approval', () => {
 });
 
 test.describe('a tool call', () => {
-  test('shows its arguments and result highlighted, with no highlighter warning in the console', async ({
+  test('is one short row with its summary, and Details shows its arguments and its result', async ({
     page,
     request,
   }) => {
-    const problems: string[] = [];
-    page.on('console', (message) => {
-      if (message.type() === 'warning' || message.type() === 'error') problems.push(message.text());
-    });
     const threadId = newThreadId('tool-runner');
     const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
     await approveThroughMount(request, threadId, stream);
 
     await page.goto(`/chat/${threadId}`);
 
-    await expect(page.getByText('lookup-order').first()).toBeVisible();
-    // Chat highlights each payload with Shiki, which fetches its JSON grammar when the block shows.
-    await page.getByRole('button', { name: 'Arguments' }).first().click();
-    await expect(page.locator('[data-session] pre.shiki span[style]').first()).toBeVisible();
-    expect(problems.filter((text) => text.includes('Shiki'))).toEqual([]);
+    await expect(page.getByText('Used 2 tools')).toBeVisible();
+    await page.getByRole('button', { name: 'Show' }).click();
+    const lookup = page.locator('[data-tool-call-row]').filter({ hasText: 'lookup-order' });
+    await expect(lookup).toContainText('orderId order-1001, status delivered, totalCents 4200');
+    const box = await lookup.locator('.ib-tool__line').boundingBox();
+    expect(box?.height ?? 999).toBeLessThanOrEqual(48);
+    await lookup.getByRole('button', { name: 'Details' }).click();
+    await expect(lookup.locator('dt', { hasText: 'orderId' }).first()).toBeVisible();
+    await expect(lookup.locator('dt', { hasText: 'Result: totalCents' })).toBeVisible();
+    await expect(lookup.locator('dd', { hasText: '4200' })).toBeVisible();
   });
 });
 
