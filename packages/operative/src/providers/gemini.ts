@@ -40,6 +40,7 @@ import type {
 
 /** A function call as `@google/genai` reports it: every field optional. */
 interface GeminiSdkFunctionCall {
+  id?: string | undefined;
   name?: string | undefined;
   args?: Record<string, unknown> | undefined;
 }
@@ -60,7 +61,13 @@ interface GeminiSdkPart {
  */
 function toGeminiFunctionCallPart(functionCall: GeminiSdkFunctionCall): GeminiPart | undefined {
   if (functionCall.name === undefined) return undefined;
-  return { functionCall: { name: functionCall.name, args: functionCall.args ?? {} } };
+  return {
+    functionCall: {
+      ...(functionCall.id === undefined ? {} : { id: functionCall.id }),
+      name: functionCall.name,
+      args: functionCall.args ?? {},
+    },
+  };
 }
 
 /**

@@ -8,6 +8,7 @@ import type {
   ToolPolicyContext,
   ToolPolicyContextProvider,
 } from '../is-tool';
+import { providerCallIdField } from '../provider-call-id';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import { computeDigest } from './content';
 import { createToolError, formatNonStringReason } from './errors';
@@ -171,6 +172,7 @@ export function createCancellationHandler(
       outcome: 'error',
       content: message,
       toolCallId: callId,
+      ...providerCallIdField(input.toolCall),
       toolName: input.name,
       result: undefined,
       error: toolError,

@@ -70,6 +70,7 @@ export type GovernancePatch = Partial<
     | 'invalidatedAt'
     | 'supersededBy'
     | 'deletionRequestedAt'
+    | 'deletionClaim'
   >
 > & { readonly state?: Exclude<MemoryRecordState, 'active'> };
 

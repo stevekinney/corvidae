@@ -5,7 +5,7 @@ import type { ToolCallWithArguments } from '../is-tool';
 import type { ToolCall } from '../types';
 
 const defaultCallIdRuntime = createDefaultRuntimeServices();
-const TOOL_CALL_KEYS = new Set(['id', 'name', 'arguments']);
+const TOOL_CALL_KEYS = new Set(['id', 'name', 'arguments', 'providerCallId']);
 
 export function createToolCall<Args extends JsonValue>(
   toolName: string,

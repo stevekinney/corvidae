@@ -8,6 +8,7 @@ import type {
   ToolPolicyAfterContext,
   ToolPolicyContext,
 } from '../is-tool';
+import { providerCallIdField } from '../provider-call-id';
 import { isAsyncIterable } from '../type-guards';
 import type { ToolExecutionValue, TypedToolExecutionResult } from '../types';
 import { toolExecutionValue } from '../types';
@@ -189,6 +190,7 @@ function createLiveStreamResult<TReturn>(
     outcome: 'success',
     content: '[stream]',
     toolCallId: callId,
+    ...providerCallIdField(input.typedToolCall),
     toolName: input.name,
     result: stream,
     stream,

@@ -344,6 +344,7 @@ export async function executeTools(
               results = callsToExecute.map((tc) => ({
                 callId: tc.id,
                 toolCallId: tc.id,
+                ...(tc.providerCallId === undefined ? {} : { providerCallId: tc.providerCallId }),
                 toolName: tc.name,
                 outcome: 'error' as const,
                 content: 'Tool execution skipped by onError hook',

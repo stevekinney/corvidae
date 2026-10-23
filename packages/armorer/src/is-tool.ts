@@ -131,8 +131,14 @@ export type ToolDiagnostics = Partial<ToolDiagnosticsAdapter>;
  * Uses unknown to prevent type explosion from z.infer<T> in generic positions.
  * Runtime schema validation provides actual type safety.
  */
-export type ToolCallWithArguments = ToolCall & {
+export type ToolCallWithArguments = Omit<ToolCall, 'providerCallId'> & {
   arguments: unknown;
+  /**
+   * Not declared: TypeScript tries every overload by the stricter subtype relation first, and an
+   * optional property here would make a literal `{ id, name, arguments }` fail overload 1 of
+   * `Tool.execute` and fall to the params overload. A call that carries `providerCallId` still
+   * assigns, and the runtime copies it.
+   */
 };
 
 export type ToolEventDetailContext = {

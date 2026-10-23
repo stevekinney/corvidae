@@ -134,6 +134,16 @@ describe('createMemoryGovernanceLedger', () => {
     expect(await restarted.getReceipt('deletion-2')).toBeUndefined();
   });
 
+  it('opens a receipt only when none is stored under its deletion id', async () => {
+    expect(await ledger.openReceipt(receipt())).toBe(true);
+    // A second claimant building a receipt under the same deletion id opens nothing.
+    expect(
+      await ledger.openReceipt(receipt({ trigger: 'retention-expiry', requestedAt: 20 })),
+    ).toBe(false);
+    expect(await ledger.getReceipt('deletion-1')).toEqual(receipt());
+    expect(await ledger.openReceipt(receipt({ deletionId: 'deletion-2' }))).toBe(true);
+  });
+
   it('rejects a corrupt persisted receipt instead of treating it as absent', async () => {
     await ledger.putReceipt(receipt());
     const key = [...storage.snapshot().keys()].find((candidate) => candidate.includes('receipt:'))!;

@@ -9,6 +9,7 @@ import type {
   ToolPolicyContext,
   ToolPolicyContextProvider,
 } from '../is-tool';
+import { providerCallIdField } from '../provider-call-id';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import { createDeadlineError, isAbortRejection } from './cancellation';
 import { computeDigest, successContent } from './content';
@@ -110,6 +111,7 @@ function successResult(input: SuccessInput, outputDigest: string | undefined): T
     outcome: 'success',
     ...successContent(input.value),
     toolCallId: callId,
+    ...providerCallIdField(input.typedToolCall),
     toolName: input.name,
     result: input.value,
     executedArgumentsEdited: input.executedArgumentsEdited,
@@ -318,6 +320,7 @@ function errorResult(input: ErrorInput, toolError: ToolError): ToolExecutionResu
     outcome: 'error',
     content: message,
     toolCallId: callId,
+    ...providerCallIdField(input.toolCall),
     toolName: input.name,
     result: undefined,
     error: toolError,

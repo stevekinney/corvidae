@@ -35,6 +35,7 @@ export function materializeToolCall(
       (options.runtime ?? createDefaultRuntimeServices()).identifiers.next('tool-call'),
     name: toolCall.name,
     arguments: normalizeJSONValue(toolCall.arguments ?? {}),
+    ...(toolCall.providerCallId ? { providerCallId: toolCall.providerCallId } : {}),
   };
 }
 
@@ -123,6 +124,7 @@ function stripRuntimeToolResultFields(toolResult: ToolResultInput, payload: unkn
     ...(toolResult.action ? { action: normalizeToolAction(toolResult.action) } : {}),
     ...(toolResult.inputDigest ? { inputDigest: toolResult.inputDigest } : {}),
     ...(toolResult.outputDigest ? { outputDigest: toolResult.outputDigest } : {}),
+    ...(toolResult.providerCallId ? { providerCallId: toolResult.providerCallId } : {}),
   };
 }
 

@@ -35,6 +35,7 @@ function normalizeToolResult(toolResult: Message['toolResult']): ToolResult | un
     ...(toolResult.action ? { action: { ...toolResult.action } } : {}),
     ...(toolResult.inputDigest ? { inputDigest: toolResult.inputDigest } : {}),
     ...(toolResult.outputDigest ? { outputDigest: toolResult.outputDigest } : {}),
+    ...(toolResult.providerCallId ? { providerCallId: toolResult.providerCallId } : {}),
   };
 }
 

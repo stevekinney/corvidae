@@ -332,7 +332,7 @@ describe('encode-time field projection (CIN-507)', () => {
     const event = hostileEvent({
       type: 'run.completed',
       conversation: {
-        schemaVersion: 7,
+        schemaVersion: 8,
         id: 'conversation-1',
         status: 'active',
         metadata: {},
