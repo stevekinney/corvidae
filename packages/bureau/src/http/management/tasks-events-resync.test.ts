@@ -29,7 +29,7 @@ type Faults = {
   /** How many of the next appends to the durable history fail. */
   failAppends: number;
   /** When set, the boot repair's listing of owed tasks waits for it, and `held` resolves once one is waiting. */
-  hold?: Promise<void>;
+  hold?: Promise<void> | undefined;
   held?: () => void;
 };
 
