@@ -53,7 +53,10 @@
     () => ({
       queryKey: queryKeys.contexts.list(id),
       queryFn: ({ pageParam, signal }) =>
-        listContexts({ agentName: id, limit: PAGE_SIZE, offset: pageParam }, { signal }),
+        listContexts(
+          { agentName: id, origin: 'chat', limit: PAGE_SIZE, offset: pageParam },
+          { signal },
+        ),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
       retry: false,

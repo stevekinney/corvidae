@@ -26,6 +26,7 @@ const context = (id: string) => ({
   lastMessagePreview: null,
   parentContextId: null,
   forkedFromMessageId: null,
+  origin: 'chat',
   messageCount: 1,
   createdAt: '2026-10-19T00:00:00.000Z',
   updatedAt: '2026-10-19T00:00:00.000Z',
@@ -33,11 +34,19 @@ const context = (id: string) => ({
 });
 
 describe('where / goes', () => {
-  test('is the session updated most recently, which the Bureau lists first', async () => {
+  test('is the chat updated most recently, which the Bureau lists first', async () => {
     const calls = answering([context('newest session')]);
 
     expect(await chatHomePath()).toBe('/chat/newest%20session');
     expect(calls[0]).toMatchObject({ method: 'bureau.contexts.list', params: { limit: 1 } });
+  });
+
+  test('asks only for chats, so a session a goal or a schedule started is never where / goes', async () => {
+    const calls = answering([]);
+
+    await chatHomePath();
+
+    expect(calls[0]).toMatchObject({ params: { origin: 'chat', limit: 1 } });
   });
 
   test('is the chat list when there is no session', async () => {

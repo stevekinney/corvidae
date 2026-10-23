@@ -170,9 +170,10 @@ export function probeFor(
           return { empty: false };
         };
       }
-      // The list is empty when the caller has no session.
+      // The list is empty when the caller has started no chat: a goal's or a schedule's session is
+      // not listed here, so it does not make the list not empty.
       return async () => {
-        const page = await listContexts({ limit: 1 });
+        const page = await listContexts({ origin: 'chat', limit: 1 });
         return { empty: page.contexts.length === 0 };
       };
     case 'agents':

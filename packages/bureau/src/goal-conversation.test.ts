@@ -39,6 +39,12 @@ const sessionWithRuns = (runIds: readonly string[], agentName = 'worker') =>
     runtime,
   });
 
+describe('goalSessionMetadata origin', () => {
+  it('records that a goal started the session, so a chat list leaves it out (COR-1645)', () => {
+    expect(goalSessionMetadata(record)['sessionOrigin']).toBe('goal');
+  });
+});
+
 describe('foreignSessionReason and the runs a session holds', () => {
   it("refuses a session that belongs to a different agent than the goal's", () => {
     const reason = foreignSessionReason(record, sessionWithRuns([], 'other-agent'));
