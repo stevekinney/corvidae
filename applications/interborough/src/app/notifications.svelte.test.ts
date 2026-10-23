@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { NotificationEntry } from './notification-items.ts';
+import { READ_ID_LIMIT } from './notification-read-state.ts';
 import { memoryStorage } from './notification-store.test-support.ts';
 import { ENGINE_STATUS_ITEM_ID, NotificationStore } from './notifications.svelte.ts';
 
@@ -15,6 +16,7 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
     tier: 'warning',
     icon: 'shield-question-mark',
     title: 'tool-runner needs your approval',
+    identifiers: ['tool-runner'],
     detail: 'Refund order 1234',
     joiner: ' in ',
     sessionId: 'session-refund',
@@ -88,6 +90,22 @@ describe('NotificationStore', () => {
 
     expect(store.unreadCount).toBe(0);
     expect(store.items.every((item) => item.read)).toBe(true);
+  });
+
+  test('"mark all read" with more items than the buffer holds keeps the newest read, not the oldest', () => {
+    const count = READ_ID_LIMIT + 1;
+    // Listed newest first, the way the bell lists them.
+    const entries = Array.from({ length: count }, (_, index) =>
+      entry({ id: `review:${count - index}`, emittedAtMs: (count - index) * 1_000 }),
+    );
+    const store = storeWith(...entries);
+
+    store.markAllRead();
+
+    const unread = store.items.filter((item) => !item.read).map((item) => item.id);
+    expect(unread).toEqual(['review:1']);
+    expect(store.unreadCount).toBe(1);
+    expect(store.items.find((item) => item.id === `review:${count}`)?.read).toBe(true);
   });
 
   test('opening a chat reads the items about it and no others', () => {

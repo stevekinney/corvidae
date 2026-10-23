@@ -1,11 +1,12 @@
 /**
  * Feeds the notification store from the Bureau. It reads what is waiting on the person (the same
  * reviews query the navigation's count and `/reviews` read, so a decision made in a chat or on
- * Reviews refreshes the bell at once), the most recently changed tasks, and the titles of the
- * chats they belong to, each asked again every {@link REVIEW_POLL_MILLISECONDS}. Call it once,
- * while the shell initializes: the queries and effects belong to the calling component.
+ * Reviews refreshes the bell at once), the most recently changed tasks, and the chats they belong
+ * to, each asked again every {@link REVIEW_POLL_MILLISECONDS}. Call it once, while the shell
+ * initializes: the queries and effects belong to the calling component.
  *
- * Opening a chat reads the items about it, and an answer in the chat that is open is not news.
+ * Opening a chat reads the items about it, and that includes an answer that finishes while the
+ * chat is open: it is listed, and it is read on arrival, so it is not new when the person leaves.
  */
 import { createQuery } from '@tanstack/svelte-query';
 
@@ -13,7 +14,7 @@ import { listTasks } from '../lib/bureau-tasks.ts';
 import { router } from '../lib/router.svelte.ts';
 import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
 import { buildNotificationEntries } from './notification-items.ts';
-import { isScheduledFailure, loadChatTitles, loadScheduleNames } from './notification-sources.ts';
+import { isScheduledFailure, loadChats, loadScheduleNames } from './notification-sources.ts';
 import type { NotificationStore } from './notifications.svelte.ts';
 
 /** How many of the Bureau's most recently changed tasks the bell looks at. */
@@ -33,9 +34,9 @@ export function connectNotificationFeed(store: NotificationStore): void {
     refetchInterval: REVIEW_POLL_MILLISECONDS,
     retry: false,
   }));
-  const titles = createQuery(() => ({
+  const chats = createQuery(() => ({
     queryKey: ['contexts', 'titles'] as const,
-    queryFn: ({ signal }) => loadChatTitles({ signal }),
+    queryFn: ({ signal }) => loadChats({ signal }),
     refetchInterval: REVIEW_POLL_MILLISECONDS,
     retry: false,
   }));
@@ -58,9 +59,8 @@ export function connectNotificationFeed(store: NotificationStore): void {
       buildNotificationEntries({
         reviews: reviews.data ?? [],
         tasks: tasks.data?.tasks ?? [],
-        titles: titles.data ?? new Map(),
+        chats: chats.data ?? new Map(),
         scheduleNames: scheduleNames.data ?? new Map(),
-        openSessionId: openChatSessionId(),
         nowMs: Date.now(),
       }),
     );

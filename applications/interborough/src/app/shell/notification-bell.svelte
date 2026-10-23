@@ -84,13 +84,9 @@
   <div class="weft-notification-panel">
     <div class="weft-notification-panel__header">
       <span class="weft-notification-panel__title">{NOTIFICATION_COPY.panelTitle}</span>
-      <button
-        type="button"
-        class="weft-notification-panel__mark-read"
-        onclick={() => store.markAllRead()}
-      >
+      <Button variant="ghost" size="sm" onclick={() => store.markAllRead()}>
         {NOTIFICATION_COPY.markAllRead}
-      </button>
+      </Button>
     </div>
 
     <div class="weft-notification-panel__list">
@@ -110,7 +106,7 @@
           <Icon aria-hidden="true" size={14} class="weft-notification-panel__item-icon" />
           <span class="weft-notification-panel__item-text">
             <span class="weft-notification-panel__item-title"
-              ><IdentifierText text={item.title} /></span
+              ><IdentifierText text={item.title} identifiers={item.identifiers} /></span
             >
             <VisuallyHidden>{item.joiner}</VisuallyHidden>
             <span class="weft-notification-panel__item-detail">{item.detail}</span>

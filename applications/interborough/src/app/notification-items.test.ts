@@ -78,13 +78,12 @@ function sources(overrides: Partial<NotificationSources> = {}): NotificationSour
   return {
     reviews: [],
     tasks: [],
-    titles: new Map([
+    chats: new Map<string, string | null>([
       ['session-refund', 'Refund order 1234'],
       ['session-release', 'Ship the release'],
       ['session-echo', 'Hello echo, say this back'],
     ]),
     scheduleNames: new Map(),
-    openSessionId: undefined,
     nowMs: NOW,
     ...overrides,
   };
@@ -148,7 +147,9 @@ describe('buildNotificationEntries', () => {
   });
 
   test('a chat with no title is called by the words for an untitled chat', () => {
-    const [entry] = buildNotificationEntries(sources({ reviews: [approval()], titles: new Map() }));
+    const [entry] = buildNotificationEntries(
+      sources({ reviews: [approval()], chats: new Map([['session-refund', null]]) }),
+    );
 
     expect(entry?.detail).toBe('New chat');
   });
@@ -167,20 +168,104 @@ describe('buildNotificationEntries', () => {
     ).toEqual([]);
   });
 
-  test('an answer is not news in the chat that is open', () => {
+  test('a run whose chat the Bureau does not list is not an item, finished or failed', () => {
     const entries = buildNotificationEntries(
-      sources({ tasks: [task()], openSessionId: 'session-echo' }),
+      sources({
+        tasks: [
+          task({ id: 'catalog-run', contextId: 'context-with-no-chat' }),
+          task({ id: 'catalog-failure', contextId: 'another-context', status: 'failed' }),
+        ],
+      }),
     );
 
     expect(entries).toEqual([]);
   });
 
-  test('an approval in the chat that is open is still an item', () => {
-    const entries = buildNotificationEntries(
-      sources({ reviews: [approval()], openSessionId: 'session-refund' }),
+  test('a run in a chat with no title is an item, called by the words for an untitled chat', () => {
+    const [entry] = buildNotificationEntries(
+      sources({ tasks: [task()], chats: new Map([['session-echo', null]]) }),
     );
 
-    expect(entries).toHaveLength(1);
+    expect(entry).toMatchObject({ kind: 'answered', detail: 'New chat' });
+  });
+
+  test('an approval is a different item in the next round the Bureau asks it', () => {
+    const [first] = buildNotificationEntries(sources({ reviews: [approval({ round: 0 })] }));
+    const [second] = buildNotificationEntries(sources({ reviews: [approval({ round: 1 })] }));
+
+    expect(first?.id).not.toBe(second?.id);
+    expect(first?.id).toBe('review:approval:run-1:call-1:0');
+    expect(second?.id).toBe('review:approval:run-1:call-1:1');
+  });
+
+  test('a question has no round, so its item is its review id', () => {
+    const [entry] = buildNotificationEntries(sources({ reviews: [question()] }));
+
+    expect(entry?.id).toBe('review:human-wait:run-2:environment:0');
+  });
+
+  test('a chat with several reviews waiting is one item: the one waiting longest', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        reviews: [
+          approval({ id: 'approval:run-1:call-2', requestedAt: NOW - 60_000 }),
+          approval({ id: 'approval:run-1:call-1', requestedAt: NOW - 120_000 }),
+          approval({ id: 'approval:run-1:call-3', requestedAt: NOW - 30_000 }),
+        ],
+      }),
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual(['review:approval:run-1:call-1:0']);
+  });
+
+  test('of a question and an approval asked together in one chat, the approval stands for it', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        reviews: [
+          question({ sessionId: 'session-refund', requestedAt: NOW - 60_000 }),
+          approval({ requestedAt: NOW - 60_000 }),
+        ],
+      }),
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual(['approval']);
+  });
+
+  test('reviews in different chats, and reviews with no chat, each stay an item', () => {
+    const { sessionId: _omitted, ...withoutSession } = question();
+    const entries = buildNotificationEntries(
+      sources({
+        reviews: [
+          approval(),
+          question(),
+          withoutSession,
+          { ...withoutSession, id: 'human-wait:run-9:other:0' },
+        ],
+      }),
+    );
+
+    expect(entries).toHaveLength(4);
+  });
+
+  test('an answer is an item whichever chat the person is in', () => {
+    // The feed reads the items about the open chat on arrival; the items do not know which is open.
+    const entries = buildNotificationEntries(sources({ tasks: [task()] }));
+
+    expect(entries.map((entry) => entry.sessionId)).toEqual(['session-echo']);
+  });
+
+  test('the agent a title names is set in monospace, however plain its name', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        reviews: [
+          approval(),
+          approval({ id: 'a2', sessionId: 'session-release', agentName: undefined }),
+        ],
+        tasks: [task()],
+      }),
+    );
+
+    expect(entries.map((entry) => entry.identifiers)).toEqual([['tool-runner'], [], ['echo']]);
   });
 
   test('a chat is one item: its latest run stands for the earlier ones', () => {
@@ -254,15 +339,31 @@ describe('buildNotificationEntries', () => {
       statusMessage: '\n  Provider quota exceeded\nat generate (provider.ts:12)',
     });
     const [entry] = buildNotificationEntries(
-      sources({ tasks: [failed], scheduleNames: new Map([[failed.id, 'Daily summary']]) }),
+      sources({
+        tasks: [failed],
+        scheduleNames: new Map([[failed.id, { name: 'Daily summary', identifier: false }]]),
+      }),
     );
 
     expect(entry).toMatchObject({
       kind: 'failed',
       title: 'Daily summary failed',
+      identifiers: [],
       detail: 'Provider quota exceeded',
       joiner: ': ',
     });
+  });
+
+  test('a schedule named by its agent is an identifier, and one named by its description is prose', () => {
+    const failed = task({ status: 'failed', actor: 'service:scheduler' });
+    const [byAgent] = buildNotificationEntries(
+      sources({
+        tasks: [failed],
+        scheduleNames: new Map([[failed.id, { name: 'assistant', identifier: true }]]),
+      }),
+    );
+
+    expect(byAgent).toMatchObject({ title: 'assistant failed', identifiers: ['assistant'] });
   });
 
   test('a failed fire whose schedule is unknown is worded as a failed run of its agent', () => {
@@ -277,6 +378,10 @@ describe('buildNotificationEntries', () => {
     const entries = buildNotificationEntries(
       sources({
         reviews: [approval(), question()],
+        chats: new Map([
+          ['one', null],
+          ['two', null],
+        ]),
         tasks: [
           task({ id: 'a', contextId: 'one' }),
           task({ id: 'b', contextId: 'two', status: 'failed' }),

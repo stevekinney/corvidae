@@ -132,7 +132,7 @@ describe('connectNotificationFeed', () => {
     expect(store.unreadCount).toBe(0);
   });
 
-  test('opening a chat reads what is about it, and its answer is not news', async () => {
+  test('opening a chat reads what is about it', async () => {
     served();
     landAt('/chat/session-refund');
     const first = mount();
@@ -144,8 +144,42 @@ describe('connectNotificationFeed', () => {
     landAt('/chat/session-echo');
     const second = mount();
 
-    await waitFor(() => expect(second.store.items.map((item) => item.kind)).toEqual(['approval']));
+    await waitFor(() => expect(second.store.items).toHaveLength(2));
+    expect(second.store.items.find((item) => item.kind === 'approval')?.read).toBe(false);
     expect(second.store.unreadCount).toBe(1);
+  });
+
+  test('an answer that lands while its chat is open is read on arrival, so it is not new on leaving', async () => {
+    served();
+    landAt('/chat/session-echo');
+    const { store } = mount();
+
+    await waitFor(() => expect(store.items).toHaveLength(2));
+    expect(store.items.find((item) => item.kind === 'answered')?.read).toBe(true);
+    // The same store, the person now elsewhere: the answer is still read.
+    landAt('/agents');
+    expect(store.items.find((item) => item.kind === 'answered')?.read).toBe(true);
+  });
+
+  test('a finished run whose context is not a chat the Bureau lists is not an item', async () => {
+    served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({
+        tasks: [{ ...ECHO_TASK, id: 'run-4', contextId: 'catalog-context' }],
+        nextPageToken: null,
+      }),
+    });
+    landAt('/agents');
+
+    const { store, client } = mount();
+
+    // Every read has been answered, and the one run in them has no chat to open.
+    await waitFor(() => {
+      expect(client.isFetching()).toBe(0);
+      expect(client.getQueryData(['bureau-tasks', 'recent'])).toBeDefined();
+      expect(client.getQueryData(['contexts', 'titles'])).toBeDefined();
+    });
+    expect(store.items).toEqual([]);
   });
 
   test('a chat that is only about to start is not an open chat', async () => {
@@ -171,6 +205,10 @@ describe('connectNotificationFeed', () => {
     served({
       'bureau.reviews.list': () => ({ reviews: [] }),
       'bureau.tasks.list': () => ({ tasks: [failed], nextPageToken: null }),
+      'bureau.contexts.list': () => ({
+        contexts: [context('session-fire', 'Nightly digest')],
+        nextOffset: null,
+      }),
       'bureau.schedules.list': () => ({
         schedules: [
           {

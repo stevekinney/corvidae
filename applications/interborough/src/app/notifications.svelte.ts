@@ -1,7 +1,7 @@
 /**
  * The notification bell's store. What it holds is about the person, not the engine: a tool waiting
- * for an approval, a question an agent asked, a run that failed, and an answer that arrived in a
- * chat that was not open (`./notification-items.ts` derives them from the Bureau's reviews and
+ * for an approval, a question an agent asked, a run that failed, and an answer that arrived
+ * (`./notification-items.ts` derives them from the Bureau's reviews and
  * tasks). The host's own problem is the one other thing it holds: an unreachable or stale engine
  * (`reportEngineStatus`). The engine's event feed (a run started, a signal arrived) is not here;
  * the Engine view's activity feed shows it.
@@ -112,6 +112,7 @@ export class NotificationStore {
     this.#engineProblem = {
       id: ENGINE_STATUS_ITEM_ID,
       kind: 'engine',
+      identifiers: [],
       joiner: ': ',
       href: '/engine',
       emittedAtMs: nowMs,
@@ -119,8 +120,14 @@ export class NotificationStore {
     };
   }
 
+  /**
+   * Reads everything listed. The ids go in oldest first, because the buffer of read ids keeps the
+   * newest ones when it is over its cap: with more items than the cap, it is the oldest that are
+   * forgotten, never the ones just read.
+   */
   markAllRead(): void {
-    this.#markRead(this.items.map((item) => item.id));
+    const oldestFirst = [...this.items].sort((left, right) => left.emittedAtMs - right.emittedAtMs);
+    this.#markRead(oldestFirst.map((item) => item.id));
   }
 
   markRead(id: string): void {

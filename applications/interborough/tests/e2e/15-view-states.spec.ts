@@ -61,7 +61,18 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
 }
 
 const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
-  chat: bureauProbe('bureau.contexts.list', { contexts: [], nextOffset: null }),
+  // The view asks for one chat to learn whether the caller has any. The shell's notification bell
+  // reads the same list, a hundred at a time and every few seconds, for the title of each chat an
+  // item names; it is not the view's probe, so it goes through and is never answered with the
+  // error (a poll that lands in a slow test would otherwise log a response the guard does not count).
+  chat: {
+    url: /\/bureau\/jsonrpc/,
+    matches: (url, body) =>
+      url.pathname === '/bureau/jsonrpc' &&
+      body.includes('"bureau.contexts.list"') &&
+      /"limit":1[,}]/.test(body),
+    empty: { contexts: [], nextOffset: null },
+  },
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
   goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
@@ -108,11 +119,9 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
 /**
  * How many error responses Chromium logs for a view's probe: one per request. These views send the
  * probe twice before they settle on the failure (measured, stable across runs); the rest send it
- * once. The default is one. The chat's probe is the Bureau's session list, which the shell's
- * notification bell also reads, for the title of each chat an item names, so it is answered twice.
+ * once. The default is one.
  */
 const LOGGED_RESPONSES_PER_PROBE: Partial<Record<ViewName, number>> = {
-  chat: 2,
   workflows: 2,
   runs: 2,
   reviews: 2,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installBureauStub, type BureauStub } from '../lib/bureau-stub.test-support.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
-import { isScheduledFailure, loadChatTitles, loadScheduleNames } from './notification-sources.ts';
+import { isScheduledFailure, loadChats, loadScheduleNames } from './notification-sources.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -65,8 +65,8 @@ function fired(scheduleId: unknown) {
   };
 }
 
-describe('loadChatTitles', () => {
-  test('maps each session to its title, leaving out a chat with none', async () => {
+describe('loadChats', () => {
+  test('maps each session to its title, with null for a chat that has none', async () => {
     stub = installBureauStub({
       'bureau.contexts.list': () => ({
         contexts: [
@@ -88,7 +88,10 @@ describe('loadChatTitles', () => {
       }),
     });
 
-    expect([...(await loadChatTitles())]).toEqual([['a', 'Refund order 1234']]);
+    expect([...(await loadChats())]).toEqual([
+      ['a', 'Refund order 1234'],
+      ['b', null],
+    ]);
   });
 });
 
@@ -121,7 +124,7 @@ describe('loadScheduleNames', () => {
 
     const names = await loadScheduleNames([task()]);
 
-    expect([...names]).toEqual([['run-1', 'Daily summary']]);
+    expect([...names]).toEqual([['run-1', { name: 'Daily summary', identifier: false }]]);
     expect(stub.callsTo('bureau.audit.query')[0]?.params).toMatchObject({
       runId: 'run-1',
       type: 'schedule.fired',
@@ -138,7 +141,9 @@ describe('loadScheduleNames', () => {
       }),
     });
 
-    expect([...(await loadScheduleNames([task()]))]).toEqual([['run-1', 'assistant']]);
+    expect([...(await loadScheduleNames([task()]))]).toEqual([
+      ['run-1', { name: 'assistant', identifier: true }],
+    ]);
   });
 
   test('leaves out a task whose fire the trail does not name or whose schedule is gone', async () => {

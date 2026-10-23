@@ -25,6 +25,7 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
     tier: 'warning',
     icon: 'shield-question-mark',
     title: 'tool-runner needs your approval',
+    identifiers: ['tool-runner'],
     detail: 'Refund order 1234',
     joiner: ' in ',
     sessionId: 'session-refund',
@@ -40,6 +41,7 @@ const ANSWERED = entry({
   tier: 'info',
   icon: 'message-circle-check',
   title: 'echo answered',
+  identifiers: ['echo'],
   detail: 'Hello echo, say this back',
   sessionId: 'session-echo',
   href: '/chat/session-echo',
@@ -102,6 +104,18 @@ describe('NotificationBell', () => {
     expect(
       document.body.querySelector('.weft-notification-panel__item-title code')?.textContent,
     ).toBe('tool-runner');
+  });
+
+  test('a one-word agent name is set in monospace too', async () => {
+    const store = memoryStore();
+    store.setActivity([ANSWERED]);
+    const { getByRole } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications' }));
+
+    expect(
+      document.body.querySelector('.weft-notification-panel__item-title code')?.textContent,
+    ).toBe('echo');
   });
 
   test('has no footer, no alerts link, and no unread badge in the header', async () => {

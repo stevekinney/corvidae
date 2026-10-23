@@ -131,12 +131,15 @@ test.describe('the notification bell, about the person and not the engine', () =
     // poll would after five seconds anyway.
     await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
     await bell(page, 'Notifications, 1 needs you').click();
-    // The question and the echo's answer. The approval is gone, and the run's own answer is not
-    // news in the chat that is open.
-    await expect(rows(page)).toHaveCount(2);
+    // The question, the echo's answer, and the run's own answer. The approval is gone, and the
+    // answer that landed in the chat that is open was read on arrival, so it is not new on leaving.
+    await expect(rows(page)).toHaveCount(3);
     await expect(page.getByRole('link', { name: /^tool-runner needs your approval/ })).toHaveCount(
       0,
     );
+    await expect(
+      page.getByRole('link', { name: /^tool-runner answered in Refund order 1234/ }),
+    ).toHaveAttribute('data-read', 'true');
   });
 
   test('opening an item goes to its chat and reads it', async ({ page }) => {

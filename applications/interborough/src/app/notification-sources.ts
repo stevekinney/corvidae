@@ -1,26 +1,23 @@
 /**
- * The reads the bell makes beyond the Bureau's reviews and tasks: the title of each chat, which
- * neither carries, and the name of the schedule behind a task it started, which a task does not
+ * The reads the bell makes beyond the Bureau's reviews and tasks: the chats the Bureau lists, with
+ * the title of each, which neither carries, and the name of the schedule behind a task it started, which a task does not
  * carry either (the audit trail's `schedule.fired` record does).
  */
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { listContexts } from '../lib/bureau-client.ts';
 import { listBureauSchedules } from '../lib/bureau-schedules.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
+import type { ScheduleName } from './notification-items.ts';
 
-/** How many chats the bell looks titles up in: the most recently changed. */
+/** How many chats the bell looks up: the most recently changed. */
 export const TITLE_LOOKUP_LIMIT = 100;
 
 type Options = { readonly signal?: AbortSignal };
 
-/** The title of each chat that has one, by session. */
-export async function loadChatTitles(options?: Options): Promise<ReadonlyMap<string, string>> {
+/** Every chat the Bureau lists, by session, with its title (`null` for a chat that has none). */
+export async function loadChats(options?: Options): Promise<ReadonlyMap<string, string | null>> {
   const page = await listContexts({ limit: TITLE_LOOKUP_LIMIT }, options);
-  return new Map(
-    page.contexts.flatMap((context) =>
-      context.title === null ? [] : [[context.id, context.title]],
-    ),
-  );
+  return new Map(page.contexts.map((context) => [context.id, context.title]));
 }
 
 /** Whether a task was started by a schedule's fire rather than by the person. */
@@ -36,9 +33,9 @@ export function isScheduledFailure(task: TaskView): boolean {
 export async function loadScheduleNames(
   tasks: readonly TaskView[],
   options?: Options,
-): Promise<ReadonlyMap<string, string>> {
+): Promise<ReadonlyMap<string, ScheduleName>> {
   const scheduled = tasks.filter(isScheduledFailure);
-  const names = new Map<string, string>();
+  const names = new Map<string, ScheduleName>();
   if (scheduled.length === 0) return names;
   const schedules = await listBureauSchedules(options);
   const byId = new Map(schedules.map((schedule) => [schedule.id, schedule]));
@@ -50,8 +47,12 @@ export async function loadScheduleNames(
       });
       const scheduleId = page.records[0]?.detail?.['scheduleId'];
       const schedule = typeof scheduleId === 'string' ? byId.get(scheduleId) : undefined;
-      const name = schedule?.description ?? schedule?.agentName;
-      if (name !== undefined && name !== null) names.set(task.id, name);
+      // A description is prose; the agent's name stands in for it only when there is none.
+      if (schedule?.description != null) {
+        names.set(task.id, { name: schedule.description, identifier: false });
+      } else if (schedule?.agentName != null) {
+        names.set(task.id, { name: schedule.agentName, identifier: true });
+      }
     }),
   );
   return names;
