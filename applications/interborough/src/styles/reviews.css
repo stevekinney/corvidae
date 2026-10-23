@@ -464,16 +464,19 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 12px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-reviews-card__skeleton {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-reviews-card__error {
   margin: 0;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   font-size: var(--cinder-text-sm);
   color: var(--cinder-status-danger-text);
 }
