@@ -1,19 +1,22 @@
 # Review guidance
 
-This is a pre-1.0, internal-only Bun and Turborepo workspace under active prototyping. Move fast on stable infrastructure: be rigorous where a mistake is hard to undo and quiet everywhere else. The full policy is the "Review guidelines" section of `AGENTS.md`.
+This is a pre-1.0, internal-only Bun and Turborepo workspace. The full policy is the "Review guidelines" section of `AGENTS.md`.
 
-Flag, with a concrete failure scenario:
+Comment only when you can state a concrete failure: the inputs or interleaving, a supported configuration, and the wrong durable result. Flag:
 
-- Correctness bugs, data loss, races, stale or duplicate state transitions, and missing cleanup or rollback.
-- Malformed input that is not rejected at the boundary that owns the contract.
-- One-way doors: changes to persisted formats or schemas, wire protocols, or exported package surfaces that cannot be undone cheaply.
-- A defect that is one instance of a recurring class. Name the class so it can be fixed once with a test, lint rule, or type constraint.
+- Correctness or data loss, including state written or exposed before its durable commit, or a post-commit failure swallowed with no repair.
+- Check-then-act without a fence on the state it read; cleanup or settlement bound to a stale generation or round.
+- A retry or replay that performs a different operation than its receipt records.
+- Missing authorization on a new route or lookup; unvalidated input at an exported boundary.
+- Fields or parts dropped across an adapter, projection, or wire mapping.
+- One-way doors: persisted formats or schemas, wire protocols, published exports or specs.
 
-Stay quiet about:
+Never comment on:
 
-- Style, naming, formatting, and anything `bun run lint` or `bun run format:check` already enforces.
-- Speculative hardening, contrived edge cases, and extra abstraction in internal code that a later change can cheaply alter.
-- Compatibility shims, adapters, or re-export layers; this repository does not want them before release.
-- Missing publishing, CI/CD, or Git-hook setup; this repository intentionally has none; the mirror tooling lives in `stevekinney/corvidae-mirror`.
+- Lines this pull request did not change, or behavior already on `main`.
+- Anything `bun run lint`, `bun run format:check`, or the type checker enforces, including the ban on synchronous `.resolves`/`.rejects`.
+- Scenarios that need an unsupported configuration, a hostile in-process caller, or an interleaving that a lease or claim already fences out.
+- Behavior a linked COR issue or decision document specifies; cite it and stop.
+- Style, naming, documentation wording, speculative hardening, compatibility shims, or missing CI, publishing, or Git hooks (the repository intentionally has none).
 
-Review each pull request once, thoroughly. On later pushes, comment only on regressions the new commits introduced or serious defects on a one-way door. Prefer one comment per class of defect over one comment per instance.
+On a re-review, comment only on lines changed since your last review, and only on a regression they introduced or a one-way-door defect. Never re-raise a finding the author answered. One comment per defect class, at most six per review.
