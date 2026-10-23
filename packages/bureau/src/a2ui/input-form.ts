@@ -295,6 +295,15 @@ function normalisedSubmission(fields: readonly FormField[], submitted: unknown):
  */
 const schemaChecker = new InteractiveSurfaceSchemaCompiler();
 
+/** Whether the schema accepts `text` itself, as a string answer (a schema it cannot use does not). */
+function acceptsAsWritten(schema: HumanInputSchema, text: string): boolean {
+  try {
+    return schemaChecker.check(schema as InteractiveSurfaceJsonObject, text) === undefined;
+  } catch {
+    return false;
+  }
+}
+
 /** The outcome of {@link checkFormSubmission}. */
 export type FormSubmission =
   { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly message: string };
@@ -303,8 +312,9 @@ export type FormSubmission =
  * Checks a submitted answer against the schema its wait was parked with, and returns the value to
  * deliver. The submission is untrusted: it is validated here, in full, and a refusal says why.
  *
- * A schema the form could not map is answered as `{ "response": "<JSON text>" }` or directly as the
- * value; the first is parsed, and the result is validated the same way.
+ * A schema the form could not map is answered as `{ "response": "<text>" }` or directly as the
+ * value. The text is the answer as written when the schema accepts a string, and is otherwise
+ * parsed as JSON; the result is validated the same way.
  */
 export function checkFormSubmission(schema: HumanInputSchema, submitted: unknown): FormSubmission {
   let value: unknown = submitted;
@@ -316,10 +326,16 @@ export function checkFormSubmission(schema: HumanInputSchema, submitted: unknown
     Object.keys(submitted).length === 1 &&
     typeof submitted['response'] === 'string'
   ) {
-    try {
-      value = JSON.parse(submitted['response']);
-    } catch {
-      return { ok: false, message: 'The response is not valid JSON.' };
+    const text = submitted['response'];
+    // A schema that accepts the text as a string takes it as written; it is not JSON to parse.
+    if (acceptsAsWritten(schema, text)) {
+      value = text;
+    } else {
+      try {
+        value = JSON.parse(text);
+      } catch {
+        return { ok: false, message: 'The response is not valid JSON.' };
+      }
     }
   }
   let problem: string | undefined;
