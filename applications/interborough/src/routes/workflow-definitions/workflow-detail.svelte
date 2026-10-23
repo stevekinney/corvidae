@@ -1,10 +1,12 @@
 <script lang="ts">
   /**
-   * `/workflows/:type`: one workflow type. Every type shows the engine's definition (its schemas, the
-   * signals, updates and queries it accepts, and its active revision) and the schedules that start
-   * it. A code-defined type shows the engine's revision panel and offers nothing to change. An
-   * agent-authored one shows its file's steps, trigger, agent, and path, and the versions that have
-   * run, and offers pause, resume, delete, edit, and send signal.
+   * `/workflows/:type`: one workflow type, leading with what a person acts on: what it is for,
+   * what starts it and whether it is active, its steps (for a file), its last five runs and a
+   * link to all of them, and, for a file, pause, resume, edit, delete, and send signal. What the
+   * engine's contract says (the signals, updates and queries it accepts, the schemas of its input
+   * and output) and where a file is sit in a Details disclosure that exists only when it has
+   * something in it. The revisions, and the form that installs one, sit in a collapsed Engine
+   * disclosure, which a type the Bureau registers for itself does not have.
    *
    * A write names the hash of the file the page read, so a file that changed on disk since is
    * refused instead of overwritten: the page says the workflow changed outside Interborough, with a
@@ -18,6 +20,7 @@
     Badge,
     Button,
     CodeLocation,
+    Collapsible,
     ConfirmDialog,
     Skeleton,
   } from '@lostgradient/cinder';
@@ -35,11 +38,12 @@
   import {
     availableActions,
     awaitedSignals,
+    isEngineType,
     resolveWorkflow,
     startingSchedules,
     type WorkflowResolution,
   } from '../../lib/workflow-catalog.ts';
-  import { workflowEditPath, workflowRunsPath } from '../../lib/workflow-type-paths.ts';
+  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import {
     deleteWorkflowFile,
     isApplyFailure,
@@ -48,11 +52,19 @@
     resumeWorkflowFile,
   } from '../../lib/workflow-files.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
-  import DefinitionSection from './definition-section.svelte';
   import FileProblem from './file-problem.svelte';
+  import RecentRuns from './recent-runs.svelte';
   import RevisionHistory from './revision-history.svelte';
   import SignalForm from './signal-form.svelte';
-  import { scheduleLabel, stepLabel, triggerLabel } from './workflow-presentation.ts';
+  import WorkflowDetails from './workflow-details.svelte';
+  import {
+    definitionDetails,
+    hasDefinitionDetails,
+    scheduleLabel,
+    schedulesSummary,
+    stepLabel,
+    triggerSummary,
+  } from './workflow-presentation.ts';
 
   const copy = WORKFLOW_COPY;
   const client = getClient();
@@ -237,46 +249,69 @@
     router.navigate(target);
   }
 
-  const runsPath = workflowRunsPath(type);
   const editPath = workflowEditPath(type);
   const condition = $derived(stale ? 'stale' : 'ready');
   const acceptedSignals = $derived(
     resolved?.kind === 'code' ? (resolved.definition.signals ?? []) : awaitedSignals(document),
   );
+  /** The engine's definition of the type: a code type's own, or the one it loaded a ready file as. */
+  const definition = $derived(resolved?.definition);
+  const description = $derived(
+    resolved?.kind === 'agent-authored'
+      ? (file?.description ?? null)
+      : (definition?.description ?? null),
+  );
+  const details = $derived(definitionDetails(definition, acceptedSignals));
+  // A file that loaded always has its path to show; a code type has something to show only if its contract does.
+  const showDetails = $derived(file?.state === 'ready' || hasDefinitionDetails(details));
+  // What starts the workflow: a file's trigger, or the schedules the engine has for a code type.
+  const starts = $derived(
+    file !== undefined
+      ? triggerSummary(document?.trigger ?? null)
+      : schedulesSummary(schedules.data ?? null),
+  );
+  const engineType = isEngineType(type);
+  const hasSchedules = $derived((schedules.data?.length ?? 0) > 0);
 </script>
 
-<article class="weft-workflow-type" data-page="workflow-detail" data-condition={condition}>
-  <header class="weft-workflow-type__header">
-    <div class="weft-workflow-type__identity">
-      <h1 class="weft-workflow-type__title">{type}</h1>
-      {#if file !== undefined}
-        <div class="weft-workflow-type__badges">
-          <Badge variant="accent" size="sm">{copy.agentAuthoredBadge}</Badge>
-          {#if file.state === 'invalid'}
-            <Badge variant="danger" size="sm">{copy.invalidBadge}</Badge>
-          {/if}
-          {#if file.paused}
-            <Badge variant="neutral" size="sm">{copy.pausedBadge}</Badge>
-          {/if}
-        </div>
-      {/if}
-    </div>
-    <div class="weft-workflow-type__actions">
-      <Button
-        href={router.href(runsPath)}
-        variant="secondary"
-        size="sm"
-        onclick={(event) => go(event, runsPath)}>{copy.runsAction}</Button
-      >
-      {#if file !== undefined && actions !== undefined}
-        {#if actions.edit}
-          <Button
-            href={router.href(editPath)}
-            variant="secondary"
-            size="sm"
-            onclick={(event) => go(event, editPath)}>{copy.editAction}</Button
+<article class="ib-workflow" data-page="workflow-detail" data-condition={condition}>
+  <header class="ib-workflow__header">
+    <div class="ib-workflow__identity">
+      <div class="ib-workflow__heading">
+        <h1 class="ib-workflow__title">{type}</h1>
+        {#if resolved !== undefined}
+          <Badge variant={file === undefined ? 'neutral' : 'accent'} size="sm"
+            >{file === undefined ? copy.codeBadge : copy.agentAuthoredBadge}</Badge
           >
         {/if}
+        {#if file !== undefined && file.state === 'invalid'}
+          <Badge variant="danger" size="sm">{copy.invalidBadge}</Badge>
+        {/if}
+        {#if file?.agent !== null && file?.agent !== undefined}
+          <code class="ib-workflow-agent" data-testid="workflow-agent">{file.agent}</code>
+        {/if}
+      </div>
+      {#if description}
+        <p class="ib-workflow__description" data-testid="workflow-description">{description}</p>
+      {/if}
+      {#if starts !== null || file?.state === 'ready'}
+        <p class="ib-workflow__status">
+          {#if starts !== null}
+            <span data-testid="workflow-trigger">
+              {#if starts.kind === 'signal'}{copy.list.onSignal}
+                <code>{starts.name}</code>{:else}{starts.words}{/if}
+            </span>
+          {/if}
+          {#if file?.state === 'ready'}
+            <span data-testid="workflow-state"
+              >{file.paused ? copy.page.statusPaused : copy.page.statusActive}</span
+            >
+          {/if}
+        </p>
+      {/if}
+    </div>
+    {#if file !== undefined && actions !== undefined}
+      <div class="ib-workflow__actions">
         {#if actions.pause && !file.paused}
           <Button
             variant="secondary"
@@ -293,6 +328,14 @@
             onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
           >
         {/if}
+        {#if actions.edit}
+          <Button
+            href={router.href(editPath)}
+            variant="secondary"
+            size="sm"
+            onclick={(event) => go(event, editPath)}>{copy.editAction}</Button
+          >
+        {/if}
         {#if actions.delete}
           <Button
             variant="danger"
@@ -301,37 +344,41 @@
             onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
           >
         {/if}
-      {/if}
-    </div>
+      </div>
+    {/if}
   </header>
 
   {#if stale}
     <Alert variant="warning">
-      <p class="weft-workflow-type__alert-title">{copy.stale.title}</p>
-      <p class="weft-workflow-type__alert-body">{copy.stale.description}</p>
-      <Button variant="secondary" onclick={() => void reload()}>{copy.stale.action}</Button>
+      <p class="ib-workflow__alert-title">{copy.stale.title}</p>
+      <p class="ib-workflow__alert-body">{copy.stale.description}</p>
+      <Button variant="secondary" size="sm" onclick={() => void reload()}
+        >{copy.stale.action}</Button
+      >
     </Alert>
   {/if}
 
   {#if unapplied}
     <Alert variant="warning">
-      <p class="weft-workflow-type__alert-title">{copy.applyFailed.title}</p>
-      <p class="weft-workflow-type__alert-body">{copy.applyFailed.description}</p>
+      <p class="ib-workflow__alert-title">{copy.applyFailed.title}</p>
+      <p class="ib-workflow__alert-body">{copy.applyFailed.description}</p>
     </Alert>
   {/if}
 
   {#if failure !== null}
     <Alert variant="danger" dismissible onDismiss={() => (failure = null)}>
-      <p class="weft-workflow-type__alert-title">{failure.title}</p>
-      <p class="weft-workflow-type__alert-body">{failure.message}</p>
+      <p class="ib-workflow__alert-title">{failure.title}</p>
+      <p class="ib-workflow__alert-body">{failure.message}</p>
     </Alert>
   {/if}
 
   {#if resolution.isError}
     <Alert variant="danger">
-      <p class="weft-workflow-type__alert-title">{copy.loadFailed.title}</p>
-      <p class="weft-workflow-type__alert-body">{copy.loadFailed.description}</p>
-      <Button variant="secondary" onclick={() => void resolution.refetch()}>{RETRY_LABEL}</Button>
+      <p class="ib-workflow__alert-title">{copy.loadFailed.title}</p>
+      <p class="ib-workflow__alert-body">{copy.loadFailed.description}</p>
+      <Button variant="secondary" size="sm" onclick={() => void resolution.refetch()}
+        >{RETRY_LABEL}</Button
+      >
     </Alert>
   {:else if resolution.isPending}
     <div role="status" aria-busy="true" aria-label={type}>
@@ -339,67 +386,38 @@
       <Skeleton height="12rem" />
     </div>
   {:else if resolved !== undefined}
-    {#if file !== undefined}
-      <section class="weft-workflow-type__section" aria-label={copy.fileLabel}>
-        <dl class="weft-workflow-facts">
-          <dt>{copy.fileLabel}</dt>
-          <dd><CodeLocation file={path} data-testid="workflow-file-path" /></dd>
-          {#if file.agent !== null}
-            <dt>{copy.agentLabel}</dt>
-            <dd data-testid="workflow-agent">{file.agent}</dd>
-          {/if}
-          {#if document !== undefined}
-            <dt>{copy.triggerLabel}</dt>
-            <dd data-testid="workflow-trigger">{triggerLabel(document.trigger)}</dd>
-          {/if}
-        </dl>
-        {#if file.problem !== null}
-          <Alert variant="danger">
-            <FileProblem problem={file.problem} />
-          </Alert>
-        {/if}
-        {#if document !== undefined}
-          <h2 class="weft-workflow-section__heading">{copy.stepsLabel}</h2>
-          {#if document.steps.length === 0}
-            <p class="weft-workflow-type__none">{copy.noSteps}</p>
-          {:else}
-            <ol class="weft-workflow-type__steps" data-testid="workflow-steps">
-              {#each keyedByOccurrence( document.steps, (step) => stepLabel(step) ) as { key, item: step } (key)}
-                <li>{stepLabel(step)}</li>
-              {/each}
-            </ol>
-          {/if}
+    {#if file !== undefined && file.problem !== null}
+      <Alert variant="danger">
+        <FileProblem problem={file.problem} />
+        <CodeLocation file={path} data-testid="workflow-file-path" />
+      </Alert>
+    {/if}
+
+    {#if document !== undefined}
+      <section class="ib-workflow__section" aria-labelledby="ib-workflow-steps">
+        <h2 id="ib-workflow-steps" class="weft-workflow-section__heading">{copy.stepsLabel}</h2>
+        {#if document.steps.length === 0}
+          <p class="ib-workflow__muted">{copy.noSteps}</p>
+        {:else}
+          <ol class="ib-workflow__steps" data-testid="workflow-steps">
+            {#each keyedByOccurrence( document.steps, (step) => stepLabel(step) ) as { key, item: step } (key)}
+              <li>{stepLabel(step)}</li>
+            {/each}
+          </ol>
         {/if}
       </section>
     {/if}
 
-    {#if resolved.kind === 'code'}
-      <DefinitionSection definition={resolved.definition} signals={acceptedSignals} />
-    {:else if resolved.definition !== undefined}
-      <DefinitionSection definition={resolved.definition} signals={acceptedSignals} />
-    {:else if file?.state === 'ready'}
-      <section class="weft-workflow-type__section">
-        <h2 class="weft-workflow-section__heading">{copy.definition.heading}</h2>
-        <p class="weft-workflow-type__none">{copy.definition.notRegistered}</p>
-        <dl class="weft-workflow-facts">
-          <dt>{copy.definition.signals}</dt>
-          <dd data-testid="workflow-accepted-signals">
-            {acceptedSignals.length === 0 ? copy.definition.none : acceptedSignals.join(', ')}
-          </dd>
-        </dl>
-      </section>
+    {#if !(file !== undefined && file.state === 'invalid')}
+      <RecentRuns {type} kind={resolved.kind} />
     {/if}
 
-    <section class="weft-workflow-type__section" data-testid="workflow-schedules">
-      <h2 class="weft-workflow-section__heading">{copy.schedules.heading}</h2>
-      {#if schedules.isError}
-        <p role="alert">{copy.schedules.failed}</p>
-      {:else if schedules.isPending}
-        <Skeleton height="2rem" />
-      {:else if schedules.data.length === 0}
-        <p class="weft-workflow-type__none">{copy.schedules.none}</p>
-      {:else}
-        <ul class="weft-workflow-type__schedules">
+    {#if schedules.isError}
+      <p class="ib-workflow__muted" role="alert">{copy.page.schedulesFailed}</p>
+    {:else if hasSchedules && schedules.data !== undefined}
+      <section class="ib-workflow__section" data-testid="workflow-schedules">
+        <h2 class="weft-workflow-section__heading">{copy.page.schedulesHeading}</h2>
+        <ul class="ib-workflow__list">
           {#each schedules.data as schedule (schedule.id)}
             <li data-schedule={schedule.id} data-status={schedule.status}>
               <a
@@ -409,30 +427,42 @@
               <span>{scheduleLabel(schedule)}</span>
               <Badge variant={schedule.status === 'active' ? 'success' : 'neutral'} size="sm"
                 >{schedule.status === 'active'
-                  ? copy.schedules.active
-                  : copy.schedules.paused}</Badge
+                  ? copy.page.scheduleActive
+                  : copy.page.schedulePaused}</Badge
               >
               {#if schedule.lastFireAt !== undefined}
-                <span class="weft-workflow-type__muted">
+                <span class="ib-workflow__muted">
                   {formatRelativeTime(schedule.lastFireAt)}
                 </span>
               {/if}
             </li>
           {/each}
         </ul>
-      {/if}
-    </section>
-
-    {#if resolved.kind === 'code'}
-      <section class="weft-workflow-type__section">
-        <WorkflowRevisionsPanel workflowName={type} />
       </section>
-    {:else}
-      <RevisionHistory id={type} />
     {/if}
 
     {#if actions?.signal === true}
       <SignalForm {document} />
+    {/if}
+
+    {#if showDetails}
+      <Collapsible trigger={copy.page.details} class="ib-disclosure">
+        <WorkflowDetails
+          {details}
+          filePath={file?.state === 'ready' ? path : undefined}
+          {document}
+        />
+      </Collapsible>
+    {/if}
+
+    {#if !engineType}
+      <Collapsible trigger={copy.page.engine} class="ib-disclosure">
+        {#if resolved.kind === 'code'}
+          <WorkflowRevisionsPanel workflowName={type} />
+        {:else}
+          <RevisionHistory id={type} />
+        {/if}
+      </Collapsible>
     {/if}
   {/if}
 </article>
@@ -445,88 +475,3 @@
   destructive
   onConfirm={() => act(removal.mutate)}
 />
-
-<style>
-  .weft-workflow-type {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .weft-workflow-type__header {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    align-items: flex-start;
-    justify-content: space-between;
-  }
-
-  .weft-workflow-type__identity {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .weft-workflow-type__title {
-    margin: 0;
-    font-size: var(--cinder-text-xl);
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .weft-workflow-type__badges,
-  .weft-workflow-type__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .weft-workflow-type__section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .weft-workflow-type__alert-title {
-    margin: 0;
-    font-weight: 600;
-  }
-
-  .weft-workflow-type__alert-body {
-    margin: 4px 0 8px;
-  }
-
-  .weft-workflow-type__none,
-  .weft-workflow-type__muted {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .weft-workflow-type__steps {
-    margin: 0;
-    padding-inline-start: var(--cinder-space-6);
-    overflow-wrap: anywhere;
-  }
-
-  .weft-workflow-type__schedules {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .weft-workflow-type__schedules li {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    align-items: center;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    font-size: var(--cinder-text-sm);
-  }
-</style>

@@ -207,10 +207,11 @@ export const AGENT_EDITOR_COPY = {
 
 /** The words the Workflows area uses outside its view states (`/workflows` and under it). */
 export const WORKFLOW_COPY = {
-  /** The badge on every workflow the Bureau holds a file for. A code-defined type has none. */
+  /** The badge on every workflow the Bureau holds a file for. */
   agentAuthoredBadge: 'Agent-authored',
-  /** The label for the agent that owns a file, shown only when the file names one. */
-  owner: (agent: string): string => `Agent: ${agent}`,
+  /** The badge on a workflow type that code registered. */
+  codeBadge: 'Code',
+  newAction: 'New workflow',
   /** The badge on a file the Bureau cannot use. */
   invalidBadge: 'Invalid file',
   pausedBadge: 'Paused',
@@ -221,39 +222,78 @@ export const WORKFLOW_COPY = {
   fileLabel: 'File',
   problemLabel: 'Problem',
   issuesLabel: 'Issues',
-  agentLabel: 'Agent',
-  triggerLabel: 'Trigger',
   stepsLabel: 'Steps',
   noSteps: 'This workflow has no steps.',
-  runsAction: 'Runs',
+  /** The link from a workflow's recent runs to all of them. */
+  runsAction: 'All runs',
   editAction: 'Edit',
   pauseAction: 'Pause',
   resumeAction: 'Resume',
   deleteAction: 'Delete',
   /** The accessible name of a link to a workflow's page. */
   listLabel: 'Workflows',
-  definition: {
-    heading: 'Definition',
-    descriptionLabel: 'Description',
-    noDescription: 'No description.',
+  /** The list at `/workflows`. */
+  list: {
+    /** The disclosure that holds the types the Bureau runs itself. */
+    engineWorkflows: (count: number): string => `Engine workflows (${String(count)})`,
+    engineDescription:
+      'The Bureau runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
+    emptyTitle: 'No workflows yet',
+    emptyBeforeTool: 'Chat with an agent that has the',
+    emptyTool: 'workflows-create',
+    emptyBeforeDirectory: 'tool, or add a JSON file to',
+    schedules: (count: number): string => `${String(count)} schedules`,
+    runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
+    running: (count: number): string => `(${String(count)} running)`,
+    neverRun: 'No runs yet',
+    lastRun: (relative: string): string => `last run ${relative}`,
+    onSignal: 'On the signal',
+  },
+  /** The page of one workflow. */
+  page: {
+    /** The status line under the name: the cadence, then whether the workflow is running. */
+    statusActive: 'Active',
+    statusPaused: 'Paused',
+    recentRuns: 'Recent runs',
+    noRuns: 'Nothing has run this workflow yet.',
+    runsFailed: 'The recent runs could not be loaded.',
+    runDuration: (milliseconds: string): string => `took ${milliseconds}`,
+    details: 'Details',
+    trigger: 'Trigger',
+    engine: 'Engine',
+    schedulesHeading: 'Schedules',
+    schedulesFailed: 'The schedules could not be loaded.',
+    scheduleActive: 'Active',
+    schedulePaused: 'Paused',
+    /** The facts of the Details disclosure, each shown only when the workflow has it. */
     inputSchema: 'Input schema',
     outputSchema: 'Output schema',
-    noSchema: 'None declared.',
     signals: 'Accepted signals',
     updates: 'Updates',
     queries: 'Queries',
-    none: 'None',
-    revision: 'Active revision',
-    noRevision: 'None active',
-    /** An agent-authored workflow the engine has not registered yet, so it has no definition to show. */
-    notRegistered: 'The engine has no definition for this workflow yet.',
+    activeRevision: 'Active revision',
   },
-  schedules: {
-    heading: 'Schedules',
-    none: 'No schedule starts this workflow.',
-    failed: 'The schedules could not be loaded.',
-    active: 'Active',
-    paused: 'Paused',
+  /** `/workflows/new`. */
+  creator: {
+    heading: 'New workflow',
+    textLabel: 'Workflow file',
+    textDescription:
+      'The file’s JSON. Its name is the workflow’s identifier, and it cannot be changed after the first save.',
+    saveAction: 'Create workflow',
+    cancelAction: 'Cancel',
+    saveFailed: 'The workflow was not created',
+    noName: 'Give the workflow a name: a "name" key holding its identifier.',
+    invalidName:
+      'The name must use lowercase letters, digits, and hyphens, start with a letter, and be at most 64 characters.',
+    reservedName:
+      'This name is reserved: /workflows/new is the page that creates a workflow, so a workflow called new could never be opened. Choose another.',
+    taken: (name: string): string =>
+      `A workflow called ${name} already exists. Choose another name.`,
+    /** What the editor starts with: a name, a description, a schedule trigger, and one agent step. */
+    templateName: 'my-workflow',
+    templateDescription: 'Says what this workflow is for in a sentence.',
+    templateSpec: '1h',
+    templateMessage: 'Say hello.',
   },
   revisions: {
     heading: 'Revisions that have run',
@@ -1257,8 +1297,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     empty: {
       title: 'No workflows yet',
       description:
-        'Neither the engine nor the Bureau has a workflow. Ask an agent to write one, or add a JSON file to the workflows directory.',
-      action: { label: 'See the runs', href: '/runs' },
+        'Chat with an agent that has the workflows-create tool, or add a JSON file to the workflows directory.',
+      action: { label: 'New workflow', href: '/workflows/new' },
     },
     error: {
       title: 'Workflows are unavailable',

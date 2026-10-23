@@ -31,7 +31,7 @@
   <div class="weft-tool-row__text">
     <span class="weft-tool-row__line" data-testid="agent-tool-line">{summary.line}</span>
     {#if summary.expandable}
-      <Collapsible trigger={copy.toolDisclosure} animated={false} class="weft-tool-row__more">
+      <Collapsible trigger={copy.toolDisclosure} class="weft-tool-row__more">
         <p class="weft-tool-row__full" data-testid="agent-tool-full">{tool.description}</p>
       </Collapsible>
     {/if}
