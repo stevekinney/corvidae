@@ -1,8 +1,10 @@
 <script lang="ts">
   /**
    * Left sidebar (plan §13 T1.6; design `Weft UI.dc.html` "SIDEBAR"):
-   * product mark, the views in two groups (Primary, then Engine) with Lucide icons + badge
-   * counts, active state from the router. Badge counts (reviews pending, workers
+   * product mark, the views in two groups (Work, for working with agents, then Engine, for
+   * operating it) with Lucide icons + badge counts, active state from the router. Each item's
+   * title names its keyboard shortcut (`../../lib/navigation-shortcuts.ts`), and the footer is
+   * the engine's status: a dot, with the words in its title. Badge counts (reviews pending, workers
    * unhealthy) are TanStack queries — a fetch failure (e.g. a 403 from a
    * scope this principal lacks) just hides the count rather than showing a
    * stale/wrong number or breaking the nav.
@@ -17,18 +19,19 @@
    */
   import {
     Badge,
-    ConnectionIndicator,
+    NavigationItem,
     Sidebar,
     SIDEBAR_MOBILE_MEDIA_QUERY,
     SideNavigation,
     SideNavigationGroup,
     SideNavigationItem,
+    StatusDot,
+    type StatusDotStatus,
   } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import {
     Bot,
     CalendarClock,
-    ChevronRight,
     Database,
     Inbox,
     MessageSquare,
@@ -42,6 +45,7 @@
 
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { shortcutKeys } from '../../lib/navigation-shortcuts.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
@@ -55,7 +59,7 @@
     weftReviewsQueryOptions,
   } from '../../routes/reviews/reviews-data.ts';
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
-  import { VIEW_COPY } from '../copy.ts';
+  import { NAVIGATION_COPY, VIEW_COPY } from '../copy.ts';
   import type { ViewName } from '../views.ts';
 
   interface SidebarNavProps {
@@ -154,7 +158,7 @@
    */
   const navGroups = $derived<readonly NavGroup[]>([
     {
-      label: 'Primary',
+      label: NAVIGATION_COPY.workGroup,
       entries: [
         {
           view: 'chat',
@@ -189,7 +193,7 @@
       ],
     },
     {
-      label: 'Engine',
+      label: NAVIGATION_COPY.engineGroup,
       entries: [
         {
           view: 'workers',
@@ -237,14 +241,27 @@
     if (isMobileViewport.current) collapsed = true;
   }
 
-  const enginePillLabel: Readonly<Record<LiveSourceStatus, string>> = {
-    connecting: 'Engine connecting',
-    live: 'Engine healthy',
-    reconnecting: 'Engine reconnecting',
-    polling: 'Engine healthy (polling)',
-    stale: 'Engine status stale',
-    closed: 'Engine unreachable',
+  /** The dot's color for each state of the live feed: green while the engine answers, red when it does not. */
+  const ENGINE_DOT_STATUS: Readonly<Record<LiveSourceStatus, StatusDotStatus>> = {
+    connecting: 'pending',
+    live: 'online',
+    reconnecting: 'warning',
+    polling: 'online',
+    stale: 'warning',
+    closed: 'danger',
   };
+
+  const engineStatusWords = $derived(NAVIGATION_COPY.engineStatus[engineStatus]);
+
+  /**
+   * The words of an item's title, which the browser shows as its tooltip: its name, and the keys
+   * that open it. Cinder's `Tooltip` wraps its trigger, which here is the text of a link, so its
+   * panel would become part of the link's own text.
+   */
+  function titleText(label: string, path: string): string {
+    const keys = shortcutKeys(path);
+    return keys === undefined ? label : `${label} (${keys.join(' ')})`;
+  }
 </script>
 
 <Sidebar label="Interborough" bind:collapsed class={sidebarStateClass}>
@@ -256,6 +273,7 @@
             {@const Icon = entry.icon}
             <SideNavigationItem
               href={router.href(entry.path)}
+              title={titleText(VIEW_COPY[entry.view].label, entry.path)}
               active={isActivePath(entry.path)}
               onclick={(event) => onNavClick(event, entry.path)}
             >
@@ -263,7 +281,9 @@
                 <Icon aria-hidden="true" size={16} class="weft-shell-nav-item__icon" />
                 <span class="weft-shell-nav-item__label">{VIEW_COPY[entry.view].label}</span>
                 {#if entry.badge !== undefined && entry.badge > 0}
-                  <Badge variant={entry.badgeVariant} size="sm">{entry.badge}</Badge>
+                  <Badge variant={entry.badgeVariant} size="sm" class="weft-shell-nav-badge"
+                    >{entry.badge}</Badge
+                  >
                 {/if}
               </span>
             </SideNavigationItem>
@@ -273,13 +293,23 @@
     </SideNavigation>
   {/snippet}
   {#snippet footer()}
-    <a
+    <NavigationItem
       href={router.href('/engine')}
-      class="weft-shell-engine-pill"
+      variant="vertical"
+      active={router.pathname === '/engine'}
+      aria-label={engineStatusWords}
+      title={engineStatusWords}
       onclick={(event) => onNavClick(event, '/engine')}
     >
-      <ConnectionIndicator status={engineStatus} label={enginePillLabel[engineStatus]} />
-      <ChevronRight aria-hidden="true" size={14} class="weft-shell-engine-pill__chevron" />
-    </a>
+      <span class="weft-shell-nav-item" data-engine-status={engineStatus}>
+        <StatusDot
+          status={ENGINE_DOT_STATUS[engineStatus]}
+          label={engineStatusWords}
+          labelVisible={false}
+          live
+        />
+        <span class="weft-shell-nav-item__label">{NAVIGATION_COPY.engineLink}</span>
+      </span>
+    </NavigationItem>
   {/snippet}
 </Sidebar>

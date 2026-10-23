@@ -14,7 +14,7 @@
    * `Dropdown` supplies focus/Escape/click-outside/positioning behavior —
    * an app-local composition over the primitive, not a fork (PROJECT-BRIEF).
    */
-  import { Badge, ConnectionIndicator, Dropdown } from '@lostgradient/cinder';
+  import { Badge, Button, ConnectionIndicator, Dropdown } from '@lostgradient/cinder';
   import type { LucideIcon } from '@lucide/svelte';
   import {
     Ban,
@@ -107,16 +107,14 @@
 
 <Dropdown bind:open placement="bottom-end">
   {#snippet trigger()}
-    <button
-      type="button"
-      class="weft-shell-icon-button weft-notification-bell"
-      aria-label={`Notifications, ${store.unreadCount} unread`}
-    >
-      <Bell aria-hidden="true" size={17} />
-      {#if store.unreadCount > 0}
-        <span class="weft-notification-bell__count">{store.unreadCount}</span>
-      {/if}
-    </button>
+    <Button variant="ghost" iconOnly aria-label={`Notifications, ${store.unreadCount} unread`}>
+      <span class="weft-notification-bell__icon">
+        <Bell aria-hidden="true" size={16} />
+        {#if store.unreadCount > 0}
+          <span class="weft-notification-bell__count">{store.unreadCount}</span>
+        {/if}
+      </span>
+    </Button>
   {/snippet}
   {#snippet children()}
     <div class="weft-notification-panel">

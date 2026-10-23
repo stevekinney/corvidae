@@ -1,5 +1,5 @@
 /**
- * The sidebar: two groups, Primary and Engine, built from Cinder's `SideNavigationGroup`, with
+ * The sidebar: two groups, Work and Engine, built from Cinder's `SideNavigationGroup`, with
  * Chat as the home screen and the badge counts the engine reports.
  */
 import { HttpClient } from '@lostgradient/weft';
@@ -9,6 +9,7 @@ import { Window } from 'happy-dom';
 
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
 import Harness from './sidebar.test-harness.svelte';
@@ -62,11 +63,12 @@ function stubEngine(
   });
 }
 
-function mount(scopes?: readonly AuthorizationScope[]) {
+function mount(scopes?: readonly AuthorizationScope[], engineStatus?: LiveSourceStatus) {
   return render(Harness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       ...(scopes === undefined ? {} : { scopes }),
+      ...(engineStatus === undefined ? {} : { engineStatus }),
     },
   });
 }
@@ -75,7 +77,7 @@ const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
 const ENGINE = ['Workers', 'Storage', 'System', 'Audit'];
 
 describe('the sidebar', () => {
-  test('holds a Primary group and an Engine group, in order', () => {
+  test('holds a Work group and an Engine group, in order', () => {
     stubEngine();
     landAt('/chat');
     const { getByRole } = mount();
@@ -87,7 +89,7 @@ describe('the sidebar', () => {
       Array.from(group.querySelectorAll('a')).map(
         (link) => link.textContent?.trim().split(/\s+/)[0],
       );
-    expect(groups[0]?.querySelector('button')?.textContent?.trim()).toBe('Primary');
+    expect(groups[0]?.querySelector('button')?.textContent?.trim()).toBe('Work');
     expect(labelsOf(groups[0] as Element)).toEqual(PRIMARY);
     expect(groups[1]?.querySelector('button')?.textContent?.trim()).toBe('Engine');
     expect(labelsOf(groups[1] as Element)).toEqual(ENGINE);
@@ -166,12 +168,42 @@ describe('the sidebar', () => {
     await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*2$/ })).not.toBeNull());
   });
 
-  test('points the engine status pill at the engine overview', () => {
+  test('points the engine status at the engine overview, and says the status in words', () => {
     stubEngine();
     landAt('/chat');
-    const { container } = mount();
-    expect(container.querySelector('.weft-shell-engine-pill')?.getAttribute('href')).toBe(
-      '/engine',
+    const { getByRole } = mount();
+    const link = getByRole('link', { name: 'Engine healthy' });
+    expect(link.getAttribute('href')).toBe('/engine');
+    expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+      'online',
     );
+  });
+
+  test('turns the engine status red, and names the problem, when the engine is unreachable', () => {
+    stubEngine();
+    landAt('/chat');
+    const { getByRole } = mount(undefined, 'closed');
+    const link = getByRole('link', { name: 'Engine unreachable' });
+    expect(link.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
+      'danger',
+    );
+  });
+
+  test('names the keys that open a view in its title', () => {
+    stubEngine();
+    landAt('/chat');
+    const { getByRole } = mount();
+    const titles = Object.fromEntries(
+      ['Chat', 'Agents', 'Reviews', 'Audit'].map((label) => [
+        label,
+        getByRole('link', { name: new RegExp(`^${label}`) }).getAttribute('title'),
+      ]),
+    );
+    expect(titles).toEqual({
+      Chat: 'Chat (g c)',
+      Agents: 'Agents (g a)',
+      Reviews: 'Reviews (g v)',
+      Audit: 'Audit (g u)',
+    });
   });
 });
