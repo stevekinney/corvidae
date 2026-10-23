@@ -1,0 +1,185 @@
+/* ── Agents: the list and one agent's page ──────────────────── */
+
+/* The outlet pads the page, so none of this adds padding of its own at the edges. */
+.ib-agents,
+.ib-agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-agents__header,
+.ib-agent__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ib-agent__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.ib-agent__actions,
+.ib-agent-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+}
+
+/* A list of flat rows: a faint rule between them, no card around any. */
+.ib-agents__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-agent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--cinder-density-pad-block);
+  border-block-end: 1px solid var(--cinder-border-faint);
+}
+
+.ib-agent-row:last-child {
+  border-block-end: 0;
+}
+
+.ib-agent-row__body {
+  display: flex;
+  flex: 1 1 20rem;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-agent-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: center;
+}
+
+/* An identifier is the longest unbroken thing on these pages, whether it is a name, an id, a model,
+ * a tool, a skill, or a file hash: it breaks where it has to rather than pushing the page wider
+ * than the outlet. One rule covers them all. A Cinder badge never wraps by default, so a chip says
+ * so itself, and the boxes around it are allowed to shrink. */
+.ib-agent-name,
+.ib-agent-id,
+.ib-agent__heading h1,
+.ib-agent-fact,
+.ib-agent-chips > li,
+.ib-agent-facts .cinder-badge,
+.ib-agent__version code {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-facts .cinder-badge {
+  white-space: normal;
+  text-align: start;
+}
+
+.ib-agent-name {
+  color: var(--cinder-text-default);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ib-agent-name:hover {
+  text-decoration: underline;
+}
+
+/* An agent's name is its identifier when it has no other: kebab-case is monospace. */
+.ib-agent-name[data-identifier],
+.ib-agent__heading h1[data-identifier] {
+  font-family: var(--cinder-font-mono);
+}
+
+.ib-agent-id {
+  color: var(--cinder-text-muted);
+  font-family: var(--cinder-font-mono);
+  font-size: var(--cinder-text-sm);
+}
+
+/* The badge's tooltip hint reaches a keyboard: the wrapper takes focus and shows its ring. */
+.ib-agent-state {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cinder-radius-sm);
+  background: none;
+  font: inherit;
+  cursor: help;
+}
+
+.ib-agent-row__description,
+.ib-agent__description {
+  margin: 0;
+  color: var(--cinder-text-secondary);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent__description {
+  font-size: var(--cinder-text-base);
+}
+
+.ib-agent-row__meta,
+.ib-agent-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent-fact {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: center;
+}
+
+.ib-agent-fact__label {
+  color: var(--cinder-text-muted);
+}
+
+.ib-agent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-agent__version {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-agent__version code {
+  font-family: var(--cinder-font-mono);
+}
+
+.ib-agent__subheading {
+  margin: 0 0 var(--cinder-space-2);
+  font-size: var(--cinder-text-md);
+  font-weight: 600;
+}

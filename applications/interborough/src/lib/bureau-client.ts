@@ -253,6 +253,11 @@ export const agentSummarySchema = z.object({
   publishState: z.enum(['published', 'withdrawn', 'unpublished']),
   /** `null` for an agent that names no model, which can take no attachment. */
   media: agentMediaSchema.nullable().default(null),
+  /**
+   * The names of the agent's tools. Absent when the Bureau does not say, which is not the same as
+   * `[]`, an agent it says has none.
+   */
+  tools: z.array(z.string()).optional(),
 });
 
 export type AgentSummary = z.infer<typeof agentSummarySchema>;
