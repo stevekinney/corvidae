@@ -7,8 +7,12 @@ import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
+  createDefinitionFromText,
+  createWorkflowFile,
   deleteWorkflowFile,
   getWorkflowFile,
+  isIdentifierTaken,
+  listWorkflowFileRuns,
   listWorkflowFiles,
   listWorkflowRevisions,
   parseWorkflowText,
@@ -23,6 +27,7 @@ import {
   emptyWorld,
   installWorkflowWorld,
   readyFile,
+  runFixture,
   workflowFaults,
   type WorkflowStub,
 } from './workflow-world.test-support.ts';
@@ -163,5 +168,127 @@ describe('the operations', () => {
     });
     await signalWorkflows({ name: 'no-payload' });
     expect(stub.callsTo('bureau.workflows.signal')[1]?.params).toEqual({ name: 'no-payload' });
+  });
+});
+
+describe('createDefinitionFromText', () => {
+  const text = (name: unknown) =>
+    JSON.stringify({ name, trigger: { kind: 'signal', name: 'go' }, steps: [] });
+
+  test('reads the name as the identifier, and sends everything else', () => {
+    expect(createDefinitionFromText(text('fresh-flow'))).toEqual({
+      ok: true,
+      id: 'fresh-flow',
+      definition: { trigger: { kind: 'signal', name: 'go' }, steps: [] },
+    });
+  });
+
+  test('keeps a description and any other key as written, so the Bureau can refuse one it does not know', () => {
+    const result = createDefinitionFromText(
+      JSON.stringify({ name: 'x', description: 'Says hi.', extra: 1, trigger: {}, steps: [] }),
+    );
+    expect(result.ok && result.definition).toEqual({
+      description: 'Says hi.',
+      extra: 1,
+      trigger: {},
+      steps: [],
+    });
+  });
+
+  test('says why text that is not JSON, or not an object, cannot be created', () => {
+    expect(createDefinitionFromText('{ nope')).toEqual({ ok: false, reason: 'not-json' });
+    expect(createDefinitionFromText('[1]')).toEqual({ ok: false, reason: 'not-object' });
+    expect(createDefinitionFromText('null')).toEqual({ ok: false, reason: 'not-object' });
+  });
+
+  test('refuses a missing name, one that is not an identifier, and the name of the page that creates one', () => {
+    expect(createDefinitionFromText('{"steps": []}')).toEqual({ ok: false, reason: 'no-name' });
+    for (const name of ['Bad_Name', '9lives', '-lead', 'trail-', '', 7, null, 'x'.repeat(65)]) {
+      expect(createDefinitionFromText(text(name)), String(name)).toEqual({
+        ok: false,
+        reason: 'invalid-name',
+      });
+    }
+    expect(createDefinitionFromText(text('x'.repeat(64)))).toMatchObject({ ok: true });
+    expect(createDefinitionFromText(text('new'))).toEqual({ ok: false, reason: 'reserved-name' });
+  });
+});
+
+describe('creating a workflow', () => {
+  test('sends the identifier and the definition, and answers the identifier and the hash on disk', async () => {
+    stub = installWorkflowWorld(emptyWorld());
+    const created = await createWorkflowFile('fresh', {
+      description: 'Says hi.',
+      trigger: { kind: 'signal', name: 'go' },
+      steps: [],
+    });
+    expect(created.id).toBe('fresh');
+    expect(stub.callsTo('bureau.workflows.create')[0]?.params).toEqual({
+      id: 'fresh',
+      definition: { description: 'Says hi.', trigger: { kind: 'signal', name: 'go' }, steps: [] },
+    });
+    expect(stub.file('fresh')?.description).toBe('Says hi.');
+  });
+
+  test('a taken identifier is a conflict that says so', async () => {
+    stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
+    const refused = await rejectionOf(createWorkflowFile('one', { trigger: {}, steps: [] }));
+    expect(refused).toBeInstanceOf(HttpClientError);
+    expect(isIdentifierTaken(refused)).toBe(true);
+    expect(isIdentifierTaken(new Error('x'))).toBe(false);
+  });
+});
+
+describe('the listing of a file', () => {
+  test('carries its description, its trigger, and the counts of its instances', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        files: [
+          readyFile('one', {
+            description: 'Does one thing.',
+            trigger: { kind: 'schedule', spec: '1h' },
+            runs: { active: 1, last24Hours: 4, lastRunAt: '2026-10-23T11:00:00.000Z' },
+          }),
+        ],
+      }),
+    );
+    const [listed] = await listWorkflowFiles();
+    expect(listed).toMatchObject({
+      description: 'Does one thing.',
+      trigger: { kind: 'schedule', spec: '1h' },
+      runs: { active: 1, last24Hours: 4, lastRunAt: '2026-10-23T11:00:00.000Z' },
+    });
+  });
+
+  test('refuses an answer without the counts the Bureau now sends, instead of showing a zero', async () => {
+    stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
+    stub.on('bureau.workflows.list', () => ({
+      workflows: [{ id: 'one', state: 'ready', owner: 'o', hash: 'h', agent: null, paused: false }],
+      nextOffset: null,
+    }));
+    expect(await rejectionOf(listWorkflowFiles())).toBeDefined();
+  });
+});
+
+describe('the newest instances of a file', () => {
+  test('asks the Bureau for one workflow’s newest, and parses what it answers', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        runs: [
+          runFixture('old', 'one', { createdAt: 1_760_000_000_000 }),
+          runFixture('new', 'one', { createdAt: 1_760_000_100_000, status: 'running' }),
+          runFixture('elsewhere', 'two', { createdAt: 1_760_000_200_000 }),
+        ],
+      }),
+    );
+    const runs = await listWorkflowFileRuns('one', 5);
+    expect(runs.map((run) => [run.id, run.status])).toEqual([
+      ['new', 'running'],
+      ['old', 'completed'],
+    ]);
+    expect(stub.callsTo('bureau.workflows.runs.list')[0]?.params).toEqual({
+      workflow: 'one',
+      limit: 5,
+    });
   });
 });

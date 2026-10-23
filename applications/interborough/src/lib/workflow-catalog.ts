@@ -14,7 +14,9 @@
  * - A type with no file is code-defined. `origin` records how the engine loaded a type, never who
  *   wrote it, so a type is agent-authored exactly when the Bureau holds a file for it.
  */
+import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 import type { FailureCategory, HttpClient, ScheduleStatus } from '@lostgradient/weft';
+import { z } from 'zod';
 
 import type { Fetcher } from './bureau-client.ts';
 import { classifyFault } from './faults.ts';
@@ -25,6 +27,7 @@ import {
   type WorkflowFileDetail,
   type WorkflowFileListing,
   type WorkflowProblem,
+  type WorkflowRunCounts,
 } from './workflow-files.ts';
 
 type DefinitionList = Awaited<
@@ -98,7 +101,14 @@ export type CatalogRow = {
   readonly kind: 'code' | 'agent-authored';
   /** The agent that wrote the file, when it names one. */
   readonly agent: string | null;
+  /** What the workflow is for: the file's own words, else the engine's description of the type. */
   readonly description: string | null;
+  /** Whether the Bureau itself registers the type to run agents, goals, and its heartbeat. */
+  readonly engine: boolean;
+  /** How busy the workflow is, when the Bureau counts it (a file that loaded). A code type's are read apart. */
+  readonly runs: WorkflowRunCounts | null;
+  /** The file's trigger as written, for a file that loaded. */
+  readonly trigger: Readonly<Record<string, unknown>> | null;
   /** The Bureau's file, for an agent-authored type. */
   readonly file: WorkflowFileListing | null;
   /** Why the Bureau cannot use the file, when it cannot. */
@@ -122,7 +132,10 @@ export function joinCatalog(
       name: file.id,
       kind: 'agent-authored',
       agent: file.agent,
-      description: definition?.description ?? null,
+      description: file.description ?? definition?.description ?? null,
+      engine: false,
+      runs: file.runs,
+      trigger: file.trigger,
       file,
       problem: file.problem,
       failure:
@@ -140,12 +153,23 @@ export function joinCatalog(
       kind: 'code',
       agent: null,
       description: definition.description,
+      engine: isEngineType(definition.name),
+      runs: null,
+      trigger: null,
       file: null,
       problem: null,
       failure: null,
     });
   }
   return rows.toSorted((first, second) => compareNames(first.name, second.name));
+}
+
+/**
+ * Whether a type is one the Bureau registers itself to run agents, goals, and its heartbeat
+ * (`RUN_ENGINE_WORKFLOW_TYPES`). A person never starts one, so the catalog keeps them apart.
+ */
+export function isEngineType(name: string): boolean {
+  return (RUN_ENGINE_WORKFLOW_TYPES as readonly string[]).includes(name);
 }
 
 /** The order the engine lists types in: by code point, not by locale. */
@@ -250,4 +274,73 @@ export function defaultSignalName(document: WorkflowDocument | undefined): strin
   const name = document.trigger['name'];
   if (document.trigger.kind === 'signal' && typeof name === 'string') return name;
   return awaitedSignals(document)[0] ?? '';
+}
+
+const instancePageSchema = z.object({
+  total: z.number(),
+  items: z.array(z.object({ createdAt: z.number() })),
+});
+
+/** How far back a type's recent instances are counted, as the Bureau counts a file's. */
+const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** The statuses of an instance that has not finished. */
+const ACTIVE_STATUSES = ['pending', 'running', 'suspended'] as const;
+
+/** What the engine says of a code-defined type's activity: its instance counts and its schedules. */
+export type CodeActivity = {
+  /** `null` when the engine would not count. A count that could not be read is never shown as zero. */
+  readonly runs: WorkflowRunCounts | null;
+  /** The schedules that start the type, `null` when the engine would not list them. */
+  readonly schedules:
+    readonly { readonly cronExpression?: string; readonly intervalMs?: number }[] | null;
+};
+
+/**
+ * The instance counts and the schedules of each named code-defined type, from the engine's own
+ * totals (`weft.workflows.list` with `limit: 1`, which still answers the total) and its schedule
+ * list. A type whose reads fail has `null` for what failed: the page says nothing of it.
+ */
+export async function loadCodeActivity(
+  client: HttpClient,
+  names: readonly string[],
+  now: number = Date.now(),
+): Promise<ReadonlyMap<string, CodeActivity>> {
+  const list = async (filter: Record<string, unknown>) =>
+    instancePageSchema.parse(
+      await client.operations['weft.workflows.list']({ ...filter, limit: 1 }),
+    );
+  async function runsOf(type: string): Promise<WorkflowRunCounts | null> {
+    try {
+      const [active, recent, newest] = await Promise.all([
+        list({ type, status: ACTIVE_STATUSES }),
+        list({ type, createdAt: { gte: now - RECENT_WINDOW_MS } }),
+        // The engine lists newest first, so the one item of an unfiltered page is the last run.
+        list({ type }),
+      ]);
+      const last = newest.items[0];
+      return {
+        active: active.total,
+        last24Hours: recent.total,
+        lastRunAt: last === undefined ? null : new Date(last.createdAt).toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+  async function schedulesOf(type: string): Promise<CodeActivity['schedules']> {
+    try {
+      const page = await client.listSchedules({ workflowType: type });
+      return startingSchedules(page.items);
+    } catch {
+      return null;
+    }
+  }
+  const entries = await Promise.all(
+    names.map(async (name) => {
+      const [runs, schedules] = await Promise.all([runsOf(name), schedulesOf(name)]);
+      return [name, { runs, schedules }] as const;
+    }),
+  );
+  return new Map(entries);
 }

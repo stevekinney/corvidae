@@ -63,6 +63,8 @@ export const routes: readonly RouteDefinition[] = [
   // `/workflows` is the catalog of workflow definitions, and under it one type's page, its runs, and
   // its editor. A run lives under `/runs`. One component dispatches on the pattern.
   { pattern: '/workflows', view: 'workflows', load: workflowArea },
+  // `new` is a path segment, not a workflow: this route comes before `/workflows/:type`.
+  { pattern: '/workflows/new', view: 'workflows', load: workflowArea },
   { pattern: '/workflows/:type', view: 'workflows', load: workflowArea },
   { pattern: '/workflows/:type/runs', view: 'workflows', load: workflowArea },
   { pattern: '/workflows/:type/edit', view: 'workflows', load: workflowArea },
