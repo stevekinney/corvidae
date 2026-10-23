@@ -1,6 +1,7 @@
 import type { GuardrailProvenance } from 'armorer';
 
 import type { MemoryRecord } from '../memory-record-storage';
+import { memoryCorrelationSchema } from '../transition-events';
 import {
   delegationChainIncludes,
   holdsGovernanceAuthority,
@@ -268,6 +269,22 @@ function admissionDiagnostic(
 }
 
 /**
+ * The context a write runs in: one whose notifications carry the write's
+ * correlation, parsed and detached once so nothing the caller does later can
+ * change it. `undefined` when the write names a malformed correlation.
+ */
+export function correlated(
+  context: GovernanceContext,
+  options: Pick<GovernedWriteOptions, 'correlation'>,
+): GovernanceContext | undefined {
+  if (options.correlation === undefined) return context;
+  const parsed = memoryCorrelationSchema.safeParse(options.correlation);
+  if (!parsed.success) return undefined;
+  const correlation = parsed.data;
+  return { ...context, recordEvent: (event) => context.recordEvent(event, correlation) };
+}
+
+/**
  * Admission for every governed write. Ordinary conversation and model-facing
  * tools are untrusted writers: the source and its trust are classified from the
  * persisted authority, content is validated and scanned, quotas apply, and a
@@ -276,11 +293,15 @@ function admissionDiagnostic(
  * which detector fired, and why, is recorded as a protected diagnostic.
  */
 export async function admitWrite(
-  context: GovernanceContext,
+  governance: GovernanceContext,
   authority: MemoryAuthority,
   content: string,
   options: GovernedWriteOptions,
 ): Promise<MemoryWriteReceipt> {
+  const context = correlated(governance, options);
+  if (context === undefined) {
+    return reject(governance, authority, governance.operationId(), 'invalid-request');
+  }
   const operationId = context.operationId();
   const policy = context.policy();
   const allowed = await context.authorize(authority, 'write', ownPrivateResource(authority), {

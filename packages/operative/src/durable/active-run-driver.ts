@@ -46,8 +46,7 @@ export async function driveDurableRun(
   // AFTER the microtask starts, while this function is still inside its
   // own `startRunLifecycle` await, already fires `engine.cancel()` via
   // `abort()`'s own `if (driveStarted)` branch, and that in-flight cancel
-  // must still resolve against a workflow `engine.start` actually
-  // launches).
+  // must still resolve against the record `engine.prepare` commits).
   abortedBeforeDrive: boolean,
   onStepToolbox: ((toolbox: AnyToolbox) => void) | undefined,
   runtime: RuntimeServices,
@@ -70,37 +69,8 @@ export async function driveDurableRun(
     terminalErrorFromEvent = event.error;
   });
 
-  // RunStartedEvent + onRunStart (an onRunStart error aborts the run) —
-  // fired identically whether or not this run was already aborted before
-  // dispatch: a caller listening for these events must still see them.
-  //
-  // AB-361 review (codex P2 PRRT_kwDORvupsc6gXHn4): `startRunLifecycle`
-  // itself CAN reject, and the prior rationale here (that native
-  // `EventTarget` dispatch isolates a listener's throw) was wrong for this
-  // `emitter`. `emitter` is a `CompletableEventTarget`
-  // (`packages/lifecycle/src/completable.ts`), whose overridden
-  // `dispatchEvent` calls the native dispatch first (which does isolate a
-  // native `addEventListener` throw, per spec) and THEN loops every
-  // `toObservable()`/`subscribe()` subscriber directly, unguarded. A
-  // synchronous throw from one of those observable subscribers propagates
-  // straight out of `dispatch()` — and thus out of `startRunLifecycle`'s
-  // own `emitter?.dispatch(new RunStartedEvent(...))` call — before this
-  // function ever reaches its `startError !== undefined` check. No durable
-  // write is attempted on this path either, so `durablyStarted` rejects
-  // with that same error instead of hanging forever.
-  let startError: unknown;
-  try {
-    const started = await startRunLifecycle(options, conversation, emitter, runtime);
-    startError = started.error;
-    // COR-766: released when this run reaches a terminal state, so a registry
-    // that outlives the run does not accumulate an observer per run. A throw
-    // from `startRunLifecycle` itself never attached one.
-    emitter.addEventListener('run.completed', started.stopObservingHookPlan, { once: true });
-    emitter.addEventListener('run.error', started.stopObservingHookPlan, { once: true });
-    emitter.addEventListener('run.aborted', started.stopObservingHookPlan, { once: true });
-  } catch (error) {
-    rejectDurablyStarted(error);
-    return makeErrorResult(
+  const errorResult = (error: unknown): RunResult =>
+    makeErrorResult(
       emptyRunState(),
       conversation,
       hooks,
@@ -110,43 +80,8 @@ export async function driveDurableRun(
       undefined,
       hookTracker,
     );
-  }
-  if (startError !== undefined) {
-    // AB-361: no `context.engine.start` call is ever reached on this path —
-    // there is no durable write for `durablyStarted` to await, so resolve
-    // it immediately (success: cleanup here consisted of never durably
-    // launching at all, mirroring `abortedBeforeDrive` below). See AB-34's
-    // started-work control contract: this branch's `RunResult` (an
-    // already-terminal `finishReason: 'error'`, dispatched synchronously
-    // below via `RunCompletedEvent`, before this identifier is ever handed
-    // to a caller) settles the run completely before any identifier is
-    // returned — there is no in-flight durable work for a restart to find
-    // or fail to find. `durablyStarted` gates only on whether a durable
-    // launch was attempted, not on whether the run ultimately succeeded.
-    resolveDurablyStarted();
-    return makeErrorResult(
-      emptyRunState(),
-      conversation,
-      hooks,
-      emitter,
-      terminalErrorFromEvent ?? toAgentRunError(startError),
-      options.costEstimation,
-      undefined,
-      hookTracker,
-    );
-  }
-
-  // AB-339: an already-doomed run never durably launches at all — no
-  // `context.engine.start` call, so nothing to cancel and nothing for a
-  // later `Bureau.shutdown()` to race. Settles straight to an aborted
-  // `RunResult` through the SAME `finalizeRunResult` helper every other
-  // terminal branch below uses, so `run.aborted` fires (and, per AC1,
-  // `onRunAbort`) exactly as it would for an ordinary abort.
-  if (abortedBeforeDrive) {
-    // AB-361: same reasoning as the `startError` branch above — no durable
-    // write was ever attempted.
-    resolveDurablyStarted();
-    return finalizeRunResult({
+  const abortedResult = (): RunResult =>
+    finalizeRunResult({
       finishReason: 'aborted',
       runState: emptyRunState(),
       conversation,
@@ -159,6 +94,49 @@ export async function driveDurableRun(
       terminalError: terminalErrorFromEvent,
       hookTracker,
     });
+
+  // RunStartedEvent + onRunStart (an onRunStart error fails the run). Settles to
+  // `undefined`, or to the failure: `thrown` when `startRunLifecycle` itself threw
+  // rather than the hook reporting an error.
+  //
+  // AB-361 review (codex P2 PRRT_kwDORvupsc6gXHn4): `startRunLifecycle` itself CAN
+  // reject. `emitter` is a `CompletableEventTarget`
+  // (`packages/lifecycle/src/completable.ts`), whose overridden `dispatchEvent`
+  // calls the native dispatch first (which isolates a native `addEventListener`
+  // throw, per spec) and THEN loops every `toObservable()`/`subscribe()`
+  // subscriber directly, unguarded, so a synchronous throw from one of those
+  // subscribers propagates out of `startRunLifecycle`'s own
+  // `emitter?.dispatch(new RunStartedEvent(...))` call.
+  const startLifecycle = async (): Promise<{ error: unknown; thrown: boolean } | undefined> => {
+    try {
+      const started = await startRunLifecycle(options, conversation, emitter, runtime);
+      // COR-766: released when this run reaches a terminal state, so a registry
+      // that outlives the run does not accumulate an observer per run. A throw
+      // from `startRunLifecycle` itself never attached one.
+      emitter.addEventListener('run.completed', started.stopObservingHookPlan, { once: true });
+      emitter.addEventListener('run.error', started.stopObservingHookPlan, { once: true });
+      emitter.addEventListener('run.aborted', started.stopObservingHookPlan, { once: true });
+      return started.error === undefined ? undefined : { error: started.error, thrown: false };
+    } catch (error) {
+      return { error, thrown: true };
+    }
+  };
+
+  // AB-339: an already-doomed run never durably starts at all: no `prepare()`,
+  // so nothing to cancel and nothing for a later `Bureau.shutdown()` to race.
+  // The start lifecycle still runs first (a caller listening for its events must
+  // still see them), and a failing hook still wins over the abort. Otherwise the
+  // run settles straight to an aborted `RunResult` through the same
+  // `finalizeRunResult` every other terminal branch uses, so `run.aborted` fires
+  // (and, per AC1, `onRunAbort`) exactly as it would for an ordinary abort.
+  if (abortedBeforeDrive) {
+    const failed = await startLifecycle();
+    // AB-361: no durable write was attempted, so there is nothing for
+    // `durablyStarted` to wait for, except that a throwing lifecycle rejects it
+    // with that same error instead of reporting success.
+    if (failed?.thrown === true) rejectDurablyStarted(failed.error);
+    else resolveDurablyStarted();
+    return failed === undefined ? abortedResult() : errorResult(failed.error);
   }
 
   // Pin the Weft workflow id to `runId` so `handle.id === runId`. This makes the
@@ -174,7 +152,7 @@ export async function driveDurableRun(
   // the running step, and the emitter so step events flow (inline mode).
   //
   // NOTE: `services` is Weft inline-execution-mode ONLY (0.2.1) — passing it
-  // under `workflowExecutionMode: 'worker'` rejects at `engine.start`, because a
+  // under `workflowExecutionMode: 'worker'` rejects at `engine.prepare`, because a
   // non-serializable value cannot cross to a Worker. This run engine is inline
   // by construction (tool execution runs in-process via `runStep`), so the
   // constraint is always satisfied here.
@@ -189,51 +167,33 @@ export async function driveDurableRun(
     onStepToolbox,
     admissionTracker,
   };
-  // AB-361 review (copilot PRRT_kwDORvupsc6gWb3a, codex P2 PRRT_kwDORvupsc6gWc39):
-  // both `onServices` (a caller-supplied callback — genuinely reachable
-  // synchronous throw) and `context.engine.start` itself (a real
-  // persistence failure, e.g. disk-full) sit BEFORE the durable write
-  // `durablyStarted` gates on, and both need to settle that gate with the
-  // failure rather than leave a caller (bureau's `createRunFromRequest`)
-  // awaiting it forever. Unlike the `startError`/`abortedBeforeDrive`
-  // branches above, this failure happens AFTER `store.register` would have
-  // run on the bureau side, so it is routed through the SAME
-  // `makeErrorResult` helper those branches use — that dispatches
-  // `RunCompletedEvent` synchronously, which is what bureau's own
-  // `run.completed` listener needs to fire and clean up the run's
-  // registration and persist its terminal session state. A raw rethrow
-  // here would leave `result` rejecting with no terminal event ever
-  // dispatched, so a caller relying on event-driven cleanup (exactly what
-  // bureau's `createRunFromRequest` does) would leak the run forever.
+  // COR-297 — Weft's two-phase start. `prepare()` commits the run's durable
+  // record (`pending`, not yet executing); that commit is the write
+  // `ActiveRun.durablyStarted` gates on, so it resolves before the start
+  // lifecycle runs and `createRun` never waits on the `onRunStart` hook. Only
+  // after the lifecycle succeeds does `launch()` begin execution; a failing
+  // lifecycle `abandon()`s the prepared record instead, so no workflow it
+  // never meant to run is left behind (the 2026-09-08 coordinator ruling: a
+  // hook failure never reaches an engine start).
   //
-  // (Correction, AB-361 review PRRT_kwDORvupsc6gXHn4: an earlier version of
-  // this comment claimed `startRunLifecycle`'s own
-  // `emitter.dispatch(new RunStartedEvent(...))` could not reject, on the
-  // theory that native `EventTarget.dispatchEvent` isolates a listener's
-  // throw. That is true for a plain `EventTarget`/native `addEventListener`
-  // subscriber, but `emitter` is a `CompletableEventTarget`
-  // (`packages/lifecycle/src/completable.ts`), whose overridden
-  // `dispatchEvent` calls every `toObservable()`/`subscribe()` observable
-  // subscriber directly, unguarded, after the native dispatch returns — a
-  // throw there DOES propagate out of `dispatch()` and out of
-  // `startRunLifecycle`. See the `try`/`catch` around the
-  // `startRunLifecycle` call above, which now covers exactly that gap.)
-  let handle: Awaited<ReturnType<typeof context.engine.start>>;
+  // AB-361 review (copilot PRRT_kwDORvupsc6gWb3a, codex P2 PRRT_kwDORvupsc6gWc39):
+  // both `onServices` (a caller-supplied callback, a genuinely reachable
+  // synchronous throw) and `prepare()` itself (a real persistence failure, such
+  // as a full disk) sit BEFORE that write, and both settle the gate with the
+  // failure rather than leave a caller (bureau's `createRunFromRequest`) waiting
+  // on it forever. The failure is routed through `makeErrorResult`, which
+  // dispatches `RunCompletedEvent` synchronously, which is what bureau's own
+  // `run.completed` listener needs to clean up the run's registration and
+  // persist its terminal session state.
+  let prepared: Awaited<ReturnType<typeof context.engine.prepare>>;
   try {
     // Give the caller a live reference to the EXACT object Weft will hand
     // back as `ctx.services` — see `DurableActiveRunOptions.onServices`.
-    // Must fire before `engine.start` so a tool the caller wired against
-    // this reference (e.g. `requestHumanInput`) can mutate it the moment
-    // `runStep` executes.
+    // Fires before `prepare()`, so a tool the caller wired against this
+    // reference (e.g. `requestHumanInput`) can read it the moment `runStep`
+    // executes, which is never before `launch()`.
     onServices?.(services);
-
-    // `engine.start(...)` is the write `ActiveRun.durablyStarted` exists to
-    // gate on — settled the moment this call itself settles, NOT when
-    // `handle.result()` later settles (that's the run's own completion, a
-    // wholly separate promise `result` above already tracks). A caller
-    // awaiting `durablyStarted` only ever waits for THIS commit, never for
-    // the run to finish.
-    handle = await context.engine.start(
+    prepared = await context.engine.prepare(
       'agentRun',
       {
         runId,
@@ -252,18 +212,37 @@ export async function driveDurableRun(
     );
   } catch (error) {
     rejectDurablyStarted(error);
-    return makeErrorResult(
-      emptyRunState(),
-      conversation,
-      hooks,
-      emitter,
-      terminalErrorFromEvent ?? toAgentRunError(error),
-      options.costEstimation,
-      undefined,
-      hookTracker,
-    );
+    return errorResult(error);
   }
+  // Resolved for good: nothing after the commit rejects it.
   resolveDurablyStarted();
+
+  const failed = await startLifecycle();
+  if (failed !== undefined) {
+    // Awaited, so the record reads `cancelled` by the time `result` settles. A
+    // rejecting abandon never replaces the lifecycle's error.
+    try {
+      await prepared.abandon();
+    } catch {
+      // The record is left as Weft left it; the run's outcome is the lifecycle's error.
+    }
+    return errorResult(failed.error);
+  }
+
+  let handle: Awaited<ReturnType<typeof prepared.launch>>;
+  try {
+    handle = await prepared.launch();
+  } catch (error) {
+    // Read now: after the cancel below the record is `cancelled` either way, so
+    // only the signal tells an abort that cancelled the prepared record (Weft
+    // then refuses to launch it) from a launch that failed on its own. Weft marks
+    // the prepared handle launched before any fallible work, so `abandon()`
+    // cannot be used here; `cancel` terminalizes whatever state a failed launch
+    // left behind.
+    const aborted = signal.aborted;
+    await context.engine.cancel(runId).catch(() => undefined);
+    return aborted ? abortedResult() : errorResult(error);
+  }
 
   let summary: AgentRunWorkflowResult;
   try {
