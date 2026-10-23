@@ -109,4 +109,87 @@ describe('the model-facing proposal tool', () => {
     expect(result['outcome']).toBe('rejected');
     expect(await surfaceField(h, 'panel', 'revision')).toBe(1);
   });
+
+  it('cannot borrow a host-declared action by updating a host-created surface', async () => {
+    const h = a2uiHarness();
+    await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'host-1',
+      complete: true,
+      messages: [createMessage('approval'), updateComponentsMessage('approval', panelComponents())],
+      actions: [
+        {
+          name: 'confirm',
+          intent: 'submit',
+          continuation: { type: 'signal', sessionId: 'session-1', signalName: 'confirmed' },
+        },
+      ],
+    });
+    const relabeled = panelComponents().map((component) =>
+      component.component === 'Text' ? { ...component, text: 'Click to CANCEL' } : component,
+    );
+    const result = await run(toolFor(h, false), {
+      surfaceId: 'approval',
+      messages: [updateComponentsMessage('approval', relabeled)],
+    });
+    expect(result).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    const surface = await h.snapshot('approval');
+    expect(surface.revision).toBe(1);
+    expect(surface.actions).toHaveLength(1);
+  });
+
+  it('drops the host\u2019s actions when the model updates with its own', async () => {
+    const h = a2uiHarness();
+    await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'host-1',
+      complete: true,
+      messages: [createMessage('approval'), updateComponentsMessage('approval', panelComponents())],
+      actions: [
+        {
+          name: 'confirm',
+          intent: 'submit',
+          continuation: { type: 'signal', sessionId: 'session-1', signalName: 'host-only' },
+        },
+      ],
+    });
+    const result = await run(toolFor(h), {
+      surfaceId: 'approval',
+      messages: [updateComponentsMessage('approval', panelComponents())],
+      actions: [{ name: 'confirm', intent: 'submit' }],
+    });
+    expect(result).toMatchObject({ outcome: 'accepted' });
+    const surface = await h.snapshot('approval');
+    expect(surface.actions).toMatchObject([{ continuation: { signalName: 'confirmed' } }]);
+  });
+
+  it('refuses a call whose messages address another surface than the one it names', async () => {
+    const h = a2uiHarness();
+    await run(toolFor(h), proposal);
+    const result = await run(toolFor(h), {
+      surfaceId: 'other',
+      messages: [
+        { version: 'v0.9.1', updateDataModel: { surfaceId: 'panel', path: '/x', value: 1 } },
+      ],
+    });
+    expect(result).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    expect(await surfaceField(h, 'panel', 'revision')).toBe(1);
+  });
+
+  it('accepts the same update repeated: true, false, true', async () => {
+    const h = a2uiHarness();
+    const tool = toolFor(h);
+    await run(tool, proposal);
+    const set = (value: boolean) => ({
+      surfaceId: 'panel',
+      messages: [
+        { version: 'v0.9.1', updateDataModel: { surfaceId: 'panel', path: '/on', value } },
+      ],
+      actions: [{ name: 'confirm', intent: 'submit' as const }],
+    });
+    for (const value of [true, false, true]) {
+      expect(await run(tool, set(value))).toMatchObject({ outcome: 'accepted' });
+    }
+    expect(await surfaceField(h, 'panel', 'revision')).toBe(4);
+  });
 });

@@ -21,6 +21,7 @@ import type {
   InteractiveSurfaceContinuation,
 } from '../interactive-surface/types.ts';
 import type { A2uiAdapter } from './adapter.ts';
+import { classifyMessage, isClassified } from './messages.ts';
 
 /** What the host supplies to build the tool for one task. @experimental */
 export interface ProposeA2uiSurfaceToolOptions {
@@ -87,19 +88,14 @@ const input = z.object({
 
 type Input = z.infer<typeof input>;
 
-function commandIdOf(taskId: string, proposal: Input): string {
-  const digest = new Bun.CryptoHasher('sha256')
-    .update(
-      JSON.stringify([
-        taskId,
-        proposal.surfaceId,
-        proposal.baseRevision ?? null,
-        proposal.messages,
-        proposal.actions ?? null,
-      ]),
-    )
-    .digest('hex');
-  return `a2ui-${digest.slice(0, 40)}`;
+/**
+ * Each call is its own command. The store fingerprints a command by its content, including the
+ * revision the adapter fills in, so a key derived from the proposal would conflict when a model
+ * legitimately repeats one (true, false, true). Armorer's execute context carries no tool-call id,
+ * so the key is a fresh UUID.
+ */
+function commandIdOf(): string {
+  return `a2ui-${crypto.randomUUID()}`;
 }
 
 /**
@@ -112,9 +108,25 @@ export function createProposeA2uiSurfaceTool(options: ProposeA2uiSurfaceToolOpti
   return createTool({
     name: 'propose-a2ui-surface',
     description:
-      'Show the user an interactive surface (an A2UI v0.9.1 UI made from the basic catalog). The proposal is validated; if it is refused, the result lists what to fix. Actions only offer choices to the user: you cannot make an action run a tool.',
+      'Show the user an interactive surface (an A2UI v0.9.1 UI made from the basic catalog). The proposal is validated; if it is refused, the result lists what to fix. Actions only offer choices to the user: you cannot make an action run a tool. Every call replaces the actions of the surface with the ones you list, so list them again on each update.',
     input,
     execute: async (proposal: Input) => {
+      for (const [index, message] of proposal.messages.entries()) {
+        const classified = classifyMessage(message, index);
+        if (!isClassified(classified) || classified.surfaceId !== proposal.surfaceId) {
+          return JSON.stringify({
+            outcome: 'rejected',
+            reason: 'invalid',
+            detail: `Every message must address surface "${proposal.surfaceId}".`,
+            issues: [
+              {
+                path: `/messages/${index}`,
+                message: `must carry surfaceId "${proposal.surfaceId}"`,
+              },
+            ],
+          });
+        }
+      }
       const actions: InteractiveSurfaceActionDefinition[] = [];
       for (const declared of proposal.actions ?? []) {
         const continuation = continuationFor?.({ name: declared.name, intent: declared.intent });
@@ -144,10 +156,12 @@ export function createProposeA2uiSurfaceTool(options: ProposeA2uiSurfaceToolOpti
       const result = await adapter.apply(
         {
           taskId,
-          commandId: commandIdOf(taskId, proposal),
+          commandId: commandIdOf(),
           messages: proposal.messages.map((message) => ({ ...message })),
           ...(proposal.summary === undefined ? {} : { summary: proposal.summary }),
-          ...(proposal.actions === undefined ? {} : { actions }),
+          // Always the model's own declarations, checked above; a host-declared action never
+          // survives a model's update, so a model cannot relabel a button that runs one.
+          actions,
           ...(supportedCatalogIds === undefined ? {} : { supportedCatalogIds }),
           ...(proposal.baseRevision === undefined ? {} : { baseRevision: proposal.baseRevision }),
           complete: !proposal.messages.some((message) => 'deleteSurface' in message),
