@@ -308,13 +308,13 @@ describe('durable history follows the owner of record (COR-718)', () => {
     const { bureau, directory } = await openDurableBureau();
     try {
       const owned = await bureau.createSchedule({
-        agentName: 'worker',
+        agentName: 'default',
         input: 'tick',
         spec: '1h',
         principal: 'api-key:alice',
       });
       const unowned = await bureau.createSchedule({
-        agentName: 'worker',
+        agentName: 'default',
         input: 'tick',
         spec: '1h',
       });

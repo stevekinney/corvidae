@@ -34,7 +34,11 @@ import {
 } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError, ScheduleLocatorUnavailableError } from '../../create-bureau.ts';
+import {
+  BureauError,
+  ScheduleLocatorUnavailableError,
+  UnknownScheduleAgentError,
+} from '../../create-bureau.ts';
 import type { Bureau } from '../../types.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -173,6 +177,7 @@ function faultOf(error: unknown, scheduleId: string): never {
       },
     } satisfies OperationFault;
   }
+  if (error instanceof UnknownScheduleAgentError) throw resourceNotFound('agent', error.agentName);
   if (error instanceof BureauError) {
     if (error.code === 'NOT_FOUND') throw resourceNotFound('schedule', scheduleId);
     if (error.code === 'BAD_REQUEST') throw invalidParams('schedule', error.message);
