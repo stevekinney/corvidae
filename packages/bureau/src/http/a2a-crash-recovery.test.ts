@@ -132,6 +132,7 @@ async function withService(
       skillDescriptors: undefined,
       security: undefined,
       durableHistory: true,
+      pushNotifications: false,
     });
     /** A handler over the durable state only: the Bureau it reads holds no run of its own. */
     const build = (restarted: boolean) =>

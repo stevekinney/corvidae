@@ -37,6 +37,7 @@ export {
   A2A_PUSH_DELIVERY_KIND,
   A2A_PUSH_MAX_ATTEMPTS,
   createOutboxPushNotificationSender,
+  pushDestinationRef,
   pushNotificationResolvers,
   type OutboxPushNotificationSender,
   type OutboxPushNotificationSenderOptions,

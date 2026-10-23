@@ -90,21 +90,13 @@ import {
   A2UI_EXTENSION_URI,
   declaredExtensionsOf,
 } from './a2a-agent-card.ts';
+import { type A2ATaskRecord, type A2ATaskRecords, type A2AWireMessage } from './a2a-task-record.ts';
 import {
-  type A2ATaskRecord,
-  type A2ATaskRecords,
-  type A2AWireMessage,
-  clearedRecord,
-} from './a2a-task-record.ts';
-import {
-  agentMessage,
   bureauStateOf,
   CLEANUP_EXTENSION_URI,
   isSettled,
   isTerminal,
-  projectTask,
   type ProjectionShape,
-  replyMessageId,
 } from './a2a-task-projection.ts';
 import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
 import {
@@ -116,6 +108,9 @@ import {
   type SendReceiptState,
 } from './a2a-command-receipts.ts';
 import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
+import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
+import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
+import { createTaskReader } from './a2a-task-reader.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
 /** The version of the A2A send command's contract, part of every ledger identity. */
@@ -153,7 +148,11 @@ const SETTLE_POLL_MS = 1_000;
  * of a claim left pending takes the same path, whatever state the task has reached since, so an
  * answer that took effect is never resent as session input.
  */
-export type A2ASendClaim = { readonly path?: 'answer' | 'input' | undefined };
+export type A2ASendClaim = {
+  readonly path?: 'answer' | 'input' | undefined;
+  /** For a continuation that embeds a push configuration: the cursor its checkpoint starts at. */
+  readonly pushCursor?: string | undefined;
+};
 
 /** Which path a send took: a new task, an answer to a wait, or input to a working task. */
 type SendPath = 'create' | 'answer' | 'input';
@@ -252,6 +251,18 @@ export type BureauA2ARequestHandlerOptions = {
    * its original task. Defaults to always.
    */
   readonly acceptsNewTasks?: (() => boolean) | undefined;
+  /**
+   * Push notification delivery (COR-1543). Served only when the card also declares
+   * `pushNotifications`; a handler without both answers every push operation with
+   * `PushNotificationNotSupportedError`.
+   */
+  readonly push?:
+    | {
+        readonly delivery: A2APushDelivery;
+        readonly checkpoints: A2APushCheckpoints;
+        readonly projector: A2APushProjector;
+      }
+    | undefined;
 };
 
 type Owner = string;
@@ -511,80 +522,59 @@ export function createBureauA2ARequestHandler(
     return view;
   }
 
-  /** The agent's reply on a completed task: from the live run, its settlement, or its history. */
-  async function replyOf(view: TaskView): Promise<string | undefined> {
-    if (view.status !== 'completed') return undefined;
-    const run = bureau.getRun(view.id);
-    const final = run?.stepDetails.findLast((step) => step.final);
-    if (final !== undefined) return final.content;
-    const record = await bureau.tasks.record(view.id);
-    if (record?.settled?.answer !== undefined) return record.settled.answer.text;
-    let since: string | undefined;
-    let content: string | undefined;
-    for (;;) {
-      const page = await bureau.eventHistory(
-        { kind: 'run', id: view.id },
-        { ...(since === undefined ? {} : { since }), limit: 200 },
+  const reader = createTaskReader({ bureau, records });
+  const replyOf = (view: TaskView): Promise<string | undefined> => reader.replyOf(view);
+  const push = options.card().capabilities?.pushNotifications === true ? options.push : undefined;
+
+  /** The push support the card declares, or the answer a deployment without it gives. */
+  function requirePush(): NonNullable<typeof push> {
+    if (push === undefined) {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
       );
-      if (!('events' in page)) break;
-      for (const event of page.events) {
-        if (event.kind !== 'run.completed') continue;
-        const payload = event.payload as { content?: unknown } | undefined;
-        if (typeof payload?.content === 'string') content = payload.content;
-      }
-      if (!page.hasMore) break;
-      since = page.nextCursor ?? page.events.at(-1)?.cursor;
-      if (since === undefined) break;
     }
-    return content;
+    return push;
   }
 
-  /** The task as one response shows it, folding a completed task's reply into its history once. */
+  function callerOf(context: ServerCallContext | undefined): A2APushCaller {
+    const user = userOf(context);
+    return { authenticated: user.isAuthenticated, userName: user.userName };
+  }
+
+  /**
+   * Installs a push configuration on a task and starts its checkpoint at `cursor`, so it
+   * receives every event after the cursor and none before. Both writes are idempotent: a repeat
+   * of the same configuration leaves one configuration and keeps its checkpoint.
+   */
+  async function installPush(
+    taskId: string,
+    configuration: TaskPushNotificationConfig,
+    context: ServerCallContext | undefined,
+    cursor: string,
+  ): Promise<TaskPushNotificationConfig> {
+    const { delivery, checkpoints, projector } = requirePush();
+    const stored = await delivery.sender.pushStore.create(taskId, context as ServerCallContext, {
+      ...structuredClone(configuration),
+      taskId,
+    });
+    await checkpoints.create({
+      recordVersion: 1,
+      taskId,
+      configId: stored.id,
+      cursor,
+      caller: callerOf(context),
+    });
+    projector.watch(taskId);
+    return stored;
+  }
+
+  /** The task as one response shows it, with the command's receipt when it has one. */
   async function respondWith(
     view: TaskView,
     shape: ProjectionShape,
     receipt?: Receipt,
   ): Promise<Task> {
-    const stored = await bureau.tasks.record(view.id);
-    let record = await records.read(view.id);
-    // A deleted context empties its tasks' own history, and the A2A history goes with it, even on
-    // an instance that did not see the deletion happen.
-    if (record !== undefined && stored !== undefined && stored.history.length === 0) {
-      if (record.history.length > 0 || !record.replyRecorded) {
-        record = await records.update(view.id, (current) =>
-          current.history.length === 0 && current.replyRecorded
-            ? undefined
-            : clearedRecord(current),
-        );
-      }
-    }
-    const reply = await replyOf(view);
-    // The reply is folded in once it can be read: a completed task whose reply is not yet visible
-    // here (its history event has not reached this instance) is folded on a later read.
-    const replyReady = view.status !== 'completed' || (reply !== undefined && reply !== '');
-    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded && replyReady) {
-      record = await records.update(view.id, (current) =>
-        current.replyRecorded
-          ? undefined
-          : {
-              ...current,
-              replyRecorded: true,
-              history:
-                reply === undefined || reply === ''
-                  ? current.history
-                  : [
-                      ...current.history,
-                      Message.toJSON(
-                        agentMessage(view, replyMessageId(view.id), reply),
-                      ) as A2AWireMessage,
-                    ],
-            },
-      );
-    }
-    const task = projectTask(
-      { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
-      shape,
-    );
+    const { task, record } = await reader.read(view, shape);
     if (receipt !== undefined && shape.activated.has(COMMAND_RECEIPTS_EXTENSION_URI)) {
       task.metadata = {
         ...task.metadata,
@@ -933,6 +923,9 @@ export function createBureauA2ARequestHandler(
     const user = userOf(context);
     const owner = ownerOf(context);
     const message = requireMessage(params);
+    // Snapshotted before the first await: the request object is the caller's.
+    const embedded = params.configuration?.taskPushNotificationConfig;
+    const inlinePush = embedded === undefined ? undefined : structuredClone(embedded);
     const activated = activate(declared, context, message);
     const version = context?.requestedVersion ?? '1.0';
     const continuing = message.taskId !== '';
@@ -993,11 +986,7 @@ export function createBureauA2ARequestHandler(
       throw new TaskNotFoundError(`Agent '${agentName}' was withdrawn and takes no new task.`);
     }
 
-    if (params.configuration?.taskPushNotificationConfig !== undefined) {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
-    }
+    if (inlinePush !== undefined) requirePush();
     const outputModes = params.configuration?.acceptedOutputModes ?? [];
     if (outputModes.length > 0 && !outputModes.some((mode) => A2A_OUTPUT_MODES.includes(mode))) {
       throw new ContentTypeNotSupportedError(
@@ -1038,9 +1027,19 @@ export function createBureauA2ARequestHandler(
       }
     }
 
+    // A configuration sent with a continuation starts after the events the task holds now; one
+    // sent with a new task starts before its first. The cursor is part of the claim, so a retry
+    // of a send that crashed after its effect installs the configuration at the same place.
+    const pushCursor =
+      inlinePush === undefined || continued === undefined
+        ? '-1'
+        : (pending?.pushCursor ?? (await push?.projector.tailOf(continued.id)) ?? '-1');
     let claimed;
     try {
-      claimed = await ledger.claim(identity, digest, path === undefined ? {} : { path });
+      claimed = await ledger.claim(identity, digest, {
+        ...(path === undefined ? {} : { path }),
+        ...(pushCursor === '-1' ? {} : { pushCursor }),
+      });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
         const original = await ledger.locate(identity);
@@ -1100,6 +1099,11 @@ export function createBureauA2ARequestHandler(
           markEffected,
         );
         result = { taskId: continued.id, ...answered };
+      }
+      // Installed before the binding completes, so an exact retry of a send that crashed here
+      // runs this again and finds the one configuration.
+      if (inlinePush !== undefined && !(expired && pending === undefined)) {
+        await installPush(result.taskId, inlinePush, context, pushCursor);
       }
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
@@ -1311,35 +1315,53 @@ export function createBureauA2ARequestHandler(
     },
 
     async createTaskPushNotificationConfig(
-      _params: TaskPushNotificationConfig,
+      params: TaskPushNotificationConfig,
+      context,
     ): Promise<TaskPushNotificationConfig> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+      const { projector } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      // Read before the configuration exists, so an event that lands meanwhile reaches it.
+      const cursor = (await projector.tailOf(view.id)) ?? '-1';
+      return installPush(view.id, params, context, cursor);
     },
 
     async getTaskPushNotificationConfig(
-      _params: GetTaskPushNotificationConfigRequest,
+      params: GetTaskPushNotificationConfigRequest,
+      context,
     ): Promise<TaskPushNotificationConfig> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+      const { delivery } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      const config = await delivery.sender.pushStore.get(view.id, params.id, context);
+      if (config === undefined) {
+        throw new TaskNotFoundError(
+          `Push notification config with id '${params.id}' not found for task ${view.id}.`,
+        );
+      }
+      return config;
     },
 
     async listTaskPushNotificationConfigs(
-      _params: ListTaskPushNotificationConfigsRequest,
+      params: ListTaskPushNotificationConfigsRequest,
+      context,
     ): Promise<ListTaskPushNotificationConfigsResponse> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
+      const { delivery } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      return delivery.sender.pushStore.list(
+        { taskId: view.id, pageSize: params.pageSize, pageToken: params.pageToken },
+        context,
       );
     },
 
     async deleteTaskPushNotificationConfig(
-      _params: DeleteTaskPushNotificationConfigRequest,
+      params: DeleteTaskPushNotificationConfigRequest,
+      context,
     ): Promise<void> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+      const { delivery, checkpoints } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      // The sender's store stops the configuration's deliveries before it returns; the checkpoint
+      // goes with the configuration.
+      await delivery.sender.pushStore.delete(view.id, context, params.id);
+      await checkpoints.remove(view.id, params.id);
     },
   };
 }

@@ -73,6 +73,20 @@ function idempotencyKeyOf(locator: PushLocator, digest: string): string {
     .join(':');
 }
 
+/**
+ * The `destinationRef` every outbox delivery to one push configuration carries, for the
+ * caller scope `context` names. A host that serializes a configuration's deliveries finds
+ * the open ones in the outbox by it.
+ */
+export function pushDestinationRef(
+  context: ServerCallContext,
+  taskId: string,
+  configId: string,
+): string {
+  const scope = callerScope('', context);
+  return encodeLocator({ tenant: scope.tenant, owner: scope.owner, taskId, configId });
+}
+
 function decodeLocator(reference: string): PushLocator | undefined {
   const parts = reference.split(':');
   if (parts.length !== 5 || parts[0] !== LOCATOR_PREFIX) return undefined;

@@ -202,7 +202,7 @@ function artifactUpdate(view: Pick<TaskView, 'id' | 'contextId'>, text: string):
 }
 
 /** The events a projected status element becomes on an A2A stream: an artifact, then the status. */
-function eventsOf(
+export function eventsOf(
   view: TaskView,
   element: Extract<TaskEvent, { kind: 'task.status' }>,
   reply: string | undefined,
@@ -254,7 +254,7 @@ function eventsOf(
 }
 
 /** Reads a task's retained durable events to their end, or `undefined` without a history. */
-async function readRetained(
+export async function readRetained(
   bureau: A2AStreamBureau,
   taskId: string,
   requested: string | undefined,
@@ -298,6 +298,33 @@ async function readRetained(
   return { events, gap, reached: since };
 }
 
+/** A task's retained durable events, as {@link readRetained} reads them. */
+export type RetainedEvents = NonNullable<Awaited<ReturnType<typeof readRetained>>>;
+
+/**
+ * The projector that folds a task's retained durable events to its status. Reviews are known
+ * only from their durable events, so a review is never counted twice; the terminal state comes
+ * from the history when its event survived, and from the task otherwise.
+ */
+export function createFoldProjector(
+  taskId: string,
+  initial: TaskView,
+  retained: RetainedEvents | undefined,
+) {
+  const terminalRetained =
+    retained?.events.some((event) =>
+      ['run.completed', 'run.error', 'run.aborted', 'run.tripwire'].includes(event.kind),
+    ) ?? false;
+  return createTaskEventProjector(taskId, {
+    status: terminalRetained || !isTerminal(initial.status) ? 'working' : initial.status,
+    finishReason: initial.finishReason,
+    statusMessage: initial.statusMessage,
+    // Retention can drop the event that opened a review and keep later ones: the task's own
+    // open waits seed the fold, which is a set, so a retained event never counts one twice.
+    openWaits: initial.openWaits,
+  });
+}
+
 /**
  * Follows a task: its snapshot, then each change after it, until it is terminal. The caller has
  * already checked the caller may see the task and that a subscription to it is allowed.
@@ -309,21 +336,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   if (initial === undefined) return;
   const retained = await readRetained(bureau, taskId, requested);
 
-  // The status the retained events fold to. Reviews are known only from their durable events,
-  // so a review is never counted twice; the terminal state comes from the history when its
-  // event survived, and from the task otherwise.
-  const terminalRetained =
-    retained?.events.some((event) =>
-      ['run.completed', 'run.error', 'run.aborted', 'run.tripwire'].includes(event.kind),
-    ) ?? false;
-  const projector = createTaskEventProjector(taskId, {
-    status: terminalRetained || !isTerminal(initial.status) ? 'working' : initial.status,
-    finishReason: initial.finishReason,
-    statusMessage: initial.statusMessage,
-    // Retention can drop the event that opened a review and keep later ones: the task's own
-    // open waits seed the fold, which is a set, so a retained event never counts one twice.
-    openWaits: initial.openWaits,
-  });
+  const projector = createFoldProjector(taskId, initial, retained);
   let folded: Extract<TaskEvent, { kind: 'task.status' }> | undefined;
   for (const event of retained?.events ?? []) {
     const element = projector.project(event);
