@@ -120,7 +120,11 @@ import {
   receiptMetadata,
   type SendReceiptState,
 } from './a2a-command-receipts.ts';
-import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
+import {
+  DURABLE_HISTORY_EXTENSION_URI,
+  followTask,
+  type OpeningSnapshot,
+} from './a2a-task-stream.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
 import { INPUT_FORM_SUBMIT_EVENT } from '../a2ui/input-form.ts';
@@ -774,7 +778,17 @@ export function createBureauA2ARequestHandler(
     shape: ProjectionShape,
     receipt?: Receipt,
   ): Promise<Task> {
-    const { task, record } = await reader.read(view, shape);
+    const { task } = await respondWithSurfaces(view, shape, receipt);
+    return task;
+  }
+
+  /** {@link respondWith}, with the surfaces the response showed, for a stream's opening snapshot. */
+  async function respondWithSurfaces(
+    view: TaskView,
+    shape: ProjectionShape,
+    receipt?: Receipt,
+  ): Promise<OpeningSnapshot> {
+    const { task, record, surfaces } = await reader.read(view, shape);
     if (receipt !== undefined && shape.activated.has(COMMAND_RECEIPTS_EXTENSION_URI)) {
       task.metadata = {
         ...task.metadata,
@@ -786,7 +800,7 @@ export function createBureauA2ARequestHandler(
         ),
       };
     }
-    return task;
+    return { task, surfaces };
   }
 
   /**
@@ -1524,7 +1538,17 @@ export function createBureauA2ARequestHandler(
       lastEventId:
         resuming && durableHistoryActive ? headerOf(context, 'last-event-id') : undefined,
       durableHistoryActive,
-      snapshot: (view) => respondWith(view, shape, receipt),
+      snapshot: (view) => respondWithSurfaces(view, shape, receipt),
+      // Only a client that activated A2UI is sent surface frames; it names the catalogs it renders
+      // on a send, and a subscription declares none, which offers the basic catalog only.
+      ...(shape.activated.has(A2UI_EXTENSION_URI) && bureau.surfaces !== undefined
+        ? {
+            surfaces: {
+              list: (id: string) => bureau.surfaces!.list(id, { principal: ownerOf(context) }),
+              supportedCatalogIds: shape.supportedCatalogIds,
+            },
+          }
+        : {}),
       replyOf,
       timers,
       signal: context === undefined ? undefined : requestSignalOf(context),
@@ -1642,11 +1666,14 @@ export function createBureauA2ARequestHandler(
       ) {
         throw invalid('statusTimestampAfter must be an ISO 8601 timestamp.');
       }
-      const status =
-        params.status === TaskState.TASK_STATE_UNSPECIFIED
-          ? undefined
-          : bureauStateOf(params.status);
-      if (params.status !== TaskState.TASK_STATE_UNSPECIFIED && status === undefined) {
+      // An absent status and `UNSPECIFIED` both mean no filter. The SDK client's JSON codec turns
+      // the `status: undefined` it sends for an absent one into `UNRECOGNIZED` (-1) on arrival.
+      const unfiltered =
+        params.status === undefined ||
+        params.status === TaskState.TASK_STATE_UNSPECIFIED ||
+        params.status === TaskState.UNRECOGNIZED;
+      const status = unfiltered ? undefined : bureauStateOf(params.status);
+      if (!unfiltered && status === undefined) {
         // A state no Bureau task reaches (`REJECTED`, `AUTH_REQUIRED`) matches nothing.
         return { tasks: [], nextPageToken: '', pageSize, totalSize: 0 };
       }

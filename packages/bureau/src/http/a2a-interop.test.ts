@@ -121,4 +121,64 @@ describe('the A2A mount with the @a2a-js/sdk client', () => {
       await opened.dispose();
     }
   });
+
+  it('lists unfiltered when status is absent or TASK_STATE_UNSPECIFIED, and filters when it is set (COR-1679)', async () => {
+    const opened = await openBureau({
+      agents: {
+        asker: createAgent({ name: 'asker', description: 'Answers.', generate: answering('done') }),
+      },
+      publish: ['asker'],
+      handlerOptions: { publicUrl: PUBLIC_URL },
+    });
+    try {
+      const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        headers.set('X-API-Key', 'alice-key');
+        return opened.handler(new Request(input, { ...init, headers }));
+      }) as typeof fetch;
+      const factory = new ClientFactory(
+        ClientFactoryOptions.createFrom(ClientFactoryOptions.default, {
+          transports: [new JsonRpcTransportFactory({ fetchImpl })],
+          cardResolver: new DefaultAgentCardResolver({ fetchImpl }),
+        }),
+      );
+      const asker = await factory.createFromUrl(`${PUBLIC_URL}/a2a/asker/`);
+      const sent = asTask(
+        await asker.sendMessage({
+          tenant: '',
+          message: userMessage('hello'),
+          configuration: {
+            acceptedOutputModes: [],
+            taskPushNotificationConfig: undefined,
+            returnImmediately: false,
+          },
+          metadata: undefined,
+        }),
+      );
+      const base = {
+        tenant: '',
+        contextId: '',
+        pageToken: '',
+        statusTimestampAfter: undefined,
+      };
+      const ids = (listed: { tasks: Task[] }) => listed.tasks.map((task) => task.id);
+
+      // The typed request requires `status`, but a JavaScript caller can leave it out; the SDK then
+      // sends `status: undefined`.
+      const absent = await asker.listTasks(base as Parameters<typeof asker.listTasks>[0]);
+      const unspecified = await asker.listTasks({
+        ...base,
+        status: TaskState.TASK_STATE_UNSPECIFIED,
+      });
+      const completed = await asker.listTasks({ ...base, status: TaskState.TASK_STATE_COMPLETED });
+      const working = await asker.listTasks({ ...base, status: TaskState.TASK_STATE_WORKING });
+
+      expect(ids(absent)).toEqual([sent.id]);
+      expect(ids(unspecified)).toEqual([sent.id]);
+      expect(ids(completed)).toEqual([sent.id]);
+      expect(ids(working)).toEqual([]);
+    } finally {
+      await opened.dispose();
+    }
+  });
 });
