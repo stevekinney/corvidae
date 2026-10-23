@@ -2,10 +2,14 @@
  * The shell as a person meets it: one loopback origin, no sign-in, and one local caller. The top
  * bar holds no principal and no scope count (System's Scopes tab names that caller from
  * `weft.system.principal`), the sidebar holds the two groups, Chat is the home screen, the palette
- * searches chats and agents first, and Bureau answers beside the engine on the same origin.
+ * searches chats and agents first, and Bureau answers beside the engine on the same origin. The
+ * notification bell is about the person: what is waiting on them, and what finished.
  */
+import type { Page } from '@playwright/test';
+
 import { ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const WIDTHS = [
@@ -35,6 +39,144 @@ test('the top bar names no principal and no scopes, and System’s Scopes tab na
 
   await page.goto('/system?tab=scopes');
   await expect(page.getByTestId('principal-subject')).toHaveText('anonymous:local');
+});
+
+/**
+ * The bell's three states run on the suite's second host (`e2e-constants.ts`), which no
+ * specification before this one has started a run on, so the first state is the host exactly as the
+ * seed left it, the way the journey has a host of its own. They run in order and share that host,
+ * and they need an E2E server started for this run: a reused one still holds the last run's chats.
+ */
+test.describe('the notification bell, about the person and not the engine', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ baseURL: E2E_BUREAU_URL });
+
+  const echoThread = newThreadId('bell-echo');
+  const approvalThread = newThreadId('bell-approval');
+  const questionThread = newThreadId('bell-question');
+
+  /** The panel's rows, which are the bell's items. */
+  const rows = (page: Page) => page.locator('.weft-notification-panel__item');
+  const bell = (page: Page, name: string | RegExp) => page.getByRole('button', { name });
+
+  test('a fresh host after the seed shows a bell with no badge and no items', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.goto('/agents');
+    await expect(bell(page, 'Notifications')).toBeVisible();
+    await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
+
+    await bell(page, 'Notifications').click();
+    await expect(page.getByText('Nothing needs you right now.')).toBeVisible();
+    await expect(rows(page)).toHaveCount(0);
+    await checkA11y('the empty notification panel');
+  });
+
+  test('after one echo chat, one approval and one question there are three items and a badge of 2', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    await runToEnd(request, 'echo', echoThread, 'Hello echo, say this back', {}, E2E_BUREAU_URL);
+    await runToEnd(request, 'tool-runner', approvalThread, 'Refund order 1234', {}, E2E_BUREAU_URL);
+    await runToEnd(
+      request,
+      'request-human-input',
+      questionThread,
+      'Ship the release',
+      {},
+      E2E_BUREAU_URL,
+    );
+
+    // Not a chat: opening a chat reads its items.
+    await page.goto('/agents');
+    await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
+    await expect(page.locator('.weft-notification-bell__count')).toHaveText('2');
+
+    await bell(page, 'Notifications, 2 need you').click();
+    await expect(rows(page)).toHaveCount(3);
+    const panel = page.locator('.weft-notification-panel');
+    await expect(
+      panel.getByRole('link', { name: /^tool-runner needs your approval in Refund order 1234/ }),
+    ).toHaveCount(1);
+    await expect(
+      panel.getByRole('link', {
+        name: /^request-human-input asked a question in Ship the release/,
+      }),
+    ).toHaveCount(1);
+    await expect(
+      panel.getByRole('link', { name: /^echo answered in Hello echo, say this back/ }),
+    ).toHaveCount(1);
+
+    // The engine's own events, and its run identifiers, stay out of the panel.
+    const text = (await panel.textContent()) ?? '';
+    expect(text).not.toMatch(/run-\d/);
+    expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    expect(text).not.toMatch(/Workflow (started|completed)|Waiting for signal|Signal received/);
+    await checkA11y('the notification panel with three items');
+  });
+
+  test('approving from the chat clears that item and brings the badge down', async ({ page }) => {
+    await page.goto('/agents');
+    await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
+
+    await page.goto(`/chat/${approvalThread}`);
+    const approval = page.locator('.ib-decision');
+    await expect(approval).toBeVisible();
+    await approval.getByRole('button', { name: 'Approve' }).click();
+    await expect(approval).toHaveCount(0);
+
+    // Within the default five-second expectation: the decision refreshes the bell at once, and its
+    // poll would after five seconds anyway.
+    await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
+    await bell(page, 'Notifications, 1 needs you').click();
+    // The question and the echo's answer. The approval is gone, and the run's own answer is not
+    // news in the chat that is open.
+    await expect(rows(page)).toHaveCount(2);
+    await expect(page.getByRole('link', { name: /^tool-runner needs your approval/ })).toHaveCount(
+      0,
+    );
+  });
+
+  test('opening an item goes to its chat and reads it', async ({ page }) => {
+    await page.goto('/agents');
+    await bell(page, 'Notifications, 1 needs you').click();
+    await page
+      .locator('.weft-notification-panel')
+      .getByRole('link', { name: /^request-human-input asked a question/ })
+      .click();
+
+    await expect(page).toHaveURL(new RegExp(`/chat/${questionThread}$`));
+    await expect(bell(page, 'Notifications')).toBeVisible();
+    await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
+  });
+
+  test('a finished run is listed once the chat is left, and never counts', async ({ page }) => {
+    await page.goto('/agents');
+    // A fresh page has read nothing, so the question still counts, and the two answers do not.
+    await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
+    await bell(page, 'Notifications, 1 needs you').click();
+    await expect(rows(page)).toHaveCount(3);
+    await expect(
+      page.getByRole('link', { name: /^tool-runner answered in Refund order 1234/ }),
+    ).toHaveCount(1);
+  });
+
+  test('the panel fits a phone and passes axe', async ({ page, checkA11y }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/agents');
+    await bell(page, 'Notifications').click();
+    await expect(rows(page).first()).toBeVisible();
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    const panel = await page.locator('.weft-notification-panel').boundingBox();
+    expect(panel).not.toBeNull();
+    expect((panel?.x ?? -1) >= 0 && (panel?.x ?? 0) + (panel?.width ?? 0) <= 375).toBe(true);
+    await checkA11y('the notification panel at 375');
+  });
 });
 
 for (const { name, width, height } of WIDTHS) {

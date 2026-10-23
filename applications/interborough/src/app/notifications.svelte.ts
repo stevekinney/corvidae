@@ -1,127 +1,92 @@
 /**
- * Notification center store (plan `design/Weft New Surfaces.dc.html` §C,
- * `design/README.md` "Notification center", §13 T1.6). Fed by the shell's
- * shared `FleetEventSource` (`src/app/engine-status.svelte.ts` owns opening
- * that connection); this module owns turning each of the 31 client-visible
- * fleet event kinds (`EVENTS_READ_EVENT_TYPES`,
- * `weft/src/server/runtime/client-visible-events.ts`, v0.11.0) into a
- * severity tier, human copy, and a deep link.
+ * The notification bell's store. What it holds is about the person, not the engine: a tool waiting
+ * for an approval, a question an agent asked, a run that failed, and an answer that arrived in a
+ * chat that was not open (`./notification-items.ts` derives them from the Bureau's reviews and
+ * tasks). The host's own problem is the one other thing it holds: an unreachable or stale engine
+ * (`reportEngineStatus`). The engine's event feed (a run started, a signal arrived) is not here;
+ * the Engine view's activity feed shows it.
  *
- * ## Severity mapping — a documented design decision, not a wire contract
- *
- * The design reference shows example items for exactly 8 of the 31 kinds
- * (`design/Weft New Surfaces.dc.html` §C's `notifCritical`/`notifWarning`/
- * `notifInfo` arrays) — not an exhaustive kind → tier table. Those 8 are
- * matched here verbatim; the remaining 23 follow one explicit principle so
- * the mapping isn't arbitrary:
- *
- *   - `critical` (strip + toast, persists, `role="alert"`) — an engine-wide
- *     incident with no natural owning surface: a firing alert, a
- *     dead-lettered task.
- *   - `warning` (toast, auto-dismiss 6s) — a notable but scoped bad outcome:
- *     a workflow/activity failure, a missed schedule fire, a constraint
- *     violation, a size/health warning, a worker dropping off the fleet.
- *   - `info` (bell only) — routine lifecycle: started/completed/resumed,
- *     signals, updates, attribute changes, a schedule firing normally, a
- *     review completing, a worker reconnecting.
- *
- * `design/Weft Patterns.dc.html`'s alerts-view mock separately colors
- * `constraint:violated` as `danger`, which would make it `critical` here —
- * that mock is a different screen (session-scoped Alerts view, §9.7) using
- * `Firing`/`Resolved` semantics, not the notification center's 3-tier
- * severity; the two are not required to agree, and this module follows the
- * notification-center mock (`notifWarning`) since that is the surface this
- * module feeds.
+ * The badge counts the items that need the person: approvals, questions, failures, and the host's
+ * problem. An answer is listed but never counts. Which items were read is the person's, so it is
+ * kept apart from the derived items and survives each refresh, and a reload.
  */
-import type { FleetEventFrame } from '../lib/live-source/fleet-event-source.svelte.ts';
 import type { LiveSourceStatus } from '../lib/live-source/index.ts';
 import { NAVIGATION_COPY } from './copy.ts';
-import { NOTIFICATION_RULES } from './notification-rules.ts';
+import type { NotificationEntry } from './notification-items.ts';
+import {
+  loadReadIds,
+  READ_ID_LIMIT,
+  saveReadIds,
+  type ReadIdStorage,
+} from './notification-read-state.ts';
 
-export type NotificationTier = 'critical' | 'warning' | 'info';
+export type {
+  NotificationEntry,
+  NotificationKind,
+  NotificationTier,
+} from './notification-items.ts';
 
-export interface NotificationItem {
-  readonly id: string;
-  readonly tier: NotificationTier;
-  readonly icon: string;
-  readonly title: string;
-  readonly body: string;
-  /** Deep link path (router-relative), per design README: "Every item deep-links." */
-  readonly href: string;
-  readonly emittedAtMs: number;
+export interface NotificationItem extends NotificationEntry {
   read: boolean;
 }
-
-const NOTIFICATION_HISTORY_LIMIT = 50;
 
 /** The one item the host's own problem lives in (`NotificationStore.reportEngineStatus`). */
 export const ENGINE_STATUS_ITEM_ID = 'engine-status';
 
 /** What the bell says for each state of the live feed that is a problem; a state with no entry is not one. */
 const ENGINE_PROBLEMS: Readonly<
-  Partial<Record<LiveSourceStatus, Pick<NotificationItem, 'tier' | 'icon' | 'title' | 'body'>>>
+  Partial<Record<LiveSourceStatus, Pick<NotificationEntry, 'tier' | 'icon' | 'title' | 'detail'>>>
 > = {
   closed: {
     tier: 'critical',
     icon: 'plug-zap',
     title: NAVIGATION_COPY.engineStatus.closed,
-    body: 'The host did not answer. Check that it is running.',
+    detail: 'The host did not answer. Check that it is running.',
   },
   stale: {
     tier: 'warning',
     icon: 'triangle-alert',
     title: NAVIGATION_COPY.engineStatus.stale,
-    body: 'The engine has not reported in a while. What you see may be out of date.',
+    detail: 'The engine has not reported in a while. What you see may be out of date.',
   },
 };
 
-/** Classifies one fleet frame into a `NotificationItem`, or `null` for a kind this module doesn't track (none today — every `EVENTS_READ_EVENT_TYPES` kind has a rule). */
-export function classifyFleetEvent(
-  frame: FleetEventFrame,
-): Omit<NotificationItem, 'id' | 'read'> | null {
-  const rule = NOTIFICATION_RULES[frame.kind];
-  if (!rule) return null;
-  return {
-    tier: rule.tier,
-    icon: rule.icon,
-    title: rule.title(frame),
-    body: rule.body(frame),
-    href: rule.href(frame),
-    emittedAtMs: frame.emittedAtMs,
-  };
+export interface NotificationStoreOptions {
+  /** Where read ids are kept; the browser's local storage by default. */
+  readonly storage?: ReadIdStorage;
 }
 
 export class NotificationStore {
-  items: NotificationItem[] = $state([]);
+  readonly #storage: ReadIdStorage | undefined;
+  #readIds: string[] = $state([]);
+  #activity: NotificationEntry[] = $state([]);
+  #engineProblem: NotificationEntry | undefined = $state();
 
+  constructor(options: NotificationStoreOptions = {}) {
+    this.#storage = options.storage;
+    this.#readIds = options.storage === undefined ? loadReadIds() : loadReadIds(options.storage);
+  }
+
+  /** Every item, the host's problem first, then what needs the person, then what only finished. */
+  items: NotificationItem[] = $derived.by(() => {
+    const read = new Set(this.#readIds);
+    const entries = this.#engineProblem === undefined ? [] : [this.#engineProblem];
+    return [...entries, ...this.#activity].map((entry) => ({ ...entry, read: read.has(entry.id) }));
+  });
+
+  /** How many unread items need the person; an answer never counts. */
   get unreadCount(): number {
-    return this.items.filter((item) => !item.read).length;
+    return this.items.filter((item) => !item.read && item.tier !== 'info').length;
   }
 
-  get critical(): NotificationItem[] {
-    return this.items.filter((item) => item.tier === 'critical');
-  }
-
-  /** Unread critical items only — what the dismissible strip below the header shows. A dismissed (read) critical item leaves the strip but stays visible, dimmed, in the bell dropdown. */
+  /** Unread critical items only: what the dismissible strip below the header shows. */
   get criticalUnread(): NotificationItem[] {
     return this.items.filter((item) => item.tier === 'critical' && !item.read);
   }
 
-  get warning(): NotificationItem[] {
-    return this.items.filter((item) => item.tier === 'warning');
-  }
-
-  get info(): NotificationItem[] {
-    return this.items.filter((item) => item.tier === 'info');
-  }
-
-  /** Appends a classified fleet frame to the top of the list, bounded to `NOTIFICATION_HISTORY_LIMIT`. Returns the new item, or `null` for an unmapped kind. */
-  ingest(frame: FleetEventFrame): NotificationItem | null {
-    const classified = classifyFleetEvent(frame);
-    if (!classified) return null;
-    const item: NotificationItem = { id: frame.cursor, read: false, ...classified };
-    this.items = [item, ...this.items].slice(0, NOTIFICATION_HISTORY_LIMIT);
-    return item;
+  /** Replaces the items derived from the Bureau's reviews and tasks. */
+  setActivity(entries: readonly NotificationEntry[]): void {
+    this.#activity = [...entries];
   }
 
   /**
@@ -132,37 +97,54 @@ export class NotificationStore {
    */
   reportEngineStatus(status: LiveSourceStatus, nowMs: number): void {
     const problem = ENGINE_PROBLEMS[status];
-    const current = this.items.find((item) => item.id === ENGINE_STATUS_ITEM_ID);
+    const current = this.#engineProblem;
     if (problem === undefined) {
-      if (current !== undefined) this.items = this.items.filter((item) => item !== current);
+      if (current !== undefined) this.#forget(ENGINE_STATUS_ITEM_ID);
+      this.#engineProblem = undefined;
       return;
     }
     if (current?.title === problem.title) return;
-    const item: NotificationItem = {
+    this.#forget(ENGINE_STATUS_ITEM_ID);
+    this.#engineProblem = {
       id: ENGINE_STATUS_ITEM_ID,
-      read: false,
+      kind: 'engine',
+      joiner: ': ',
       href: '/engine',
       emittedAtMs: nowMs,
       ...problem,
     };
-    this.items = [item, ...this.items.filter((existing) => existing.id !== item.id)].slice(
-      0,
-      NOTIFICATION_HISTORY_LIMIT,
-    );
   }
 
   markAllRead(): void {
-    this.items = this.items.map((item) => (item.read ? item : { ...item, read: true }));
+    this.#markRead(this.items.map((item) => item.id));
   }
 
   markRead(id: string): void {
-    this.items = this.items.map((item) => (item.id === id ? { ...item, read: true } : item));
+    this.#markRead([id]);
   }
 
-  /** Dismisses one item from the critical strip without marking it read elsewhere in the dropdown — matches the design's "dismissible" strip while the bell dropdown keeps its own history. */
-  dismissCritical(id: string): void {
-    this.items = this.items.map((item) =>
-      item.id === id && item.tier === 'critical' ? { ...item, read: true } : item,
+  /** Opening a chat reads what is about it: its approval, its question, its answer. */
+  markSessionRead(sessionId: string): void {
+    this.#markRead(
+      this.items.filter((item) => item.sessionId === sessionId).map((item) => item.id),
     );
+  }
+
+  /** Dismisses one item from the critical strip; it stays, read, in the bell. */
+  dismissCritical(id: string): void {
+    if (this.items.some((item) => item.id === id && item.tier === 'critical')) this.markRead(id);
+  }
+
+  #markRead(ids: readonly string[]): void {
+    const unread = ids.filter((id) => !this.#readIds.includes(id));
+    if (unread.length === 0) return;
+    this.#readIds = [...this.#readIds, ...unread].slice(-READ_ID_LIMIT);
+    saveReadIds(this.#readIds, this.#storage);
+  }
+
+  #forget(id: string): void {
+    if (!this.#readIds.includes(id)) return;
+    this.#readIds = this.#readIds.filter((read) => read !== id);
+    saveReadIds(this.#readIds, this.#storage);
   }
 }
