@@ -22,6 +22,7 @@ export type {
   PermissionGateDecision,
 } from './approval-policy';
 export { combineToolboxes } from './combine-toolboxes';
+export { renderToolSummary } from './tool-summary';
 export * from './core';
 export { TOOLBOX_BUDGET_EXCEEDED_MARKER, isToolboxBudgetExceededToolError } from './core/errors';
 export type { ToolError, ToolErrorCategory, ToolboxBudgetExceededToolError } from './core/errors';

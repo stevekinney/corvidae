@@ -13,7 +13,6 @@ export const VIEW_NAMES = [
   'workflows',
   'runs',
   'schedules',
-  'tasks',
   'reviews',
   'workers',
   'storage',
@@ -69,9 +68,6 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
     creating: (search) => search.get('create') === '1',
   },
-  // The tasks the Bureau shows the caller, and one task's page. It is not in the navigation: a
-  // task is reached from the chat session it belongs to, from a run's page, and from a review.
-  tasks: { scopes: [], canBeEmpty: true },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
   // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.

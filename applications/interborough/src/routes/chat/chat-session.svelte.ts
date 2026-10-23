@@ -267,6 +267,20 @@ export class ChatSessionState {
     if (announced.length > 0) this.conversation = withAssetParts(this.conversation, announced);
   }
 
+  /**
+   * Reads the thread again and shows what the Bureau holds, replacing the rows on screen. A decision
+   * made somewhere else (`/reviews`, a run's page, another tab) is written into the conversation by
+   * the Bureau, and the rows here still show the approval as parked. A turn that is going, or a read
+   * in progress, is left alone: it is the page's own.
+   */
+  async refresh(): Promise<boolean> {
+    if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
+    const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
+    if (history === undefined || this.streaming || this.attaching) return false;
+    this.conversation = history;
+    return true;
+  }
+
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;

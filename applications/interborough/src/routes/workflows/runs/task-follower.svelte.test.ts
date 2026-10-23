@@ -6,15 +6,15 @@
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
-import type { TaskEvent } from '../../lib/bureau-tasks.ts';
+import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
+import type { TaskEvent } from '../../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
   snapshotElement,
   statusElement,
   type BureauWorldStub,
-} from '../../lib/bureau-world.test-support.ts';
+} from '../../../lib/bureau-world.test-support.ts';
 import { TaskFollower, taskCursorKey } from './task-follower.svelte.ts';
 
 let stub: BureauWorldStub | undefined;

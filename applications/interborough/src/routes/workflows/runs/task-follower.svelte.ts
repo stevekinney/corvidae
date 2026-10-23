@@ -27,7 +27,7 @@
  */
 import { z } from 'zod';
 
-import type { Fetcher } from '../../lib/bureau-client.ts';
+import type { Fetcher } from '../../../lib/bureau-client.ts';
 import {
   followTaskEvents,
   isTerminalState,
@@ -36,9 +36,9 @@ import {
   type TaskArtifact,
   type TaskEvent,
   type TaskState,
-} from '../../lib/bureau-tasks.ts';
-import { classifyFault } from '../../lib/faults.ts';
-import { computeReconnectDelayMs } from '../../lib/live-source/backoff.ts';
+} from '../../../lib/bureau-tasks.ts';
+import { classifyFault } from '../../../lib/faults.ts';
+import { computeReconnectDelayMs } from '../../../lib/live-source/backoff.ts';
 
 /** Where the follower stands, for the page to say. */
 export type TaskFollowState =

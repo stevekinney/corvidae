@@ -621,3 +621,53 @@
   padding-inline-start: var(--cinder-space-5);
   overflow-wrap: anywhere;
 }
+
+/* ── Reviews as a to-do list: one item per question, its decision inline ─────── */
+
+.ib-reviews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-reviews__count {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-reviews__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-review__origin {
+  margin: 0;
+  padding-inline: var(--cinder-space-3);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-reviews__engine {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+}
+
+.ib-reviews__heading {
+  margin: 0;
+  font-size: var(--cinder-text-md);
+  font-weight: 600;
+}

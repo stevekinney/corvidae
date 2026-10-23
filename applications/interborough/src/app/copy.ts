@@ -521,6 +521,26 @@ export const CHAT_COPY = {
   tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',
   approvalTitle: 'Needs your approval',
+  /** The tool calls of a turn. */
+  tools: {
+    show: 'Show',
+    hide: 'Hide',
+    details: 'Details',
+    running: 'Running',
+    waitingForApproval: 'Waiting for your approval',
+    resultPrefix: 'Result:',
+  },
+  /** The chat's header and its strip of runs. */
+  strip: {
+    waiting: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'run is' : 'runs are'} waiting on you`,
+    working: (count: number): string => `${String(count)} ${count === 1 ? 'run is' : 'runs are'} working`,
+    finished: 'Run finished',
+    failed: (failed: number, total: number): string =>
+      `${String(total)} runs, ${String(failed)} failed`,
+    failedOne: 'Run failed',
+    canceledOne: 'Run canceled',
+  },
   humanRequestTitle: 'The agent is asking',
   humanRequestFallback: 'The agent is waiting for your answer.',
   humanRequestHint: 'Your next message answers it.',
@@ -662,7 +682,7 @@ export const MEMORY_COPY = {
       unknown: 'Not known until you try to forget this memory',
       held: 'Held: this memory stays stored',
     },
-    openChat: 'Open the chat',
+    openChat: 'Open chat',
     openMemory: 'Open that memory',
   },
   source: {
@@ -784,17 +804,35 @@ export const MEMORY_COPY = {
 
 /** The words the Tasks view uses outside its states. */
 export const TASK_COPY = {
-  listHeading: 'Tasks',
-  filtersLabel: 'Filter tasks',
+  listHeading: 'Runs',
+  filtersLabel: 'Filter runs',
   agentLabel: 'Agent',
   statusLabel: 'Status',
+  startedByLabel: 'Started by',
+  sinceLabel: 'When',
+  anyAgent: 'Any agent',
+  anyOrigin: 'Anything',
+  anyTime: 'Any time',
+  loading: 'Loading runs',
+  loadFailed: {
+    title: 'The runs could not be loaded',
+    description: 'The Bureau did not answer. Check that the host is running, then try again.',
+  },
+  empty: {
+    title: 'No runs yet',
+    description: 'A run is one go of an agent. Start a chat and its runs are listed here.',
+  },
+  unknownAgent: 'An agent',
+  untitledChat: 'Untitled chat',
+  goal: 'goal',
+  startedDirectly: 'Started directly',
   sessionLabel: 'Session',
   anyStatus: 'Any status',
   filterAction: 'Filter',
   clearAction: 'Clear filters',
   noMatch: {
-    title: 'No task matches these filters',
-    description: 'Change the filters, or clear them to see every task.',
+    title: 'No run matches these filters',
+    description: 'Change the filters to see more runs.',
   },
   loadMore: 'Load more',
   columns: {
@@ -804,13 +842,18 @@ export const TASK_COPY = {
     session: 'Session',
     updated: 'Updated',
   },
+  /** What a run that needs a person is waiting for. */
+  waiting: {
+    approval: 'Waiting for your approval',
+    answer: 'Waiting for your answer',
+  },
   openWaits: (count: number): string => `${String(count)} open ${count === 1 ? 'wait' : 'waits'}`,
   /** What each state a task can be in is called. */
   states: {
-    submitted: 'Submitted',
+    submitted: 'Working',
     working: 'Working',
-    'input-required': 'Waiting for input',
-    completed: 'Completed',
+    'input-required': 'Needs you',
+    completed: 'Done',
     failed: 'Failed',
     canceled: 'Canceled',
   },
@@ -827,11 +870,23 @@ export const TASK_COPY = {
   /** The link on a run's page to the task the run is, when it is one. */
   viewTask: 'View the task',
   answerHeading: 'Answer',
+  noAnswer: 'The agent finished without a written answer.',
+  noAnswerYet: 'The agent has not answered yet.',
+  toolCallsHeading: 'Tool calls',
+  noToolCalls: 'The agent has not used a tool.',
+  startedFromChat: 'Started from the chat',
+  startedFromGoal: 'Started by the goal',
+  runTitle: 'Run',
+  tabsLabel: 'Run sections',
+  tabs: { summary: 'Summary', engine: 'Engine' },
+  goalAttemptNote: 'A goal made this run, so the Bureau has no task for it. The Engine tab has what the engine recorded.',
+  engineOnlyNote: 'The Bureau has no task for this run. The Engine tab has what the engine recorded.',
   answerTruncated: 'The answer was cut short.',
   followUnavailable:
     'This Bureau cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
   waitsHeading: 'Waiting on you',
+  readingWait: 'Reading what the run is waiting on.',
   waitGone: 'This wait is no longer open.',
   waitLoadFailed: 'The wait could not be read.',
   humanWaitFallback: 'The agent is waiting for your answer.',
@@ -843,8 +898,13 @@ export const TASK_COPY = {
   sendAnswer: 'Send answer',
   respondFailed: 'The answer was not sent',
   cancelHeading: 'Cancellation',
-  cancelAction: 'Cancel task',
-  cancelFailed: 'The task was not canceled',
+  cancelAction: 'Cancel run',
+  cancelFailed: 'The run was not canceled',
+  cancelConfirm: {
+    title: 'Cancel this run?',
+    description: 'The agent stops where it is. What it already did is not undone.',
+    keep: 'Keep running',
+  },
   /**
    * How often the page reads a task again while its stream has ended and the task has not. A task
    * the Bureau started with `bureau.run()` streams one snapshot and ends, so its state is read.
@@ -874,8 +934,13 @@ export const REVIEWS_COPY = {
   /** The label for a review that asks a question. */
   humanWait: 'Question',
   openChat: 'Open chat',
-  openTask: 'Open task',
   openRun: 'Open run',
+  unknownAgent: 'An agent',
+  untitledChat: 'Untitled chat',
+  asks: 'asks:',
+  questionFallback: 'It is waiting for your answer.',
+  waiting: (count: number): string => `${String(count)} waiting on you`,
+  engineHeading: 'Engine reviews',
   approve: 'Approve',
   deny: 'Deny',
   reject: 'Reject',
@@ -883,6 +948,10 @@ export const REVIEWS_COPY = {
   reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
   answerLabel: 'Your answer',
   sendAnswer: 'Send answer',
+  /** Said once under an answer field: what the agent does with the answer. */
+  answerHint: 'The agent continues with your answer.',
+  /** The optional note sent with a denial, which the agent reads. */
+  noteLabel: 'Note to the agent (optional)',
   toolLabel: 'Tool',
   argumentsLabel: 'Arguments',
   /** The labels on the parts of what an approval would run. */
@@ -1086,25 +1155,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The engine did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Schedules are locked' },
-  },
-  tasks: {
-    label: 'Tasks',
-    loading: { title: 'Loading tasks', description: 'Reading the tasks your agents have started.' },
-    empty: {
-      title: 'No tasks yet',
-      description: 'A task is one run of an agent. Start a chat and its tasks are listed here.',
-      action: { label: 'New chat', href: '/chat/new' },
-    },
-    error: {
-      title: 'Tasks are unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
-    },
-    forbidden: { title: 'Tasks are locked' },
-    notFound: {
-      title: 'This task was not found',
-      description:
-        'It may have been removed, or it may belong to someone else. Open a task from the list.',
-    },
   },
   reviews: {
     label: 'Reviews',

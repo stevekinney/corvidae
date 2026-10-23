@@ -6,7 +6,6 @@ import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
-import { getTask, listTasks } from '../lib/bureau-tasks.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
 import { listMemories } from '../lib/memory-client.ts';
@@ -202,20 +201,6 @@ export function probeFor(
       return async (client) => {
         const page = await client.listSchedules({});
         return { empty: page.items.length === 0 };
-      };
-    case 'tasks':
-      // One task's page asks for that task, which settles whether it exists and may be seen. The
-      // list is empty when the caller has no task.
-      if (parameters['id'] !== undefined) {
-        const taskId = parameters['id'];
-        return async () => {
-          await getTask(taskId);
-          return { empty: false };
-        };
-      }
-      return async () => {
-        const page = await listTasks({ limit: 1 });
-        return { empty: page.tasks.length === 0 };
       };
     case 'reviews':
       // The Bureau's list is what the view can be refused, and nothing else it says is the view's

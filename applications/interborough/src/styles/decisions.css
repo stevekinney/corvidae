@@ -1,0 +1,140 @@
+/* ── Decisions: one approval or question, the same wherever it is asked ───────── */
+
+/* An approval is one flat tinted row. No border, no stripe, no card. */
+.ib-decision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  min-width: 0;
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  border-radius: var(--cinder-radius-md);
+  background: var(--cinder-status-warning-background);
+}
+
+.ib-decision[data-kind='question'] {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ib-decision[data-kind='question'] .ib-decision__question {
+  flex: none;
+}
+
+.ib-decision__question {
+  flex: 1 1 14rem;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.ib-decision__actions,
+.ib-decision__answer {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+}
+
+.ib-decision__answer {
+  align-items: flex-end;
+}
+
+.ib-decision__answer > :first-child,
+.ib-decision__note {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.ib-decision__hint,
+.ib-decision__failure {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* ── Tool calls: one row each, folded when there are several ──────────────────── */
+
+.ib-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+  padding-block: var(--cinder-space-1);
+}
+
+.ib-tools__fold {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-tool__line {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+  min-height: 2.25rem;
+  min-width: 0;
+}
+
+.ib-tool__glyph {
+  flex: none;
+  display: inline-flex;
+}
+
+.ib-tool__glyph[data-state='done'] {
+  color: var(--cinder-status-success-text);
+}
+
+.ib-tool__glyph[data-state='failed'] {
+  color: var(--cinder-status-danger-text);
+}
+
+.ib-tool__glyph[data-state='needs-you'],
+.ib-tool__glyph[data-state='running'] {
+  color: var(--cinder-status-warning-text);
+}
+
+.ib-tool__name {
+  flex: none;
+  font-family: var(--cinder-font-mono);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-tool__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ib-tool__details {
+  margin: 0;
+  padding-inline-start: var(--cinder-space-6);
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-tool__details dt {
+  color: var(--cinder-text-muted);
+}
+
+.ib-tool__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--cinder-font-mono);
+}

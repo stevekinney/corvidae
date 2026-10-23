@@ -15,7 +15,7 @@
   import { faultTreatment } from '../../lib/faults.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { getPrincipalStore, isForbidden } from '../../lib/scopes.svelte.ts';
-  import type { ReviewOutcome } from './bureau-review-detail.svelte';
+  import type { ReviewOutcome } from './bureau-review-item.svelte';
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
   import {
     answerHumanWaitMutation,
@@ -34,9 +34,6 @@
 
   const bureauQuery = bureauReviewsQuery();
   const pendingQuery = reviewListQuery(client, () => 'pending', { enabled: () => weftEnabled });
-  const completedQuery = reviewListQuery(client, () => 'completed', {
-    enabled: () => weftEnabled,
-  });
   const decisionMutation = submitReviewDecisionMutation(client);
   const resolveMutation = resolveBureauReviewMutation();
   const answerMutation = answerHumanWaitMutation();
@@ -45,7 +42,7 @@
   const answerKey = createPendingCommandKey();
 
   $effect(() => {
-    if (isForbidden(pendingQuery.error) || isForbidden(completedQuery.error)) {
+    if (isForbidden(pendingQuery.error)) {
       principalStore.denyScope('reviews:read');
     }
   });
@@ -146,7 +143,6 @@
   <ReviewsInbox
     {bureauQuery}
     {pendingQuery}
-    {completedQuery}
     {weftEnabled}
     submitting={decisionMutation.isPending}
     onSubmit={submitDecision}
