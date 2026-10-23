@@ -148,6 +148,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
 
     try {
       const run = await bureauA.createRun({
+        agentName: 'bureau',
         message: 'Attribute me to alice across a restart',
         principal: 'alice',
       });

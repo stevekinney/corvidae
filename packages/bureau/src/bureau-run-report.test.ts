@@ -20,7 +20,7 @@ describe('Bureau.getRunReport', () => {
       if (frame.type === 'run-envelope') runEnvelopeFrames.push(frame);
     });
 
-    const run = await bureau.createRun({ message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
 
     await waitForCondition(() => {
       const report = bureau.getRunReport(run.id);
@@ -107,7 +107,10 @@ describe('Bureau.getRunReport', () => {
       toolbox: createTestToolbox([addTool]),
     });
 
-    const run = await bureau.createRun({ message: 'Add 2 and 3, then keep going' });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Add 2 and 3, then keep going',
+    });
 
     // Wait until step 0 (the tool call) has been recorded in the store before
     // killing the run — this is what makes the report "partial but non-empty".

@@ -41,6 +41,7 @@ function heldGenerate(): { generate: GenerateFunction; release(): void } {
 }
 
 const REQUEST = {
+  agentName: 'bureau',
   message: 'Summarize the quarter.',
   principal: 'alice',
   runCreationRequestId: 'request-1',
@@ -256,9 +257,9 @@ describe('createRun with a run-creation request id', () => {
   it('requires an authenticated principal to own the request id', async () => {
     await withDurableBureau(async (bureau) => {
       for (const request of [
-        { message: 'hi', runCreationRequestId: 'request-1' },
-        { message: 'hi', principal: ' ', runCreationRequestId: 'request-1' },
-        { message: 'hi', principal: 'alice', runCreationRequestId: ' ' },
+        { agentName: 'bureau', message: 'hi', runCreationRequestId: 'request-1' },
+        { agentName: 'bureau', message: 'hi', principal: ' ', runCreationRequestId: 'request-1' },
+        { agentName: 'bureau', message: 'hi', principal: 'alice', runCreationRequestId: ' ' },
       ]) {
         const rejection = await rejectionOf(bureau.createRun(request));
         expect(rejection).toBeInstanceOf(BureauError);
@@ -294,8 +295,16 @@ describe('createRun with a run-creation request id', () => {
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
     });
     try {
-      const first = await bureau.createRun({ message: 'hi', principal: 'alice' });
-      const second = await bureau.createRun({ message: 'hi', principal: 'alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'hi',
+        principal: 'alice',
+      });
+      const second = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'hi',
+        principal: 'alice',
+      });
 
       expect(first.receipt).toBeUndefined();
       expect(second.id).not.toBe(first.id);
@@ -321,7 +330,11 @@ describe('createRun with a run-creation request id', () => {
   it('releases the claim when flow control rejects a fresh request, so a later retry starts the run', async () => {
     await withDurableBureau(
       async (bureau, release) => {
-        const occupying = await bureau.createRun({ message: 'first', principal: 'alice' });
+        const occupying = await bureau.createRun({
+          agentName: 'bureau',
+          message: 'first',
+          principal: 'alice',
+        });
         const rejected = await rejectionOf(bureau.createRun(REQUEST));
         expect(rejected).toBeInstanceOf(BureauError);
         expect((rejected as BureauError).code).toBe('RATE_LIMITED');
@@ -349,6 +362,7 @@ describe('createRun with a run-creation request id', () => {
 
 describe('createRun on a session bound to an agent (COR-1577)', () => {
   const SESSION_REQUEST = {
+    agentName: 'bureau',
     message: 'Carry on.',
     principal: 'alice',
     sessionId: 'bound',

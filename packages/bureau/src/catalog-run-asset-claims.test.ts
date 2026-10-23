@@ -434,7 +434,11 @@ describe.each([
         ...extra,
       },
     );
-    const parent = await bureau.createRun({ message: 'plan the work', principal: alice.id });
+    const parent = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'plan the work',
+      principal: alice.id,
+    });
     cleanups.push(async () => {
       bureau.abortRun(parent.id);
       await waitForRunState(bureau, parent.id);

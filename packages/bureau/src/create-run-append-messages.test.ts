@@ -55,6 +55,7 @@ describe('createRun appendMessages', () => {
     });
     try {
       const run = await bureau.createRun({
+        agentName: 'bureau',
         appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'first part', 'second part')),
       });
       await settle(bureau, run.id);
@@ -86,7 +87,7 @@ describe('createRun appendMessages', () => {
         content: 'hello',
       });
 
-      const error = await bureau.createRun({ appendMessages: rows }).then(
+      const error = await bureau.createRun({ agentName: 'bureau', appendMessages: rows }).then(
         () => undefined,
         (rejection: unknown) => rejection,
       );
@@ -105,10 +106,12 @@ describe('createRun appendMessages', () => {
     });
     try {
       for (const bad of ['text', [{ role: 'user' }], [null]]) {
-        const error = await bureau.createRun({ appendMessages: bad as never }).then(
-          () => undefined,
-          (rejection: unknown) => rejection,
-        );
+        const error = await bureau
+          .createRun({ agentName: 'bureau', appendMessages: bad as never })
+          .then(
+            () => undefined,
+            (rejection: unknown) => rejection,
+          );
         expect((error as BureauError).code).toBe('BAD_REQUEST');
       }
     } finally {
@@ -124,12 +127,14 @@ describe('createRun appendMessages', () => {
     });
     try {
       const first = await bureau.createRun({
+        agentName: 'bureau',
         appendMessages: builtRows(ORIGIN, userRow('same', 'a')),
       });
       await settle(bureau, first.id);
 
       const error = await bureau
         .createRun({
+          agentName: 'bureau',
           sessionId: first.sessionId,
           appendMessages: builtRows(ORIGIN, userRow('same', 'b')),
         })
@@ -162,6 +167,7 @@ describe('createRun appendMessages and the task it admits', () => {
     try {
       const first = await open();
       const run = await first.createRun({
+        agentName: 'bureau',
         principal: 'alice',
         appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'plan ', 'my trip')),
       });
@@ -203,6 +209,7 @@ describe('createRun appendMessages under a run-creation request id', () => {
   }
 
   const request = (rows: ReadonlyArray<Message>) => ({
+    agentName: 'bureau',
     principal: 'alice',
     runCreationRequestId: 'request-1',
     sessionId: 'session-1',

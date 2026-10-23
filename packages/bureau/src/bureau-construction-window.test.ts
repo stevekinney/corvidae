@@ -68,7 +68,7 @@ describe('a session commit while the agent files are being scanned (COR-1585)', 
       durableOwnership: leaseOptions,
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ message: 'go' });
+    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
     await reachedStepOne.promise;
 
     // The successor has no `generate`, so it cannot rebuild the run's session and reconciles the

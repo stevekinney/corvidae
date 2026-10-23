@@ -60,7 +60,7 @@ function parksThenAnswers(): GenerateFunction {
 }
 
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ message: 'park', principal });
+  const run = await opened.bureau.createRun({ agentName: 'bureau', message: 'park', principal });
   await waitForCondition(
     () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
     'the run never parked',
@@ -79,7 +79,11 @@ describe('bureau.tasks.events', () => {
     await withBureau(
       { generate: async () => ({ content: 'ok', toolCalls: [] }) },
       async (opened) => {
-        const run = await opened.bureau.createRun({ message: 'go', principal: OWNER.alice });
+        const run = await opened.bureau.createRun({
+          agentName: 'bureau',
+          message: 'go',
+          principal: OWNER.alice,
+        });
         await waitForCondition(
           () => opened.bureau.getRun(run.id)?.status === 'completed',
           'finish',
@@ -137,7 +141,11 @@ describe('bureau.tasks.events', () => {
         : { content: 'the final answer', toolCalls: [] };
     };
     await withBureau({ generate, toolbox }, async (opened) => {
-      const run = await opened.bureau.createRun({ message: 'go', principal: OWNER.alice });
+      const run = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'go',
+        principal: OWNER.alice,
+      });
       await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
       await waitForCondition(async () => {
         const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
@@ -215,7 +223,11 @@ describe('bureau.tasks.events', () => {
     await withBureau(
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
-        const run = await opened.bureau.createRun({ message: 'charge', principal: OWNER.alice });
+        const run = await opened.bureau.createRun({
+          agentName: 'bureau',
+          message: 'charge',
+          principal: OWNER.alice,
+        });
         await waitForCondition(
           () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
           'the approval never became pending',
@@ -276,7 +288,11 @@ describe('bureau.tasks.events', () => {
 
   it('answers an ephemeral Bureau, which keeps no durable history, as an unsupported capability', async () => {
     await withBureau({ durableHistory: false }, async (opened) => {
-      const run = await opened.bureau.createRun({ message: 'go', principal: OWNER.alice });
+      const run = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'go',
+        principal: OWNER.alice,
+      });
 
       const response = await opened.handler(
         subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),

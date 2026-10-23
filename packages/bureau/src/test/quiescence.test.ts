@@ -352,7 +352,10 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         durableExecution: true,
       });
 
-      const summary = await harness.startSession({ message: 'durable run that never finishes' });
+      const summary = await harness.startSession({
+        agentName: 'bureau',
+        message: 'durable run that never finishes',
+      });
       // Waits for the DURABLE engine's own persisted state (not just
       // Bureau's in-memory `getRun` status, which flips to "running" before
       // the engine commits a first checkpoint) to actually exist and read
@@ -409,7 +412,10 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         durableExecution: true,
       });
 
-      const summary = await harness.startSession({ message: 'deliberately detached durable run' });
+      const summary = await harness.startSession({
+        agentName: 'bureau',
+        message: 'deliberately detached durable run',
+      });
       await waitForCondition(async () => {
         const state = await harness.bureau.getDurableRun(summary.id);
         return state !== null && state !== undefined && state.status === 'running';
@@ -740,7 +746,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       },
     });
 
-    const runSummary = await harness.bureau.createRun({ message: 'hello' });
+    const runSummary = await harness.bureau.createRun({ agentName: 'bureau', message: 'hello' });
     const runId = runSummary.id;
     await invoked;
     harness.bureau.abortRun(runId);
@@ -895,7 +901,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `createRun`/`createRunFromRequest` path does. `maximumSteps: 1`
     // forces `'run.completed'` on the very first step (`mockGenerate`'s
     // empty `toolCalls` never signals completion on its own).
-    await harness.startSession({ message: 'hello', maximumSteps: 1 });
+    await harness.startSession({ agentName: 'bureau', message: 'hello', maximumSteps: 1 });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the evaluation audit write was never reached',
@@ -971,7 +977,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // the same distinction). The write is fire-and-forget from the run's
     // own perspective, so there is no need to wait for the session to
     // finish — only for the fault plan to have been reached.
-    await harness.startSession({ message: 'hello', maximumSteps: 1 });
+    await harness.startSession({ agentName: 'bureau', message: 'hello', maximumSteps: 1 });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the audit write was never reached',
@@ -1067,7 +1073,11 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `auditTrail.query()` itself — polling with `query()` here would walk
     // straight into the SAME `nth: 1` block this test means to trigger
     // deliberately, deadlocking the wait on itself.
-    const summary = await harness.startSession({ message: 'hello', maximumSteps: 1 });
+    const summary = await harness.startSession({
+      agentName: 'bureau',
+      message: 'hello',
+      maximumSteps: 1,
+    });
     await waitForCondition(
       () => harness.bureau.getRun(summary.id)?.status === 'completed',
       'session run never completed',

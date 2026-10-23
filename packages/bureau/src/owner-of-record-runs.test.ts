@@ -36,7 +36,11 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('records the stated principal as the run owner, on the summary, the liveness snapshot, and the session', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({ message: 'hello', principal: 'api-key:alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'hello',
+        principal: 'api-key:alice',
+      });
       await settle(bureau, run.id);
 
       expect(bureau.getRun(run.id)?.principal).toBe('api-key:alice');
@@ -54,7 +58,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('gives a run created with no principal the owner anonymous:local', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({ message: 'hello' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await settle(bureau, run.id);
 
       expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
@@ -81,11 +85,16 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('refuses a run on a session another principal owns, as a session that does not exist', async () => {
     const bureau = await openBureau();
     try {
-      const first = await bureau.createRun({ message: 'mine', principal: 'api-key:alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'mine',
+        principal: 'api-key:alice',
+      });
       await settle(bureau, first.id);
 
       for (const principal of ['api-key:bob', undefined]) {
         const attempt = bureau.createRun({
+          agentName: 'bureau',
           message: 'yours now',
           sessionId: first.sessionId,
           ...(principal === undefined ? {} : { principal }),
@@ -106,9 +115,14 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('lets the owner start a second run on its own session, and keeps the session owner', async () => {
     const bureau = await openBureau();
     try {
-      const first = await bureau.createRun({ message: 'one', principal: 'api-key:alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'one',
+        principal: 'api-key:alice',
+      });
       await settle(bureau, first.id);
       const second = await bureau.createRun({
+        agentName: 'bureau',
         message: 'two',
         sessionId: first.sessionId,
         principal: 'api-key:alice',
@@ -135,7 +149,11 @@ describe('the owner of a run and of its session (COR-718)', () => {
       stopWhen: stopWhen.noToolCalls(),
     });
     try {
-      const run = await bureau.createRun({ message: 'mine', principal: 'api-key:alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'mine',
+        principal: 'api-key:alice',
+      });
       await settle(bureau, run.id);
 
       const asOwner = await bureau.eventHistory(
@@ -158,7 +176,13 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       expect(
-        await rejectionOf(bureau.createRun({ message: 'x', runCreationRequestId: 'request-1' })),
+        await rejectionOf(
+          bureau.createRun({
+            agentName: 'bureau',
+            message: 'x',
+            runCreationRequestId: 'request-1',
+          }),
+        ),
       ).toBeInstanceOf(BureauError);
     } finally {
       await bureau.dispose();
@@ -171,8 +195,18 @@ describe('two principals racing to create one new session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const outcomes = await Promise.allSettled([
-        bureau.createRun({ message: 'from alice', sessionId: 'raced', principal: 'api-key:alice' }),
-        bureau.createRun({ message: 'from bob', sessionId: 'raced', principal: 'api-key:bob' }),
+        bureau.createRun({
+          agentName: 'bureau',
+          message: 'from alice',
+          sessionId: 'raced',
+          principal: 'api-key:alice',
+        }),
+        bureau.createRun({
+          agentName: 'bureau',
+          message: 'from bob',
+          sessionId: 'raced',
+          principal: 'api-key:bob',
+        }),
       ]);
 
       const winners = outcomes.filter((outcome) => outcome.status === 'fulfilled');
@@ -250,7 +284,7 @@ describe('durable history follows the owner of record (COR-718)', () => {
   it('reads a run created with no principal as owned by anonymous:local, and by no one else', async () => {
     const { bureau, directory } = await openDurableBureau();
     try {
-      const run = await bureau.createRun({ message: 'no principal' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'no principal' });
       await settle(bureau, run.id);
 
       const asLocal = await bureau.eventHistory(

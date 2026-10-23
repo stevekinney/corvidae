@@ -9696,6 +9696,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assertRunAdmissionOpen('scheduler task');
         const runRuntime = await runtime.createRunRuntime(
           {
+            agentName: 'bureau',
             message: request.message,
             maximumSteps: request.maximumSteps,
             systemPrompt: request.systemPrompt,

@@ -24,7 +24,7 @@ it('announces that an aborted run has left listAbortingRuns()', async () => {
     stopWhen: stopWhen.noToolCalls(),
   });
   try {
-    const run = await bureau.createRun({ message: 'go' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
     await generating.promise;
     const settled = Promise.withResolvers<{ runId: string; stillAborting: number }>();
     bureau.addEventListener(RunAbortSettledEvent.type, (event) => {

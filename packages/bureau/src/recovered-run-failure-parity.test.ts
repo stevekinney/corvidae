@@ -162,7 +162,7 @@ async function withFreshRun<T>(
     assets: { storage: createMemoryAssetStorage() },
   });
   try {
-    const run = await bureau.createRun({ message: 'Go.' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'Go.' });
     await whenRunning?.(bureau, run.id);
     open();
     return await inspect(await settle(bureau, run.id, run.sessionId));
@@ -201,7 +201,7 @@ async function withRecoveredRun<T>(
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
     });
-    const run = await bureauA.createRun({ message: 'Go.' });
+    const run = await bureauA.createRun({ agentName: 'bureau', message: 'Go.' });
     await crashed.reached;
     replayed = holdFirstTerminalRunCommit(
       await resolveStorage({ type: 'sqlite', path: databasePath }),

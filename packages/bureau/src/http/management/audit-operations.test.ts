@@ -60,10 +60,12 @@ async function seed(): Promise<Seeded> {
   });
   cleanups.push(() => opened.dispose());
   const alice = await opened.bureau.createRun({
+    agentName: 'bureau',
     message: `${TRANSCRIPT} from alice`,
     principal: OWNER.alice,
   });
   const bob = await opened.bureau.createRun({
+    agentName: 'bureau',
     message: `${TRANSCRIPT} from bob`,
     principal: OWNER.bob,
   });

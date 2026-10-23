@@ -653,7 +653,7 @@ describe('createBureauHandler catalog', () => {
       assets: { storage: createMemoryAssetStorage() },
     });
     try {
-      const run = await bureau.createRun({ message: 'hello' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForCondition(
         () => bureau.runEventFeeds.get(run.id) !== undefined,
         'expected the bureau to create the run feed',

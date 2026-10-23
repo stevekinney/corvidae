@@ -63,7 +63,11 @@ describe('durable steering across two Bureau processes', () => {
     });
     const bureauB = await openBureau(path);
     try {
-      const run = await bureauA.createRun({ message: 'go', principal: 'alice' });
+      const run = await bureauA.createRun({
+        agentName: 'bureau',
+        message: 'go',
+        principal: 'alice',
+      });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
       // B deletes the session; A learns of it from its poll and aborts the
       // run as its own deletion would, rather than letting it keep working.
@@ -118,7 +122,11 @@ describe('durable steering across two Bureau processes', () => {
     });
     const bureauB = await openBureau(path);
     try {
-      const run = await bureauA.createRun({ message: 'go', principal: 'alice' });
+      const run = await bureauA.createRun({
+        agentName: 'bureau',
+        message: 'go',
+        principal: 'alice',
+      });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
 
       // B pauses A's run. A learns of it from its own log poll, which the
@@ -212,7 +220,11 @@ describe('durable steering across two Bureau processes', () => {
     });
     const bureauB = await openBureau(path);
     try {
-      const run = await bureauA.createRun({ message: 'go', principal: 'alice' });
+      const run = await bureauA.createRun({
+        agentName: 'bureau',
+        message: 'go',
+        principal: 'alice',
+      });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
       const paused = await bureauA.submitSteeringCommand(run.sessionId, {
         principal: 'alice',
@@ -242,7 +254,11 @@ describe('durable steering across two Bureau processes', () => {
       const intervals = spyOn(globalThis, 'setInterval');
       const cleared = spyOn(globalThis, 'clearInterval');
       try {
-        const second = await bureauA.createRun({ message: 'again', principal: 'alice' });
+        const second = await bureauA.createRun({
+          agentName: 'bureau',
+          message: 'again',
+          principal: 'alice',
+        });
         for (let attempt = 0; attempt < 200 && generateCalls < 3; attempt += 1) await Bun.sleep(10);
         const pausedAgain = await bureauA.submitSteeringCommand(second.sessionId, {
           principal: 'alice',

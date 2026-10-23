@@ -128,7 +128,11 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
   it('refuses a fire into a recurring session another principal owns', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({ message: 'mine', principal: 'api-key:bob' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'mine',
+        principal: 'api-key:bob',
+      });
       await waitForReal(() => bureau.getRun(run.id)?.status !== 'running');
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
@@ -234,6 +238,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await entered.promise;
       await bureau.cancelSchedule(summary!.id);
       const created = await bureau.createRun({
+        agentName: 'bureau',
         message: 'bob got there first',
         sessionId: 'raced-recurring',
         principal: 'api-key:bob',

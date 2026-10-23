@@ -96,7 +96,7 @@ if (mode === 'running') {
     durableOwnership,
   });
 
-  const run = await bureau.createRun({ message: 'Start', principal: 'alice' });
+  const run = await bureau.createRun({ agentName: 'bureau', message: 'Start', principal: 'alice' });
   for (let attempt = 0; attempt < 400 && !stepOneStarted; attempt += 1) {
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
   }
@@ -135,7 +135,12 @@ const bureau = await createBureau({
   stopWhen: stopWhen.noToolCalls(),
 });
 const heldTerminalSave = seam.holdWrite(savesSessionAs('completed'));
-const run = await bureau.createRun({ message: 'Start', principal: 'alice', maximumSteps: 1 });
+const run = await bureau.createRun({
+  agentName: 'bureau',
+  message: 'Start',
+  principal: 'alice',
+  maximumSteps: 1,
+});
 await heldTerminalSave.reached;
 const endedSession = await bureau.getSession(run.sessionId);
 void seam

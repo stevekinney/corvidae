@@ -1437,14 +1437,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   readonly goals: BureauGoals<AgentNames<D>>;
 
   /**
-   * @deprecated Use {@link Bureau.run} with a catalog `RunnableAgent` instead
-   * (per-agent `generate`/tools on `createAgent`). A principal-attributed
-   * call migrates by passing {@link BureauRunOptions.principal}: since
-   * AB-241, `bureau.run` forwards it into `AgentRunContext.principal` and, on
-   * the durable branch, records it exactly as `createRun` records
-   * `request.principal`. Only a defined non-string `principal` is rejected
-   * (`BAD_REQUEST`). Not yet removed — see AB-242's decision record and the
-   * removal issue it names (AB-352).
+   * Creates a durable run of the catalog agent named by {@link CreateRunRequest.agentName}.
    *
    * COR-424: a request naming {@link CreateRunRequest.runCreationRequestId}
    * goes through the run-creation command ledger and resolves with a
@@ -2604,16 +2597,14 @@ export interface CreateRunRequest {
    * Bureau. The session's request context governs tool approvals, never the agent's
    * `executeOptions.requestContext`.
    *
-   * A named run needs only that agent's `generate`, so a Bureau with no Bureau-wide `generate`
-   * accepts it; an unnamed run on such a Bureau is refused with `NOT_CONFIGURED`. A durable named
-   * run recovers as its agent: one whose agent has left the catalog fails, and one whose
+   * The run uses that agent's own `generate`, tools, and stop condition. A durable run
+   * recovers as its agent: one whose agent has left the catalog fails, and one whose
    * definition revision changed logs a warning and resumes with the current definition.
    *
-   * Typed dispatch endpoints (webhook ingress, OpenAI-compat) require this
-   * field — callers must name the agent explicitly; there is no default-agent
-   * fallback at the door.
+   * Required: callers name the agent explicitly; there is no default-agent
+   * fallback.
    */
-  agentName?: string;
+  agentName: string;
   /**
    * The owner of record of this run (COR-718), and of the session it creates:
    * the authenticated principal that started it (e.g. `api-key:<id>`). It is

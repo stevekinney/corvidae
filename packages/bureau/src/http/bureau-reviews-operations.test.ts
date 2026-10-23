@@ -639,7 +639,11 @@ describe('the reviews operations against a real Bureau', () => {
       humanInput: true,
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
-    const run = await bureau.createRun({ message: 'park-me', principal: 'api-key:tester' });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'park-me',
+      principal: 'api-key:tester',
+    });
     await waitForCondition(
       () => bureau.listPendingReviews().some((review) => review.runId === run.id),
       'expected requestHumanInput to park and surface a pending review',
@@ -754,7 +758,11 @@ describe('the reviews operations against a real Bureau', () => {
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     try {
-      const run = await bureau.createRun({ message: 'Charge it', principal: 'api-key:tester' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Charge it',
+        principal: 'api-key:tester',
+      });
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',

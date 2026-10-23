@@ -242,7 +242,11 @@ describe('a recovered child run', () => {
       });
     const first = await open();
     cleanups.push(() => first.dispose());
-    const parent = await first.createRun({ message: 'parent', principal: PRINCIPAL });
+    const parent = await first.createRun({
+      agentName: 'bureau',
+      message: 'parent',
+      principal: PRINCIPAL,
+    });
     await waitForCondition(
       () => first.listPendingReviews().some((review) => review.runId === parent.id),
       'the parent parks',

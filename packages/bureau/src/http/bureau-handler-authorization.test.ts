@@ -291,6 +291,7 @@ async function openBureau(id = 'authorization-bureau') {
 /** A parked run, and the id of the review it is waiting on. */
 async function parkRun(bureau: Bureau, principal: string | undefined, message = 'park me') {
   const run = await bureau.createRun({
+    agentName: 'bureau',
     message,
     ...(principal === undefined ? {} : { principal }),
   });

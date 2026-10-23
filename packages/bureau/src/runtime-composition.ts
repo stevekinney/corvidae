@@ -3856,6 +3856,7 @@ async function buildRuntimeComposition(
     const sessionAgent = await resolveRecoveredSessionAgent(session, runId, agentName);
     const runRuntime = await createRunRuntime(
       {
+        agentName: 'bureau',
         message: typeof message === 'string' ? message : '',
         sessionId: session.id,
         // Thread the recovered run's id so the memory-persist hook's idempotency

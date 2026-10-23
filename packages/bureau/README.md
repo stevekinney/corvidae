@@ -81,7 +81,7 @@ const bureau = await createBureau({
   storage: { type: 'sqlite', path: 'bureau.sqlite' },
 });
 
-const run = await bureau.createRun({ message: 'Summarize the Q3 report.' });
+const run = await bureau.createRun({ agentName: 'bureau', message: 'Summarize the Q3 report.' });
 console.log(run.status); // "running"
 
 // Wait for completion via the live event surface. A run records many actions
@@ -895,6 +895,7 @@ const bureau = await createBureau({
 });
 
 const run = await bureau.createRun({
+  agentName: 'bureau',
   message: 'Book the 9:40 to Denver.',
   principal: 'alice', // the run's owner of record, whose partition its memory is written to
   sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it

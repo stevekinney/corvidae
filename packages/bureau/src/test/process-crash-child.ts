@@ -135,7 +135,11 @@ async function parkAfterStepZero(): Promise<void> {
     process.exit(4);
   }
 
-  const run = await bureau.createRun({ message: 'crash harness run', principal: 'alice' });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'crash harness run',
+    principal: 'alice',
+  });
   const session = { kind: 'session', id: run.sessionId } as const;
 
   await pollUntil('generate to be invoked at step 1', () => reachedStepOne);
@@ -210,6 +214,7 @@ async function chargeThenCrash(): Promise<void> {
     toolbox,
   });
   const run = await bureau.createRun({
+    agentName: 'bureau',
     message: 'crash harness charge',
     principal: 'alice',
     sessionId: SESSION_ID,
@@ -252,6 +257,7 @@ async function memoryWriteThenCrash(): Promise<void> {
     memory,
   });
   const run = await bureau.createRun({
+    agentName: 'bureau',
     message: 'crash harness memory',
     principal: 'alice',
     sessionId: SESSION_ID,
@@ -276,8 +282,16 @@ async function twoParkedRuns(): Promise<void> {
     },
     toolbox: createToolbox([createNextTool()]),
   });
-  const x = await bureau.createRun({ message: 'crash harness run X', principal: 'alice' });
-  const y = await bureau.createRun({ message: 'crash harness run Y', principal: 'alice' });
+  const x = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'crash harness run X',
+    principal: 'alice',
+  });
+  const y = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'crash harness run Y',
+    principal: 'alice',
+  });
   await pollUntil('both runs to invoke generate at step 1', () => reachedStepOne.size === 2);
   writeMarker({ xRunId: x.id, yRunId: y.id });
 }
@@ -313,7 +327,11 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     toolbox: createToolbox([]),
     humanInput: true,
   });
-  const run = await bureau.createRun({ message: 'crash harness park', principal: 'alice' });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'crash harness park',
+    principal: 'alice',
+  });
   await pollUntil('the run to surface its human-wait review', () =>
     bureau.listPendingReviews().some((review) => review.runId === run.id),
   );

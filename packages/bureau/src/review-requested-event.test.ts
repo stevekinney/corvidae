@@ -52,7 +52,11 @@ describe('review.requested', () => {
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
     try {
-      const run = await bureau.createRun({ message: 'park-me', principal: 'api-key:tester' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'park-me',
+        principal: 'api-key:tester',
+      });
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
         'expected the run to park',
@@ -124,7 +128,11 @@ describe('review.requested', () => {
       stopWhen: stopWhen.noToolCalls(),
     });
     try {
-      const run = await bureau.createRun({ message: 'charge', principal: 'api-key:tester' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'charge',
+        principal: 'api-key:tester',
+      });
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
         'expected the approval to be pending',

@@ -99,7 +99,7 @@ async function withBureau(
 
 /** Creates a run and waits for it to finish. */
 async function settledRun(bureau: Bureau, message = 'work') {
-  const created = await bureau.createRun({ message, principal: 'alice' });
+  const created = await bureau.createRun({ agentName: 'bureau', message, principal: 'alice' });
   expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
   return created;
 }
@@ -316,7 +316,11 @@ describe('taskRetention', () => {
     };
     await withBureau(
       async ({ bureau, at }) => {
-        const created = await bureau.createRun({ message: 'fails', principal: 'alice' });
+        const created = await bureau.createRun({
+          agentName: 'bureau',
+          message: 'fails',
+          principal: 'alice',
+        });
         expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'error')).toBe(true);
 
         // `run.error` is followed by `run.completed`, which closes the run and
@@ -339,7 +343,11 @@ describe('taskRetention', () => {
       async ({ bureau, at }) => {
         const settled = await settledRun(bureau, 'short');
         hold.on = true;
-        const running = await bureau.createRun({ message: 'long', principal: 'alice' });
+        const running = await bureau.createRun({
+          agentName: 'bureau',
+          message: 'long',
+          principal: 'alice',
+        });
 
         at(365 * DAY_MS);
         await bureau.runDurableMaintenance();
@@ -376,6 +384,7 @@ describe('taskRetention', () => {
     await withBureau(
       async ({ bureau, at }) => {
         const request = {
+          agentName: 'bureau',
           message: 'Summarize the quarter.',
           principal: 'alice',
           runCreationRequestId: 'request-1',
@@ -449,7 +458,11 @@ describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
       taskRetention: { olderThan: DAY_MS },
     });
     try {
-      const created = await bureau.createRun({ message: 'work', principal: 'alice' });
+      const created = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'work',
+        principal: 'alice',
+      });
       expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
 
       // Inside the window: nothing to maintain.
