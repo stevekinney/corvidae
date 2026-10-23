@@ -29,6 +29,27 @@ export {
   type HttpDeliveryCredential,
 } from './http-delivery-adapter.ts';
 export {
+  A2APeerError,
+  ExtensionSupportRequiredError,
+  type A2APeerArtifact,
+  type A2APeerCard,
+  type A2APeerClient,
+  type A2APeerErrorCode,
+  type A2APeerOutcome,
+  type A2APeerPart,
+  type A2APeerProvenance,
+  type A2APeerSendRequest,
+  type A2APeerStopState,
+  type A2APeerTask,
+  type A2APeerTaskState,
+  type A2APeerUpdate,
+} from './peer-client-types.ts';
+export {
+  createA2APeerClient,
+  type A2APeerChallenge,
+  type A2APeerClientOptions,
+} from './peer-client.ts';
+export {
   DEFAULT_PUSH_DELIVERY_INTERVAL_MS,
   startPushDelivery,
   type StartPushDeliveryOptions,

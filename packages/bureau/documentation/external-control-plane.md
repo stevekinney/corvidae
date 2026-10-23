@@ -476,7 +476,15 @@ Bureau manages many operatives, and they coordinate in two ways.
 
 Peers are a trust boundary. A message or artifact from a peer is untrusted input whose provenance is the peer's Agent Card identity, and it enters memory only as untrusted evidence with that provenance. Nothing from memory, transcripts, or other tasks reaches a peer unless the operative puts it in the outgoing message.
 
-This supersedes COR-807, which rejected direct peer messaging for lack of a consumer. The [runtime contracts](../../../documentation/runtime-contracts.md#parent-child-and-peer-communication) peer paragraph stays accurate until COR-905 ships and is updated in that change.
+This supersedes COR-807, which rejected direct peer messaging for lack of a consumer. The [runtime contracts](../../../documentation/runtime-contracts.md#parent-child-and-peer-communication) peer paragraph describes what shipped with COR-905.
+
+As built, the client is `createA2APeerClient` in `@lostgradient/weft/a2a`, and Operative's `createPeerCallTool` is the typed surface an operative calls it through.
+
+- **Card.** The card is read from `/.well-known/agent-card.json`, cached per client for five minutes (`cardCacheMs`), and read again after an `unauthorized`, `version-not-supported`, `extension-support-required` or `content-type-not-supported` failure. A card that marks an extension `required` that the client does not list in `supportedExtensions` is refused with `ExtensionSupportRequiredError` before any RPC. The client selects the first JSON-RPC interface that speaks A2A 1.x on the card's own origin (or one in `allowedInterfaceOrigins`), checks the card and interface URLs against an optional egress policy, and sends `A2A-Version: 1.0` and the active extensions on every request. REST and gRPC interfaces are not selected.
+- **Transport.** A card with `capabilities.streaming` is followed over `SendStreamingMessage`; a dropped stream reconnects with `SubscribeToTask`, and a stream that keeps closing without progress falls back to polling `GetTask` with doubling delays. Other cards are polled. Push notifications are not used. Retryable failures (network errors, HTTP 5xx and 429, a request that does not start answering within `requestTimeoutMs`) retry up to `attempts` times with the same `messageId`. A task that does not stop within `taskTimeoutMs` is canceled and the call fails with `timeout`.
+- **Interruptions.** `input-required` and `auth-required` are distinct outcomes that leave the remote task open; sending again with its `taskId` continues it. An HTTP 401 or 403 is `unauthorized` after `authenticate` has had one chance to supply credentials for the challenge.
+- **Trust.** Outcomes are marked `untrusted` and carry the peer's card name, version, URL, and task id. A `url` part is kept as a reference and never fetched, `raw` bytes are never carried, and an artifact keeps at most `artifactLimit` characters.
+- **Delivery.** A call is synchronous within the tool call and persists nothing, so a restart does not resume it and no restart safety is claimed. Durable peer delivery over the outbox is tracked separately.
 
 ## Changes to Weft
 
