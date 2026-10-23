@@ -6,36 +6,13 @@
  * carries it from the real tool with nothing injected; the answer then travels the real path: the
  * A2A continuation, `bureau.tasks.respond`, `resolveReview`, and the engine's signal.
  */
-import { Message, type Task, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
-import { ServerCallContext } from '@a2a-js/sdk/server';
-import {
-  createAgent,
-  type GenerateContext,
-  type GenerateFunction,
-  type HumanInputSchema,
-} from '@lostgradient/operative';
-import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { waitForCondition } from '../test';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
-import type { TaskView } from '../task-registry.ts';
-import {
-  A2A_SEND_LEDGER_KEY_PREFIX,
-  type A2ASendClaim,
-  type A2ASendResult,
-  BureauA2AUser,
-  createBureauA2ARequestHandler,
-} from './a2a-request-handler.ts';
-import {
-  deploySchema,
-  open,
-  parksThenAnswers,
-  statusOf,
-  userMessage,
-} from './a2a-input-form.test-support.ts';
+import { deploySchema, open, statusOf, userMessage } from './a2a-input-form.test-support.ts';
 import { respondToTask } from './management/tasks-respond-operation.ts';
 
 describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
