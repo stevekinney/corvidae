@@ -30,5 +30,7 @@ export {
   MCP_PROTOCOL_VERSION,
 } from './protocol.ts';
 export type { McpServerContext, McpServerRegistrar } from './server.ts';
+export { createOperationMcpMount } from './operation-tools.ts';
+export type { OperationMcpMountOptions } from './operation-tools.ts';
 export { runMcpStdioSession } from './stdio.ts';
 export type { McpStdioAdmission, McpStdioSessionOptions, McpStdioSessionResult } from './stdio.ts';

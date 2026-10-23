@@ -134,8 +134,13 @@ export function generateOpenRpcDocument(options: OpenRpcOptions): Record<string,
       registryProvidesDiscover = true;
     }
     const method = buildMethod(operation);
-    if (operation.mcpExposable && options.includeMcpMetadata !== false) {
-      const metadata = buildMethodMcpMetadata(operation, options.mcpTools);
+    // Only an engine-served workflow tool (with `mcpTool`) has a live tool to resolve here.
+    if (operation.mcpTool !== undefined && options.includeMcpMetadata !== false) {
+      const metadata = buildMethodMcpMetadata(
+        operation.name,
+        operation.mcpTool.workflowType,
+        options.mcpTools,
+      );
       method['x-weft-mcp'] = metadata;
       mcpTools.push({ toolName: metadata.toolName });
     }
@@ -192,16 +197,11 @@ function buildDocumentMcpMetadata(
 }
 
 function buildMethodMcpMetadata(
-  operation: ErasedOperation,
+  operationName: string,
+  workflowType: string,
   mcpTools: OpenRpcOptions['mcpTools'],
 ): OpenRpcMcpMethodMetadata {
-  const workflowType = operation.mcpTool?.workflowType;
-  if (workflowType === undefined) {
-    throw new Error(
-      `openrpc: operation ${operation.name} is mcpExposable but lacks mcpTool.workflowType metadata`,
-    );
-  }
-  const toolName = resolveLiveMcpToolName(operation.name, workflowType, mcpTools);
+  const toolName = resolveLiveMcpToolName(operationName, workflowType, mcpTools);
   return {
     workflowType,
     toolName,

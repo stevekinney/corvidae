@@ -1,4 +1,4 @@
-import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -120,6 +120,40 @@ describe('the identity of every request', () => {
     });
     const body = (await response.json()) as { result?: { reviews: unknown[] } };
     expect(body.result?.reviews).toEqual([]);
+  });
+
+  test('Bureau serves its MCP tools under /bureau/mcp, as the local caller', async () => {
+    const host = await start();
+    // A 2025-era client on the SDK's stateless legacy lane: each request is one POST.
+    const mcp = async (id: number, method: string, params: Record<string, unknown>) => {
+      const response = await fetch(new URL('/bureau/mcp', host.url), {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'mcp-protocol-version': MCP_LEGACY_PROTOCOL_VERSION,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+      });
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      const data = text.startsWith('{') ? text : (text.match(/^data: (.*)$/m)?.[1] ?? 'null');
+      return JSON.parse(data) as { result?: Record<string, unknown> };
+    };
+    const initialized = await mcp(1, 'initialize', {
+      protocolVersion: MCP_LEGACY_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: 'interborough-test', version: '1.0.0' },
+    });
+    expect(initialized.result?.['serverInfo']).toMatchObject({ name: 'bureau' });
+    const listed = await mcp(2, 'tools/list', {});
+    const tools = (listed.result?.['tools'] ?? []) as Array<{ name: string }>;
+    const names = tools.map((tool) => tool.name);
+    expect(names).toContain('bureau.reviews.list');
+    // Listing reviews needs `bureau.reviews:read`, which the local caller's grant supplies.
+    const called = await mcp(3, 'tools/call', { name: 'bureau.reviews.list', arguments: {} });
+    expect(called.result?.['isError']).toBeFalsy();
+    expect(called.result?.['structuredContent']).toEqual({ reviews: [] });
   });
 
   test('Bureau owns what the local caller creates as anonymous:local', async () => {
