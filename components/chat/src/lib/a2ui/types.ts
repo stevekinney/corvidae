@@ -100,4 +100,12 @@ export type A2uiSurfaceProps = {
   onDiagnostic?: ((diagnostic: A2uiDiagnostic) => void) | undefined;
   /** The locale the formatting functions use; the runtime's default when omitted. */
   locale?: string | undefined;
+  /**
+   * The IANA time zone (`America/New_York`) a DateTimeInput shows a zoned
+   * value (`2025-12-15T17:00:00Z`) in. A server-rendering host passes the
+   * user's zone so the server's output and the hydrated page agree. When it is
+   * omitted, a zoned value shows in UTC until the surface mounts and in the
+   * runtime's zone after that, so hydration still matches the server.
+   */
+  timeZone?: string | undefined;
 };

@@ -11,6 +11,7 @@ import {
   stringify,
 } from './functions.ts';
 import type { A2uiRenderContext } from './render-context.ts';
+import { compileSafePattern } from './safe-regexp.ts';
 import type { A2uiComponent, A2uiJsonValue } from './types.ts';
 
 /** One child to render: a component id and the scope its relative paths resolve in. */
@@ -170,12 +171,18 @@ export function toJsonValue(value: unknown): A2uiJsonValue {
   return null;
 }
 
-/** Strips common Markdown markers, for text that renders inline. */
+/**
+ * Strips common Markdown markers, for text that renders inline. As in
+ * CommonMark, `*` emphasizes inside a word but `_` does not, so `save_file_as`
+ * keeps its underscores.
+ */
 export function plainText(markdown: string): string {
   return markdown
     .replace(/^#{1,6}\s+/gm, '')
-    .replace(/(\*\*|__)(.*?)\1/g, '$2')
-    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/(?<![\p{L}\p{N}_])__(.+?)__(?![\p{L}\p{N}_])/gu, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/(?<![\p{L}\p{N}_])_(.+?)_(?![\p{L}\p{N}_])/gu, '$1')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
 }
@@ -213,15 +220,54 @@ function localParts(date: Date): { date: string; time: string } {
   };
 }
 
+/** A date's calendar date and time in `timeZone`, or in the runtime's zone without one. */
+function zonedParts(date: Date, timeZone: string | undefined): { date: string; time: string } {
+  if (timeZone === undefined) return localParts(date);
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+  } catch {
+    // A zone the runtime does not know falls back to the runtime's own.
+    return localParts(date);
+  }
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((entry) => entry.type === type)?.value ?? '00';
+  return {
+    date: `${part('year')}-${part('month')}-${part('day')}`,
+    time: `${part('hour')}:${part('minute')}`,
+  };
+}
+
+/**
+ * The zone a surface shows zoned values in: the host's, else UTC until the
+ * surface has mounted (as the server rendered it), else the runtime's.
+ */
+export function displayTimeZone(
+  timeZone: string | undefined,
+  mounted: boolean,
+): string | undefined {
+  return timeZone ?? (mounted ? undefined : 'UTC');
+}
+
 /**
  * An ISO 8601 value in the form a Cinder date or time control takes: a date
  * (`YYYY-MM-DD`) for `day`, a local date and time (`YYYY-MM-DDTHH:mm`) for
- * `minute`, a time (`HH:mm`) for `time`. A zoned value is shown in local time.
- * `undefined` when the value has nothing the control can show.
+ * `minute`, a time (`HH:mm`) for `time`. A zoned value is shown in `timeZone`,
+ * or the runtime's zone without one. `undefined` when the value has nothing
+ * the control can show.
  */
 export function dateTimeForControl(
   value: unknown,
   control: 'day' | 'minute' | 'time',
+  timeZone?: string,
 ): string | undefined {
   if (typeof value !== 'string' || value === '') return undefined;
   let date: string | undefined;
@@ -239,20 +285,47 @@ export function dateTimeForControl(
   } else {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return undefined;
-    ({ date, time } = localParts(parsed));
+    ({ date, time } = zonedParts(parsed, timeZone));
   }
   if (control === 'time') return time;
   if (control === 'day') return date;
   return date === undefined ? undefined : `${date}T${time ?? '00:00'}`;
 }
 
-/** Whether `value` matches `pattern`, or `undefined` when the pattern is not a valid one. */
+/**
+ * A Slider's step: 1 for a range of 100 or more, and a power of ten a
+ * hundredth of the range below that, so a 0-to-1 slider moves by 0.01
+ * rather than snapping to its ends.
+ */
+export function sliderStep(min: number, max: number): number {
+  const span = max - min;
+  if (!(span > 0)) return 1;
+  return Math.min(1, 10 ** Math.floor(Math.log10(span / 100)));
+}
+
+/**
+ * Whether a time value falls outside `min` or `max`, each an ISO 8601 time or
+ * date-time whose time part bounds it. A bound that has no time is ignored.
+ */
+export function timeOutOfRange(
+  value: unknown,
+  min: string,
+  max: string,
+  timeZone?: string,
+): boolean {
+  const time = dateTimeForControl(value, 'time', timeZone);
+  if (time === undefined) return false;
+  const lower = dateTimeForControl(min, 'time', timeZone);
+  const upper = dateTimeForControl(max, 'time', timeZone);
+  return (lower !== undefined && time < lower) || (upper !== undefined && time > upper);
+}
+
+/**
+ * Whether `value` matches `pattern`, run in linear time, or `undefined` when
+ * the pattern is not a valid one or needs backtracking.
+ */
 export function matchesPattern(pattern: string, value: string): boolean | undefined {
-  try {
-    return new RegExp(pattern).test(value);
-  } catch {
-    return undefined;
-  }
+  return compileSafePattern(pattern)?.test(value);
 }
 
 /** An A2UI icon name as words: `shoppingCart` → `Shopping cart`. */

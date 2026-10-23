@@ -357,6 +357,8 @@ export interface MemoryRetentionSweep {
   readonly deletionIds: readonly string[];
   readonly prunedEvents: number;
   readonly prunedReceipts: number;
+  /** Pending-derivation ledger entries retired because their record was never stored. */
+  readonly prunedDerivations: number;
 }
 
 export interface MemoryDeletionPropagationRequest {

@@ -184,13 +184,18 @@ export function choicePickerControl(
   return displayStyle === 'checkbox' ? 'radio-group' : 'select';
 }
 
-/** The Cinder control a DateTimeInput renders as. */
+/**
+ * The Cinder control a DateTimeInput renders as, or `none` when it enables
+ * neither a date nor a time (both default to false), so there is nothing to pick.
+ */
 export function dateTimeControl(
   enableDate: boolean,
   enableTime: boolean,
 ):
   | { readonly control: 'date-picker'; readonly granularity: 'day' | 'minute' }
-  | { readonly control: 'time-field' } {
+  | { readonly control: 'time-field' }
+  | { readonly control: 'none' } {
+  if (!enableDate && !enableTime) return { control: 'none' };
   if (enableTime && !enableDate) return { control: 'time-field' };
   return { control: 'date-picker', granularity: enableTime ? 'minute' : 'day' };
 }
