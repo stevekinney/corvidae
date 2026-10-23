@@ -66,7 +66,7 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
         });
       try {
         const schedule = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'Write the digest.',
           spec: '1s',
           principal: 'api-key:alice',
@@ -74,19 +74,19 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
         expect(schedule).toBeDefined();
 
         const hasWritten = async (): Promise<boolean> => {
-          const listed = await memory.list(as('api-key:alice'), { collection: 'researcher' });
+          const listed = await memory.list(as('api-key:alice'), { collection: 'default' });
           return listed.length > 0;
         };
         const written = await waitForReal(hasWritten, FIRE_WAIT_MS);
         await bureau.cancelSchedule(schedule!.id);
 
         expect(written).toBe(true);
-        const [stored] = await memory.list(as('api-key:alice'), { collection: 'researcher' });
+        const [stored] = await memory.list(as('api-key:alice'), { collection: 'default' });
         expect(stored?.content).toBe('The digest is ready.');
         // The fire's run acts for its owner, so the scheduler's own identity owns nothing.
-        expect(await memory.list(as('system:scheduler'), { collection: 'researcher' })).toEqual([]);
-        expect(await memory.list(as('researcher'), { collection: 'researcher' })).toEqual([]);
-        expect(await memory.list(as('api-key:bob'), { collection: 'researcher' })).toEqual([]);
+        expect(await memory.list(as('system:scheduler'), { collection: 'default' })).toEqual([]);
+        expect(await memory.list(as('default'), { collection: 'default' })).toEqual([]);
+        expect(await memory.list(as('api-key:bob'), { collection: 'default' })).toEqual([]);
       } finally {
         await bureau.dispose();
       }

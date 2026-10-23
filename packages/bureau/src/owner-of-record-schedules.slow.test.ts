@@ -51,13 +51,13 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const owned = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'owned',
         spec: '1h',
         principal: 'api-key:alice',
       });
       const unowned = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'unowned',
         spec: '1h',
       });
@@ -80,7 +80,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const completed: ScheduleCompletedEvent[] = [];
       bureau.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'tick',
         spec: '1s',
         principal: 'api-key:alice',
@@ -114,7 +114,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const completed: ScheduleCompletedEvent[] = [];
       bureau.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'tick',
         spec: '1s',
       });
@@ -142,7 +142,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'tick',
         spec: '1s',
         sessionId: run.sessionId,
@@ -192,7 +192,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const completed: ScheduleCompletedEvent[] = [];
       first.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
       const summary = await first.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'tick',
         spec: '1s',
         principal: 'api-key:alice',
@@ -239,7 +239,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'racing tick',
         spec: '1s',
         sessionId: 'raced-recurring',
@@ -278,7 +278,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await bureau.sessionStore?.save(
         createAgentSession({
           id: 'plain-session-with-goal',
-          agentName: 'researcher',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: 'plain-session-with-goal' }),
           metadata: { goalRunId: 'some-goal' },
         }),
@@ -286,7 +286,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'tick',
         spec: '1s',
         sessionId: 'plain-session-with-goal',
