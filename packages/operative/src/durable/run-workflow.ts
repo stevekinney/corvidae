@@ -234,7 +234,11 @@ export function createRunWorkflow(
           steeringBoundary: runDepsFrom(ctx.services).options.steering?.getAppliedFloor?.() ?? 0,
         });
         cursor = { ...cursor, lastAppliedConfigVersion: capturedFloor ?? 0 };
-        let finishReason: FinishReason = 'maximum-steps';
+        // The reason the run ended with, set only where it ends (COR-1627): a stop, an abort, an
+        // error, or the loop running out of steps. It is `undefined` while the loop runs and
+        // while the run is parked, so a park is never read as any of those, and a run that
+        // throws a step-limit error while a park is pending is not a run that ran out of steps.
+        let finishReason: FinishReason | undefined;
         let errorMessage: string | undefined;
         let errorKind: AgentRunErrorKind | undefined;
         let errorCode: AgentRunErrorCode | undefined;
@@ -242,7 +246,7 @@ export function createRunWorkflow(
         let schemaValidation: { success: boolean; error?: string | undefined } | undefined;
         let output: unknown;
         let tripwire: AgentRunWorkflowResult['tripwire'];
-        // True when a terminal outcome (stop/abort/error) broke the loop early.
+        // True when a terminal outcome (stop/abort/error) or a park broke the loop early.
         // False means the loop exhausted `maximumSteps` naturally — the only case
         // where `onMaximumSteps` should run, mirroring `executeLoop` exactly.
         let stoppedEarly = false;
@@ -345,7 +349,11 @@ export function createRunWorkflow(
               pendingHumanWait = stepResult.pendingHumanWait;
               pendingWakeup = undefined;
               humanWaitParkOrdinal = Math.max(0, humanWaitParks - 1);
+              // Only a step that stopped the run on the approval settles after the answer. A
+              // step the stop conditions let continue past an `action_required` row continues
+              // after the answer too, as the in-process loop continues past that row (COR-1627).
               settleAfterAnswer =
+                stepResult.outcome.kind === 'stop' &&
                 stepResult.record?.results.some(
                   (result) => result.outcome === 'action_required',
                 ) === true;
@@ -467,14 +475,16 @@ export function createRunWorkflow(
 
           // === onMaximumSteps tail — parity with executeLoop ===
           // When the loop exhausted `maximumSteps` without a terminal outcome (stop
-          // / abort / error), call `options.onMaximumSteps` exactly once, mirroring
-          // executeLoop lines 141-158. Wrapped in `ctx.memo` so a crash-then-
-          // recover does NOT re-charge the LLM call: Weft short-circuits the memo
-          // to its checkpointed result on replay, just as it does for per-step
-          // memos. `finishReason` stays `'maximum-steps'` regardless of the handler
-          // return value — matching the in-memory path. On error, dispatch
+          // / abort / error) or a park, the run ran out of steps: that is decided here,
+          // at the loop's exit, and nowhere earlier (COR-1627). Then call
+          // `options.onMaximumSteps` exactly once, mirroring executeLoop. Wrapped in
+          // `ctx.memo` so a crash-then-recover does NOT re-charge the LLM call: Weft
+          // short-circuits the memo to its checkpointed result on replay, just as it
+          // does for per-step memos. `finishReason` stays `'maximum-steps'` whatever
+          // the handler returns — matching the in-memory path. On error, dispatch
           // RunErrorEvent (parity with executeLoop) and short-circuit the return.
           if (!stoppedEarly) {
+            finishReason = 'maximum-steps';
             const finalStep = cursor.step;
             const tail = yield* ctx.memo('on-maximum-steps', async () => {
               const deps = runDepsFrom(ctx.services);
@@ -575,6 +585,13 @@ export function createRunWorkflow(
         }
 
         ctx.setAttribute('runId', runId);
+
+        // The loop ends with a reason or parks, and a park either continues the loop or returns
+        // after a stop, so no path reaches here without one. A path that did would be a defect
+        // in this body, and failing the run is how it is reported rather than a reason invented.
+        if (finishReason === undefined) {
+          throw new Error(`Durable run "${runId}" ended without a finish reason.`);
+        }
 
         return {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,

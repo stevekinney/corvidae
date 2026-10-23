@@ -7,7 +7,12 @@
  * every ledgered scenario here runs a durable bureau over SQLite.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, type GenerateFunction, waitForCondition } from '@lostgradient/operative';
+import {
+  createAgent,
+  type GenerateFunction,
+  stopWhen,
+  waitForCondition,
+} from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -69,6 +74,7 @@ async function withDurableBureau(
       }),
     },
     generate: held.generate,
+    stopWhen: stopWhen.noToolCalls(),
     toolbox: createToolbox<readonly Tool[]>([]),
     runtime,
     storage: fixture.configuration,

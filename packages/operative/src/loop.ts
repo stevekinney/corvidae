@@ -328,6 +328,11 @@ async function executeLoopBody(
     }
   }
 
+  // COR-1627: a run that stops at its step limit is a failure, so it announces itself with
+  // `run.error` before `run.completed`, as every other failure does. `makeCompletedResult` carries
+  // the same error on the result and runs `onRunError` once.
+  const maximumStepsError = new MaximumStepsExceededError(maximumSteps);
+  emitter?.dispatch(new RunErrorEvent(runState.steps.length, maximumStepsError, 'policy'));
   return makeCompletedResult(
     runState,
     conversation,
@@ -338,7 +343,7 @@ async function executeLoopBody(
     undefined,
     undefined,
     costEstimation,
-    new MaximumStepsExceededError(maximumSteps),
+    maximumStepsError,
     hookTracker,
     deps.runtime,
   );

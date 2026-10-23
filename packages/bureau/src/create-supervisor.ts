@@ -6,7 +6,11 @@
  */
 
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import type { AgentRunContext, RunResult } from '@lostgradient/operative';
+import {
+  type AgentRunContext,
+  isFailureFinishReason,
+  type RunResult,
+} from '@lostgradient/operative';
 
 import type { AgentDefinitions, AgentNames, BureauAgentCatalog } from './agent-catalog';
 import type {
@@ -232,17 +236,9 @@ export function createSupervisor<D extends AgentDefinitions>(
   };
 }
 
-/** The subset of `FinishReason` values that indicate an unsuccessful run. */
-const FAILURE_FINISH_REASONS: ReadonlySet<RunResult['finishReason']> = new Set([
-  'error',
-  'aborted',
-  'budget-exceeded',
-  'elicitation-denied',
-  'tripwire',
-]);
-
+/** An unsuccessful run: a failure finish reason (COR-1627), or an abort. */
 function isFailureResult(result: RunResult): boolean {
-  return FAILURE_FINISH_REASONS.has(result.finishReason);
+  return isFailureFinishReason(result.finishReason) || result.finishReason === 'aborted';
 }
 
 /** Every `FinishReason` — success and failure alike — a real `RunResult` can carry. */

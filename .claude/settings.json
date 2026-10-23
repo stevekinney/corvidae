@@ -80,6 +80,14 @@
     ],
     "PreToolUse": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/chef/context-ceiling.ts"
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {

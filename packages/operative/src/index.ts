@@ -523,6 +523,7 @@ export {
 // AB-10 — workflow versioning for in-flight durable runs
 export * from './durable';
 export { WorkflowVersionMismatchEvent } from './events';
+export { finishReasonOfError, isFailureFinishReason } from './finish-reason';
 export { composeGenerate, createFallbackGenerate } from './generate-middleware';
 export * from './guardrails';
 export * from './hooks';

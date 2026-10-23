@@ -157,6 +157,66 @@ function fake(world: World = {}) {
 }
 
 describe('mergeGate', () => {
+  describe('main health', () => {
+    const redHead = 'e'.repeat(40);
+    function writeHealth(exitCode: number) {
+      options.healthFile = join(sandbox, 'tmp', 'main-health.json');
+      mkdirSync(join(sandbox, 'tmp'), { recursive: true });
+      writeFileSync(
+        options.healthFile,
+        JSON.stringify({
+          runs: [{ head: redHead, exitCode, time: 't', command: 'bun run validate' }],
+          fixes: [],
+        }),
+      );
+    }
+    /** `fake`, plus a first-parent history that holds the validated head. */
+    function withHistory(history: string[] = [BASE, redHead]) {
+      const world = fake();
+      const inner = world.runner;
+      const runner: Runner = (command, runnerOptions) =>
+        command[1] === 'rev-list'
+          ? { code: 0, stdout: `${history.join('\n')}\n`, stderr: '' }
+          : inner(command, runnerOptions);
+      return { ...world, runner };
+    }
+
+    test('refuses to merge while the last batch validate on main failed', () => {
+      writeHealth(1);
+      const { runner, merged, posted } = withHistory();
+      const report = mergeGate(options, { runner });
+      expect(report.failedStep).toBe('main-health');
+      expect(report.detail).toContain('--fixes-main');
+      expect(merged() || posted()).toBe(false);
+    });
+
+    test('lets the declared fix through, and records that it did', () => {
+      writeHealth(1);
+      options.fixesMain = true;
+      const { runner } = withHistory();
+      const report = mergeGate(options, { runner, now: () => new Date('2026-10-23T00:00:00Z') });
+      expect(report.failedStep).toBeNull();
+      expect(report.fixesMain).toBe(true);
+      expect(JSON.parse(readFileSync(options.healthFile as string, 'utf8')).fixes).toEqual([
+        { pr: 12, time: '2026-10-23T00:00:00.000Z', blockedHead: redHead },
+      ]);
+    });
+
+    test('does not mark a pull request as the fix when main is green', () => {
+      writeHealth(0);
+      options.fixesMain = true;
+      const report = mergeGate(options, { runner: withHistory().runner });
+      expect(report.failedStep).toBeNull();
+      expect(report.fixesMain).toBeUndefined();
+    });
+
+    test('a failure at a head that is not on main does not block', () => {
+      writeHealth(1);
+      const report = mergeGate(options, { runner: withHistory([BASE]).runner });
+      expect(report.failedStep).toBeNull();
+    });
+  });
+
   test('runs the nine steps in order and reports the merged, tree-equal result', () => {
     const { runner, calls } = fake();
     const report = mergeGate(options, { runner });

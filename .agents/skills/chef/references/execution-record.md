@@ -5,6 +5,7 @@ Use one current work-history note as the durable orchestration record, with a sh
 Keep the note readable in one sitting, because a resuming coordinator reads it whole. On a measured four-day program run, an append-only note reached 1 MB, about a quarter of a context window.
 
 - **The note holds current state:** identity, the batch table, open pull requests, live workers, blockers, the next executable action, and a decision history of one line per decision. It is rewritten in place at each batch transition and stays under about 300 lines.
+- **Packets carry the repository facts:** before dispatching, write one compact packet per area to `<main checkout>/tmp/chef/packets/<area>.md` (exact paths, signatures and line numbers that matter, commands, settled rules), link it from every worker charter, and update it when a merge changes what it describes. `scripts/chef/packet.ts status <area>` prints its age and the commits that touched its paths since it was written.
 - **A sibling log takes the detail:** timestamped events, raw evidence summaries, and correction narratives go to `<note name>-log.md` beside the note, which is appended (with `scripts/chef/note.ts log`) and searched, never read whole. Rewrite the state section with `scripts/chef/note.ts state` and a batch-table cell with `note.ts row`, so a failed write cannot truncate the note. Cite the log from the note by timestamp instead of copying it.
 
 ## Run record
@@ -53,6 +54,9 @@ Primary reviewer and inherited correction-attempt counts:
 Merge gate (corvidae: `bun run check` per pull request, run shared, launched with `scripts/chef/gate-run.ts run`; a full `validate` only for a one-way door, lock or concurrency infrastructure, or `turbo.json` and root scripts, and the coordinator merges those):
 Merge command with every path filled in (`bun scripts/chef/merge-gate.ts ... --usage-log <file> --transcript <path>`), or "coordinator merges" with the reason:
 Parallel-run limits (AGENTS.md "Parallel runs"): at most three sessions or workers on the host; at most one full validate queued per session, and only for an exception.
+Repository packet: `<main checkout>/tmp/chef/packets/<area>.md` (path; `packet.ts status <area>` exits 0, so it is fresh). Read it instead of rediscovering the code; read source only for the lines you will change.
+Session start: one fresh session for this issue, started from its brief (`bun scripts/chef/brief.ts <ID>` writes `tmp/chef/briefs/<ID>.md`), Sonnet by default; the session ends when its pull request merges. The context-ceiling hook warns at 250K tokens and blocks all but the handoff at 400K.
+Main health: `merge-gate.ts` refuses to merge while `main`'s last batch validate failed, unless this pull request is the fix and the merge command carries `--fixes-main`.
 Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically, so batch a round's fixes into one push; do not re-answer a re-reported comment.
 Delivery artifact and review boundary:
 
@@ -104,7 +108,7 @@ or (including a CPU load generator) when this charter requires it; record
 every PID, collect or kill each before returning, and report a
 `pgrep -fl "<pattern>"` that prints nothing.
 
-Keep your context small. Every gate writes its full output to a log under the
+Keep your context small; past about 250K tokens, write a handoff brief under `tmp/chef/` and hand off to a fresh session. Every gate writes its full output to a log under the
 evidence directory and prints only its exit code and a short summary; read a
 failure with a targeted search, never by printing the log. Run one
 consolidated gate command per stage. Commit only after the package's lint and

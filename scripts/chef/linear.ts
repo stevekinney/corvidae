@@ -105,7 +105,7 @@ function firstLine(text: string, limit = 120): string {
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
 }
 
-interface IssueSummary {
+export interface IssueSummary {
   id: string;
   identifier: string;
   title: string;
@@ -117,7 +117,7 @@ interface IssueSummary {
 
 const issueFields = `id identifier title description updatedAt state { id name } team { id key parent { id } }`;
 
-async function fetchIssue(client: LinearClient, identifier: string): Promise<IssueSummary> {
+export async function fetchIssue(client: LinearClient, identifier: string): Promise<IssueSummary> {
   let data: { issue: IssueSummary | null };
   try {
     data = await client.request(

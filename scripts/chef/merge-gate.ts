@@ -12,6 +12,9 @@
 //   1. fetch          `git fetch origin <default>`;
 //   2. head           the worktree's HEAD equals the pull request's `headRefOid`, and it is open;
 //   3. contains-base  HEAD contains `origin/<default>`;
+//   3b. main-health   `main`'s last batch validate (`main-health.ts`) at a head on `origin/<default>`'s
+//                     first-parent history did not fail, unless the pull request is declared the fix
+//                     with `--fixes-main`, which is recorded in the report and the health file;
 //   4. gate           the gate log's exit code is 0, its HEAD equals the pull request's head, and the
 //                     worktree was clean (`git status --porcelain` empty) at the start and at the end
 //                     of the run with HEAD unmoved (start head = end head = the pull request's head);
@@ -38,6 +41,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { readGateLog } from './gate-run.ts';
+import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
 import {
   defaultRunner,
   emitResult,
@@ -59,6 +63,12 @@ export interface MergeGateOptions {
   gateLog: string;
   commentFile: string;
   dryRun: boolean;
+  /** The batch-validate record to check; defaults to the main checkout's when `checkMainHealth`. */
+  healthFile?: string | undefined;
+  /** Check main's health at the default location. Library callers opt in; the command line does. */
+  checkMainHealth?: boolean | undefined;
+  /** Declares this pull request the fix for a red `main`, so the main-health step lets it through. */
+  fixesMain?: boolean | undefined;
   /** Where to append the spend record after a successful merge; needs `transcripts`. */
   usageLog?: string | undefined;
   /** Transcript files or directories whose token usage the spend record totals. */
@@ -77,6 +87,8 @@ export interface MergeGateReport {
   mergeCommit: string | null;
   /** Whether the merge commit's tree equals the gated head's; `null` when it was not checked. */
   treesMatch: boolean | null;
+  /** Whether the pull request was declared the fix for a red `main` (`--fixes-main`). */
+  fixesMain?: boolean;
   /** The step that failed, or `null` when every step passed. */
   failedStep: string | null;
   /** Why it failed, in one line. */
@@ -198,6 +210,28 @@ export function mergeGate(
       'contains-base',
       `HEAD does not contain origin/${defaultBranch}; merge it in and re-gate.`,
     );
+
+  // 3b. main-health
+  const healthFile =
+    options.healthFile ??
+    (options.checkMainHealth === true ? resolveHealthFile(runner, options.worktree) : undefined);
+  if (healthFile !== undefined) {
+    const health = mainHealth(runner, options.worktree, defaultBranch, healthFile);
+    if (health.red && health.run !== undefined) {
+      if (options.fixesMain !== true)
+        return fail(
+          'main-health',
+          `${renderMainHealth(health, defaultBranch)} Merge only the fix, declared with --fixes-main.`,
+        );
+      report.fixesMain = true;
+      if (!options.dryRun)
+        recordFix(healthFile, {
+          pr: options.pr,
+          time: (partial.now ?? (() => new Date()))().toISOString(),
+          blockedHead: health.run.head,
+        });
+    }
+  }
 
   // 4. gate
   const summary = readGateLog(readFileSync(options.gateLog, 'utf8'));
@@ -379,9 +413,9 @@ export function run(
   dependencies: Partial<MergeGateDependencies> = {},
 ): { code: number; output: string } {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'gate-log', 'comment-file', 'usage-log'],
+    values: ['config', 'pr', 'worktree', 'gate-log', 'comment-file', 'usage-log', 'health-file'],
     repeated: ['transcript'],
-    flags: ['dry-run', 'json'],
+    flags: ['dry-run', 'json', 'fixes-main'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
@@ -394,6 +428,9 @@ export function run(
     gateLog: requireOption(parsed, 'gate-log'),
     commentFile: requireOption(parsed, 'comment-file'),
     dryRun: parsed.flags.has('dry-run'),
+    healthFile: parsed.values['health-file'],
+    checkMainHealth: true,
+    fixesMain: parsed.flags.has('fixes-main'),
     usageLog: parsed.values['usage-log'],
     transcripts: parsed.repeated['transcript'] ?? [],
   };
