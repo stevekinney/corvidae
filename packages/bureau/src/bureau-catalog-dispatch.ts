@@ -30,6 +30,7 @@ import {
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
 import type { FileAgentRuntime } from './agent-file-runtime';
+import type { SettledCatalogHandle } from './catalog-run-asset-release';
 import type { ChildTopologyStart } from './child-topology';
 import {
   type GoalAttemptCostEstimation,
@@ -45,6 +46,18 @@ import type { RunAttribution } from './serialization';
 import type { BureauRunOptions } from './types';
 
 type CatalogRunErrorCode = 'CONFLICT' | 'NOT_FOUND';
+
+/**
+ * COR-1630 — a catalog run's handle settled. Not necessarily an end: a handle also settles for a
+ * run cut short by disposing the engine, which resumes at the next boot, so whether to let go of
+ * the run's asset claims is the receiver's to decide (`catalog-run-asset-release.ts`).
+ */
+export interface CatalogRunEnded {
+  readonly runId: string;
+  /** The principal the run was dispatched for, as given; the run's claims were taken as its owner. */
+  readonly principal: string | undefined;
+  readonly settled: SettledCatalogHandle;
+}
 
 export interface CatalogDispatcherDependencies {
   readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
@@ -92,6 +105,14 @@ export interface CatalogDispatcherDependencies {
         readonly input: AgentInput;
       }) => void)
     | undefined;
+  /**
+   * COR-1630 — called once when the handle of a catalog run settles, for every dispatch that holds
+   * its own asset claims and is not a goal attempt: `bureau.run()`, a child run and a workflow
+   * step, durable or not. A goal attempt is left to the goal forwarder, which hands its rows to
+   * the goal's session before it releases them. A run recovered after a restart has no handle
+   * here; the settlement hook covers it. Must not reject.
+   */
+  readonly onCatalogRunEnded?: ((ended: CatalogRunEnded) => void | Promise<void>) | undefined;
   /**
    * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
    * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
@@ -286,6 +307,7 @@ export function createCatalogDispatcher({
   humanInput,
   registerCatalogRun,
   onCatalogRunAdmitted,
+  onCatalogRunEnded,
   fileAgents,
 }: CatalogDispatcherDependencies): {
   runAgent: (
@@ -341,6 +363,38 @@ export function createCatalogDispatcher({
    * the entry goes only when its last holder lets go.
    */
   const attributionHolders = new WeakMap<RunAttribution, number>();
+
+  /**
+   * COR-1630 — tells Bureau when `handle` settles, so it can release the claims the run's rows
+   * hold. A foreign agent's result that carries no conversation is reported as a rejection: there
+   * is nothing to read the run's rows from.
+   */
+  function reportWhenSettled(
+    handle: AgentRun<unknown, boolean>,
+    runId: string | undefined,
+    principal: string | undefined,
+  ): AgentRun<unknown, boolean> {
+    if (onCatalogRunEnded === undefined || runId === undefined) return handle;
+    detachBestEffortPromise(
+      handle.result().then(
+        (result) =>
+          onCatalogRunEnded({
+            runId,
+            principal,
+            settled:
+              typeof result.conversation?.getMessages === 'function'
+                ? {
+                    kind: 'result',
+                    finishReason: result.finishReason,
+                    conversation: result.conversation,
+                  }
+                : { kind: 'rejected' },
+          }),
+        () => onCatalogRunEnded({ runId, principal, settled: { kind: 'rejected' } }),
+      ),
+    );
+    return handle;
+  }
 
   function trackCatalogRun(handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> {
     catalogRuns.add(handle);
@@ -975,6 +1029,9 @@ export function createCatalogDispatcher({
         return undefined;
       }),
     );
+    // COR-1630 — a goal attempt's claims are released by the goal forwarder, after the goal's
+    // session holds the attempt's rows; every other durable dispatch is released from here.
+    if (goalAttempt === undefined) reportWhenSettled(guardedRun, runId, principal);
     // A goal attempt is deliberately left out of `catalogRuns`. Shutdown aborts
     // every tracked run, and an attempt aborted by shutdown would end `aborted`
     // for good: its goal would read that as the attempt failing. Untracked, the
@@ -1067,33 +1124,32 @@ export function createCatalogDispatcher({
     // COR-1524 — a file agent's snapshot is stored, and this run tied to it, from the moment the
     // handle exists, and settled when the handle ends, however it ends.
     const fileReference = beginDirectFileReference(agent, context.runId);
-    return admitted(
-      indexCatalogRun(
-        trackCatalogRun(
-          settleDirectFileReference(
-            createDeferredAgentRun(
-              () =>
-                resolveInvariantComposedAgent(
-                  name,
-                  input,
-                  context,
-                  principal,
-                  agent,
-                  hasResolver,
-                  registerCatalogRun,
-                  fileReference,
-                ),
+    const direct = trackCatalogRun(
+      settleDirectFileReference(
+        createDeferredAgentRun(
+          () =>
+            resolveInvariantComposedAgent(
+              name,
               input,
               context,
-              name,
+              principal,
+              agent,
+              hasResolver,
+              registerCatalogRun,
+              fileReference,
             ),
-            fileReference,
-            context.runId,
-          ),
+          input,
+          context,
+          name,
         ),
-        name,
+        fileReference,
+        context.runId,
       ),
     );
+    // COR-1630 — only an agent that resolves its run options is given media options, so only
+    // its run holds claims to release.
+    if (hasResolver) reportWhenSettled(direct, context.runId, principal);
+    return admitted(indexCatalogRun(direct, name));
   }
 
   /**
@@ -1149,7 +1205,7 @@ export function createCatalogDispatcher({
     // process-local child's handle carries the same id `children` reports.
     context.runId = start.childRunId;
     const fileReference = beginDirectFileReference(agent, context.runId);
-    return trackCatalogRun(
+    const direct = trackCatalogRun(
       settleDirectFileReference(
         createDeferredAgentRun(
           () =>
@@ -1171,6 +1227,9 @@ export function createCatalogDispatcher({
         context.runId,
       ),
     );
+    // COR-1630 — see `runAgent`.
+    if (hasResolver) reportWhenSettled(direct, context.runId, start.principal);
+    return direct;
   }
 
   /**

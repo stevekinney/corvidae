@@ -24,6 +24,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
+  type CatalogRunEnded,
   createCatalogDispatcher,
   GoalAttemptInvalidCostEstimationError,
   GoalAttemptNotDurableCapableError,
@@ -39,6 +40,7 @@ function createDispatcher(
   options: {
     readonly runtime?: RuntimeComposition;
     readonly runAttribution?: Map<string, RunAttribution>;
+    readonly onCatalogRunEnded?: (ended: CatalogRunEnded) => void;
   } = {},
 ) {
   const worker = createAgent({
@@ -59,6 +61,9 @@ function createDispatcher(
     validateAgentRunInput: () => {},
     validateBureauRunOptions: () => {},
     onDurableRunAborted: () => {},
+    ...(options.onCatalogRunEnded === undefined
+      ? {}
+      : { onCatalogRunEnded: options.onCatalogRunEnded }),
   });
 }
 
@@ -893,5 +898,156 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       );
       expect(claims).toEqual([]);
     });
+  });
+});
+
+/**
+ * COR-1630 — the dispatcher tells Bureau when a catalog run's handle has settled, so Bureau can let
+ * go of the claims the run's rows hold. It is the one place every run that is not a goal attempt
+ * passes: `bureau.run()`, a child, and a workflow step, durable or not. A goal attempt is left to
+ * the goal forwarder, which hands its rows to the goal's session first. Whether the settled handle
+ * is an end (it is not, for a run cut short by disposing the engine) is Bureau's to decide.
+ */
+describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', () => {
+  const disposers: Array<() => void> = [];
+  afterEach(() => {
+    for (const dispose of disposers.splice(0)) dispose();
+  });
+
+  const processLocal = {
+    createBureauInvariantHooks: () => undefined,
+    mediaOptionsFor: () => ({}),
+  } as unknown as RuntimeComposition;
+
+  async function durableComposition(): Promise<RuntimeComposition> {
+    const storage = new MemoryStorage();
+    const checkpointStore = createCheckpointStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    const { engine } = await createRunEngine({
+      storage,
+      runWorkflow: createRunWorkflow(checkpointStore),
+      recover: false,
+    });
+    disposers.push(() => engine[Symbol.dispose]());
+    return {
+      durable: { engine, checkpointStore },
+      createBureauInvariantHooks: () => undefined,
+      mediaOptionsFor: () => ({}),
+      claimCatalogRunRecoveryRecord: async () => true,
+      persistCatalogRunRecoveryRecord: async () => {},
+    } as unknown as RuntimeComposition;
+  }
+
+  function observed(runtime: RuntimeComposition) {
+    const ended: CatalogRunEnded[] = [];
+    const dispatcher = createDispatcher(false, {
+      runtime,
+      onCatalogRunEnded: (end) => void ended.push(end),
+    });
+    return { dispatcher, ended };
+  }
+
+  it('reports a process-local bureau.run() with its id, its principal and its conversation', async () => {
+    const { dispatcher, ended } = observed(processLocal);
+
+    const run = dispatcher.runAgent('worker', 'work', { principal: 'alice' });
+    await run.result();
+
+    expect(ended).toHaveLength(1);
+    expect(ended[0]).toMatchObject({
+      runId: run.id,
+      principal: 'alice',
+      settled: { kind: 'result', finishReason: 'stop-condition' },
+    });
+    const settled = ended[0]?.settled;
+    expect(settled?.kind === 'result' && settled.conversation.getMessages().length).toBe(2);
+  });
+
+  it('reports a durable bureau.run()', async () => {
+    const { dispatcher, ended } = observed(await durableComposition());
+
+    const run = dispatcher.runAgent('worker', 'work', { principal: 'alice' });
+    await run.result();
+
+    expect(ended).toEqual([
+      expect.objectContaining({
+        runId: run.id,
+        principal: 'alice',
+        settled: expect.objectContaining({ kind: 'result' }),
+      }),
+    ]);
+  });
+
+  it('reports a process-local child run under the id its topology recorded', async () => {
+    const { dispatcher, ended } = observed(processLocal);
+
+    await dispatcher.startChildRun({ ...start, agentName: 'worker', principal: 'alice' }).result();
+
+    expect(ended).toEqual([expect.objectContaining({ runId: 'child-1', principal: 'alice' })]);
+  });
+
+  it('reports a durable workflow step', async () => {
+    const { dispatcher, ended } = observed(await durableComposition());
+
+    await dispatcher
+      .startWorkflowStepRun({
+        agentName: 'worker',
+        input: 'work',
+        runId: 'step-run-1',
+        workflowStep: { workflowId: 'workflow-1', step: 0 },
+        principal: 'alice',
+      })
+      .result();
+
+    expect(ended).toEqual([expect.objectContaining({ runId: 'step-run-1', principal: 'alice' })]);
+  });
+
+  it('does not report a goal attempt: the goal forwarder releases it, after the goal session holds its rows', async () => {
+    const { dispatcher, ended } = observed(await durableComposition());
+
+    const started = dispatcher.startGoalAttemptRun({
+      agentName: 'worker',
+      input: 'work',
+      runId: 'goal-g1-a0',
+      goalRunId: 'g1',
+      attemptIndex: 0,
+    });
+    await started.durablyStarted;
+    await started.run.result();
+
+    expect(ended).toEqual([]);
+  });
+
+  it('does not report a hand-written agent, which holds no claims because it takes no media options', async () => {
+    const handWritten = {
+      name: 'hand-written',
+      hasOutput: false,
+      run: () =>
+        createAgent({
+          name: 'inner',
+          generate: async () => ({ content: 'done', toolCalls: [] }),
+          stopWhen: stopWhen.noToolCalls(),
+        }).run('work'),
+    };
+    const ended: CatalogRunEnded[] = [];
+    const dispatcher = createCatalogDispatcher({
+      agentCatalog: { find: () => handWritten as never },
+      runtime: processLocal,
+      runtimeServices: createManualRuntimeServices(),
+      getShutdownPromise: () => undefined,
+      catalogRuns: new Set(),
+      runAttribution: new Map(),
+      detachBestEffortPromise: () => {},
+      createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+      validateAgentRunInput: () => {},
+      validateBureauRunOptions: () => {},
+      onDurableRunAborted: () => {},
+      onCatalogRunEnded: (end) => void ended.push(end),
+    });
+
+    await dispatcher.runAgent('hand-written', 'work').result();
+
+    expect(ended).toEqual([]);
   });
 });
