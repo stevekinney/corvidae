@@ -1,12 +1,15 @@
 /**
- * COR-1494: the schedules area, as an operator uses it. Each schedule says what it starts and links
- * to it: the seeded "Daily summary" is an agent run and links to its agent, and a workflow's is its
- * trigger and links to the workflow. The seeded schedule is paused and resumed from the list, its
- * cadence is edited in the drawer an agent run has, which holds the cadence, the description, and the
- * overlap policy, and the next fire time changes. A workflow file's schedule is paused and resumed
- * too, and is edited in the workflow. A schedule is made for an agent from the create drawer.
+ * COR-1494 and COR-1654: the schedules area, as an operator uses it. A schedule is named by what it
+ * does and never by its identifier: the seeded one is "Daily summary", runs `assistant` every day at
+ * 09:00, and sends its text; its identifier is "Copy id" in the actions menu. Each schedule says what
+ * it starts and links to it: an agent run links to its agent, and a workflow's is its trigger and
+ * links to the workflow. The seeded schedule is paused and resumed from the list, its cadence is
+ * edited in the drawer an agent run has, which holds the cadence, the description, and whether to
+ * skip a fire while a run is going, and the next fire time changes. A workflow file's schedule is
+ * paused and resumed too, and is edited in the workflow. A schedule is made for an agent from the
+ * create drawer, without choosing a kind.
  */
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 
@@ -17,6 +20,8 @@ import { expect, test } from './fixtures.ts';
 const WIDTHS = [375, 1280] as const;
 const SEEDED_DESCRIPTION = 'Daily summary';
 const SEEDED_CRON = '0 9 * * *';
+const SEEDED_INPUT = 'Summarize what happened yesterday.';
+const SKIP = SCHEDULE_COPY.form.skipOverlapLabel;
 
 /** The seeded schedule's id: the Bureau mints it, and the row says only its description. */
 async function seededScheduleId(request: APIRequestContext): Promise<string> {
@@ -59,7 +64,10 @@ async function restoreSeeded(request: APIRequestContext, id: string): Promise<vo
   });
 }
 
-const row = (page: Page, id: string) => page.locator(`tr[data-schedule="${id}"]`);
+const row = (page: Page, id: string) => page.locator(`li[data-schedule="${id}"]`);
+
+/** A row's actions menu, which is named for the schedule's name and not its identifier. */
+const actionsOf = (target: Locator) => target.getByRole('button', { name: /^Actions for / });
 
 // The schedules the Bureau holds are listed by a console that runs on the Bureau's own engine, so the
 // specs about them open the second host (`e2e-constants.ts`). The main host's console is the
@@ -78,8 +86,11 @@ test.describe('what each schedule starts', () => {
       await page.goto('/schedules');
 
       await expect(row(page, id)).toHaveAttribute('data-kind', 'agent-run');
+      // What it is called, which agent, how often in words, and what it sends; never the identifier.
       await expect(row(page, id)).toContainText(SEEDED_DESCRIPTION);
-      await expect(row(page, id)).toContainText(SCHEDULE_COPY.kind['agent-run']);
+      await expect(row(page, id)).toContainText('Every day at 09:00');
+      await expect(row(page, id).getByTestId('schedule-input')).toHaveText(`“${SEEDED_INPUT}”`);
+      await expect(row(page, id)).not.toContainText(id);
       const link = row(page, id).getByRole('link', { name: 'assistant' });
       await expect(link).toHaveAttribute('href', '/agents/assistant');
       await checkA11y(`schedules — the list at ${width}px`);
@@ -97,20 +108,34 @@ test.describe('what each schedule starts', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/schedules/${id}`);
 
+      // The heading is the name and the sentence says what it runs and when.
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(SEEDED_DESCRIPTION);
+      await expect(page.getByTestId('schedule-status-line')).toContainText(
+        'Runs assistant every day at 09:00',
+      );
+      await expect(page.getByTestId('schedule-input')).toContainText(SEEDED_INPUT);
       const target = page.getByTestId('schedule-target');
-      await expect(target).toContainText(SCHEDULE_COPY.kind['agent-run']);
       await expect(target.getByRole('link', { name: 'assistant' })).toHaveAttribute(
         'href',
         '/agents/assistant',
       );
+      // The engine's fields are not there until the disclosure opens.
+      await expect(page.getByText('Jitter', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Worker binding for scheduled runs')).toHaveCount(0);
       await checkA11y(`schedule detail — an agent run at ${width}px`);
+      await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
+      await expect(page.getByText('Jitter', { exact: true })).toBeVisible();
+      await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
+      await expect(page.getByText('Worker binding for scheduled runs')).toBeVisible();
+      await checkA11y(`schedule detail — the Engine disclosure open at ${width}px`);
     });
   }
 
   test('labels a workflow file’s schedule, linked to its workflow', async ({ page }) => {
     await page.goto('/schedules');
 
-    const file = page.locator('tr[data-kind="workflow-file"]').first();
+    const file = page.locator('li[data-kind="workflow-file"]').first();
     await expect(file).toContainText(SCHEDULE_COPY.kind['workflow-file']);
     await expect(file.getByRole('link', { name: 'e2e-digest', exact: true })).toHaveAttribute(
       'href',
@@ -124,7 +149,7 @@ test.describe('what each schedule starts', () => {
     test('is labelled and linked to its workflow', async ({ page }) => {
       await page.goto('/schedules');
 
-      const code = page.locator('tr[data-kind="code"]').first();
+      const code = page.locator('li[data-kind="code"]').first();
       await expect(code).toContainText(SCHEDULE_COPY.kind.code);
       await expect(code.locator('a[href^="/workflows/"]')).toHaveCount(1);
     });
@@ -138,11 +163,13 @@ test.describe('the seeded agent run', () => {
       await page.goto('/schedules');
       await expect(row(page, id)).toHaveAttribute('data-status', 'active');
 
-      await page.getByRole('button', { name: `Actions for ${id}` }).click();
+      await actionsOf(row(page, id)).click();
+      // The identifier is reachable from here, and shown nowhere else.
+      await expect(page.getByRole('menuitem', { name: 'Copy id' })).toBeVisible();
       await page.getByRole('menuitem', { name: /Pause/ }).click();
       await expect(row(page, id)).toHaveAttribute('data-status', 'paused');
 
-      await page.getByRole('button', { name: `Actions for ${id}` }).click();
+      await actionsOf(row(page, id)).click();
       await page.getByRole('menuitem', { name: /Resume/ }).click();
       await expect(row(page, id)).toHaveAttribute('data-status', 'active');
     } finally {
@@ -159,10 +186,9 @@ test.describe('the seeded agent run', () => {
     try {
       const before = await nextFireAt(request, id);
       await page.goto(`/schedules/${id}`);
-      // The next fire time the page shows, which is the definition after its term.
-      const nextFire = page
-        .locator('dt', { hasText: 'Next fire' })
-        .locator('xpath=following-sibling::dd[1]');
+      // The next fire time the page shows, in the sentence under the heading.
+      const nextFire = page.getByTestId('schedule-status-line');
+      await expect(nextFire).toContainText('every day at 09:00');
       const shownBefore = await nextFire.innerText();
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
       const drawer = page.getByRole('dialog', { name: 'Edit schedule' });
@@ -170,10 +196,8 @@ test.describe('the seeded agent run', () => {
 
       // What an agent run is edited with, and nothing the engine's own schedule adds.
       await expect(drawer.getByLabel('Description')).toHaveValue(SEEDED_DESCRIPTION);
-      const overlap = drawer.getByRole('group', {
-        name: 'If a run is still going when the next fire is due',
-      });
-      await expect(overlap.getByRole('radio')).toHaveCount(2);
+      await expect(drawer.getByLabel(SKIP)).toBeChecked();
+      await expect(drawer.getByRole('radio')).toHaveCount(0);
       await expect(drawer.getByLabel('Jitter')).toHaveCount(0);
       await expect(drawer.getByRole('switch', { name: 'Backfill missed occurrences' })).toHaveCount(
         0,
@@ -188,7 +212,7 @@ test.describe('the seeded agent run', () => {
       await expect(drawer).not.toBeVisible();
 
       await expect.poll(async () => nextFireAt(request, id), { timeout: 15_000 }).not.toBe(before);
-      await expect(page.getByText('Every 2 weeks').first()).toBeVisible();
+      await expect(nextFire).toContainText('every 2 weeks');
       // A daily schedule fires within a day, and this one in two weeks, so the page says so.
       await expect(nextFire).not.toHaveText(shownBefore);
       await checkA11y('schedule detail — the edited cadence');
@@ -203,21 +227,21 @@ test.describe('a workflow file’s schedule', () => {
     page,
   }) => {
     await page.goto('/schedules');
-    const file = page.locator('tr[data-kind="workflow-file"]').filter({ hasText: 'e2e-digest' });
+    const file = page.locator('li[data-kind="workflow-file"]').filter({ hasText: 'e2e-digest' });
     await expect(file).toHaveAttribute('data-status', 'active');
 
-    await file.getByRole('button', { name: /^Actions for / }).click();
+    await actionsOf(file).click();
     // It has no Edit or Cancel of its own, because its cadence is the trigger in its file.
     await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toHaveCount(0);
     await expect(page.getByRole('menuitem', { name: /Cancel/ })).toHaveCount(0);
     await page.getByRole('menuitem', { name: /Pause/ }).click();
     await expect(file).toHaveAttribute('data-status', 'paused');
 
-    await file.getByRole('button', { name: /^Actions for / }).click();
+    await actionsOf(file).click();
     await page.getByRole('menuitem', { name: /Resume/ }).click();
     await expect(file).toHaveAttribute('data-status', 'active');
 
-    await file.getByRole('button', { name: /^Actions for / }).click();
+    await actionsOf(file).click();
     await page.getByRole('menuitem', { name: SCHEDULE_COPY.editWorkflowAction }).click();
     await expect(page).toHaveURL(/\/workflows\/e2e-digest\/edit$/);
   });
@@ -233,7 +257,8 @@ test.describe('creating a schedule', () => {
     const drawer = page.getByRole('dialog', { name: 'Create schedule' });
     await expect(drawer).toBeVisible();
 
-    await drawer.getByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }).click();
+    // There is no kind to choose: the first thing asked is the agent.
+    await expect(drawer.getByRole('radio')).toHaveCount(0);
     await drawer
       .getByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel })
       .selectOption('assistant');
@@ -246,8 +271,9 @@ test.describe('creating a schedule', () => {
     await expect(drawer).not.toBeVisible();
 
     await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
-    await expect(page.getByTestId('schedule-target')).toContainText(
-      SCHEDULE_COPY.kind['agent-run'],
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Weekly summary');
+    await expect(page.getByTestId('schedule-input')).toContainText(
+      'Summarize what happened this week.',
     );
     await expect(
       page.getByTestId('schedule-target').getByRole('link', { name: 'assistant' }),
@@ -271,6 +297,7 @@ test.describe('creating a schedule', () => {
   async function offeredTypes(page: Page): Promise<string[]> {
     await page.goto('/schedules?create=1');
     const drawer = page.getByRole('dialog', { name: 'Create schedule' });
+    await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
     const type = drawer.getByRole('combobox', { name: 'Workflow type' });
     await expect(type).toBeVisible();
     return type
@@ -299,6 +326,7 @@ test.describe('creating a schedule', () => {
 
     await page.goto('/schedules?create=1');
     const drawer = page.getByRole('dialog', { name: 'Create schedule' });
+    await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
     // Nothing is left to pick, so the type is typed, and every type the Bureau owns is refused.
     const type = drawer.getByRole('textbox', { name: 'Workflow type' });
     await expect(type).toBeVisible();

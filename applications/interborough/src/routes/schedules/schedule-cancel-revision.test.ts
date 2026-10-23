@@ -73,12 +73,12 @@ describe('cancelling from the list', () => {
     const body = within(view.container.ownerDocument.body);
     await waitFor(() =>
       expect(
-        view.container.querySelector<HTMLElement>(`tr[data-schedule="${SCHEDULE}"]`)?.dataset[
+        view.container.querySelector<HTMLElement>(`li[data-schedule="${SCHEDULE}"]`)?.dataset[
           'kind'
         ],
       ).toBe('agent-run'),
     );
-    await fireEvent.click(body.getByRole('button', { name: `Actions for ${SCHEDULE}` }));
+    await fireEvent.click(body.getByRole('button', { name: /^Actions for / }));
     await fireEvent.click(body.getByRole('menuitem', { name: /Cancel/ }));
     const confirm = await body.findByRole('button', { name: 'Cancel schedule' });
 
@@ -100,7 +100,8 @@ describe('cancelling from one schedule’s page', () => {
   test('sends the revision the operator asked to cancel, not the newest one, and says it is stale', async () => {
     const { view, refetch } = open(`/schedules/${SCHEDULE}`);
     const body = within(view.container.ownerDocument.body);
-    await fireEvent.click(await body.findByRole('button', { name: 'Cancel' }));
+    await fireEvent.click(await body.findByRole('button', { name: 'More actions' }));
+    await fireEvent.click(await body.findByRole('menuitem', { name: /Cancel/ }));
     const confirm = await body.findByRole('button', { name: 'Cancel schedule' });
 
     await changeAndRefetch(refetch);

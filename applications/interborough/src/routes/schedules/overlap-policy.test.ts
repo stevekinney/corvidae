@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { OVERLAP_POLICIES, overlapConsequence, overlapLabel } from './overlap-policy.ts';
+import { OVERLAP_POLICIES, overlapConsequence } from './overlap-policy.ts';
 
 describe('OVERLAP_POLICIES', () => {
   test('covers all four engine overlap policy values, in the source-doc order', () => {
@@ -24,12 +24,11 @@ describe('OVERLAP_POLICIES', () => {
   });
 });
 
-describe('overlapLabel / overlapConsequence', () => {
-  test('resolve every known policy', () => {
-    expect(overlapLabel('skip')).toBe('Skip');
-    expect(overlapLabel('queue')).toBe('Queue');
-    expect(overlapLabel('cancel-running')).toBe('Cancel running');
-    expect(overlapLabel('allow')).toBe('Allow');
+describe('overlapConsequence', () => {
+  test('resolves every known policy', () => {
+    expect(overlapConsequence('skip')).toContain('dropped');
+    expect(overlapConsequence('queue')).toContain('queued');
+    expect(overlapConsequence('cancel-running')).toContain('cancelled');
     expect(overlapConsequence('allow')).toContain('parallelize');
   });
 });

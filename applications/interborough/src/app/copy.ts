@@ -397,15 +397,65 @@ export const STALE_COPY = {
 
 /** The words the schedules area (`/schedules` and under it) uses outside its view states. */
 export const SCHEDULE_COPY = {
-  /** What a schedule starts, by the service that owns it. */
+  /** What a workflow's schedule says it starts; an agent run is said by its agent alone. */
   kind: {
-    'agent-run': 'Agent run',
     'workflow-file': 'Agent-authored workflow',
     code: 'Code-defined workflow',
   },
   /** A Bureau schedule the caller may not read the agent of. */
   unnamedAgent: 'An agent',
-  startsLabel: 'Starts',
+  /** In a sentence, for a schedule whose agent the caller may not read. */
+  anAgent: 'an agent',
+  /** The name of a schedule that has no description, by what it starts. */
+  nameFor: (target: string): string => `Schedule for ${target}`,
+  /** The name of a Bureau schedule that has no description and whose agent the caller may not read. */
+  unnamedAgentRun: 'Scheduled agent run',
+  title: 'Schedules',
+  newAction: 'New schedule',
+  filtersLabel: 'Filter schedules',
+  statusLabel: 'Status',
+  anyStatus: 'All statuses',
+  agentLabel: 'Agent',
+  anyAgent: 'All agents',
+  loading: 'Loading schedules',
+  empty: { title: 'No schedules', description: 'Create one to run an agent on a cadence.' },
+  noMatch: {
+    title: 'No matching schedules',
+    description: 'No schedule matches the current filters. Clear a filter to see more.',
+  },
+  actionsFor: (name: string): string => `Actions for ${name}`,
+  copyId: 'Copy id',
+  idCopied: 'Schedule id copied',
+  idCopyFailed: 'The schedule id was not copied',
+  next: (when: string): string => `next ${when}`,
+  neverFired: 'not fired yet',
+  lastSucceeded: 'last run succeeded',
+  lastFailed: 'last run did not succeed',
+  missed: (count: number): string => `${String(count)} missed`,
+  sends: 'Sends',
+  nextFires: 'Next fires',
+  recentRuns: 'Recent runs',
+  noRuns: 'No runs yet. This schedule has not fired.',
+  notScheduled: (status: string): string => `Not scheduled. This schedule is ${status}.`,
+  engine: 'Engine',
+  engineRows: {
+    cron: 'Cron',
+    interval: 'Interval',
+    jitter: 'Jitter',
+    revisionPolicy: 'Revision policy',
+  },
+  runningNow: 'Running now',
+  queuedRuns: 'Queued runs',
+  noActiveRuns: 'No active or queued runs.',
+  /** The one line that says what happens when a fire is due while a run is still going. */
+  overlapLine: {
+    skip: 'Skips a fire if the previous run is still going',
+    queue: 'Queues a fire if the previous run is still going',
+    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
+    allow: 'Starts a fire even if the previous run is still going',
+  },
+  moreActions: 'More actions',
+  backToList: 'Back to schedules',
   /** The action that opens the editor of the workflow whose file holds a schedule's trigger. */
   editWorkflowAction: 'Edit workflow',
   editWorkflowNote:
@@ -427,23 +477,24 @@ export const SCHEDULE_COPY = {
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
   form: {
-    startsLabel: 'Start',
-    startsAgent: 'An agent run',
-    startsWorkflow: 'A workflow type',
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
     agentDescription: 'The agent each fire runs. It must be in this installation’s catalog.',
     agentFreeTextDescription: 'The list of agents is unavailable. Enter the agent’s name.',
     noAgents: 'This installation lists no agents.',
-    inputLabel: 'Input',
+    inputLabel: 'What to send',
     inputDescription: 'The text each fire sends to the agent.',
     sessionLabel: 'Session',
     sessionDescription:
       'Optional. Each fire continues this session. Without one, every fire is a new session.',
     sessionWithAllow: 'A schedule that continues a session cannot allow its fires to overlap.',
     overlapLabel: 'If a run is still going when the next fire is due',
+    skipOverlapLabel: 'Skip a fire if the previous run is still going',
+    advancedLabel: 'Advanced',
+    advancedWorkflowLabel: 'Advanced: start a code-defined workflow',
     descriptionLabel: 'Description',
-    descriptionDescription: 'Optional. Shown to operators alongside the schedule.',
+    descriptionDescription:
+      'Optional. It names the schedule; without one the schedule is named by its agent.',
     cadenceLabel: 'Cadence',
     exactCadenceDescription:
       'The cadence builder counts in whole minutes at the smallest, so this schedule’s exact timing is kept unless you change it.',
@@ -454,7 +505,7 @@ export const SCHEDULE_COPY = {
     inputRequired: 'Enter the text to send.',
     inputTooLong: 'The input is too long.',
     reservedAgentRun:
-      'Agent runs are scheduled with “An agent run”, which checks the agent and its owner.',
+      'Agent runs are scheduled by choosing an agent, which checks the agent and its owner.',
     reservedBureauWorkflow:
       'The Bureau starts this workflow itself, with checks a schedule made here would skip.',
     reservedAgentAuthored:

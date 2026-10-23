@@ -1,37 +1,29 @@
 <script lang="ts">
   /**
-   * Schedule detail (Track B, plan §9.3; design `Weft UI.dc.html`
-   * "Schedule detail"): spec + next-5-fires preview, overlap policy with
-   * consequence text, current/queued runs, recent runs, live update on
-   * `schedule:fired`/`schedule:missed-fire` via the shared
-   * `FleetEventSource`.
-   *
-   * **"Recent runs" is real, persisted history, not a live-only
-   * accumulator.** Earlier revisions of this page could only show fires
-   * observed live since the page loaded — weft had no queryable link from a
-   * schedule back to the workflow runs it launched (filed as
-   * https://github.com/stevekinney/weft/issues/735). Weft 0.13
-   * (https://github.com/stevekinney/weft/pull/759) added a `scheduleId`
-   * filter to `weft.workflows.list`, so `fetchScheduleRunHistory`
-   * (`schedule-queries.ts`) now queries the real history directly. The fleet
-   * subscription below still matters for LIVE freshness — refetching the
-   * moment a `schedule:fired`/`schedule:missed-fire` event arrives rather
-   * than waiting on the query's own staleness — but is no longer the only
-   * source of this data.
+   * One schedule: named by what it does ("Daily summary"), with a sentence that says what it runs
+   * and when ("Runs assistant every day at 09:00 · next in 5h"), the start of the text it sends, its
+   * next fires, and the runs it launched, each linking to its run. What the engine keeps for itself
+   * (the cron expression, jitter, the revision policy, the worker binding, and the run in progress)
+   * is under "Engine", closed until it is asked for. The page refreshes the moment a
+   * `schedule:fired` or `schedule:missed-fire` event arrives, and "Recent runs" is the engine's own
+   * history of the runs the schedule launched (a `scheduleId` filter on `weft.workflows.list`), not
+   * only the fires seen since the page opened.
    */
   import {
     Badge,
     Button,
-    Callout,
-    Card,
+    Collapsible,
     ConfirmDialog,
-    ConnectionIndicator,
     DescriptionList,
+    Dropdown,
     EmptyState,
+    PageHeader,
     Skeleton,
     StatusDot,
+    Tooltip,
+    VisuallyHidden,
   } from '@lostgradient/cinder';
-  import { CircleX, Info, Pause, Pencil, Play } from '@lucide/svelte';
+  import { CircleCheck, CircleX, Copy, Ellipsis, Info, Pause, Pencil, Play } from '@lucide/svelte';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -40,21 +32,29 @@
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { computeNextFires } from '../../lib/format/cron-preview.ts';
-  import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import IdentifierText from '../../lib/identifier-text.svelte';
   import { router, scheduleEditPath, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { kindOf } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import WorkerInheritanceNote from '../../lib/worker-inheritance-note.svelte';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import { workflowStatusPresentation } from '../workflows/detail/workflow-status.ts';
-  import { cadenceToScheduleValue, describeCadence } from './cadence.ts';
+  import { cadenceToScheduleValue } from './cadence.ts';
+  import { copyScheduleId } from './copy-schedule-id.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
-  import { overlapConsequence, overlapLabel } from './overlap-policy.ts';
+  import { overlapConsequence } from './overlap-policy.ts';
   import { revisionPolicyLabel } from './revision-policy.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleNotice from './schedule-notice.svelte';
+  import {
+    cadenceIdentifiers,
+    scheduleName,
+    scheduleNameIdentifiers,
+    scheduleSentence,
+  } from './schedule-presentation.ts';
   import {
     fetchScheduleDetail,
     fetchScheduleRunHistory,
@@ -115,8 +115,9 @@
 
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
 
-  // What the Bureau knows of this schedule: whether it starts an agent, or is a workflow's trigger.
-  // Until it answers, the schedule is of no known kind, and nothing is written to it.
+  // What the Bureau knows of this schedule: whether it starts an agent, or is a workflow's trigger,
+  // and the start of the text it sends. Until it answers, the schedule is of no known kind, and
+  // nothing is written to it.
   const overlay = createQuery(() => scheduleOverlayOptions(client));
 
   const actions = createScheduleActions();
@@ -129,6 +130,8 @@
    */
   let cancelTarget = $state.raw<Target | null>(null);
 
+  let engineOpen = $state(false);
+
   function openEdit(): void {
     router.navigate(scheduleEditPath(id));
   }
@@ -140,23 +143,31 @@
   function openWorkflowEditor(workflowType: string): void {
     router.navigate(workflowEditPath(workflowType));
   }
+
+  function openRun(event: MouseEvent, path: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(path);
+  }
 </script>
 
-<div class="weft-schedule-detail">
-  <button type="button" class="weft-schedule-detail__back" onclick={backToList}>
-    ← Back to schedules
+<div class="ib-schedule">
+  <button type="button" class="ib-schedule__back" onclick={backToList}>
+    ← {SCHEDULE_COPY.backToList}
   </button>
 
   {#if readGate.disabled}
     <EmptyState title="Schedule is locked" description={readGate.title ?? ''}>
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={backToList}>Back to schedules</Button>
+        <Button variant="secondary" onclick={backToList}>{SCHEDULE_COPY.backToList}</Button>
       {/snippet}
     </EmptyState>
   {:else if detailQuery.isPending}
     <div role="status" aria-busy="true" aria-label="Loading schedule">
-      <Skeleton height="120px" />
-      <Skeleton height="220px" />
+      <Skeleton height="3.5rem" />
+      <Skeleton height="3.5rem" />
     </div>
   {:else if detailQuery.isError}
     <FaultBanner
@@ -166,10 +177,10 @@
   {:else if detailQuery.data === null}
     <EmptyState
       title="Schedule not found"
-      description={`No schedule with id "${id}" exists — it may have been cancelled and purged.`}
+      description="No schedule with this address exists. It may have been cancelled and purged."
     >
       {#snippet action()}
-        <Button variant="secondary" size="sm" onclick={backToList}>Back to schedules</Button>
+        <Button variant="secondary" onclick={backToList}>{SCHEDULE_COPY.backToList}</Button>
       {/snippet}
     </EmptyState>
   {:else}
@@ -177,8 +188,10 @@
     {@const status = scheduleStatusDescriptor(schedule.status)}
     {@const target = { schedule, kind: kindOf(schedule, overlay.data) } satisfies Target}
     {@const allowed = actionsOf(target)}
-    {@const cadenceValue = cadenceToScheduleValue(schedule)}
-    {@const nextFires = computeNextFires(cadenceValue, 5)}
+    {@const name = scheduleName(schedule, target.kind)}
+    {@const sentence = scheduleSentence(schedule, target.kind)}
+    {@const input = overlay.data?.inputs?.get(schedule.id)}
+    {@const nextFires = computeNextFires(cadenceToScheduleValue(schedule), 5)}
 
     {#if actions.notice !== null}
       <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
@@ -187,90 +200,185 @@
       <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
     {/if}
 
-    <div class="weft-schedule-detail__header">
-      <div>
-        <div class="weft-schedule-detail__title-row">
-          <h1 class="weft-schedule-detail__id">{schedule.id}</h1>
-          <Badge variant={status.variant}>{status.label}</Badge>
-          {#if schedule.missedFireCount > 0}
-            <Badge variant="warning">{schedule.missedFireCount} missed</Badge>
+    {#snippet heading()}
+      <IdentifierText text={name} identifiers={scheduleNameIdentifiers(schedule, target.kind)} />
+    {/snippet}
+    {#snippet headerActions()}
+      {#if allowed.pause || allowed.resume}
+        <Button
+          variant="secondary"
+          disabled={writeGate.disabled || actions.busy}
+          title={writeGate.title}
+          onclick={() =>
+            schedule.status === 'paused'
+              ? actions.resume.mutate(target)
+              : actions.pause.mutate(target)}
+        >
+          {#if schedule.status === 'paused'}
+            <Play aria-hidden="true" size={14} /> Resume
+          {:else}
+            <Pause aria-hidden="true" size={14} /> Pause
           {/if}
-          <ConnectionIndicator status={fleetSource.status} />
-        </div>
-        <span class="weft-schedule-detail__subtitle">
-          <ScheduleTarget {schedule} kind={target.kind} /> · {describeCadence(schedule)}
-        </span>
-      </div>
-      <div class="weft-schedule-detail__actions">
-        {#if allowed.pause || allowed.resume}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={writeGate.disabled || actions.busy}
-            title={writeGate.title}
-            onclick={() =>
-              schedule.status === 'paused'
-                ? actions.resume.mutate(target)
-                : actions.pause.mutate(target)}
-          >
-            {#if schedule.status === 'paused'}
-              <Play aria-hidden="true" size={14} /> Resume
-            {:else}
-              <Pause aria-hidden="true" size={14} /> Pause
-            {/if}
-          </Button>
-        {/if}
-        {#if allowed.edit}
-          <Button variant="secondary" size="sm" onclick={openEdit}>
-            <Pencil aria-hidden="true" size={14} /> Edit
-          </Button>
-        {/if}
-        {#if allowed.editInWorkflow}
-          <Button
-            variant="secondary"
-            size="sm"
-            onclick={() => openWorkflowEditor(schedule.workflowType)}
-          >
-            <Pencil aria-hidden="true" size={14} />
-            {SCHEDULE_COPY.editWorkflowAction}
-          </Button>
-        {/if}
-        {#if allowed.cancel}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={writeGate.disabled || actions.busy}
-            title={writeGate.title}
-            onclick={() => {
-              cancelTarget = target;
-              cancelDialogOpen = true;
-            }}
-          >
-            <CircleX aria-hidden="true" size={14} /> Cancel
-          </Button>
-        {/if}
-      </div>
+        </Button>
+      {/if}
+      {#if allowed.edit}
+        <Button variant="secondary" size="md" onclick={openEdit}>
+          <Pencil aria-hidden="true" size={14} /> Edit
+        </Button>
+      {/if}
+      {#if allowed.editInWorkflow}
+        <Button
+          variant="secondary"
+          size="md"
+          onclick={() => openWorkflowEditor(schedule.workflowType)}
+        >
+          <Pencil aria-hidden="true" size={14} />
+          {SCHEDULE_COPY.editWorkflowAction}
+        </Button>
+      {/if}
+      <Dropdown id="ib-schedule-actions" placement="bottom-end">
+        <Dropdown.Trigger caretVisible={false}>
+          <Ellipsis aria-hidden="true" size={16} />
+          <VisuallyHidden>{SCHEDULE_COPY.moreActions}</VisuallyHidden>
+        </Dropdown.Trigger>
+        <Dropdown.Menu>
+          <Dropdown.Item onclick={() => void copyScheduleId(schedule.id)}>
+            <Copy aria-hidden="true" size={14} />
+            {SCHEDULE_COPY.copyId}
+          </Dropdown.Item>
+          {#if allowed.cancel}
+            <Dropdown.Item
+              variant="danger"
+              disabled={writeGate.disabled || actions.busy}
+              onclick={() => {
+                cancelTarget = target;
+                cancelDialogOpen = true;
+              }}
+            >
+              <CircleX aria-hidden="true" size={14} /> Cancel
+            </Dropdown.Item>
+          {/if}
+        </Dropdown.Menu>
+      </Dropdown>
+    {/snippet}
+
+    <PageHeader
+      class="ib-schedule__header"
+      headingLevel={1}
+      title={heading}
+      actions={headerActions}
+    />
+
+    <p class="ib-schedule__status" data-testid="schedule-status-line">
+      <span>
+        {sentence.verb}
+        <ScheduleTarget {schedule} kind={target.kind} inSentence />
+        <IdentifierText text={sentence.clause} identifiers={cadenceIdentifiers(schedule)} />
+      </span>
+      {#if schedule.status === 'active' && schedule.nextFireAt !== null}
+        <span>· {SCHEDULE_COPY.next(formatRelativeTime(schedule.nextFireAt))}</span>
+      {/if}
+      {#if schedule.status !== 'active'}
+        <Badge variant={status.variant}>{status.label}</Badge>
+      {/if}
+      {#if schedule.missedFireCount > 0}
+        <Badge variant="warning">{SCHEDULE_COPY.missed(schedule.missedFireCount)}</Badge>
+      {/if}
+    </p>
+
+    {#if input !== undefined}
+      <p class="ib-schedule__input" data-testid="schedule-input">
+        <span class="ib-schedule__label">{SCHEDULE_COPY.sends}</span> “{input}”
+      </p>
+    {/if}
+
+    <div class="ib-schedule__block">
+      <h2 class="ib-schedule__label">{SCHEDULE_COPY.nextFires}</h2>
+      {#if schedule.status === 'active' && nextFires.length > 0}
+        <ul class="ib-schedule__fires" data-testid="schedule-next-fires">
+          {#each nextFires as fire (fire.id)}
+            <li>{fire.label}</li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="ib-schedule__muted">{SCHEDULE_COPY.notScheduled(status.label.toLowerCase())}</p>
+      {/if}
     </div>
 
-    <div class="weft-schedule-detail__grid">
-      <Card title="Specification">
+    <div class="ib-schedule__block">
+      <h2 class="ib-schedule__label">{SCHEDULE_COPY.recentRuns}</h2>
+      {#if historyQuery.isPending}
+        <Skeleton height="2.5rem" />
+      {:else if historyQuery.isError}
+        <FaultBanner
+          treatment={faultTreatment(historyQuery.error)}
+          onRetry={() => void historyQuery.refetch()}
+        />
+      {:else if historyQuery.data.items.length === 0}
+        <p class="ib-schedule__muted">{SCHEDULE_COPY.noRuns}</p>
+      {:else}
+        <ul class="ib-schedule__runs" data-testid="schedule-runs">
+          {#each historyQuery.data.items as run (run.id)}
+            {@const runStatus = workflowStatusPresentation(run.status)}
+            {@const runPath = workflowDetailPath(run.id)}
+            <li>
+              <a
+                class="ib-schedule__run"
+                href={router.href(runPath)}
+                onclick={(event) => openRun(event, runPath)}
+              >
+                {#if run.status === 'completed'}
+                  <CircleCheck class="ib-schedule-glyph" size={14} aria-hidden="true" />
+                {:else if run.status === 'failed' || run.status === 'timed-out' || run.status === 'cancelled'}
+                  <CircleX class="ib-schedule-glyph" size={14} aria-hidden="true" />
+                {/if}
+                {formatRelativeTime(run.createdAt)}
+                {#if run.status === 'completed' || run.status === 'failed' || run.status === 'timed-out' || run.status === 'cancelled'}
+                  · {formatDuration(Math.max(0, run.updatedAt - run.createdAt))}
+                {/if}
+              </a>
+              <Badge variant={runStatus.variant}>{runStatus.label}</Badge>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+
+    <p class="ib-schedule__overlap" data-testid="schedule-overlap">
+      <Tooltip text={overlapConsequence(schedule.overlap)}>
+        <span>
+          {SCHEDULE_COPY.overlapLine[schedule.overlap]}
+          <Info aria-hidden="true" size={14} />
+        </span>
+      </Tooltip>
+    </p>
+
+    {#snippet cronDefinition()}
+      <code class="ib-identifier">{schedule.cronExpression}</code>
+    {/snippet}
+
+    <Collapsible bind:open={engineOpen} trigger={SCHEDULE_COPY.engine}>
+      <div class="ib-schedule__engine">
         <DescriptionList
           items={[
             {
-              term: schedule.cronExpression !== undefined ? 'Cron' : 'Interval',
+              term:
+                schedule.cronExpression !== undefined
+                  ? SCHEDULE_COPY.engineRows.cron
+                  : SCHEDULE_COPY.engineRows.interval,
               definition:
-                schedule.cronExpression ??
-                (schedule.intervalMs !== undefined ? `${schedule.intervalMs}ms` : '—'),
+                schedule.cronExpression !== undefined
+                  ? cronDefinition
+                  : schedule.intervalMs !== undefined
+                    ? `${schedule.intervalMs}ms`
+                    : '—',
             },
-            { term: 'Jitter', definition: schedule.jitterMs ? `±${schedule.jitterMs}ms` : 'None' },
             {
-              term: 'Next fire',
-              definition:
-                schedule.nextFireAt !== null ? formatRelativeTime(schedule.nextFireAt) : '—',
+              term: SCHEDULE_COPY.engineRows.jitter,
+              definition: schedule.jitterMs ? `±${schedule.jitterMs}ms` : 'None',
             },
-            { term: 'Missed fires', definition: String(schedule.missedFireCount) },
             {
-              term: 'Revision policy',
+              term: SCHEDULE_COPY.engineRows.revisionPolicy,
               definition:
                 schedule.revisionPolicy === 'pinned' && schedule.pinnedRevision !== undefined
                   ? `${revisionPolicyLabel(schedule.revisionPolicy)} (${schedule.pinnedRevision})`
@@ -278,101 +386,44 @@
             },
           ]}
         />
-        <div class="weft-schedule-detail__next-fires">
-          <div class="weft-schedule-detail__panel-label">Next 5 fires</div>
-          {#if schedule.status === 'active' && nextFires.length > 0}
-            <ul class="weft-schedule-detail__fires-list">
-              {#each nextFires as fire (fire.id)}
-                <li>{fire.label}</li>
-              {/each}
-            </ul>
-          {:else}
-            <p class="weft-schedule-detail__muted">
-              Not scheduled — schedule is {status.label.toLowerCase()}.
-            </p>
-          {/if}
-        </div>
-      </Card>
-
-      <div class="weft-schedule-detail__side">
-        <Callout variant="info" title={`Overlap policy: ${overlapLabel(schedule.overlap)}`}>
-          {#snippet icon()}
-            <Info aria-hidden="true" size={17} />
-          {/snippet}
-          {overlapConsequence(schedule.overlap)}
-        </Callout>
-
         <WorkerInheritanceNote surface="schedule" />
-
-        <Card title="Current & queued runs">
+        <div>
+          <h3 class="ib-schedule__label">{SCHEDULE_COPY.runningNow}</h3>
           {#if schedule.currentWorkflowId !== undefined}
             <a
-              class="weft-schedule-detail__current-run"
+              class="ib-schedule__run"
               href={router.href(workflowDetailPath(schedule.currentWorkflowId))}
             >
               <StatusDot status="online" labelVisible={false} />
-              <span class="weft-schedule-detail__mono"
-                >{truncateId(schedule.currentWorkflowId)}</span
-              >
-              <Badge variant="success" class="weft-schedule-detail__current-run-badge"
-                >running</Badge
-              >
+              <code class="ib-identifier">{truncateId(schedule.currentWorkflowId)}</code>
             </a>
           {/if}
           {#if schedule.queuedRuns.length > 0}
-            <ul class="weft-schedule-detail__runs-list weft-schedule-detail__queued">
+            <ul class="ib-schedule__runs" aria-label={SCHEDULE_COPY.queuedRuns}>
               {#each schedule.queuedRuns as queued (queued.workflowId)}
                 <li>
                   <a
-                    class="weft-schedule-detail__mono"
+                    class="ib-schedule__run"
                     href={router.href(workflowDetailPath(queued.workflowId))}
                   >
-                    {truncateId(queued.workflowId)}
+                    <code class="ib-identifier">{truncateId(queued.workflowId)}</code>
+                    queued {formatRelativeTime(queued.queuedAt)}
                   </a>
-                  <span class="weft-schedule-detail__muted"
-                    >queued {formatRelativeTime(queued.queuedAt)}</span
-                  >
                 </li>
               {/each}
             </ul>
           {/if}
           {#if schedule.currentWorkflowId === undefined && schedule.queuedRuns.length === 0}
-            <p class="weft-schedule-detail__muted">No active or queued runs.</p>
+            <p class="ib-schedule__muted">{SCHEDULE_COPY.noActiveRuns}</p>
           {/if}
-        </Card>
+        </div>
       </div>
-    </div>
-
-    <Card title="Recent runs">
-      {#if historyQuery.isPending}
-        <Skeleton height="80px" />
-      {:else if historyQuery.isError}
-        <FaultBanner
-          treatment={faultTreatment(historyQuery.error)}
-          onRetry={() => void historyQuery.refetch()}
-        />
-      {:else if historyQuery.data.items.length === 0}
-        <p class="weft-schedule-detail__muted">No runs yet — this schedule hasn't fired.</p>
-      {:else}
-        <ul class="weft-schedule-detail__runs-list">
-          {#each historyQuery.data.items as run (run.id)}
-            {@const status = workflowStatusPresentation(run.status)}
-            <li>
-              <a class="weft-schedule-detail__mono" href={router.href(workflowDetailPath(run.id))}>
-                {truncateId(run.id)}
-              </a>
-              <Badge variant={status.variant}>{status.label}</Badge>
-              <span class="weft-schedule-detail__muted">{formatRelativeTime(run.createdAt)}</span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </Card>
+    </Collapsible>
 
     <ConfirmDialog
       bind:open={cancelDialogOpen}
       title="Cancel this schedule?"
-      description={`"${schedule.id}" will stop firing. This can't be undone — create a new schedule to resume this cadence.`}
+      description={`“${name}” will stop firing. This can't be undone — create a new schedule to resume this cadence.`}
       confirmLabel="Cancel schedule"
       destructive
       onConfirm={() => {
@@ -381,150 +432,3 @@
     />
   {/if}
 </div>
-
-<style>
-  .weft-schedule-detail {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-4);
-  }
-
-  .weft-schedule-detail__back {
-    align-self: flex-start;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 0;
-    background: transparent;
-    color: var(--cinder-text-subtle);
-    font: inherit;
-    font-size: var(--cinder-text-sm);
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .weft-schedule-detail__header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-
-  .weft-schedule-detail__title-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 5px;
-    flex-wrap: wrap;
-  }
-
-  .weft-schedule-detail__id {
-    margin: 0;
-    font-size: var(--cinder-text-lg);
-    font-weight: 600;
-    font-family: var(--cinder-font-mono);
-  }
-
-  .weft-schedule-detail__subtitle {
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-subtle);
-  }
-
-  .weft-schedule-detail__actions {
-    display: flex;
-    gap: 7px;
-    flex-wrap: wrap;
-  }
-
-  .weft-schedule-detail__grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    align-items: start;
-  }
-
-  @media (max-width: 900px) {
-    .weft-schedule-detail__grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .weft-schedule-detail__side {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .weft-schedule-detail__next-fires {
-    padding-top: var(--cinder-space-3);
-    margin-top: 11px;
-    border-top: 1px solid var(--cinder-border-muted);
-  }
-
-  .weft-schedule-detail__panel-label {
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-subtle);
-    margin-bottom: 6px;
-  }
-
-  .weft-schedule-detail__fires-list {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-muted);
-  }
-
-  .weft-schedule-detail__muted {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-disabled);
-  }
-
-  .weft-schedule-detail__current-run {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    text-decoration: none;
-    color: inherit;
-  }
-
-  .weft-schedule-detail__current-run :global(.weft-schedule-detail__current-run-badge) {
-    margin-inline-start: auto;
-  }
-
-  .weft-schedule-detail__queued {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-muted);
-  }
-
-  .weft-schedule-detail__mono {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .weft-schedule-detail__runs-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .weft-schedule-detail__runs-list li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .weft-schedule-detail__runs-list li .weft-schedule-detail__muted {
-    margin-inline-start: auto;
-  }
-</style>

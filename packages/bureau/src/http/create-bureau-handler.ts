@@ -190,6 +190,7 @@ export type BureauHandlerSource = Pick<
   | 'durableEngine'
   | 'getOwner'
   | 'getScheduleAgentName'
+  | 'getScheduleInputPreview'
   | 'tasks'
   | 'lifecycle'
   | 'eventHistory'
@@ -1024,6 +1025,7 @@ export function buildBureauHandlerHost(
       updateSchedule: bureau.updateSchedule,
       owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
       agentName: (scheduleId) => bureau.getScheduleAgentName(scheduleId),
+      inputPreview: (scheduleId) => bureau.getScheduleInputPreview(scheduleId),
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,

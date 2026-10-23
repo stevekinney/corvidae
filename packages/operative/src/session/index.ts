@@ -1,6 +1,7 @@
 export {
   SessionConflictError,
   StaleSessionIncarnationError,
+  clipText,
   createSessionStore,
   summarizeSession,
 } from './create-session-store';

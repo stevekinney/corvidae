@@ -38,6 +38,7 @@ describe('ScheduleDetail', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
@@ -71,11 +72,12 @@ describe('ScheduleDetail', () => {
     }
   });
 
-  test('renders the specification, next fires, and overlap consequence for an active schedule', async () => {
+  test('is named by what it does, says what it runs and when, and keeps the engine’s fields behind the Engine disclosure', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
       overlapPolicy: 'queue',
@@ -83,20 +85,101 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText, getByTestId } = render(ScheduleDetailHarness, {
+      const { getByText, getByRole, getByTestId, queryByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
-      await waitFor(() => expect(getByText('0 2 * * *')).not.toBeNull());
-      // What it starts, labelled and linked, then the cadence.
-      expect(getByTestId('schedule-target').textContent).toContain('inventory-sync-sweep');
-      expect(getByText(/Every day at 02:00/)).not.toBeNull();
-      expect(getByText('Overlap policy: Queue')).not.toBeNull();
+      // The heading is the name, and the identifier is on the page nowhere.
+      await waitFor(() =>
+        expect(getByRole('heading', { level: 1, name: 'Nightly rollup' })).not.toBeNull(),
+      );
+      expect(document.body.textContent).not.toContain('nightly-rollup');
+      // What it starts, and the cadence in words, in one sentence.
+      const status = getByTestId('schedule-status-line');
+      expect(status.textContent).toContain('inventory-sync-sweep');
+      expect(status.textContent).toContain('every day at 02:00');
+      expect(getByTestId('schedule-next-fires').querySelectorAll('li')).toHaveLength(5);
+      // The overlap policy is one line, and its consequence is in the tooltip.
+      expect(getByTestId('schedule-overlap').textContent).toContain(
+        'Queues a fire if the previous run is still going',
+      );
       expect(getByText(/Queue can grow unbounded during outages/)).not.toBeNull();
+
+      // The engine's fields are not there until the disclosure opens.
+      for (const hidden of [
+        '0 2 * * *',
+        'Jitter',
+        'Revision policy',
+        'Worker binding for scheduled runs',
+      ]) {
+        expect(queryByText(hidden), hidden).toBeNull();
+      }
+      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      expect(await waitFor(() => getByText('0 2 * * *'))).not.toBeNull();
+      expect(getByText('Jitter')).not.toBeNull();
+      expect(getByText('Revision policy')).not.toBeNull();
       // COR-164: the scheduled-run worker rule, worded once in worker-inheritance-rules.ts.
       expect(getByText('Worker binding for scheduled runs')).not.toBeNull();
       expect(getByText(/a schedule carries no worker-versioning rule of its own/)).not.toBeNull();
     } finally {
+      await server.stop();
+    }
+  });
+
+  test('a schedule with no description is named by what it starts', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'unnamed-probe',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { getByRole } = render(ScheduleDetailHarness, {
+        props: { client, id: 'unnamed-probe' },
+      });
+
+      await waitFor(() =>
+        expect(
+          getByRole('heading', { level: 1, name: 'Schedule for inventory-sync-sweep' }),
+        ).not.toBeNull(),
+      );
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('the actions menu copies the identifier, which no page shows', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'nightly-rollup',
+      description: 'Nightly rollup',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    const written: string[] = [];
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: (text: string) => (written.push(text), Promise.resolve()) },
+    });
+
+    try {
+      const { getByRole } = render(ScheduleDetailHarness, {
+        props: { client, id: 'nightly-rollup' },
+      });
+
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'More actions' })));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy id' })));
+
+      await waitFor(() => expect(written).toEqual(['nightly-rollup']));
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
       await server.stop();
     }
   });
@@ -138,20 +221,22 @@ describe('ScheduleDetail', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getByText, getByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
-      await waitFor(() => expect(getByText('No active or queued runs.')).not.toBeNull());
       await waitFor(() =>
-        expect(getByText("No runs yet — this schedule hasn't fired.")).not.toBeNull(),
+        expect(getByText('No runs yet. This schedule has not fired.')).not.toBeNull(),
       );
+      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      await waitFor(() => expect(getByText('No active or queued runs.')).not.toBeNull());
     } finally {
       await server.stop();
     }
@@ -182,24 +267,29 @@ describe('ScheduleDetail', () => {
     }, 'queue-probe has a queued run');
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getByRole, getAllByRole } = render(ScheduleDetailHarness, {
         props: { client, id: 'queue-probe' },
       });
 
-      // Unique to a queued-run row (`schedule-detail.svelte`'s `{#each
-      // schedule.queuedRuns as queued}` branch) — the current-run row (if
-      // any) never renders "queued …" text, so this can only pass once a
-      // real `ScheduleQueuedRun` entry has round-tripped through the API.
-      const queuedAtText = await waitFor(() => getByText(/^queued /), { timeout: 5000 });
-      expect(queuedAtText).not.toBeNull();
-      const queuedLink = queuedAtText.closest('li')?.querySelector('a');
+      // Queued runs are the engine's, so they are under the disclosure. A queued-run row is the
+      // only link that says "queued …": the current-run row never does, so this can only pass
+      // once a real `ScheduleQueuedRun` entry has round-tripped through the API.
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Engine' })));
+      const queuedLink = await waitFor(
+        () => {
+          const found = getAllByRole('link').find((link) => /queued /.test(link.textContent ?? ''));
+          expect(found).toBeDefined();
+          return found;
+        },
+        { timeout: 5000 },
+      );
       expect(queuedLink?.getAttribute('href')).toMatch(/^\/runs\//);
     } finally {
       await server.stop();
     }
   }, 10000);
 
-  test('a current run renders a "running" Badge on the current-run link', async () => {
+  test('a current run is a link to its run under “Running now” in the Engine disclosure', async () => {
     const server = await startLiveSourceTestServer();
     // `long-sleeper` parks on a 24h `ctx.sleep()`, so the first occurrence
     // stays "running" indefinitely and durably occupies
@@ -225,13 +315,20 @@ describe('ScheduleDetail', () => {
     }, 'current-run-probe has a current run');
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getByRole, getByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'current-run-probe' },
       });
 
-      const runningBadge = await waitFor(() => getByText('running'), { timeout: 5000 });
-      expect(runningBadge).not.toBeNull();
-      const currentRunLink = runningBadge.closest('a');
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Engine' })));
+      const heading = await waitFor(() => getByText('Running now'), { timeout: 5000 });
+      const currentRunLink = await waitFor(
+        () => {
+          const link = heading.parentElement?.querySelector('a');
+          expect(link).not.toBeNull();
+          return link;
+        },
+        { timeout: 5000 },
+      );
       expect(currentRunLink?.getAttribute('href')).toMatch(/^\/runs\//);
     } finally {
       await server.stop();
@@ -272,11 +369,119 @@ describe('ScheduleDetail', () => {
     }
   }, 10000);
 
-  test('a paused schedule shows "Not scheduled" instead of a next-fires list', async () => {
+  test('sets the cron expression in monospace, in the sentence and in the Engine list', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'weekday-probe',
+      description: 'Weekday probe',
+      cron: '0 9 * * 1-5',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { getByRole, getByTestId } = render(ScheduleDetailHarness, {
+        props: { client, id: 'weekday-probe' },
+      });
+
+      const sentence = await waitFor(() => getByTestId('schedule-status-line'));
+      expect(sentence.textContent).toContain('on cron 0 9 * * 1-5');
+      expect(
+        Array.from(sentence.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
+      ).toContain('0 9 * * 1-5');
+
+      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      const definition = await waitFor(() => {
+        const found = document.querySelector('.cinder-description-list__definition code');
+        if (found === null) throw new Error('the Engine list has not rendered the cron expression');
+        return found;
+      });
+      expect(definition.textContent).toBe('0 9 * * 1-5');
+      expect(definition.classList.contains('ib-identifier')).toBe(true);
+    } finally {
+      await server.stop();
+    }
+  }, 10000);
+
+  test('a cancelled run shows the failure glyph, as the list does', async () => {
+    const server = await startLiveSourceTestServer();
+    const handle = await server.engine.schedule({
+      workflow: 'long-sleeper',
+      id: 'cancelled-probe',
+      description: 'Cancelled probe',
+      every: '50ms',
+      input: { label: 'cancelled-probe' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    // One run is started; stop the schedule from starting another, then cancel the one running.
+    let runId: string | undefined;
+    await waitForServerState(async () => {
+      const started = await client.list({ scheduleId: 'cancelled-probe', limit: 5 });
+      runId = started.items[0]?.id;
+      return runId !== undefined;
+    }, 'cancelled-probe has started a run');
+    await handle.pause();
+    await client.cancel(runId!);
+    await waitForServerState(async () => {
+      const runs = await client.list({ scheduleId: 'cancelled-probe', limit: 5 });
+      return runs.items.some((run) => run.status === 'cancelled');
+    }, 'cancelled-probe has a cancelled run');
+
+    try {
+      const { getByTestId } = render(ScheduleDetailHarness, {
+        props: { client, id: 'cancelled-probe' },
+      });
+
+      const runs = await waitFor(() => getByTestId('schedule-runs'), { timeout: 5000 });
+      await waitFor(() => expect(within(runs).getAllByText('Cancelled').length).toBeGreaterThan(0));
+      const cancelled = within(runs).getAllByText('Cancelled')[0]?.closest('li');
+      expect(cancelled?.querySelector('.ib-schedule-glyph')).not.toBeNull();
+    } finally {
+      await server.stop();
+    }
+  }, 15000);
+
+  test('a failed run is marked as failed with how long it took, opens its run when clicked, and the back link returns to the list', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'system-failure-demo',
+      id: 'failing-probe',
+      description: 'Failing probe',
+      every: '50ms',
+      input: { orderId: 'order-1' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    await waitForServerState(async () => {
+      const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
+      return runs.items.some((run) => run.status === 'failed');
+    }, 'failing-probe has a failed run');
+
+    try {
+      const { getByRole, getByTestId } = render(ScheduleDetailHarness, {
+        props: { client, id: 'failing-probe' },
+      });
+
+      const runs = await waitFor(() => getByTestId('schedule-runs'), { timeout: 5000 });
+      await waitFor(() => expect(within(runs).getAllByText('Failed').length).toBeGreaterThan(0));
+      const link = within(runs).getAllByRole('link')[0];
+      if (link === undefined) throw new Error('expected a run link');
+      await fireEvent.click(link);
+      expect(window.location.pathname).toMatch(/^\/runs\//);
+
+      await fireEvent.click(getByRole('button', { name: /Back to schedules/ }));
+      expect(window.location.pathname).toBe('/schedules');
+    } finally {
+      await server.stop();
+    }
+  }, 10000);
+
+  test('a paused schedule says it is not scheduled instead of listing next fires', async () => {
     const server = await startLiveSourceTestServer();
     const handle = await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'weekly-digest',
+      description: 'Weekly digest',
       cron: '0 9 * * 1',
       input: { warehouseId: 'wh-main' },
     });
@@ -288,7 +493,9 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'weekly-digest' },
       });
 
-      await waitFor(() => expect(getByText('Not scheduled — schedule is paused.')).not.toBeNull());
+      await waitFor(() =>
+        expect(getByText('Not scheduled. This schedule is paused.')).not.toBeNull(),
+      );
     } finally {
       await server.stop();
     }
@@ -299,6 +506,7 @@ describe('ScheduleDetail', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
@@ -323,6 +531,7 @@ describe('ScheduleDetail', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
@@ -338,8 +547,10 @@ describe('ScheduleDetail', () => {
           requireElement(getByRole('button', { name: /Pause/ }), HTMLButtonElement).disabled,
         ).toBe(true);
       });
+      await fireEvent.click(getByRole('button', { name: 'More actions' }));
+      const cancel = await waitFor(() => getByRole('menuitem', { name: /Cancel/ }));
       expect(
-        requireElement(getByRole('button', { name: /Cancel/ }), HTMLButtonElement).disabled,
+        cancel.hasAttribute('disabled') || cancel.getAttribute('aria-disabled') === 'true',
       ).toBe(true);
     } finally {
       await server.stop();
@@ -351,6 +562,7 @@ describe('ScheduleDetail', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
@@ -361,8 +573,8 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'nightly-rollup' },
       });
 
-      await waitFor(() => expect(getByRole('button', { name: /Cancel/ })).not.toBeNull());
-      await fireEvent.click(getByRole('button', { name: /Cancel/ }));
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'More actions' })));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Cancel/ })));
 
       const dialog = await waitFor(() => getByRole('dialog'));
       await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel schedule' }));

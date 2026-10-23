@@ -322,7 +322,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
 }) => {
   await page.goto('/schedules');
   const file = page
-    .locator('tr[data-kind="workflow-file"]')
+    .locator('li[data-kind="workflow-file"]')
     .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
   await expect(file).toContainText(describeCadence({ intervalMs: 5_000 }));
   // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file.
@@ -345,7 +345,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   // The schedule follows the file, which also ends the fire every few seconds.
   await page.goto('/schedules');
   const hourly = page
-    .locator('tr[data-kind="workflow-file"]')
+    .locator('li[data-kind="workflow-file"]')
     .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
   await expect(hourly).toContainText(describeCadence({ intervalMs: 3_600_000 }));
   await expect(hourly).not.toContainText(describeCadence({ intervalMs: 5_000 }));

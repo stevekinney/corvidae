@@ -1469,6 +1469,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getScheduleAgentName(scheduleId: string): Promise<string | undefined>;
 
   /**
+   * The start of the text an agent schedule sends each fire: at most 500 characters, ending in `…`
+   * when it was cut, so a schedule can be told by what it says. `undefined` when there is no such
+   * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
+   * is composed. It reads the stored input beside {@link Bureau.getScheduleAgentName}, never its
+   * session, and does not check who may see the schedule, so a caller answers to
+   * {@link Bureau.getOwner} first.
+   */
+  getScheduleInputPreview(scheduleId: string): Promise<string | undefined>;
+
+  /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
    * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
    * the current snapshot synchronously before returning, then a new

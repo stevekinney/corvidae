@@ -21,8 +21,3 @@ const SCHEDULE_STATUS: Readonly<Record<ScheduleStatus, ScheduleStatusDescriptor>
 export function scheduleStatusDescriptor(status: ScheduleStatus): ScheduleStatusDescriptor {
   return SCHEDULE_STATUS[status];
 }
-
-/** `warning` (red per design) when a schedule has missed fires, `neutral` otherwise (plan §9.3: "missed-fires count red >0"). */
-export function missedFireBadgeVariant(missedFireCount: number): BadgeVariant {
-  return missedFireCount > 0 ? 'warning' : 'neutral';
-}

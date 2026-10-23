@@ -259,8 +259,12 @@ function mergeSessions(current: AgentSession, candidate: AgentSession): AgentSes
   };
 }
 
-/** `text` trimmed and cut to `limit` characters (code points, so a pair is never split). */
-function clipText(text: string, limit: number): string {
+/**
+ * `text` trimmed and cut to `limit` characters, counted in code points, so a surrogate pair is
+ * never split and the result is always well formed. It adds no ellipsis; a caller that wants one
+ * appends it.
+ */
+export function clipText(text: string, limit: number): string {
   const trimmed = text.trim();
   let count = 0;
   let end = 0;

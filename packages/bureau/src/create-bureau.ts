@@ -519,9 +519,11 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
+import { scheduleInputPreview } from './schedule-input-preview';
 import { streamEventToFrame } from './websocket-frames';
 
 const BUREAU_AGENT_NAME = 'bureau';
+
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
 /** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
@@ -10036,11 +10038,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * The agent an agent schedule runs, read from the stored input beside the owner. Only the name
-   * leaves: the input's text and its session stay in storage. A workflow file's schedule runs no
-   * agent of its own, so it has none.
+   * The stored input of an agent schedule, or `undefined` when there is no such schedule, when it
+   * is a workflow file's (which runs no agent of its own), or when no durable engine is composed.
    */
-  async function getScheduleAgentName(scheduleId: string): Promise<string | undefined> {
+  async function readScheduledAgentInput(
+    scheduleId: string,
+  ): Promise<ScheduledAgentRunInput | undefined> {
     if (!runtime.durable) return undefined;
     if (workflowRuntime !== undefined && (await workflowRuntime.scheduleExists(scheduleId))) {
       return undefined;
@@ -10052,7 +10055,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       typeof state === 'object' && state !== null
         ? (state as { input?: unknown }).input
         : undefined;
-    return isScheduledAgentRunInput(input) ? input.agentName : undefined;
+    return isScheduledAgentRunInput(input) ? input : undefined;
+  }
+
+  /**
+   * The agent an agent schedule runs, read from the stored input beside the owner. Only the name
+   * leaves here: the input's text is {@link getScheduleInputPreview}'s, and its session stays in
+   * storage. A workflow file's schedule runs no agent of its own, so it has none.
+   */
+  async function getScheduleAgentName(scheduleId: string): Promise<string | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    return stored?.agentName;
+  }
+
+  /**
+   * The start of the text an agent schedule sends each fire, at most 500 characters and ending in
+   * `…` when it was cut, so a schedule can be told by what it says (see
+   * {@link scheduleInputPreview}); an input of media alone has none, and its schedule has no
+   * preview.
+   */
+  async function getScheduleInputPreview(scheduleId: string): Promise<string | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    if (stored === undefined) return undefined;
+    return scheduleInputPreview(stored.input);
   }
 
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
@@ -18685,6 +18710,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     getRun,
     getOwner,
     getScheduleAgentName,
+    getScheduleInputPreview,
     subscribeRunSnapshot,
     getRunReport,
     abortRun,
