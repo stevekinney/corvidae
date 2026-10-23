@@ -74,7 +74,13 @@ import {
 } from '../run-exclusively.ts';
 import { readGateLog } from './gate-run.ts';
 import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
-import { overlappingFiles, readWorkspaceGraph } from './merge-overlap.ts';
+import {
+  filesystemSource,
+  overlappingFiles,
+  readWorkspaceGraph,
+  unionGraphs,
+  type GraphSource,
+} from './merge-overlap.ts';
 import {
   defaultRunner,
   emitResult,
@@ -255,11 +261,27 @@ export function mergeGate(
     if (typeof pullRequestFiles === 'string') return pullRequestFiles;
     const baseFiles = changedFiles(baseSha, remote);
     if (typeof baseFiles === 'string') return baseFiles;
-    const overlap = overlappingFiles(
-      pullRequestFiles,
-      baseFiles,
-      readWorkspaceGraph(options.worktree),
+    // A dependency edge added on the default branch counts as much as one at the head.
+    const baseSource: GraphSource = {
+      read: (path) => {
+        const shown = git('show', `${remote}:${path}`);
+        return shown.code === 0 ? shown.stdout : undefined;
+      },
+      list: (directory) => {
+        const listed = git('ls-tree', '--name-only', remote, `${directory}/`);
+        return listed.code === 0
+          ? listed.stdout
+              .split('\n')
+              .filter((line) => line !== '')
+              .map((line) => line.slice(directory.length + 1))
+          : [];
+      },
+    };
+    const graph = unionGraphs(
+      readWorkspaceGraph(filesystemSource(options.worktree)),
+      readWorkspaceGraph(baseSource),
     );
+    const overlap = overlappingFiles(pullRequestFiles, baseFiles, graph);
     if (overlap.length > 0)
       return `${refusal}, and ${overlap.length} file(s) that landed on it since the merge base lie in workspaces this pull request affects, so the gate may not describe the merge: ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ', ...' : ''}. Merge it in and re-gate.`;
     return { path: 'merge-tree', tree };

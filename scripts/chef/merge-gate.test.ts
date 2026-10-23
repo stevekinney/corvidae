@@ -98,6 +98,8 @@ interface World {
   baseFiles?: string[];
   /** The tree of the squash commit; the clean-merge tree unless a test overrides it. */
   mergedTree?: string;
+  /** Files at origin/main by path, as `git show` and `git ls-tree` read them. */
+  baseTree?: Record<string, string>;
 }
 
 const MERGE_TREE = '9'.repeat(40);
@@ -120,6 +122,20 @@ function fake(world: World = {}) {
       }
       if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
         return { code: 0, stdout: `${world.mergedTree ?? MERGE_TREE}\n`, stderr: '' };
+      if (rest[0] === 'show') {
+        const content = world.baseTree?.[rest[1]?.replace(/^origin\/main:/, '') ?? ''];
+        return content === undefined
+          ? { code: 128, stdout: '', stderr: 'fatal: path does not exist' }
+          : { code: 0, stdout: content, stderr: '' };
+      }
+      if (rest[0] === 'ls-tree') {
+        const prefix = rest[3] ?? '';
+        const names = Object.keys(world.baseTree ?? {})
+          .filter((path) => path.startsWith(prefix))
+          .map((path) => path.slice(0, path.indexOf('/', prefix.length)))
+          .filter((path, index, all) => path !== '' && all.indexOf(path) === index);
+        return { code: 0, stdout: `${names.join('\n')}\n`, stderr: '' };
+      }
       if (rest[0] === 'merge-tree')
         return {
           code: world.mergeTreeCode ?? 1,
@@ -677,7 +693,15 @@ describe('a head that does not contain the base', () => {
     }
     writeFileSync(
       join(sandbox, 'turbo.json'),
-      JSON.stringify({ globalDependencies: ['tsconfig.json'] }),
+      JSON.stringify({
+        globalDependencies: ['tsconfig.json'],
+        tasks: {
+          lint: {
+            inputs: ['$TURBO_DEFAULT$', '$TURBO_ROOT$/scripts/check-documentation-coverage.ts'],
+          },
+          test: { inputs: ['$TURBO_ROOT$/scripts/test-duration-allowlist.json'] },
+        },
+      }),
     );
   }
   beforeEach(writeWorkspaces);
@@ -764,6 +788,40 @@ describe('a head that does not contain the base', () => {
       }),
     );
     expect(mergeGate(options, { runner: refused.runner }).failedStep).toBe('contains-base');
+  });
+
+  test('root files that turbo.json names as task inputs, and bunfig.toml, touch everything', () => {
+    for (const path of [
+      'scripts/check-documentation-coverage.ts',
+      'scripts/test-duration-allowlist.json',
+      'bunfig.toml',
+    ]) {
+      const onMain = fake(cleanWorld({ baseFiles: ['packages/c/other.ts', path] }));
+      const forward = mergeGate(options, { runner: onMain.runner });
+      expect(forward.failedStep, path).toBe('contains-base');
+      expect(forward.detail, path).toContain(path);
+      const onPullRequest = fake(
+        cleanWorld({ pullRequestFiles: [path], baseFiles: ['packages/c/other.ts'] }),
+      );
+      expect(mergeGate(options, { runner: onPullRequest.runner }).failedStep, path).toBe(
+        'contains-base',
+      );
+    }
+  });
+
+  test('a dependency edge added on the default branch counts', () => {
+    const baseTree = {
+      'packages/a/package.json': JSON.stringify({ name: '@x/a' }),
+      'packages/c/package.json': JSON.stringify({
+        name: '@x/c',
+        dependencies: { '@x/a': 'workspace:*' },
+      }),
+    };
+    const world = fake(cleanWorld({ baseTree, baseFiles: ['packages/c/other.ts'] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('contains-base');
+    expect(report.detail).toContain('packages/c/other.ts');
+    expect(world.merged()).toBe(false);
   });
 
   test('refuses a conflicting merge, naming the failed condition', () => {

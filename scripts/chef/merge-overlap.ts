@@ -8,7 +8,8 @@
 // `devDependencies` and `peerDependencies` entries on `workspace:` specifiers). The dependencies
 // are included because a gate at the pull request's head ran against the old version of them.
 // Some files touch every workspace: `bun.lock`, the root `package.json`, `turbo.json`, `tsconfig*.json`
-// at the root, and anything in turbo.json `globalDependencies`. A file outside every workspace
+// at the root, root `bunfig.toml`, anything in turbo.json `globalDependencies`, and every
+// `$TURBO_ROOT$/...` path a task names in its `inputs` (read from turbo.json, not listed here). A file outside every workspace
 // counts as the root package, which only a pull request that also changes root files affects.
 //
 // This module is a library; it has no command line.
@@ -21,6 +22,7 @@ import { workspaceParentDirectories } from '../workspace-directories.ts';
 export const rootWorkspace = '.';
 
 const browserFixturesDirectory = 'scripts/browser-fixtures';
+const turboRootPrefix = '$TURBO_ROOT$/';
 const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies'] as const;
 
 export interface WorkspaceGraph {
@@ -28,8 +30,37 @@ export interface WorkspaceGraph {
   directories: string[];
   /** Workspace directory to the directories of the workspaces it names with `workspace:`. */
   dependencies: Map<string, Set<string>>;
-  /** Files that touch every workspace when changed. */
-  everythingFiles: Set<string>;
+  /** Path patterns (exact paths or globs) that touch every workspace when changed. */
+  everythingPatterns: string[];
+}
+
+/** Where a graph is read from: the worktree on disk, or a commit through Git. */
+export interface GraphSource {
+  /** The file's text, or `undefined` when it does not exist there. */
+  read(path: string): string | undefined;
+  /** The names of the entries directly under a directory. */
+  list(directory: string): string[];
+}
+
+/** The graph source for a directory on disk. */
+export function filesystemSource(root: string): GraphSource {
+  return {
+    read: (path) => {
+      try {
+        return readFileSync(join(root, path), 'utf8');
+      } catch {
+        return undefined;
+      }
+    },
+    list: (directory) => {
+      const path = join(root, directory);
+      return existsSync(path)
+        ? readdirSync(path, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name)
+        : [];
+    },
+  };
 }
 
 interface Manifest {
@@ -37,33 +68,30 @@ interface Manifest {
   [field: string]: unknown;
 }
 
-function readJson(path: string): Record<string, unknown> | undefined {
+function parseJson(text: string | undefined): Record<string, unknown> | undefined {
+  if (text === undefined) return undefined;
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    return JSON.parse(text) as Record<string, unknown>;
   } catch {
     return undefined;
   }
 }
 
-/** Reads the workspaces, their internal dependency edges and the global files under `root`. */
-export function readWorkspaceGraph(root: string): WorkspaceGraph {
+/** Reads the workspaces, their internal dependency edges and the global files from `source`. */
+export function readWorkspaceGraph(source: GraphSource): WorkspaceGraph {
   const directories: string[] = [];
-  for (const parent of workspaceParentDirectories) {
-    const parentPath = join(root, parent);
-    if (!existsSync(parentPath)) continue;
-    for (const entry of readdirSync(parentPath, { withFileTypes: true })) {
-      const directory = `${parent}/${entry.name}`;
-      if (entry.isDirectory() && existsSync(join(root, directory, 'package.json')))
-        directories.push(directory);
+  for (const parent of workspaceParentDirectories)
+    for (const name of source.list(parent)) {
+      const directory = `${parent}/${name}`;
+      if (source.read(`${directory}/package.json`) !== undefined) directories.push(directory);
     }
-  }
-  if (existsSync(join(root, browserFixturesDirectory, 'package.json')))
+  if (source.read(`${browserFixturesDirectory}/package.json`) !== undefined)
     directories.push(browserFixturesDirectory);
 
   const manifests = new Map<string, Manifest>();
   const directoryByName = new Map<string, string>();
   for (const directory of directories) {
-    const manifest = readJson(join(root, directory, 'package.json')) ?? {};
+    const manifest = parseJson(source.read(`${directory}/package.json`)) ?? {};
     manifests.set(directory, manifest);
     if (typeof manifest.name === 'string') directoryByName.set(manifest.name, directory);
   }
@@ -86,17 +114,44 @@ export function readWorkspaceGraph(root: string): WorkspaceGraph {
     dependencies.set(directory, edges);
   }
 
-  const everythingFiles = new Set(['bun.lock', 'package.json', 'turbo.json']);
-  const turbo = readJson(join(root, 'turbo.json'));
+  const everythingPatterns = new Set(['bun.lock', 'package.json', 'turbo.json', 'bunfig.toml']);
+  const turbo = parseJson(source.read('turbo.json'));
   const globals = turbo?.['globalDependencies'];
   if (Array.isArray(globals))
-    for (const entry of globals) if (typeof entry === 'string') everythingFiles.add(entry);
-  return { directories, dependencies, everythingFiles };
+    for (const entry of globals) if (typeof entry === 'string') everythingPatterns.add(entry);
+  const tasks = turbo?.['tasks'];
+  if (typeof tasks === 'object' && tasks !== null)
+    for (const task of Object.values(tasks)) {
+      const inputs = (task as { inputs?: unknown } | null)?.inputs;
+      if (!Array.isArray(inputs)) continue;
+      for (const input of inputs)
+        if (typeof input === 'string' && input.startsWith(turboRootPrefix))
+          everythingPatterns.add(input.slice(turboRootPrefix.length));
+    }
+  return { directories, dependencies, everythingPatterns: [...everythingPatterns] };
+}
+
+/** The union of two graphs: every workspace and edge either one has, and every global pattern. */
+export function unionGraphs(first: WorkspaceGraph, second: WorkspaceGraph): WorkspaceGraph {
+  const dependencies = new Map<string, Set<string>>();
+  for (const graph of [first, second])
+    for (const [directory, edges] of graph.dependencies)
+      dependencies.set(directory, new Set([...(dependencies.get(directory) ?? []), ...edges]));
+  return {
+    directories: [...new Set([...first.directories, ...second.directories])],
+    dependencies,
+    everythingPatterns: [...new Set([...first.everythingPatterns, ...second.everythingPatterns])],
+  };
 }
 
 /** Whether a change to `path` touches every workspace. */
 export function touchesEverything(path: string, graph: WorkspaceGraph): boolean {
-  return graph.everythingFiles.has(path) || /^tsconfig[^/]*\.json$/.test(path);
+  return (
+    /^tsconfig[^/]*\.json$/.test(path) ||
+    graph.everythingPatterns.some(
+      (pattern) => pattern === path || new Bun.Glob(pattern).match(path),
+    )
+  );
 }
 
 /** The workspace directory that owns `path`, or the root package. */
