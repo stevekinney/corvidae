@@ -56,7 +56,7 @@ async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 20)
 }
 
 async function createRunningBureauSession(bureau: Bureau, principal = 'alice'): Promise<string> {
-  const run = await bureau.createRun({ message: 'hold open', principal });
+  const run = await bureau.createRun({ agentName: 'bureau', message: 'hold open', principal });
   await pollUntil(async () => {
     const session = await bureau.getSession(run.sessionId);
     return session?.metadata['lastRunStatus'] === 'running';
@@ -304,7 +304,12 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
 
       expect(
         await rejectionOf(
-          bureau.createRun({ message: 'continue as bob', sessionId, principal: 'bob' }),
+          bureau.createRun({
+            agentName: 'bureau',
+            message: 'continue as bob',
+            sessionId,
+            principal: 'bob',
+          }),
         ),
       ).toMatchObject({ code: 'NOT_FOUND' });
       const refused = await bureau.submitSessionInput(sessionId, {

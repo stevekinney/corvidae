@@ -128,7 +128,12 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       return { content: 'answer', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 1,
+      });
       await stepZeroStarted.promise;
       const admitted = await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
       expect(admitted.outcome).toBe('admitted');
@@ -164,7 +169,11 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       throw new Error('the model is down');
     });
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       const admitted = await bureau.submitSessionInput(
         run.sessionId,
@@ -229,7 +238,11 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     );
     try {
       const baseline = openIntervals;
-      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(first.sessionId, input('input-a', 'first'));
       const incarnation = await incarnationOf(bureau, first.sessionId);
@@ -270,7 +283,11 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       return new Promise<never>(() => {});
     });
     try {
-      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(first.sessionId, input('input-a', 'first'));
       const incarnation = await incarnationOf(bureau, first.sessionId);
@@ -317,7 +334,11 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         return new Promise<never>(() => {});
       });
       try {
-        const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+        const first = await bureau.createRun({
+          agentName: 'bureau',
+          message: 'First',
+          principal: 'alice',
+        });
         await stepZeroStarted.promise;
         await bureau.submitSessionInput(first.sessionId, input('input-x', 'please answer this'));
         const incarnation = await incarnationOf(bureau, first.sessionId);
@@ -385,7 +406,11 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       return { content: `answer ${run}`, toolCalls: [] };
     });
     try {
-      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(first.sessionId, input('input-a', 'please answer this'));
       const incarnation = await incarnationOf(bureau, first.sessionId);
@@ -403,7 +428,12 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       expect(run).toBe(1);
 
       // The next run the user starts answers the dangling turn together with its own.
-      await bureau.createRun({ message: 'again', principal: 'alice', sessionId: first.sessionId });
+      await bureau.createRun({
+        agentName: 'bureau',
+        message: 'again',
+        principal: 'alice',
+        sessionId: first.sessionId,
+      });
       await pollUntil(() => run === 2);
       expect(runs.find((entry) => entry.run === 2)?.texts).toEqual([
         'First',
@@ -434,12 +464,14 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     });
     try {
       const first = await bureau.createRun({
+        agentName: 'bureau',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
       });
       await started[0]!.promise;
       const second = await bureau.createRun({
+        agentName: 'bureau',
         message: 'Second',
         principal: 'alice',
         sessionId: first.sessionId,
@@ -493,7 +525,12 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
       { runtime },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 1,
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -545,7 +582,11 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       return { content: 'answer', toolCalls: [] };
     });
     try {
-      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await bureau.waitForDurableRun(first.id);
       await pollUntil(async () => {
         const session = await bureau.getSession(first.sessionId);
@@ -560,7 +601,12 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       const ended = seam.awaitWriteCommitted(logsRunEnded);
       let startError: unknown;
       const starting = bureau
-        .createRun({ message: 'Second', principal: 'alice', sessionId: first.sessionId })
+        .createRun({
+          agentName: 'bureau',
+          message: 'Second',
+          principal: 'alice',
+          sessionId: first.sessionId,
+        })
         .catch((error: unknown) => {
           startError = error;
         });
@@ -606,7 +652,12 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
       { runtime },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 3 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 3,
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -679,7 +730,12 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
     );
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 2 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 2,
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -757,7 +813,11 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-a', 'first'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -815,7 +875,12 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 1,
+      });
       await bureau.waitForDurableRun(run.id);
       // The loop is in its first wait, which nothing has released.
       await pollUntil(() => sleeps.length === 1);
@@ -858,7 +923,12 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 1,
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -911,7 +981,12 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 1,
+      });
       await bureau.waitForDurableRun(run.id);
       await pollUntil(() => failing.attempts() >= 12);
 
@@ -951,7 +1026,11 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       releaseStepZero.resolve();
       await stepOneStarted.promise;
@@ -1007,7 +1086,12 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
     let sessionId = '';
     let incarnation = '';
     try {
-      const run = await first.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      const run = await first.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+        maximumSteps: 1,
+      });
       sessionId = run.sessionId;
       await stepZeroStarted.promise;
       await first.submitSessionInput(run.sessionId, input('input-x', 'late'));
@@ -1139,7 +1223,11 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
       { runtime, durableBackgroundTasks: 'manual' },
     );
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -1200,7 +1288,11 @@ describe('shutdown releases open input (COR-1476)', () => {
       stepOneStarted.resolve();
       return new Promise<never>(() => {});
     });
-    const run = await first.createRun({ message: 'First', principal: 'alice' });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'First',
+      principal: 'alice',
+    });
     await stepZeroStarted.promise;
     await first.submitSessionInput(run.sessionId, input('input-a', 'first'));
     await first.submitSessionInput(run.sessionId, input('input-b', 'second'));

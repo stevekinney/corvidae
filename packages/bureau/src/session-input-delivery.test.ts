@@ -80,7 +80,11 @@ describe('createBureau delivers admitted session input at the next step boundary
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({ message: 'Start', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Start',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
 
       const first = await bureau.submitSessionInput(run.sessionId, {
@@ -159,7 +163,11 @@ describe('createBureau delivers admitted session input at the next step boundary
       return { content: `answer ${context.step}`, toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       for (const [id, payload] of [
         ['input-a', 'sent while the agent was answering'],
@@ -201,7 +209,11 @@ describe('createBureau delivers admitted session input at the next step boundary
     });
     try {
       runNumber = 1;
-      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const first = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await firstStarted.promise;
       const admitted = await bureau.submitSessionInput(first.sessionId, {
         id: 'input-a',
@@ -216,6 +228,7 @@ describe('createBureau delivers admitted session input at the next step boundary
 
       runNumber = 2;
       const second = await bureau.createRun({
+        agentName: 'bureau',
         message: 'Second',
         principal: 'alice',
         sessionId: first.sessionId,
@@ -241,6 +254,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     try {
       const longId = 's'.repeat(300);
       const run = await bureau.createRun({
+        agentName: 'bureau',
         message: 'Start',
         principal: 'alice',
         sessionId: longId,
@@ -273,6 +287,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     try {
       const longId = `session-${'x'.repeat(300)}`;
       const run = await bureau.createRun({
+        agentName: 'bureau',
         message: 'Start',
         principal: 'alice',
         sessionId: longId,
@@ -320,7 +335,11 @@ describe('createBureau delivers admitted session input at the next step boundary
       stopWhen: stopWhen.noToolCalls(),
     });
     try {
-      const run = await bureau.createRun({ message: 'Start', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Start',
+        principal: 'alice',
+      });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, {
         id: 'input-a',

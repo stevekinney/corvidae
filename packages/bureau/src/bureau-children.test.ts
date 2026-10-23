@@ -160,7 +160,7 @@ describe('bureau.children over an ephemeral bureau', () => {
       children: { signals: { worker: proceedSignals } },
       onDiagnostic,
     });
-    const parent = await bureau.createRun({ message: 'plan the work' });
+    const parent = await bureau.createRun({ agentName: 'bureau', message: 'plan the work' });
     return { bureau, parent };
   }
 
@@ -203,7 +203,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
   it('never lets an unrelated parent inspect, wait on, signal, or cancel another parent’s child', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
-    const other = await bureau.createRun({ message: 'another plan' });
+    const other = await bureau.createRun({ agentName: 'bureau', message: 'another plan' });
 
     try {
       const dispatched = await bureau.children.dispatch({

@@ -46,7 +46,11 @@ async function openStepLimitBureau(options: Partial<BureauOptions>): Promise<Bur
 
 /** Starts a run and waits for the session to record how it ended. */
 async function runToLimit(bureau: Bureau) {
-  const run = await bureau.createRun({ message: 'Never settles', principal: 'alice' });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'Never settles',
+    principal: 'alice',
+  });
   await waitForCondition(async () => {
     const session = await bureau.getSession(run.sessionId);
     return session?.metadata['lastRunStatus'] === 'error';
@@ -86,7 +90,11 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
   it('settles its task as failed with the step-limit error, and records one run.error in the audit trail', async () => {
     const bureau = await openStepLimitBureau(options);
-    const run = await bureau.createRun({ message: 'Never settles', principal: 'alice' });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Never settles',
+      principal: 'alice',
+    });
     await waitForCondition(async () => {
       const task = await bureau.tasks.get(run.id);
       return task?.status === 'failed';
@@ -207,7 +215,11 @@ describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_na
         ...configure(storage),
       });
       bureaus.push(bureau);
-      const run = await bureau.createRun({ message: 'Never settles', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Never settles',
+        principal: 'alice',
+      });
       const announced: string[] = [];
       bureau.tasks.onSettled(run.id, (view) => announced.push(view.status));
       release();
@@ -252,7 +264,11 @@ describe('a durable run that crashes before its step limit and is recovered (COR
         stopWhen: stopWhen.noToolCalls(),
       });
       bureaus.push(crashed);
-      const run = await crashed.createRun({ message: 'Never settles', principal: 'alice' });
+      const run = await crashed.createRun({
+        agentName: 'bureau',
+        message: 'Never settles',
+        principal: 'alice',
+      });
       await waitForCondition(() => reachedSecondStep, 'the first process never reached step 1');
 
       // Bureau B recovers the workflow, which replays step 0 and runs step 1 to the limit.

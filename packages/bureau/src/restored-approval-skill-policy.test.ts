@@ -89,7 +89,11 @@ describe('a restored approval keeps the skill policy it was requested under', ()
       toolbox: approvalToolbox([]),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'charge, then lock', principal: OWNER.alice });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'charge, then lock',
+      principal: OWNER.alice,
+    });
     const review = await pollUntil(
       () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
@@ -134,7 +138,11 @@ describe('the control: without the skill, the same restored approval runs', () =
       toolbox: approvalToolbox([]),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'charge', principal: OWNER.alice });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'charge',
+      principal: OWNER.alice,
+    });
     const review = await pollUntil(
       () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',

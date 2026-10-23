@@ -43,7 +43,12 @@ async function openBureau() {
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
-  const run = await bureau.createRun({ message: 'hello', sessionId, principal });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'hello',
+    sessionId,
+    principal,
+  });
   await waitForCondition(
     () => bureau.getRun(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
@@ -280,6 +285,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
   const bureau = await open(generate);
   try {
     const aliceRun = await bureau.createRun({
+      agentName: 'bureau',
       message: 'ALICE-SECRET-PROMPT',
       sessionId: 'shared',
       principal: ALICE,
@@ -290,6 +296,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     // The session store knows nothing of runs: the expiry is Bureau's to handle.
     expect(await bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
     const bobRun = await bureau.createRun({
+      agentName: 'bureau',
       message: 'bob prompt',
       sessionId: 'shared',
       principal: BOB,

@@ -40,6 +40,7 @@ async function startRun(
   options: { principal?: string; sessionId?: string; message?: string } = {},
 ) {
   const run = await opened.bureau.createRun({
+    agentName: 'bureau',
     message: options.message ?? 'work',
     principal: options.principal ?? OWNER.alice,
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
@@ -62,8 +63,16 @@ const deleteContext = (opened: OpenedBureau, contextId: string, key: string, wai
 describe('bureau.contexts.delete access', () => {
   it('deletes a context the caller owns, and any context for bureau.contexts:write', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
-      const mine = await opened.bureau.createRun({ message: 'mine', principal: OWNER.alice });
-      const theirs = await opened.bureau.createRun({ message: 'theirs', principal: OWNER.bob });
+      const mine = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'mine',
+        principal: OWNER.alice,
+      });
+      const theirs = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'theirs',
+        principal: OWNER.bob,
+      });
       await waitForCondition(() => opened.bureau.getRun(mine.id)?.status === 'completed', 'mine');
       await waitForCondition(
         () => opened.bureau.getRun(theirs.id)?.status === 'completed',
@@ -101,7 +110,11 @@ describe('bureau.contexts.delete access', () => {
 
   it('answers a context the caller may not delete exactly as it answers one that does not exist', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
-      const run = await opened.bureau.createRun({ message: 'mine', principal: OWNER.alice });
+      const run = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'mine',
+        principal: OWNER.alice,
+      });
       await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
 
       const stranger = await deleteContext(opened, run.sessionId, 'bob-key');
@@ -345,7 +358,12 @@ describe('the fence around a context being deleted', () => {
 
       const deletion = opened.bureau.deleteSession(run.sessionId);
       const refused = await opened.bureau
-        .createRun({ message: 'late', principal: OWNER.alice, sessionId: run.sessionId })
+        .createRun({
+          agentName: 'bureau',
+          message: 'late',
+          principal: OWNER.alice,
+          sessionId: run.sessionId,
+        })
         .then(
           () => undefined,
           (error: unknown) => error,
@@ -355,6 +373,7 @@ describe('the fence around a context being deleted', () => {
       expect(refused).toBeInstanceOf(BureauError);
       expect((refused as BureauError).code).toBe('NOT_FOUND');
       const again = await opened.bureau.createRun({
+        agentName: 'bureau',
         message: 'fresh start',
         principal: OWNER.alice,
         sessionId: run.sessionId,
@@ -447,6 +466,7 @@ describe('the fence around a context being deleted', () => {
       admission.arm();
       const creating = rejectionOf(
         opened.bureau.createRun({
+          agentName: 'bureau',
           message: 'overtaken',
           principal: OWNER.alice,
           sessionId: 'overtaken',
@@ -494,6 +514,7 @@ describe('erasing the originating messages of a deleted context', () => {
     const opened = await openBureau({ storage: fixture.configuration, generate: answering() });
     try {
       const run = await opened.bureau.createRun({
+        agentName: 'bureau',
         message: 'ERASE-ME',
         principal: OWNER.alice,
       });
@@ -546,6 +567,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       async () => {
         await bureau!.deleteSession(contextId);
         bobsRun = await bureau!.createRun({
+          agentName: 'bureau',
           message: 'BOB-PRIVATE-OPENING',
           principal: OWNER.bob,
           sessionId: contextId,
@@ -557,6 +579,7 @@ describe('a context id that is reused while a request for it is in flight', () =
     bureau = opened.bureau;
     try {
       await opened.bureau.createRun({
+        agentName: 'bureau',
         message: 'alice opening',
         principal: OWNER.alice,
         sessionId: contextId,

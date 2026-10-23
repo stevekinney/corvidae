@@ -119,7 +119,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
       bureau.subscribeLiveFrames((frame) => {
         if (frame.type === 'run-envelope') frames.push(frame.frame);
       });
-      const run = await bureau.createRun({ message: 'Go.' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'Go.' });
       await race.lost;
       await settle();
       addListener.mockRestore();

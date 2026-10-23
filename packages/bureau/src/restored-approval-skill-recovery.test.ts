@@ -158,7 +158,11 @@ describe('a run’s approval after a later run starts in its session', () => {
       toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'charge, then lock', principal: OWNER.alice });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'charge, then lock',
+      principal: OWNER.alice,
+    });
     const review = await pollUntil(
       () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
@@ -192,6 +196,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     // The next run starts in the session and has not finished its first step: the session's
     // snapshot is cleared, which is not a record that the earlier run had no skills.
     await restarted.createRun({
+      agentName: 'bureau',
       message: 'the next run',
       sessionId: run.sessionId,
       principal: OWNER.alice,
@@ -258,7 +263,11 @@ describe('a run’s approval after a later run starts in its session', () => {
       toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'charge', principal: OWNER.alice });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'charge',
+      principal: OWNER.alice,
+    });
     const review = await pollUntil(
       () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
@@ -275,6 +284,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       'the restored approval',
     );
     await restarted.createRun({
+      agentName: 'bureau',
       message: 'the next run',
       sessionId: run.sessionId,
       principal: OWNER.alice,
@@ -438,7 +448,11 @@ describe('a session run reattached after its process died in a step', () => {
       toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'lock, then charge', principal: OWNER.alice });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'lock, then charge',
+      principal: OWNER.alice,
+    });
     await pollForTime(
       async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
       'the active skill to be recorded',

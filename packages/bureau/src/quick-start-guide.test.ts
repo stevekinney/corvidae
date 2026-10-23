@@ -68,7 +68,10 @@ describe('README — Quick Start', () => {
       storage: { type: 'sqlite', path: databasePath },
     });
 
-    const run = await bureau.createRun({ message: 'Summarize the Q3 report.' });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Summarize the Q3 report.',
+    });
     expect(run.status).toBe('running');
 
     // Wait for completion via the live event surface. A run records many actions
@@ -108,7 +111,10 @@ describe('README — Quick Start', () => {
     const heardByOnce: string[] = [];
     bureau.once('action', ({ action }) => heardByOnce.push(action.type));
 
-    const run = await bureau.createRun({ message: 'Summarize the Q3 report.' });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Summarize the Q3 report.',
+    });
     await settled.promise;
 
     expect(heardByOnce).toEqual(['run.started']);

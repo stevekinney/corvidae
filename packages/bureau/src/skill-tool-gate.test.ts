@@ -113,7 +113,7 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
       toolbox: pingToolbox(executions),
     });
 
-    const run = await bureau.createRun({ message: 'activate, then ping' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'activate, then ping' });
     const recorded = await pollUntil(async () => {
       const session = await bureau.getSession(run.sessionId);
       const messages = session === undefined ? [] : getMessages(session.conversationHistory);
@@ -174,7 +174,7 @@ describe('a run whose recorded skills cannot be verified (COR-1628)', () => {
       toolbox: pingToolbox(executions),
     });
     const runRuntime = await runtime.createRunRuntime(
-      { message: 'Hello', sessionId: 'unverifiable-skill-session' },
+      { agentName: 'bureau', message: 'Hello', sessionId: 'unverifiable-skill-session' },
       {
         liveStreaming: false,
         initialActiveSkillRecords: [
@@ -221,7 +221,7 @@ describe('a run whose stored skill fails recovery (COR-1628)', () => {
       skills: { catalog: discovered },
     });
     const runRuntime = await runtime.createRunRuntime(
-      { message: 'Hello', sessionId: 'tampered-skill-session' },
+      { agentName: 'bureau', message: 'Hello', sessionId: 'tampered-skill-session' },
       { liveStreaming: false, initialActiveSkillRecords: tampered },
     );
     // Recovery runs in the first step's `prepareStep`, which every step awaits.
@@ -258,7 +258,7 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
       toolbox: pingToolbox(executions),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'activate, then ping' });
+    const run = await first.createRun({ agentName: 'bureau', message: 'activate, then ping' });
     await pollForTime(
       async () =>
         reachedLaterStep && (await skillsRecorded(first, run.sessionId)) ? true : undefined,
@@ -396,7 +396,7 @@ async function playScript(path: RunPath, script: ScriptedCall[][]): Promise<Scri
       skills: { catalog },
       toolbox: hostToolbox(executions),
     });
-    await bureau.createRun({ message: 'play the script' });
+    await bureau.createRun({ agentName: 'bureau', message: 'play the script' });
     await finished.promise;
   }
   return { toolsByStep, results, executions };
@@ -526,7 +526,7 @@ describe('a run whose stored skill fails recovery refuses the lifecycle tools (C
       skills: { catalog },
     });
     const runRuntime = await runtime.createRunRuntime(
-      { message: 'Hello', sessionId: 'tampered-lifecycle-session' },
+      { agentName: 'bureau', message: 'Hello', sessionId: 'tampered-lifecycle-session' },
       { liveStreaming: false, initialActiveSkillRecords: tampered },
     );
     const conversation = new Conversation();

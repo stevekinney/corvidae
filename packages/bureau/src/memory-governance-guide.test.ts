@@ -186,6 +186,7 @@ describe('packages/bureau/README.md — Governed memory', () => {
     });
 
     const run = await bureau.createRun({
+      agentName: 'bureau',
       message: 'Book the 9:40 to Denver.',
       principal: 'alice', // the run's owner of record, whose partition its memory is written to
       sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
@@ -234,7 +235,11 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const run = await bureau.createRun({ message: 'Remember this.', sessionId: 'session-1' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Remember this.',
+        sessionId: 'session-1',
+      });
       await waitForRunState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
@@ -261,7 +266,11 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const run = await bureau.createRun({ message: 'Remember this.', sessionId: 'session-1' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Remember this.',
+        sessionId: 'session-1',
+      });
       await waitForRunState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
@@ -387,7 +396,11 @@ describe('documented Bureau memory limits', () => {
         memory,
       });
       try {
-        const run = await bureau.createRun({ message: 'Remember this.', sessionId: 'session-1' });
+        const run = await bureau.createRun({
+          agentName: 'bureau',
+          message: 'Remember this.',
+          sessionId: 'session-1',
+        });
         const settled = await waitForRunState(bureau, run.id);
         expect(settled.status).toBe('error');
         const reader = createGovernedMemory({
@@ -465,6 +478,7 @@ describe('documented Bureau memory limits', () => {
         });
         try {
           const run = await bureau.createRun({
+            agentName: 'bureau',
             message: 'Remember this.',
             sessionId: 'session-1',
             ...(grant.requestCapabilities === undefined

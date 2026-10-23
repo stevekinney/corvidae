@@ -147,7 +147,7 @@ describe('a Bureau started without workflowDirectory over a store with workflow 
     });
     cleanups.push(() => crashed.dispose());
     await crashed.durableEngine()!.start('digest', null, { id: 'digest-run' });
-    const agentRun = await crashed.createRun({ message: 'Recover me' });
+    const agentRun = await crashed.createRun({ agentName: 'bureau', message: 'Recover me' });
     expect(await pollUntil(() => reachedSecondStep)).toBe(true);
 
     const steps: number[] = [];

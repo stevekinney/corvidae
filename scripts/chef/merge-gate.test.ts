@@ -1,8 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mergeGate, renderMergeGate, run, type MergeGateOptions } from './merge-gate.ts';
+import { spawnWithHangGuard } from '../hang-guard.ts';
+import { processStartTime } from '../run-exclusively.ts';
+import {
+  mergeGate,
+  mergeGateExclusively,
+  renderMergeGate,
+  run,
+  type MergeGateOptions,
+} from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -27,9 +43,10 @@ function gateLog(
 let sandbox: string;
 let options: MergeGateOptions;
 
-beforeEach(() => {
-  sandbox = mkdtempSync(join(tmpdir(), 'merge-gate-'));
-  const configPath = join(sandbox, 'config.json');
+/** A fresh worktree directory holding the configuration, gate log and comment the gate reads. */
+function prepare(): { directory: string; prepared: MergeGateOptions } {
+  const directory = mkdtempSync(join(tmpdir(), 'merge-gate-'));
+  const configPath = join(directory, 'config.json');
   writeFileSync(
     configPath,
     JSON.stringify({
@@ -43,16 +60,25 @@ beforeEach(() => {
       mergeMethod: 'squash',
     }),
   );
-  writeFileSync(join(sandbox, 'gate.log'), gateLog());
-  writeFileSync(join(sandbox, 'comment.md'), 'Gate passed at the head.\n');
-  options = {
-    configPath,
-    pr: 12,
-    worktree: sandbox,
-    gateLog: join(sandbox, 'gate.log'),
-    commentFile: join(sandbox, 'comment.md'),
-    dryRun: false,
+  writeFileSync(join(directory, 'gate.log'), gateLog());
+  writeFileSync(join(directory, 'comment.md'), 'Gate passed at the head.\n');
+  return {
+    directory,
+    prepared: {
+      configPath,
+      pr: 12,
+      worktree: directory,
+      gateLog: join(directory, 'gate.log'),
+      commentFile: join(directory, 'comment.md'),
+      dryRun: false,
+    },
   };
+}
+
+beforeEach(() => {
+  const made = prepare();
+  sandbox = made.directory;
+  options = made.prepared;
 });
 
 afterEach(() => {
@@ -73,12 +99,30 @@ interface World {
   mergeCommit?: string | null;
   diffCode?: number;
   fetchCodes?: number[];
+  /** `git merge-tree --write-tree` exit code; 1 (a conflict) unless a test says otherwise. */
+  mergeTreeCode?: number;
+  /** Files changed from the merge base to HEAD, and from the merge base to origin/main. */
+  pullRequestFiles?: string[];
+  baseFiles?: string[];
+  /** The tree of the squash commit; the clean-merge tree unless a test overrides it. */
+  mergedTree?: string;
+  /** Files at origin/main by path, as `git show` and `git ls-tree` read them. */
+  baseTree?: Record<string, string>;
+  /** Files at the gated commit; when unset the sandbox files stand for them. */
+  headTree?: Record<string, string>;
+  /** `ancestors` is per call; this one makes the refetch's base differ from the first. */
+  baseShas?: string[];
 }
+
+const MERGE_TREE = '9'.repeat(40);
+const MERGE_BASE = '8'.repeat(40);
 
 function fake(world: World = {}) {
   const calls: string[][] = [];
+  const comments: string[] = [];
   let ancestorCall = 0;
   let fetchCall = 0;
+  let baseCall = 0;
   const nodes = world.threadNodes ?? [{ id: 'T1', isResolved: true }];
   const runner: Runner = (command) => {
     calls.push(command);
@@ -89,10 +133,59 @@ function fake(world: World = {}) {
         fetchCall += 1;
         return { code, stdout: '', stderr: code === 0 ? '' : 'fatal: unable to access' };
       }
+      if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
+        return { code: 0, stdout: `${world.mergedTree ?? MERGE_TREE}\n`, stderr: '' };
+      if (rest[0] === 'show') {
+        const [ref = '', path = ''] = (rest[1] ?? '').split(':');
+        const content =
+          ref === 'HEAD'
+            ? world.headTree === undefined
+              ? existsSync(join(sandbox, path))
+                ? readFileSync(join(sandbox, path), 'utf8')
+                : undefined
+              : world.headTree[path]
+            : world.baseTree?.[path];
+        return content === undefined
+          ? { code: 128, stdout: '', stderr: 'fatal: path does not exist' }
+          : { code: 0, stdout: content, stderr: '' };
+      }
+      if (rest[0] === 'ls-tree') {
+        const prefix = rest[3] ?? '';
+        const onDisk =
+          rest[2] === 'HEAD' && world.headTree === undefined
+            ? existsSync(join(sandbox, prefix))
+              ? readdirSync(join(sandbox, prefix)).map((name) => `${prefix}${name}/x`)
+              : []
+            : [];
+        const names = [
+          ...Object.keys((rest[2] === 'HEAD' ? world.headTree : world.baseTree) ?? {}),
+          ...onDisk,
+        ]
+          .filter((path) => path.startsWith(prefix))
+          .map((path) => path.slice(0, path.indexOf('/', prefix.length)))
+          .filter((path, index, all) => path !== '' && all.indexOf(path) === index);
+        return { code: 0, stdout: `${names.join('\n')}\n`, stderr: '' };
+      }
+      if (rest[0] === 'merge-tree')
+        return {
+          code: world.mergeTreeCode ?? 1,
+          stdout: `${MERGE_TREE}\n`,
+          stderr: '',
+        };
       if (rest[0] === 'rev-parse')
         return rest[1] === 'HEAD'
           ? { code: 0, stdout: `${world.head ?? HEAD}\n`, stderr: '' }
-          : { code: 0, stdout: `${BASE}\n`, stderr: '' };
+          : {
+              code: 0,
+              stdout: `${world.baseShas?.[Math.min(baseCall++, world.baseShas.length - 1)] ?? BASE}\n`,
+              stderr: '',
+            };
+      if (rest[0] === 'merge-base' && rest[1] !== '--is-ancestor')
+        return { code: 0, stdout: `${MERGE_BASE}\n`, stderr: '' };
+      if (rest[0] === 'diff' && rest[1] === '--name-only') {
+        const files = rest[4] === 'HEAD' ? world.pullRequestFiles : world.baseFiles;
+        return { code: 0, stdout: `${(files ?? []).join('\n')}\n`, stderr: '' };
+      }
       if (rest[0] === 'merge-base') {
         const sequence = world.ancestors ?? [true];
         const answer = sequence[Math.min(ancestorCall, sequence.length - 1)];
@@ -145,6 +238,9 @@ function fake(world: World = {}) {
         stderr: '',
       };
     }
+    if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'comment') {
+      comments.push(readFileSync(rest[rest.indexOf('--body-file') + 1] as string, 'utf8'));
+    }
     if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'comment')
       return { code: world.commentCode ?? 0, stdout: '', stderr: 'comment failed' };
     if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'merge')
@@ -153,7 +249,7 @@ function fake(world: World = {}) {
   };
   const posted = () => calls.some((call) => call[0] === 'gh' && call[2] === 'comment');
   const merged = () => calls.some((call) => call[0] === 'gh' && call[2] === 'merge');
-  return { runner, calls, posted, merged };
+  return { runner, calls, comments, posted, merged };
 }
 
 describe('mergeGate', () => {
@@ -229,6 +325,7 @@ describe('mergeGate', () => {
       merged: true,
       mergeCommit: MERGE,
       treesMatch: true,
+      basePath: 'contains',
       failedStep: null,
       detail: null,
     });
@@ -242,10 +339,10 @@ describe('mergeGate', () => {
       'gh pr view',
       'git merge-base',
       'gh api graphql',
-      'gh pr comment',
       'git fetch',
       'git merge-base',
       'git rev-parse',
+      'gh pr comment',
       'gh pr merge',
       'gh pr view',
       'git fetch',
@@ -278,7 +375,7 @@ describe('mergeGate', () => {
       '--repo',
       'acme/widgets',
       '--body-file',
-      options.commentFile,
+      expect.stringContaining('comment.md'),
     ]);
   });
 
@@ -382,11 +479,11 @@ describe('mergeGate', () => {
     expect(short.merged()).toBe(false);
   });
 
-  test('the base moving after the comment stops before the merge', () => {
+  test('the base moving after the first check stops before the comment and the merge', () => {
     const world = fake({ ancestors: [true, false] });
     const report = mergeGate(options, { runner: world.runner });
     expect(report.failedStep).toBe('refetch');
-    expect(world.posted()).toBe(true);
+    expect(world.posted()).toBe(false);
     expect(world.merged()).toBe(false);
   });
 
@@ -613,5 +710,338 @@ describe('run', () => {
       ),
     ).toThrow('No such gate log');
     expect(calls).toEqual([]);
+  });
+});
+
+describe('a head that does not contain the base', () => {
+  /** Two packages where `b` depends on `a`, an unrelated `c`, and a lockfile, in the worktree. */
+  function writeWorkspaces() {
+    const manifests: [string, Record<string, unknown>][] = [
+      ['packages/a', { name: '@x/a' }],
+      ['packages/b', { name: '@x/b', dependencies: { '@x/a': 'workspace:*' } }],
+      ['packages/c', { name: '@x/c' }],
+    ];
+    for (const [directory, manifest] of manifests) {
+      mkdirSync(join(sandbox, directory), { recursive: true });
+      writeFileSync(join(sandbox, directory, 'package.json'), JSON.stringify(manifest));
+    }
+    writeFileSync(
+      join(sandbox, 'turbo.json'),
+      JSON.stringify({
+        globalDependencies: ['tsconfig.json'],
+        tasks: {
+          lint: {
+            inputs: ['$TURBO_DEFAULT$', '$TURBO_ROOT$/scripts/check-documentation-coverage.ts'],
+          },
+          test: { inputs: ['$TURBO_ROOT$/scripts/test-duration-allowlist.json'] },
+        },
+      }),
+    );
+  }
+  beforeEach(writeWorkspaces);
+
+  const cleanWorld = (world: World = {}): World => ({
+    ancestors: [false],
+    mergeTreeCode: 0,
+    pullRequestFiles: ['packages/a/source.ts'],
+    baseFiles: ['packages/c/other.ts'],
+    ...world,
+  });
+
+  test('accepts a clean merge whose intervening commits touch no affected workspace', () => {
+    const world = fake(cleanWorld());
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({
+      failedStep: null,
+      merged: true,
+      basePath: 'merge-tree',
+      mergeTree: MERGE_TREE,
+      treesMatch: true,
+    });
+    const merge = world.calls.find((call) => call[2] === 'merge') ?? [];
+    expect(merge.slice(-2)).toEqual(['--match-head-commit', HEAD]);
+    expect(world.comments[0]).toContain('Base: merges cleanly with origin/main');
+    expect(world.comments[0]).toContain('intervening commits touch no affected workspace');
+    expect(renderMergeGate(report, false)).toContain('base path: merge-tree');
+  });
+
+  test('compares the squash commit with the merge-tree result, not with the head', () => {
+    const world = fake(cleanWorld({ mergedTree: 'f'.repeat(40) }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({ failedStep: 'confirm', merged: true, treesMatch: false });
+    expect(world.calls.some((call) => call[1] === 'diff' && call[2] === '--quiet')).toBe(false);
+  });
+
+  test('refuses a clean merge whose base commits touch a workspace the pull request changes', () => {
+    const world = fake(cleanWorld({ baseFiles: ['packages/a/other.ts'] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('contains-base');
+    expect(report.detail).toContain('packages/a/other.ts');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  test('refuses when base commits touch a dependent or a dependency of a changed workspace', () => {
+    const dependent = fake(cleanWorld({ baseFiles: ['packages/b/index.ts'] }));
+    expect(mergeGate(options, { runner: dependent.runner }).detail).toContain(
+      'packages/b/index.ts',
+    );
+    const dependency = fake(
+      cleanWorld({ pullRequestFiles: ['packages/b/index.ts'], baseFiles: ['packages/a/x.ts'] }),
+    );
+    expect(mergeGate(options, { runner: dependency.runner }).failedStep).toBe('contains-base');
+  });
+
+  test('refuses a clean merge whose base commits touch bun.lock or another global file', () => {
+    for (const path of [
+      'bun.lock',
+      'package.json',
+      'turbo.json',
+      'tsconfig.base.json',
+      'tsconfig.json',
+    ]) {
+      const world = fake(cleanWorld({ baseFiles: ['packages/c/other.ts', path] }));
+      const report = mergeGate(options, { runner: world.runner });
+      expect(report.failedStep, path).toBe('contains-base');
+      expect(report.detail, path).toContain(path);
+      expect(world.merged(), path).toBe(false);
+    }
+  });
+
+  test('a pull request that changes bun.lock is affected by every intervening change', () => {
+    const world = fake(cleanWorld({ pullRequestFiles: ['bun.lock'] }));
+    expect(mergeGate(options, { runner: world.runner }).failedStep).toBe('contains-base');
+  });
+
+  test('root files affect a pull request only when it changes root files too', () => {
+    const accepted = fake(cleanWorld({ baseFiles: ['scripts/chef/note.ts'] }));
+    expect(mergeGate(options, { runner: accepted.runner }).failedStep).toBeNull();
+    const refused = fake(
+      cleanWorld({
+        pullRequestFiles: ['scripts/chef/gate-run.ts'],
+        baseFiles: ['scripts/chef/note.ts'],
+      }),
+    );
+    expect(mergeGate(options, { runner: refused.runner }).failedStep).toBe('contains-base');
+  });
+
+  test('root files that turbo.json names as task inputs, and bunfig.toml, touch everything', () => {
+    for (const path of [
+      'scripts/check-documentation-coverage.ts',
+      'scripts/test-duration-allowlist.json',
+      'bunfig.toml',
+    ]) {
+      const onMain = fake(cleanWorld({ baseFiles: ['packages/c/other.ts', path] }));
+      const forward = mergeGate(options, { runner: onMain.runner });
+      expect(forward.failedStep, path).toBe('contains-base');
+      expect(forward.detail, path).toContain(path);
+      const onPullRequest = fake(
+        cleanWorld({ pullRequestFiles: [path], baseFiles: ['packages/c/other.ts'] }),
+      );
+      expect(mergeGate(options, { runner: onPullRequest.runner }).failedStep, path).toBe(
+        'contains-base',
+      );
+    }
+  });
+
+  test('a dependency edge added on the default branch counts', () => {
+    const baseTree = {
+      'packages/a/package.json': JSON.stringify({ name: '@x/a' }),
+      'packages/c/package.json': JSON.stringify({
+        name: '@x/c',
+        dependencies: { '@x/a': 'workspace:*' },
+      }),
+    };
+    const world = fake(cleanWorld({ baseTree, baseFiles: ['packages/c/other.ts'] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('contains-base');
+    expect(report.detail).toContain('packages/c/other.ts');
+    expect(world.merged()).toBe(false);
+  });
+
+  test('the dependencies of a dependent workspace count as affected', () => {
+    mkdirSync(join(sandbox, 'packages/d'), { recursive: true });
+    writeFileSync(
+      join(sandbox, 'packages/b/package.json'),
+      JSON.stringify({
+        name: '@x/b',
+        dependencies: { '@x/a': 'workspace:*', '@x/c': 'workspace:*' },
+      }),
+    );
+    const world = fake(cleanWorld({ baseFiles: ['packages/c/other.ts'] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('contains-base');
+    expect(report.detail).toContain('packages/c/other.ts');
+  });
+
+  test('the head side of the graph comes from the gated commit, not a dirty worktree', () => {
+    const committed = {
+      'packages/a/package.json': JSON.stringify({ name: '@x/a' }),
+      'packages/b/package.json': JSON.stringify({
+        name: '@x/b',
+        dependencies: { '@x/a': 'workspace:*' },
+      }),
+      'packages/c/package.json': JSON.stringify({ name: '@x/c' }),
+    };
+    // The worktree drops b's dependency on a; the commit still has it, so a change to b refuses.
+    writeFileSync(join(sandbox, 'packages/b/package.json'), JSON.stringify({ name: '@x/b' }));
+    const world = fake(
+      cleanWorld({
+        headTree: committed,
+        pullRequestFiles: ['packages/a/source.ts'],
+        baseFiles: ['packages/b/other.ts'],
+      }),
+    );
+    expect(mergeGate(options, { runner: world.runner }).failedStep).toBe('contains-base');
+    // And a dependency the worktree invents does not make an unrelated change refuse.
+    writeFileSync(
+      join(sandbox, 'packages/c/package.json'),
+      JSON.stringify({ name: '@x/c', dependencies: { '@x/a': 'workspace:*' } }),
+    );
+    const unrelated = fake(cleanWorld({ headTree: committed, baseFiles: ['packages/c/other.ts'] }));
+    expect(mergeGate(options, { runner: unrelated.runner }).failedStep).toBeNull();
+  });
+
+  test('the posted Base line names the final base check after the refetch', () => {
+    const FINAL = 'e'.repeat(40);
+    const world = fake(cleanWorld({ ancestors: [true, false], baseShas: [BASE, FINAL] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({ failedStep: null, basePath: 'merge-tree' });
+    expect(world.comments[0]).toContain('Base: merges cleanly with origin/main eeeeeeeeeeee');
+    expect(world.comments[0]).not.toContain('contains origin/main');
+  });
+
+  test('refuses a conflicting merge, naming the failed condition', () => {
+    const world = fake(cleanWorld({ mergeTreeCode: 1 }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('contains-base');
+    expect(report.detail).toContain('does not merge cleanly');
+    expect(world.posted() || world.merged()).toBe(false);
+  });
+
+  test('rechecks the fallback after the comment, so a base that moved onto the pull request stops it', () => {
+    const world = cleanWorld();
+    const inner = fake(world);
+    let diffCalls = 0;
+    const runner: Runner = (command, runnerOptions) => {
+      if (command[1] === 'diff' && command[2] === '--name-only' && command[5] !== 'HEAD') {
+        diffCalls += 1;
+        if (diffCalls > 1) return { code: 0, stdout: 'packages/a/new.ts\n', stderr: '' };
+      }
+      return inner.runner(command, runnerOptions);
+    };
+    const report = mergeGate(options, { runner });
+    expect(report.failedStep).toBe('refetch');
+    expect(inner.merged()).toBe(false);
+  });
+
+  test('a head that contains the base still passes with the contains path', () => {
+    const report = mergeGate(options, { runner: fake({ ancestors: [true] }).runner });
+    expect(report).toMatchObject({ failedStep: null, basePath: 'contains' });
+    expect(report.mergeTree).toBeUndefined();
+  });
+});
+
+/**
+ * The lock scenarios run at module scope, because acquiring the lock reads a process's start time
+ * through `ps`, which a test body may not do on the per-test clock.
+ */
+async function lockScenarios() {
+  const { directory, prepared } = prepare();
+  const lockDirectory = join(directory, 'git', 'corvidae-merge-lock');
+  mkdirSync(join(directory, 'git'), { recursive: true });
+  const lockOptions: MergeGateOptions = { ...prepared, lockDirectory, lockPollIntervalMs: 10 };
+  const plantHolder = (pid: number, pidStartedAt?: string) => {
+    mkdirSync(lockDirectory);
+    writeFileSync(
+      join(lockDirectory, 'owner.json'),
+      JSON.stringify({
+        pid,
+        ...(pidStartedAt === undefined ? {} : { pidStartedAt }),
+        command: 'merge-gate pr #1',
+        cwd: directory,
+        acquiredAt: new Date().toISOString(),
+        token: 'planted',
+      }),
+    );
+  };
+  const settled = (promise: Promise<unknown>, milliseconds: number) =>
+    Promise.race([
+      promise.then(() => 'done'),
+      new Promise((resolve) => setTimeout(() => resolve('waiting'), milliseconds)),
+    ]);
+
+  // A live holder: the second session waits, touches nothing, and proceeds once it is released.
+  plantHolder(process.pid, processStartTime(process.pid));
+  const waiting = fake();
+  const waits: unknown[] = [];
+  const pending = mergeGateExclusively(lockOptions, { runner: waiting.runner }, (holder) =>
+    waits.push(holder),
+  );
+  const whileHeld = await settled(pending, 150);
+  const callsWhileHeld = waiting.calls.length;
+  rmSync(lockDirectory, { recursive: true });
+  const afterRelease = await pending;
+  const waited = {
+    whileHeld,
+    callsWhileHeld,
+    waits: waits.length,
+    afterRelease,
+    merged: waiting.merged(),
+    lockGone: !existsSync(lockDirectory),
+  };
+
+  // A holder that died: its lock is reclaimed.
+  const child = spawnWithHangGuard(['true']);
+  await child.exited;
+  plantHolder(child.pid);
+  const reclaimWorld = fake();
+  const reclaimed = {
+    report: await mergeGateExclusively(lockOptions, { runner: reclaimWorld.runner }),
+    merged: reclaimWorld.merged(),
+    lockGone: !existsSync(lockDirectory),
+  };
+
+  // A failing step still releases the lock.
+  const failed = {
+    report: await mergeGateExclusively(lockOptions, { runner: fake({ mergeCode: 1 }).runner }),
+    lockGone: !existsSync(lockDirectory),
+  };
+
+  // A dry run takes no lock, even while another session holds it.
+  plantHolder(process.pid, processStartTime(process.pid));
+  const dryRun = {
+    report: await mergeGateExclusively({ ...lockOptions, dryRun: true }, { runner: fake().runner }),
+    holderIntact: existsSync(join(lockDirectory, 'owner.json')),
+  };
+  rmSync(directory, { recursive: true, force: true });
+  return { waited, reclaimed, failed, dryRun };
+}
+
+const locks = await lockScenarios();
+
+describe('the cross-session merge lock', () => {
+  test('a second holder waits while the first holds the lock, then proceeds when it releases', () => {
+    expect(locks.waited.whileHeld).toBe('waiting');
+    expect(locks.waited.callsWhileHeld).toBe(0);
+    expect(locks.waited.waits).toBeGreaterThan(0);
+    expect(locks.waited.afterRelease.failedStep).toBeNull();
+    expect(locks.waited.merged).toBe(true);
+    expect(locks.waited.lockGone).toBe(true);
+  });
+
+  test('reclaims the lock of a holder that died', () => {
+    expect(locks.reclaimed.report.failedStep).toBeNull();
+    expect(locks.reclaimed.merged).toBe(true);
+    expect(locks.reclaimed.lockGone).toBe(true);
+  });
+
+  test('releases the lock when a step fails', () => {
+    expect(locks.failed.report.failedStep).toBe('merge');
+    expect(locks.failed.lockGone).toBe(true);
+  });
+
+  test('a dry run takes no lock, even while another session holds it', () => {
+    expect(locks.dryRun.report.failedStep).toBeNull();
+    expect(locks.dryRun.holderIntact).toBe(true);
   });
 });

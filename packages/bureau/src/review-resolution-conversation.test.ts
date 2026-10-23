@@ -101,7 +101,7 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
     sessionPersistenceRetryDelayMilliseconds: 0,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
   });
-  const run = await bureau.createRun({ message: 'Charge the customer' });
+  const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
   await settle(bureau, run.id);
   const [review] = bureau.listPendingReviews();
   if (review === undefined || review.kind !== 'tool-approval') {
@@ -331,7 +331,11 @@ describe('an approval resolved while its run is still going', () => {
       onDiagnostic: () => undefined,
     });
     try {
-      const run = await bureau.createRun({ message: 'charge it', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'charge it',
+        principal: 'alice',
+      });
       await generate.reached('next-step');
       await waitForCondition(() => bureau.listPendingReviews().length === 1, 'no review listed');
       const [review] = bureau.listPendingReviews();
@@ -360,7 +364,7 @@ describe('createRun with neither message nor appendMessages', () => {
     try {
       await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
 
-      const next = await bureau.createRun({ sessionId: run.sessionId });
+      const next = await bureau.createRun({ agentName: 'bureau', sessionId: run.sessionId });
       await settle(bureau, next.id);
 
       expect(next.id).not.toBe(run.id);
@@ -380,14 +384,16 @@ describe('createRun with neither message nor appendMessages', () => {
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
-      const first = await bureau.createRun({ message: 'Hi' });
+      const first = await bureau.createRun({ agentName: 'bureau', message: 'Hi' });
       await settle(bureau, first.id);
       const runsBefore = bureau.listRuns().length;
 
-      const error = await bureau.createRun({ sessionId: first.sessionId }).then(
-        () => undefined,
-        (rejection: unknown) => rejection,
-      );
+      const error = await bureau
+        .createRun({ agentName: 'bureau', sessionId: first.sessionId })
+        .then(
+          () => undefined,
+          (rejection: unknown) => rejection,
+        );
 
       expect(error).toBeInstanceOf(BureauError);
       expect((error as BureauError).code).toBe('BAD_REQUEST');
@@ -403,7 +409,7 @@ describe('createRun with neither message nor appendMessages', () => {
       generate: async () => ({ content: '', toolCalls: [] }),
     });
     try {
-      const error = await bureau.createRun({}).then(
+      const error = await bureau.createRun({ agentName: 'bureau' }).then(
         () => undefined,
         (rejection: unknown) => rejection,
       );

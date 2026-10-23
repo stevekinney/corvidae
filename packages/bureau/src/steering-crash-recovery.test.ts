@@ -159,7 +159,11 @@ const outcomes = {
 
       // The key is bureau-wide: the same key sent to another session is a
       // `session-mismatch`, though that session's own log never saw it.
-      const other = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+      const other = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'Wait forever',
+        principal: 'alice',
+      });
       const elsewhere = await bureau.submitSteeringCommand(other.sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
@@ -261,7 +265,12 @@ const outcomes = {
     const reader = await openBureau(directory);
     try {
       await reader.waitForRecovery?.();
-      await reader.createRun({ message: 'again', principal: 'alice', sessionId });
+      await reader.createRun({
+        agentName: 'bureau',
+        message: 'again',
+        principal: 'alice',
+        sessionId,
+      });
       const outcome = await reader.submitSteeringCommand(sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
