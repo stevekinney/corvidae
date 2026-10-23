@@ -33,6 +33,9 @@ test.describe('the list of agents', () => {
     await expect(frame).not.toContainText('Defined in');
     await expect(frame).not.toContainText('Published');
     await expect(row(page, 'assistant')).toContainText('Scripted');
+    // A code-defined agent's tools are counted as a file agent's are: the Bureau names them.
+    await expect(row(page, 'tool-runner')).toContainText('2 tools');
+    await expect(row(page, 'assistant')).toContainText('No tools');
     await expect(row(page, 'assistant').getByRole('link', { name: 'New chat' })).toBeVisible();
     await expect(row(page, 'assistant').getByRole('link', { name: 'Memory' })).toBeVisible();
     // The unpublished agent is listed to the one local caller, with its badge and no chat action.
@@ -132,6 +135,9 @@ test.describe('one agent', () => {
     await page.goto('/agents/tool-runner');
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('tool-runner');
+    // Its tools are named, each as code.
+    const tools = page.getByRole('list', { name: 'Tools' });
+    await expect(tools.locator('li')).toHaveText(['lookup-order', 'issue-refund']);
     const chats = page.getByRole('navigation', { name: 'Chats with this agent' });
     await expect(chats.getByRole('button', { name: new RegExp(label) })).toHaveCount(1);
     await expect(chats).toContainText('refund for the runner');

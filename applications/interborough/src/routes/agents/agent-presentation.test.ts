@@ -110,16 +110,38 @@ describe('an agent’s facts', () => {
     });
   });
 
-  test('a code agent that names no model is Scripted, and its tools are not known, not none', () => {
-    const facts = agentFacts({ kind: 'code', media: null }, undefined, undefined);
+  test('a code agent that names no model is Scripted, and has the tools its listing names', () => {
+    const facts = agentFacts(
+      { kind: 'code', media: null, tools: ['search-web'] },
+      undefined,
+      undefined,
+    );
 
     expect(facts.model).toEqual({ kind: 'scripted' });
-    expect(facts.tools).toBeNull();
+    expect(facts.tools).toEqual(['search-web']);
+  });
+
+  test('an agent whose listing names no tools has an unknown list, not an empty one', () => {
+    expect(agentFacts({ kind: 'code', media: null }, undefined, undefined).tools).toBeNull();
+    expect(agentFacts({ kind: 'code', media: MEDIA }, undefined, undefined).tools).toBeNull();
+    expect(agentFacts({ kind: 'file', media: null }, undefined, undefined).tools).toBeNull();
+    expect(
+      agentFacts({ kind: 'code', media: null, tools: [] }, undefined, undefined).tools,
+    ).toEqual([]);
+  });
+
+  test('a file agent’s definition outranks the tools its listing named, and the listing fills in before it is read', () => {
+    const listed = { kind: 'file', media: null, tools: ['listed-tool'] } as const;
+
+    expect(agentFacts(listed, definition(['lookup-order']), undefined).tools).toEqual([
+      'lookup-order',
+    ]);
+    expect(agentFacts(listed, undefined, undefined).tools).toEqual(['listed-tool']);
   });
 
   test('a code agent that names a model shows its default, or its one allowed model, and otherwise none', () => {
     const choice = { provider: 'anthropic', model: 'claude-haiku', displayName: 'claude-haiku' };
-    const code = { kind: 'code', media: MEDIA } as const;
+    const code = { kind: 'code', media: MEDIA, tools: ['search-web'] } as const;
 
     expect(
       agentFacts(code, undefined, {
@@ -136,6 +158,7 @@ describe('an agent’s facts', () => {
       agentFacts(code, undefined, { selectable: false, models: [], default: null }).model,
     ).toEqual({ kind: 'unknown' });
     expect(agentFacts(code, undefined, undefined).model).toEqual({ kind: 'unknown' });
+    expect(agentFacts(code, undefined, undefined).tools).toEqual(['search-web']);
   });
 
   test('counts tools, says none for an empty list, and says nothing for an unknown one', () => {

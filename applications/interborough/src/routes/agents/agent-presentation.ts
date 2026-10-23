@@ -60,8 +60,8 @@ export function lastChatText(
  * show them. `model` is `scripted` for an agent defined in code that names no model (its replies
  * come from a script), a name for an agent that names one, and `unknown` while it is being read or
  * when it cannot be told (a routed agent, or a file the Bureau has not answered for). `tools` is
- * `null` when the tools cannot be known: the Bureau tells an agent file's tools and nothing of a
- * code-defined agent's, and an unknown list is never shown as an empty one.
+ * `null` when the tools cannot be known (an agent whose listing carries no tools, such as one that
+ * is not a `createAgent` result), and an unknown list is never shown as an empty one.
  */
 export type AgentFacts = {
   readonly model:
@@ -73,7 +73,7 @@ export type AgentFacts = {
 };
 
 export function agentFacts(
-  agent: Pick<AgentSummary, 'kind' | 'media'>,
+  agent: Pick<AgentSummary, 'kind' | 'media' | 'tools'>,
   definition: AgentDetail['definition'] | undefined,
   models: AgentModels | undefined,
 ): AgentFacts {
@@ -83,17 +83,19 @@ export function agentFacts(
         definition === null || definition === undefined
           ? { kind: 'unknown' }
           : { kind: 'model', name: definition.model },
-      tools: definition?.tools ?? null,
+      tools: definition?.tools ?? agent.tools ?? null,
       skills: definition?.skills.map((skill) => skill.name) ?? [],
     };
   }
   // A code-defined agent with no model descriptor is a script. One with descriptors names its model
   // through `bureau.agents.models`, when it has a single one.
-  if (agent.media === null) return { model: { kind: 'scripted' }, tools: null, skills: [] };
+  if (agent.media === null) {
+    return { model: { kind: 'scripted' }, tools: agent.tools ?? null, skills: [] };
+  }
   const only = models?.default ?? (models?.models.length === 1 ? models.models[0] : undefined);
   return {
     model: only === undefined ? { kind: 'unknown' } : { kind: 'model', name: only.model },
-    tools: null,
+    tools: agent.tools ?? null,
     skills: [],
   };
 }

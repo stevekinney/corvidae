@@ -26,6 +26,8 @@ const FILE_AGENT = {
   kind: 'file',
   description: 'Finds sources.',
 };
+// A code agent whose listing names its tools; `INTERNAL` and `AGENT` name none, so they do not say.
+const ASSISTANT = { ...AGENT, tools: ['search-web', 'send-mail'] };
 const INTERNAL = {
   ...AGENT,
   name: 'internal',
@@ -45,7 +47,7 @@ describe('the list of agents', () => {
   test('shows each agent’s model, tools and use, badges only one that is not published, and offers New chat only for a published one', async () => {
     const recently = new Date(Date.now() - 3 * 60_000).toISOString();
     const served = bureau({
-      'bureau.agents.list': () => ({ agents: [AGENT, FILE_AGENT, INTERNAL] }),
+      'bureau.agents.list': () => ({ agents: [ASSISTANT, FILE_AGENT, INTERNAL] }),
       'bureau.agents.definitions.get': (params) => ({
         id: params['id'],
         source: 'file',
@@ -86,6 +88,7 @@ describe('the list of agents', () => {
     expect(container.textContent).not.toContain('Defined in');
     expect(container.textContent).not.toContain('Published');
     expect(text('assistant')).toContain('Scripted');
+    expect(text('assistant')).toContain('2 tools');
     expect(text('researcher')).toContain('2 tools');
     await waitFor(() =>
       expect(
@@ -111,8 +114,8 @@ describe('the list of agents', () => {
     for (const name of ['assistant', 'researcher', 'internal']) {
       expect(rows(name)?.querySelector(`a[href="/agents/${name}/memory"]`)).not.toBeNull();
     }
-    // A code agent's tools are not told by the Bureau, so none is claimed for it.
-    expect(text('assistant')).not.toContain('tools');
+    // An agent whose listing names no tools has none claimed for it, not even "No tools".
+    expect(text('internal')).not.toContain('tool');
   });
 
   test('says nothing of chat counts when the Bureau cannot list the chats, rather than that there are none', async () => {
@@ -381,6 +384,29 @@ describe('one agent’s page', () => {
     ).toMatchObject({ agentName: 'researcher' });
   });
 
+  test('says a code agent whose listing names an empty list has no tools', async () => {
+    serve({ ...AGENT, tools: [] });
+    landAt('/agents/assistant');
+
+    const { container, findByText } = mount(AgentDetail);
+
+    await findByText('Scripted');
+    expect(container.querySelector('[data-testid="agent-facts"]')?.textContent).toContain(
+      'No tools',
+    );
+  });
+
+  test('claims nothing about the tools of an agent whose listing is silent', async () => {
+    serve(AGENT);
+    landAt('/agents/assistant');
+
+    const { container, findByText } = mount(AgentDetail);
+
+    await findByText('Scripted');
+    expect(container.textContent).not.toContain('tools');
+    expect(container.textContent).not.toContain('Tools');
+  });
+
   test('says a file agent that names no tools has none, and has no skills section', async () => {
     serve(FILE_AGENT, { model: 'anthropic/sonnet', tools: [], skills: [], instructions: '' });
     landAt('/agents/researcher');
@@ -395,26 +421,25 @@ describe('one agent’s page', () => {
   });
 
   test('reads no definition for an agent defined in code, shows it as Scripted with no version, and offers New chat when it is published', async () => {
-    const served = serve(AGENT);
+    const served = serve(ASSISTANT);
     landAt('/agents/assistant');
 
     const { container, findByRole } = mount(AgentDetail);
 
     const action = await findByRole('link', { name: 'New chat' });
     const shown = container.textContent ?? '';
-    for (const present of ['Assistant', 'Answers every message.', 'Scripted']) {
+    // Its tools come from its listing, named as a file agent's are.
+    for (const present of [
+      'Assistant',
+      'Answers every message.',
+      'Scripted',
+      'search-web',
+      'send-mail',
+    ]) {
       expect(shown).toContain(present);
     }
-    // Where it is defined and that it is published are not worded, it has no file version, and
-    // the Bureau tells nothing of its tools, so none is claimed, not even "No tools".
-    for (const absent of [
-      'Defined in',
-      'Published',
-      'Revision',
-      'File version',
-      'tools',
-      'Skills',
-    ]) {
+    // Where it is defined and that it is published are not worded, and it has no file version.
+    for (const absent of ['Defined in', 'Published', 'Revision', 'File version', 'Skills']) {
       expect(shown).not.toContain(absent);
     }
     action.click();

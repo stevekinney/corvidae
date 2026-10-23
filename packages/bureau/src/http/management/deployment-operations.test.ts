@@ -198,6 +198,7 @@ describe('bureau.agents.list', () => {
               kind: 'code',
               publishState: 'published',
               media: null,
+              tools: [],
             },
             {
               name: 'plain-agent',
@@ -207,6 +208,7 @@ describe('bureau.agents.list', () => {
               kind: 'code',
               publishState: 'published',
               media: null,
+              tools: [],
             },
           ],
         });

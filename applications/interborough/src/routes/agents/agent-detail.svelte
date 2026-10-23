@@ -6,8 +6,8 @@
    *
    * An agent file shows the version of the file it runs, with a link to the history that lives in
    * its editor. An agent defined in code has no file, so it shows no version and no Edit action.
-   * The Bureau tells nothing of a code-defined agent's tools, and the page does not claim it has
-   * none: see `agent-facts.svelte`. The only badge an agent carries is "Not published".
+   * An agent whose listing carries no tools is not claimed to have none: see `agent-facts.svelte`.
+   * The only badge an agent carries is "Not published".
    */
   import { untrack } from 'svelte';
 

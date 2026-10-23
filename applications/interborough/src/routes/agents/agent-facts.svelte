@@ -4,11 +4,11 @@
    * code), then its tools, then its skills. The list shows the tool count; an agent's page names
    * each tool and skill.
    *
-   * The Bureau tells an agent file's model, tools and skills (`bureau.agents.definitions.get`) and
-   * a code-defined agent's model (`bureau.agents.models`, asked only when the agent names a model
-   * at all). It tells nothing of a code-defined agent's tools, so that agent shows none, never "no
-   * tools". Both queries share their keys with the agent's page, so a row and the page it opens read
-   * one cache.
+   * The Bureau tells an agent file's model and skills (`bureau.agents.definitions.get`), a
+   * code-defined agent's model (`bureau.agents.models`, asked only when the agent names a model at
+   * all), and every agent's tools in `bureau.agents.list`. An agent whose listing carries no tools
+   * shows none, never "no tools". Both queries share their keys with the agent's page, so a row and
+   * the page it opens read one cache.
    */
   import { Badge } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
