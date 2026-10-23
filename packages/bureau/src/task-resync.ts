@@ -32,8 +32,9 @@
  *    died between the settlement and its append marks nothing). A task that has been repaired
  *    holds such an event, so it is not repaired again.
  *
- * A settled task older than the history's retention window is left alone: retention removes its
- * events, so its absence is by design, and announcing it again would repeat it every cycle.
+ * A settled task whose settlement is older than the history's oldest retained event is left alone:
+ * retention removes events from the front, so their absence is by design, and announcing it again
+ * would repeat it every cycle.
  *
  * @module task-resync
  */
@@ -99,13 +100,8 @@ export interface TaskResyncOptions {
     TaskRegistry,
     'get' | 'record' | 'resyncCandidates' | 'markResyncPending' | 'clearResyncPending'
   >;
-  readonly history: Pick<DurableEventHistory, 'page' | 'record'>;
+  readonly history: Pick<DurableEventHistory, 'page' | 'record' | 'retentionFloorTimestamp'>;
   readonly producer: Pick<DurableEventProducer, 'serialize'>;
-  /**
-   * The instant before which the history retires an event, or `undefined` when it keeps them for
-   * ever. A settled task that ended earlier is not repaired by comparison.
-   */
-  readonly retentionCutoff: () => number | undefined;
   readonly diagnose: (message: string, cause: unknown) => void;
 }
 
@@ -185,10 +181,12 @@ export function createTaskResync(options: TaskResyncOptions): TaskResync {
     const events = await retainedEvents(owner);
     if (events === undefined) return false;
     let owed = record.resyncPending === true;
-    if (!owed && record.settled !== undefined) {
-      const cutoff = options.retentionCutoff();
-      const retired = cutoff !== undefined && Date.parse(record.settled.at) < cutoff;
-      owed = !retired && !events.some(bearsSettlement);
+    if (!owed && record.settled !== undefined && !events.some(bearsSettlement)) {
+      // The settling event is lost only if the history still reaches back to the settlement:
+      // one that starts later has retired it, by design, and a history with nothing in it says
+      // nothing either way.
+      const floor = await history.retentionFloorTimestamp();
+      owed = floor !== undefined && Date.parse(record.settled.at) >= floor;
     }
     if (!owed) return false;
     const view = await tasks.get(taskId);

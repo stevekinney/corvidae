@@ -9078,15 +9078,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
-      // COR-1669: a task whose settlement was written but whose event never was.
-      await taskResyncInstance?.repairAll().catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Could not repair task histories at boot: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
+      // COR-1669: a task whose settlement was written but whose event never was. Not awaited, so
+      // the boot takes no extra turn; tracked, so a shutdown waits for it before storage closes.
+      const repaired = taskResyncInstance?.repairAll().then(
+        () => undefined,
+        (error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not repair task histories at boot: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        },
+      );
+      if (repaired !== undefined) runtimeServices.deferred.track(repaired, 'task-resync-boot');
       return report;
     } finally {
       recoveryPassActive = false;
@@ -18863,7 +18868,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       tasks,
       history: eventHistoryInstance,
       producer: durableEventProducerInstance,
-      retentionCutoff: eventRetentionCutoff,
       diagnose: (message, cause) =>
         diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
     });
