@@ -254,6 +254,46 @@ describe('formatGeminiToolResults', () => {
     ]);
   });
 
+  it('carries providerCallId onto success, unknown-tool, and thrown-error results', async () => {
+    const ok = createTool({
+      name: 'ok',
+      version: '1.0.0',
+      description: 'Succeeds',
+      input: z.object({}),
+      execute: async () => 'fine',
+    });
+    const boom = createTool({
+      name: 'boom',
+      version: '1.0.0',
+      description: 'Throws',
+      input: z.object({}),
+      execute: async () => {
+        throw new Error('nope');
+      },
+    });
+    const toolbox = createToolbox([ok, boom]);
+    const results = await toolbox.execute(
+      parseGeminiToolCalls([
+        { functionCall: { id: 'gem-id', name: 'ok', args: {} } },
+        { functionCall: { id: 'gem-id', name: 'missing', args: {} } },
+        { functionCall: { id: 'gem-id', name: 'boom', args: {} } },
+        { functionCall: { name: 'ok', args: {} } },
+      ]),
+    );
+    expect(results.map((result) => result.outcome)).toEqual([
+      'success',
+      'error',
+      'error',
+      'success',
+    ]);
+    expect(results.slice(0, 3).map((result) => result.providerCallId)).toEqual([
+      'gem-id',
+      'gem-id',
+      'gem-id',
+    ]);
+    expect(results[3]).not.toHaveProperty('providerCallId');
+  });
+
   it('echoes a provider-issued id on a result with parts and never an Armorer-generated id', () => {
     const withParts = formatGeminiToolResults({
       callId: 'gem-parts',
