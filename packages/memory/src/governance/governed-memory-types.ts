@@ -384,7 +384,11 @@ export interface MemoryDeletionPropagationResult {
 /**
  * Deletes one bounded-async target's copies of a deletion's records.
  *
- * It is called at least once per `deletionId` and target, not exactly once:
+ * For each target a deletion propagates, it is called at least once per
+ * `deletionId`, not exactly once. A target that is exempt (the deletion opened
+ * under a legal hold) or that goes overdue before its record-removal rows
+ * complete is never propagated, so the propagator is not called for it. When
+ * it is called:
  * a process that dies between `propagate()` returning and the receipt write
  * that records its result leaves the target pending, and the next pass calls
  * it again; two passes running one open receipt at once can both call it,
