@@ -8,6 +8,7 @@ import {
   TASK,
   updateComponentsMessage,
 } from './a2ui.test-support';
+import { rejectionOf } from '../testing/promise-outcome.test-support';
 import { createProposeA2uiSurfaceTool } from './propose-surface-tool';
 
 function toolFor(h: ReturnType<typeof a2uiHarness>, continuation = true) {
@@ -56,7 +57,7 @@ describe('the model-facing proposal tool', () => {
     });
     expect(result).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
     expect((result['issues'] as unknown[]).length).toBeGreaterThan(0);
-    await expect(h.snapshot('panel')).rejects.toThrow();
+    expect(await rejectionOf(h.snapshot('panel'))).toBeInstanceOf(Error);
   });
 
   it('cannot give a component an action the model did not declare, nor choose the continuation', async () => {
