@@ -186,15 +186,18 @@ describe('the list of agents', () => {
     landAt('/agents');
     const { findByRole } = mount(AgentList);
 
-    (await findByRole('link', { name: 'Edit' })).click();
+    const editLink = await findByRole('link', { name: 'Edit' });
+    editLink.click();
     expect(router.pathname).toBe('/agents/researcher/edit');
 
     landAt('/agents');
-    (await findByRole('link', { name: 'Memory' })).click();
+    const memoryLink = await findByRole('link', { name: 'Memory' });
+    memoryLink.click();
     expect(router.pathname).toBe('/agents/researcher/memory');
 
     landAt('/agents');
-    (await findByRole('link', { name: 'New agent' })).click();
+    const newLink = await findByRole('link', { name: 'New agent' });
+    newLink.click();
     expect(router.pathname).toBe('/agents/new');
   });
 });
