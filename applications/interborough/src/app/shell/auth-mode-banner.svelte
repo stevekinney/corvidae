@@ -48,7 +48,7 @@
     <span>{COPY[mode]}</span>
     <button
       type="button"
-      class="weft-shell-icon-button weft-shell-auth-banner__dismiss"
+      class="weft-shell-auth-banner__dismiss"
       aria-label="Dismiss"
       onclick={() => (dismissed = true)}
     >

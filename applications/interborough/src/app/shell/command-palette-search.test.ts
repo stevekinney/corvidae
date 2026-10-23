@@ -6,7 +6,61 @@
 import type { HttpClient } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { searchConsole } from './command-palette-search.ts';
+import type { AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import {
+  matchAgents,
+  matchChats,
+  matchNewChats,
+  matchPages,
+  newChatLabel,
+  searchConsole,
+  type ConsoleSearchResults,
+} from './command-palette-search.ts';
+
+const NOTHING: ConsoleSearchResults = {
+  chats: [],
+  agents: [],
+  newChats: [],
+  workflows: [],
+  schedules: [],
+  workers: [],
+  reviews: [],
+  pages: [],
+};
+
+function chat(overrides: Partial<ChatContext>): ChatContext {
+  return {
+    id: 'chat-1',
+    owner: null,
+    agentName: 'assistant',
+    title: null,
+    lastMessagePreview: null,
+    parentContextId: null,
+    forkedFromMessageId: null,
+    messageCount: 2,
+    createdAt: '2026-10-23T14:00:00.000Z',
+    updatedAt: '2026-10-23T14:00:00.000Z',
+    activity: 'idle',
+    ...overrides,
+  };
+}
+
+function agent(overrides: Partial<AgentSummary>): AgentSummary {
+  return {
+    name: 'assistant',
+    displayName: 'assistant',
+    description: null,
+    definitionRevision: 1,
+    kind: 'code',
+    publishState: 'published',
+    media: null,
+    ...overrides,
+  };
+}
+
+const ECHO_CHAT = chat({ id: 'echo-chat', agentName: 'echo', title: 'Hello echo, say this back' });
+const ECHO_AGENT = agent({ name: 'echo', description: 'Repeats the last message it was sent.' });
 
 const OPEN = { disabled: false, title: undefined } as const;
 const LOCKED = { disabled: true, title: 'Requires schedules:read' } as const;
@@ -72,7 +126,7 @@ describe('searchConsole', () => {
 
     const results = await searchConsole(fakeClient(calls), '', { scheduleReadGate: OPEN });
 
-    expect(results).toEqual({ workflows: [], schedules: [], workers: [], reviews: [] });
+    expect(results).toEqual(NOTHING);
     expect(calls.schedules).toBe(0);
   });
 
@@ -97,6 +151,87 @@ describe('searchConsole', () => {
 
     const results = await searchConsole(failing, 'nightly', { scheduleReadGate: OPEN });
 
-    expect(results).toEqual({ workflows: [], schedules: [], workers: [], reviews: [] });
+    expect(results).toEqual(NOTHING);
+  });
+});
+
+describe('the chat and agent matches', () => {
+  test('a chat matches on its title, its agent, or its last message', () => {
+    const byPreview = chat({ id: 'a', title: null, lastMessagePreview: 'The echo came back' });
+    const unrelated = chat({ id: 'b', title: 'Refund order', agentName: 'tool-runner' });
+
+    expect(matchChats([unrelated, ECHO_CHAT, byPreview], 'ech').map((match) => match.id)).toEqual([
+      'echo-chat',
+      'a',
+    ]);
+    expect(matchChats([unrelated], 'TOOL-').map((match) => match.id)).toEqual(['b']);
+  });
+
+  test('lists at most five chats', () => {
+    const many = Array.from({ length: 8 }, (_, index) => chat({ id: `c${index}`, title: 'echo' }));
+    expect(matchChats(many, 'echo')).toHaveLength(5);
+  });
+
+  test('an agent matches on its name, display name, or description', () => {
+    const named = agent({ name: 'tool-runner', displayName: 'Tool runner' });
+    expect(matchAgents([named, ECHO_AGENT], 'ech').map((match) => match.name)).toEqual(['echo']);
+    expect(matchAgents([named, ECHO_AGENT], 'runner').map((match) => match.name)).toEqual([
+      'tool-runner',
+    ]);
+    expect(matchAgents([named, ECHO_AGENT], 'last message').map((match) => match.name)).toEqual([
+      'echo',
+    ]);
+  });
+
+  test('offers a new chat only with a published agent, by the words of the command', () => {
+    const unpublished = agent({ name: 'echo-draft', publishState: 'unpublished' });
+    expect(matchNewChats([ECHO_AGENT, unpublished], 'ech').map((match) => match.name)).toEqual([
+      'echo',
+    ]);
+    expect(matchNewChats([ECHO_AGENT], 'new chat with ec').map((match) => match.name)).toEqual([
+      'echo',
+    ]);
+    expect(matchNewChats([ECHO_AGENT], 'zzz')).toEqual([]);
+    expect(newChatLabel('echo')).toBe('New chat with echo');
+  });
+
+  test('Go to Reviews is a command, and the engine pages are their own group', () => {
+    expect(matchPages('go to rev').map((page) => [page.view, page.group])).toEqual([
+      ['reviews', 'command'],
+    ]);
+    expect(matchPages('audit').map((page) => [page.view, page.group, page.path])).toEqual([
+      ['audit', 'engine', '/audit'],
+    ]);
+    expect(matchPages('zzz')).toEqual([]);
+  });
+});
+
+describe('searchConsole for chats and agents', () => {
+  test('finds the chat and the agent a few letters name, and the command to chat with it', async () => {
+    const restore = installFetchImplementation(async (_input, init) => {
+      const call = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+        id?: unknown;
+        method?: string;
+      };
+      const result =
+        call.method === 'bureau.contexts.list'
+          ? {
+              contexts: [ECHO_CHAT, chat({ id: 'other', title: 'Refund order' })],
+              nextOffset: null,
+            }
+          : { agents: [ECHO_AGENT, agent({ name: 'tool-runner' })] };
+      return Response.json({ jsonrpc: '2.0', id: call.id, result });
+    });
+    try {
+      const results = await searchConsole(fakeClient({ schedules: 0 }), 'ech', {
+        scheduleReadGate: OPEN,
+      });
+
+      expect(results.chats.map((match) => match.title)).toEqual(['Hello echo, say this back']);
+      expect(results.agents.map((match) => match.name)).toEqual(['echo']);
+      expect(results.newChats.map((match) => match.name)).toEqual(['echo']);
+    } finally {
+      restore();
+    }
   });
 });
