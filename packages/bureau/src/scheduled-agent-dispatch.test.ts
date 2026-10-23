@@ -9,6 +9,8 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { decode, encode, encodeStorageKeyComponent } from '@lostgradient/weft';
+import { Database } from 'bun:sqlite';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
@@ -23,7 +25,7 @@ import {
   pollUntil,
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau } from './types';
+import type { Bureau, BureauOptions } from './types';
 
 const harness = createScheduleFireHarness();
 const bureaus: Bureau[] = [];
@@ -191,6 +193,54 @@ describe('a schedule’s fire', () => {
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
       });
+      bureaus.push(second);
+      await second.runDurableMaintenance(created!.nextFireAt!);
+      const status = await pollUntil(async () => {
+        const page = await second.listDurableRuns();
+        const fire = page?.items[0];
+        return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
+      }, 'the fire to settle');
+
+      expect(status).toBe('failed');
+      expect(worker.calls()).toBe(0);
+    } finally {
+      removeTemporaryPath(databasePath);
+    }
+  });
+
+  it('stored under the legacy "bureau" agent name fails its fire and runs nothing', async () => {
+    // Persisted before creation refused unknown names, and a catalog cannot hold the reserved
+    // name, so the stored schedule is rewritten in place. The fire-time check still refuses it.
+    const databasePath = createTemporaryPath('bureau-schedule-legacy-agent', '.sqlite');
+    const worker = answering('never');
+    const options = {
+      agents: { worker: createAgent({ generate: worker.generate }) },
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+    } satisfies BureauOptions<AgentDefinitions>;
+    try {
+      const first = await createBureau<AgentDefinitions>(options);
+      const created = await first.createSchedule({
+        agentName: 'worker',
+        input: 'check in',
+        spec: '1m',
+        principal: OWNER.alice,
+      });
+      await first.dispose();
+
+      const database = new Database(databasePath);
+      const key = `schedule:${encodeStorageKeyComponent(created!.id)}`;
+      const row = database.query('select value from kv where key = ?').get(key) as {
+        value: Uint8Array;
+      };
+      const stored = decode(row.value) as { input: { agentName: string } };
+      expect(stored.input.agentName).toBe('worker');
+      stored.input.agentName = 'bureau';
+      database.query('update kv set value = ? where key = ?').run(encode(stored), key);
+      database.close();
+
+      const second = await createBureau<AgentDefinitions>(options);
       bureaus.push(second);
       await second.runDurableMaintenance(created!.nextFireAt!);
       const status = await pollUntil(async () => {

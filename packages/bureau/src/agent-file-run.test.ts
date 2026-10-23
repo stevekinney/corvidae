@@ -130,12 +130,13 @@ describe('bureau.run of a file agent', () => {
     expect(bureau.agents.find('researcher')).toBeUndefined();
 
     await bureau.runDurableMaintenance(occurrence);
-    const fired = await pollUntil(async () => {
-      const schedule = await bureau.getSchedule(created!.id);
-      return schedule?.lastFireAt ?? schedule?.currentWorkflowId ?? undefined;
-    }, 'the tick to fire');
-    expect(fired).toBeDefined();
-    // The fire was refused at fire time, as before: the missing agent never generated anything.
+    const status = await pollUntil(async () => {
+      const page = await bureau.listDurableRuns();
+      const fire = page?.items.find((item) => item.status !== 'running');
+      return fire?.status;
+    }, 'the fire to settle');
+    // The fire was refused at fire time, as before: it failed, and the missing agent never generated.
+    expect(status).toBe('failed');
     expect(observed).toEqual([]);
   });
 
