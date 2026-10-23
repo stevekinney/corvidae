@@ -1109,6 +1109,44 @@ describe('a schedule fire in the registry (COR-1482)', () => {
     expect(told).toEqual(['fire-1:failed', 'fire-2:canceled']);
   });
 
+  it('flushes a settlement only after its listeners have heard it', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    const told: string[] = [];
+    registry.onSettled('fire-1', (view) => told.push(view.status));
+
+    void registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'completed',
+      finishReason: 'stop',
+      message: null,
+    });
+    await registry.flush();
+
+    expect(told).toEqual(['completed']);
+  });
+
+  it('keeps an expired task whose pre-removal cleanup fails, so a later pass retries it', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    await registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'completed',
+      finishReason: 'stop',
+      message: null,
+    });
+    const cutoff = Date.parse('2026-10-19T00:00:00.000Z');
+
+    const failed = await registry.expire(cutoff, new Set(), undefined, async () => {
+      throw new Error('storage unavailable');
+    });
+    expect(failed).toBe(0);
+    expect(await registry.record('fire-1')).toBeDefined();
+
+    expect(await registry.expire(cutoff, new Set(), undefined, async () => {})).toBe(1);
+    expect(await registry.record('fire-1')).toBeUndefined();
+  });
+
   it('survives a listener that throws, diagnosing it', async () => {
     const { registry, diagnostics } = build();
     await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });

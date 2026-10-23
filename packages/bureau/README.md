@@ -22,6 +22,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
   - [The AG-UI mount (COR-855)](#the-ag-ui-mount-cor-855)
   - [External control plane](#external-control-plane)
+  - [Interactive surfaces (COR-1631)](#interactive-surfaces-cor-1631)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
@@ -577,6 +578,10 @@ await bureau.dispose();
 ```
 
 The handler has no run-starting operation of its own, so the host starts the run above with `createRun`, which is deprecated but is the call that makes a session run. A run started with `bureau.run()` is a catalog run, which records no durable `run.*` events, so its `bureau.tasks.events` stream is its snapshot alone and the example would have nothing to await. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
+
+### Interactive surfaces (COR-1631)
+
+`bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
 
 ### Owner of record (COR-718)
 
