@@ -1512,8 +1512,10 @@ describe('a composition built without a memory owner (COR-1546)', () => {
     await entry?.handler(stepOf('recovered remembers this'));
 
     const owner = defaultRunRequestContext.authority.ownerId;
-    const contentsIn = async (collection: string) =>
-      (await memory.list(listerFor(owner), { collection })).map((record) => record.content);
+    const contentsIn = async (collection: string) => {
+      const records = await memory.list(listerFor(owner), { collection });
+      return records.map((record) => record.content);
+    };
     expect(await contentsIn('context-agent')).toEqual(['recovered remembers this']);
     expect(await contentsIn('bureau')).toEqual([]);
   });
