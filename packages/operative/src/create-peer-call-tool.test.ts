@@ -9,7 +9,7 @@ import type {
 } from '@lostgradient/weft/a2a';
 import { describe, expect, it } from 'bun:test';
 
-import { createChildRunRegistry } from './child-run';
+import { createChildRunRegistry, isMutableChildRunRegistry } from './child-run';
 import {
   createPeerCallTool,
   PeerAuthRequiredError,
@@ -72,11 +72,14 @@ function fakePeer(
         contextId: 'context-1',
         message: '',
       });
+      // Like the real client, a task cancels once and later calls return the same outcome.
+      let cancelled: A2APeerOutcome | undefined;
       const cancel = async (reason?: string): Promise<A2APeerOutcome> => {
+        if (cancelled !== undefined) return cancelled;
         cancels.push(reason);
-        const canceled = outcome('canceled', { cancelConfirmed: options.cancelConfirms ?? true });
-        finish(canceled);
-        return canceled;
+        cancelled = outcome('canceled', { cancelConfirmed: options.cancelConfirms ?? true });
+        finish(cancelled);
+        return cancelled;
       };
       const onAbort = (): void =>
         void cancel(typeof request.signal?.reason === 'string' ? request.signal.reason : undefined);
@@ -211,8 +214,6 @@ describe('createPeerCallTool', () => {
   it.each([
     ['failed', PeerTaskError],
     ['rejected', PeerTaskError],
-    ['input-required', PeerInputRequiredError],
-    ['auth-required', PeerAuthRequiredError],
   ] as const)('maps a %s peer task to its own error', async (state, errorClass) => {
     const peer = fakePeer({ immediate: outcome(state) });
     const { registry, events, call } = setup(peer);
@@ -223,9 +224,119 @@ describe('createPeerCallTool', () => {
     expect(error).toMatchObject({
       details: { taskId: 'task-1', peerMessage: `peer says ${state}` },
     });
-    const [child] = registry.children();
-    expect(child).toMatchObject({ status: 'failed', remote: { state } });
+    expect(registry.children()[0]).toMatchObject({ status: 'failed', remote: { state } });
     expect(events).toEqual(['started', 'failed']);
+  });
+
+  it.each([
+    ['input-required', PeerInputRequiredError],
+    ['auth-required', PeerAuthRequiredError],
+  ] as const)('keeps a child abortable while the peer waits (%s)', async (state, errorClass) => {
+    const peer = fakePeer({ immediate: outcome(state) });
+    const { registry, events, call } = setup(peer);
+
+    const error = await rejection(call({ message: 'find it' }));
+
+    expect(error).toBeInstanceOf(errorClass);
+    const [child] = registry.children();
+    expect(child).toMatchObject({ status: 'running', remote: { state } });
+    expect(events).toEqual(['started']);
+
+    registry.abortChild(child?.id ?? '', 'operator');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(peer.cancels).toEqual(['operator']);
+    expect(registry.children()[0]?.status).toBe('aborted');
+    expect(events).toEqual(['started', 'aborted']);
+  });
+
+  it('settles the child that asked a question when a later call continues its task', async () => {
+    const peer = fakePeer({ immediate: outcome('input-required') });
+    const { registry, call } = setup(peer);
+    await rejection(call({ message: 'find it' }));
+
+    await rejection(call({ message: 'the blue one', taskId: 'task-1', contextId: 'context-1' }));
+
+    const [first, second] = registry.children();
+    expect(first?.status).toBe('failed');
+    expect(second?.status).toBe('running');
+    expect(peer.cancels).toEqual([]);
+  });
+
+  it('gives completed and aborted children the RunResult the descriptor contract promises', async () => {
+    const done = fakePeer({ immediate: outcome('completed', { message: 'found it' }) });
+    const first = setup(done);
+    await first.call({ message: 'find it' });
+    expect(first.registry.children()[0]?.result).toMatchObject({
+      content: 'found it',
+      finishReason: 'stop-condition',
+    });
+
+    const hung = fakePeer();
+    const second = setup(hung);
+    const controller = new AbortController();
+    const pending = rejection(second.call({ message: 'find it' }, controller.signal));
+    await Promise.resolve();
+    controller.abort('stop');
+    await pending;
+    expect(second.registry.children()[0]?.result).toMatchObject({ finishReason: 'aborted' });
+  });
+
+  it('records the peer the request actually reached', async () => {
+    const peer = fakePeer({ immediate: outcome('completed') });
+    const reached = {
+      ...outcome('completed').provenance,
+      agentName: 'Refreshed',
+      cardUrl: 'https://b.example/card',
+    };
+    const client: A2APeerClient = {
+      card: peer.client.card,
+      send: async (request) => {
+        const task = await peer.client.send(request);
+        return { ...task, provenance: reached };
+      },
+    };
+    const registry = createChildRunRegistry();
+    const tool = createPeerCallTool({
+      name: 'ask',
+      description: 'Ask.',
+      peer: client,
+      parentContext: {
+        emitter: new CompletableEventTarget<CombinedOperativeEventMap>(),
+        parentAgentName: 'o',
+        parentRunId: 'r',
+        registry,
+      },
+    });
+    await (
+      tool as unknown as { rawExecute: (p: unknown, c: unknown) => Promise<unknown> }
+    ).rawExecute({ message: 'hi' }, {});
+    expect(registry.children()[0]?.remote).toMatchObject({
+      peerName: 'Refreshed',
+      cardUrl: 'https://b.example/card',
+    });
+  });
+
+  it('hands out remote metadata that callers cannot mutate', async () => {
+    const peer = fakePeer();
+    const { registry, call } = setup(peer);
+    void call({ message: 'find it' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const remote = registry.children()[0]?.remote;
+    expect(Object.isFrozen(remote)).toBe(true);
+    expect(() => {
+      (remote as { peerName: string }).peerName = 'Mallory';
+    }).toThrow();
+    expect(registry.children()[0]?.remote?.peerName).toBe('Researcher');
+  });
+
+  it('does not treat a registry without updateRemote as mutable', () => {
+    const registry = createChildRunRegistry();
+    const { updateRemote: _omitted, ...incomplete } = registry;
+    expect(isMutableChildRunRegistry(registry)).toBe(true);
+    expect(isMutableChildRunRegistry(incomplete)).toBe(false);
   });
 
   it('continues an existing peer task when given its id', async () => {

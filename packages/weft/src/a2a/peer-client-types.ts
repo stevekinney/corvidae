@@ -10,7 +10,7 @@ export type A2APeerErrorCode =
   | 'card-unavailable'
   /** The card marks an extension `required` that this client does not support. */
   | 'extension-support-required'
-  /** No interface on the card speaks A2A 1.x over JSON-RPC, or the peer refused the version. */
+  /** No interface on the card speaks A2A 1.0 over JSON-RPC, or the peer refused the version. */
   | 'version-not-supported'
   /** The peer cannot accept or produce the media types this client uses. */
   | 'content-type-not-supported'

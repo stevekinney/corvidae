@@ -36,19 +36,19 @@ function assertExtensionsSupported(card: AgentCard, supported: ReadonlySet<strin
 
 function selectInterface(card: AgentCard, allowedOrigins: ReadonlySet<string>): AgentInterface {
   const speaksJsonRpc = card.supportedInterfaces.filter(
-    (entry) => entry.protocolBinding === 'JSONRPC' && /^1(\.|$)/.test(entry.protocolVersion),
+    (entry) => entry.protocolBinding === 'JSONRPC' && /^1\.0(\.\d+)?$/.test(entry.protocolVersion),
   );
   if (speaksJsonRpc.length === 0) {
     throw new A2APeerError(
       'version-not-supported',
-      'The card lists no JSONRPC interface that speaks A2A 1.x.',
+      'The card lists no JSONRPC interface that speaks A2A 1.0.',
     );
   }
   const allowed = speaksJsonRpc.find((entry) => allowedOrigins.has(originOf(entry.url) ?? ''));
   if (allowed === undefined) {
     throw new A2APeerError(
       'egress-denied',
-      'Every A2A 1.x interface on the card is on an origin this client does not allow.',
+      'Every A2A 1.0 interface on the card is on an origin this client does not allow.',
     );
   }
   return allowed;
@@ -62,7 +62,7 @@ function assertAcceptsText(card: AgentCard): void {
 
 /**
  * Checks a freshly read card. Refuses, in order: a required extension the client does not
- * support, a card with no usable A2A 1.x JSON-RPC interface on an allowed origin, and a card
+ * support, a card with no usable A2A 1.0 JSON-RPC interface on an allowed origin, and a card
  * that accepts no `text/plain` input. The caller still checks egress for the selected URL.
  */
 export function validatePeerCard(

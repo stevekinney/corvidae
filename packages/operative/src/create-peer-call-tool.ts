@@ -4,9 +4,11 @@ import type {
   A2APeerClient,
   A2APeerProvenance,
   A2APeerStopState,
+  A2APeerTask,
 } from '@lostgradient/weft/a2a';
 import type { ToolContext } from 'armorer';
 import { createTool } from 'armorer';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import type { ChildRunRemote, MutableChildRunRegistry } from './child-run';
@@ -18,6 +20,7 @@ import {
   ChildWorkflowFailedEvent,
   ChildWorkflowStartedEvent,
 } from './events';
+import type { RunResult } from './types';
 
 /** What a peer task that cannot continue on its own left behind. */
 interface PeerCallErrorDetails {
@@ -161,6 +164,8 @@ function isTerminalFailure(state: A2APeerStopState): state is 'failed' | 'reject
 export function createPeerCallTool(options: CreatePeerCallToolOptions) {
   const { name, description, peer, parentContext } = options;
   const agentName = options.agentName ?? name;
+  // Children stopped at a question, by remote task id, until a later call continues the task.
+  const interrupted = new Map<string, (reason: string) => void>();
 
   return createTool({
     name,
@@ -179,16 +184,20 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
 
       // Reading the card first means a peer this client must refuse never becomes a child.
       const card = await peer.card();
+      // A continuation supersedes the child that stopped at the question it answers.
+      if (params.taskId !== undefined)
+        interrupted.get(params.taskId)?.('continued by a later call');
       const childRunId = `peer-${crypto.randomUUID()}`;
       const controller = new AbortController();
       const signal =
         context.signal === undefined
           ? controller.signal
           : AbortSignal.any([context.signal, controller.signal]);
+      // The peer the request actually reached: the card read above, until `send` says otherwise.
+      let identity = { peerName: card.name, cardUrl: card.cardUrl };
       const remote = (state: string, taskId: string, contextId: string): ChildRunRemote => ({
         protocol: 'a2a',
-        peerName: card.name,
-        cardUrl: card.cardUrl,
+        ...identity,
         taskId,
         contextId,
         state,
@@ -199,29 +208,55 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         childAgentName: agentName,
         childRunId,
       };
+      let finished = false;
+      let remoteTask: A2APeerTask | undefined;
+      let waiting = false;
+      const finish = (
+        status: 'completed' | 'failed' | 'aborted',
+        reason: string | undefined,
+        result?: RunResult,
+      ): void => {
+        if (finished) return;
+        finished = true;
+        registry?.settle(childRunId, status, result);
+        parentContext?.emitter.dispatchEvent(
+          status === 'completed'
+            ? new ChildWorkflowCompletedEvent(correlation)
+            : status === 'aborted'
+              ? new ChildWorkflowAbortedEvent({ ...correlation, reason })
+              : new ChildWorkflowFailedEvent({ ...correlation, reason: reason ?? 'failed' }),
+        );
+      };
 
       registry?.register({
         id: childRunId,
         parentId: parentRunId,
         agentName,
         durable: false,
-        abort: (reason) => controller.abort(reason),
+        abort: (reason) => {
+          controller.abort(reason);
+          // A child waiting for input has no call in flight; cancel its remote task directly.
+          if (waiting) {
+            void remoteTask
+              ?.cancel(typeof reason === 'string' ? reason : undefined)
+              .then(() =>
+                finish(
+                  'aborted',
+                  typeof reason === 'string' ? reason : undefined,
+                  remoteRunResult('', 'aborted'),
+                ),
+              );
+          }
+        },
         remote: remote('submitted', params.taskId ?? '', params.contextId ?? ''),
       });
       parentContext?.emitter.dispatchEvent(
         new ChildWorkflowStartedEvent({ ...correlation, input: params.message, durable: false }),
       );
 
-      const fail = (reason: string): void => {
-        registry?.settle(childRunId, 'failed');
-        parentContext?.emitter.dispatchEvent(
-          new ChildWorkflowFailedEvent({ ...correlation, reason }),
-        );
-      };
-
       let outcome;
       try {
-        const task = await peer.send({
+        remoteTask = await peer.send({
           text: params.message,
           taskId: params.taskId,
           contextId: params.contextId,
@@ -232,9 +267,21 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
               remote(update.state, update.taskId, update.contextId),
             ),
         });
-        outcome = await task.result();
+        identity = {
+          peerName: remoteTask.provenance.agentName,
+          cardUrl: remoteTask.provenance.cardUrl,
+        };
+        registry?.updateRemote(
+          childRunId,
+          remote(remoteTask.state(), remoteTask.taskId, remoteTask.contextId),
+        );
+        outcome = await remoteTask.result();
+        registry?.updateRemote(
+          childRunId,
+          remote(outcome.state, outcome.taskId, outcome.contextId),
+        );
       } catch (error) {
-        fail(error instanceof Error ? error.message : String(error));
+        finish('failed', error instanceof Error ? error.message : String(error));
         throw error;
       }
 
@@ -244,9 +291,9 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         contextId: outcome.contextId,
         peerMessage: outcome.message,
       };
+      const peerName = outcome.provenance.agentName;
       if (outcome.state === 'completed') {
-        registry?.settle(childRunId, 'completed');
-        parentContext?.emitter.dispatchEvent(new ChildWorkflowCompletedEvent(correlation));
+        finish('completed', undefined, remoteRunResult(outcome.message, 'stop-condition'));
         return {
           untrusted: true,
           provenance: outcome.provenance,
@@ -257,25 +304,49 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         } satisfies PeerCallResult;
       }
       if (outcome.state === 'canceled' && signal.aborted) {
-        registry?.settle(childRunId, 'aborted');
-        parentContext?.emitter.dispatchEvent(
-          new ChildWorkflowAbortedEvent({
-            ...correlation,
-            reason: typeof signal.reason === 'string' ? signal.reason : undefined,
-          }),
+        finish(
+          'aborted',
+          typeof signal.reason === 'string' ? signal.reason : undefined,
+          remoteRunResult(outcome.message, 'aborted'),
         );
         throw signal.reason instanceof Error
           ? signal.reason
           : new DOMException('The peer call was aborted.', 'AbortError');
       }
-      fail(`peer task ${outcome.state}`);
-      if (outcome.state === 'input-required') throw new PeerInputRequiredError(card.name, details);
-      if (outcome.state === 'auth-required') throw new PeerAuthRequiredError(card.name, details);
+      if (outcome.state === 'input-required' || outcome.state === 'auth-required') {
+        // The remote task is still open, so the child stays running and abortable until a later
+        // call continues the task or `abortChild` cancels it.
+        waiting = true;
+        interrupted.set(outcome.taskId, (reason) => {
+          waiting = false;
+          interrupted.delete(outcome.taskId);
+          finish('failed', reason);
+        });
+        throw outcome.state === 'input-required'
+          ? new PeerInputRequiredError(peerName, details)
+          : new PeerAuthRequiredError(peerName, details);
+      }
+      finish('failed', `peer task ${outcome.state}`);
       if (isTerminalFailure(outcome.state)) {
-        throw new PeerTaskError(card.name, outcome.state, details);
+        throw new PeerTaskError(peerName, outcome.state, details);
       }
       const unexpected: never = outcome.state;
       throw new Error(`Unexpected peer task state "${String(unexpected)}".`);
     },
   });
+}
+
+/**
+ * The `RunResult` a remote child reports to the registry: no local conversation, steps, or
+ * usage, and the peer's final message as untrusted `content`.
+ */
+function remoteRunResult(content: string, finishReason: 'stop-condition' | 'aborted'): RunResult {
+  return {
+    conversation: new Conversation(),
+    steps: [],
+    content,
+    parts: [],
+    usage: { prompt: 0, completion: 0, total: 0 },
+    finishReason,
+  };
 }

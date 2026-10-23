@@ -16,10 +16,11 @@ import type {
   A2APeerTaskState,
 } from './peer-client-types.ts';
 import { A2APeerError } from './peer-client-types.ts';
+import { backoffMs, retryRequest, type PeerRetryPolicy } from './peer-retry.ts';
 import { isTerminalState, PeerTaskTracker, type PeerStreamEvent } from './peer-task-tracker.ts';
 
 /** The bounds and collaborators one peer task runs with. */
-export interface PeerTaskContext {
+export interface PeerTaskContext extends PeerRetryPolicy {
   /** The SDK client for the selected interface. */
   readonly client: Client;
   /** Whether to stream (the card advertised it) or poll. */
@@ -30,22 +31,12 @@ export interface PeerTaskContext {
   readonly requestOptions: RequestOptions;
   /** Media types the client accepts back. */
   readonly acceptedOutputModes: readonly string[];
-  /** Attempts per request, including the first. */
-  readonly attempts: number;
-  /** Delay before the first retry; doubles per attempt. */
-  readonly baseDelayMs: number;
-  /** The longest delay between retries or polls. */
-  readonly maxDelayMs: number;
   /** Delay before the first `GetTask` poll; doubles to `maxDelayMs`. */
   readonly pollIntervalMs: number;
   /** How long `result()` may wait for the task to stop. */
   readonly taskTimeoutMs: number;
   /** The most artifact content kept per artifact. */
   readonly artifactLimit: number;
-  /** Waits `ms`, resolving early when `signal` aborts. */
-  readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
-  /** Turns anything an SDK call threw into an {@link A2APeerError}. */
-  readonly classify: (error: unknown) => A2APeerError;
 }
 
 type EventStream = AsyncGenerator<PeerStreamEvent, void, undefined>;
@@ -84,6 +75,8 @@ class PeerTaskRun implements A2APeerTask {
   private cancelling: Promise<A2APeerOutcome> | undefined;
   private readonly context: PeerTaskContext;
   private readonly tracker: PeerTaskTracker;
+  private detach: (() => void) | undefined;
+  private opened = false;
 
   constructor(context: PeerTaskContext, tracker: PeerTaskTracker) {
     this.context = context;
@@ -117,17 +110,34 @@ class PeerTaskRun implements A2APeerTask {
           throw new A2APeerError('protocol', 'The peer closed the stream without a response.');
         }
         return { opened, head: head.value };
-      });
+      }, this.follow.signal);
       this.stream = first.opened;
       this.tracker.apply(first.head);
     } else {
-      const response = await this.withRetry(() =>
-        this.context.client.sendMessage(request, this.callOptions()),
+      const response = await this.withRetry(
+        () => this.context.client.sendMessage(request, this.callOptions()),
+        this.follow.signal,
       );
       if (isTask(response)) this.tracker.applyTask(response);
       else this.tracker.apply({ payload: { $case: 'message', value: response } });
     }
     this.tracker.markHeadSeen();
+    this.opened = true;
+  }
+
+  /** Whether the first response has arrived, so the task has an identity to cancel. */
+  hasOpened(): boolean {
+    return this.opened;
+  }
+
+  /** Aborts the first request while it is still in flight. */
+  abortOpen(): void {
+    this.follow.abort();
+  }
+
+  /** Registers what to undo when the task stops being followed. */
+  onSettled(detach: () => void): void {
+    this.detach = detach;
   }
 
   result(): Promise<A2APeerOutcome> {
@@ -144,21 +154,8 @@ class PeerTaskRun implements A2APeerTask {
     return { ...this.context.requestOptions, signal: this.follow.signal };
   }
 
-  private backoff(attempt: number): number {
-    return Math.min(this.context.baseDelayMs * 2 ** (attempt - 1), this.context.maxDelayMs);
-  }
-
-  private async withRetry<T>(call: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await call();
-      } catch (error) {
-        const classified = this.context.classify(error);
-        const exhausted = attempt >= this.context.attempts || signal?.aborted === true;
-        if (!classified.retryable || exhausted) throw classified;
-        await this.context.sleep(this.backoff(attempt), signal);
-      }
-    }
+  private withRetry<T>(call: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    return retryRequest(this.context, call, signal);
   }
 
   private closeStream(): void {
@@ -179,6 +176,7 @@ class PeerTaskRun implements A2APeerTask {
     } finally {
       clearTimeout(timer);
       this.closeStream();
+      this.detach?.();
     }
   }
 
@@ -230,7 +228,7 @@ class PeerTaskRun implements A2APeerTask {
   private async resubscribe(): Promise<void> {
     this.reconnects += 1;
     if (this.reconnects > 1) {
-      await this.context.sleep(this.backoff(this.reconnects - 1), this.follow.signal);
+      await this.context.sleep(backoffMs(this.context, this.reconnects - 1), this.follow.signal);
     }
     if (this.follow.signal.aborted) return;
     this.stream = this.context.client.resubscribeTask(
@@ -337,7 +335,33 @@ export async function startPeerTask(
     request.taskId !== undefined,
   );
   const run = new PeerTaskRun(context, tracker);
-  await run.open({
+  const signal = request.signal;
+  if (signal === undefined) {
+    await run.open(openingRequest(context, request));
+    return run;
+  }
+  // Nothing is sent for a signal that has already aborted.
+  signal.throwIfAborted();
+  const onAbort = (): void => {
+    if (run.hasOpened())
+      void run.cancel(typeof signal.reason === 'string' ? signal.reason : undefined);
+    else run.abortOpen();
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
+  run.onSettled(() => signal.removeEventListener('abort', onAbort));
+  try {
+    await run.open(openingRequest(context, request));
+  } catch (error) {
+    signal.removeEventListener('abort', onAbort);
+    signal.throwIfAborted();
+    throw error;
+  }
+  if (signal.aborted) onAbort();
+  return run;
+}
+
+function openingRequest(context: PeerTaskContext, request: A2APeerSendRequest): SendMessageRequest {
+  return {
     tenant: '',
     message: userMessage(request.text, request.taskId ?? '', request.contextId ?? ''),
     configuration: {
@@ -347,14 +371,5 @@ export async function startPeerTask(
       returnImmediately: !context.streaming,
     },
     metadata: undefined,
-  });
-  const signal = request.signal;
-  if (signal !== undefined) {
-    const onAbort = (): void => {
-      void run.cancel(typeof signal.reason === 'string' ? signal.reason : undefined);
-    };
-    if (signal.aborted) onAbort();
-    else signal.addEventListener('abort', onAbort, { once: true });
-  }
-  return run;
+  };
 }

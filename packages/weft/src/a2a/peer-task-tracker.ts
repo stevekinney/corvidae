@@ -8,6 +8,7 @@
 import { type Message, type StreamResponse, type Task, TaskState } from '@a2a-js/sdk';
 
 import type {
+  A2APeerArtifact,
   A2APeerOutcome,
   A2APeerProvenance,
   A2APeerSendRequest,
@@ -15,9 +16,10 @@ import type {
   A2APeerTaskState,
 } from './peer-client-types.ts';
 import {
-  applyArtifactUpdate,
+  foldArtifactUpdate,
   isStopState,
   mapArtifact,
+  MAX_PEER_ARTIFACTS,
   peerStateOf,
   textOfMessage,
 } from './peer-parts.ts';
@@ -59,6 +61,7 @@ export function isTerminalState(state: A2APeerTaskState): boolean {
 /** Tracks one peer task for {@link startPeerTask}. */
 export class PeerTaskTracker {
   private snapshot: Task | undefined;
+  private artifacts: A2APeerArtifact[] = [];
   private lastMessage = '';
   private current: A2APeerTaskState = 'submitted';
   private cancellation: LocalCancel | undefined;
@@ -135,11 +138,16 @@ export class PeerTaskTracker {
   /** Forgets a local cancellation, because the peer reported a different terminal state. */
   clearLocalCancel(): void {
     this.cancellation = undefined;
+    this.emit();
   }
 
   /** Applies a whole task, from `GetTask`, `CancelTask`, or a bare response. */
   applyTask(task: Task): void {
-    this.snapshot = task;
+    // The snapshot keeps identity and status only; content is mapped and bounded as it arrives.
+    this.snapshot = { ...task, artifacts: [], history: [] };
+    this.artifacts = task.artifacts
+      .slice(0, MAX_PEER_ARTIFACTS)
+      .map((artifact) => mapArtifact(artifact, this.artifactLimit));
     this.setStatus(task.status);
   }
 
@@ -147,8 +155,9 @@ export class PeerTaskTracker {
   apply(event: PeerStreamEvent): void {
     const payload = event.payload;
     if (payload === undefined) return;
-    // An event after the first response is new by definition, whatever its status says.
-    if (this.headSeen && payload.$case !== 'task') this.fresh = true;
+    // A status event after the first response is new by definition; artifacts and messages do
+    // not change whether the task is still waiting.
+    if (this.headSeen && payload.$case === 'statusUpdate') this.fresh = true;
     switch (payload.$case) {
       case 'task':
         this.applyTask(payload.value);
@@ -180,9 +189,7 @@ export class PeerTaskTracker {
       contextId: this.contextId(),
       provenance: this.provenance(),
       message: this.lastMessage,
-      artifacts: (this.snapshot?.artifacts ?? []).map((artifact) =>
-        mapArtifact(artifact, this.artifactLimit),
-      ),
+      artifacts: this.artifacts,
       ...(canceled === undefined
         ? {}
         : {
@@ -207,11 +214,13 @@ export class PeerTaskTracker {
     append: boolean;
   }): void {
     if (update.artifact === undefined) return;
-    const base = this.snapshot ?? emptyTask(update.taskId, update.contextId);
-    this.snapshot = {
-      ...base,
-      artifacts: applyArtifactUpdate(base.artifacts, update.artifact, update.append),
-    };
+    this.snapshot ??= emptyTask(update.taskId, update.contextId);
+    this.artifacts = foldArtifactUpdate(
+      this.artifacts,
+      update.artifact,
+      update.append,
+      this.artifactLimit,
+    );
   }
 
   private setStatus(status: Task['status']): void {

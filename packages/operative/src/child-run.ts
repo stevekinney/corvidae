@@ -309,19 +309,22 @@ export type MutableChildRunRegistry = ChildRunRegistry & ChildRunRegistrar;
  * the full mutable surface.
  */
 export function isMutableChildRunRegistry(value: unknown): value is MutableChildRunRegistry {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Partial<MutableChildRunRegistry>).register === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).settle === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).attachLiveness === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).attachClosed === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).children === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).abortChild === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).subscribeLiveness === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).awaitChildrenClosed === 'function'
-  );
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return MUTABLE_REGISTRY_METHODS.every((method) => typeof candidate[method] === 'function');
 }
+
+const MUTABLE_REGISTRY_METHODS = [
+  'register',
+  'settle',
+  'updateRemote',
+  'attachLiveness',
+  'attachClosed',
+  'children',
+  'abortChild',
+  'subscribeLiveness',
+  'awaitChildrenClosed',
+] as const;
 
 /**
  * The complete, closed value sets for {@link DelegatedAuthority}'s two
@@ -483,7 +486,7 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
           agentName: entry.agentName,
           durable: entry.durable,
           status: 'running',
-          ...(entry.remote === undefined ? {} : { remote: entry.remote }),
+          ...(entry.remote === undefined ? {} : { remote: Object.freeze({ ...entry.remote }) }),
         },
         abort: entry.abort,
       });
@@ -492,7 +495,7 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
       const existing = entries.get(id);
       if (!existing || existing.descriptor.remote === undefined) return;
       if (existing.descriptor.status !== 'running') return;
-      existing.descriptor = { ...existing.descriptor, remote };
+      existing.descriptor = { ...existing.descriptor, remote: Object.freeze({ ...remote }) };
     },
     settle(id, status, result): void {
       const existing = entries.get(id);
@@ -561,7 +564,14 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
       // control state (e.g. forcing it to `'completed'` would make a later
       // `abortChild(id)` treat a still-running child as already terminal and
       // silently no-op instead of aborting it).
-      return [...entries.values()].map((entry) => Object.freeze({ ...entry.descriptor }));
+      return [...entries.values()].map((entry) =>
+        Object.freeze({
+          ...entry.descriptor,
+          ...(entry.descriptor.remote === undefined
+            ? {}
+            : { remote: Object.freeze({ ...entry.descriptor.remote }) }),
+        }),
+      );
     },
     abortChild(childId, reason): void {
       const entry = entries.get(childId);

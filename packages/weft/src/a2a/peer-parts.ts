@@ -79,9 +79,21 @@ function mapPart(part: Part, remaining: number): { part: A2APeerPart; size: numb
   }
 }
 
-/** Maps a wire artifact, spending at most `limit` characters of content across its parts. */
-export function mapArtifact(artifact: Artifact, limit: number): A2APeerArtifact {
-  let remaining = limit;
+/** The content size of mapped parts, in the units {@link DEFAULT_PEER_ARTIFACT_LIMIT} counts. */
+function partsSize(parts: readonly A2APeerPart[]): number {
+  let total = 0;
+  for (const part of parts) {
+    if (part.kind === 'text') total += part.text.length;
+    else if (part.kind === 'data') total += sizeOf(part.data);
+  }
+  return total;
+}
+
+/**
+ * Maps a wire artifact, spending at most `limit - used` characters of content across its parts.
+ */
+export function mapArtifact(artifact: Artifact, limit: number, used = 0): A2APeerArtifact {
+  let remaining = Math.max(0, limit - used);
   const parts: A2APeerPart[] = [];
   for (const part of artifact.parts) {
     const mapped = mapPart(part, remaining);
@@ -96,22 +108,32 @@ export function mapArtifact(artifact: Artifact, limit: number): A2APeerArtifact 
   };
 }
 
+/** The most artifacts one task keeps. */
+export const MAX_PEER_ARTIFACTS = 256;
+
 /**
- * Applies an artifact update to `artifacts`: `append` adds the update's parts to the artifact
- * with the same identifier, and otherwise the update replaces (or adds) it.
+ * Folds an artifact update into the mapped `artifacts`, mapping it first so the content kept
+ * never exceeds `limit` per artifact however many chunks the peer sends: `append` adds to the
+ * artifact with the same identifier, and otherwise the update replaces (or adds) it.
  */
-export function applyArtifactUpdate(
-  artifacts: readonly Artifact[],
+export function foldArtifactUpdate(
+  artifacts: readonly A2APeerArtifact[],
   update: Artifact,
   append: boolean,
-): Artifact[] {
+  limit: number,
+): A2APeerArtifact[] {
   const index = artifacts.findIndex((entry) => entry.artifactId === update.artifactId);
-  if (index === -1) return [...artifacts, update];
+  const existing = index === -1 ? undefined : artifacts[index];
+  if (existing === undefined) {
+    if (artifacts.length >= MAX_PEER_ARTIFACTS) return [...artifacts];
+    return [...artifacts, mapArtifact(update, limit)];
+  }
   const next = [...artifacts];
-  const existing = artifacts[index];
-  next[index] =
-    append && existing !== undefined
-      ? { ...existing, parts: [...existing.parts, ...update.parts] }
-      : update;
+  next[index] = append
+    ? {
+        ...existing,
+        parts: [...existing.parts, ...mapArtifact(update, limit, partsSize(existing.parts)).parts],
+      }
+    : mapArtifact(update, limit);
   return next;
 }

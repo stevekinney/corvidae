@@ -26,6 +26,7 @@ import {
 import { classifyPeerError } from './peer-errors.ts';
 import { checkEgress, createPeerFetch, type PeerAuthenticate } from './peer-fetch.ts';
 import { DEFAULT_PEER_ARTIFACT_LIMIT } from './peer-parts.ts';
+import { retryRequest, type PeerRetryPolicy } from './peer-retry.ts';
 import { startPeerTask } from './peer-task.ts';
 import { requireTimerDelayMs } from './timer-delay.ts';
 
@@ -83,7 +84,7 @@ export interface A2APeerClientOptions {
 }
 
 const CARD_PATH = '/.well-known/agent-card.json';
-const ACCEPTED_OUTPUT_MODES = ['text/plain', 'application/json'];
+const ACCEPTED_OUTPUT_MODES = ['text/plain'];
 
 /** Failures that mean the cached card may no longer describe the peer. */
 const STALE_CARD_CODES: ReadonlySet<A2APeerErrorCode> = new Set([
@@ -130,7 +131,7 @@ interface Loaded {
 
 /**
  * Creates a client for one A2A peer. It reads and validates the peer's Agent Card (cached for
- * `cardCacheMs`), selects the first interface that speaks A2A 1.x over JSON-RPC from an allowed
+ * `cardCacheMs`), selects the first interface that speaks A2A 1.0 over JSON-RPC from an allowed
  * origin, sends the `A2A-Version` header through the SDK, and refuses a peer whose card requires
  * an extension this client does not support.
  *
@@ -147,6 +148,13 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
     throw new TypeError(`url must be an absolute URL; received ${options.url}.`);
   }
   const allowedOrigins = new Set([cardOrigin, ...(options.allowedInterfaceOrigins ?? [])]);
+  const retryPolicy: PeerRetryPolicy = {
+    attempts: limits.attempts,
+    baseDelayMs: limits.baseDelayMs,
+    maxDelayMs: limits.maxDelayMs,
+    sleep: options.sleep ?? timerSleep,
+    classify: classifyPeerError,
+  };
   const peerFetch = createPeerFetch({
     fetch: options.fetch ?? fetch,
     authenticate: options.authenticate,
@@ -156,7 +164,7 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
 
   async function readCard(resolver: DefaultAgentCardResolver): Promise<AgentCard> {
     try {
-      return await resolver.resolve(options.url);
+      return await retryRequest(retryPolicy, () => resolver.resolve(options.url));
     } catch (error) {
       const classified = classifyPeerError(error);
       if (classified.code !== 'protocol') throw classified;
@@ -237,12 +245,14 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
                     ),
                   },
             acceptedOutputModes: ACCEPTED_OUTPUT_MODES,
-            sleep: options.sleep ?? timerSleep,
-            classify: classifyPeerError,
+            sleep: retryPolicy.sleep,
+            classify: retryPolicy.classify,
           },
           request,
         );
       } catch (error) {
+        // The caller's own abort is theirs to read, not a peer failure.
+        if (request.signal?.aborted === true) throw error;
         const classified = classifyPeerError(error);
         // A refusal can mean the peer changed since the card was cached; read the card again.
         if (STALE_CARD_CODES.has(classified.code)) loaded = undefined;

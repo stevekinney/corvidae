@@ -225,7 +225,7 @@ describe('A2A peer client', () => {
       expect(rpc?.headers.get('a2a-extensions')).toContain('https://example.com/ext/v1');
     });
 
-    test('refuses a card with no A2A 1.x JSON-RPC interface', async () => {
+    test('refuses a card with no A2A 1.0 JSON-RPC interface', async () => {
       const { client } = connect({
         intercept: rewriteServedCard((card) => {
           for (const entry of card.supportedInterfaces) entry.protocolVersion = '0.3';
@@ -264,6 +264,93 @@ describe('A2A peer client', () => {
       expect(cardRequests()).toBe(2);
       await client.card({ refresh: true });
       expect(cardRequests()).toBe(3);
+    });
+  });
+
+  describe('request handling', () => {
+    test('sends nothing for a signal that has already aborted', async () => {
+      const { peer, client } = connect();
+      const controller = new AbortController();
+      controller.abort('never mind');
+      const error = await client
+        .send({ text: 'secret', signal: controller.signal })
+        .catch((e) => e);
+      expect(error).toBe('never mind');
+      expect(peer.methods()).toEqual(['card']);
+    });
+
+    test('aborting while the first request is in flight stops it', async () => {
+      const { client } = connect({
+        intercept: (request, method) =>
+          method === 'SendStreamingMessage'
+            ? new Promise<Response>((_resolve, reject) =>
+                request.signal.addEventListener('abort', () => reject(request.signal.reason)),
+              )
+            : undefined,
+      });
+      const controller = new AbortController();
+      const pending = client.send({ text: 'hi', signal: controller.signal }).catch((e) => e);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      controller.abort('stop');
+      expect(await pending).toBe('stop');
+    });
+
+    test('detaches its abort listener once the task settles', async () => {
+      const { client } = connect();
+      const controller = new AbortController();
+      const removed: string[] = [];
+      const remove = controller.signal.removeEventListener.bind(controller.signal);
+      controller.signal.removeEventListener = ((type: string, ...rest: unknown[]) => {
+        removed.push(type);
+        return (remove as (...args: unknown[]) => void)(type, ...rest);
+      }) as typeof controller.signal.removeEventListener;
+      const task = await client.send({ text: 'hi', signal: controller.signal });
+      await task.result();
+      expect(removed).toContain('abort');
+    });
+
+    test('retries a transient failure reading the Agent Card', async () => {
+      let failures = 1;
+      const { peer, client } = connect({
+        intercept: (_request, method) =>
+          method === 'card' && failures-- > 0 ? new Response('', { status: 503 }) : undefined,
+      });
+      expect(await nameOf(client)).toBe('Echo Agent');
+      expect(peer.methods().filter((method) => method === 'card')).toHaveLength(2);
+    });
+
+    test('accepts text output only', async () => {
+      let modes: unknown;
+      const { client } = connect({
+        intercept: async (request, method) => {
+          if (method === 'SendStreamingMessage') {
+            const body = (await request.clone().json()) as {
+              params: { configuration: { acceptedOutputModes: unknown } };
+            };
+            modes = body.params.configuration.acceptedOutputModes;
+          }
+          return undefined;
+        },
+      });
+      await sendAndSettle(client, { text: 'hi' });
+      expect(modes).toEqual(['text/plain']);
+    });
+
+    test('selects the 1.0 interface even when a 1.1 one is listed first', async () => {
+      const { client } = connect({
+        intercept: rewriteServedCard((card) => {
+          const [first] = card.supportedInterfaces;
+          if (first !== undefined) {
+            card.supportedInterfaces.unshift({
+              ...first,
+              protocolVersion: '1.1',
+              url: 'https://agents.example.com/v11',
+            });
+          }
+        }),
+      });
+      const selected = await client.card();
+      expect(selected.interfaceUrl).not.toContain('/v11');
     });
   });
 
