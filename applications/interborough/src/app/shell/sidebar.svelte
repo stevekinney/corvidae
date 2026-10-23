@@ -33,6 +33,7 @@
     Bot,
     CalendarClock,
     Database,
+    Gauge,
     Inbox,
     MessageSquare,
     Play,
@@ -140,6 +141,8 @@
 
   interface NavEntry {
     readonly view: ViewName;
+    /** The words of the entry when they are not the view's own name. */
+    readonly label?: string;
     readonly path: string;
     readonly icon: typeof Workflow;
     /** `undefined` for views with no badge count; `badgeVariant` stays a plain required field (never `undefined`) so it never needs a per-entry default under `exactOptionalPropertyTypes`. */
@@ -195,6 +198,14 @@
     {
       label: NAVIGATION_COPY.engineGroup,
       entries: [
+        {
+          view: 'engine',
+          label: NAVIGATION_COPY.engineOverview,
+          path: '/engine',
+          icon: Gauge,
+          badge: undefined,
+          badgeVariant: 'warning',
+        },
         {
           view: 'workers',
           path: '/workers',
@@ -273,13 +284,15 @@
             {@const Icon = entry.icon}
             <SideNavigationItem
               href={router.href(entry.path)}
-              title={titleText(VIEW_COPY[entry.view].label, entry.path)}
+              title={titleText(entry.label ?? VIEW_COPY[entry.view].label, entry.path)}
               active={isActivePath(entry.path)}
               onclick={(event) => onNavClick(event, entry.path)}
             >
               <span class="weft-shell-nav-item">
                 <Icon aria-hidden="true" size={16} class="weft-shell-nav-item__icon" />
-                <span class="weft-shell-nav-item__label">{VIEW_COPY[entry.view].label}</span>
+                <span class="weft-shell-nav-item__label"
+                  >{entry.label ?? VIEW_COPY[entry.view].label}</span
+                >
                 {#if entry.badge !== undefined && entry.badge > 0}
                   <Badge variant={entry.badgeVariant} size="sm" class="weft-shell-nav-badge"
                     >{entry.badge}</Badge
@@ -296,7 +309,6 @@
     <NavigationItem
       href={router.href('/engine')}
       variant="vertical"
-      active={router.pathname === '/engine'}
       aria-label={engineStatusWords}
       title={engineStatusWords}
       onclick={(event) => onNavClick(event, '/engine')}

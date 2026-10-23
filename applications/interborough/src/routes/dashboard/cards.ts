@@ -2,7 +2,6 @@ import type { Component } from 'svelte';
 
 import ReviewsDashboardCard from '../reviews/cards/dashboard-card.svelte';
 import SchedulesDashboardCard from '../schedules/cards/dashboard-card.svelte';
-import WorkersDashboardCard from '../workers/cards/dashboard-card.svelte';
 
 /**
  * Card-slot contract (plan §13.0, PROJECT-BRIEF "Shared contracts"): each
@@ -11,6 +10,10 @@ import WorkersDashboardCard from '../workers/cards/dashboard-card.svelte';
  * the ONE shared file every dashboard-card-owning track touches — keep each
  * entry to a one-line import + registration so concurrent tracks rarely
  * conflict on the same lines.
+ *
+ * No `workers` entry: this engine runs its work in-process, so a card of remote workers' capacity
+ * would read zero on a host with none (COR-1658). The Workers page says so, and shows the fleet
+ * when a worker connects.
  *
  * No `workflows` entry: the design reference (`Weft UI.dc.html`
  * dashboard screen) shows exactly one "Workflows by status" treatment — the
@@ -26,6 +29,5 @@ export interface DashboardCardEntry {
 
 export const dashboardCards: readonly DashboardCardEntry[] = [
   { id: 'schedules', component: SchedulesDashboardCard },
-  { id: 'workers', component: WorkersDashboardCard },
   { id: 'reviews', component: ReviewsDashboardCard },
 ];

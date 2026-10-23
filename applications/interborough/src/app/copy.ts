@@ -1130,6 +1130,8 @@ export const NAVIGATION_COPY = {
   workGroup: 'Work',
   /** The views for operating the engine. */
   engineGroup: 'Engine',
+  /** The group's first entry: how the engine is doing, before any one page of it. */
+  engineOverview: 'Overview',
   engineLink: 'Engine',
   /** What the engine status dot says, by the state of the live feed. */
   engineStatus: {

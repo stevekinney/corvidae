@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Dashboard (plan §9.1; design `Weft UI.dc.html` dashboard screen).
+   * Engine overview (`/engine`; plan §9.1; design `Weft UI.dc.html` dashboard screen).
    * Three bands — critical alerts, aggregate cards, recent-activity feed —
    * behind a page-level state machine matching the design's four states
    * (default/loading/empty/unreachable, Appendix B). Bands own their own
@@ -12,7 +12,7 @@
    * are disposed with the component.
    */
   import { ArrowRight, Rocket, WifiOff } from '@lucide/svelte';
-  import { Button, CodeBlock, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
@@ -49,29 +49,17 @@
   );
   const isUnreachable = $derived(healthQuery.isError);
   const isEmpty = $derived(statusQuery.isSuccess && statusQuery.data.total === 0);
-
-  const registrySnippet = `import { Engine, workflow } from '@lostgradient/weft';
-
-const myWorkflow = workflow({ name: 'my-workflow' }).execute(async function* (ctx, input) {
-  // ...
-});
-
-const engine = await Engine.create({
-  workflows: { 'my-workflow': myWorkflow },
-});
-await engine.start('my-workflow', input);`;
 </script>
 
 <div class="weft-dashboard">
   <div class="weft-dashboard__header">
     <div>
-      <h1 class="weft-dashboard__title">Operations overview</h1>
-      <p class="weft-dashboard__subtitle">
-        Cross-domain health
-        {#if healthQuery.dataUpdatedAt > 0}
-          · refreshed {formatRelativeTime(healthQuery.dataUpdatedAt)}
-        {/if}
-      </p>
+      <h1 class="weft-dashboard__title">Engine</h1>
+      {#if healthQuery.dataUpdatedAt > 0}
+        <p class="weft-dashboard__subtitle">
+          Refreshed {formatRelativeTime(healthQuery.dataUpdatedAt)}
+        </p>
+      {/if}
     </div>
   </div>
 
@@ -80,7 +68,7 @@ await engine.start('my-workflow', input);`;
       class="weft-dashboard__gate-skeleton"
       role="status"
       aria-busy="true"
-      aria-label="Loading dashboard"
+      aria-label="Loading the engine overview"
     >
       <div class="weft-dashboard__gate-skeleton-grid">
         <Skeleton height="7.5rem" />
@@ -108,8 +96,8 @@ await engine.start('my-workflow', input);`;
   {:else if isEmpty}
     <div class="weft-dashboard__full-state">
       <EmptyState
-        title="No workflow activity yet"
-        description="Register a workflow definition and start a run from your worker to see operational data here."
+        title="No runs yet"
+        description="Runs from chats, schedules, and workflows show up here once one has started."
       >
         {#snippet icon()}
           <Rocket aria-hidden="true" size={24} />
@@ -120,19 +108,12 @@ await engine.start('my-workflow', input);`;
           {/snippet}
           <Button
             variant="primary"
-            label="Open registry setup"
+            label="Start a run"
             trailingIcon={arrowRight}
-            onclick={() => router.navigate('/system')}
+            onclick={() => router.navigate('/runs?view=start')}
           />
         {/snippet}
       </EmptyState>
-      <CodeBlock
-        code={registrySnippet}
-        language="ts"
-        highlight={false}
-        copyable
-        class="weft-dashboard__snippet"
-      />
     </div>
   {:else}
     <CriticalAlertsBand />

@@ -719,40 +719,6 @@
 }
 
 /* ---------------------------------------------------------------------- */
-/* Dashboard card                                                         */
-/* ---------------------------------------------------------------------- */
-
-.weft-workers-card-link {
-  display: block;
-  color: inherit;
-  text-decoration: none;
-}
-
-.weft-workers-card__stats {
-  display: flex;
-  gap: 16px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-workers-card__diagnostics {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block);
-}
-
-.weft-workers-card__skeleton {
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-workers-card__error {
-  margin: 0;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  font-size: var(--cinder-text-xs);
-  color: var(--cinder-status-danger-text);
-}
-
-/* ---------------------------------------------------------------------- */
 /* Responsive — PROJECT-BRIEF binding rules: no page-level horizontal      */
 /* scroll ever (wide tables scroll inside their own container via         */
 /* Cinder Table's `scrollable`); stat/grid layouts collapse; density       */

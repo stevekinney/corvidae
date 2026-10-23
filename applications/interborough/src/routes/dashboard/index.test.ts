@@ -6,9 +6,10 @@
  * module's doc for why `client.operations[...]` (JSON-RPC) needs this
  * instead.
  */
-import { render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { router } from '../../lib/router.svelte.ts';
 import DashboardIndexHarness from './dashboard-index-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './dashboard-test-support.test-support.ts';
 
@@ -20,6 +21,19 @@ afterEach(() => {
 });
 
 describe('Dashboard', () => {
+  test('is the engine’s page: one level-1 heading, Engine', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeUrlStatus('/v1/health', 503);
+
+    const { findByRole, queryByText } = render(DashboardIndexHarness, {
+      props: { client: realClient() },
+    });
+
+    expect((await findByRole('heading', { level: 1 })).textContent).toBe('Engine');
+    expect(queryByText('Operations overview')).toBeNull();
+    expect(queryByText(/Cross-domain/)).toBeNull();
+  });
+
   test('shows the unreachable state when the health probe fails', async () => {
     scripted = new ScriptedFetch();
     scripted.routeUrlStatus('/v1/health', 503);
@@ -43,13 +57,11 @@ describe('Dashboard', () => {
 
     const { getByText } = render(DashboardIndexHarness, { props: { client } });
 
-    await waitFor(() => expect(getByText('No workflow activity yet')).not.toBeNull());
+    await waitFor(() => expect(getByText('No runs yet')).not.toBeNull());
     expect(
-      getByText(
-        'Register a workflow definition and start a run from your worker to see operational data here.',
-      ),
+      getByText('Runs from chats, schedules, and workflows show up here once one has started.'),
     ).not.toBeNull();
-    expect(getByText('Open registry setup')).not.toBeNull();
+    expect(getByText('Start a run')).not.toBeNull();
   });
 
   test('renders the three bands with real counts once health and aggregate data resolve', async () => {
@@ -79,12 +91,25 @@ describe('Dashboard', () => {
     scripted.routeUrl('/reviews', { items: [] });
     const client = realClient();
 
-    const { getByText, getAllByText } = render(DashboardIndexHarness, { props: { client } });
+    const { getByText, getAllByText, queryByText } = render(DashboardIndexHarness, {
+      props: { client },
+    });
 
-    await waitFor(() => expect(getByText('Workflows by status')).not.toBeNull());
+    await waitFor(() => expect(getByText('Runs by status')).not.toBeNull());
     expect(getAllByText('9').length).toBeGreaterThan(0);
-    expect(getByText('Failures by category')).not.toBeNull();
     expect(getByText('Recent activity')).not.toBeNull();
+    // Each status opens the runs list on a state it has, and a modified click is the browser's.
+    const failed = getByText('Failed').closest('a') as HTMLAnchorElement;
+    expect(failed.getAttribute('href')).toBe('/runs?status=failed');
+    expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/runs');
+    expect(await fireEvent.click(failed, { button: 0, metaKey: true })).toBe(true);
+    expect(await fireEvent.click(failed, { button: 0 })).toBe(false);
+    expect(router.pathname).toBe('/runs');
+    expect(router.search.get('status')).toBe('failed');
+    // The engine runs its work in-process, so no card counts remote workers, and failures are one
+    // count among the statuses rather than a chart of their own.
+    expect(queryByText('Failures by category')).toBeNull();
+    expect(queryByText('Workers')).toBeNull();
   });
 
   // COR-124 admits a critical-alerts chip only when it is backed by

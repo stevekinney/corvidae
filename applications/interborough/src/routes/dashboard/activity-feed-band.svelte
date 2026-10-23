@@ -139,8 +139,8 @@
         </div>
       {:else}
         <p class="weft-activity-feed__empty">
-          No activity since this page loaded. For the connection's replayed history, check the
-          notification bell.
+          Nothing has happened since you opened this page. Events from runs, schedules, and reviews
+          appear here as they happen.
         </p>
       {/if}
     {:else}

@@ -1,12 +1,12 @@
 <script lang="ts">
   /**
-   * "Workflows by status" aggregate card (plan §9.1: "your own stat cards
+   * "Runs by status" aggregate card (plan §9.1: "your own stat cards
    * from GET /api/v1/workflows/aggregate?group_by=status" — this track's
    * own card, distinct from the workflows-domain card-slot registry entry).
-   * Design `Weft UI.dc.html` dashboard screen. Data is fetched once by
-   * the parent route (`./index.svelte`, which also needs the total for the
+   * Data is fetched once by the parent route (`./index.svelte`, which also needs the total for the
    * page-level empty-state gate) and passed in as a query result — this
-   * component only presents it.
+   * component only presents it. Each count opens the runs list on the state that status reads as
+   * (`runs-link.ts`).
    */
   import { Card, Skeleton, StatusDot } from '@lostgradient/cinder';
   import type { CreateQueryResult } from '@tanstack/svelte-query';
@@ -14,6 +14,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import type { WorkflowAggregateResult } from './aggregate-output.ts';
+  import { runsPathForStatus } from './runs-link.ts';
   import { STATUS_DISPLAY_ORDER, statusToneInfo } from './status-tone.ts';
 
   interface WorkflowStatusCardProps {
@@ -21,6 +22,15 @@
   }
 
   let { query }: WorkflowStatusCardProps = $props();
+
+  /** Opens `path` in place, and leaves a modified click to the browser. */
+  function open(event: MouseEvent, path: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(path);
+  }
 
   const countByStatus = $derived.by(() => {
     const counts = new Map<string, number>();
@@ -34,8 +44,12 @@
 <Card padding="none" class="weft-dashboard-card">
   {#snippet header()}
     <div class="weft-dashboard-card__header">
-      <span class="weft-dashboard-card__title">Workflows by status</span>
-      <a href={router.href('/runs')} class="weft-dashboard-card__view-all">View all →</a>
+      <span class="weft-dashboard-card__title">Runs by status</span>
+      <a
+        href={router.href('/runs')}
+        class="weft-dashboard-card__view-all"
+        onclick={(event) => open(event, '/runs')}>View all →</a
+      >
     </div>
   {/snippet}
 
@@ -44,7 +58,7 @@
       class="weft-status-card__skeleton"
       role="status"
       aria-busy="true"
-      aria-label="Loading workflow status"
+      aria-label="Loading run status"
     >
       <Skeleton height="4.5rem" />
     </div>
@@ -55,13 +69,11 @@
       {#each STATUS_DISPLAY_ORDER as status (status)}
         {@const info = statusToneInfo(status)}
         {@const count = countByStatus.get(status) ?? 0}
+        {@const path = runsPathForStatus(status)}
         <a
-          href={router.href(`/runs?status=${status}`)}
+          href={router.href(path)}
           class="weft-status-card__cell"
-          onclick={(event) => {
-            event.preventDefault();
-            router.navigate(`/runs?status=${status}`);
-          }}
+          onclick={(event) => open(event, path)}
         >
           <span class="weft-status-card__cell-label">
             <StatusDot status={info.tone} labelVisible={false} aria-hidden="true" />
