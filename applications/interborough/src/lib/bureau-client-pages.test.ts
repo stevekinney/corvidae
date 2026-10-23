@@ -38,4 +38,30 @@ describe('every session the Bureau holds', () => {
     expect(await listAllContexts()).toHaveLength(1);
     expect(stub.callsTo('bureau.contexts.list')).toHaveLength(1);
   });
+
+  test('asks the Bureau for one origin on every page, so it filters before a page is cut', async () => {
+    stub = installBureauStub({
+      'bureau.contexts.list': (params) => ({
+        contexts: [contextFixture(`chat-${String(params['offset'])}`)],
+        nextOffset: params['offset'] === 0 ? 1 : null,
+      }),
+    });
+
+    await listAllContexts({ origin: 'chat' });
+
+    expect(stub.callsTo('bureau.contexts.list').map((call) => call.params['origin'])).toEqual([
+      'chat',
+      'chat',
+    ]);
+  });
+
+  test('asks for no origin when none is named', async () => {
+    stub = installBureauStub({
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    });
+
+    await listAllContexts();
+
+    expect(stub.callsTo('bureau.contexts.list')[0]?.params).not.toHaveProperty('origin');
+  });
 });

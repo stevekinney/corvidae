@@ -27,6 +27,7 @@
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
     getTask,
+    isScheduleFire,
     isTerminalState,
     type TaskCleanup,
     type TaskView,
@@ -156,6 +157,18 @@
     return undefined;
   });
 
+  // The session a goal's attempt ran in. A goal's session is not listed under Chat, so the attempt's
+  // page is where a person reaches it, while the Bureau still has it.
+  const attemptSession = createQuery(
+    () => ({
+      queryKey: queryKeys.contexts.detail(attempt?.attempt.sessionId ?? ''),
+      queryFn: ({ signal }) => getContext(attempt?.attempt.sessionId ?? '', { signal }),
+      enabled: attempt !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+
   // A run only the engine knows (no task, and no goal made it) has nothing on its Summary tab, so it
   // opens on the Engine tab, where the workflow is. Either tab can still be asked for by name.
   const engineOnly = $derived(notFound && attempt === undefined && engineAllowed);
@@ -231,7 +244,7 @@
               variant="secondary"
               size="lg"
               href={router.href(chatHref)}
-              label={TASK_COPY.openChat}
+              label={chat.data?.origin === 'chat' ? TASK_COPY.openChat : TASK_COPY.openSession}
               onclick={(event) => {
                 if (
                   event.metaKey ||
@@ -250,7 +263,7 @@
         </div>
         <p class="ib-run__origin">
           {#if chat.isSuccess}
-            {TASK_COPY.startedFromChat}
+            {isScheduleFire(current) ? TASK_COPY.startedFromSchedule : TASK_COPY.startedFromChat}
             <a
               href={router.href(chatSessionPath(current.contextId))}
               onclick={(event) => {
@@ -266,6 +279,8 @@
                 router.navigate(chatSessionPath(current.contextId));
               }}>{chat.data.title ?? TASK_COPY.untitledChat}</a
             >
+          {:else if isScheduleFire(current)}
+            {TASK_COPY.startedFromSchedule}
           {:else}
             {TASK_COPY.startedDirectly}
           {/if}
@@ -294,6 +309,29 @@
           </h1>
           <Badge variant={presentation.variant}>{presentation.label}</Badge>
         </div>
+        {#if attemptSession.isSuccess}
+          {@const sessionHref = chatSessionPath(attemptSession.data.id)}
+          <div class="ib-run__actions">
+            <Button
+              variant="secondary"
+              size="lg"
+              href={router.href(sessionHref)}
+              label={TASK_COPY.openSession}
+              onclick={(event) => {
+                if (
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.button !== 0
+                )
+                  return;
+                event.preventDefault();
+                router.navigate(sessionHref);
+              }}
+            />
+          </div>
+        {/if}
         <p class="ib-run__origin">
           {TASK_COPY.startedFromGoal}
           <a

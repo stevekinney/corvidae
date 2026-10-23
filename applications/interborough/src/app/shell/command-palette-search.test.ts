@@ -38,6 +38,7 @@ function chat(overrides: Partial<ChatContext>): ChatContext {
     lastMessagePreview: null,
     parentContextId: null,
     forkedFromMessageId: null,
+    origin: 'chat',
     messageCount: 2,
     createdAt: '2026-10-23T14:00:00.000Z',
     updatedAt: '2026-10-23T14:00:00.000Z',
@@ -208,11 +209,14 @@ describe('the chat and agent matches', () => {
 
 describe('searchConsole for chats and agents', () => {
   test('finds the chat and the agent a few letters name, and the command to chat with it', async () => {
+    const listed: unknown[] = [];
     const restore = installFetchImplementation(async (_input, init) => {
       const call = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
         id?: unknown;
         method?: string;
+        params?: unknown;
       };
+      if (call.method === 'bureau.contexts.list') listed.push(call.params);
       const result =
         call.method === 'bureau.contexts.list'
           ? {
@@ -230,6 +234,8 @@ describe('searchConsole for chats and agents', () => {
       expect(results.chats.map((match) => match.title)).toEqual(['Hello echo, say this back']);
       expect(results.agents.map((match) => match.name)).toEqual(['echo']);
       expect(results.newChats.map((match) => match.name)).toEqual(['echo']);
+      // Only the chats a person started are searched, so a goal's session is not a chat result.
+      expect(listed).toEqual([expect.objectContaining({ origin: 'chat' })]);
     } finally {
       restore();
     }

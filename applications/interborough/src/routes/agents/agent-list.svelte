@@ -45,7 +45,7 @@
   const chats = createQuery(
     () => ({
       queryKey: queryKeys.contexts.usage(),
-      queryFn: ({ signal }) => listAllContexts({ signal }),
+      queryFn: ({ signal }) => listAllContexts({ signal, origin: 'chat' }),
       retry: false,
     }),
     undefined,
