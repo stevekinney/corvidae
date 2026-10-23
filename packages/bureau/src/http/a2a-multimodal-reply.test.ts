@@ -140,9 +140,14 @@ describe('the Agent Card’s media types', () => {
         }
         expect(cards['plain'].defaultInputModes).toEqual(['text/plain', 'application/json']);
         expect(cards['plain'].defaultOutputModes).toEqual(['text/plain']);
-        // The vision model reads images, but a message's file parts are not read yet: input stays
-        // text and data.
-        expect(cards['painter'].defaultInputModes).toEqual(['text/plain', 'application/json']);
+        // The vision model reads images and documents, and a message's file parts are read
+        // (COR-788, part 2): the card says so.
+        expect(cards['painter'].defaultInputModes).toEqual([
+          'text/plain',
+          'application/json',
+          'image/*',
+          'application/pdf',
+        ]);
         expect(cards['painter'].defaultOutputModes).toEqual([
           'text/plain',
           'image/*',
