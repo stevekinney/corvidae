@@ -1338,4 +1338,37 @@ describe('control fixes', () => {
     await flush();
     expect(selected()).toEqual(['A']);
   });
+
+  test('a host update to a focused number field wins over the edit it replaces', async () => {
+    const changes: A2uiJsonValue[] = [];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'host-wins',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Seats',
+            variant: 'number',
+            value: { path: '/seats' },
+          },
+        ],
+        dataModel: { seats: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = screen.getByRole('spinbutton', { name: /Seats/ }) as HTMLInputElement;
+
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '4' } });
+    await view.rerender({ dataModel: { seats: '7' } });
+    await flush();
+    expect(field.value).toBe('7');
+
+    await fireEvent.blur(field);
+    await fireEvent.focusOut(field);
+    await flush();
+    expect(changes.at(-1) ?? { seats: '7' }).toEqual({ seats: '7' });
+  });
 });

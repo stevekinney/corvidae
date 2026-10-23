@@ -378,9 +378,10 @@
    * The number a focused number field shows. Cinder's NumberInput replaces the
    * text being typed whenever its value changes, so while the user types into a
    * field that writes its model on each keystroke, the field keeps the value it
-   * had when focused; the commit on blur brings it back in step.
+   * had when focused; the commit on blur brings it back in step. A host update
+   * (a new model generation) ends the hold, so the server's value shows and wins.
    */
-  let heldNumber = $state<{ value: number | null } | undefined>(undefined);
+  let heldNumber = $state<{ value: number | null; generation: number } | undefined>(undefined);
 
   /** Writes a number field's model as the user types, not only when they commit. */
   function writeWhileTyping(input: HTMLInputElement): () => void {
@@ -388,6 +389,7 @@
       const current = read('value');
       heldNumber = {
         value: typeof current === 'number' ? current : (resolveNumber(current, evaluation) ?? null),
+        generation: context.model.generation,
       };
     };
     // `focusout` follows `blur`, so the field's own commit on blur runs first.
@@ -665,7 +667,7 @@
           id={domId}
           label={nameOr(text('label'), 'Number')}
           {...describedBy}
-          value={heldNumber === undefined
+          value={heldNumber === undefined || heldNumber.generation !== context.model.generation
             ? typeof value === 'number'
               ? value
               : (resolveNumber(value, evaluation) ?? null)

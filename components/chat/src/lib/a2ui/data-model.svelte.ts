@@ -103,6 +103,7 @@ export class A2uiDataModel {
   #root: A2uiJsonValue;
   /** Advanced by every write; each read depends on it, so it reruns after any change. */
   #version = $state(0);
+  #generation = $state(0);
   readonly #onChange: ((value: A2uiJsonValue) => void) | undefined;
 
   constructor(initial: A2uiJsonValue | undefined, onChange?: (value: A2uiJsonValue) => void) {
@@ -121,6 +122,12 @@ export class A2uiDataModel {
   replace(value: A2uiJsonValue | undefined): void {
     this.#root = ownCopy(value === undefined ? {} : value);
     this.#version += 1;
+    this.#generation += 1;
+  }
+
+  /** How many times the host has replaced the model; a write of the surface's own leaves it. */
+  get generation(): number {
+    return this.#generation;
   }
 
   /** The value at `pointer`, or `undefined` when nothing is there. */
