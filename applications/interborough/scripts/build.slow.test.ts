@@ -1,9 +1,11 @@
 /**
  * The real production build (`scripts/build.ts`): bundling takes seconds, so it runs in the slow
- * lane (`test:slow`). Every test here shares one build, written into a scratch directory so it
- * races nothing that builds `build/`, and the retention tests seed their "previous build" by
- * copying it, so the file makes at most {@link MAXIMUM_BUNDLES} real bundles. Nothing asserts on
- * how long the build takes.
+ * lane (`test:slow`). The file makes exactly one bundle of the real application, in file setup
+ * (a top-level `await`, so no test's own time limit pays for it), written into a scratch directory
+ * so it races nothing that builds `build/`. Every assertion that reads a build's output shares it.
+ * The retention tests exercise what `buildApplication` does around the bundler, not the bundler,
+ * so each rebuilds a one-line entry through the real `Bun.build` and the real build options, and
+ * seeds its "previous build" by copying the shared one. Nothing asserts on how long a build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,13 +16,9 @@ import { type ApplicationBuild, BUILD_ASSET_DIRECTORY, buildApplication } from '
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-slow-'));
 const outdir = join(scratch, 'build');
-let build: Promise<ApplicationBuild> | undefined;
 
-/**
- * The most real bundles this file may make: the shared production build, and one rebuild for each
- * of the two retention tests.
- */
-const MAXIMUM_BUNDLES = 3;
+/** The most real bundles of the application this file may make: the shared production build. */
+const MAXIMUM_BUNDLES = 1;
 let bundles = 0;
 
 /** `Bun.build`, counted, so that no test quietly adds a bundle and pushes the file toward Bun's limit. */
@@ -29,10 +27,7 @@ function counted(configuration: Bun.BuildConfig): Promise<Bun.BuildOutput> {
   return Bun.build(configuration);
 }
 
-function builtApplication(): Promise<ApplicationBuild> {
-  build ??= buildApplication({ outdir, bundle: counted });
-  return build;
-}
+const sharedBuild: ApplicationBuild = await buildApplication({ outdir, bundle: counted });
 
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
@@ -56,7 +51,7 @@ function emittedModules(metafile: Bun.BuildMetafile, pattern: RegExp): string[] 
 
 describe('buildApplication', () => {
   it('writes index.html and hashed JavaScript and CSS into the output directory', async () => {
-    const result = await builtApplication();
+    const result = sharedBuild;
 
     expect(result.directory).toBe(outdir);
     expect(result.files).toContain('index.html');
@@ -82,7 +77,7 @@ describe('buildApplication', () => {
   });
 
   it('emits exactly the grammars and themes the highlighters register', async () => {
-    const { metafile } = await builtApplication();
+    const { metafile } = sharedBuild;
 
     // `src/lib/code-highlighter.ts` registers `json` and `typescript` and two themes. Chat renders
     // messages with Markdown, which registers its own curated set (`BUNDLED_LANGUAGES` in
@@ -112,7 +107,7 @@ describe('buildApplication', () => {
 
 describe('buildApplication Chat highlighting', () => {
   it('gives Chat’s highlighter the curated registries and not Shiki’s complete ones', async () => {
-    const { metafile } = await builtApplication();
+    const { metafile } = sharedBuild;
 
     const inputs = Object.values(metafile.outputs).flatMap((output) => Object.keys(output.inputs));
     expect(inputs.some((input) => input.endsWith('src/lib/curated-shiki-registries.ts'))).toBe(
@@ -125,14 +120,21 @@ describe('buildApplication Chat highlighting', () => {
 describe('buildApplication asset retention', () => {
   /**
    * A rebuild over a copy of the shared build, with a file from "the build before" planted in the
-   * copy. The copy stands in for the previous build, so only the rebuild is a real bundle.
+   * copy. The copy stands in for the previous build, and the rebuild bundles a one-line entry with
+   * the application's real build options, because retention is decided by the files around the
+   * bundle and not by what the bundler is given.
    */
   async function replacedBuild(development: boolean): Promise<string> {
     const outdir = join(mkdtempSync(join(scratch, 'retention-')), 'build');
-    const shared = await builtApplication();
-    cpSync(shared.directory, outdir, { recursive: true });
+    cpSync(sharedBuild.directory, outdir, { recursive: true });
+    const entry = join(scratch, 'retention-entry.ts');
+    writeFileSync(entry, 'export const answer = 42;\n');
     writeFileSync(join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js'), '');
-    await buildApplication({ outdir, development, bundle: counted });
+    await buildApplication({
+      outdir,
+      development,
+      bundle: (configuration) => Bun.build({ ...configuration, entrypoints: [entry] }),
+    });
     return join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js');
   }
 
