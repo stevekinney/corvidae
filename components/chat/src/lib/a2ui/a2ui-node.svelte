@@ -366,11 +366,9 @@
     const release = () => {
       heldNumber = undefined;
     };
-    const write = () => {
-      const typed = input.value.trim();
-      if (typed === '') setLocal('value', '');
-      else if (Number.isFinite(Number(typed))) setLocal('value', String(Number(typed)));
-    };
+    // A TextField's value is text, so the model holds what is typed, in the
+    // field's own locale (`1,5`); the commit on blur writes the canonical number.
+    const write = () => setLocal('value', input.value.trim());
     input.addEventListener('focus', hold);
     input.addEventListener('focusout', release);
     input.addEventListener('input', write);
@@ -378,6 +376,8 @@
       input.removeEventListener('focus', hold);
       input.removeEventListener('focusout', release);
       input.removeEventListener('input', write);
+      // Removing a focused input need not emit `focusout`, so the hold ends here too.
+      release();
     };
   }
 
@@ -818,8 +818,8 @@
           label={nameOr(text('label'), dateTimeLabel(kind))}
           {...describedBy}
           granularity={kind.granularity}
-          {...optional('min', text('min') || undefined)}
-          {...optional('max', text('max') || undefined)}
+          {...optional('min', dateTimeForControl(text('min'), kind.granularity, context.timeZone))}
+          {...optional('max', dateTimeForControl(text('max'), kind.granularity, context.timeZone))}
           bind:value={
             () => dateTimeForControl(value, kind.granularity, context.timeZone),
             (next) => {

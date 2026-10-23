@@ -1193,4 +1193,60 @@ describe('control fixes', () => {
       'Turn it up',
     );
   });
+
+  test('a number TextField writes what the user types, in any locale’s notation', async () => {
+    const changes: A2uiJsonValue[] = [];
+    const number = (variant: string): A2uiComponent[] => [
+      { id: 'root', component: 'TextField', label: 'Rate', variant, value: { path: '/rate' } },
+    ];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'locale-number',
+        components: number('number'),
+        dataModel: { rate: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = () => screen.getByLabelText('Rate') as HTMLInputElement;
+
+    await fireEvent.focus(field());
+    await fireEvent.input(field(), { target: { value: '1,5' } });
+    await flush();
+    expect(changes.at(-1)).toEqual({ rate: '1,5' });
+
+    // A focused field replaced by another variant, then restored, follows the model again.
+    await view.rerender({ components: number('shortText') });
+    await flush();
+    await view.rerender({ components: number('number') });
+    await view.rerender({ dataModel: { rate: '9' } });
+    await flush();
+    expect(field().value).toBe('9');
+  });
+
+  test('a zoned DateTimeInput bound shows in the surface’s time zone, as its value does', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'zoned-bounds',
+        timeZone: 'Asia/Tokyo',
+        components: [
+          {
+            id: 'root',
+            component: 'DateTimeInput',
+            label: 'When',
+            enableDate: true,
+            enableTime: true,
+            min: '2025-12-15T17:00:00Z',
+            max: '2025-12-20T03:00:00+00:00',
+            value: '',
+          },
+        ],
+      },
+    });
+    await flush();
+
+    const input = screen.getByLabelText('When');
+    expect(input.getAttribute('min')).toBe('2025-12-16T02:00');
+    expect(input.getAttribute('max')).toBe('2025-12-20T12:00');
+  });
 });
