@@ -119,8 +119,12 @@ async function pruneAudit(
   let prunedReceipts = 0;
   for (const receipt of await context.ledger.listReceipts({ tenantId, open: false })) {
     if (receipt.awaitingHoldRelease || receipt.updatedAt >= cutoff) continue;
-    await context.ledger.deleteReceipt(receipt.deletionId);
-    prunedReceipts++;
+    // Deleted only as read here: a receipt a retry reopened since the listing
+    // is no longer old history, and stays.
+    const stored = await context.ledger.readReceipt(receipt.deletionId);
+    if (stored === undefined || stored.receipt.open || stored.receipt.updatedAt >= cutoff) continue;
+    if (stored.receipt.awaitingHoldRelease) continue;
+    if (await context.ledger.deleteReceipt(stored)) prunedReceipts++;
   }
   const prunedDerivations = await pruneAbandonedDerivations(context, tenantId, cutoff);
   return { prunedEvents, prunedReceipts, prunedDerivations };

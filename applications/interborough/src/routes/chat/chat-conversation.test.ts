@@ -5,9 +5,10 @@
  */
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test';
 
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
@@ -43,6 +44,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  jest.useRealTimers();
   restore?.();
   restore = undefined;
   expect(contextReads).toBeLessThanOrEqual(CONTEXT_READ_CAP);
@@ -657,17 +659,25 @@ describe('a decision made somewhere else', () => {
       },
     ).restore;
     landAt('/chat/session-1');
+    // The poll is TanStack Query's refetch interval, so the clock is faked from here and the test
+    // moves it; the afterEach above puts the real one back.
+    jest.useFakeTimers();
     const { container } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
       agentName: 'assistant',
     });
     await sendMessage(container, 'Refund it');
-    await waitFor(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+    await until(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+    expect(messageReads).toBe(1);
 
     // The poll finds the review gone and the read fails; the next poll reads the thread again.
-    await waitFor(() => expect(messageReads).toBeGreaterThanOrEqual(3), { timeout: 12_000 });
-  }, 20_000);
+    jest.advanceTimersByTime(3_000);
+    await until(() => expect(messageReads).toBe(2));
+    await settle();
+    jest.advanceTimersByTime(3_000);
+    await until(() => expect(messageReads).toBeGreaterThanOrEqual(3));
+  });
 });
 
 describe('what went wrong', () => {

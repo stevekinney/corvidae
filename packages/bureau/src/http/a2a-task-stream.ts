@@ -45,8 +45,9 @@ import {
   agentMessage,
   isTerminal,
   replyMessageId,
+  publishedReplyParts,
+  type ReplyParts,
   resultArtifactId,
-  textPart,
   waitingMessage,
 } from './a2a-task-projection.ts';
 import { createTaskEventProjector, type TaskEvent } from './management/tasks-events-operation.ts';
@@ -87,7 +88,7 @@ export type FollowTaskOptions = {
   /** Builds the `Task` a snapshot sends, from the task's view with the folded status. */
   readonly snapshot: (view: TaskView) => Promise<Task>;
   /** The agent's reply on a completed task, for its artifact and final status message. */
-  readonly replyOf: (view: TaskView) => Promise<string | undefined>;
+  readonly replyOf: (view: TaskView) => Promise<ReplyParts | undefined>;
   readonly timers: RuntimeTimers;
   readonly signal: AbortSignal | undefined;
   /** How many events the stream holds for a reader that has fallen behind. */
@@ -182,12 +183,15 @@ function statusUpdate(
   };
 }
 
-function artifactUpdate(view: Pick<TaskView, 'id' | 'contextId'>, text: string): StreamResponse {
+function artifactUpdate(
+  view: Pick<TaskView, 'id' | 'contextId'>,
+  parts: ReplyParts,
+): StreamResponse {
   const artifact: Artifact = {
     artifactId: resultArtifactId(view.id),
     name: 'result',
     description: '',
-    parts: [textPart(text)],
+    parts: [...parts],
     metadata: undefined,
     extensions: [],
   };
@@ -210,16 +214,16 @@ function artifactUpdate(view: Pick<TaskView, 'id' | 'contextId'>, text: string):
 export function eventsOf(
   view: TaskView,
   element: Extract<TaskEvent, { kind: 'task.status' }>,
-  reply: string | undefined,
+  reply: ReplyParts | undefined,
   forms: readonly WaitForm[] = [],
 ): StreamResponse[] {
   const timestamp = new Date(element.emittedAtMs).toISOString();
   const state = a2aStateOf(element.status);
   if (element.status === 'completed') {
-    const text = element.artifact?.text ?? reply;
-    if (text === undefined || text === '') return [statusUpdate(view, state, timestamp)];
+    const parts = publishedReplyParts(reply, element.artifact?.text);
+    if (parts.length === 0) return [statusUpdate(view, state, timestamp)];
     return [
-      artifactUpdate(view, text),
+      artifactUpdate(view, parts),
       {
         payload: {
           $case: 'statusUpdate',
@@ -228,7 +232,7 @@ export function eventsOf(
             contextId: view.contextId,
             status: {
               state,
-              message: agentMessage(view, replyMessageId(view.id), text),
+              message: agentMessage(view, replyMessageId(view.id), parts),
               timestamp,
             },
             metadata: undefined,

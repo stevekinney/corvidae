@@ -35,7 +35,7 @@
 
 import type { StreamResponse } from '@a2a-js/sdk';
 import { ServerCallContext, type User } from '@a2a-js/sdk/server';
-import type { RuntimeTimers } from '@lostgradient/lifecycle';
+import type { RuntimeTimeoutHandle, RuntimeTimers } from '@lostgradient/lifecycle';
 import {
   createOutboxPushNotificationSender,
   openDeliveries,
@@ -70,6 +70,9 @@ const MAXIMUM_CLEANUP_BACKOFF_MS = 60_000;
 /** How long a failed pump, cleanup, or subscription waits before it tries again. */
 const RETRY_MS = 5_000;
 
+/** How often the projector sweeps every checkpoint for a task that no longer exists. */
+const SWEEP_MS = 3_600_000;
+
 /** What the projector reads from a Bureau. */
 export type A2APushBureau = A2AStreamBureau & {
   /** The Bureau's life: the projector stops once it is no longer `ready`. */
@@ -96,6 +99,12 @@ export type A2APushProjectorOptions = {
   readonly onError?: ((error: unknown) => void) | undefined;
   /** How long a failure waits before its retry. Defaults to five seconds. */
   readonly retryMs?: number | undefined;
+  /**
+   * How long the projector waits between sweeps of every checkpoint, which clean up a
+   * configuration or checkpoint whose task is gone and settle one written ahead of its
+   * configuration. Defaults to one hour. A sweep also runs once, at start.
+   */
+  readonly sweepMs?: number | undefined;
 };
 
 /** The projector. */
@@ -126,6 +135,12 @@ export type A2APushProjector = {
    */
   recoverUntilReady(): Promise<void>;
   /**
+   * Stops the periodic sweep and clears its timer. The sweep also stops by itself the next time
+   * it fires after the Bureau is no longer `ready`; this is for a host that releases the
+   * projector earlier.
+   */
+  stop(): void;
+  /**
    * Runs `work` once at a time per task, in call order. Every mutation of a task's push
    * configurations and checkpoints (an install, a delete, a removal's cleanup) runs through it, so
    * a create and a delete of the same id never interleave.
@@ -148,6 +163,7 @@ function sequenceOf(cursor: string): number {
 export function createA2APushProjector(options: A2APushProjectorOptions): A2APushProjector {
   const { bureau, checkpoints, delivery, tenant, reader, timers } = options;
   const retryMs = options.retryMs ?? RETRY_MS;
+  const sweepMs = options.sweepMs ?? SWEEP_MS;
   const store = delivery.sender.pushStore;
   const stopped = (): boolean => bureau.lifecycle !== 'ready';
   const reportTo =
@@ -609,6 +625,39 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     }
   }
 
+  let sweepTimer: RuntimeTimeoutHandle;
+  let sweepArmed = false;
+  let sweeping = true;
+
+  /**
+   * Recovers every checkpointed task again: a task that no longer exists has its configurations
+   * and checkpoints removed, and one written ahead of its configuration is settled. A failure is
+   * reported and left for the next sweep (a cleanup retries itself).
+   */
+  async function sweep(): Promise<void> {
+    const failures = await recoverTasks(await checkpoints.listTaskIds());
+    for (const failure of failures) report(failure.error);
+  }
+
+  /** Arms the next sweep. The timer never keeps the process alive, and the chain ends with the Bureau. */
+  function armSweep(): void {
+    if (!sweeping || stopped()) return;
+    const handle = timers.setTimeout(() => {
+      sweepArmed = false;
+      if (!sweeping || stopped()) return;
+      void singleFlight('sweep', sweep).catch(report).finally(armSweep);
+    }, sweepMs);
+    (handle as { unref?: () => void } | undefined)?.unref?.();
+    sweepTimer = handle;
+    sweepArmed = true;
+  }
+
+  function stopSweeping(): void {
+    sweeping = false;
+    if (sweepArmed) timers.clearTimeout(sweepTimer);
+    sweepArmed = false;
+  }
+
   return {
     contextOf,
     tailOf,
@@ -619,7 +668,12 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
 
     recover,
 
-    recoverUntilReady,
+    recoverUntilReady: async () => {
+      await recoverUntilReady();
+      armSweep();
+    },
+
+    stop: stopSweeping,
 
     fence,
 

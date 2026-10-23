@@ -52,16 +52,33 @@ export interface MemoryGovernanceLedger {
   pruneEvents(tenantId: string, before: number): Promise<number>;
   /**
    * Stores a new receipt only when none is stored under its `deletionId`, as
-   * one conditional write. Returns whether it stored it: two deletions that
-   * hold the same claim build receipts under the same `deletionId`, so only
-   * the first to open one does.
+   * one conditional write. Returns the stored receipt, or `undefined` when one
+   * was already stored: two deletions that hold the same claim build receipts
+   * under the same `deletionId`, so only the first to open one does.
    */
-  openReceipt(receipt: MemoryDeletionReceipt): Promise<boolean>;
-  /** Stores a receipt's latest state, replacing whatever is stored under its `deletionId`. */
-  putReceipt(receipt: MemoryDeletionReceipt): Promise<void>;
+  openReceipt(receipt: MemoryDeletionReceipt): Promise<StoredMemoryDeletionReceipt | undefined>;
+  /**
+   * Replaces `current` with `next`, as one conditional write on the receipt
+   * exactly as `current` read it. Returns the stored `next`, or `undefined`
+   * when the stored receipt changed (or was deleted) since `current` was read:
+   * another writer moved it on first, and the caller decides again from what
+   * {@link MemoryGovernanceLedger.readReceipt} reads now. No receipt changes
+   * any other way, so a writer acting on a stale read cannot overwrite a
+   * newer one.
+   */
+  replaceReceipt(
+    current: StoredMemoryDeletionReceipt,
+    next: MemoryDeletionReceipt,
+  ): Promise<StoredMemoryDeletionReceipt | undefined>;
   getReceipt(deletionId: string): Promise<MemoryDeletionReceipt | undefined>;
+  /** Reads a receipt together with the stored revision a conditional write compares against. */
+  readReceipt(deletionId: string): Promise<StoredMemoryDeletionReceipt | undefined>;
   listReceipts(filter: { tenantId?: string; open?: boolean }): Promise<MemoryDeletionReceipt[]>;
-  deleteReceipt(deletionId: string): Promise<void>;
+  /**
+   * Deletes `current` only if it is still stored exactly as it was read.
+   * Returns whether it deleted it.
+   */
+  deleteReceipt(current: StoredMemoryDeletionReceipt): Promise<boolean>;
   /**
    * Stores a new export manifest. An existing manifest changes only through
    * {@link MemoryGovernanceLedger.revokeExport} and
@@ -96,6 +113,17 @@ export interface MemoryGovernanceLedger {
   listScopes(tenantId: string): Promise<Required<MemoryRecordScope>[]>;
   putEviction(tenantId: string, contextId: string, recordId: string): Promise<void>;
   listEvictions(tenantId: string, contextId: string): Promise<string[]>;
+}
+
+/**
+ * A deletion receipt as the ledger stored it. `revision` is the stored
+ * encoding, opaque to callers; {@link MemoryGovernanceLedger.replaceReceipt}
+ * and {@link MemoryGovernanceLedger.deleteReceipt} compare it byte for byte
+ * with what is stored when they write.
+ */
+export interface StoredMemoryDeletionReceipt {
+  readonly receipt: MemoryDeletionReceipt;
+  readonly revision: Uint8Array;
 }
 
 export interface CreateMemoryGovernanceLedgerOptions {
@@ -204,6 +232,10 @@ function decode<T>(schema: z.ZodType<T>, bytes: Uint8Array): T {
   return schema.parse(JSON.parse(decoder.decode(bytes)));
 }
 
+function decodeReceipt(bytes: Uint8Array): MemoryDeletionReceipt {
+  return decode(receiptSchema, bytes) as MemoryDeletionReceipt;
+}
+
 const component = encodeStorageKeyComponent;
 
 /**
@@ -306,22 +338,41 @@ export function createMemoryGovernanceLedger(
       return removed;
     },
 
-    openReceipt(receipt) {
+    async openReceipt(receipt) {
       const key = receiptKey(receipt.deletionId);
-      return storageConditionalBatch(
+      const revision = encode(receipt);
+      const opened = await storageConditionalBatch(
         storage,
         [{ key, expectedValue: null }],
-        [{ type: 'put', key, value: encode(receipt) }],
+        [{ type: 'put', key, value: revision }],
       );
+      return opened ? { receipt, revision } : undefined;
     },
 
-    async putReceipt(receipt) {
-      await storage.put(receiptKey(receipt.deletionId), encode(receipt));
+    async replaceReceipt(current, next) {
+      if (next.deletionId !== current.receipt.deletionId) {
+        throw new Error(
+          `A receipt cannot change its deletionId ("${current.receipt.deletionId}" to "${next.deletionId}").`,
+        );
+      }
+      const key = receiptKey(next.deletionId);
+      const revision = encode(next);
+      const replaced = await storageConditionalBatch(
+        storage,
+        [{ key, expectedValue: current.revision }],
+        [{ type: 'put', key, value: revision }],
+      );
+      return replaced ? { receipt: next, revision } : undefined;
     },
 
     async getReceipt(deletionId) {
       const bytes = await storage.get(receiptKey(deletionId));
-      return bytes === null ? undefined : (decode(receiptSchema, bytes) as MemoryDeletionReceipt);
+      return bytes === null ? undefined : decodeReceipt(bytes);
+    },
+
+    async readReceipt(deletionId) {
+      const revision = await storage.get(receiptKey(deletionId));
+      return revision === null ? undefined : { receipt: decodeReceipt(revision), revision };
     },
 
     async listReceipts(filter) {
@@ -333,8 +384,13 @@ export function createMemoryGovernanceLedger(
       ) as MemoryDeletionReceipt[];
     },
 
-    async deleteReceipt(deletionId) {
-      await storage.delete(receiptKey(deletionId));
+    deleteReceipt(current) {
+      const key = receiptKey(current.receipt.deletionId);
+      return storageConditionalBatch(
+        storage,
+        [{ key, expectedValue: current.revision }],
+        [{ type: 'delete', key }],
+      );
     },
 
     async putExport(manifest) {
