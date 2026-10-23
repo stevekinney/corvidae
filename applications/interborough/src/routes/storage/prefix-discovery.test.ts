@@ -5,8 +5,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { discoverPrefixes } from './prefix-discovery.ts';
-import { stubStorageFetch, type StubbedFetchCall } from './storage-fetch-stub.test-support.ts';
 import type { StorageConnection } from './storage-client.ts';
+import { stubStorageFetch, type StubbedFetchCall } from './storage-fetch-stub.test-support.ts';
 
 const connection: StorageConnection = { baseUrl: 'http://localhost:7233', headers: {} };
 

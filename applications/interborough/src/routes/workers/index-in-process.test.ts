@@ -9,8 +9,8 @@ import { Window } from 'happy-dom';
 
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
-import WorkersRoute from './index.svelte';
 import { queue, routeHappyPaths, worker } from './index-actions.test-support.ts';
+import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './workers-route-test-support.test-support.ts';
 

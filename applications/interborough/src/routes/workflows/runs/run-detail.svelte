@@ -410,9 +410,7 @@
       </Tabs.Panel>
       {#if engineAllowed}
         <Tabs.Panel value="engine">
-          {#if tab === 'engine'}<WorkflowDetail
-              headingLevel={leadsWithEngine ? 1 : 2}
-            />{/if}
+          {#if tab === 'engine'}<WorkflowDetail headingLevel={leadsWithEngine ? 1 : 2} />{/if}
         </Tabs.Panel>
       {/if}
     </Tabs>

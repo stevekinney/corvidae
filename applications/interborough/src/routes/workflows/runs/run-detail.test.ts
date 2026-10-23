@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
-import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
 import {
   contextDetailFixture,
   goalAttemptFixture,
@@ -29,6 +28,7 @@ import {
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
 

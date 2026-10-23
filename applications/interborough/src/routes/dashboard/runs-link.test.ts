@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import { parseRunFilter } from '../workflows/runs/run-rows.ts';
-import { STATUS_DISPLAY_ORDER } from './status-tone.ts';
 import { runsPathForStatus } from './runs-link.ts';
+import { STATUS_DISPLAY_ORDER } from './status-tone.ts';
 
 describe('runsPathForStatus', () => {
   test('reads each engine status as the state of a run the list can filter by', () => {

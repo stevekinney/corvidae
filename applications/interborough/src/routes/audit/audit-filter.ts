@@ -85,7 +85,9 @@ export type ResourceChoice = { readonly kind: ResourceKind | ''; readonly id: st
 export function splitResource(resource: string): ResourceChoice {
   const text = resource.trim();
   if (text === '') return { kind: '', id: '' };
-  const named = RESOURCE_KINDS.find((entry) => entry.prefix !== '' && text.startsWith(entry.prefix));
+  const named = RESOURCE_KINDS.find(
+    (entry) => entry.prefix !== '' && text.startsWith(entry.prefix),
+  );
   return named === undefined
     ? { kind: 'run', id: text }
     : { kind: named.kind, id: text.slice(named.prefix.length) };

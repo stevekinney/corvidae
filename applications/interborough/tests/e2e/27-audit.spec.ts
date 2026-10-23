@@ -34,7 +34,9 @@ for (const width of WIDTHS) {
     await checkA11y(`audit — the trail at ${width}px`);
 
     // A type the trail has shown, chosen from the list.
-    await expect(typeSelect(page).locator('option', { hasText: 'schedule.created' })).toHaveCount(1);
+    await expect(typeSelect(page).locator('option', { hasText: 'schedule.created' })).toHaveCount(
+      1,
+    );
     await typeSelect(page).selectOption('schedule.created');
     await form(page).getByRole('button', { name: AUDIT_COPY.searchAction, exact: true }).click();
     await expect(page).toHaveURL(/type=schedule\.created/);

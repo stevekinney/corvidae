@@ -250,12 +250,7 @@
     <div class="weft-dynamic-source__title-row">
       <h2 class="weft-dynamic-source__title" id="weft-dynamic-source-title">Workflow sources</h2>
       <Tooltip text={SOURCES_HELP}>
-        <Button
-          variant="ghost"
-          size="sm"
-          iconOnly
-          label="About workflow sources"
-        >
+        <Button variant="ghost" size="sm" iconOnly label="About workflow sources">
           {#snippet leadingIcon()}
             <CircleQuestionMark aria-hidden="true" size={14} />
           {/snippet}
