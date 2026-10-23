@@ -81,6 +81,12 @@ describe('wire version 4 run.completed conversation schema (COR-1675)', () => {
     );
   });
 
+  test('a version 1 to 3 frame labeled schema 7 but carrying providerCallId is refused', () => {
+    const legacy = JSON.parse(encodeChatStreamEvent(completed(3)));
+    legacy.conversation.messages.m1.toolCall.providerCallId = 'gemini-1';
+    expect(() => decodeChatStreamEvent(legacy)).toThrow('Invalid chat stream event');
+  });
+
   test('version 4 run.started and text deltas follow version 3', () => {
     const started = {
       type: 'run.started' as const,

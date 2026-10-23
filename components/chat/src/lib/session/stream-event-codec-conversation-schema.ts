@@ -45,10 +45,23 @@ export function projectLegacyWireConversation(conversation: unknown): unknown {
   return { ...conversation, messages, schemaVersion: LEGACY_WIRE_CONVERSATION_SCHEMA_VERSION };
 }
 
+function hasProviderCallId(messages: unknown): boolean {
+  if (!isRecord(messages)) return false;
+  return Object.values(messages).some(
+    (message) =>
+      isRecord(message) &&
+      [message['toolCall'], message['toolResult']].some(
+        (part) => isRecord(part) && 'providerCallId' in part,
+      ),
+  );
+}
+
 /**
  * Lifts a schema 7 conversation read from a wire version 1, 2, or 3 frame to
  * schema 8, which only adds an optional field. A conversation at any other
- * version is returned untouched, so the caller's validation still refuses it.
+ * version, or one that carries the schema 8 only `providerCallId` on a tool
+ * call or result (a mislabeled frame), is returned untouched, so the caller's
+ * validation still refuses it.
  */
 export function liftLegacyWireConversation(conversation: unknown): unknown {
   if (
@@ -56,5 +69,6 @@ export function liftLegacyWireConversation(conversation: unknown): unknown {
     conversation['schemaVersion'] !== LEGACY_WIRE_CONVERSATION_SCHEMA_VERSION
   )
     return conversation;
+  if (hasProviderCallId(conversation['messages'])) return conversation;
   return { ...conversation, schemaVersion: CURRENT_WIRE_CONVERSATION_SCHEMA_VERSION };
 }
