@@ -282,50 +282,160 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
     });
 
-    it('retries the failed receipt of a claimant that opened after its rival scanned the receipts', async () => {
-      const fixture = await createGovernedFixture(backend);
-      const recordId = await expiredRecord(fixture);
-      const scanned = park();
-      let scans = 0;
-      // B lists the record's receipts (its second listing, inside the deletion
-      // request), finds none, and stalls before it claims.
-      const rival = fixture.restart({
-        ledger: {
-          ...fixture.ledger,
-          listReceipts: async (...parameters) => {
-            const receipts = await fixture.ledger.listReceipts(...parameters);
-            scans += 1;
-            if (scans === 2) await scanned.wait();
-            return receipts;
-          },
-        },
-      });
-      const stalled = rival.sweepRetention(retentionService);
-      await scanned.reached;
+    describe('a rival receipt that changes between the sweep reading the record and claiming it', () => {
+      const snapshots = ['absent', 'open-pending', 'open-failed'] as const;
+      const decisions = ['open', 'closed-failed', 'closed-succeeded', 'absent'] as const;
+      type Decision = (typeof decisions)[number];
+      const actions = {
+        open: 'owned',
+        'closed-failed': 'retry',
+        'closed-succeeded': 'done',
+        absent: 'take-over',
+      } as const satisfies Record<Decision, string>;
 
-      // Meanwhile A claims, opens its receipt, and its synchronous lane fails;
-      // past the bound its waiting rows fail too, and the receipt closes.
-      const failing = fixture.restart({
-        storage: intercept(fixture.storage, {
-          deleteMany: () => Promise.reject(new Error('storage unavailable')),
-        }),
-      });
-      const first = await failing.sweepRetention(retentionService);
-      expect(first.deletionIds).toHaveLength(1);
-      await fixture.runtime.advance(DEFAULT_DELETION_BOUND_MILLISECONDS);
-      await failing.processDeletionPropagation();
-      const failed = await fixture.ledger.getReceipt(first.deletionIds[0]!);
-      expect(failed).toMatchObject({ open: false });
-      expect(statusOf(failed, 'source-evidence')).toBe('failed');
+      /**
+       * Sweeper A's record storage, whose `deleteMany` succeeds, fails, or parks
+       * once and then does whatever `behavior` says by the time it is released
+       * (`hang` never settles, as a process that stalled for good).
+       */
+      function controlledLane(storage: MemoryRecordStorage) {
+        const parked = park();
+        const lane = {
+          behavior: 'succeed' as 'succeed' | 'fail' | 'park' | 'hang',
+          parked,
+          storage: intercept(storage, {
+            async deleteMany(
+              ...parameters: Parameters<NonNullable<MemoryRecordStorage['deleteMany']>>
+            ) {
+              if (lane.behavior === 'park') {
+                lane.behavior = 'hang';
+                await parked.wait();
+              }
+              if (lane.behavior === 'hang') await new Promise<never>(() => {});
+              if (lane.behavior === 'fail') throw new Error('storage unavailable');
+              return storage.deleteMany!(...parameters);
+            },
+          }),
+        };
+        return lane;
+      }
 
-      // B resumes on its stale, empty listing, and retries A's receipt rather than opening another.
-      scanned.release();
-      const retried = await stalled;
-      expect(retried.deletionIds).toEqual([...first.deletionIds]);
-      const receipts = await receiptsFor(fixture, recordId);
-      expect(receipts.map((receipt) => receipt.deletionId)).toEqual([...first.deletionIds]);
-      expect(statusOf(receipts[0], 'source-evidence')).toBe('completed');
-      expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
+      for (const snapshot of snapshots) {
+        for (const decision of decisions) {
+          const action = actions[decision];
+          it(`opens one receipt (${action}) when the receipt is ${snapshot} at B's read and ${decision} at its claim`, async () => {
+            const fixture = await createGovernedFixture(backend);
+            const recordId = await expiredRecord(fixture);
+            const lane = controlledLane(fixture.storage);
+            const a = fixture.restart({ storage: lane.storage });
+            const pending: Promise<unknown>[] = [];
+
+            // The receipt's state while B reads the record.
+            const sweepParkedA = async () => {
+              lane.behavior = 'park';
+              pending.push(a.sweepRetention(retentionService));
+              await lane.parked.reached;
+            };
+            if (snapshot === 'open-pending') await sweepParkedA();
+            if (snapshot === 'open-failed') {
+              lane.behavior = 'fail';
+              await a.sweepRetention(retentionService);
+            }
+
+            // B reads the record, then stalls just before it reads it again to claim it.
+            const claimRead = park();
+            let reads = 0;
+            const b = fixture.restart({
+              storage: intercept(fixture.storage, {
+                async get(...parameters: Parameters<MemoryRecordStorage['get']>) {
+                  if (parameters[0] === recordId && ++reads === 2) await claimRead.wait();
+                  return fixture.storage.get(...parameters);
+                },
+              }),
+            });
+            const sweepB = b.sweepRetention(retentionService);
+            await claimRead.reached;
+
+            // The receipt's state when B claims.
+            const releaseA = (behavior: 'succeed' | 'fail') => {
+              lane.behavior = behavior;
+              lane.parked.release();
+            };
+            if (decision === 'open') {
+              if (snapshot === 'absent') await sweepParkedA();
+              if (snapshot === 'open-failed') {
+                // A retries its failed deletion, and parks inside the retry.
+                lane.behavior = 'park';
+                pending.push(a.delete(principalA, { id: recordId, collection: 'notes' }));
+                await lane.parked.reached;
+              }
+            }
+            if (decision === 'closed-failed') {
+              if (snapshot === 'absent') {
+                lane.behavior = 'fail';
+                await a.sweepRetention(retentionService);
+              }
+              if (snapshot === 'open-pending') {
+                releaseA('fail');
+                await Promise.all(pending.splice(0));
+              }
+              await fixture.runtime.advance(DEFAULT_DELETION_BOUND_MILLISECONDS);
+              await a.processDeletionPropagation();
+            }
+            if (decision === 'closed-succeeded') {
+              if (snapshot === 'absent') await a.sweepRetention(retentionService);
+              if (snapshot === 'open-pending') {
+                releaseA('succeed');
+                await Promise.all(pending.splice(0));
+              }
+              if (snapshot === 'open-failed') {
+                lane.behavior = 'succeed';
+                await a.processDeletionPropagation();
+              }
+            }
+            if (decision === 'absent') {
+              if (snapshot === 'absent') {
+                // A claims and dies before it opens its receipt.
+                const dying = fixture.restart({
+                  ledger: {
+                    ...fixture.ledger,
+                    openReceipt: () => Promise.reject(new Error('process died')),
+                  },
+                });
+                expect(await throwingRejectionOf(dying.sweepRetention(retentionService))).toThrow(
+                  'process died',
+                );
+              } else {
+                // The receipt is gone (A, if parked, never comes back), and the claim's lease runs out.
+                const [stored] = await receiptsFor(fixture, recordId);
+                await fixture.ledger.deleteReceipt(stored!.deletionId);
+                pending.splice(0);
+              }
+              await fixture.runtime.advance(DELETION_CLAIM_LEASE_MILLISECONDS);
+            }
+            const [rival] = await receiptsFor(fixture, recordId);
+            const rivalClaim = await claimOf(fixture, recordId);
+            const rivalId = rival?.deletionId ?? rivalClaim?.deletionId;
+            expect(rivalId).toBeDefined();
+            const recordAtClaim = await fixture.storage.get(recordId, scope);
+
+            claimRead.release();
+            const swept = await sweepB;
+            if (action === 'owned' || action === 'done') {
+              expect(swept.deletionIds).toEqual([]);
+              expect(await fixture.storage.get(recordId, scope)).toEqual(recordAtClaim);
+              if (action === 'owned') releaseA('succeed');
+            } else {
+              expect(swept.deletionIds).toEqual([rivalId!]);
+            }
+            await Promise.all(pending);
+            const receipts = await receiptsFor(fixture, recordId);
+            expect(receipts.map((receipt) => receipt.deletionId)).toEqual([rivalId!]);
+            expect(statusOf(receipts[0], 'source-evidence')).toBe('completed');
+            expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
+          });
+        }
+      }
     });
 
     it('opens no second receipt for a record claimed before claims carried a lease', async () => {
