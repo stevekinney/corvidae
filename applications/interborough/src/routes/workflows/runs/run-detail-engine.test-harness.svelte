@@ -4,7 +4,7 @@
    * workflow page (a run's Engine tab) reads from its ancestors. Never imported by production code.
    */
   import type { HttpClient } from '@lostgradient/weft';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
 
   import { provideFleetEventSource } from '../../../app/engine-status.svelte.ts';
   import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
@@ -18,8 +18,11 @@
 
   let { client, scopes }: RunDetailEngineHarnessProps = $props();
 
-  // Never subscribed to by a test of this page's heading, so it opens no connection of its own.
-  provideFleetEventSource(untrack(() => new FleetEventSource({ baseUrl: 'http://weft.test' })));
+  // The engine's workflow page subscribes to it. It is closed with the harness, so no reconnect timer
+  // outlives the test and reaches a stubbed `fetch` another test has installed.
+  const fleetSource = untrack(() => new FleetEventSource({ baseUrl: 'http://weft.test' }));
+  provideFleetEventSource(fleetSource);
+  onDestroy(() => fleetSource.close());
 </script>
 
 <RouteOutletHarness {client} {scopes} />
