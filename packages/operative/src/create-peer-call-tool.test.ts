@@ -184,6 +184,46 @@ describe('createPeerCallTool', () => {
     expect(events).toEqual(['started', 'aborted']);
   });
 
+  it.each(['signal', 'abortChild'] as const)(
+    'ends the child aborted when %s aborts while the first request is in flight',
+    async (via) => {
+      const peer = fakePeer();
+      // Like the real client, `send` rejects when its signal aborts before the task exists.
+      peer.client.send = (request) =>
+        new Promise((_resolve, reject) => {
+          request.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          );
+        });
+      const { registry, events, call } = setup(peer);
+      const controller = new AbortController();
+
+      const pending = rejection(call({ message: 'find it' }, controller.signal));
+      await Promise.resolve();
+      await Promise.resolve();
+      if (via === 'signal') controller.abort('stop');
+      else registry.abortChild(registry.children()[0]?.id ?? '', 'stop');
+
+      expect(await pending).toMatchObject({ name: 'AbortError' });
+      expect(registry.children()[0]?.status).toBe('aborted');
+      expect(events).toEqual(['started', 'aborted']);
+    },
+  );
+
+  it('keeps an aborted waiting child aborted when a later call continues its task', async () => {
+    const peer = fakePeer({ immediate: outcome('input-required') });
+    const { registry, call } = setup(peer);
+    await rejection(call({ message: 'find it' }));
+    registry.abortChild(registry.children()[0]?.id ?? '', 'operator');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await rejection(call({ message: 'the blue one', taskId: 'task-1', contextId: 'context-1' }));
+
+    expect(registry.children()[0]?.status).toBe('aborted');
+  });
+
   it('abortChild cancels the remote task too', async () => {
     const peer = fakePeer();
     const { registry, call } = setup(peer);

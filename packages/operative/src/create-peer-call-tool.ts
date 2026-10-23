@@ -211,6 +211,7 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
       let finished = false;
       let remoteTask: A2APeerTask | undefined;
       let waiting = false;
+      let interruptedKey: string | undefined;
       const finish = (
         status: 'completed' | 'failed' | 'aborted',
         reason: string | undefined,
@@ -237,6 +238,7 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
           controller.abort(reason);
           // A child waiting for input has no call in flight; cancel its remote task directly.
           if (waiting) {
+            if (interruptedKey !== undefined) interrupted.delete(interruptedKey);
             void remoteTask
               ?.cancel(typeof reason === 'string' ? reason : undefined)
               .then(() =>
@@ -281,7 +283,15 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
           remote(outcome.state, outcome.taskId, outcome.contextId),
         );
       } catch (error) {
-        finish('failed', error instanceof Error ? error.message : String(error));
+        if (signal.aborted) {
+          finish(
+            'aborted',
+            typeof signal.reason === 'string' ? signal.reason : undefined,
+            remoteRunResult('', 'aborted'),
+          );
+        } else {
+          finish('failed', error instanceof Error ? error.message : String(error));
+        }
         throw error;
       }
 
@@ -317,6 +327,7 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         // The remote task is still open, so the child stays running and abortable until a later
         // call continues the task or `abortChild` cancels it.
         waiting = true;
+        interruptedKey = outcome.taskId;
         interrupted.set(outcome.taskId, (reason) => {
           waiting = false;
           interrupted.delete(outcome.taskId);
