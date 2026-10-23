@@ -322,8 +322,15 @@ export interface AuditQueryOptions {
   runId?: string;
   /** Only records whose `type` equals this string. */
   type?: string;
+  /** Only records whose `type` starts with this string. */
+  typePrefix?: string;
   /** Maximum number of records to return. Defaults to 500. */
   limit?: number;
+  /**
+   * Which `limit` matches to return when more match: the oldest (the default) or the newest.
+   * Records are returned oldest first either way.
+   */
+  select?: 'oldest' | 'newest';
   /**
    * Only records after this position in the query's own order (COR-1482): later by `timestampMs`,
    * or at the same millisecond with a greater `sequence` (a record with no `sequence` counts as
@@ -2468,7 +2475,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     async query(options: AuditQueryOptions = {}): Promise<AuditRecord[]> {
       if (!kv) return [];
 
-      const { since, runId, type, limit = 500, after } = options;
+      const { since, runId, type, typePrefix, limit = 500, after, select = 'oldest' } = options;
 
       // AB-228 (Codex P2 review findings, PR #566: "Wait for schedule audit
       // writes before returning success", then "Avoid blocking every audit
@@ -2537,6 +2544,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       // lengths do not always compare correctly as plain strings).
       const unsortedKeys = await kv.list(PREFIX);
       const keys = unsortedKeys.toSorted();
+      if (select === 'newest') keys.reverse();
 
       const records: AuditRecord[] = [];
       for (const key of keys) {
@@ -2572,6 +2580,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         if (after !== undefined && !isAfterPosition(record, after)) continue;
         if (runId !== undefined && record.runId !== runId) continue;
         if (type !== undefined && record.type !== type) continue;
+        if (typePrefix !== undefined && !record.type.startsWith(typePrefix)) continue;
 
         records.push(record);
 

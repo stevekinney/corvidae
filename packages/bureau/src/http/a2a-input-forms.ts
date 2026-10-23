@@ -34,13 +34,23 @@ function parkOrdinalOf(reviewId: string): number {
   return Number(reviewId.slice(reviewId.lastIndexOf(':') + 1));
 }
 
+/** How many of a run's newest human-wait review records the previous-form lookup reads. */
+const FORM_LOOKUP_LIMIT = 50;
+
 /**
- * The run's human-wait reviews that showed a form, oldest first, as the audit trail recorded them
+ * The run's recent human-wait reviews that showed a form, oldest first, as the audit trail recorded them
  * when they closed (the record carries an `inputForm` marker, not the schema). Empty without a
  * trail.
  */
 async function recordedFormWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
-  const records = await bureau.auditTrail?.query({ runId, limit: 10_000 }).catch(() => undefined);
+  const records = await bureau.auditTrail
+    ?.query({
+      runId,
+      typePrefix: 'review.human-wait.',
+      select: 'newest',
+      limit: FORM_LOOKUP_LIMIT,
+    })
+    .catch(() => undefined);
   const found = new Set<string>();
   for (const record of records ?? []) {
     if (!record.type.startsWith('review.human-wait.')) continue;
@@ -65,8 +75,8 @@ async function formReviewBefore(
 /**
  * Adds to each form the review of the run's previous form wait, whose surface the form replaces.
  * Only a client that renders forms needs it, so a read that activated A2UI calls it and no other
- * caller pays for it. The audit trail has no newest-first order or review-kind filter, so this
- * reads the run's records, bounded by the query's limit, and no review.
+ * caller pays for it. It reads only the run's newest human-wait review records, a bounded number,
+ * and no review.
  */
 export async function withPreviousForms(
   bureau: FormsBureau,
