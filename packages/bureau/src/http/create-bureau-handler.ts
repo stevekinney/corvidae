@@ -58,6 +58,7 @@ import { type CommandLedger, createCommandLedger } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import { createBureauA2AMount } from './a2a-mount.ts';
+import { type BureauMcpOptions, createBureauMcpMount } from './mcp-mount.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,
   type A2ASendClaim,
@@ -325,6 +326,12 @@ export type BureauHandlerOptions = {
    */
   readonly agUi?: AgUiOptions;
   /**
+   * Mounts the MCP adapter (`mcp-mount.ts`, COR-839) at `mcp.pathPrefix` (default `/mcp`): Bureau's
+   * `mcpExposable` operations as MCP tools, in both MCP protocol eras, each call run through the
+   * catalog pipeline as the authenticated caller. Omitted, nothing is mounted.
+   */
+  readonly mcp?: BureauMcpOptions;
+  /**
    * The most bytes a JSON-RPC request body may hold, a positive integer. Weft refuses a larger one
    * with 413 before any operation runs, so an oversized `bureau.assets.uploads.append` chunk writes
    * nothing. Omitted, Weft's own default (1 MB) applies.
@@ -360,6 +367,7 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'unauthenticatedAccess',
   'mounts',
   'agUi',
+  'mcp',
   'maxRequestBodyBytes',
 ]);
 
@@ -929,6 +937,9 @@ export function createBureauHandler(
               options.agUi,
             ),
           ]),
+      ...(options.mcp === undefined
+        ? []
+        : [createBureauMcpMount(options.mcp, options.maxRequestBodyBytes)]),
       ...(options.publicUrl === undefined ? [] : [createA2AMount(bureau, options, host)]),
       ...(options.mounts ?? []),
     ],

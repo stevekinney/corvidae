@@ -77,10 +77,11 @@ function assertDestructiveDeclared<Host>(operation: RegistrableOperation<Host>):
 }
 
 function assertMcpMetadataAgrees<Host>(operation: RegistrableOperation<Host>): void {
-  if (!operation.mcpExposable) return;
-  if (operation.mcpTool === undefined) {
+  // `mcpTool` describes an engine-served workflow tool; it means nothing on an operation that is
+  // not exposed. An exposable operation without it is served by dispatch (`createOperationMcpMount`).
+  if (!operation.mcpExposable && operation.mcpTool !== undefined) {
     throw new Error(
-      `operation "${operation.name}" is mcpExposable but does not declare mcpTool.workflowType metadata`,
+      `operation "${operation.name}" declares mcpTool metadata but is not mcpExposable`,
     );
   }
 }
