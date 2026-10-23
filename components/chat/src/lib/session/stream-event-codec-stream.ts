@@ -24,7 +24,7 @@ type StreamGuardState = {
    * things about which vocabulary it is reading, and the only place that is
    * visible is here.
    */
-  wireVersion: 1 | 2 | 3 | undefined;
+  wireVersion: 1 | 2 | 3 | 4 | undefined;
   sawTerminal: boolean;
   lastSequence: number | undefined;
   /** The message id of the `assistant.step.started` still open, if any. */
@@ -83,7 +83,7 @@ function noteWireVersion(event: ChatStreamEvent, guard: StreamGuardState): void 
   if (wireVersion === undefined) throw new Error('Invalid chat stream event: missing wireVersion');
   if (guard.wireVersion === undefined) {
     // A version 3 stream says which run it is before it says anything else.
-    if (wireVersion === 3 && event.type !== 'run.started')
+    if (wireVersion >= 3 && event.type !== 'run.started')
       throw new Error('Invalid chat stream event: a version 3 stream must open with run.started');
     guard.wireVersion = wireVersion;
   } else if (guard.wireVersion !== wireVersion)
@@ -99,7 +99,7 @@ function noteStepIdentity(event: ChatStreamEvent, guard: StreamGuardState): void
   if (event.type === 'assistant.step.started') guard.openStepMessageId = event.messageId;
   else if (event.type === 'assistant.step.completed') {
     if (guard.openStepMessageId === event.messageId) guard.openStepMessageId = undefined;
-  } else if (event.type === 'stream:text-delta' && event.wireVersion === 3) {
+  } else if (event.type === 'stream:text-delta' && event.wireVersion >= 3) {
     if (event.messageId !== guard.openStepMessageId)
       throw new Error(
         'Invalid chat stream event: stream:text-delta messageId does not match the open assistant step',

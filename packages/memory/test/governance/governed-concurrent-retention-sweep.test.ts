@@ -20,54 +20,22 @@ import {
 } from '../../src/governance/record-governance';
 import type { MemoryRecordStorage } from '../../src/memory-record-storage';
 import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
+import { controlledLane, intercept, park, type Park } from './concurrent-deletion-harness';
 import {
   DAY,
-  type GovernedBackend,
-  type GovernedFixture,
   createGovernedFixture,
   governancePrincipal,
   principalA,
   recordIdOf,
   retentionService,
+  type GovernedBackend,
+  type GovernedFixture,
 } from './governed-memory-harness';
 
 const scope = {
   tenantId: 'tenant-a',
   namespace: collectionNamespace('private', 'owner-a', 'notes'),
 };
-
-/** A point one sweeper parks at: `reached` settles when it arrives, and it waits for `release()`. */
-interface Park {
-  readonly reached: Promise<void>;
-  wait(): Promise<void>;
-  release(): void;
-}
-
-function park(): Park {
-  let arrive!: () => void;
-  let release!: () => void;
-  const reached = new Promise<void>((resolve) => (arrive = resolve));
-  const released = new Promise<void>((resolve) => (release = resolve));
-  return {
-    reached,
-    release,
-    async wait() {
-      arrive();
-      await released;
-    },
-  };
-}
-
-/** `target` with `overrides` in place of some of its methods; the rest stay bound to it. */
-function intercept<T extends object>(target: T, overrides: Partial<T>): T {
-  return new Proxy(target, {
-    get(object, property) {
-      if (property in overrides) return overrides[property as keyof T];
-      const value: unknown = Reflect.get(object, property, object);
-      return typeof value === 'function' ? value.bind(object) : value;
-    },
-  });
-}
 
 /** Storage that parks the caller just after it writes a deletion claim. */
 function parkedAfterClaim(storage: MemoryRecordStorage, at: Park): MemoryRecordStorage {
@@ -300,33 +268,6 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
         absent: 'take-over',
       } as const satisfies Record<Decision, string>;
 
-      /**
-       * Sweeper A's record storage, whose `deleteMany` succeeds, fails, or parks
-       * once and then does whatever `behavior` says by the time it is released
-       * (`hang` never settles, as a process that stalled for good).
-       */
-      function controlledLane(storage: MemoryRecordStorage) {
-        const parked = park();
-        const lane = {
-          behavior: 'succeed' as 'succeed' | 'fail' | 'park' | 'hang',
-          parked,
-          storage: intercept(storage, {
-            async deleteMany(
-              ...parameters: Parameters<NonNullable<MemoryRecordStorage['deleteMany']>>
-            ) {
-              if (lane.behavior === 'park') {
-                lane.behavior = 'hang';
-                await parked.wait();
-              }
-              if (lane.behavior === 'hang') await new Promise<never>(() => {});
-              if (lane.behavior === 'fail') throw new Error('storage unavailable');
-              return storage.deleteMany!(...parameters);
-            },
-          }),
-        };
-        return lane;
-      }
-
       for (const snapshot of snapshots) {
         for (const decision of decisions) {
           const action = actions[decision];
@@ -428,8 +369,9 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
                 );
               } else {
                 // The receipt is gone (A, if parked, never comes back), and the claim's lease runs out.
-                const [stored] = await receiptsFor(fixture, recordId);
-                await fixture.ledger.deleteReceipt(stored!.deletionId);
+                const [listed] = await receiptsFor(fixture, recordId);
+                const stored = await fixture.ledger.readReceipt(listed!.deletionId);
+                expect(await fixture.ledger.deleteReceipt(stored!)).toBe(true);
                 pending.splice(0);
               }
               await fixture.runtime.advance(DELETION_CLAIM_LEASE_MILLISECONDS);

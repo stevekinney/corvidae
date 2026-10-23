@@ -6,7 +6,7 @@
  * its configurations, checkpoints, and queued deliveries with it.
  */
 import type { Task } from '@a2a-js/sdk';
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeTimers } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { MemoryStorage, Outbox, textValueStore } from '@lostgradient/weft';
 import {
@@ -28,6 +28,7 @@ import { createA2APushCheckpoints, type A2APushCheckpoints } from './a2a-push-ch
 import {
   type A2APushBureau,
   type A2APushProjector,
+  type A2APushProjectorOptions,
   createA2APushProjector,
 } from './a2a-push-projector.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -194,7 +195,10 @@ function harness(initial: DurableEventEnvelope[] = []) {
   const checkpoints = createA2APushCheckpoints(kv);
   const errors: unknown[] = [];
   const snapshots: TaskView[] = [];
-  const projectorOver = (store: A2APushCheckpoints = checkpoints): A2APushProjector =>
+  const projectorOver = (
+    store: A2APushCheckpoints = checkpoints,
+    extra: Partial<A2APushProjectorOptions> = {},
+  ): A2APushProjector =>
     createA2APushProjector({
       bureau: stand.bureau,
       checkpoints: store,
@@ -219,6 +223,7 @@ function harness(initial: DurableEventEnvelope[] = []) {
       timers: createDefaultRuntimeServices().timers,
       onError: (error) => errors.push(error),
       retryMs: 20,
+      ...extra,
     });
   const projector = projectorOver();
   const delivery = new AbortController();
@@ -635,6 +640,20 @@ describe('the push projector', () => {
     expect(fixture.errors).toEqual([]);
   });
 
+  it('purges a removed task’s settled deliveries with its configurations', async () => {
+    const fixture = harness([started, requested(1)]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+    await fixture.projector.pump('task-1', 'config-1');
+    await eventually(async () => {
+      const settled = await fixture.outbox.list({ states: ['acknowledged'] });
+      return settled.length === 1;
+    });
+
+    await fixture.projector.cleanup('task-1');
+
+    expect(await fixture.outbox.list()).toEqual([]);
+  });
   it('sends no repair snapshot to a configuration that already got its terminal delivery', async () => {
     const fixture = harness([started, requested(1), working(2), completed(3)]);
     await fixture.configure('0');
@@ -747,5 +766,96 @@ describe('the push projector', () => {
     expect(((await rejectionOf(first)) as Error).message).toBe('first failed');
     await Promise.all([second, other]);
     expect(order).toEqual(['other', 'first', 'second']);
+  });
+});
+
+/** Timers the test fires by hand, so a sweep runs without a wait and a leaked timer shows. */
+function manualTimers() {
+  let nextHandle = 0;
+  const pending = new Map<number, { callback: () => void; milliseconds: number | undefined }>();
+  const timers: RuntimeTimers = {
+    setTimeout: (callback: () => void, milliseconds?: number) => {
+      nextHandle += 1;
+      pending.set(nextHandle, { callback, milliseconds });
+      return nextHandle;
+    },
+    clearTimeout: (handle) => {
+      pending.delete(handle as number);
+    },
+    setInterval: () => {
+      throw new Error('unused');
+    },
+    clearInterval: () => undefined,
+  };
+  return {
+    timers,
+    pending,
+    /** Fires every pending timer once and waits for the work it starts. */
+    async fire() {
+      const due = [...pending.entries()];
+      for (const [handle, timer] of due) {
+        pending.delete(handle);
+        timer.callback();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    },
+  };
+}
+
+describe('the push projector sweep', () => {
+  it('sweeps at start and on a timer, removing what a gone task left, and ends with the Bureau', async () => {
+    const fixture = harness([started, requested(1)]);
+    const clock = manualTimers();
+    const projector = fixture.projectorOver(undefined, { timers: clock.timers, sweepMs: 1234 });
+    await fixture.configure('0', 'config-1', 'task-gone');
+
+    await projector.recoverUntilReady();
+
+    // The start-up pass removed the orphan, and one sweep is scheduled at the configured interval.
+    expect(await fixture.checkpoints.read('task-gone', 'config-1')).toBeUndefined();
+    expect([...clock.pending.values()].map((timer) => timer.milliseconds)).toEqual([1234]);
+
+    await fixture.configure('0', 'config-2', 'task-gone');
+    await clock.fire();
+    expect(await fixture.checkpoints.read('task-gone', 'config-2')).toBeUndefined();
+    expect(clock.pending.size).toBe(1);
+
+    (fixture.bureau as { lifecycle: string }).lifecycle = 'stopped';
+    await clock.fire();
+    expect(clock.pending.size).toBe(0);
+  });
+
+  it('clears its timer when stopped', async () => {
+    const fixture = harness([started]);
+    const clock = manualTimers();
+    const projector = fixture.projectorOver(undefined, { timers: clock.timers });
+
+    await projector.recoverUntilReady();
+    expect([...clock.pending.values()].map((timer) => timer.milliseconds)).toEqual([3_600_000]);
+    projector.stop();
+
+    expect(clock.pending.size).toBe(0);
+    await clock.fire();
+    expect(clock.pending.size).toBe(0);
+  });
+
+  it('clears its timer when the runtime hands back no handle', async () => {
+    const fixture = harness([started]);
+    const cleared: unknown[] = [];
+    const timers: RuntimeTimers = {
+      setTimeout: () => undefined,
+      clearTimeout: (handle) => {
+        cleared.push(handle);
+      },
+      setInterval: () => undefined,
+      clearInterval: () => undefined,
+    };
+    const projector = fixture.projectorOver(undefined, { timers });
+
+    await projector.recoverUntilReady();
+    projector.stop();
+    projector.stop();
+
+    expect(cleared).toEqual([undefined]);
   });
 });
