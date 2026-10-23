@@ -164,6 +164,8 @@ export interface ToolCall {
   id: string;
   name: string;
   arguments: JSONValue;
+  /** The id the model provider issued for this call, when `id` is that id (see `ToolCallInput`). */
+  providerCallId?: string | undefined;
 }
 
 export interface ToolCallInput {

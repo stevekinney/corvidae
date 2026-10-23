@@ -10,6 +10,7 @@ import type { ToolError } from './core/errors';
 import { assertJsonValue } from './core/serialization/json';
 import { freezeToolRequestContext, type ToolRequestContext } from './execution-context';
 import type { Tool } from './is-tool';
+import { providerCallIdField } from './provider-call-id';
 import {
   issueGrant,
   listGrants,
@@ -352,6 +353,7 @@ function createRejectedApprovalResult(
     outcome: 'error',
     content: message,
     toolCallId: approval.callId,
+    ...providerCallIdField(approval),
     toolName: approval.toolName,
     result: undefined,
     error,

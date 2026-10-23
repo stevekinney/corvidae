@@ -1,6 +1,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { ToolError, ToolErrorCategory } from './core/errors';
 import type { ToolParametersSchema } from './is-tool';
+import { providerCallIdField } from './provider-call-id';
 import type { ResumeApprovalValidationResult, ToolboxExecuteOptions } from './toolbox-contracts';
 import type { SignedPendingToolApproval, ToolExecutionResult } from './types';
 
@@ -108,6 +109,7 @@ export function createInterruptedResumeApprovalValidationResult(
     outcome: 'error',
     content: toolError.message,
     toolCallId: approval.callId,
+    ...providerCallIdField(approval),
     toolName: approval.toolName,
     result: undefined,
     error: toolError,

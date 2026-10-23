@@ -103,6 +103,9 @@ function normalizeMarkdownToolResult(value: unknown): unknown {
     action: record['action'],
     ...(typeof record['inputDigest'] === 'string' ? { inputDigest: record['inputDigest'] } : {}),
     ...(typeof record['outputDigest'] === 'string' ? { outputDigest: record['outputDigest'] } : {}),
+    ...(typeof record['providerCallId'] === 'string'
+      ? { providerCallId: record['providerCallId'] }
+      : {}),
   };
 }
 

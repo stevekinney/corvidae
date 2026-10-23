@@ -35,6 +35,7 @@ export function materializeToolCall(
       (options.runtime ?? createDefaultRuntimeServices()).identifiers.next('tool-call'),
     name: toolCall.name,
     arguments: normalizeJSONValue(toolCall.arguments ?? {}),
+    ...(toolCall.providerCallId ? { providerCallId: toolCall.providerCallId } : {}),
   };
 }
 

@@ -13,6 +13,7 @@ import { settleToolResult } from './toolbox-execution-settlement';
 import { isRecord } from './toolbox-policy-primitives';
 import type { ToolCall, ToolCallInput, ToolExecutionResult } from './types';
 
+import { providerCallIdField } from './provider-call-id';
 import type { ExecutionTaskContext } from './toolbox-execution-task-contract';
 
 export function createExecutionTask(
@@ -44,7 +45,7 @@ export function createExecutionTask(
     errorMode,
     callIndex,
   } = context;
-  const run = async (): Promise<ToolExecutionResult> => {
+  return async () => {
     let toolCall = normalizeToolCall(call);
     if (executionHandle.snapshot().abortSource === 'deadline') {
       return createDeadlineResult(toolCall, createToolError);
@@ -103,13 +104,6 @@ export function createExecutionTask(
       deferredSettlement,
     );
   };
-  // Carry the provider's call-id provenance onto whatever result the call settles with.
-  const providerCallId =
-    typeof call.providerCallId === 'string' && call.providerCallId.length > 0
-      ? call.providerCallId
-      : undefined;
-  if (providerCallId === undefined) return run;
-  return async () => ({ ...(await run()), providerCallId });
 }
 
 async function runToolInvocation(
@@ -178,6 +172,9 @@ async function runToolInvocation(
         ? { ...baseInvocationOptions, executionId: childExecutionId }
         : { ...baseInvocationOptions, durableOperationKey, executionId: childExecutionId };
     const result = await tool.execute(toolCall, invocationOptions);
+    // A wrapped tool (idempotency, a custom proxy) may rebuild the result; the marker must be on
+    // it before approval binding, settlement, and the events read it.
+    Object.assign(result, providerCallIdField(toolCall));
     bindPendingApproval({
       result,
       tool,
@@ -276,6 +273,7 @@ function handleInvocationError(
     outcome: 'error',
     content: toolError.message,
     toolCallId: toolCall.id,
+    ...providerCallIdField(toolCall),
     toolName: tool.name,
     result: undefined,
     error: toolError,

@@ -268,6 +268,7 @@ export const toolCallSchema = z
     id: z.string(),
     name: z.string(),
     arguments: jsonValueSchema,
+    providerCallId: z.string().optional(),
   })
   .strict() satisfies z.ZodType<ToolCall>;
 
@@ -276,6 +277,7 @@ export const toolCallInputSchema = z
     id: z.string().optional(),
     name: z.string(),
     arguments: jsonValueSchema.optional(),
+    providerCallId: z.string().optional(),
   })
   .strict() satisfies z.ZodType<ToolCallInput>;
 
@@ -416,6 +418,7 @@ export const toolResultSchema = z
     action: toolActionSchema.optional(),
     inputDigest: z.string().optional(),
     outputDigest: z.string().optional(),
+    providerCallId: z.string().optional(),
   })
   .strict() satisfies z.ZodType<ToolResult>;
 
