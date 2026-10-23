@@ -1,6 +1,10 @@
 import { type GrantStateStore } from './approval-binding';
 import type { ApprovalPolicyConfiguration } from './approval-policy';
-import { approvalStatusToDecision, evaluateCapabilityApproval } from './approval-policy';
+import {
+  approvalStatusToDecision,
+  evaluateCapabilityApproval,
+  withToolSummary,
+} from './approval-policy';
 import { narrowToolAuthority } from './execution-context';
 import { policyPauseDecisionsSymbol, policyPauseTierSymbol } from './internal/approval-resume';
 import type {
@@ -168,7 +172,7 @@ async function consumeCapabilityApproval(
   return {
     pauses: [
       {
-        ...approvalStatusToDecision(context.toolName, result),
+        ...withToolSummary(approvalStatusToDecision(context.toolName, result), context),
         [policyPauseTierSymbol]: 'capability',
       },
     ],

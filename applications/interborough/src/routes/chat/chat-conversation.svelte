@@ -47,19 +47,25 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
+  import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
+  import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import ApprovalAlert from './approval-alert.svelte';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
   import ChatAssets from './chat-assets.svelte';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
+  import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import ModelPicker from './model-picker.svelte';
+  import { toolGroups } from './tool-activity.ts';
+  import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
   interface ChatConversationProps {
@@ -146,6 +152,13 @@
     return !result.isError;
   }
 
+  function openAgent(event: MouseEvent, name: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
+      return;
+    event.preventDefault();
+    router.navigate(agentPath(name));
+  }
+
   function chooseAgent(value: string): void {
     agent = value;
     router.navigate(`/chat/new?agent=${encodeURIComponent(value)}`, { replace: true });
@@ -199,24 +212,113 @@
 
   let deciding = $state(false);
 
-  /** Each approval the conversation waits on, with the name of the tool it is for. */
+  /** Each approval the conversation waits on, as the question it asks and the call it belongs to. */
   const approvals = $derived(
     session.approvals.map(({ message, result }) => {
       const call = Object.values(session.conversation.messages).find(
         (row) => row.toolCall?.id === result.callId,
+      )?.toolCall;
+      const reason = typeof message.content === 'string' ? message.content : undefined;
+      const summary = declaredSummary(
+        result.action.type === 'approval' ? result.action.message : undefined,
+        reason,
       );
       return {
         toolCallId: result.callId,
-        toolName: call?.toolCall?.name ?? 'a tool',
-        message:
-          result.action.type === 'approval' && result.action.message !== undefined
-            ? result.action.message
-            : typeof message.content === 'string' && message.content !== ''
-              ? message.content
-              : undefined,
+        question: approvalQuestion({
+          toolName: call?.name ?? 'a tool',
+          arguments: call?.arguments,
+          summary,
+        }),
       };
     }),
   );
+  const approvalsByCall = $derived(
+    new Map(approvals.map((entry) => [entry.toolCallId, entry.question] as const)),
+  );
+  const activity = $derived(toolGroups(session.conversation));
+  // An approval whose call is in no group has no row to sit under, so it is still shown, above the
+  // transcript, rather than lost.
+  const orphanApprovals = $derived(
+    approvals.filter(
+      (entry) =>
+        !Array.from(activity.groups.values()).some((group) =>
+          group.entries.some((call) => call.callId === entry.toolCallId),
+        ),
+    ),
+  );
+
+  // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
+  // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
+  // the Bureau's pending reviews are read every few seconds, and when a review this page has seen
+  // pending is no longer pending, the thread is read again. A review is decided only if it was seen
+  // pending first: the list is shared with the navigation's count, so a read can predate the review
+  // (a chat that has just started the run) and say nothing about a decision. Each set of decided
+  // reviews is read once, and the record is cleared when nothing is decided, so the next decision
+  // of the same kind is read again.
+  const REREAD_POLL_MILLISECONDS = 3_000;
+  const waitingOnPerson = $derived(
+    !choosing &&
+      !session.streaming &&
+      (session.approvals.length > 0 || session.humanRequests.length > 0),
+  );
+  const pendingReviews = createQuery(
+    () => ({
+      queryKey: queryKeys.bureauReviews.list(),
+      queryFn: ({ signal }) => listBureauReviews({ signal }),
+      enabled: waitingOnPerson,
+      refetchInterval: REREAD_POLL_MILLISECONDS,
+      retry: false,
+    }),
+    undefined,
+  );
+  let rereadFor = '';
+  const seen = new SeenReviews();
+  $effect(() => {
+    const reviews = pendingReviews.data;
+    if (!waitingOnPerson) {
+      // Nothing is owed, so what was seen belongs to a wait that is over.
+      seen.clear();
+      rereadFor = '';
+      return;
+    }
+    if (reviews === undefined) return;
+    const decided = seen.observe(
+      reviews.filter((review) => review.sessionId === sessionId),
+      {
+        shownCalls: approvals.map((entry) => entry.toolCallId),
+        questionOpen: session.humanRequests.length > 0,
+      },
+    );
+    const key = decidedKey(decided);
+    if (key === '') {
+      rereadFor = '';
+      return;
+    }
+    if (key === rereadFor) return;
+    rereadFor = key;
+    untrack(() => {
+      // A superseded approval keeps its review id, so what was read of it is out of date, and the
+      // run page's wait must read the approval it is at now.
+      for (const reviewId of decided.superseded) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.bureauReviews.detail(reviewId) });
+      }
+      // A read the page could not make (a turn is going) is tried again at the next poll.
+      void (async () => {
+        // A read that threw is as unsuccessful as one that said no: the key is cleared for both, so
+        // the next poll tries again instead of skipping this set of reviews for good.
+        const read = await session.refresh().catch(() => false);
+        if (read) {
+          // The thread now says what is decided, so these reviews are not watched for any longer.
+          seen.forget(decided);
+        } else if (rereadFor === key) {
+          rereadFor = '';
+        }
+      })();
+      // The strip of runs under the header reads the same decision.
+      void queryClient.invalidateQueries({ queryKey: ['bureau-tasks'] });
+    });
+  });
 
   async function decide(toolCallId: string, decision: 'approve' | 'deny'): Promise<void> {
     deciding = true;
@@ -246,7 +348,11 @@
   <header class="weft-chat-header">
     <h1 class="weft-chat-header__title">{displayTitle}</h1>
     {#if !choosing}
-      <p class="weft-chat-header__agent">{agent}</p>
+      <a
+        class="weft-chat-header__agent"
+        href={router.href(agentPath(agent))}
+        onclick={(event) => openAgent(event, agent)}><code class="ib-identifier">{agent}</code></a
+      >
       {#if context.data?.parentContextId}
         <BranchOrigin parentId={context.data.parentContextId} />
       {/if}
@@ -258,7 +364,14 @@
   {/if}
 
   <!-- A decision continues the run, which the controller refuses while another turn is going. -->
-  <ApprovalAlert {approvals} deciding={deciding || session.streaming} onDecide={decide} />
+  {#each orphanApprovals as entry (entry.toolCallId)}
+    <ApprovalDecision
+      id={`orphan-${entry.toolCallId}`}
+      question={entry.question}
+      deciding={deciding || session.streaming}
+      onDecide={(decision) => void decide(entry.toolCallId, decision)}
+    />
+  {/each}
 
   <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
        message sent in between would be a follow-up, so the question waits for the turn's end. -->
@@ -339,9 +452,25 @@
         {/if}
       {/snippet}
       {#snippet row({ message }, renderDefault)}
+        {@const group = activity.groups.get(message.id)}
         {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
-        <!-- A message of only files has no bubble to show. A row with no file is Chat's own. -->
-        {#if assets.length === 0 || hasContent(message)}
+        {#if group !== undefined}
+          <ToolCalls id={`tools-${message.id}`} entries={group.entries}>
+            {#snippet decision(entry)}
+              {@const question = approvalsByCall.get(entry.callId)}
+              {#if question !== undefined}
+                <ApprovalDecision
+                  id={`tools-${message.id}-${entry.callId}`}
+                  {question}
+                  deciding={deciding || session.streaming}
+                  onDecide={(choice) => void decide(entry.callId, choice)}
+                />
+              {/if}
+            {/snippet}
+          </ToolCalls>
+        {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
+          <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
+               later call of a run of tool rows is shown with the first (`tool-activity.ts`). -->
           {@render renderDefault()}
         {/if}
         <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />

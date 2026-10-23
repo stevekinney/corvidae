@@ -8,6 +8,7 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -20,14 +21,30 @@ afterEach(() => {
   restore = undefined;
 });
 
-/** An engine with nothing in it: every list is empty. */
+/**
+ * What every list answers when it is empty: the engine's (`items`) and the Bureau's tasks and
+ * goals, which the runs view asks. One body serves them all, because each reads only its own field.
+ */
+const EMPTY = { items: [], total: 0, tasks: [], nextPageToken: null, goals: [], nextOffset: null };
+
+/** The same, with one item in each list. */
+const ONE = {
+  items: [{ id: 'first-item' }],
+  total: 1,
+  tasks: [taskFixture({ id: 'first-item' })],
+  nextPageToken: null,
+  goals: [],
+  nextOffset: null,
+};
+
+/** An engine and a Bureau with nothing in them: every list is empty. */
 function stubEmptyEngine(): void {
   restore = installFetchImplementation(async (_input, init) => {
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as { id?: unknown }) : {};
     if (typeof init?.body === 'string') {
-      return Response.json({ jsonrpc: '2.0', id: body.id, result: { items: [], total: 0 } });
+      return Response.json({ jsonrpc: '2.0', id: body.id, result: EMPTY });
     }
-    return Response.json({ items: [], total: 0 });
+    return Response.json(EMPTY);
   });
 }
 
@@ -51,7 +68,9 @@ const FLOWS = [
     view: 'runs',
     path: '/runs',
     creating: '/runs?view=start',
-    label: 'Start a run',
+    // The empty runs view points to a chat, which a caller without `workflows:read` can start; the
+    // engine's start flow is reached by its address.
+    label: null,
     heading: { role: 'heading', name: 'Start workflow' },
   },
   {
@@ -65,17 +84,20 @@ const FLOWS = [
 
 describe('an empty view’s call to action', () => {
   for (const flow of FLOWS) {
-    test(`opens the ${flow.view} creation flow`, async () => {
-      stubEmptyEngine();
-      landAt(flow.path);
-      const { container, findByRole } = mount();
+    const label = flow.label;
+    if (label !== null) {
+      test(`opens the ${flow.view} creation flow`, async () => {
+        stubEmptyEngine();
+        landAt(flow.path);
+        const { container, findByRole } = mount();
 
-      await fireEvent.click(await findByRole('link', { name: flow.label }));
+        await fireEvent.click(await findByRole('link', { name: label }));
 
-      expect(await findByRole(flow.heading.role, { name: flow.heading.name })).not.toBeNull();
-      const frame = container.querySelector(`.weft-view[data-view="${flow.view}"]`);
-      expect(frame?.getAttribute('data-state')).toBe('ready');
-    });
+        expect(await findByRole(flow.heading.role, { name: flow.heading.name })).not.toBeNull();
+        const frame = container.querySelector(`.weft-view[data-view="${flow.view}"]`);
+        expect(frame?.getAttribute('data-state')).toBe('ready');
+      });
+    }
 
     test(`shows the creation flow when ${flow.creating} is opened directly`, async () => {
       stubEmptyEngine();
@@ -97,10 +119,9 @@ describe('an empty view’s call to action', () => {
       restore = installFetchImplementation(async (_input, init) => {
         const body =
           typeof init?.body === 'string' ? (JSON.parse(init.body) as { id?: unknown }) : {};
-        const one = { items: [{ id: 'first-item' }], total: 1 };
         return typeof init?.body === 'string'
-          ? Response.json({ jsonrpc: '2.0', id: body.id, result: one })
-          : Response.json(one);
+          ? Response.json({ jsonrpc: '2.0', id: body.id, result: ONE })
+          : Response.json(ONE);
       });
       router.navigate(flow.path);
       await waitFor(() => {
@@ -111,7 +132,19 @@ describe('an empty view’s call to action', () => {
   }
 
   test('is the empty state’s own link, from the copy', () => {
-    expect(VIEW_COPY.runs.empty?.action?.href).toBe('/runs?view=start');
+    expect(VIEW_COPY.runs.empty?.action).toEqual({ label: 'Start a chat', href: '/chat/new' });
     expect(VIEW_COPY.schedules.empty?.action?.href).toBe('/schedules?create=1');
+  });
+
+  test('of the empty runs view is a chat, which a caller without the engine’s scope can start', async () => {
+    stubEmptyEngine();
+    landAt('/runs');
+    const { findByRole } = render(Harness, {
+      props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: [] },
+    });
+
+    const link = await findByRole('link', { name: 'Start a chat' });
+
+    expect(link.getAttribute('href')).toBe('/chat/new');
   });
 });

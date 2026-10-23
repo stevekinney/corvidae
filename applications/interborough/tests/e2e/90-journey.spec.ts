@@ -219,14 +219,13 @@ test('reloads while an agent waits on a question, and answers it from the review
   await expect(question).toBeVisible();
 
   await page.goto('/reviews');
-  const row = page.locator('.weft-reviews-inbox__list > li').filter({
+  const row = page.locator('.ib-review').filter({
     has: page.locator(`a[href="/chat/${threadId}"]`),
   });
   await expect(row).toContainText(QUESTION);
-  await row.getByRole('button').click();
   await checkA11y('the question in the reviews inbox');
-  await page.getByLabel('Your answer').fill(ENVIRONMENT_ANSWER);
-  await page.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await row.getByLabel('Your answer').fill(ENVIRONMENT_ANSWER);
+  await row.getByRole('button', { name: 'Send answer', exact: true }).click();
   await expect(row).toHaveCount(0);
 
   // The run went on with the answer: its session ends on the thanks, and the answer it was given
@@ -306,6 +305,8 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
 
   await runs.first().getByRole('link').first().click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
+  // A run the Bureau has no task for opens on its summary, and the engine's page is its Engine tab.
+  await page.getByRole('tab', { name: 'Engine' }).click();
   // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, so the
   // type's link is the one named exactly.
   await expect(page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true })).toHaveAttribute(
@@ -404,7 +405,7 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
   await expect(reply).not.toContainText(original);
 });
 
-test('starts a task it does not release, reaches it from the chat’s task link, and cancels it', async ({
+test('starts a run it does not release, reaches it from the chat’s run sentence, and cancels it', async ({
   page,
   request,
 }) => {
@@ -413,15 +414,19 @@ test('starts a task it does not release, reaches it from the chat’s task link,
   await expect(page).toHaveURL(sessionAddress);
   await expectWaiting(request, 1);
 
-  const tasks = page.getByRole('region', { name: 'Tasks in this chat' });
-  await tasks.getByRole('link').first().click();
-  await expect(page).toHaveURL(/\/tasks\/[^/]+$/);
-  await expect(page.getByText('Working', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel task', exact: true }).click();
+  await page.getByRole('link', { name: '1 run is working' }).click();
+  await expect(page).toHaveURL(/\/runs\/[^/]+$/);
+  await expect(
+    page.locator('.ib-run__heading').getByText('Working', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel run', exact: true }).click();
 
   await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
-  await expect(page.getByText('Canceled', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cancel task' })).toHaveCount(0);
+  await expect(
+    page.locator('.ib-run__heading').getByText('Canceled', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel run' })).toHaveCount(0);
   // Cancelling ended the run that was held, so nothing is left on the barrier.
   await expectWaiting(request, 0);
 });
