@@ -7,11 +7,12 @@
 // It reads the hook input from standard input and looks at `tool_input.command`. Compound commands
 // joined with `&&`, `||`, `;`, `|` or a newline are checked segment by segment, and `git -C <dir>`,
 // `git -c <key=value>` and `--git-dir`/`--work-tree` options before the subcommand are skipped.
-//   - DENIED: `git stash` with no subcommand and no message (`-m`, `--message`), and `git stash pop`.
+//   - DENIED: `git stash`, `git stash push` and `git stash save` without a message (`-m`,
+//     `--message`, or save's message argument), and `git stash pop`.
 //     The reason says to use a WIP commit, or `git stash push -u -m <unique-tag>` and later
 //     `git stash apply <sha>`;
-//   - ALLOWED: `git stash push ...`, `git stash -u -m <tag>`, `list`, `show`, `apply`, `drop`,
-//     `branch`, `create`, `store`, `clear`, `save`, and every command that is not a stash.
+//   - ALLOWED: `git stash push -u -m <tag>`, `git stash -u -m <tag>`, `list`, `show`, `apply`, `drop`,
+//     `branch`, `create`, `store`, `clear`, `save <message>`, and every command that is not a stash.
 //
 // It fails open: malformed input, a missing command, or any unexpected error prints nothing. A
 // quoted `git stash` inside a longer string (an echo, a commit message) can still be matched; a
@@ -70,11 +71,16 @@ function deniedSegment(segment: string): boolean {
   const rest = tokens.slice(index + 1);
   const subcommand = rest[0];
   if (subcommand === 'pop') return true;
-  if (subcommand !== undefined && !subcommand.startsWith('-')) return false;
-  // No subcommand: only options. `git stash -u -m <tag>` is a push with a message and is allowed.
-  return !rest.some(
+  const stores = subcommand === 'push' || subcommand === 'save';
+  if (subcommand !== undefined && !subcommand.startsWith('-') && !stores) return false;
+  // A push (explicit or implied by options alone) must carry a message; `save` takes it as its
+  // last positional argument.
+  const options = stores ? rest.slice(1) : rest;
+  const hasFlag = options.some(
     (word) => messageFlags.has(word) || word.startsWith('--message=') || /^-[a-zA-Z]*m/.test(word),
   );
+  const hasSaveMessage = subcommand === 'save' && options.some((word) => !word.startsWith('-'));
+  return !(hasFlag || hasSaveMessage);
 }
 
 /** The hook's answer for `input`, or `undefined` to say nothing (allow silently). */

@@ -7,6 +7,7 @@
 //   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--gate-log <log>]
 //                               [--log-dir <dir>] [--issue <ID> --completion-file <md>]
 //                               [--remove-worktree --provider claude|codex --name <name>]
+//                               [--usage-log <file> --transcript <path>...]
 //                               [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
@@ -20,7 +21,8 @@
 //              head and a clean tree at the start and end), runs the gate exactly as
 //              `gate-run.ts run` does into `<log-dir>/gate-<shortsha>.log`. `--log-dir` defaults to
 //              the directory of `--gate-log`, else `<worktree>/tmp/chef`;
-//   merge      `merge-gate.ts`'s own sequence (comment file, threads, merge lock, tree check) with
+//   merge      `merge-gate.ts`'s own sequence (comment file, threads, merge lock, tree check, and the
+//              spend record when `--usage-log` and `--transcript` are given, together) with
 //              nothing reimplemented; its failed step is reported as is;
 //   issue      with `--issue` and `--completion-file`: `linear.ts`'s comment, then the state Done,
 //              each read back. A failure leaves `merged` true and names step `issue`;
@@ -52,7 +54,14 @@ import {
   type Runner,
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
-import { Refusal, removeWorktree, type RemoveOptions, type RemoveResult } from './worktree.ts';
+import {
+  Refusal,
+  removeWorktree,
+  validateName,
+  validateProvider,
+  type RemoveOptions,
+  type RemoveResult,
+} from './worktree.ts';
 
 export { UsageError };
 
@@ -66,6 +75,8 @@ export interface DeliverOptions {
   issue?: string | undefined;
   completionFile?: string | undefined;
   removeWorktree?: { provider: string; name: string } | undefined;
+  usageLog?: string | undefined;
+  transcripts?: string[] | undefined;
 }
 
 export interface DeliverReport {
@@ -178,7 +189,7 @@ export async function deliver(
         'install',
         `${config.installCommand} failed (exit ${installed.code}): ${firstLine(installed.stderr || installed.stdout)}`,
       );
-    const pushed = git('push');
+    const pushed = git('push', 'origin', 'HEAD');
     if (pushed.code !== 0)
       return fail('push', `git push failed (exit ${pushed.code}): ${firstLine(pushed.stderr)}`);
     // The old log describes the previous head, so it must never be offered to the merge gate.
@@ -220,6 +231,9 @@ export async function deliver(
     commentFile: options.commentFile,
     dryRun: false,
     checkMainHealth: true,
+    ...(options.usageLog === undefined
+      ? {}
+      : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
   });
   report.merged = merged.merged;
   report.mergeCommit = merged.mergeCommit;
@@ -258,7 +272,7 @@ export async function deliver(
         keepRemote: false,
       });
     } catch (error) {
-      if (!(error instanceof Refusal)) throw error;
+      if (!(error instanceof Refusal) && !(error instanceof UsageError)) throw error;
       return fail('worktree', error.message);
     }
   }
@@ -290,9 +304,11 @@ export async function run(
       'log-dir',
       'issue',
       'completion-file',
+      'usage-log',
       'provider',
       'name',
     ],
+    repeated: ['transcript'],
     flags: ['remove-worktree', 'json'],
   });
   if (parsed.positionals.length > 0)
@@ -303,9 +319,15 @@ export async function run(
   const completionFile = parsed.values['completion-file'];
   if ((issue === undefined) !== (completionFile === undefined))
     throw new UsageError('--issue and --completion-file go together.');
+  const usageLog = parsed.values['usage-log'];
+  const transcripts = parsed.repeated['transcript'] ?? [];
+  if ((usageLog === undefined) !== (transcripts.length === 0))
+    throw new UsageError('--usage-log and --transcript go together.');
   const remove = parsed.flags.has('remove-worktree');
   const provider = parsed.values['provider'];
   const name = parsed.values['name'];
+  if (provider !== undefined) validateProvider(provider);
+  if (name !== undefined) validateName(name, 'name', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
   if (remove && (provider === undefined || name === undefined))
     throw new UsageError('--remove-worktree needs --provider and --name.');
   if (!remove && (provider !== undefined || name !== undefined))
@@ -320,6 +342,8 @@ export async function run(
       logDirectory: parsed.values['log-dir'],
       issue,
       completionFile,
+      usageLog,
+      transcripts,
       removeWorktree:
         remove && provider !== undefined && name !== undefined ? { provider, name } : undefined,
     },

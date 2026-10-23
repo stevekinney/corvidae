@@ -141,15 +141,20 @@ function failure(step: string, result: { stdout: string; stderr: string; code: n
   return new Refusal(`${step} failed (exit ${result.code}): ${detail}`);
 }
 
-function validateName(name: string, label: string, pattern: RegExp): string {
+export function validateName(name: string, label: string, pattern: RegExp): string {
   if (!pattern.test(name) || name.includes('..') || name.endsWith('/') || name.endsWith('.lock'))
     throw new UsageError(`--${label} "${name}" is not a safe ${label}.`);
   return name;
 }
 
-function providerRoot(config: RepositoryConfig, provider: string): string {
+/** Throws a `UsageError` unless `provider` is a known provider. */
+export function validateProvider(provider: string): void {
   if (!providers.includes(provider as Provider))
     throw new UsageError(`--provider must be one of ${providers.join(', ')}.`);
+}
+
+function providerRoot(config: RepositoryConfig, provider: string): string {
+  validateProvider(provider);
   return config.worktreeRoots[provider as Provider];
 }
 

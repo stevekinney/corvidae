@@ -16,6 +16,11 @@ describe('stash-guard decide', () => {
       'git -C /some/dir stash pop',
       'git -c user.name=x stash',
       'git stash -u',
+      'git stash push',
+      'git stash push -u',
+      'git stash save',
+      'git stash save -u',
+      'git -C /d stash push --include-untracked',
       'git add -A && git stash',
       'cd /repo; git stash pop',
       'git status || git stash',
@@ -38,6 +43,8 @@ describe('stash-guard decide', () => {
   test('allows a tagged push and the read-only and by-reference subcommands', () => {
     for (const command of [
       'git stash push -m tag',
+      'git stash save wip-tag',
+      'git stash save -u wip-tag',
       'git stash push -u -m tag',
       'git stash -u -m tag',
       'git stash --message=tag',

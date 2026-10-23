@@ -70,6 +70,7 @@ interface World {
   /** `git merge --no-edit origin/main` exit code. */
   mergeCode?: number;
   installCode?: number;
+  pushCode?: number;
   dirty?: boolean;
   /** HEAD before and after the merge into the branch. */
   headAfterMerge?: string;
@@ -96,7 +97,7 @@ function fake(world: World = {}) {
         if ((world.mergeCode ?? 0) === 0) head = world.headAfterMerge ?? MERGED_HEAD;
         return { code: world.mergeCode ?? 0, stdout: '', stderr: 'CONFLICT (content)' };
       case 'push':
-        return { code: 0, stdout: '', stderr: '' };
+        return { code: world.pushCode ?? 0, stdout: '', stderr: 'rejected' };
       case 'merge-tree':
         return { code: world.mergeTreeCode ?? 1, stdout: `${MERGE_TREE}\n`, stderr: '' };
       case 'diff':
@@ -136,7 +137,14 @@ const mergedReport = (overrides: Partial<MergeGateReport> = {}): MergeGateReport
 });
 
 /** The merge gate, the gate run and the closeout steps, recording what each was asked. */
-function seams(overrides: { merge?: MergeGateReport; gateCode?: number; refusal?: string } = {}) {
+function seams(
+  overrides: {
+    merge?: MergeGateReport;
+    gateCode?: number;
+    refusal?: string;
+    usageError?: string;
+  } = {},
+) {
   const record = {
     gates: [] as string[],
     merges: [] as string[],
@@ -198,6 +206,7 @@ function seams(overrides: { merge?: MergeGateReport; gateCode?: number; refusal?
       remove: (removeOptions: { name: string }) => {
         record.removals.push(removeOptions.name);
         if (overrides.refusal !== undefined) throw new Refusal(overrides.refusal);
+        if (overrides.usageError !== undefined) throw new UsageError(overrides.usageError);
         return { path: '/c/alpha', branch: 'b', remoteDeleted: true };
       },
       client,
@@ -237,11 +246,12 @@ describe('deliver', () => {
     const names = calls.map((command) => command.slice(0, 3).join(' '));
     const merge = names.indexOf('git merge --no-edit');
     const install = calls.findIndex((command) => command[0] === 'sh');
-    const push = names.indexOf('git push');
+    const push = names.indexOf('git push origin');
     expect(merge).toBeGreaterThan(-1);
     expect(install).toBeGreaterThan(merge);
     expect(calls[install]?.[2]).toBe('install-command');
     expect(push).toBeGreaterThan(install);
+    expect(calls).toContainEqual(['git', 'push', 'origin', 'HEAD']);
     expect(existsSync(options.gateLog as string)).toBe(false);
     const expectedLog = join(sandbox, `gate-${MERGED_HEAD.slice(0, 12)}.log`);
     expect(record.gates).toEqual([expectedLog]);
@@ -343,6 +353,42 @@ describe('deliver', () => {
     expect(record.removals).toEqual([]);
   });
 
+  const mergedInWorld = {
+    contains: false,
+    mergeTreeCode: 0,
+    pullRequestFiles: ['packages/a/x.ts'],
+    baseFiles: ['bun.lock'],
+  };
+
+  test('an install failure after a clean merge-in stops before the push, gate and merge', async () => {
+    const { runner, calls } = fake({ ...mergedInWorld, installCode: 1 });
+    const { partial, record } = seams();
+    const report = await deliver(options, { ...partial, runner });
+    expect(report).toMatchObject({ merged: false, failedStep: 'install' });
+    expect(calls.some((command) => command[1] === 'push')).toBe(false);
+    expect(record.gates).toEqual([]);
+    expect(record.merges).toEqual([]);
+  });
+
+  test('a push failure after a clean merge-in stops before the gate and merge', async () => {
+    const { runner } = fake({ ...mergedInWorld, pushCode: 1 });
+    const { partial, record } = seams();
+    const report = await deliver(options, { ...partial, runner });
+    expect(report).toMatchObject({ merged: false, failedStep: 'push' });
+    expect(record.gates).toEqual([]);
+    expect(record.merges).toEqual([]);
+  });
+
+  test('a usage error at the worktree step is step worktree with merged true', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams({ usageError: '--name "x" is not a safe name.' });
+    const report = await deliver(
+      { ...options, removeWorktree: { provider: 'claude', name: 'x' } },
+      { ...partial, runner },
+    );
+    expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
+  });
+
   test('a worktree-removal refusal is reported with merged true', async () => {
     const { runner } = fake({ contains: true });
     const { partial, record } = seams({ refusal: 'Refusing to remove /c/alpha: it has 2 paths' });
@@ -353,6 +399,55 @@ describe('deliver', () => {
     expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
     expect(report.detail).toContain('Refusing to remove');
     expect(record.removals).toEqual(['alpha']);
+  });
+});
+
+describe('spend record', () => {
+  test('--usage-log and --transcript reach the merge gate', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams();
+    const received: { usageLog?: string | undefined; transcripts?: string[] | undefined }[] = [];
+    const merge = async (mergeOptions: { usageLog?: string; transcripts?: string[] }) => {
+      received.push(mergeOptions);
+      return mergedReport();
+    };
+    const result = await run(
+      [
+        '--config',
+        options.configPath,
+        '--pr',
+        '12',
+        '--worktree',
+        sandbox,
+        '--comment-file',
+        options.commentFile,
+        '--gate-log',
+        options.gateLog as string,
+        '--usage-log',
+        '/tmp/usage.tsv',
+        '--transcript',
+        '/a.jsonl',
+        '--transcript',
+        '/b',
+      ],
+      { ...partial, merge, runner },
+    );
+    expect(result.code).toBe(0);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.usageLog).toBe('/tmp/usage.tsv');
+    expect(received[0]?.transcripts).toEqual(['/a.jsonl', '/b']);
+  });
+
+  test('without the flags the merge gate gets no spend record', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams();
+    const received: object[] = [];
+    const merge = async (mergeOptions: object) => {
+      received.push(mergeOptions);
+      return mergedReport();
+    };
+    await deliver(options, { ...partial, merge, runner });
+    expect(received[0]).not.toHaveProperty('usageLog');
   });
 });
 
@@ -373,6 +468,15 @@ describe('run', () => {
     expect(await usage('--pr', '1', ...base, '--remove-worktree')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--name', 'x')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--bogus')).toBeInstanceOf(UsageError);
+    expect(await usage('--pr', '1', ...base, '--usage-log', 'u.tsv')).toBeInstanceOf(UsageError);
+    expect(await usage('--pr', '1', ...base, '--transcript', 't.jsonl')).toBeInstanceOf(UsageError);
+    const removal = ['--remove-worktree'];
+    expect(
+      await usage('--pr', '1', ...base, ...removal, '--provider', 'nobody', '--name', 'a'),
+    ).toBeInstanceOf(UsageError);
+    expect(
+      await usage('--pr', '1', ...base, ...removal, '--provider', 'claude', '--name', '../x'),
+    ).toBeInstanceOf(UsageError);
   });
 
   test('exits 0 with one JSON object for a merge and 1 naming the failed step otherwise', async () => {
