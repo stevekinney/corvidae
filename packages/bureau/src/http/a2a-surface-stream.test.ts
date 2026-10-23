@@ -415,6 +415,37 @@ describe('SubscribeToTask with a surface', () => {
     });
   });
 
+  it('delivers the task-end freeze before the stream closes when the task record lags the run event', async () => {
+    await withTask(async (kit) => {
+      const taskId = await kit.park();
+      // The task record's settlement, which triggers the surface store's own freeze, arrives late:
+      // held here until the stream has ended.
+      const settled = Promise.withResolvers<void>();
+      const tasks = kit.opened.bureau.tasks;
+      const onSettled = tasks.onSettled.bind(tasks);
+      tasks.onSettled = (id, listener) =>
+        onSettled(id, (...args) => settled.promise.then(() => listener(...args)));
+      try {
+        const stream = serverSentEvents(await kit.subscribe(taskId));
+        await stream.next();
+        await kit.apply(taskId);
+        const created = await stream.next();
+        expect(revisionsOf(created)).toEqual(['panel@1']);
+
+        await kit.answer(taskId);
+        const rest = await drain(stream);
+        const states = rest.map((event) => event.data.result.statusUpdate?.status.state);
+        expect(states.at(-1)).toBe('TASK_STATE_COMPLETED');
+        // The stream ended while the record's settlement was still held back, yet the frozen
+        // revision reached the client first.
+        expect(rest.filter(isSurfaceFrame).flatMap(revisionsOf)).toEqual(['panel@2']);
+      } finally {
+        settled.resolve();
+        tasks.onSettled = onSettled;
+      }
+    });
+  });
+
   it('keeps a surface frame in history order against the status frames around it', async () => {
     await withTask(async (kit) => {
       const taskId = await kit.park();
