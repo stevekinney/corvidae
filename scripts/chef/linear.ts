@@ -96,8 +96,8 @@ export function normalizeMarkdown(text: string): string {
     text
       .replace(/ /g, ' ')
       .replace(/^(\s*)[*+] /gm, '$1- ')
-      // Table rule rows: Linear shortens `---` to `--`, so every dash run becomes one dash.
-      .replace(/^[\s|:-]*-[\s|:-]*$/gm, (row) => row.replace(/-+/g, '-'))
+      // Table delimiter rows only (they contain a pipe; a bare `---` horizontal rule is left alone): Linear shortens `---` to `--`, so every dash run becomes one dash.
+      .replace(/^(?=[^|\n]*\|)[\s|:-]*-[\s|:-]*$/gm, (row) => row.replace(/-+/g, '-'))
       .replace(/[ \t]*\|[ \t]*/g, '|')
       .replace(/\\(?=[^A-Za-z0-9\s])/g, '')
       .replace(/\s+/g, ' ')

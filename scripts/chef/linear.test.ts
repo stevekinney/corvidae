@@ -361,6 +361,15 @@ describe('normalizeMarkdown tables', () => {
     );
   });
 
+  test('keeps a horizontal rule significant, so a read-back that lost it differs', () => {
+    expect(normalizeMarkdown('before\n\n---\n\nafter')).not.toBe(
+      normalizeMarkdown('before\n\nafter'),
+    );
+    expect(normalizeMarkdown('before\n\n---\n\nafter')).toBe(
+      normalizeMarkdown('before\n\n---\n\nafter'),
+    );
+  });
+
   test('still tells a changed word apart', () => {
     expect(normalizeMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |')).not.toBe(
       normalizeMarkdown('| a | b |\n| -- | -- |\n| 1 | 3 |'),
