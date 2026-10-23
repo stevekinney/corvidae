@@ -108,4 +108,24 @@ describe('reloadOnceForMissingChunk', () => {
     ).toBe(false);
     expect(reloads).toBe(0);
   });
+
+  test('does not reload when the browser will not let the page read sessionStorage', () => {
+    let reloads = 0;
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get: () => {
+        throw new DOMException('denied', 'SecurityError');
+      },
+    });
+    try {
+      expect(
+        reloadOnceForMissingChunk(CHROMIUM, { online: true, reload: () => (reloads += 1) }),
+      ).toBe(false);
+    } finally {
+      if (descriptor === undefined) Reflect.deleteProperty(globalThis, 'sessionStorage');
+      else Object.defineProperty(globalThis, 'sessionStorage', descriptor);
+    }
+    expect(reloads).toBe(0);
+  });
 });

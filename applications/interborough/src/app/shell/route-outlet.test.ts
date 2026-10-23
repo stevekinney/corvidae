@@ -148,6 +148,31 @@ describe('the route outlet', () => {
   });
 });
 
+describe('a route that no view owns', () => {
+  test('renders its page without a view frame', async () => {
+    restore = installFetchImplementation(async () => Response.json({}));
+    const agents = routes.find((route) => route.pattern === '/agents');
+    if (agents === undefined) throw new Error('Expected an /agents route.');
+    const { view } = agents;
+    const load = spyOn(agents, 'load').mockResolvedValue({ default: Placeholder });
+    Reflect.deleteProperty(agents, 'view');
+    try {
+      landAt('/agents');
+      const { container } = mount();
+      await waitFor(() =>
+        expect(
+          container.querySelector('.weft-shell-outlet__skeleton')?.outerHTML ?? null,
+        ).toBeNull(),
+      );
+      expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
+      expect(container.querySelector('.weft-view')).toBeNull();
+    } finally {
+      Reflect.set(agents, 'view', view);
+      load.mockRestore();
+    }
+  });
+});
+
 describe('a route whose chunk is gone after a rebuild', () => {
   const MISSING = () =>
     new TypeError('Failed to fetch dynamically imported module: http://localhost/assets/a-1.js');
