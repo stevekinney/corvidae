@@ -23,10 +23,16 @@ import {
   projectTask,
   type ProjectionShape,
   replyMessageId,
+  type ReplyParts,
+  textPart,
 } from './a2a-task-projection.ts';
+import { replyPartsOf } from './a2a-reply-parts.ts';
 
 /** The part of a Bureau the reader needs. */
-export type A2ATaskReaderBureau = Pick<Bureau, 'getRun' | 'eventHistory' | 'getReview'> & {
+export type A2ATaskReaderBureau = Pick<
+  Bureau,
+  'getRun' | 'eventHistory' | 'getReview' | 'assets'
+> & {
   readonly tasks: Pick<TaskRegistry, 'record'>;
 };
 
@@ -39,7 +45,7 @@ export type A2ATaskReading = {
 /** Reads tasks for A2A responses and push snapshots. */
 export type A2ATaskReader = {
   /** The agent's reply on a completed task: from the live run, its settlement, or its history. */
-  replyOf(view: TaskView): Promise<string | undefined>;
+  replyOf(view: TaskView): Promise<ReplyParts | undefined>;
   /** The task as one response shows it, folding a completed task's reply into its history once. */
   read(view: TaskView, shape: ProjectionShape): Promise<A2ATaskReading>;
 };
@@ -48,16 +54,40 @@ export type A2ATaskReader = {
 export function createTaskReader(options: {
   readonly bureau: A2ATaskReaderBureau;
   readonly records: A2ATaskRecords;
+  /** The handler's public origin and base path: a reply's media is served from its asset route. */
+  readonly publicUrl: string;
 }): A2ATaskReader {
   const { bureau, records } = options;
+  const textOf = (text: string): ReplyParts => (text === '' ? [] : [textPart(text)]);
 
-  async function replyOf(view: TaskView): Promise<string | undefined> {
+  /**
+   * The reply a recorded A2A history already holds: once a completed task's reply is folded into
+   * its record, that message is the reply, whatever the run has since forgotten (a restart).
+   */
+  async function recordedReplyOf(view: TaskView): Promise<ReplyParts | undefined> {
+    const record = await records.read(view.id);
+    const held = record?.history.find(
+      (message) => message['messageId'] === replyMessageId(view.id),
+    );
+    return held === undefined ? undefined : Message.fromJSON(held).parts;
+  }
+
+  async function replyOf(view: TaskView): Promise<ReplyParts | undefined> {
     if (view.status !== 'completed') return undefined;
     const run = bureau.getRun(view.id);
     const final = run?.stepDetails.findLast((step) => step.final);
-    if (final !== undefined) return final.content;
+    if (final !== undefined) {
+      const projected = await replyPartsOf(final.parts, {
+        publicUrl: options.publicUrl,
+        assets: bureau.assets,
+        owner: view.owner,
+      });
+      return projected.length > 0 ? projected : textOf(final.content);
+    }
+    const recorded = await recordedReplyOf(view);
+    if (recorded !== undefined && recorded.length > 0) return recorded;
     const record = await bureau.tasks.record(view.id);
-    if (record?.settled?.answer !== undefined) return record.settled.answer.text;
+    if (record?.settled?.answer !== undefined) return textOf(record.settled.answer.text);
     let since: string | undefined;
     let content: string | undefined;
     for (;;) {
@@ -75,7 +105,7 @@ export function createTaskReader(options: {
       since = page.nextCursor ?? page.events.at(-1)?.cursor;
       if (since === undefined) break;
     }
-    return content;
+    return content === undefined ? undefined : textOf(content);
   }
 
   async function read(view: TaskView, shape: ProjectionShape): Promise<A2ATaskReading> {
@@ -95,7 +125,7 @@ export function createTaskReader(options: {
     const reply = await replyOf(view);
     // The reply is folded in once it can be read: a completed task whose reply is not yet visible
     // here (its history event has not reached this instance) is folded on a later read.
-    const replyReady = view.status !== 'completed' || (reply !== undefined && reply !== '');
+    const replyReady = view.status !== 'completed' || (reply !== undefined && reply.length > 0);
     if (record !== undefined && isTerminal(view.status) && !record.replyRecorded && replyReady) {
       record = await records.update(view.id, (current) =>
         current.replyRecorded
@@ -104,7 +134,7 @@ export function createTaskReader(options: {
               ...current,
               replyRecorded: true,
               history:
-                reply === undefined || reply === ''
+                reply === undefined || reply.length === 0
                   ? current.history
                   : [
                       ...current.history,

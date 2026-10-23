@@ -83,11 +83,39 @@ export function textPart(text: string): Part {
   };
 }
 
-/** An agent message on a task. */
+/**
+ * The parts of an agent's reply on a completed task (COR-788): its text, and its generated media
+ * as file parts whose `url` is the asset route (or, for a small JSON asset, a data part). Empty
+ * when the reply holds nothing.
+ */
+export type ReplyParts = readonly Part[];
+
+/** The text a reply's text parts hold, joined with a newline. */
+function replyTextOf(reply: ReplyParts): string {
+  return reply
+    .flatMap((part) => (part.content?.$case === 'text' ? [part.content.value] : []))
+    .join('\n');
+}
+
+/**
+ * The parts a completed task publishes, from its reply and the answer text the task registry
+ * recorded. A reply that holds media is published as it is; a text-only reply is the registry's
+ * answer text when it recorded one, which is bounded.
+ */
+export function publishedReplyParts(
+  reply: ReplyParts | undefined,
+  recordedText?: string,
+): ReplyParts {
+  if (reply?.some((part) => part.content?.$case !== 'text') === true) return reply;
+  const text = recordedText ?? (reply === undefined ? '' : replyTextOf(reply));
+  return text === '' ? [] : [textPart(text)];
+}
+
+/** An agent message on a task: a text, or the given parts. */
 export function agentMessage(
   task: { readonly id: string; readonly contextId: string },
   messageId: string,
-  text: string,
+  content: string | ReplyParts,
   metadata?: Record<string, unknown>,
 ): Message {
   return {
@@ -95,7 +123,7 @@ export function agentMessage(
     contextId: task.contextId,
     taskId: task.id,
     role: Role.ROLE_AGENT,
-    parts: [textPart(text)],
+    parts: typeof content === 'string' ? [textPart(content)] : [...content],
     metadata,
     extensions: [],
     referenceTaskIds: [],
@@ -191,7 +219,7 @@ export type ProjectionInput = {
   readonly view: TaskView;
   readonly record: A2ATaskRecord | undefined;
   /** The agent's reply, for a completed task. */
-  readonly reply: string | undefined;
+  readonly reply: ReplyParts | undefined;
   /** The cleanup acknowledgement recorded for the task, when one was. */
   readonly acknowledgement: TaskCleanupAcknowledgement | undefined;
   /** The input forms the task's open waits ask for; none when it is not waiting on one. */
@@ -218,13 +246,13 @@ export function projectTask(input: ProjectionInput, shape: ProjectionShape): Tas
   const task = { id: view.id, contextId: view.contextId };
   let statusMessage: Message | undefined;
   const artifacts: Artifact[] = [];
-  if (view.status === 'completed' && reply !== undefined && reply !== '') {
+  if (view.status === 'completed' && reply !== undefined && reply.length > 0) {
     statusMessage = agentMessage(task, replyMessageId(view.id), reply);
     artifacts.push({
       artifactId: resultArtifactId(view.id),
       name: 'result',
       description: '',
-      parts: [textPart(reply)],
+      parts: [...reply],
       metadata: undefined,
       extensions: [],
     });
