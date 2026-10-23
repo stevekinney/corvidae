@@ -88,6 +88,10 @@ function fakeLinear() {
     ignoreDescription: false,
     /** Linear reformats a comment the way it reformats a description. */
     reformatComment: false,
+    /** Linear echoes a created description with `--` table rules and `*` bullets. */
+    normalizeCreated: false,
+    /** Linear echoes a created description with one word changed. */
+    alterCreatedWord: false,
     /** More comments than the pages the reader will walk. */
     endlessComments: false,
     /** More relations than one page holds, in either direction. */
@@ -222,7 +226,12 @@ function fakeLinear() {
           id: `uuid-${(counter += 1)}`,
           identifier: `COR-${counter}`,
           title: input.title,
-          description: input.description,
+          description: switches.normalizeCreated
+            ? String(input.description)
+                .replace(/-{3,}/g, '--')
+                .replace(/^- /gm, '* ')
+                .replace(switches.alterCreatedWord ? 'one' : '\0', 'uno')
+            : input.description,
           updatedAt: '2026-10-22T12:00:00Z',
           stateId: input.stateId ?? 's-todo',
           teamId: input.teamId,
@@ -342,6 +351,35 @@ async function runOutput(...args: Parameters<typeof run>): Promise<string> {
 describe('normalizeMarkdown', () => {
   test('ignores escaping, bullet style and whitespace', () => {
     expect(normalizeMarkdown('* a_b\n\n\n  c')).toBe(normalizeMarkdown('- a\\_b c'));
+  });
+});
+
+describe('normalizeMarkdown tables', () => {
+  test("treats Linear's shortened table rules and starred bullets as equal", () => {
+    expect(normalizeMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |\n\n- one\n- two')).toBe(
+      normalizeMarkdown('| a | b |\n| -- | -- |\n| 1 | 2 |\n\n* one\n* two  \n'),
+    );
+  });
+
+  test('keeps a horizontal rule significant, so a read-back that lost it differs', () => {
+    expect(normalizeMarkdown('before\n\n---\n\nafter')).not.toBe(
+      normalizeMarkdown('before\n\nafter'),
+    );
+    expect(normalizeMarkdown('before\n\n---\n\nafter')).toBe(
+      normalizeMarkdown('before\n\n---\n\nafter'),
+    );
+  });
+
+  test('leaves pipe spacing alone outside table rows', () => {
+    expect(normalizeMarkdown('const label = "A | B";')).not.toBe(
+      normalizeMarkdown('const label = "A|B";'),
+    );
+  });
+
+  test('still tells a changed word apart', () => {
+    expect(normalizeMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |')).not.toBe(
+      normalizeMarkdown('| a | b |\n| -- | -- |\n| 1 | 3 |'),
+    );
   });
 });
 
@@ -621,6 +659,30 @@ describe('create', () => {
     const created = fake.issues.at(-1)!;
     expect(created.labelIds).toEqual(['l-feature']);
     expect(created.stateId).toBe('s-doing');
+  });
+
+  test('verifies a table and bullets against the normalized echo, but not a changed word', async () => {
+    const body = '| a | b |\n| --- | --- |\n| 1 | 2 |\n\n- one\n- two\n';
+    const fake = fakeLinear();
+    fake.switches.normalizeCreated = true;
+    const args = (text: string) => [
+      'create',
+      '--team',
+      'COR',
+      '--title',
+      `T ${text.length}`,
+      '--file',
+      file('t.md', text),
+      '--label',
+      'feature',
+    ];
+    const ok = await run(args(body), dependencies(fake));
+    expect(ok.code).toBe(0);
+    expect(ok.output).toContain('(read back)');
+    fake.switches.alterCreatedWord = true;
+    const altered = await run(args(`${body}x`), dependencies(fake));
+    expect(altered.code).toBe(1);
+    expect(altered.output).toContain('read-back does not match');
   });
 
   test('refuses a duplicate title in the same project, ignoring case, and creates nothing', async () => {

@@ -656,6 +656,56 @@ describe('spend record', () => {
   });
 });
 
+describe('fixes-main', () => {
+  const args = (extra: string[]) => [
+    '--config',
+    options.configPath,
+    '--pr',
+    '12',
+    '--worktree',
+    sandbox,
+    '--comment-file',
+    options.commentFile,
+    '--gate-log',
+    options.gateLog as string,
+    ...extra,
+  ];
+
+  test('--fixes-main reaches the merge gate on every attempt', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams();
+    const received: MergeGateOptions[] = [];
+    const merge = async (mergeOptions: MergeGateOptions) => {
+      received.push(mergeOptions);
+      return mergedReport();
+    };
+    const result = await run(args(['--fixes-main']), { ...partial, merge, runner });
+    expect(result.code).toBe(0);
+    expect(received.map((entry) => entry.fixesMain)).toEqual([true]);
+  });
+
+  test('without the flag the merge gate is not told this is the fix, so a red main refuses it', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams();
+    const received: MergeGateOptions[] = [];
+    const merge = async (mergeOptions: MergeGateOptions) => {
+      received.push(mergeOptions);
+      return mergeOptions.fixesMain === true
+        ? mergedReport()
+        : mergedReport({
+            merged: false,
+            mergeCommit: null,
+            failedStep: 'main-health',
+            detail: 'main is red.',
+          });
+    };
+    const result = await run(args([]), { ...partial, merge, runner });
+    expect(result.code).toBe(1);
+    expect(received[0]?.fixesMain).toBe(false);
+    expect(result.output).toContain('main-health');
+  });
+});
+
 describe('run', () => {
   test('rejects bad usage before touching anything', async () => {
     const base = ['--worktree', sandbox, '--comment-file', join(sandbox, 'comment.md')];
