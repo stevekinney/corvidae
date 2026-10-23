@@ -26,6 +26,7 @@ import type {
   TaskState as BureauTaskState,
   TaskView,
 } from '../task-registry.ts';
+import { TASK_ARTIFACT_TEXT_LIMIT } from '../task-registry.ts';
 import { formSurfaceId, previousParkReviewId, type WaitForm } from './a2a-input-forms.ts';
 import { A2UI_MEDIA_TYPE, inputFormDeletion, inputFormMessages } from '../a2ui/input-form.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
@@ -83,11 +84,39 @@ export function textPart(text: string): Part {
   };
 }
 
-/** An agent message on a task. */
+/**
+ * The parts of an agent's reply on a completed task (COR-788): its text, and its generated media
+ * as file parts whose `url` is the asset route (or, for a small JSON asset, a data part). Empty
+ * when the reply holds nothing.
+ */
+export type ReplyParts = readonly Part[];
+
+/**
+ * The parts a completed task publishes. With a reply, its parts as they are: media whole, and its
+ * text parts bounded together by one {@link TASK_ARTIFACT_TEXT_LIMIT} budget. Without one, the
+ * answer text the task registry recorded, as one text part.
+ */
+export function publishedReplyParts(
+  reply: ReplyParts | undefined,
+  recordedText?: string,
+): ReplyParts {
+  if (reply === undefined) {
+    return recordedText === undefined || recordedText === '' ? [] : [textPart(recordedText)];
+  }
+  let budget = TASK_ARTIFACT_TEXT_LIMIT;
+  return reply.flatMap((part) => {
+    if (part.content?.$case !== 'text') return [part];
+    const text = part.content.value.slice(0, budget);
+    budget -= text.length;
+    return text === '' ? [] : [{ ...part, content: { $case: 'text' as const, value: text } }];
+  });
+}
+
+/** An agent message on a task: a text, or the given parts. */
 export function agentMessage(
   task: { readonly id: string; readonly contextId: string },
   messageId: string,
-  text: string,
+  content: string | ReplyParts,
   metadata?: Record<string, unknown>,
 ): Message {
   return {
@@ -95,7 +124,7 @@ export function agentMessage(
     contextId: task.contextId,
     taskId: task.id,
     role: Role.ROLE_AGENT,
-    parts: [textPart(text)],
+    parts: typeof content === 'string' ? [textPart(content)] : [...content],
     metadata,
     extensions: [],
     referenceTaskIds: [],
@@ -191,7 +220,7 @@ export type ProjectionInput = {
   readonly view: TaskView;
   readonly record: A2ATaskRecord | undefined;
   /** The agent's reply, for a completed task. */
-  readonly reply: string | undefined;
+  readonly reply: ReplyParts | undefined;
   /** The cleanup acknowledgement recorded for the task, when one was. */
   readonly acknowledgement: TaskCleanupAcknowledgement | undefined;
   /** The input forms the task's open waits ask for; none when it is not waiting on one. */
@@ -214,17 +243,19 @@ function historyMessage(wire: A2AWireMessage): Message {
 
 /** A Bureau task as an A2A `Task`, shaped for one response. */
 export function projectTask(input: ProjectionInput, shape: ProjectionShape): Task {
-  const { view, record, reply } = input;
+  const { view, record } = input;
+  // The same bounded parts a stream publishes, so a stream and a read agree.
+  const reply = input.reply === undefined ? undefined : publishedReplyParts(input.reply);
   const task = { id: view.id, contextId: view.contextId };
   let statusMessage: Message | undefined;
   const artifacts: Artifact[] = [];
-  if (view.status === 'completed' && reply !== undefined && reply !== '') {
+  if (view.status === 'completed' && reply !== undefined && reply.length > 0) {
     statusMessage = agentMessage(task, replyMessageId(view.id), reply);
     artifacts.push({
       artifactId: resultArtifactId(view.id),
       name: 'result',
       description: '',
-      parts: [textPart(reply)],
+      parts: [...reply],
       metadata: undefined,
       extensions: [],
     });
