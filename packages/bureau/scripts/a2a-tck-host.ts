@@ -8,7 +8,8 @@
  * sent message on its way in: the text becomes `[<messageId>] <text>`, and the agent's scripted
  * generator reads the bracketed identifier. Each send also gets a unique `messageId` suffix; see
  * {@link effectiveMessageId}. The agent answers at once, asks for input
- * (`INPUT_REQUIRED`) for `tck-input-required`, and sleeps until it is cancelled or the long wait
+ * (`INPUT_REQUIRED`) for `tck-input-required`, answers with a generated file or a JSON document for
+ * the file and data artifact scenarios (COR-788), and sleeps until it is cancelled or the long wait
  * ends for the resubscription scenario.
  *
  * The host serves with `unauthenticatedAccess: 'allow'` (test only), because the pinned TCK
@@ -26,7 +27,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  createAgent,
+  createModelCatalog,
+  type GenerateFunction,
+  type GenerateResponse,
+  stopWhen,
+  withBackendDescriptors,
+} from '@lostgradient/operative';
 import { MemoryStorage, Outbox } from '@lostgradient/weft';
 import {
   createEgressPolicy,
@@ -66,6 +74,25 @@ function textOf(content: unknown): string {
   return JSON.stringify(content);
 }
 
+/** A model that puts documents out, which no catalog row does: the file and data scenarios need one. */
+const documentOutputDescriptors = createModelCatalog()
+  .descriptors.filter((descriptor) => descriptor.provider === 'anthropic')
+  .slice(0, 1)
+  .map((descriptor) => ({
+    ...descriptor,
+    modalities: {
+      ...descriptor.modalities,
+      document: { ...descriptor.modalities.document, output: true },
+    },
+  }));
+
+const utf8 = (data: string) => ({ kind: 'inline', data, encoding: 'utf8' }) as const;
+
+/** A response of generated media only; the run admits each part as a managed asset. */
+function generated(parts: GenerateResponse['parts']): GenerateResponse {
+  return { content: '', parts, toolCalls: [] };
+}
+
 /** The agent's scripted behavior, picked by the `messageId` the host stamped on the message. */
 export const scriptedGenerate: GenerateFunction = async ({ conversation, signal }) => {
   const messages = conversation.getMessages();
@@ -86,6 +113,28 @@ export const scriptedGenerate: GenerateFunction = async ({ conversation, signal 
         },
       ],
     };
+  }
+  // The file scenarios answer with a generated file and no text, so the file is the task's first
+  // artifact part. `tck-artifact-file-url` is checked first: its prefix is `tck-artifact-file`'s.
+  // Bureau serves the file from its asset route, so the part is a URL either way.
+  if (scenario.startsWith('tck-artifact-file')) {
+    return generated([
+      {
+        type: 'document',
+        mimeType: 'text/plain',
+        name: 'output.txt',
+        source: utf8('Generated file'),
+      },
+    ]);
+  }
+  if (scenario.startsWith('tck-artifact-data')) {
+    return generated([
+      {
+        type: 'document',
+        mimeType: 'application/json',
+        source: utf8(JSON.stringify({ key: 'value', count: 42 })),
+      },
+    ]);
   }
   if (scenario.startsWith('tck-artifact-text')) {
     return { content: 'Generated text content', toolCalls: [] };
@@ -169,7 +218,7 @@ export async function startTckHost(port = 0): Promise<TckHost> {
     agents: {
       [TCK_AGENT]: createAgent({
         name: TCK_AGENT,
-        generate: scriptedGenerate,
+        generate: withBackendDescriptors(scriptedGenerate, documentOutputDescriptors),
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       }),
     },

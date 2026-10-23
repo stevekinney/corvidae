@@ -206,6 +206,7 @@ function harness(initial: DurableEventEnvelope[] = []) {
       tenant: 'tenant',
       reader: {
         replyOf: async () => undefined,
+        recordSettled: async () => undefined,
         read: async (view) => {
           snapshots.push(view);
           const task: Task = {

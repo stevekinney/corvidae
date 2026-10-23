@@ -478,7 +478,8 @@ describe('the push projection of a task a configuration outlives', () => {
         call(fixture, 'DeleteTaskPushNotificationConfig', { taskId, id }),
       ]);
       const listed = await call(fixture, 'ListTaskPushNotificationConfigs', { taskId });
-      const live = listed.result.configs.map((config: Json) => config.id);
+      // An empty page omits `configs`: create-then-delete is a valid order too.
+      const live = (listed.result.configs ?? []).map((config: Json) => config.id);
       // The two orders both leave a consistent pair: the configuration and its checkpoint, or
       // neither.
       expect(live.includes(id)).toBe((await checkpoints.read(taskId, id)) !== undefined);
