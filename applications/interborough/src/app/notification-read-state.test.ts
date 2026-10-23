@@ -51,4 +51,21 @@ describe('read ids', () => {
 
     expect(loadReadIds(storage)).toEqual([]);
   });
+
+  test('survive local storage that cannot be reached at all', () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get: () => {
+        throw new Error('SecurityError');
+      },
+    });
+    try {
+      expect(loadReadIds()).toEqual([]);
+      expect(() => saveReadIds(['a'])).not.toThrow();
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(globalThis, 'localStorage');
+      else Object.defineProperty(globalThis, 'localStorage', original);
+    }
+  });
 });

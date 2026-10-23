@@ -2,7 +2,7 @@
  * Component tests for `<NotificationBell>`: the badge counts what needs the person, each row is
  * one sentence and the chat it is about, and opening a row reads it.
  */
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -165,5 +165,34 @@ describe('NotificationBell', () => {
     const header = document.body.querySelector('.weft-notification-panel__header');
     expect(list?.querySelectorAll('.weft-notification-panel__item').length).toBe(30);
     expect(header?.contains(list ?? null)).toBe(false);
+  });
+
+  test('the host’s own problem is a row that links to the engine', async () => {
+    landAt('/agents');
+    const store = memoryStore();
+    store.reportEngineStatus('closed', Date.now());
+    store.reportEngineStatus('stale', Date.now());
+
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+    await fireEvent.click(getByText('Engine status stale'));
+
+    expect(router.pathname).toBe('/engine');
+    expect(store.unreadCount).toBe(0);
+  });
+
+  test('Escape closes the panel', async () => {
+    const store = memoryStore();
+    store.setActivity([entry()]);
+
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+    expect(getByText('Mark all read')).not.toBeNull();
+
+    await fireEvent.keyDown(document.body, { key: 'Escape' });
+
+    await waitFor(() =>
+      expect(document.body.querySelectorAll('.weft-notification-panel')).toHaveLength(0),
+    );
   });
 });

@@ -108,9 +108,11 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
 /**
  * How many error responses Chromium logs for a view's probe: one per request. These views send the
  * probe twice before they settle on the failure (measured, stable across runs); the rest send it
- * once. The default is one.
+ * once. The default is one. The chat's probe is the Bureau's session list, which the shell's
+ * notification bell also reads, for the title of each chat an item names, so it is answered twice.
  */
 const LOGGED_RESPONSES_PER_PROBE: Partial<Record<ViewName, number>> = {
+  chat: 2,
   workflows: 2,
   runs: 2,
   reviews: 2,

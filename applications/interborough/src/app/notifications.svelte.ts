@@ -67,12 +67,16 @@ export class NotificationStore {
     this.#readIds = options.storage === undefined ? loadReadIds() : loadReadIds(options.storage);
   }
 
-  /** Every item, the host's problem first, then what needs the person, then what only finished. */
-  items: NotificationItem[] = $derived.by(() => {
+  readonly #items: NotificationItem[] = $derived.by(() => {
     const read = new Set(this.#readIds);
     const entries = this.#engineProblem === undefined ? [] : [this.#engineProblem];
     return [...entries, ...this.#activity].map((entry) => ({ ...entry, read: read.has(entry.id) }));
   });
+
+  /** Every item, the host's problem first, then what needs the person, then what only finished. */
+  get items(): readonly NotificationItem[] {
+    return this.#items;
+  }
 
   /** How many unread items need the person; an answer never counts. */
   get unreadCount(): number {
