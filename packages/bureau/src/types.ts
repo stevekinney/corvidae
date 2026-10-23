@@ -346,8 +346,7 @@ export type RetentionWindowOption = 'forever' | { readonly olderThan: number };
  * with free-form answers; the object form also supplies the answer schema per signal name.
  */
 export type BureauHumanInputOption =
-  | boolean
-  | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
+  boolean | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
 
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
