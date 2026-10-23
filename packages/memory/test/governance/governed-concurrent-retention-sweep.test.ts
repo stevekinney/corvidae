@@ -457,6 +457,71 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
           });
         }
       }
+
+      for (const successor of ['open', 'closed-failed', 'closed-succeeded'] as const) {
+        const action = (
+          { open: 'owned', 'closed-failed': 'retry', 'closed-succeeded': 'done' } as const
+        )[successor];
+        it(`opens one receipt (${action}) when A lost the open and the successor's receipt is ${successor}`, async () => {
+          const fixture = await createGovernedFixture(backend);
+          const recordId = await expiredRecord(fixture);
+          // A passes its claim check, then stalls just before it opens its receipt.
+          const opening = park();
+          const a = fixture.restart({
+            ledger: {
+              ...fixture.ledger,
+              openReceipt: async (receipt) => {
+                await opening.wait();
+                return fixture.ledger.openReceipt(receipt);
+              },
+            },
+          });
+          const sweepA = a.sweepRetention(retentionService);
+          await opening.reached;
+
+          // Its lease runs out; B takes the claim over and opens the shared deletion id.
+          await fixture.runtime.advance(DELETION_CLAIM_LEASE_MILLISECONDS);
+          const lane = controlledLane(fixture.storage);
+          const b = fixture.restart({ storage: lane.storage });
+          const pending: Promise<unknown>[] = [];
+          if (successor === 'open') {
+            lane.behavior = 'park';
+            pending.push(b.sweepRetention(retentionService));
+            await lane.parked.reached;
+          } else {
+            lane.behavior = successor === 'closed-failed' ? 'fail' : 'succeed';
+            await b.sweepRetention(retentionService);
+          }
+          if (successor === 'closed-failed') {
+            await fixture.runtime.advance(DEFAULT_DELETION_BOUND_MILLISECONDS);
+            await b.processDeletionPropagation();
+            const [failed] = await receiptsFor(fixture, recordId);
+            expect(failed).toMatchObject({ open: false });
+            expect(statusOf(failed, 'source-evidence')).toBe('failed');
+          }
+          const [shared] = await receiptsFor(fixture, recordId);
+          const recordBefore = await fixture.storage.get(recordId, scope);
+
+          // A's open fails against the shared id, and it decides again from what it reads now.
+          opening.release();
+          const swept = await sweepA;
+          if (action === 'retry') {
+            expect(swept.deletionIds).toEqual([shared!.deletionId]);
+          } else {
+            expect(swept.deletionIds).toEqual([]);
+            expect(await fixture.storage.get(recordId, scope)).toEqual(recordBefore);
+          }
+          if (successor === 'open') {
+            lane.behavior = 'succeed';
+            lane.parked.release();
+          }
+          await Promise.all(pending);
+          const receipts = await receiptsFor(fixture, recordId);
+          expect(receipts.map((receipt) => receipt.deletionId)).toEqual([shared!.deletionId]);
+          expect(statusOf(receipts[0], 'source-evidence')).toBe('completed');
+          expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
+        });
+      }
     });
 
     it('opens no second receipt for a record claimed before claims carried a lease', async () => {

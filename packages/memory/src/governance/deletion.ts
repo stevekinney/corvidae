@@ -79,17 +79,39 @@ export interface DeletionRequest {
  *   is no receipt to report yet.
  */
 export type DeletionRequestOutcome =
-  | { readonly status: 'requested' | 'owned'; readonly receipt: MemoryDeletionReceipt }
-  | { readonly status: 'pending' };
+  | { readonly status: 'requested'; readonly receipt: MemoryDeletionReceipt }
+  | Decided<{ readonly status: 'owned'; readonly receipt: MemoryDeletionReceipt }>
+  | Decided<{ readonly status: 'pending' }>;
 
 /**
- * What a claim attempt decided: the claim this request now holds, an outcome
- * that stops it, or a failed receipt that owns the claim and is retried.
+ * Marks an outcome that `decideClaim` reached from what it just read. Telling
+ * a requester that another deletion owns the record, that there is nothing to
+ * do yet, or that a failed receipt should be retried is a decision, and each
+ * such decision made from a stale read has opened a second receipt or left a
+ * record stored. The brand exists only in the type system and only
+ * `decideClaim` asserts it, so an object literal cannot stand in for one.
+ */
+declare const decidedByClaim: unique symbol;
+type Decided<T> = T & { readonly [decidedByClaim]: true };
+
+/**
+ * What a claim attempt decided: the claim this request now holds, or a
+ * decision that stops it, including a failed receipt to retry.
  */
 type ClaimDecision =
   | MemoryDeletionClaim
-  | DeletionRequestOutcome
-  | { readonly status: 'retry'; readonly receipt: MemoryDeletionReceipt };
+  | Exclude<DeletionRequestOutcome, { readonly status: 'requested' }>
+  | Decided<{ readonly status: 'retry'; readonly receipt: MemoryDeletionReceipt }>;
+
+/** What a claim attempt observed of the record before deciding. */
+type ClaimObservation =
+  | {
+      readonly kind: 'observed';
+      readonly claim: MemoryDeletionClaim | undefined;
+      readonly receipt: MemoryDeletionReceipt | undefined;
+    }
+  | { readonly kind: 'record-gone' }
+  | { readonly kind: 'contended' };
 
 export interface DeletionEngine {
   /** Claims the record and, under a winning, unexpired claim, opens and runs its deletion. */
@@ -414,8 +436,12 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
   }
 
   /**
-   * Decides a claim from the record's current claim and the receipt
-   * {@link receiptForClaim} just read for it, and from nothing else. A failed
+   * Decides a claim from what was just observed of the record: its current
+   * claim and the receipt {@link receiptForClaim} read for it, and nothing
+   * else. It is the only place that may tell a requester `owned`, `pending`,
+   * or `retry` (see {@link Decided}). A record that is gone needs nothing
+   * more, and a claim that kept changing under this request is left to the
+   * claimants changing it. A failed
    * deletion is retried under its own receipt, whether it is still open or
    * already closed; an open receipt, or one waiting on a legal hold, owns the
    * record; any other stored receipt is spent, so a new deletion starts. With
@@ -427,14 +453,18 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
    */
   function decideClaim(
     request: DeletionRequest,
-    claim: MemoryDeletionClaim | undefined,
-    receipt: MemoryDeletionReceipt | undefined,
-  ): ClaimDecision {
+    observation: Exclude<ClaimObservation, { readonly kind: 'observed' }>,
+  ): Decided<{ readonly status: 'pending' }>;
+  function decideClaim(request: DeletionRequest, observation: ClaimObservation): ClaimDecision;
+  function decideClaim(request: DeletionRequest, observation: ClaimObservation): ClaimDecision {
+    const decided = <T>(value: T) => value as Decided<T>;
+    if (observation.kind !== 'observed') return decided({ status: 'pending' as const });
+    const { claim, receipt } = observation;
     if (receipt !== undefined) {
-      if (retriable(receipt, request)) return { status: 'retry', receipt };
-      if (owns(receipt, request)) return { status: 'owned', receipt };
+      if (retriable(receipt, request)) return decided({ status: 'retry' as const, receipt });
+      if (owns(receipt, request)) return decided({ status: 'owned' as const, receipt });
     } else if (claim !== undefined) {
-      if (context.now() < claim.leaseExpiresAt) return { status: 'pending' };
+      if (context.now() < claim.leaseExpiresAt) return decided({ status: 'pending' as const });
       return { deletionId: claim.deletionId, ...freshLease() };
     }
     return { deletionId: context.runtime.identifiers.next('memory-deletion'), ...freshLease() };
@@ -461,13 +491,13 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     const tenantId = request.resolved.scope.tenantId;
     for (let attempt = 0; attempt < DELETION_CLAIM_ATTEMPTS; attempt++) {
       const current = await context.load(tenantId, reference);
-      if (current === undefined) return { status: 'pending' };
+      if (current === undefined) return decideClaim(request, { kind: 'record-gone' });
       const observed = current.read.governance.deletionClaim;
-      const claim = decideClaim(
-        request,
-        observed,
-        await receiptForClaim(tenantId, reference, request, observed),
-      );
+      const claim = decideClaim(request, {
+        kind: 'observed',
+        claim: observed,
+        receipt: await receiptForClaim(tenantId, reference, request, observed),
+      });
       if ('status' in claim) return claim;
       let changed = false;
       const stored = await context.updateGovernance(current, (governance) => {
@@ -485,10 +515,10 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
           deletionClaim: claim,
         };
       });
-      if (!stored) return { status: 'pending' };
-      if (!changed) return claim;
+      // A record gone, or a claim changed underneath: observe it again.
+      if (stored && !changed) return claim;
     }
-    return { status: 'pending' };
+    return decideClaim(request, { kind: 'contended' });
   }
 
   /**
@@ -878,19 +908,52 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     return run(receipt);
   }
 
+  /**
+   * Claims the record and opens its receipt under the claim. A request that
+   * loses its claim before opening (another claimant took it over, or opened
+   * the shared `deletionId` first) does not report what it found there: it
+   * observes the record again, and {@link decideClaim} decides from that,
+   * so a receipt the successor has since failed is retried rather than
+   * reported as owned.
+   */
   async function requestDeletion(request: DeletionRequest): Promise<DeletionRequestOutcome> {
+    const tenantId = request.resolved.scope.tenantId;
+    const reference = {
+      id: request.resolved.record.id,
+      namespace: request.resolved.scope.namespace,
+    };
+    for (let attempt = 0; attempt < DELETION_CLAIM_ATTEMPTS; attempt++) {
+      const claim = await claimRecord(request, reference);
+      if ('status' in claim) {
+        if (claim.status !== 'retry') return claim;
+        return {
+          status: 'requested',
+          receipt: await retryDeletion(claim.receipt, request.attribution),
+        };
+      }
+      const receipt = await buildReceipt(request, reference, claim);
+      // A claimant that lost its claim stops here, or, if it lost it after
+      // this check, at the conditional write: whoever took the claim over
+      // builds its receipt under the same `deletionId`, so only one is opened.
+      if (!(await stillHolds(tenantId, reference, claim))) continue;
+      if ((await open(receipt)) === undefined) continue;
+      return {
+        status: 'requested',
+        receipt: receipt.awaitingHoldRelease ? receipt : await run(receipt),
+      };
+    }
+    return decideClaim(request, { kind: 'contended' });
+  }
+
+  /** Plans the deletion `claim` covers and builds the receipt it will open. */
+  async function buildReceipt(
+    request: DeletionRequest,
+    reference: MemoryRecordSourceReference,
+    claim: MemoryDeletionClaim,
+  ): Promise<MemoryDeletionReceipt> {
     const { resolved } = request;
     const { governance } = resolved.read;
     const tenantId = resolved.scope.tenantId;
-    const reference = { id: resolved.record.id, namespace: resolved.scope.namespace };
-    const claim = await claimRecord(request, reference);
-    if ('status' in claim) {
-      if (claim.status !== 'retry') return claim;
-      return {
-        status: 'requested',
-        receipt: await retryDeletion(claim.receipt, request.attribution),
-      };
-    }
     const requestedAt = context.now();
     const bound = resolveTenantPolicy(context.policy(), tenantId).deletionBoundMilliseconds;
     const plan = await claimPlan(request, reference);
@@ -904,7 +967,7 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     // deletion's plan is its own record, so only a hold on that record holds it.
     const derived = await inspectReferences(tenantId, planReferences(plan));
     const held = governance.legalHold === 'held' || derived.held;
-    const receipt: MemoryDeletionReceipt = withOpen(
+    return withOpen(
       {
         version: 1,
         deletionId: claim.deletionId,
@@ -931,15 +994,6 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       },
       requestedAt,
     );
-    // A claimant that lost its claim stops here, or, if it lost it after
-    // this check, at the conditional write: whoever took the claim over
-    // builds its receipt under the same `deletionId`, so only one is opened.
-    if (!(await stillHolds(tenantId, reference, claim))) return { status: 'pending' };
-    if ((await open(receipt)) === undefined) {
-      const owner = await context.ledger.getReceipt(receipt.deletionId);
-      return owner === undefined ? { status: 'pending' } : { status: 'owned', receipt: owner };
-    }
-    return { status: 'requested', receipt: held ? receipt : await run(receipt) };
   }
 
   /**
