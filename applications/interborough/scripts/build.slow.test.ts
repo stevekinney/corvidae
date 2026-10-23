@@ -1,16 +1,19 @@
 /**
  * The real production build (`scripts/build.ts`): bundling takes seconds, so it runs in the slow
- * lane (`test:slow`). The file makes exactly one bundle of the real application, in file setup
- * (a top-level `await`, so no test's own time limit pays for it), written into a scratch directory
- * so it races nothing that builds `build/`. Every assertion that reads a build's output shares it.
- * The retention tests exercise what `buildApplication` does around the bundler, not the bundler,
- * so each rebuilds a one-line entry through the real `Bun.build` and the real build options, and
- * seeds its "previous build" by copying the shared one. Nothing asserts on how long a build takes.
+ * lane (`test:slow`). The file builds the application once, at module scope, because three tests
+ * read one production bundle, and it writes into a scratch directory so it races nothing that
+ * builds `build/`. {@link outcomeOf} caps a hang with the module-scope hang guard and records a
+ * build failure, which {@link rethrow} reports under each test that reads the build. The retention
+ * tests exercise what `buildApplication` does around the bundler, not the bundler, so each
+ * rebuilds a one-line entry through the real `Bun.build` and the real build options, and seeds its
+ * "previous build" by copying the shared one. Nothing asserts on how long a build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 
 import { type ApplicationBuild, BUILD_ASSET_DIRECTORY, buildApplication } from './build.ts';
 
@@ -27,7 +30,17 @@ function counted(configuration: Bun.BuildConfig): Promise<Bun.BuildOutput> {
   return Bun.build(configuration);
 }
 
-const sharedBuild: ApplicationBuild = await buildApplication({ outdir, bundle: counted });
+let builtOutput: ApplicationBuild | undefined;
+const buildOutcome = await outcomeOf(async () => {
+  builtOutput = await buildApplication({ outdir, bundle: counted });
+});
+
+/** The shared build, or the failure or hang that stopped it, thrown under the reading test. */
+function sharedBuild(): ApplicationBuild {
+  rethrow(buildOutcome);
+  if (builtOutput === undefined) throw new Error('the shared build produced nothing');
+  return builtOutput;
+}
 
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
@@ -51,7 +64,7 @@ function emittedModules(metafile: Bun.BuildMetafile, pattern: RegExp): string[] 
 
 describe('buildApplication', () => {
   it('writes index.html and hashed JavaScript and CSS into the output directory', async () => {
-    const result = sharedBuild;
+    const result = sharedBuild();
 
     expect(result.directory).toBe(outdir);
     expect(result.files).toContain('index.html');
@@ -77,7 +90,7 @@ describe('buildApplication', () => {
   });
 
   it('emits exactly the grammars and themes the highlighters register', async () => {
-    const { metafile } = sharedBuild;
+    const { metafile } = sharedBuild();
 
     // `src/lib/code-highlighter.ts` registers `json` and `typescript` and two themes. Chat renders
     // messages with Markdown, which registers its own curated set (`BUNDLED_LANGUAGES` in
@@ -107,7 +120,7 @@ describe('buildApplication', () => {
 
 describe('buildApplication Chat highlighting', () => {
   it('gives Chat’s highlighter the curated registries and not Shiki’s complete ones', async () => {
-    const { metafile } = sharedBuild;
+    const { metafile } = sharedBuild();
 
     const inputs = Object.values(metafile.outputs).flatMap((output) => Object.keys(output.inputs));
     expect(inputs.some((input) => input.endsWith('src/lib/curated-shiki-registries.ts'))).toBe(
@@ -126,7 +139,7 @@ describe('buildApplication asset retention', () => {
    */
   async function replacedBuild(development: boolean): Promise<string> {
     const outdir = join(mkdtempSync(join(scratch, 'retention-')), 'build');
-    cpSync(sharedBuild.directory, outdir, { recursive: true });
+    cpSync(sharedBuild().directory, outdir, { recursive: true });
     const entry = join(scratch, 'retention-entry.ts');
     writeFileSync(entry, 'export const answer = 42;\n');
     writeFileSync(join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js'), '');
