@@ -373,7 +373,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 14px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     margin-block-end: 16px;
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
@@ -409,7 +409,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px;
+    padding: var(--cinder-density-pad-card);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
@@ -438,7 +438,7 @@
     align-items: flex-start;
     gap: 10px;
     margin: 0;
-    padding: 10px 12px;
+    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-xs);
   }
@@ -449,7 +449,7 @@
   }
 
   .weft-dynamic-source__outcome ul {
-    padding-inline-start: 18px;
+    padding-inline-start: var(--cinder-space-4);
   }
 
   .weft-dynamic-source__outcome--ok {

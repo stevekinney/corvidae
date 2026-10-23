@@ -79,7 +79,7 @@
 
 <div class="weft-checkpoints-tab">
   {#if checkpointsQuery.isPending}
-    <div style="padding: 15px;"><Skeleton height="6rem" /></div>
+    <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="6rem" /></div>
   {:else if treatment}
     <div class="weft-checkpoints-tab__fault" role="alert">
       <Badge variant={treatment.kind === 'not-found' ? 'neutral' : 'danger'}>
@@ -169,7 +169,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 15px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
@@ -202,7 +202,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 6px;
+    padding: var(--cinder-space-2);
     max-height: 420px;
     overflow-y: auto;
   }
@@ -213,7 +213,7 @@
     gap: 8px;
     width: 100%;
     min-height: 40px;
-    padding: 6px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: transparent;
     border: 0;
     border-radius: var(--cinder-radius-md);

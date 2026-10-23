@@ -157,7 +157,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px 15px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
@@ -207,7 +207,7 @@
 
   .weft-stream-view__value {
     margin: 0;
-    padding: 6px 8px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-md);
     font-family: var(--cinder-font-mono);

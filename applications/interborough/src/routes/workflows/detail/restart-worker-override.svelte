@@ -208,7 +208,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px 12px;
+    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-xs);

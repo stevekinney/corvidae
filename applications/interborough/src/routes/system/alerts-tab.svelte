@@ -305,7 +305,7 @@
     display: flex;
     align-items: center;
     gap: 11px;
-    padding: 11px 14px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border-bottom: 1px solid var(--cinder-border-muted);
     border-inline-start: 2px solid transparent;
   }

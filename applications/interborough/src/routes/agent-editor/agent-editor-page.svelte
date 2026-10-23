@@ -351,7 +351,12 @@
   .weft-agent-editor {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--cinder-space-4);
+  }
+
+  /* The outlet pads the page, so Cinder's page header sits flush with the form under it. */
+  .weft-agent-editor :global(.cinder-page-header__row) {
+    padding-inline: 0;
   }
 
   .weft-agent-editor__path {
@@ -376,6 +381,6 @@
 
   .weft-agent-editor__issues {
     margin: 0 0 8px;
-    padding-inline-start: 20px;
+    padding-inline-start: var(--cinder-space-6);
   }
 </style>

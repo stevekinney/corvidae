@@ -16,6 +16,7 @@
   import { ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
   import FaultBoundary from '../fault-boundary.svelte';
   import ViewFrame from '../view-frame.svelte';
+  import { VIEWS } from '../views.ts';
 
   let activeComponent = $state<Component | null>(null);
   let loading = $state(false);
@@ -88,7 +89,17 @@
   });
 </script>
 
-<main class="weft-shell-outlet">
+<!-- The outlet is the only thing that pads a page. The view the route belongs to decides how dense
+     the page is and how wide, so a page never chooses either for itself: it reads Cinder's
+     density tokens, and `foundation.css` centres its content in the reading column. A
+     route that belongs to no view (the not-found page) reads like a reading page. -->
+<main
+  class="weft-shell-outlet"
+  data-density={router.current.route?.view
+    ? VIEWS[router.current.route.view].density
+    : 'comfortable'}
+  data-width={router.current.route?.view ? VIEWS[router.current.route.view].width : 'reading'}
+>
   <FaultBoundary>
     {#if notFound}
       <EmptyState
