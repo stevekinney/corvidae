@@ -36,6 +36,7 @@ const TransportKindSchema = z.enum([
   'jsonRpcHttp',
   'jsonRpcWebSocket',
   'jsonRpcStdio',
+  'mcp',
 ] as const satisfies ReadonlyArray<TransportKind>);
 export const UnsupportedTransportDataSchema = z.object({
   transport: TransportKindSchema,

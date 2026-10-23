@@ -371,6 +371,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.
       agUi: {},
+      // An MCP host (Claude Desktop or Claude Code) observes and steers this Bureau's work at
+      // `/bureau/mcp` (COR-839). It is Bureau's own endpoint, not the engine's `/mcp`: Bureau owns
+      // what a local caller does as `anonymous:local`, which the engine's relayed principal is not.
+      mcp: {},
     });
     let engineUpstream: ((upstream: EngineUpstream) => void) | undefined;
     const upstream = new Promise<EngineUpstream>((resolve) => {

@@ -28,7 +28,9 @@ export function transportToPolicyKey(transport: TransportKind): keyof UnknownKey
   return transport === 'http-rest' ? 'http' : 'jsonRpc';
 }
 
-export function transportToAvailabilityKey(transport: TransportKind): keyof TransportAvailability {
+export function transportToAvailabilityKey(
+  transport: Exclude<TransportKind, 'mcp'>,
+): keyof TransportAvailability {
   switch (transport) {
     case 'http-rest':
       return 'http';

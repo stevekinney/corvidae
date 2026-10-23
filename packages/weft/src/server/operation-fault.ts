@@ -40,8 +40,9 @@ import type { FaultCode } from '../core/fault-code.ts';
 import type { WorkflowSourceRejectionReason } from '../core/source/errors.ts';
 import { isWeftErrorCode, type WeftErrorCode } from '../core/weft-error.ts';
 
-/** Transport identifiers as seen by `executeOperation`. */
-export type TransportKind = 'http-rest' | 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio';
+/** Transports `executeOperation` sees; `mcp` (a catalog MCP mount) admits `mcpExposable` ones. */
+export type TransportKind =
+  'http-rest' | 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio' | 'mcp';
 
 /** A revision identifier: a counter or an opaque token. */
 export type RevisionToken = string | number;
