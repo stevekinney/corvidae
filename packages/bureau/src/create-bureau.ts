@@ -9052,9 +9052,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
-      // COR-1664 — claims a crash left on runs that ended and sessions that were deleted.
-      await assetClaimReconciler.reconcileRunClaims();
-      await assetClaimReconciler.reconcileSessionClaims();
       return report;
     } finally {
       recoveryPassActive = false;
@@ -12324,8 +12321,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       }
       // COR-1664 — claims on assets whose run ended or whose session was deleted without a release.
-      await assetClaimReconciler.reconcileRunClaims();
-      await assetClaimReconciler.reconcileSessionClaims();
+      await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
       try {
         await recordPendingScheduleTransitions();
@@ -12604,8 +12600,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           });
         }
         // COR-1664 — claims on assets whose run ended or whose session was deleted without a release.
-        await assetClaimReconciler.reconcileRunClaims();
-        await assetClaimReconciler.reconcileSessionClaims();
+        await reconcileAssetClaims();
         // COR-194 — a schedule transition whose record failed after its commit is retried here.
         try {
           await recordPendingScheduleTransitions();
@@ -13117,6 +13112,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     onReleased: (claim) => claimedRowAssets.delete(`${claim.holderId}\u0000${claim.assetId}`),
     diagnose,
   });
+
+  /** Releases the claims of runs that ended and sessions that were deleted; never rejects. */
+  async function reconcileAssetClaims(): Promise<void> {
+    await assetClaimReconciler.reconcileRunClaims();
+    await assetClaimReconciler.reconcileSessionClaims();
+  }
 
   async function performDeleteSession(
     id: string,
@@ -18634,6 +18635,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           } satisfies BureauRecoveryReport;
         });
         void recovery.then((report) => resolveDurableRecoveryBarrier?.(report));
+        void recovery.then(() => trackCatalogAssetRelease(reconcileAssetClaims()));
       }
     },
     getRequestAuthorityValidator() {
@@ -19149,6 +19151,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       } satisfies BureauRecoveryReport;
     });
     await durableRecoveryBarrier;
+    // COR-1664 — after recovery, so the runs it resumed are in flight and keep their claims. Not
+    // awaited: recovery's resumed steps race the caller's first subscription, and every extra turn
+    // before this function returns costs a recovered run's first events. Shutdown waits for it.
+    void trackCatalogAssetRelease(reconcileAssetClaims());
   }
 
   trackScheduledFireReviewState(bureau, scheduledFireReviewState);

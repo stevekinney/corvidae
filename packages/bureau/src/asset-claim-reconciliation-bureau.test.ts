@@ -134,12 +134,21 @@ describe('a run that ended in a process that died before it released', () => {
     expect(await holdersOf(first, assetId)).toEqual([lost]);
     await first.dispose();
 
+    // The boot's reconciliation runs beside the caller, after recovery, so it is waited for.
     const second = await openBureau(store);
-    expect(await holdersOf(second, assetId)).toEqual([]);
+    await waitForCondition(
+      async () => {
+        const holders = await holdersOf(second, assetId);
+        return holders.length === 0;
+      },
+      'the boot never released the lost claim',
+      200,
+    );
     const released = await releasesRecorded(second);
     await second.dispose();
 
     const third = await openBureau(store);
+    for (let turn = 0; turn < 50; turn += 1) await yieldToPortableEventLoop();
     expect(await holdersOf(third, assetId)).toEqual([]);
     expect(await releasesRecorded(third)).toBe(released);
   });
