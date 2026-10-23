@@ -9,8 +9,16 @@ function committed(result: TransitionResult): boolean {
   return result.outcome === 'committed';
 }
 
+/** How an application ended: a failure carries its signature, and a success carries none. */
+export type ProcedureOutcome =
+  | { readonly outcome: 'succeeded'; readonly failureSignature?: never }
+  | { readonly outcome: 'failed'; readonly failureSignature?: string };
+
 /** One application's outcome, for {@link recordProcedureOutcome}. */
-export interface RecordProcedureOutcomeOptions {
+export type RecordProcedureOutcomeOptions = RecordProcedureOutcomeBase & ProcedureOutcome;
+
+/** What every outcome carries, whichever way it ended. */
+export interface RecordProcedureOutcomeBase {
   readonly engine: TransitionEngine;
   readonly authority: MemoryAuthority;
   readonly namespace: string;
@@ -19,11 +27,8 @@ export interface RecordProcedureOutcomeOptions {
   readonly operationId: string;
   /** The id of the episode projection the outcome is recorded as. */
   readonly episodeId: string;
-  readonly outcome: 'succeeded' | 'failed';
   /** What happened, in a sentence; the episode's summary. */
   readonly summary: string;
-  /** For a failure, its signature, recorded with the outcome. */
-  readonly failureSignature?: string;
   readonly runId?: string;
   readonly projectorRevision: string;
   /**
@@ -216,11 +221,15 @@ export async function recordProcedureOutcome(
     namespace,
     options.procedure.id,
   );
+  const episode = { id: options.episodeId, revision: 1 };
+  // A retry after the demotion committed finds its receipt, whatever revisions
+  // came later, and resubmits the same demotion so that receipt replays.
+  const demotionSettled =
+    (await engine.getReceipt(authority.tenantId, options.operationId)) !== undefined;
   const demote =
     options.outcome === 'failed' &&
-    current?.revision === options.procedure.revision &&
-    current.status === 'active';
-  const episode = { id: options.episodeId, revision: 1 };
+    (demotionSettled ||
+      (current?.revision === options.procedure.revision && current.status === 'active'));
   if (demote) {
     proposals.push({
       ...base,

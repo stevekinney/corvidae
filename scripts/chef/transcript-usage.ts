@@ -315,6 +315,32 @@ export function report(
   };
 }
 
+/** Token totals across transcripts. */
+export interface UsageTotals {
+  /** Input that was not read from cache: uncached input plus cache writes. */
+  input: number;
+  /** Input read from cache. */
+  cachedInput: number;
+  output: number;
+}
+
+/**
+ * The token totals of every Claude Code or Codex transcript under `paths` (files, or directories
+ * searched recursively): what `run` reports per transcript, summed. A path that does not exist is
+ * a `UsageError`; a file that is neither provider's format adds nothing.
+ */
+export function totalUsage(paths: string[]): UsageTotals {
+  const totals: UsageTotals = { input: 0, cachedInput: 0, output: 0 };
+  for (const usage of paths.flatMap(transcriptFiles).map(readTranscript)) {
+    if (usage === undefined) continue;
+    const summary = report(usage, undefined);
+    totals.input += summary.uncachedInput + summary.cacheWrite;
+    totals.cachedInput += summary.cacheRead;
+    totals.output += summary.output;
+  }
+  return totals;
+}
+
 function readPrices(path: string): Record<string, Price> {
   let parsed: unknown;
   try {
