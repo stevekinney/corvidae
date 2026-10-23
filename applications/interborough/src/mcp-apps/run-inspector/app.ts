@@ -20,7 +20,7 @@ const ABORT_WAIT_MILLISECONDS = 10_000;
 
 /** The result's structured content, or `undefined` for an error result. The host's tool call is the authority on its shape. */
 function structured<T>(
-  result: { structuredContent?: unknown; isError?: boolean },
+  result: { structuredContent?: unknown; isError?: boolean | undefined },
   isShape: (value: unknown) => value is T,
 ): T | undefined {
   return result.isError !== true && isShape(result.structuredContent)

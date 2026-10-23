@@ -3,7 +3,8 @@
  * sandboxed frame under its declared deny-all policy, behind the ext-apps 2.0.x `AppBridge`.
  * Tool calls are answered from fixtures, so the spec proves the page, not the Bureau.
  */
-import AxeBuilder from '@axe-core/playwright';
+import { default as Axe } from '@axe-core/playwright';
+import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
 import {
@@ -24,7 +25,8 @@ test.beforeAll(async () => {
   });
   if (!bundle.success) throw new AggregateError(bundle.logs, 'The reference host did not build');
   hostScript = await bundle.outputs[0]!.text();
-  pageHtml = (await buildRunInspectorPage()).html;
+  const built = await buildRunInspectorPage();
+  pageHtml = built.html;
 });
 
 const inspection = (overrides: Record<string, unknown> = {}, taskOverrides = {}) => ({
@@ -82,7 +84,10 @@ async function open(page: Page, fixture: Fixture) {
     }),
   );
   await page.goto(`${HOST_ORIGIN}/`);
-  await page.evaluate(
+  await page.evaluate<
+    void,
+    { html: string; csp: McpUiResourceCsp; inspected: unknown; events: unknown }
+  >(
     async ({ html, csp, inspected, events }) => {
       const host = window.referenceHost;
       host.handlers['bureau.tasks.inspect'] = () => inspected;
@@ -148,7 +153,7 @@ test.describe('the run inspector MCP App', () => {
     const { app } = await open(page, { inspection: inspection() });
     await expect(app.getByRole('heading', { level: 1 })).toBeVisible();
     const frame = page.frames().find((candidate) => candidate !== page.mainFrame())!;
-    const results = await new AxeBuilder({ page }).include('iframe').analyze();
+    const results = await new Axe({ page }).include('iframe').analyze();
     expect(results.violations.filter((violation) => violation.impact !== 'minor')).toEqual([]);
     const transition = await frame.evaluate(
       () => getComputedStyle(document.querySelector('button')!).transitionDuration,

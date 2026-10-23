@@ -275,9 +275,7 @@ function buildServer(
           readOnlyHint: !operation.destructive && operation.kind === 'subscription',
           destructiveHint: operation.destructive,
         },
-        ...(toolMeta[operation.name] === undefined
-          ? {}
-          : { _meta: { ...toolMeta[operation.name] } }),
+        ...toolMetaOf(toolMeta, operation.name),
       },
       async (input, handlerContext) =>
         operation.kind === 'subscription'

@@ -67,7 +67,7 @@ const host: ReferenceHost = {
       host.initialized = true;
       void bridge?.sendToolInput({ arguments: toolInput });
     };
-    bridge.oncalltool = async (params) => {
+    bridge.oncalltool = async (params): ReturnType<NonNullable<AppBridge['oncalltool']>> => {
       host.calls.push({ name: params.name, arguments: params.arguments ?? {} });
       const handler = host.handlers[params.name];
       if (handler === undefined) {

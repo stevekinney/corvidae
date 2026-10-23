@@ -25,7 +25,7 @@ export const RUN_INSPECTOR_UI_META = {
   csp: { connectDomains: [], resourceDomains: [], frameDomains: [], baseUriDomains: [] },
   permissions: {},
   prefersBorder: false,
-} as const;
+};
 
 const STYLES = `
 :root{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif}
