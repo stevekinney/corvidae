@@ -187,8 +187,9 @@
 
 .ib-runs__filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  flex: 1 1 24rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  flex: 1 1 18rem;
+  min-width: 0;
   gap: var(--cinder-space-3);
   max-width: 48rem;
 }

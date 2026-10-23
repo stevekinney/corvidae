@@ -278,7 +278,11 @@
     const key = [...gone, questionGone ? 'question' : ''].join('|');
     if ((gone.length === 0 && !questionGone) || key === rereadFor) return;
     rereadFor = key;
-    untrack(() => void session.refresh());
+    untrack(() => {
+      void session.refresh();
+      // The strip of runs under the header reads the same decision.
+      void queryClient.invalidateQueries({ queryKey: ['bureau-tasks'] });
+    });
   });
 
   async function decide(toolCallId: string, decision: 'approve' | 'deny'): Promise<void> {

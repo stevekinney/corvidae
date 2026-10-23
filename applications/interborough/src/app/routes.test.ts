@@ -177,21 +177,20 @@ describe('the route table', () => {
   });
 });
 
-describe('the Tasks routes', () => {
-  test('are /tasks and /tasks/:id, both in the tasks view, and /tasks is not in the navigation', () => {
-    expect(matchRoute('/tasks')).toEqual({ pattern: '/tasks', params: {} });
-    expect(matchRoute('/tasks/run-1')).toEqual({ pattern: '/tasks/:id', params: { id: 'run-1' } });
+describe('the retired Tasks routes', () => {
+  test('/tasks and /tasks/:id redirect, and name no view, so nothing in the navigation shows them', async () => {
     for (const pattern of ['/tasks', '/tasks/:id']) {
-      expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
-        'tasks',
-      );
+      const route = routes.find((candidate) => candidate.pattern === pattern);
+      expect(route?.view, pattern).toBeUndefined();
+      expect(route?.redirect, pattern).toBeDefined();
     }
   });
 
-  test('load one component, which both routes render', () => {
-    const page = sourcePath('../routes/tasks/index.svelte');
-    expect(componentPathOf('/tasks')).toBe(page);
-    expect(componentPathOf('/tasks/:id')).toBe(page);
+  test('/tasks goes to the runs a chat started, and /tasks/:id to its run', async () => {
+    const list = routes.find((candidate) => candidate.pattern === '/tasks');
+    const one = routes.find((candidate) => candidate.pattern === '/tasks/:id');
+    expect(await list?.redirect?.({ params: {} })).toBe('/runs?startedBy=chat');
+    expect(await one?.redirect?.({ params: { id: 'run-1/a b' } })).toBe('/runs/run-1%2Fa%20b');
   });
 });
 
