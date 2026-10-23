@@ -493,12 +493,20 @@ export const AUDIT_COPY = {
   /** The accessible name of the search form. */
   searchLabel: 'Search the audit trail',
   sinceLabel: 'Since',
-  sinceDescription: 'Only records at or after this time, as YYYY-MM-DDTHH:mm in your time zone.',
+  /** Shown in the time field while it is empty, so the field names what it narrows without a label above it. */
+  sincePlaceholder: 'Any time',
   typeLabel: 'Type',
-  typeDescription: 'The kind of record, such as run.completed or schedule.created.',
-  resourceLabel: 'Run or resource',
-  resourceDescription:
-    'A run id, or schedule:<id>, session:<id>, agent:<id>, or workflow:<id>, to see what happened to one thing.',
+  /** The select's first option: no narrowing by type. */
+  anyType: 'Any type',
+  /** The select's last option, which brings a field for a type the trail has not shown yet. */
+  otherType: 'Other…',
+  otherTypeLabel: 'Other type',
+  otherTypePlaceholder: 'Type, such as run.completed',
+  resourceLabel: 'Resource',
+  /** The first option of the resource picker: no narrowing by what a record is about. */
+  anyResource: 'Any resource',
+  resourceIdLabel: 'Resource id',
+  resourceIdPlaceholder: 'Id',
   searchAction: 'Search',
   clearAction: 'Clear',
   loadMore: 'Load more',
@@ -510,6 +518,8 @@ export const AUDIT_COPY = {
   actorColumn: 'Actor',
   detailColumn: 'Details',
   noActor: 'None',
+  /** The small heading above a record's raw JSON, under the disclosure each row opens. */
+  rawRecord: 'Raw record',
   noMatches: {
     title: 'No records match',
     description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',

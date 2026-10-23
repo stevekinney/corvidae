@@ -58,3 +58,46 @@ export function pathOf(draft: AuditDraft): string {
   const query = params.toString();
   return query === '' ? '/audit' : `/audit?${query}`;
 }
+
+/**
+ * What a record can be about, as a person names it and as the Bureau spells it: a chat is a
+ * `session:<id>`, and a run is its bare id. The form builds the `kind:<id>` string from a kind and an
+ * id, so nobody types the prefix; the address and the Bureau still hold the one string.
+ */
+export const RESOURCE_KINDS = [
+  { kind: 'session', label: 'Chat', prefix: 'session:' },
+  { kind: 'agent', label: 'Agent', prefix: 'agent:' },
+  { kind: 'schedule', label: 'Schedule', prefix: 'schedule:' },
+  { kind: 'workflow', label: 'Workflow', prefix: 'workflow:' },
+  { kind: 'run', label: 'Run id', prefix: '' },
+] as const;
+
+export type ResourceKind = (typeof RESOURCE_KINDS)[number]['kind'];
+
+/** What the resource picker holds: a kind (or none) and the id within it. */
+export type ResourceChoice = { readonly kind: ResourceKind | ''; readonly id: string };
+
+/**
+ * The picker's reading of a resource string. A string with a known prefix is that kind and the rest
+ * is its id; any other non-empty string is a run id, so a resource the picker has no kind for stays
+ * searchable as it was written and reads back unchanged.
+ */
+export function splitResource(resource: string): ResourceChoice {
+  const text = resource.trim();
+  if (text === '') return { kind: '', id: '' };
+  const named = RESOURCE_KINDS.find((entry) => entry.prefix !== '' && text.startsWith(entry.prefix));
+  return named === undefined
+    ? { kind: 'run', id: text }
+    : { kind: named.kind, id: text.slice(named.prefix.length) };
+}
+
+/**
+ * The resource string a picker choice stands for. A kind with no id narrows nothing, because the
+ * Bureau takes one resource exactly and a prefix alone names none.
+ */
+export function joinResource(choice: ResourceChoice): string {
+  const id = choice.id.trim();
+  if (choice.kind === '' || id === '') return '';
+  const entry = RESOURCE_KINDS.find((candidate) => candidate.kind === choice.kind);
+  return `${entry?.prefix ?? ''}${id}`;
+}

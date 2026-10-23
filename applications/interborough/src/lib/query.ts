@@ -88,6 +88,8 @@ export const queryKeys = {
   /** The audit trail, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
+    /** The first page of the whole trail, read for the types the Type select offers. */
+    types: () => ['audit', 'types'] as const,
   },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
