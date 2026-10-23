@@ -245,6 +245,9 @@ export const workflowFaults = {
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
+  /** An identifier the Bureau will not take for a new file, as its create answers. */
+  conflict: (reason: string) =>
+    new StubFault('Conflict', 409, 'That identifier is already used.', { reason }),
   /** The Bureau replaced the file, and then the engine or the schedule could not follow. */
   applyFailed: () =>
     new StubFault('Unavailable', 503, 'The change was written but the engine did not apply it.', {

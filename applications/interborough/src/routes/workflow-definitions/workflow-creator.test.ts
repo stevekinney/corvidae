@@ -150,6 +150,25 @@ describe('the new-workflow editor', () => {
     expect(stub?.world.files.map((file) => file.id)).toEqual(['digest']);
   });
 
+  test('says only that the save failed for a fault that names nothing the person can act on', async () => {
+    const { container, getByRole, findByRole } = open();
+    await waitFor(() => expect(textarea(container)).toBeTruthy());
+    for (const fault of [
+      workflowFaults.conflict('agent-file-exists'),
+      workflowFaults.stale('hash', 'old'),
+      workflowFaults.notFound('workflow'),
+    ]) {
+      stub?.on('bureau.workflows.create', () => {
+        throw fault;
+      });
+      await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+      const alert = await findByRole('alert');
+      expect(alert.textContent).toContain(WORKFLOW_COPY.creator.saveFailed);
+      expect(alert.textContent).not.toContain(fault.message);
+      expect(router.pathname).toBe('/workflows/new');
+    }
+  });
+
   test('shows the Bureau’s own words for a document it refuses, and stays on the page', async () => {
     const { container, getByRole, findByText, queryByText } = open();
     stub?.on('bureau.workflows.create', () => {

@@ -473,7 +473,7 @@ export const workflowsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List workflows',
   description:
-    'Lists every workflow file by identifier, `ready` and `invalid` alike, each with its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
+    'Lists every workflow file by identifier, `ready` and `invalid` alike, each with its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: listInput,

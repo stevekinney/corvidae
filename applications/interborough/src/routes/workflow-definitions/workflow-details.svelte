@@ -28,8 +28,7 @@
   {#if entries.length > 0}
     <dt>{label}</dt>
     <dd data-testid={testId}>
-      {#each entries as entry, index (entry)}{#if index > 0},
-        {/if}<code>{entry}</code>{/each}
+      {#each entries as entry, index (entry)}{#if index > 0}{', '}{/if}<code>{entry}</code>{/each}
     </dd>
   {/if}
 {/snippet}

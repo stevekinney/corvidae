@@ -285,6 +285,9 @@ const instancePageSchema = z.object({
 const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** The statuses of an instance that has not finished. */
+/** How far back a quiet type's newest instance is looked for before its whole history is read. */
+const QUIET_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 const ACTIVE_STATUSES = ['pending', 'running', 'suspended'] as const;
 
 /** What the engine says of a code-defined type's activity: its instance counts and its schedules. */
@@ -312,13 +315,24 @@ export async function loadCodeActivity(
     );
   async function runsOf(type: string): Promise<WorkflowRunCounts | null> {
     try {
-      const [active, recent, newest] = await Promise.all([
+      // The engine narrows by its type, status, and created-at indexes before it loads any state,
+      // so each read loads only the instances it counts.
+      const [active, recent] = await Promise.all([
         list({ type, status: ACTIVE_STATUSES }),
         list({ type, createdAt: { gte: now - RECENT_WINDOW_MS } }),
-        // The engine lists newest first, so the one item of an unfiltered page is the last run.
-        list({ type }),
       ]);
-      const last = newest.items[0];
+      // The engine lists newest first, so the one item of a page is the newest in its window. A type
+      // that ran today has its newest already; a quiet one looks back further, and reads its whole
+      // history only as the last resort.
+      let last = recent.items[0];
+      for (const windowMs of [QUIET_WINDOW_MS, undefined]) {
+        if (last !== undefined) break;
+        const page = await list({
+          type,
+          ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
+        });
+        last = page.items[0];
+      }
       return {
         active: active.total,
         last24Hours: recent.total,

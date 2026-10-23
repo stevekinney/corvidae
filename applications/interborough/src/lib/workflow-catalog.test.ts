@@ -408,6 +408,38 @@ describe('the activity of a code-defined type', () => {
     for (const call of stub.callsTo('weft.workflows.list')) expect(call.params['limit']).toBe(1);
   });
 
+  test('finds the newest instance of a quiet type beyond the day, reading only what it must', async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    stub = installWorkflowWorld(
+      emptyWorld({
+        runs: [
+          runFixture('old-1', 'quiet', { createdAt: NOW - 40 * DAY }),
+          runFixture('old-2', 'quiet', { createdAt: NOW - 10 * DAY }),
+          runFixture('ancient', 'rare', { createdAt: NOW - 400 * DAY }),
+        ],
+      }),
+    );
+    const activity = await loadCodeActivity(stub.client, ['quiet', 'rare'], NOW);
+    expect(activity.get('quiet')?.runs).toEqual({
+      active: 0,
+      last24Hours: 0,
+      lastRunAt: new Date(NOW - 10 * DAY).toISOString(),
+    });
+    expect(activity.get('rare')?.runs).toEqual({
+      active: 0,
+      last24Hours: 0,
+      lastRunAt: new Date(NOW - 400 * DAY).toISOString(),
+    });
+    // A type that ran in the last day needs no look back at all.
+    stub.restore();
+    stub = installWorkflowWorld(
+      emptyWorld({ runs: [runFixture('fresh', 'busy', { createdAt: NOW - 10 * MINUTE })] }),
+    );
+    const busy = await loadCodeActivity(stub.client, ['busy'], NOW);
+    expect(busy.get('busy')?.runs?.lastRunAt).toBe(new Date(NOW - 10 * MINUTE).toISOString());
+    expect(stub.callsTo('weft.workflows.list')).toHaveLength(2);
+  });
+
   test('says a type that has never run has not, with no newest', async () => {
     stub = installWorkflowWorld(emptyWorld());
     const activity = await loadCodeActivity(stub.client, ['quiet'], NOW);

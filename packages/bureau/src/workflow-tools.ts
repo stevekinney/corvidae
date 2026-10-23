@@ -89,6 +89,11 @@ export interface WorkflowToolListing {
   readonly paused: boolean;
   /** The trigger's `kind`, or `null` for an `invalid` file. */
   readonly triggerKind: string | null;
+  /**
+   * What the workflow is for, or `null` when it has none. `workflows-update` replaces the whole
+   * definition, so an agent that updates a workflow passes this back to keep it.
+   */
+  readonly description: string | null;
   /** Why an `invalid` file cannot run, so its author can fix it; `null` for a ready one. */
   readonly problem: string | null;
 }
@@ -306,7 +311,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const update = createTool({
     name: 'workflows-update',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, and you become the agent that wrote it. Leave `description` out for none, and `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, description included, and you become the agent that wrote it. Pass back the `description` workflows-list returned to keep it; leave it out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
     metadata: { shortDescription: 'Replace a workflow’s trigger and steps.' },
     execute: async (input, context): Promise<WorkflowToolResult> => {
@@ -359,7 +364,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const list = createTool({
     name: 'workflows-list',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, and its trigger kind. A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, and its description (pass it back to workflows-update to keep it, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
     metadata: { shortDescription: 'List the workflows and their state.' },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
@@ -379,6 +384,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           state: listing.state,
           paused: listing.paused,
           triggerKind: listing.triggerKind,
+          description: listing.description,
           problem: listing.problem?.code ?? null,
         })),
       };

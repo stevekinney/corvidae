@@ -6,11 +6,13 @@
  * category, and a source with no file is left out. With no workflow besides the engine's, the page
  * says there are none yet.
  */
+import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
@@ -45,7 +47,7 @@ const NOW = Date.now();
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
-function open(overrides: Partial<World> = {}) {
+function open(overrides: Partial<World> = {}, onQueryClient?: (queryClient: QueryClient) => void) {
   stub = installWorkflowWorld(
     emptyWorld({
       definitions: [
@@ -93,7 +95,7 @@ function open(overrides: Partial<World> = {}) {
   );
   router.navigate('/workflows', { replace: true });
   return render(RouteOutletHarness, {
-    props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
+    props: { client: stub.client, scopes: AUTHORIZATION_SCOPES, onQueryClient },
   } as never);
 }
 
@@ -224,19 +226,33 @@ describe('the list of workflows', () => {
   });
 
   test('says nothing of a code type’s counts or cadence when the engine would not give them', async () => {
-    const { container } = open();
+    let queryClient: QueryClient | undefined;
+    const { container } = open({ failSchedules: true }, (client) => {
+      queryClient = client;
+    });
     stub?.on('weft.workflows.list', () => {
       throw new Error('The engine did not answer.');
     });
-    stub?.on('GET /schedules', () => {
-      throw new Error('The engine did not answer.');
-    });
     await waitFor(() => expect(rowCount(container)).toBe(4));
-    await waitFor(() => expect(stub?.callsTo('weft.workflows.list').length).toBeGreaterThan(0));
+    // Wait for the query to settle with nothing to show, not merely for the request: until then the
+    // page has no counts either way, and a check made before proves nothing.
+    const activityKey = queryKeys.workflowCatalog.activity(['order-processing']);
+    await waitFor(() =>
+      expect(
+        queryClient
+          ?.getQueryData<ReadonlyMap<string, { runs: unknown; schedules: unknown }>>(activityKey)
+          ?.get('order-processing'),
+      ).toEqual({ runs: null, schedules: null }),
+    );
 
     const code = row(container, 'order-processing');
     expect(testId(code, 'workflow-run-counts')).toBeNull();
     expect(testId(code, 'workflow-last-run')).toBeNull();
+    expect(testId(code, 'workflow-cadence')).toBeNull();
+    // A count that failed is left out, never shown as none.
+    expect(code.textContent).not.toContain(WORKFLOW_COPY.list.runs(0));
+    expect(code.textContent).not.toContain(WORKFLOW_COPY.list.running(0));
+    expect(code.textContent).not.toContain(WORKFLOW_COPY.list.neverRun);
     expect(testId(code, 'workflow-description')?.textContent).toContain('order-processing');
   });
 
@@ -323,6 +339,25 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(rowCount(container)).toBe(4));
     action.click();
     expect(router.pathname).toBe('/workflows/new');
+  });
+});
+
+describe('the links the list keeps for the browser', () => {
+  test('opens an engine type’s page from the disclosure, and leaves New workflow to the browser when modified', async () => {
+    const { container, findByRole } = open();
+    await waitFor(() => expect(rowCount(container)).toBe(4));
+    const trigger = await findByRole('button', { name: WORKFLOW_COPY.list.engineWorkflows(3) });
+    await fireEvent.click(trigger);
+    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+
+    const action = await findByRole('link', { name: WORKFLOW_COPY.newAction });
+    action.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }),
+    );
+    expect(router.pathname).toBe('/workflows');
+
+    container.querySelector<HTMLAnchorElement>('[data-workflow="agentRun"] a')?.click();
+    expect(router.pathname).toBe('/workflows/agentRun');
   });
 });
 

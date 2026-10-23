@@ -433,6 +433,7 @@ describe('workflows-list', () => {
           state: 'invalid',
           paused: false,
           triggerKind: null,
+          description: null,
           problem: 'invalid-json',
         },
         {
@@ -441,6 +442,7 @@ describe('workflows-list', () => {
           state: 'ready',
           paused: false,
           triggerKind: 'schedule',
+          description: null,
           problem: null,
         },
         {
@@ -449,10 +451,49 @@ describe('workflows-list', () => {
           state: 'ready',
           paused: true,
           triggerKind: 'signal',
+          description: null,
           problem: null,
         },
       ],
     });
+  });
+
+  it('lists the description, so an agent can pass it back and keep it through an update', async () => {
+    const harness = await start();
+    await harness.callTool('workflows-create', {
+      name: 'Digest',
+      description: 'Writes the daily digest.',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const listed = (await harness.callTool('workflows-list', {})).result as {
+      workflows: Array<{ id: string; hash: string; description: string | null }>;
+    };
+    expect(listed.workflows).toMatchObject([
+      { id: 'digest', description: 'Writes the daily digest.' },
+    ]);
+
+    const { result } = await harness.callTool('workflows-update', {
+      id: 'digest',
+      expectedHash: listed.workflows[0]!.hash,
+      description: listed.workflows[0]!.description,
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(result).toMatchObject({ status: 'ok' });
+    const after = (await harness.callTool('workflows-list', {})).result as {
+      workflows: Array<{ description: string | null }>;
+    };
+    expect(after.workflows[0]?.description).toBe('Writes the daily digest.');
+  });
+
+  it('tells the model that an update replaces the whole definition, description included', () => {
+    const tools = createWorkflowTools({
+      workflows: () => undefined,
+      runIdentity: async () => ({ agent: undefined, owner: undefined }),
+    });
+    expect(tools['workflows-update']?.description).toContain('description included');
+    expect(tools['workflows-list']?.description).toContain('description');
   });
 
   it('hands the hash it lists to the tools that change a file', async () => {

@@ -5,7 +5,7 @@
    * a test turns Live on. Never imported by production code.
    */
   import type { HttpClient } from '@lostgradient/weft';
-  import { QueryClientProvider } from '@tanstack/svelte-query';
+  import { type QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
@@ -18,9 +18,11 @@
   interface AreaHarnessProps {
     client: HttpClient;
     scopes: readonly AuthorizationScope[];
+    /** Hands the page's query client to a test that must see when a query has settled. */
+    onQueryClient?: ((queryClient: QueryClient) => void) | undefined;
   }
 
-  let { client, scopes }: AreaHarnessProps = $props();
+  let { client, scopes, onQueryClient }: AreaHarnessProps = $props();
 
   provideClient(untrack(() => client));
   providePrincipalStore().setPrincipal({
@@ -30,6 +32,7 @@
   });
   provideFleetEventSource(untrack(() => new FleetEventSource({ baseUrl: 'http://weft.test' })));
   const queryClient = createQueryClient();
+  untrack(() => onQueryClient?.(queryClient));
 </script>
 
 <QueryClientProvider client={queryClient}>

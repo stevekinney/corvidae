@@ -119,11 +119,7 @@
   {/if}
 
   {#if engineRows.length > 0}
-    <Collapsible
-      trigger={copy.list.engineWorkflows(engineRows.length)}
-      animated={false}
-      class="ib-disclosure"
-    >
+    <Collapsible trigger={copy.list.engineWorkflows(engineRows.length)} class="ib-disclosure">
       <p class="ib-workflows__engine-note">{copy.list.engineDescription}</p>
       <ul class="ib-workflows__list">
         {#each engineRows as row (row.name)}

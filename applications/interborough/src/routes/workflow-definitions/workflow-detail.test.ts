@@ -282,6 +282,58 @@ describe('a code-defined type', () => {
   });
 });
 
+describe('the recent runs', () => {
+  test('say they could not be loaded, rather than that there are none', async () => {
+    const { container } = open('/workflows/digest');
+    stub?.on('bureau.workflows.runs.list', () => {
+      throw workflowFaults.unavailable();
+    });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-recent-runs')?.textContent).toContain(
+        WORKFLOW_COPY.page.runsFailed,
+      ),
+    );
+    expect(testId(root, 'workflow-recent-runs')?.textContent).not.toContain(
+      WORKFLOW_COPY.page.noRuns,
+    );
+  });
+
+  test('link each run to its page', async () => {
+    const { container } = open('/workflows/order-processing', {
+      runs: [runFixture('run-1', 'order-processing')],
+    });
+    const root = await ready(container);
+    await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBeGreaterThan(0));
+    const link = root.querySelector<HTMLAnchorElement>('[data-run] a');
+    const href = link?.getAttribute('href') ?? '';
+    expect(href).toMatch(/^\/runs\//);
+    link?.click();
+    expect(router.pathname).toBe(href);
+  });
+});
+
+describe('a type with several signals', () => {
+  test('lists them in one row, separated by commas', async () => {
+    const { container } = open('/workflows/order-processing', {
+      definitions: [
+        codeDefinition('order-processing', {
+          signals: ['pause-it', 'resume-it'],
+          updates: null,
+          queries: null,
+          contract: null,
+        }),
+      ],
+    });
+    const root = await ready(container);
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
+    const row = [...root.querySelectorAll('dd')].find((entry) =>
+      entry.textContent?.includes('pause-it'),
+    );
+    expect(row?.textContent?.replace(/\s+/g, ' ').trim()).toBe('pause-it, resume-it');
+  });
+});
+
 describe('a type the Bureau registers for itself', () => {
   test('has no Engine disclosure, because a person never installs a revision of one', async () => {
     const { container } = open('/workflows/agentRun', {
@@ -789,6 +841,18 @@ describe('a write the Bureau refuses', () => {
     await waitFor(() =>
       expect(queryByText(WORKFLOW_COPY.pauseFailed)?.outerHTML ?? null).toBeNull(),
     );
+  });
+
+  test('says only that the pause failed for a fault that names nothing this page can act on', async () => {
+    const { container, findByRole, getByRole } = open('/workflows/digest');
+    await ready(container);
+    stub?.on('bureau.workflows.pause', () => {
+      throw workflowFaults.conflict('agent-file-exists');
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toContain(WORKFLOW_COPY.pauseFailed);
+    expect(alert.textContent).not.toContain('already used');
   });
 
   test('shows the Bureau’s own words when it could not apply a resume or a delete', async () => {

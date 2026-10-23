@@ -7,7 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from '../../create-bureau.ts';
 import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
@@ -265,6 +265,72 @@ describe('results', () => {
     expect(listed.result?.['workflows']).toMatchObject([
       { id: 'waiting', runs: { active: 1, last24Hours: 1 } },
     ]);
+  });
+
+  it('still lists every file, with no counts for the one whose engine read fails', async () => {
+    const diagnostics: string[] = [];
+    const served = await serve((event) => diagnostics.push(`${event.level}: ${event.message}`));
+    for (const id of ['a-flow', 'b-flow', 'c-flow']) {
+      await served.bureau.workflows!.create(id, DEFINITION);
+    }
+    const engine = served.bureau.durableEngine()!;
+    const original = engine.list.bind(engine);
+    const failing = spyOn(engine, 'list').mockImplementation(async (filter, options) => {
+      if (filter?.type === 'b-flow') throw new Error('engine unavailable');
+      return original(filter, options);
+    });
+    try {
+      const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      expect(listed.error).toBeUndefined();
+      expect(listed.result?.['workflows']).toMatchObject([
+        { id: 'a-flow', runs: { active: 0, last24Hours: 0, lastRunAt: null } },
+        { id: 'b-flow', state: 'ready', runs: null },
+        { id: 'c-flow', runs: { active: 0, last24Hours: 0, lastRunAt: null } },
+      ]);
+      expect(failing).toHaveBeenCalled();
+    } finally {
+      failing.mockRestore();
+    }
+    expect(
+      diagnostics.some((line) => line.includes('Could not count') && line.includes('b-flow')),
+    ).toBe(true);
+  });
+
+  it('widens the window for a quiet workflow, and reads its whole history only as a last resort', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('digest', DEFINITION);
+    const engine = served.bureau.durableEngine()!;
+    const DAY = 24 * 60 * 60 * 1000;
+    const longAgo = Date.now() - 400 * DAY;
+    const reads: Array<{ ageInDays: number | null }> = [];
+    // The engine's clock is its own, so answer the windowed reads here: nothing in the last day or
+    // the last 30 days, and one instance, 400 days old, in the history.
+    const stub = spyOn(engine, 'list').mockImplementation(async (filter) => {
+      const gte = filter?.createdAt?.gte;
+      reads.push({ ageInDays: gte === undefined ? null : Math.round((Date.now() - gte) / DAY) });
+      const found = gte === undefined && filter?.status === undefined;
+      return {
+        items: found ? [{ createdAt: longAgo }] : [],
+        total: found ? 1 : 0,
+      } as never;
+    });
+    try {
+      const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      const [file] = listed.result?.['workflows'] as Array<{ runs: unknown }>;
+      expect(file?.runs).toEqual({
+        active: 0,
+        last24Hours: 0,
+        lastRunAt: new Date(longAgo).toISOString(),
+      });
+    } finally {
+      stub.mockRestore();
+    }
+    // The count of the day, then 30 days, then the whole history; the active read has no window.
+    expect(reads.filter((read) => read.ageInDays !== null)).toEqual([
+      { ageInDays: 1 },
+      { ageInDays: 30 },
+    ]);
+    expect(reads.filter((read) => read.ageInDays === null).length).toBe(2);
   });
 
   it('leaves the counts out unless the caller asks for them, because each one reads the engine', async () => {

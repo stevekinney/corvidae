@@ -446,7 +446,7 @@
     {/if}
 
     {#if showDetails}
-      <Collapsible trigger={copy.page.details} animated={false} class="ib-disclosure">
+      <Collapsible trigger={copy.page.details} class="ib-disclosure">
         <WorkflowDetails
           {details}
           filePath={file?.state === 'ready' ? path : undefined}
@@ -456,7 +456,7 @@
     {/if}
 
     {#if !engineType}
-      <Collapsible trigger={copy.page.engine} animated={false} class="ib-disclosure">
+      <Collapsible trigger={copy.page.engine} class="ib-disclosure">
         {#if resolved.kind === 'code'}
           <WorkflowRevisionsPanel workflowName={type} />
         {:else}
