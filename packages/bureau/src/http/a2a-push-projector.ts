@@ -52,6 +52,7 @@ import type {
 } from './a2a-push-checkpoint.ts';
 import { isTerminal } from './a2a-task-projection.ts';
 import type { A2ATaskReader } from './a2a-task-reader.ts';
+import { formsOf } from './a2a-input-forms.ts';
 import {
   type A2AStreamBureau,
   createFoldProjector,
@@ -305,7 +306,9 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
         const reply = element.status === 'completed' ? await reader.replyOf(view) : undefined;
         // One terminal delivery per configuration, whichever source fired first.
         const duplicateTerminal = isTerminal(element.status) && terminalSent;
-        const responses = duplicateTerminal ? [] : eventsOf(view, element, reply);
+        const responses = duplicateTerminal
+          ? []
+          : eventsOf(view, element, reply, await formsOf(bureau, view));
         for (const [index, response] of responses.entries()) {
           if (!(await send(response, `${event.cursor}:${index}`))) return true;
         }
@@ -333,7 +336,12 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
         artifact: null,
       };
       const reply = initial.status === 'completed' ? await reader.replyOf(initial) : undefined;
-      for (const [index, response] of eventsOf(initial, settledElement, reply).entries()) {
+      for (const [index, response] of eventsOf(
+        initial,
+        settledElement,
+        reply,
+        await formsOf(bureau, initial),
+      ).entries()) {
         if (!(await send(response, `settled:${initial.status}:${index}`))) return true;
       }
       await checkpoints.markTerminal(taskId, configId, initial.status);

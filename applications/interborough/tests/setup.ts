@@ -42,10 +42,21 @@ expect.extend(jestDomMatchers);
 
 type Global = typeof globalThis & Record<string, unknown>;
 
+/**
+ * Svelte's transitions dispatch `new CustomEvent('introstart')` on the element they animate, and
+ * happy-dom refuses an event that is not an instance of its own `Event`. Bun already defines
+ * `CustomEvent`, so the copy loop below would leave Bun's in place and every transition (Cinder's
+ * `Collapsible` slide, for one) would throw `parameter 1 is not of type 'Event'`. Only that one is
+ * taken from happy-dom: `@lostgradient/testing`'s helper replaces many more, `Event`, `URL`, `Blob`
+ * and `AbortSignal` among them, and the suites here that reach a real server through Bun's own
+ * `fetch` and `EventSource` fail when they are swapped.
+ */
+const DOM_REALM_EVENT_GLOBALS = new Set(['CustomEvent']);
+
 let happyDomInstalled = false;
 
 /**
- * happy-dom does not implement the Web Animations API. Svelte 5's JS-driven
+ * happy-dom's Web Animations API is partial. Svelte 5's JS-driven
  * transitions (`slide`, `fade`, `fly`, …) call `Element.prototype.animate`
  * to coordinate enter/exit; without a stub, mounting any component that
  * uses `transition:fn` throws `element.animate is not a function`. This
@@ -84,8 +95,11 @@ function stubWebAnimationsApi(happyWindow: Window): void {
   if (typeof elementCtor !== 'function') return;
   const proto = Reflect.get(elementCtor, 'prototype');
   if (typeof proto !== 'object' || proto === null) return;
-  if (typeof Reflect.get(proto, 'animate') === 'function') return;
-
+  // Replace happy-dom's own partial `animate` too, as `@lostgradient/testing`'s helper does. Its
+  // `Animation.cancel()` rejects `finished` with an `AbortError`, which Cinder's `Collapsible`
+  // slide transition then raises as an unhandled rejection when a test cleans up mid-flight; the
+  // stub settles synchronously and never rejects. Skipping the stub where `animate` already
+  // existed is why the workflow pages once had to turn the animation off.
   Reflect.set(proto, 'animate', stubbedAnimate);
 }
 
@@ -95,7 +109,7 @@ function setupHappyDom(): void {
   const target = globalThis as Global;
 
   for (const key of Object.getOwnPropertyNames(happyWindow)) {
-    if (key in target) continue;
+    if (key in target && !DOM_REALM_EVENT_GLOBALS.has(key)) continue;
     const descriptor = Object.getOwnPropertyDescriptor(happyWindow, key);
     if (!descriptor) continue;
     Object.defineProperty(target, key, descriptor);

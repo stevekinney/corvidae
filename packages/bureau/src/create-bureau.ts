@@ -16196,6 +16196,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 Object.entries(review).filter(([key]) => key !== 'inputSchema'),
               ) as unknown as PendingReview)
             : review,
+        // The schema's absence is not the form's: this marker is how a closed wait is known to
+        // have shown a form (COR-1674).
+        ...(review.kind === 'human-wait' && review.inputSchema !== undefined
+          ? { inputForm: true }
+          : {}),
         decision,
         ...(reason !== undefined ? { reason } : {}),
       },

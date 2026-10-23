@@ -34,3 +34,239 @@
     margin-block-end: var(--cinder-space-2);
   }
 }
+
+/* ── The list: flat rows, a faint rule between them, no card around any ─────── */
+
+.ib-workflows,
+.ib-workflow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-workflows__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ib-workflows__title,
+.ib-workflow__title {
+  margin: 0;
+  font-size: var(--cinder-text-xl);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ib-workflows__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-workflows__empty-guide {
+  margin: 0;
+  color: var(--cinder-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ib-workflows__engine-note {
+  margin: 0 0 var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  padding-block: var(--cinder-density-pad-block);
+  border-block-end: 1px solid var(--cinder-border-faint);
+}
+
+.ib-workflow-row:last-child {
+  border-block-end: 0;
+}
+
+.ib-workflow-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: center;
+}
+
+/* A workflow's name is its identifier, and kebab-case is monospace. It breaks where it has to
+ * rather than pushing the page wider than the outlet. */
+.ib-workflow-name {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  color: var(--cinder-text-default);
+  font-family: var(--cinder-font-mono);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.ib-workflow-name:hover {
+  text-decoration: underline;
+}
+
+.ib-workflow-agent {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  color: var(--cinder-text-muted);
+  font-family: var(--cinder-font-mono);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-workflow-row__description,
+.ib-workflow__description {
+  margin: 0;
+  color: var(--cinder-text-secondary);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow-row__meta,
+.ib-workflow__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow-row__meta code,
+.ib-workflow__status code {
+  font-family: var(--cinder-font-mono);
+}
+
+/* ── A workflow's page ──────────────────────────────────────────────────────── */
+
+.ib-workflow__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.ib-workflow__identity {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-workflow__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: center;
+}
+
+.ib-workflow__title {
+  font-family: var(--cinder-font-mono);
+}
+
+.ib-workflow__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+}
+
+.ib-workflow__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+}
+
+.ib-workflow__section-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.ib-workflow__muted {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow__subheading {
+  margin: var(--cinder-space-2) 0 0;
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
+}
+
+.ib-workflow__steps {
+  margin: 0;
+  padding-inline-start: var(--cinder-space-6);
+  overflow-wrap: anywhere;
+}
+
+.ib-workflow__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-workflow__list > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  padding-block: var(--cinder-space-1);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow__run-status {
+  display: inline-flex;
+  gap: var(--cinder-space-1);
+  align-items: center;
+}
+
+/* Cinder's collapsible is a bordered card with a raised trigger. These disclosures sit on a page
+ * that is flat rows, so each is a faint rule and a plain trigger, with nothing boxed inside it. */
+.ib-disclosure {
+  background: transparent;
+  border: 0;
+  border-block-start: 1px solid var(--cinder-border-faint);
+  border-radius: 0;
+}
+
+.ib-disclosure .cinder-collapsible__trigger {
+  padding: var(--cinder-space-2) 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.ib-disclosure .cinder-collapsible__label {
+  font-weight: 600;
+}
+
+.ib-disclosure .cinder-collapsible__panel-inner {
+  padding: var(--cinder-space-2) 0 var(--cinder-space-3);
+  background: transparent;
+}
+
+.ib-workflow__alert-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ib-workflow__alert-body {
+  margin: var(--cinder-space-1) 0 var(--cinder-space-2);
+}

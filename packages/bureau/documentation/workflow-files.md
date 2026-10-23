@@ -9,6 +9,7 @@ Bureau does not know where the directory lives. The host passes a path (`BureauO
 ```json
 {
   "name": "nightly-digest",
+  "description": "Writes and edits the morning digest.",
   "agent": "writer",
   "paused": false,
   "trigger": { "kind": "schedule", "spec": "0 6 * * *", "overlap": "skip" },
@@ -28,15 +29,16 @@ Bureau does not know where the directory lives. The host passes a path (`BureauO
 }
 ```
 
-The file is Weft's workflow document (`packages/weft/src/document-workflow`) plus two Bureau fields, and nothing else: an unknown key makes the file `invalid`, because the document schema is strict.
+The file is Weft's workflow document (`packages/weft/src/document-workflow`) plus three Bureau fields, and nothing else: an unknown key makes the file `invalid`, because the document schema is strict.
 
 - `name`: must equal the identifier. The filename without `.json` is the identifier, so this file is `nightly-digest.json`. An identifier matches `^[a-z](?:[a-z0-9-]*[a-z0-9])?$` and is at most 64 characters, because Bureau derives ids from it that must stay inside Weft's 128.
+- `description`: optional. A sentence on what the workflow is for: a non-empty string of at most 280 characters, shown beside the workflow in lists. A description of another type, an empty one, or a longer one makes the file `invalid`.
 - `agent`: optional. The identifier of the agent that wrote the file. It is only recorded; it is not checked against the agent catalog, so deleting that agent leaves the workflow valid.
 - `paused`: optional boolean, default `false`. A paused workflow starts nothing new. See [Pausing and deleting](#pausing-and-deleting).
 - `trigger`: `{ kind: 'schedule', spec, overlap? }` or `{ kind: 'signal', name }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. `name` is a non-empty string of at most 256 characters, the longest signal name `bureau.workflows.signal` admits. Any other field, a malformed `spec`, a missing, empty, or longer `name`, or any other `kind` makes the file `invalid`. See [Signals](#signals).
 - `steps`: Weft's steps, run in order: `activity`, `sleep`, and `await-signal`. The only activity is `agent`.
 
-Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `agent` and `paused` are stripped before the document is handed to Weft, so neither is part of a revision.
+Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `description`, `agent`, and `paused` are stripped before the document is handed to Weft, so none is part of a revision.
 
 ## What is invalid
 
@@ -89,7 +91,7 @@ If applying a change fails (a storage error, or an activation conflict in Weft),
 
 ## Writing
 
-`bureau.workflows.get(id)` returns the file's text and `hash`, the SHA-256 of its bytes. `create(id, definition)`, `update(id, definition, { expectedHash })`, `pause(id, { expectedHash })`, `resume(id, { expectedHash })`, and `delete(id, { expectedHash })` write through the same files. `definition` is the document without its `name` (Bureau sets it to the identifier) plus the optional `agent` and `paused`. Each checks that the result would load and writes nothing otherwise, throwing `WorkflowFileError` with the codes above.
+`bureau.workflows.list` returns each file with its `description` and its `trigger` as written, and, when called with `includeRuns: true`, for a `ready` file `runs`: how many instances are `active` (pending, running, or suspended), how many began in the last 24 hours, and when the newest began (`lastRunAt`, `null` for none), counted from the engine's totals. `runs` is `null` for an `invalid` file, for every file unless `includeRuns` is asked for (because each count reads the engine), and for a file whose count the engine could not give: the failure is reported through `onDiagnostic` and the list still answers with every file. Only the files on the requested page are counted. Each count is two reads the engine narrows by its type, status, and created-at indexes before it loads any state, so they load only the instances they count; a workflow with no instance in the last day also looks back 30 days, and then through its whole history, for the newest. `bureau.workflows.get(id)` returns the file's text and `hash`, the SHA-256 of its bytes. `create(id, definition)`, `update(id, definition, { expectedHash })`, `pause(id, { expectedHash })`, `resume(id, { expectedHash })`, and `delete(id, { expectedHash })` write through the same files. `definition` is the document without its `name` (Bureau sets it to the identifier) plus the optional `description`, `agent`, and `paused`. Each checks that the result would load and writes nothing otherwise, throwing `WorkflowFileError` with the codes above.
 
 A write goes to a temporary dotfile in the same directory and is renamed into place, so nothing reads half a file. Writes are serialized in this process. `create` throws `WorkflowFileConflictError` (`workflow-file-exists`) when the file exists. `update`, `pause`, `resume`, and `delete` throw it (`workflow-file-changed`, with `currentHash`) when the bytes no longer hash to `expectedHash`, and `WorkflowFileError` (`workflow-file-not-found`) when the file is gone. The file is re-emitted as two-space JSON with a trailing newline; there are no comments to preserve. An update that changes nothing writes nothing, and pausing a paused workflow does neither.
 
@@ -99,7 +101,7 @@ Over the wire a taken identifier is a `Conflict` fault (`data.reason` is `workfl
 
 ## Revisions
 
-A **revision** is a document's content as Weft hashes it (`workflowVersion`), computed after `agent` and `paused` are stripped. Pausing or resuming changes neither, so it adds no revision.
+A **revision** is a document's content as Weft hashes it (`workflowVersion`), computed after `description`, `agent`, and `paused` are stripped. Pausing or resuming changes neither, so it adds no revision.
 
 Bureau stores each revision in its database under `bureau-workflow-snapshot:v1:<identifier>:<workflowVersion>`. The record holds the document exactly as Weft was handed it, so its recomputed version must equal its key, and a record that does not hash to its key is refused. It also holds when Bureau registered the revision (`registeredAt`) and when an instance of it first and last started (`firstRunAt`, `lastRunAt`).
 

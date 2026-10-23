@@ -5,6 +5,7 @@
  * ```json
  * {
  *   "name": "nightly-digest",
+ *   "description": "Summarizes the night's activity for the team.",
  *   "agent": "writer",
  *   "paused": false,
  *   "trigger": { "kind": "schedule", "spec": "0 6 * * *" },
@@ -15,9 +16,10 @@
  * ```
  *
  * The filename without `.json` is the workflow's identifier and the document's `name` must equal
- * it. `agent` records which agent wrote the file (it is not checked against the agent catalog) and
- * `paused` stops the workflow starting anything new; Bureau strips both before it hands the
- * document to Weft, so neither is part of a revision. This module is the pure half: parsing,
+ * it. `description` says in a sentence what the workflow is for (optional), `agent` records which
+ * agent wrote the file (it is not checked against the agent catalog) and `paused` stops the
+ * workflow starting anything new; Bureau strips all three before it hands the document to Weft, so
+ * none is part of a revision. This module is the pure half: parsing,
  * validating, serializing, hashing. It touches no file and no engine.
  *
  * @module workflow-file
@@ -72,8 +74,13 @@ export interface WorkflowFileProblem {
   readonly issues?: readonly WorkflowFileIssue[];
 }
 
-/** What a usable file holds, with `agent` and `paused` split from the document. */
+/** The longest `description`, in characters: a sentence for a list row, not a document. */
+export const WORKFLOW_DESCRIPTION_MAXIMUM_LENGTH = 280;
+
+/** What a usable file holds, with `description`, `agent`, and `paused` split from the document. */
 export interface WorkflowFileContents {
+  /** What the workflow is for, in a sentence, or `null` when the file gives none. */
+  readonly description: string | null;
   /** The identifier of the agent that wrote the file, or `null`. */
   readonly agent: string | null;
   readonly paused: boolean;
@@ -83,6 +90,7 @@ export interface WorkflowFileContents {
 
 /** What a caller supplies to write a file; Bureau sets `name` to the identifier. */
 export interface WorkflowFileDefinition {
+  readonly description?: string | undefined;
   readonly agent?: string | undefined;
   readonly paused?: boolean | undefined;
   readonly trigger: Readonly<{ kind: string } & Record<string, unknown>>;
@@ -186,8 +194,19 @@ export function parseWorkflowFile(
       problem: { code: 'invalid-json', message: 'The file must hold one JSON object.' },
     };
   }
-  const { agent, paused, ...documentInput } = value;
+  const { description, agent, paused, ...documentInput } = value;
   const issues: WorkflowFileIssue[] = [];
+  if (
+    Object.hasOwn(value, 'description') &&
+    (typeof description !== 'string' ||
+      description.trim() === '' ||
+      description.length > WORKFLOW_DESCRIPTION_MAXIMUM_LENGTH)
+  ) {
+    issues.push({
+      path: 'description',
+      message: `must be a non-empty string of at most ${String(WORKFLOW_DESCRIPTION_MAXIMUM_LENGTH)} characters`,
+    });
+  }
   if (
     Object.hasOwn(value, 'agent') &&
     (typeof agent !== 'string' || !AGENT_IDENTIFIER_PATTERN.test(agent))
@@ -225,6 +244,7 @@ export function parseWorkflowFile(
   return {
     ok: true,
     file: {
+      description: typeof description === 'string' ? description : null,
       agent: typeof agent === 'string' ? agent : null,
       paused: paused === true,
       document,
@@ -234,10 +254,11 @@ export function parseWorkflowFile(
 
 /**
  * The text of a file for `definition`, as the workflow `id`: two-space JSON with a trailing
- * newline, keys in the order `name`, `agent`, `paused`, `trigger`, `steps`.
+ * newline, keys in the order `name`, `description`, `agent`, `paused`, `trigger`, `steps`.
  */
 export function serializeWorkflowFile(id: string, definition: WorkflowFileDefinition): string {
   const body: Record<string, unknown> = { name: id };
+  if (definition.description !== undefined) body['description'] = definition.description;
   if (definition.agent !== undefined) body['agent'] = definition.agent;
   if (definition.paused !== undefined) body['paused'] = definition.paused;
   body['trigger'] = definition.trigger;
