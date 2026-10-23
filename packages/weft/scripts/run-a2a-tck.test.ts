@@ -240,6 +240,7 @@ describe('run-a2a-tck helpers', () => {
       deselect: ['a::b', 'c::d'],
     });
     expect(() => parseArguments(['--deselect'])).toThrow('--deselect needs a test.');
+    expect(() => parseArguments(['--sut-host'])).toThrow('--sut-host needs a URL.');
     const command = tckCommand('http://h', 'must', ['a::b']);
     expect(command.slice(-2)).toEqual(['--deselect', 'a::b']);
     expect(command.filter((argument) => argument === '--deselect')).toHaveLength(
