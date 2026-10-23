@@ -26,6 +26,7 @@
   const sessionId = untrack(() =>
     isNew ? crypto.randomUUID() : (router.current.params['sessionId'] ?? ''),
   );
+  const chosenAgent = untrack(() => router.current.search.has('agent'));
   const initialAgent = untrack(() => router.current.search.get('agent') ?? DEFAULT_AGENT);
 
   const context = createQuery(
@@ -40,7 +41,13 @@
 </script>
 
 {#if isNew}
-  <ChatConversation {sessionId} title={null} agentName={initialAgent} isNew />
+  <ChatConversation
+    {sessionId}
+    title={null}
+    agentName={initialAgent}
+    agentChosen={chosenAgent}
+    isNew
+  />
 {:else if context.data}
   <ChatConversation {sessionId} title={context.data.title} agentName={context.data.agentName} />
 {:else if context.isError}

@@ -643,6 +643,27 @@ export const CHAT_COPY = {
   agentLabel: 'Agent',
   agentPlaceholder: 'Search agents',
   sessionsTitle: 'Chats',
+  /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
+  groups: {
+    'needs-you': 'Needs you',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    earlier: 'Earlier',
+  },
+  /** What a session with no message in it says in place of its transcript. */
+  noMessages: 'No messages yet',
+  /** What a new chat shows where its transcript will be. */
+  newChatWelcome: {
+    try: 'Try',
+    /** Said before the agents' identifiers under the welcome of a fresh Interborough. */
+    agentsLine: 'Agents:',
+    promptsLabel: 'Example prompts',
+    otherAgents: 'Or start with another agent',
+    chooseAgent: 'Choose an agent to start with',
+  },
+  /** What a chat with no message to show says it holds. */
+  messageCount: (count: number): string =>
+    count === 1 ? '1 message' : `${String(count)} messages`,
   loadMore: 'Load more',
   noSessions: 'No chats yet',
   loadingSessions: 'Loading chats',

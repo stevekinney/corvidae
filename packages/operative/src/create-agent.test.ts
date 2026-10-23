@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
-import { createAgent } from './create-agent';
+import { AGENT_EXAMPLE_LIMITS, createAgent } from './create-agent';
 import { readGenerationProfile } from './generation-profile';
 import { hasDefinitionResolver, OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
 
@@ -178,5 +178,40 @@ describe('createAgent: tool names', () => {
     const agent = createAgent({ generate: mockGenerate(), tools: { refund } });
 
     expect(Object.isFrozen(agent.toolNames)).toBe(true);
+  });
+});
+
+describe('createAgent examples', () => {
+  it('reports the prompts it was created with, in order, as a frozen copy', () => {
+    const given = ['Refund order 1234', 'Look up order 1001'];
+    const agent = createAgent({ generate: mockGenerate(), examples: given });
+
+    expect(agent.examples).toEqual(['Refund order 1234', 'Look up order 1001']);
+    expect(Object.isFrozen(agent.examples)).toBe(true);
+    // A later change to the caller's array does not change what the agent reports.
+    given.push('Another');
+    expect(agent.examples).toHaveLength(2);
+  });
+
+  it('refuses more prompts than the limit, an empty or blank prompt, and one that is too long', () => {
+    const { maxPrompts, maxLength } = AGENT_EXAMPLE_LIMITS;
+    const examples = (prompts: string[]) => () =>
+      createAgent({ generate: mockGenerate(), examples: prompts });
+
+    expect(
+      examples(Array.from({ length: maxPrompts }, (_, index) => `Prompt ${index}`)),
+    ).not.toThrow();
+    expect(examples(['a'.repeat(maxLength)])).not.toThrow();
+    expect(examples([])).not.toThrow();
+    expect(
+      examples(Array.from({ length: maxPrompts + 1 }, (_, index) => `Prompt ${index}`)),
+    ).toThrow(/at most 3 prompts/);
+    expect(examples([''])).toThrow(/non-empty/);
+    expect(examples(['   '])).toThrow(/non-empty/);
+    expect(examples(['a'.repeat(maxLength + 1)])).toThrow(/at most 200 characters/);
+  });
+
+  it('omits the field for an agent created without any, so none is not an empty list', () => {
+    expect('examples' in createAgent({ generate: mockGenerate() })).toBe(false);
   });
 });

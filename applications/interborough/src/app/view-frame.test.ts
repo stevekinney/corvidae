@@ -5,12 +5,14 @@
  * the server would, with a stubbed `fetch` answering the view's probe.
  */
 import { HttpClient } from '@lostgradient/weft';
+import { type QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
+import { queryKeys } from '../lib/query.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
   codeDefinition,
@@ -181,6 +183,7 @@ function mount(
   } = {},
 ) {
   let store: PrincipalStore | undefined;
+  let queryClient: QueryClient | undefined;
   const result = render(Harness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
@@ -191,9 +194,12 @@ function mount(
       onStore: (created: PrincipalStore) => {
         store = created;
       },
+      onQueryClient: (created: QueryClient) => {
+        queryClient = created;
+      },
     },
   } as never);
-  return { ...result, store: () => store };
+  return { ...result, store: () => store, queryClient: () => queryClient };
 }
 
 function frame(container: HTMLElement): HTMLElement {
@@ -427,6 +433,48 @@ describe('the chat list, a new chat, and the agents', () => {
     ).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('empty');
     expect(container.querySelector('a[href="/chat/new"]')?.textContent).toBe('New chat');
+  });
+
+  test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {
+    stubBureau({
+      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
+      'bureau.agents.list': () =>
+        agents(
+          { name: 'assistant' },
+          { name: 'tool-runner' },
+          { name: 'internal', publishState: 'unpublished' },
+        ),
+    });
+    const { container, findByTestId } = mount('chat', { pattern: '/chat' });
+
+    const line = await findByTestId('welcome-agents');
+
+    expect(line.textContent).toContain('Agents:');
+    expect(
+      [...line.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
+    ).toEqual(['assistant', 'tool-runner']);
+    // The outlet pads the page, so the empty state is Cinder's with its own padding removed.
+    expect(container.querySelector('.cinder-empty-state')?.classList).toContain('weft-view__empty');
+  });
+
+  test('the welcome says nothing of agents when the Bureau lists none', async () => {
+    stubBureau({
+      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
+      'bureau.agents.list': () => agents(),
+    });
+    const { container, findByRole, queryClient } = mount('chat', { pattern: '/chat' });
+
+    await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
+    // The line is not there for want of an answer: the Bureau has answered, and said none.
+    await waitFor(() =>
+      expect(queryClient()?.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
+    );
+    const answered: unknown = queryClient()?.getQueryData(queryKeys.agents.list());
+    expect(answered).toEqual([]);
+    // One turn of the event loop lets the page take the answer in.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();
   });
 
   test('a new chat is ready for a published agent', async () => {
