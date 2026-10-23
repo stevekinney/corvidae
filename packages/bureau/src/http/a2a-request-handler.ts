@@ -73,6 +73,7 @@ import {
 import type { Principal } from '@lostgradient/weft';
 import { A2APushConfigurationConflictError, requestSignalOf } from '@lostgradient/weft/a2a';
 
+import { installPushConfiguration } from './a2a-push-install.ts';
 import { completeSend, owedInstallOf } from './a2a-push-install-claim.ts';
 import {
   BureauLedgerConflictError,
@@ -546,67 +547,32 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
-   * Installs a push configuration on a task and starts its checkpoint at `cursor`, so it
-   * receives every event after the cursor and none before. Both writes are idempotent: a repeat
-   * of the same configuration leaves one configuration and keeps its checkpoint.
+   * Installs a push configuration on a task and starts its checkpoint at `cursor`, under the
+   * task's fence (see `a2a-push-install.ts`). `held` is set by a caller that already holds it.
    */
   async function installPush(
     taskId: string,
     configuration: TaskPushNotificationConfig,
     context: ServerCallContext | undefined,
     cursor: string,
+    held = false,
   ): Promise<TaskPushNotificationConfig> {
     const { delivery, checkpoints, projector, ready } = requirePush();
     // Recovery settles every pending checkpoint it finds, so an install starts after it: a
     // recovery that read a checkpoint this install reuses could otherwise remove it.
     await ready;
-    // The identifier is fixed first so the checkpoint can be written ahead of the configuration,
-    // marked pending: a crash between the two writes leaves a checkpoint that a restart confirms
-    // or removes, never a configuration that no checkpoint knows.
-    const serverContext = context as ServerCallContext;
-    const repeated =
-      configuration.id === ''
-        ? await delivery.sender.pushStore.check(taskId, serverContext, configuration)
-        : undefined;
-    const configId =
-      configuration.id === '' ? (repeated?.id ?? crypto.randomUUID()) : configuration.id;
-    const installId = crypto.randomUUID();
-    await checkpoints.create({
-      recordVersion: 1,
-      taskId,
-      configId,
-      cursor,
-      caller: callerOf(context),
-      pending: true,
-      installId,
-    });
-    let stored: TaskPushNotificationConfig;
-    try {
-      stored = await delivery.sender.pushStore.create(taskId, serverContext, {
-        ...structuredClone(configuration),
-        id: configId,
-        taskId,
-      });
-    } catch (error) {
-      await checkpoints.removePending(taskId, configId, installId);
-      throw error;
-    }
-    if (stored.id !== configId) {
-      // A concurrent create of the same webhook won: its configuration is the one checkpointed.
-      await checkpoints.removePending(taskId, configId, installId);
-      await checkpoints.create({
-        recordVersion: 1,
-        taskId,
-        configId: stored.id,
-        cursor,
-        caller: callerOf(context),
-        pending: true,
-        installId,
-      });
-    }
-    await checkpoints.confirm(taskId, stored.id);
-    projector.watch(taskId);
-    return stored;
+    const install = () =>
+      installPushConfiguration(
+        { store: delivery.sender.pushStore, checkpoints, watch: (id) => projector.watch(id) },
+        {
+          taskId,
+          configuration,
+          context: context as ServerCallContext,
+          caller: callerOf(context),
+          cursor,
+        },
+      );
+    return held ? install() : projector.fence(taskId, install);
   }
 
   /** The task as one response shows it, with the command's receipt when it has one. */
@@ -800,6 +766,7 @@ export function createBureauA2ARequestHandler(
     message: Message,
     owner: Owner,
     version: string,
+    onEffect: () => void,
   ): Promise<string> {
     await checkNewTask(message, owner);
     // The identifier follows from the command, so a retry after a lost receipt finds this task
@@ -814,6 +781,9 @@ export function createBureauA2ARequestHandler(
     // A retry after a failed step resumes it: each step below is skipped once it has happened.
     // The task's own record keeps the message, so there is no side record to outlive its retention.
     const existing = await bureau.tasks.get(taskId);
+    // From here the task may exist: a failure later keeps the claim, so a retry finishes this
+    // task instead of claiming afresh.
+    onEffect();
     if (existing === undefined) {
       await bureau.tasks.recordAdmission({
         taskId,
@@ -957,9 +927,31 @@ export function createBureauA2ARequestHandler(
     return answered;
   }
 
+  /**
+   * A send that continues a task and carries an inline push configuration runs under that task's
+   * fence, from the preflight check to the install, so a concurrent create or delete of the same
+   * configuration cannot land between the check and the install it vouched for.
+   */
   async function admit(
     params: SendMessageRequest,
     context: ServerCallContext | undefined,
+  ): Promise<Admitted> {
+    const taskId = params.message?.taskId ?? '';
+    if (
+      push === undefined ||
+      taskId === '' ||
+      params.configuration?.taskPushNotificationConfig === undefined
+    ) {
+      return admitUnfenced(params, context, false);
+    }
+    await push.ready;
+    return push.projector.fence(taskId, () => admitUnfenced(params, context, true));
+  }
+
+  async function admitUnfenced(
+    params: SendMessageRequest,
+    context: ServerCallContext | undefined,
+    fenced: boolean,
   ): Promise<Admitted> {
     const user = userOf(context);
     const owner = ownerOf(context);
@@ -1135,7 +1127,7 @@ export function createBureauA2ARequestHandler(
       if (continued === undefined) {
         result = expired
           ? {
-              taskId: await createExpiredTask(message, owner, version),
+              taskId: await createExpiredTask(message, owner, version, markEffected),
               path: 'create',
               state: 'expired',
               reason: 'deadline-exceeded',
@@ -1168,7 +1160,7 @@ export function createBureauA2ARequestHandler(
       // Installed before the binding completes, so an exact retry of a send that crashed here
       // runs this again and finds the one configuration.
       if (owed?.pushOwed === true && inlinePush !== undefined) {
-        await installPush(result.taskId, inlinePush, context, owed.pushCursor);
+        await installPush(result.taskId, inlinePush, context, owed.pushCursor, fenced);
         installed = true;
       }
     } catch (error) {
@@ -1426,8 +1418,12 @@ export function createBureauA2ARequestHandler(
       const view = await ownTask(params.taskId, ownerOf(context));
       // The sender's store stops the configuration's deliveries before it returns; the checkpoint
       // goes with the configuration.
-      await delivery.sender.pushStore.delete(view.id, context, params.id);
-      await checkpoints.remove(view.id, params.id);
+      // Under the task's fence, so it never lands between an install's checkpoint and its
+      // configuration.
+      await projector.fence(view.id, async () => {
+        await delivery.sender.pushStore.delete(view.id, context, params.id);
+        await checkpoints.remove(view.id, params.id);
+      });
       // A task left with no configuration has nothing to project: its watcher finds that and stops.
       projector.watch(view.id);
     },
