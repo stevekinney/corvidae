@@ -212,7 +212,7 @@ describe('internal workspace architecture', () => {
     // `validate` stays the full gate. `check` is the per-pull-request gate, so it runs `--shared`:
     // parallel sessions run it side by side instead of queueing it behind a full validate.
     expect(scripts['check']).toBe(
-      "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
+      "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures && turbo run test:slow test:self:slow --affected --concurrency=1'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
