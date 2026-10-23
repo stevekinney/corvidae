@@ -42,6 +42,11 @@ import { z } from 'zod';
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
 import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from '../../schedule-fire-settled-event.ts';
 import {
+  bearsSettlement,
+  TASK_RESYNCED_EVENT_KIND,
+  TERMINAL_RUN_EVENT_KINDS,
+} from '../../task-resync.ts';
+import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
   TASK_STATUS_MESSAGE_LIMIT,
@@ -92,6 +97,20 @@ export const taskEventSchema = z.discriminatedUnion('kind', [
       .object({ artifactId: z.string(), text: z.string(), truncated: z.boolean() })
       .nullable(),
   }),
+  /**
+   * The history failed to record something about the task, and this restates where it stands
+   * (COR-1669). It carries the state, not a change: apply it as a `task.status`.
+   */
+  z.object({
+    ...common,
+    kind: z.literal('task.resynced'),
+    ...statusFields,
+    artifact: z
+      .object({ artifactId: z.string(), text: z.string(), truncated: z.boolean() })
+      .nullable(),
+    /** The revision of the task's record the element described. */
+    revision: z.number(),
+  }),
   z.object({
     ...common,
     kind: z.literal('task.gap'),
@@ -124,6 +143,28 @@ function textField(payload: unknown, name: string): string | undefined {
 
 function boundedMessage(text: string | undefined): string | null {
   return text === undefined || text === '' ? null : text.slice(0, TASK_STATUS_MESSAGE_LIMIT);
+}
+
+const resyncedSchema = z.object({
+  revision: z.number(),
+  status: taskStateSchema,
+  finishReason: z.string().nullable(),
+  message: z.string().nullable(),
+  settled: z
+    .object({
+      status: z.enum(['completed', 'failed', 'canceled']),
+      finishReason: z.string().nullable(),
+      message: z.string().nullable(),
+      answer: z.object({ text: z.string(), truncated: z.boolean() }).nullable(),
+    })
+    .nullable(),
+  openReviewIds: z.array(z.string()),
+});
+
+/** The fields of a `task.resynced` payload, or `undefined` when it is not one. */
+function resyncedFields(payload: unknown): z.infer<typeof resyncedSchema> | undefined {
+  const parsed = resyncedSchema.safeParse(payload);
+  return parsed.success ? parsed.data : undefined;
 }
 
 type TerminalSettlement = {
@@ -274,6 +315,42 @@ export function createTaskEventProjector(
           if (reviewId !== undefined) open.delete(reviewId);
           return settlement === undefined ? undefined : current(event);
         }
+        // The repair of a failed append (COR-1669): the task as it stood, whatever the events
+        // before it said, so every piece of state the fold keeps is replaced.
+        case TASK_RESYNCED_EVENT_KIND: {
+          const resynced = resyncedFields(event.payload);
+          if (resynced === undefined) return undefined;
+          open.clear();
+          for (const reviewId of resynced.openReviewIds) open.add(reviewId);
+          settlement =
+            resynced.settled === null
+              ? undefined
+              : {
+                  status: resynced.settled.status,
+                  finishReason: resynced.settled.finishReason,
+                  message: boundedMessage(resynced.settled.message ?? undefined),
+                  artifact:
+                    resynced.settled.status === 'completed' && resynced.settled.answer !== null
+                      ? {
+                          artifactId: `${taskId}:result`,
+                          text: resynced.settled.answer.text.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+                          truncated: resynced.settled.answer.truncated,
+                        }
+                      : null,
+                };
+          ended = settlement !== undefined && !(settlement.status === 'completed' && open.size > 0);
+          return {
+            kind: 'task.resynced',
+            taskId,
+            cursor: event.cursor,
+            emittedAtMs: event.emittedAtMs,
+            status: resynced.status,
+            finishReason: resynced.finishReason,
+            message: boundedMessage(resynced.message ?? undefined),
+            artifact: ended ? (settlement?.artifact ?? null) : null,
+            revision: resynced.revision,
+          };
+        }
         case 'run.removed':
           ended = true;
           return {
@@ -301,12 +378,6 @@ export function createTaskEventProjector(
     },
   };
 }
-
-const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
-  'run.completed',
-  'run.error',
-  'run.aborted',
-]);
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
@@ -583,7 +654,7 @@ export const tasksEventsOperation = defineOperation<
   kind: 'subscription',
   summary: 'Follow one task’s lifecycle',
   description:
-    'Streams a task’s lifecycle from its durable history: `task.status` elements carry the task’s state, a status message and, when it completes, its answer as one artifact; `task.snapshot` opens a subscription that names no cursor; `task.gap` marks a resume below the retention floor (exactly once; repair with `bureau.tasks.get`); `task.removed` ends the stream. Each element’s `cursor` resumes the stream through `fromCursor` or `Last-Event-ID`. The stream carries no step content, tool call or tool result. The task’s owner may subscribe; any other principal needs `bureau.tasks:read`, and a subscription to another owner’s task answers as a missing one does. The grant is checked when the subscription starts.',
+    'Streams a task’s lifecycle from its durable history: `task.status` elements carry the task’s state, a status message and, when it completes, its answer as one artifact; `task.resynced` restates the task’s state after the history failed to record a change (apply it as a `task.status`); `task.snapshot` opens a subscription that names no cursor; `task.gap` marks a resume below the retention floor (exactly once; repair with `bureau.tasks.get`); `task.removed` ends the stream. Each element’s `cursor` resumes the stream through `fromCursor` or `Last-Event-ID`. The stream carries no step content, tool call or tool result. The task’s owner may subscribe; any other principal needs `bureau.tasks:read`, and a subscription to another owner’s task answers as a missing one does. The grant is checked when the subscription starts.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: tasksEventsInput,
@@ -705,17 +776,24 @@ export const tasksEventsOperation = defineOperation<
       // A task whose terminal event was pruned is still the terminal state its snapshot
       // reports: a retained review event must not undo it. When the event survived, the
       // events themselves say how the task ended, answer included.
-      const settledEventRetained = retained.some((event) => TERMINAL_RUN_EVENTS.has(event.kind));
+      const settledEventRetained = retained.some(
+        (event) =>
+          TERMINAL_RUN_EVENT_KINDS.has(event.kind) ||
+          (event.kind === TASK_RESYNCED_EVENT_KIND && bearsSettlement(event)),
+      );
       projector = createTaskEventProjector(
         taskId,
         settledEventRetained ? { ...task, status: 'working' } : task,
       );
-      for (const event of retained) {
+      // A resync later in the history can restate a task an earlier terminal event ended (the
+      // lost event was a review opening), so the replay does not close before the last one.
+      const lastResync = retained.findLastIndex((event) => event.kind === TASK_RESYNCED_EVENT_KIND);
+      for (const [index, event] of retained.entries()) {
         const element = projector.project(event);
         if (element !== undefined && (decodeCursor(event.cursor) ?? -1) > emitAfter) {
           queue.push(element);
         }
-        if (projector.ended) {
+        if (projector.ended && index >= lastResync) {
           queue.end();
           onReplayComplete();
           return;

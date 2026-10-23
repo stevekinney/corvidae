@@ -306,6 +306,7 @@ import {
   type LiveTask,
   type TaskRecord,
 } from './task-registry';
+import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
   EXPIRY_ACTOR,
@@ -4091,6 +4092,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `BureauOptions.onEvent`.
   const BOOT_FRAME_BUFFER_LIMIT = 1024;
   let recoveryPassActive = false;
+  /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
+  let taskResyncBootPass: Promise<void> | undefined;
   const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
@@ -9077,6 +9080,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
+      // COR-1669: a task whose settlement was written but whose event never was. Not awaited, so
+      // the boot takes no extra turn; held in `taskResyncBootPass`, which `shutdown()` awaits
+      // before storage closes.
+      const repaired = taskResyncInstance?.repairAll().then(
+        () => undefined,
+        (error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not repair task histories at boot: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        },
+      );
+      if (repaired !== undefined) {
+        taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
+      }
       return report;
     } finally {
       recoveryPassActive = false;
@@ -12416,6 +12436,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1669 — a task marked resync-pending, or settled with no event that says so.
+      try {
+        await taskResyncInstance?.repairAll();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual task-history repair pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       try {
         await reconcileAgentSnapshots();
         await retainAgentSnapshots();
@@ -12692,6 +12723,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic task retention pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        try {
+          await taskResyncInstance?.repairAll();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic task-history repair pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -17248,6 +17289,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (automaticRunOwnershipPruneCurrentPass) {
         await automaticRunOwnershipPruneCurrentPass;
       }
+      if (taskResyncBootPass) await taskResyncBootPass;
       // AB-388: drain any manual `runDurableMaintenance()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
@@ -17626,6 +17668,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // below, alongside `auditTrailInstance`, once `bureau` itself exists to
   // subscribe to.
   let durableEventProducerInstance: DurableEventProducer | undefined;
+  // COR-1669 — repairs a task's history after a failed append, at boot, and in maintenance.
+  let taskResyncInstance: TaskResync | undefined;
 
   /**
    * Whether `principal` may read `owner`'s durable history right now: the one
@@ -18820,8 +18864,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       eventHistoryInstance,
       runtimeServices,
       diagnose,
-      { signal: backgroundShutdownController.signal, eventTimestamp },
+      {
+        signal: backgroundShutdownController.signal,
+        eventTimestamp,
+        onAppendFailed: (owner) => void taskResyncInstance?.appendFailed(owner),
+      },
     );
+    taskResyncInstance = createTaskResync({
+      answerOf: (taskId) => {
+        const content = bureau.getRun(taskId)?.stepDetails.findLast((step) => step.final)?.content;
+        if (content === undefined || content === '') return undefined;
+        return {
+          text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+          truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+        };
+      },
+      tasks,
+      history: eventHistoryInstance,
+      producer: durableEventProducerInstance,
+      diagnose: (message, cause) =>
+        diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+    });
   }
 
   // Wire the webhook notifier (AB-21) now that the audit trail exists (an

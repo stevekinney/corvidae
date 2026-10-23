@@ -1895,6 +1895,13 @@ export interface DurableEventProducerOptions {
    * `runtime.clock.now()` when omitted, matching every prior caller.
    */
   eventTimestamp?: EventTimestampResolver;
+  /**
+   * COR-1669 — called, once and without awaiting, when a listener's append for `owner` failed and
+   * was diagnosed: the history now lacks an event its readers were owed. It runs inside that
+   * append's slot in the owner's write order, so it must not wait on the producer's writes (use
+   * {@link DurableEventProducer.serialize} afterwards). A throw is isolated.
+   */
+  onAppendFailed?: ((owner: DurableEventOwner, kind: string) => void) | undefined;
 }
 
 /**
@@ -1926,6 +1933,13 @@ export interface DurableEventProducer {
    * shared with other consumers — never call it from here).
    */
   hasActiveWrite(owner: DurableEventOwner): boolean;
+  /**
+   * COR-1669 — runs `work` in `owner`'s append order: after every append already queued for the
+   * owner has settled, and before any queued later. It is the barrier a repair appends under, so
+   * the state it reads is the state after every earlier event. Never rejects: a failure of `work`
+   * is diagnosed. Resolves once `work` has settled.
+   */
+  serialize(owner: DurableEventOwner, work: () => Promise<void>): Promise<void>;
   /**
    * Await every `owner`-scoped write currently in flight at the moment
    * this is called — never rejects (an individual write's own failure is
@@ -2188,6 +2202,16 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
             message: `[durable-event-history] Failed to record durable event "${kind}" for ${owner.kind}:${owner.id}:`,
             cause: error,
           });
+          try {
+            producerOptions?.onAppendFailed?.(owner, kind);
+          } catch (hookError) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[durable-event-history] The append-failure hook threw for ${owner.kind}:${owner.id}:`,
+              cause: hookError,
+            });
+          }
         },
       ),
     );
@@ -2671,6 +2695,22 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   return {
     hasActiveWrite(owner: DurableEventOwner): boolean {
       return (activeWriteCountsByOwner.get(encodeOwner(owner)) ?? 0) > 0;
+    },
+    serialize(owner: DurableEventOwner, work: () => Promise<void>): Promise<void> {
+      if (signal?.aborted) return Promise.resolve();
+      return trackWrite(encodeOwner(owner), () =>
+        work().then(
+          () => undefined,
+          (error: unknown) => {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[durable-event-history] A serialized write for ${owner.kind}:${owner.id} failed:`,
+              cause: error,
+            });
+          },
+        ),
+      );
     },
     async waitForActiveWrites(owner: DurableEventOwner): Promise<void> {
       // Snapshot the current Set before awaiting: a write that starts

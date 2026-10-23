@@ -615,7 +615,7 @@ The handler has no run-starting operation of its own, so the host starts the run
 **Not available.** Do not promise these to your own users:
 
 - `GetExtendedAgentCard`, and any binding other than JSON-RPC (HTTP+JSON and gRPC).
-- `task.resynced`, the repair of a failed durable append for push notifications (COR-1669 part 2b-3, still open).
+- Delivery of `task.resynced` over push notifications and A2A streams. The Bureau appends the event to repair a failed durable append and `bureau.tasks.events` serves it, but push and the A2A stream do not yet deliver it (COR-1669 part 2b-3c).
 - Authentication other than an API key, and the `bureau.deliveries.*` management operations.
 - Wiring a human-input form from an agent file or the catalog (COR-1674). An author can configure `inputSchemas` on Operative's `requestHumanInput` tool today, and the form is projected to the A2UI data part the extension row describes.
 

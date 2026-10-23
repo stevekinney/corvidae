@@ -4,7 +4,7 @@
  * JSON-RPC helpers the suites share.
  */
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import { MemoryStorage, Outbox } from '@lostgradient/weft';
+import { MemoryStorage, Outbox, type Storage } from '@lostgradient/weft';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,
@@ -96,6 +96,8 @@ export async function openPushBureau(
   generate: GenerateFunction,
   options: {
     durableHistory?: boolean;
+    /** The Bureau's own storage, for a test that fails its appends; the push store stays in memory. */
+    bureauStorage?: Storage;
     humanInput?: boolean;
     push?: boolean;
     sweepIntervalMs?: number;
@@ -119,6 +121,7 @@ export async function openPushBureau(
     agents: { asker: createAgent({ name: 'asker', generate }) },
     publish: ['asker'],
     durableHistory: options.durableHistory ?? true,
+    ...(options.bureauStorage === undefined ? {} : { storage: options.bureauStorage }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: {
       publicUrl: 'http://localhost',
