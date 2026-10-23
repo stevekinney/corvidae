@@ -3,7 +3,7 @@
  * history, whichever way the fire is canceled and wherever a crash lands, and an approval's session
  * prune commits before its in-memory state is dropped.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError } from './create-bureau';
@@ -66,10 +66,14 @@ describe('a fire canceled with a committed approval, then a crash before the can
       const hold = holdingWrites('review.tool-approval.canceled');
       harness.onDispose(() => hold.release());
       const first = await harness.open({
-        generate: continuingGenerate,
-        toolbox: approvalToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         storage: await harness.sqliteStorage(path, (storage) => hold.wrap(storage)),
+        agents: {
+          default: createAgent({
+            generate: continuingGenerate,
+            toolbox: approvalToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
       });
       const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
       const review = await reviewOf(first, fireId);
@@ -82,10 +86,14 @@ describe('a fire canceled with a committed approval, then a crash before the can
 
       // The next process: the canceled record was never written.
       const restarted = await harness.open({
-        generate: continuingGenerate,
-        toolbox: approvalToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         storage: await harness.sqliteStorage(path),
+        agents: {
+          default: createAgent({
+            generate: continuingGenerate,
+            toolbox: approvalToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
       });
       await pollUntil(async () => {
         const records = await auditRecordsOf(
@@ -111,10 +119,14 @@ describe('a fire canceled with a committed approval, then a crash before the can
 
       // A second restart finds the review closed already, and writes nothing more.
       const again = await harness.open({
-        generate: continuingGenerate,
-        toolbox: approvalToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         storage: await harness.sqliteStorage(path),
+        agents: {
+          default: createAgent({
+            generate: continuingGenerate,
+            toolbox: approvalToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
       });
       await sleep(100);
       expect(
@@ -219,12 +231,16 @@ describe('a fire approval’s session prune commits before its in-memory state i
     );
     const charges: number[] = [];
     const bureau = await harness.open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       storage,
       taskRetention: { olderThan: 1 },
       sessionPersistenceRetryDelayMilliseconds: 0,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
     const review = await reviewOf(bureau, fireId);

@@ -13,7 +13,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -22,6 +22,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { openGovernedMemory } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 const closers: Array<() => unknown> = [];
@@ -50,17 +51,21 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
 
     // The owner reaches step 1, then stops: its claim is never renewed, so it lapses.
     const reachedStepOne = Promise.withResolvers<void>();
-    const owner = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        reachedStepOne.resolve();
-        return new Promise<never>(() => {});
+    const owner = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0)
+              return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            reachedStepOne.resolve();
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([nextTool]),
       storage: { type: 'sqlite', path: storagePath },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableBackgroundTasks: 'manual',
       durableOwnership: {
         ownership: 'workflow-lease',
@@ -69,7 +74,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
       },
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await owner.createRun({ agentName: 'default', message: 'go' });
     await reachedStepOne.promise;
 
     // The second bureau reclaims it while its composition is held open.
@@ -91,14 +96,17 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     });
     const held = Promise.withResolvers<void>();
     const generate: GenerateFunction = async () => ({ content: 'recovered', toolCalls: [] });
-    const successor = createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const successor = createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'sqlite', path: storagePath },
       memory,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableOwnership: {
         ownership: 'workflow-lease',
         workflowClaimTtlMs: 200,

@@ -104,8 +104,8 @@ describe('a peer closing a fire’s last review ends the stream another instance
     const holderCharges: number[] = [];
     const holder = await harness.open({
       ...peerOptions,
-      toolbox: approvalToolbox(holderCharges),
       storage: await harness.sqliteStorage(path),
+      toolbox: approvalToolbox(holderCharges),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, 'peer-stream-session');
     const review = await reviewOf(holder, fireId);
@@ -116,8 +116,8 @@ describe('a peer closing a fire’s last review ends the stream another instance
     const peerCharges: number[] = [];
     const peer = await harness.open({
       ...peerOptions,
-      toolbox: approvalToolbox(peerCharges),
       storage: await harness.sqliteStorage(path),
+      toolbox: approvalToolbox(peerCharges),
     });
     await reviewOf(peer, fireId);
     return { holder, peer, fireId, review, holderCharges, peerCharges };

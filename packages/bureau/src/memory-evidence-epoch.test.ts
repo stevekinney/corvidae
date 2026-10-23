@@ -20,7 +20,6 @@ import {
   createContextEpochSealer,
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
-  stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
@@ -170,9 +169,10 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
     }));
     const bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, createContextEpoch }) },
+      agents: {
+        scout: createAgent({ generate, createContextEpoch }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
@@ -196,8 +196,9 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
 
     const plain = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, createContextEpoch }) },
-      stopWhen: stopWhen.noToolCalls(),
+      agents: {
+        scout: createAgent({ generate, createContextEpoch }),
+      },
     });
     bureaus.push(plain);
     const unmemoried = await plain.createRun({
@@ -223,7 +224,6 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
         scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([probe]) }),
       },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
@@ -257,9 +257,10 @@ describe('a session’s next run (COR-771)', () => {
     }));
     const bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, createContextEpoch }) },
+      agents: {
+        scout: createAgent({ generate, createContextEpoch }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
@@ -421,7 +422,6 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
         storage: fixture.configuration,
         durableExecution: true,
         humanInput: true,
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         durableOwnership: { ownership: 'none' },
         requestAuthorityValidator: () => true,
       });

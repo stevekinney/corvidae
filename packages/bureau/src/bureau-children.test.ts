@@ -36,6 +36,7 @@ import { BureauError, createBureau } from './create-bureau';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * Every bureau here reports into this sink instead of the console. Disposing
@@ -153,14 +154,15 @@ function hangingAtStep(
 
 describe('bureau.children over an ephemeral bureau', () => {
   async function createParentBureau(agents: Parameters<typeof createBureau>[0]['agents']) {
-    const bureau = await createBureau({
-      agents,
-      generate: () => hang(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        ...agents,
+        default: createAgent({ generate: () => hang(), toolbox: createEmptyToolbox() }),
+      },
       children: { signals: { worker: proceedSignals } },
       onDiagnostic,
     });
-    const parent = await bureau.createRun({ agentName: 'bureau', message: 'plan the work' });
+    const parent = await bureau.createRun({ agentName: 'default', message: 'plan the work' });
     return { bureau, parent };
   }
 
@@ -178,7 +180,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
       expect(dispatched.child).toMatchObject({
         parentRunId: parent.id,
-        parentAgentName: 'bureau',
+        parentAgentName: 'default',
         childAgentName: 'worker',
         status: 'running',
         workflow: { kind: 'process-local' },
@@ -203,7 +205,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
   it('never lets an unrelated parent inspect, wait on, signal, or cancel another parent’s child', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
-    const other = await bureau.createRun({ agentName: 'bureau', message: 'another plan' });
+    const other = await bureau.createRun({ agentName: 'default', message: 'another plan' });
 
     try {
       const dispatched = await bureau.children.dispatch({

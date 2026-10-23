@@ -4,7 +4,12 @@
  */
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  stopWhen,
+  type Toolbox,
+  createAgent,
+} from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -15,6 +20,7 @@ import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { fireOnce, pollUntil, reviewOf } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 const paths: string[] = [];
@@ -66,23 +72,26 @@ describe('expired review state under the automatic maintenance profile', () => {
         },
       },
     ) as unknown as Toolbox;
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-maintenance-bureau',
-      agents: {},
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
       // The default profile: the Bureau runs its own maintenance timer.
       runtime,
-      generate,
-      toolbox,
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     bureaus.push(bureau);
 
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'maintenance-session');
     const fireReview = await reviewOf(bureau, fireId);
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });
@@ -157,21 +166,24 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
   it('is swept by a timer armed while a tool approval is held, and none is armed once it is gone', async () => {
     const runtime = createManualRuntimeServices();
     // In memory: no durable engine, no governed memory, no audit retention.
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-lazy-bureau',
-      agents: {},
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: gatedToolbox(runtime),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       runtime,
-      generate: chargesOnce,
-      toolbox: gatedToolbox(runtime),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     bureaus.push(bureau);
     // Nothing is held, so no timer keeps the process alive.
     expect(runtime.pendingTimers()).toEqual([]);
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });
@@ -199,18 +211,21 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
 
   it('leaves no timer armed once the approval it was armed for is decided, before any tick', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-lazy-decided-bureau',
-      agents: {},
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: gatedToolbox(runtime),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       runtime,
-      generate: chargesOnce,
-      toolbox: gatedToolbox(runtime),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     bureaus.push(bureau);
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });
@@ -258,18 +273,21 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
         },
       },
     ) as unknown as Toolbox;
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-lazy-inflight-bureau',
-      agents: {},
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       runtime,
-      generate: chargesOnce,
-      toolbox,
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     bureaus.push(bureau);
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });
@@ -299,20 +317,23 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
     const runtime = createManualRuntimeServices();
     const path = createTemporaryPath('bureau-expiry-manual', '.sqlite');
     paths.push(path);
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-manual-bureau',
-      agents: {},
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: gatedToolbox(runtime),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
       durableBackgroundTasks: 'manual',
       runtime,
-      generate: chargesOnce,
-      toolbox: gatedToolbox(runtime),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     bureaus.push(bureau);
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });

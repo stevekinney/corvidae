@@ -2,13 +2,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 function nextTool() {
   return createTool({
@@ -23,34 +24,41 @@ async function crashAndRecover(principal: string | undefined) {
   const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-recovery-'));
   const path = join(directory, 'bureau.sqlite');
   let reachedStepOne = false;
-  const crashed = await createBureau({
-    agents: {},
-    generate: async ({ step }) => {
-      if (step === 0) return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-      reachedStepOne = true;
-      return new Promise<never>(() => {});
+  const crashed = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => {
+          if (step === 0)
+            return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+          reachedStepOne = true;
+          return new Promise<never>(() => {});
+        },
+        toolbox: createToolbox([nextTool()]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
     },
-    toolbox: createToolbox([nextTool()]),
     storage: { type: 'sqlite', path },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    stopWhen: stopWhen.noToolCalls(),
   });
   const run = await crashed.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'Be recovered',
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(() => reachedStepOne, 'the first process never reached step one');
   // The first process is deliberately not disposed: it stands in for a crash.
-  const recovered = await createBureau({
-    agents: {},
-    generate: async ({ step }) => ({ content: `recovered ${step}`, toolCalls: [] }),
-    toolbox: createToolbox([nextTool()]),
+  const recovered = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => ({ content: `recovered ${step}`, toolCalls: [] }),
+        toolbox: createToolbox([nextTool()]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage: { type: 'sqlite', path },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    stopWhen: stopWhen.noToolCalls(),
   });
   await waitForCondition(
     () => recovered.getRun(run.id)?.status !== 'running',

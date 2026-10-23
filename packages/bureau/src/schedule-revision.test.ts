@@ -10,10 +10,15 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support.ts';
+import { createAgent } from '@lostgradient/operative';
 
 async function withBureau<T>(body: (harness: WorkflowBureauHarness) => Promise<T>): Promise<T> {
   const harness = await startWorkflowBureau({
-    overrides: { generate: async () => ({ content: 'tick', toolCalls: [] }) },
+    overrides: {
+      agents: {
+        default: createAgent({ generate: async () => ({ content: 'tick', toolCalls: [] }) }),
+      },
+    },
   });
   try {
     return await body(harness);

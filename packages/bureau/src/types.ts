@@ -26,7 +26,6 @@ import type {
   FlowControlPolicy,
   FreshAttemptSourceResolver,
   GenerateFunction,
-  GuardrailsOptions,
   LivenessSnapshot,
   RunFrame,
   RunReport,
@@ -42,7 +41,6 @@ import type {
   SessionListOptions,
   SessionStore,
   SessionSummary,
-  StopCondition,
   Store,
   TokenUsage,
   Validator,
@@ -69,11 +67,7 @@ import type {
   WorkflowSummary,
 } from '@lostgradient/weft';
 import type {
-  AnyToolbox,
-  GrantListFilter,
   PendingToolApproval,
-  ReusableApprovalGrant,
-  ReusableApprovalGrantInput,
   SignedPendingToolApproval,
   Tool,
   ToolRequestContext,
@@ -369,12 +363,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * bureau that only uses the session/durability-backed `createRun` surface
    * and doesn't dispatch through the catalog at all. There is no
    * register/unregister lifecycle: the map is fixed for the bureau's
-   * lifetime, independent of and additive to `createRun`/`generate`/
-   * `provider` below (a bureau may use either, both, or neither surface).
+   * lifetime, independent of and additive to `createRun` (a bureau may use
+   * either surface or both). Every run, scheduler task, and schedule fire
+   * belongs to one of these agents.
    *
-   * The name `bureau` is reserved for the Bureau-wide default agent that a
-   * `createRun` call without `agentName` runs; an entry called `bureau` is
-   * refused with `BureauError` (`BAD_REQUEST`).
+   * The name `bureau` is reserved (it named the implicit Bureau-wide agent,
+   * which no longer exists); an entry called `bureau` is refused with
+   * `BureauError` (`BAD_REQUEST`).
    */
   agents: D;
   /**
@@ -450,43 +445,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * AB-64's decision record, `## AB-15 and AB-22 boundaries (AC9)`.
    */
   modelPolicy?: BureauModelPolicyOptions;
-  /**
-   * @deprecated Agent-owned. Configure `generate` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  generate?: GenerateFunction;
-  /**
-   * @deprecated Agent-owned. Resolve the provider into a `GenerateFunction`
-   * and pass it as `generate` on the agent passed to `createAgent` instead,
-   * then dispatch it through {@link Bureau.run}. Not yet removed — see
-   * AB-242's decision record and the removal issue it names (AB-352).
-   */
-  provider?: ProviderConfiguration;
-  /**
-   * @deprecated Agent-owned. Resolve the provider fallback into a
-   * `GenerateFunction` and pass it as `generate` on the agent passed to
-   * `createAgent` instead, then dispatch it through {@link Bureau.run}. Not
-   * yet removed — see AB-242's decision record and the removal issue it
-   * names (AB-352).
-   */
-  providers?: ProviderRouteConfiguration[];
-  /**
-   * @deprecated Agent-owned. Resolve the routing strategy into a
-   * `GenerateFunction` and pass it as `generate` on the agent passed to
-   * `createAgent` instead, then dispatch it through {@link Bureau.run}. Not
-   * yet removed — see AB-242's decision record and the removal issue it
-   * names (AB-352).
-   */
-  routing?: RoutingConfiguration;
-  /**
-   * @deprecated Agent-owned. Configure `toolbox` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  toolbox?: AnyToolbox;
   store?: Store;
   /**
    * Persistence for this bureau. Accepts three forms:
@@ -664,35 +622,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   memoryAuthority?: BureauMemoryAuthorityOptions;
   cache?: CacheConfiguration;
-  /**
-   * AB-40 — guardrail tripwires. When omitted (the default), bureau wires an
-   * enabled-by-default preset: a prompt-injection input detector + an output
-   * PII validator, both running in `mode: 'tripwire'` (a trip hard-halts the
-   * run with `finishReason: 'tripwire'` rather than substituting a response).
-   * Pass a `GuardrailsOptions` to override the preset entirely (input/output
-   * detectors, taint, `mode`), or `false` to opt out of guardrails altogether.
-   *
-   * @deprecated Agent-owned. Use `createAgent`'s `guardrails` (COR-1367),
-   * dispatched through {@link Bureau.run}. During the transition a catalog
-   * agent that declares no `guardrails` of its own inherits this value
-   * through `AgentRunContext.inheritedGuardrails` (a configuration replaces
-   * the preset for it, `false` opts it out); an agent's own declaration
-   * always wins. Removing this field leaves an undeclared agent on the
-   * AB-40 preset, so the removal is not a behavior change.
-   */
-  guardrails?: GuardrailsOptions | false;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
-  /**
-   * Skills for the runs this bureau composes itself (`createRun`). Never
-   * applied to a catalog agent dispatched through {@link Bureau.run}.
-   *
-   * @deprecated Agent-owned. Use `createAgent`'s `skills` (COR-1367); a
-   * catalog agent offers only the catalog it declares, and inherits nothing
-   * from this field.
-   */
-  skills?: SkillRuntimeConfiguration;
   streaming?: StreamingConfiguration;
   scheduler?: SchedulerConfiguration;
   /**
@@ -742,13 +674,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * this option.
    */
   wakeup?: boolean;
-  /**
-   * @deprecated Agent-owned. Configure `stopWhen` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  stopWhen?: StopCondition | StopCondition[];
   sessionPersistenceRetryDelayMilliseconds?: number;
   sessionPersistenceSleep?: (milliseconds: number) => Promise<void>;
   /**
@@ -764,20 +689,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `signal` so it does not itself leak a pending timer/interval.
    */
   shutdownTimeoutSleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
-  /**
-   * @deprecated Agent-owned. Configure `maximumSteps` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  maximumSteps?: number;
-  /**
-   * @deprecated Agent-owned. Configure `instructions` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  systemPrompt?: string;
   /**
    * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
    * default interceptor; pass an {@link ObservabilityOptions} (minus `eventTarget`,
@@ -1349,7 +1260,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   readonly store: Store;
   readonly memory: GovernedMemory | undefined;
   readonly scheduler: Scheduler | undefined;
-  readonly ready: boolean;
   /**
    * AB-246 — the model-catalog refresh service (AB-64's catalog, AB-34's
    * started-work control contract). Present regardless of `D`, matching the
@@ -1463,7 +1373,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * retention window has passed (the same request id then creates a new
    * run), or `not-found`. Scoped like the ledger key, to the principal and to
    * the agent the run is: the session's, when the request continued an existing session (name it
-   * with `sessionId`), otherwise `agentName`, default `bureau`. A query that finds the
+   * with `sessionId`), otherwise `agentName`, which is then required. A query that finds the
    * run started records its receipt, exactly as a retry would. Rejects
    * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
    * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
@@ -2016,21 +1926,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `now` defaults to the bureau's own clock.
    */
   sweepExpiredReviews(now?: number): Promise<number>;
-
-  /**
-   * Mints and signs a reusable approval grant (AB-46, AB-346) via the
-   * bureau's base toolbox — a grant lets a matching future tool call skip
-   * human review entirely. Delegates to `Toolbox.issueGrant`, so it throws
-   * the same "approvalSecret is required" error when the base toolbox has
-   * no `approvalSecret`/`grantStateStore` configured.
-   */
-  issueGrant(input: ReusableApprovalGrantInput): Promise<ReusableApprovalGrant>;
-
-  /** Revokes a reusable approval grant by id; idempotent on an unknown or already-revoked id. */
-  revokeGrant(id: string): Promise<void>;
-
-  /** Lists reusable approval grants, optionally narrowed by principal, agent, or tool. */
-  listGrants(filter?: GrantListFilter): Promise<ReusableApprovalGrant[]>;
 
   /**
    * Installs the host-owned authority freshness check used immediately before
@@ -2590,19 +2485,16 @@ export interface CreateRunRequest {
   /**
    * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
    * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
-   * tools (`requestHumanInput`, `scheduleWakeup`, skills), guardrails and memory around them.
-   * `'bureau'` names the default agent, which runs the Bureau-wide `generate` and toolbox.
+   * tools (`requestHumanInput`, `scheduleWakeup`) and memory around them.
    *
    * A session is bound to the agent of the run that created it. A later run names that same agent;
    * a request that leaves the field out at runtime (the type no longer allows it) still inherits
-   * the session's agent. Naming another, including naming a
-   * catalog agent on a session bound to `bureau`, is refused with `BAD_REQUEST`. A name that is
-   * not in the catalog is refused with `NOT_FOUND`; both land before anything is persisted. The
-   * default agent `bureau` is always valid.
+   * the session's agent. Naming another is refused with `BAD_REQUEST`. A name that is not in the
+   * catalog, `bureau` (the implicit agent that no longer exists) included, is refused with
+   * `NOT_FOUND`; both land before anything is persisted.
    *
    * For the system prompt, `maximumSteps` and `maximumTokens`, the request's own field wins, then
-   * the agent's value, then the Bureau's default. Stop conditions come from the agent, then the
-   * Bureau. The session's request context governs tool approvals, never the agent's
+   * the agent's value. Stop conditions come from the agent. The session's request context governs tool approvals, never the agent's
    * `executeOptions.requestContext`.
    *
    * The run uses that agent's own `generate`, tools, and stop condition. A durable run
@@ -2649,8 +2541,8 @@ export interface LocateRunCreationReceiptRequest {
   /** The authenticated caller that issued the request. */
   principal: string;
   /**
-   * The agent the request ran as. When omitted, it resolves the way `createRun` resolves it: the
-   * agent bound to `sessionId` when that session exists, otherwise `bureau`.
+   * The agent the request ran as. Required unless `sessionId` names an existing session, whose
+   * agent it then is.
    */
   agentName?: string | undefined;
   /**
@@ -2664,6 +2556,11 @@ export interface LocateRunCreationReceiptRequest {
 }
 
 export interface SubmitSchedulerTaskRequest {
+  /**
+   * The catalog agent the task runs as: its own `generate`, tools, stop condition, and
+   * instructions. An agent that is not in the catalog is refused with `NOT_FOUND`.
+   */
+  agentName: string;
   message: string;
   maximumSteps?: number;
   metadata?: Record<string, unknown>;

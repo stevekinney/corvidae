@@ -12,6 +12,7 @@ import { RunRegisteredEvent, RunRemovedEvent } from '../events.ts';
 import { waitForCondition } from '../test';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const API_KEY = 'handler-test-key';
@@ -43,10 +44,9 @@ async function buildBureau(
       createAgent({ generate: createMockGenerate([]), name }),
     ]),
   );
-  return createBureau({
+  return createBureau<AgentDefinitions>({
     ...(options.id === undefined ? {} : { id: options.id }),
-    agents,
-    generate,
+    agents: { ...agents, default: createAgent({ generate }) },
     ...(options.persist === true || options.durable === true
       ? { storage: { type: 'memory' as const } }
       : {}),
@@ -665,13 +665,14 @@ describe('createBureauHandler catalog', () => {
   });
 
   it('streams operative.runs.events for a run the Bureau owns', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate,
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate }),
+      },
       assets: { storage: createMemoryAssetStorage() },
     });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForCondition(
         () => bureau.runEventFeeds.get(run.id) !== undefined,
         'expected the bureau to create the run feed',

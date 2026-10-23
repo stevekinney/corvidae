@@ -424,18 +424,22 @@ describe.each([
     const seen: GenerateContext[] = [];
     const bureau = await openBureau(
       environment,
-      { viewer: viewer(parked.promise, seen) },
       {
+        viewer: viewer(parked.promise, seen),
         // The parent never answers, but stops when it is aborted, as a provider call does.
-        generate: ({ signal }) =>
-          new Promise<never>((_resolve, reject) => {
-            signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
-          }),
-        ...extra,
+        default: createAgent({
+          generate: ({ signal }) =>
+            new Promise<never>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+                once: true,
+              });
+            }),
+        }),
       },
+      extra,
     );
     const parent = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'plan the work',
       principal: alice.id,
     });

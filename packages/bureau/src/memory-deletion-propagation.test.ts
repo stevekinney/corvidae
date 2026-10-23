@@ -15,12 +15,13 @@ import {
   type MemoryDeletionPropagator,
   type MemoryDeletionReceipt,
 } from '@lostgradient/memory';
-import { stopWhen, waitForCondition } from '@lostgradient/operative';
+import { stopWhen, waitForCondition, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 
@@ -92,11 +93,14 @@ async function start(
   runtime: ReturnType<typeof createManualRuntimeServices>,
 ) {
   const diagnostics: string[] = [];
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: 'deletion-bureau',
-    agents: {},
-    generate: async () => ({ content: 'ok', toolCalls: [] }),
-    stopWhen: stopWhen.noToolCalls(),
+    agents: {
+      default: createAgent({
+        generate: async () => ({ content: 'ok', toolCalls: [] }),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     memory,
     runtime,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),

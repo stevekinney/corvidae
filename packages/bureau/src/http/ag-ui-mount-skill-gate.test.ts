@@ -8,6 +8,7 @@ import { createTool, createToolbox } from 'armorer';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { createAgentSkills } from '../agent-skills';
 import { removeSkillRoots, skillCatalogOnDisk } from '../skill-policy-fixtures.test-support.ts';
 import { openHarness, runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { readAgUiStream } from './ag-ui-stream.test-support.ts';
@@ -44,7 +45,7 @@ describe('the AG-UI stream of a run narrowed by an active skill (COR-1628)', () 
         { kind: 'respond', response: { content: 'Done.', toolCalls: [] } },
       ],
       toolbox,
-      skills: { catalog: await catalog.discover() },
+      skills: createAgentSkills({ catalog: await catalog.discover() }),
     });
     try {
       const frames = await readAgUiStream(await harness.handler(startRequest(runAgentInput())));

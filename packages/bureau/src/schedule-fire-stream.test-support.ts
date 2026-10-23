@@ -5,7 +5,7 @@
  * is driven a poll interval at a time.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { jest } from 'bun:test';
 
@@ -53,16 +53,10 @@ export function fireBureauOptions(
   seed: string,
 ): Pick<
   BureauOptions,
-  | 'generate'
-  | 'stopWhen'
-  | 'durableOwnership'
-  | 'durableBackgroundTasks'
-  | 'runtime'
-  | 'sessionPersistenceSleep'
+  'durableOwnership' | 'durableBackgroundTasks' | 'runtime' | 'sessionPersistenceSleep' | 'agents'
 > {
   return {
-    generate,
-    stopWhen: stopWhen.noToolCalls(),
+    agents: { default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }) },
     durableOwnership: OWNERSHIP,
     durableBackgroundTasks: 'manual',
     runtime: createManualRuntimeServices({ identifierSeed: seed }),

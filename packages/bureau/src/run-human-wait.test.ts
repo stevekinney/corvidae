@@ -91,11 +91,10 @@ async function start(
   options: Partial<BureauOptions<AgentDefinitions>> = {},
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
-    agents,
+    agents: { ...agents },
     storage: { type: 'memory' },
     durableExecution: true,
     humanInput: true,
-    stopWhen: stopWhen.noToolCalls(),
     ...options,
   });
   bureaus.push(bureau);
@@ -432,9 +431,10 @@ describe('requestHumanInput on a catalog run', () => {
     const withOption = await start({ asker: askingAgent(offered) });
     const noOption = await start({ asker: askingAgent(withoutOption) }, { humanInput: false });
     const memoryOnly = await createBureau<AgentDefinitions>({
-      agents: { asker: askingAgent(nonDurable) },
+      agents: {
+        asker: askingAgent(nonDurable),
+      },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(memoryOnly);
 

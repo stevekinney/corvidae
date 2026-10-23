@@ -34,6 +34,7 @@ import {
 } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import type { AgentDefinitions } from '../agent-catalog';
 
 type Handler = ReturnType<typeof createBureauHandler>;
 
@@ -63,16 +64,18 @@ async function withParentAndChild<T>(
     { kind: 'block', barrier: 'child-hold' },
     childStep,
   ]);
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
     id: 'children-fixture',
     agents: {
       assistant: createAgent({ generate: script, name: 'assistant' }),
       worker: createAgent({ generate: script, name: 'worker' }),
+      default: createAgent({
+        generate: script,
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
     },
-    generate: script,
-    toolbox: createToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     children: {},
@@ -91,7 +94,7 @@ async function withParentAndChild<T>(
     if (dispatched.outcome !== 'started') throw new Error('expected a started child');
     await script.reached('child-hold');
     return await body({
-      bureau: bureau as unknown as Bureau,
+      bureau: bureau,
       handler,
       parent,
       parentRunId,

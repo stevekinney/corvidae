@@ -11,7 +11,6 @@ import {
   createAgent,
   type BackendDescriptor,
   type GenerateFunction,
-  stopWhen,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
@@ -74,16 +73,17 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
   const observed = options.observed ?? [];
   const scripts = options.scripts ?? {};
   const bureau = await createBureau<AgentDefinitions>({
-    agents: options.agents ?? {
-      alpha: createAgent({
-        generate: async () => ({ content: 'alpha', toolCalls: [] }),
-        name: 'alpha',
+    agents: {
+      ...(options.agents ?? {
+        alpha: createAgent({
+          generate: async () => ({ content: 'alpha', toolCalls: [] }),
+          name: 'alpha',
+        }),
       }),
     },
     agentDirectory: directory,
     agentTools: { 'lookup-order': lookupTool },
     resolveAgentGenerate: (descriptor) => generateFor(descriptor, scripts, observed),
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     // A handler over this Bureau serves the asset operations, so the Bureau has the service.

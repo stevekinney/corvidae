@@ -55,7 +55,7 @@ import {
   resolveProviderGenerate,
   type Bureau,
 } from '@lostgradient/bureau';
-import { createModelCatalog, stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import { createModelCatalog, type GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
   serve,
@@ -88,7 +88,6 @@ import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import {
   createAgentFileTools,
   createSeededAgents,
-  createSeededGenerate,
   createSeededValidators,
   PUBLISHED_AGENT_NAMES,
   seedBureau,
@@ -150,7 +149,7 @@ export type HostOptions = {
   readonly createConsoleEngine?: (
     storage: Storage,
   ) => RegistryAgnosticEngine | Promise<RegistryAgnosticEngine>;
-  /** Replaces the scripted generate the Bureau's own runs use. For tests that need a run to stay in flight. */
+  /** Replaces the scripted generate of the seeded `assistant` agent. For tests that need a run to stay in flight. */
   readonly generate?: GenerateFunction;
   /** The few Weft server settings a host may tune for the engine API it relays. */
   readonly engineServer?: Pick<
@@ -316,12 +315,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       id: bungalow.deploymentId,
       agents: {
         ...options.extraAgents?.agents,
-        ...createSeededAgents(approvalSecret(bungalow)),
+        ...createSeededAgents(approvalSecret(bungalow), options.generate),
       },
-      generate: options.generate ?? createSeededGenerate(),
-      // A run that makes no tool call is finished. Without this the Bureau's own runs, such as a
-      // schedule's fire, keep asking the model until the step limit.
-      stopWhen: stopWhen.noToolCalls(),
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
       humanInput: true,

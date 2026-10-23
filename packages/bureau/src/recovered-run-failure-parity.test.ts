@@ -14,6 +14,7 @@ import {
   ElicitationDeniedError,
   type GenerateFunction,
   GuardrailTripwireError,
+  createAgent,
 } from '@lostgradient/operative';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { resolveStorage } from '@lostgradient/weft';
@@ -28,6 +29,7 @@ import { readAgUiStream, typesOf } from './http/ag-ui-stream.test-support';
 import { createBureauHandler } from './http/create-bureau-handler';
 import { waitForCondition } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
+import type { AgentDefinitions } from './agent-catalog';
 
 type Bureau = Awaited<ReturnType<typeof createBureau>>;
 
@@ -148,21 +150,24 @@ async function withFreshRun<T>(
     open = resolve;
   });
   const failing = generateThenFail(failure);
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
-    agents: {},
-    generate: async (input) => {
-      if (input.step > 0) await gate;
-      return failing(input);
+    agents: {
+      default: createAgent({
+        generate: async (input) => {
+          if (input.step > 0) await gate;
+          return failing(input);
+        },
+        toolbox: createToolbox<readonly Tool[]>([noopTool]),
+      }),
     },
-    toolbox: createToolbox<readonly Tool[]>([noopTool]),
     storage: { type: 'sqlite', path: databasePath },
     durableExecution: true,
     // The AG-UI handler the stream test mounts serves the asset routes, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },
   });
   try {
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Go.' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Go.' });
     await whenRunning?.(bureau, run.id);
     open();
     return await inspect(await settle(bureau, run.id, run.sessionId));
@@ -192,29 +197,35 @@ async function withRecoveredRun<T>(
   let bureauA: Bureau | undefined;
   let bureauB: Bureau | undefined;
   try {
-    bureauA = await createBureau({
-      agents: {},
+    bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: generateThenFail(failure),
+          toolbox: createToolbox<readonly Tool[]>([noopTool]),
+        }),
+      },
       id: BUREAU_ID,
-      generate: generateThenFail(failure),
-      toolbox: createToolbox<readonly Tool[]>([noopTool]),
       storage: crashed.storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
     });
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'Go.' });
+    const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
     await crashed.reached;
     replayed = holdFirstTerminalRunCommit(
       await resolveStorage({ type: 'sqlite', path: databasePath }),
     );
     const calls = { generateCallsAfterRestart: 0 };
-    bureauB = await createBureau({
-      agents: {},
-      id: BUREAU_ID,
-      generate: async (input) => {
-        calls.generateCallsAfterRestart += 1;
-        return generateThenFail(failure)(input);
+    bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (input) => {
+            calls.generateCallsAfterRestart += 1;
+            return generateThenFail(failure)(input);
+          },
+          toolbox: createToolbox<readonly Tool[]>([noopTool]),
+        }),
       },
-      toolbox: createToolbox<readonly Tool[]>([noopTool]),
+      id: BUREAU_ID,
       storage: replayed.storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },

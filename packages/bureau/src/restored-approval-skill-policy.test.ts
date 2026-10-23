@@ -25,6 +25,7 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
+import { createAgentSkills } from './agent-skills';
 
 const harness = createScheduleFireHarness();
 
@@ -45,12 +46,12 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const options = {
       generate: lockedAfterCharging('wait'),
       stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog },
+      skills: createAgentSkills({ catalog }),
     };
     const first = await harness.open({
       ...options,
-      toolbox: approvalToolbox([]),
       storage: { type: 'sqlite', path },
+      toolbox: approvalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'skill-fire-session');
     const review = await reviewOf(first, fireId);
@@ -64,8 +65,8 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      toolbox: approvalToolbox(charges),
       storage: { type: 'sqlite', path },
+      toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
     expect(restored.id).toBe(review.id);
@@ -82,15 +83,15 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const options = {
       generate: lockedAfterCharging('stop'),
       stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog },
+      skills: createAgentSkills({ catalog }),
     };
     const first = await harness.open({
       ...options,
-      toolbox: approvalToolbox([]),
       storage: { type: 'sqlite', path },
+      toolbox: approvalToolbox([]),
     });
     const run = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge, then lock',
       principal: OWNER.alice,
     });
@@ -107,8 +108,8 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      toolbox: approvalToolbox(charges),
       storage: { type: 'sqlite', path },
+      toolbox: approvalToolbox(charges),
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -135,11 +136,11 @@ describe('the control: without the skill, the same restored approval runs', () =
     const options = { generate, stopWhen: stopWhen.noToolCalls() };
     const first = await harness.open({
       ...options,
-      toolbox: approvalToolbox([]),
       storage: { type: 'sqlite', path },
+      toolbox: approvalToolbox([]),
     });
     const run = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });
@@ -150,8 +151,8 @@ describe('the control: without the skill, the same restored approval runs', () =
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      toolbox: approvalToolbox(charges),
       storage: { type: 'sqlite', path },
+      toolbox: approvalToolbox(charges),
     });
     await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),

@@ -166,11 +166,17 @@ async function open(
 ): Promise<OpenedProcess> {
   const opened = await openProcess(path, generate, {
     id: 'review-resolution-multi-instance',
-    toolbox: gatedToolbox(charges),
     humanInput: true,
     durableOwnership: OWNERSHIP,
-    stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     ...options,
+    agents: {
+      ...options.agents,
+      default: createAgent({
+        generate,
+        toolbox: gatedToolbox(charges),
+        stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      }),
+    },
   });
   processes.push(opened);
   return opened;
@@ -205,7 +211,7 @@ async function sessionParkedInA(
   const charges = newCharges();
   const b = await open(asking({ resumed: [] }, parks), charges);
   const a = await open(asking(seenByA, parks), charges, aOptions);
-  const run = await a.bureau.createRun({ agentName: 'bureau', message: 'deploy', ...runOptions });
+  const run = await a.bureau.createRun({ agentName: 'default', message: 'deploy', ...runOptions });
   const review = await listed(a.bureau, run.id);
   await derived(b.bureau, run.id);
   return { a, b, run, review, seenByA };
@@ -216,15 +222,21 @@ async function sessionParkedInA(
  * settled and restored it at boot.
  */
 async function settledApproval(charges: Charges) {
-  const setup = await openProcess(path, charging(), {
+  const generate = charging();
+  const setup = await openProcess(path, generate, {
     id: 'review-resolution-multi-instance',
-    toolbox: gatedToolbox(charges),
     humanInput: true,
     durableOwnership: OWNERSHIP,
-    stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+    agents: {
+      default: createAgent({
+        generate,
+        toolbox: gatedToolbox(charges),
+        stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      }),
+    },
   });
   const run = await setup.bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'Charge the customer',
     principal: 'alice',
   });
@@ -270,7 +282,7 @@ describe('the by-run derivation (COR-1579)', () => {
     const b = await open(asking({ resumed: [] }), charges, { agents });
     const a = await open(asking({ resumed: [] }), charges, { agents });
     const sessionRun = await a.bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'deploy',
       principal: 'alice',
     });
@@ -556,19 +568,22 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
     });
     const storage = new MemoryStorage();
     const seen: Seen = { resumed: [] };
-    const bureau = await createBureau({
-      agents: {},
-      generate: asking(seen),
-      toolbox: gatedToolbox(newCharges()),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: asking(seen),
+          toolbox: gatedToolbox(newCharges()),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage,
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     composition.mockRestore();
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'deploy',
         principal: 'alice',
       });

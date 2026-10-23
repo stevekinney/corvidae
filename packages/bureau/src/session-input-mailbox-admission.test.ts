@@ -6,6 +6,8 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * COR-435 — mailbox-backed `submitSessionInput` admission, persistence, and
@@ -56,7 +58,7 @@ async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 20)
 }
 
 async function createRunningBureauSession(bureau: Bureau, principal = 'alice'): Promise<string> {
-  const run = await bureau.createRun({ agentName: 'bureau', message: 'hold open', principal });
+  const run = await bureau.createRun({ agentName: 'default', message: 'hold open', principal });
   await pollUntil(async () => {
     const session = await bureau.getSession(run.sessionId);
     return session?.metadata['lastRunStatus'] === 'running';
@@ -67,10 +69,10 @@ async function createRunningBureauSession(bureau: Bureau, principal = 'alice'): 
 async function createDurableBureauWithRunningSession(
   overrides: Partial<Parameters<typeof createBureau>[0]> = {},
 ): Promise<{ bureau: Bureau; sessionId: string }> {
-  const bureau = await createBureau({
-    agents: {},
-    generate: createHungGenerate(),
-    toolbox: createEmptyToolbox(),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
+    },
     storage: { type: 'memory' },
     durableExecution: true,
     ...overrides,
@@ -244,10 +246,10 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
   });
 
   it('returns a conflict with reason session-mismatch when the same (principal, id) targets a different session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createHungGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -284,10 +286,10 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
     // different principal can neither continue the session with a run of its own
     // nor reach its mailbox: `id-owned-by-other-principal` needs two principals
     // that are both authorized, and no session has two.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createHungGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -305,7 +307,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       expect(
         await rejectionOf(
           bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'continue as bob',
             sessionId,
             principal: 'bob',

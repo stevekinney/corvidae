@@ -7,7 +7,7 @@
  * not text at all (an untyped caller's number, `null`, or object) names no goal
  * either, and no outcome may carry it as though it were an id.
  */
-import { createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -23,6 +23,7 @@ import {
   workerAgent,
 } from './testing/goal-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const open: Bureau[] = [];
 
@@ -31,17 +32,21 @@ afterEach(async () => {
 });
 
 async function boot(): Promise<Bureau> {
-  const bureau = await createBureau({
-    agents: { worker: workerAgent(hangUntilAborted) },
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      worker: workerAgent(hangUntilAborted),
+      default: createAgent({
+        generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     validators: [createCheckValidator()],
-    generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
-    toolbox: createToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
-  const typed = bureau as unknown as Bureau;
+  const typed = bureau;
   open.push(typed);
   return typed;
 }

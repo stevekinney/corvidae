@@ -17,7 +17,7 @@ import {
   type GovernedMemory,
   type MemoryAuthority,
 } from '@lostgradient/memory';
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import {
   type AuthConfig,
   type AuthorizationScope,
@@ -116,11 +116,12 @@ async function open(options: { memory?: GovernedMemory | null } = {}) {
   const memory = options.memory === null ? undefined : (options.memory ?? governedMemory());
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
-    agents: { assistant: createAgent({ generate: recording() }) },
+    agents: {
+      assistant: createAgent({ generate: recording() }),
+    },
     persistence: textValueStore(new MemoryStorage()),
     // The handler serves the asset operations too, so it needs an asset service.
     assets: { storage: createMemoryAssetStorage() },
-    stopWhen: stopWhen.noToolCalls(),
     ...(memory === undefined ? {} : { memory }),
   });
   opened.push(bureau);
@@ -352,10 +353,11 @@ describe('the scopes bureau.memory:read and bureau.memory:write', () => {
     const memory = governedMemory();
     const bureau = await createBureau<AgentDefinitions>({
       id: BUREAU_ID,
-      agents: { assistant: createAgent({ generate: recording() }) },
+      agents: {
+        assistant: createAgent({ generate: recording() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
       assets: { storage: createMemoryAssetStorage() },
-      stopWhen: stopWhen.noToolCalls(),
       memory,
     });
     opened.push(bureau);

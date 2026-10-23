@@ -14,6 +14,7 @@ import {
   workerAgent,
 } from './testing/goal-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const NOT_TEXT = [
@@ -25,13 +26,14 @@ const NOT_TEXT = [
 ] as const;
 
 async function openDurableBureau() {
-  return createBureau({
-    agents: { worker: workerAgent(answering('done')) },
+  return createBureau<AgentDefinitions>({
+    agents: {
+      worker: workerAgent(answering('done')),
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     validators: [createCheckValidator()],
-    generate,
     storage: { type: 'memory' },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 
@@ -43,7 +45,7 @@ describe('a principal that is not text (COR-718)', () => {
       try {
         const plain = await rejectionOf(
           bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'x',
             sessionId: 'refused',
             principal: principal as never,
@@ -51,7 +53,7 @@ describe('a principal that is not text (COR-718)', () => {
         );
         const withReceipt = await rejectionOf(
           bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'x',
             sessionId: 'refused',
             principal: principal as never,
@@ -125,12 +127,14 @@ describe('a principal that is not text (COR-718)', () => {
   it.each(NOT_TEXT)(
     'is refused by children.dispatch, which records no child (%s)',
     async (_label, principal) => {
-      const bureau = await createBureau({
-        agents: { worker: createAgent({ name: 'worker', generate }) },
-        generate: () => new Promise<never>(() => {}),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          worker: createAgent({ name: 'worker', generate }),
+          default: createAgent({ generate: () => new Promise<never>(() => {}) }),
+        },
       });
       try {
-        const parent = await bureau.createRun({ agentName: 'bureau', message: 'plan' });
+        const parent = await bureau.createRun({ agentName: 'default', message: 'plan' });
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -167,7 +171,12 @@ describe('a principal in a reserved namespace (COR-718)', () => {
       const bureau = await openDurableBureau();
       try {
         const refusal = await rejectionOf(
-          bureau.createRun({ agentName: 'bureau', message: 'x', sessionId: 'reserved', principal }),
+          bureau.createRun({
+            agentName: 'default',
+            message: 'x',
+            sessionId: 'reserved',
+            principal,
+          }),
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
@@ -229,12 +238,14 @@ describe('a principal in a reserved namespace (COR-718)', () => {
   it.each(RESERVED)(
     'is refused by children.dispatch, which records no child (%s)',
     async (_label, principal) => {
-      const bureau = await createBureau({
-        agents: { worker: createAgent({ name: 'worker', generate }) },
-        generate: () => new Promise<never>(() => {}),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          worker: createAgent({ name: 'worker', generate }),
+          default: createAgent({ generate: () => new Promise<never>(() => {}) }),
+        },
       });
       try {
-        const parent = await bureau.createRun({ agentName: 'bureau', message: 'plan' });
+        const parent = await bureau.createRun({ agentName: 'default', message: 'plan' });
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -256,7 +267,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
     const bureau = await openDurableBureau();
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'x',
         sessionId: 'local',
         principal: 'anonymous:local',

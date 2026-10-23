@@ -63,7 +63,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await a.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -117,7 +117,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await a.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -171,7 +171,7 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
     const b = await openProcess(path, async () => ({ content: 'done', toolCalls: [] }));
     try {
       const first = await a.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         sessionId: SESSION,
@@ -187,7 +187,7 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
       // its last step, can no longer deliver, and one for the new.
       await b.bureau.deleteSession(SESSION);
       const second = await b.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second',
         principal: 'alice',
         sessionId: SESSION,
@@ -253,7 +253,7 @@ describe('input admitted to a recreated session while an old run still drains (C
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await a.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         sessionId: SESSION,
@@ -270,7 +270,7 @@ describe('input admitted to a recreated session while an old run still drains (C
       // holds the new incarnation's step, and the client submits input to it.
       await b.bureau.deleteSession(SESSION);
       const second = await b.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second',
         principal: 'alice',
         sessionId: SESSION,

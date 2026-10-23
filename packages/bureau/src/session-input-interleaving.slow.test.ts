@@ -63,7 +63,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
       );
       holds.push(gateLoad);
       const creating = a.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         sessionId: SESSION,
@@ -74,7 +74,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
       // of the new incarnation, and admits input to it.
       await b.bureau.deleteSession(SESSION);
       const second = await b.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second',
         principal: 'alice',
         sessionId: SESSION,

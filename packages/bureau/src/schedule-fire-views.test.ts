@@ -3,7 +3,7 @@
  * stream that resumes at the snapshot's cursor is told the fire's current status, and the
  * fire's context reads as awaiting input, as its task does.
  */
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -35,9 +35,13 @@ const SESSION = 'views-session';
 async function settledWithPendingReview() {
   const charges: number[] = [];
   const bureau = await harness.open({
-    generate: chargesOnce,
-    toolbox: approvalToolbox(charges),
-    stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+    agents: {
+      default: createAgent({
+        generate: chargesOnce,
+        toolbox: approvalToolbox(charges),
+        stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      }),
+    },
   });
   const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
   const review = await reviewOf(bureau, fireId);

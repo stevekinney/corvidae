@@ -7,14 +7,11 @@
  * during it, while every `let` and `const` declared after it is still in its temporal dead zone.
  * These tests hold each of those two awaits open and fire what was registered before it.
  */
-import { join } from 'node:path';
 
 import { createManualRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
-import { createStore, stopWhen } from '@lostgradient/operative';
+import { createStore } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, type ConditionalTextValueStore } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import * as runtimeCompositionModule from './runtime-composition';
@@ -22,8 +19,8 @@ import {
   createConstructionWindowFixtures,
   resolveAgentGenerate,
 } from './testing/construction-window.test-support';
-import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 const fixtures = createConstructionWindowFixtures();
@@ -31,80 +28,6 @@ const fixtures = createConstructionWindowFixtures();
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
   await fixtures.dispose();
-});
-
-const nextTool = createTool({
-  name: 'next',
-  description: 'continue',
-  input: z.object({}),
-  execute: async () => 'ok',
-});
-
-describe('a session commit while the agent files are being scanned (COR-1585)', () => {
-  it('records no diagnostic, and its outbox entry is drained by the time the Bureau is built', async () => {
-    const root = await fixtures.scratchDirectory('bureau-construction-commit-');
-    const storagePath = join(root, 'bureau.sqlite');
-    const leaseOptions = {
-      ownership: 'workflow-lease',
-      workflowClaimTtlMs: 200,
-      workflowClaimRenewIntervalMs: 50,
-    } as const;
-
-    // The owner reaches step 1 and then stops: its claim is never renewed, so it lapses, and its
-    // session is left `running`.
-    const reachedStepOne = Promise.withResolvers<void>();
-    const owner = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        reachedStepOne.resolve();
-        return new Promise<never>(() => {});
-      },
-      toolbox: createToolbox([nextTool]),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
-      durableBackgroundTasks: 'manual',
-      durableOwnership: leaseOptions,
-    });
-    bureaus.push(owner);
-    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
-    await reachedStepOne.promise;
-
-    // The successor has no `generate`, so it cannot rebuild the run's session and reconciles the
-    // session to `error` when the engine reclaims the run. That is a session commit, made by the
-    // engine's reclaim while the Bureau is parked in the agent file scan.
-    const hold = fixtures.holdAgentFileScan();
-    const diagnostics: BureauDiagnostic[] = [];
-    const successor = createBureau({
-      agents: {},
-      agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-      resolveAgentGenerate,
-      toolbox: createToolbox([nextTool]),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
-      durableOwnership: leaseOptions,
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
-    await hold.entered;
-    const committed = await pollUntil(async () => {
-      const session = await owner.getSession(run.sessionId);
-      return session?.metadata['lastRunStatus'] === 'error';
-    });
-    expect(committed).toBe(true);
-    const outbox = await owner.kv?.list('agent-session-outbox:v1:entry:');
-    expect(outbox?.length).toBeGreaterThan(0);
-
-    hold.release();
-    bureaus.push(await successor);
-
-    expect(diagnostics.filter((entry) => entry.scope === 'durable-maintenance')).toEqual([]);
-    expect(diagnostics.map((entry) => entry.message).join('\n')).not.toContain(
-      'before initialization',
-    );
-    expect(await owner.kv?.list('agent-session-outbox:v1:entry:')).toEqual([]);
-  });
 });
 
 /** A listener registered on one of the composition's event targets, with the type it listens to. */
@@ -284,16 +207,14 @@ describe('every listener and timer registered before a top-level await (COR-1585
     const runtime = createManualRuntimeServices({ origin: '2026-10-19T00:00:00.000Z' });
     const store = createStore({ runtime });
     const diagnostics: BureauDiagnostic[] = [];
-    const building = createBureau({
+    const building = createBureau<AgentDefinitions>({
       agents: {},
       agentDirectory: await fixtures.agentDirectoryWithOneFile(),
       resolveAgentGenerate,
-      toolbox: createToolbox([nextTool]),
       persistence,
       auditRetention: { olderThan: 86_400_000 },
       store,
       runtime,
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
 

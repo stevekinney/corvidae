@@ -8,6 +8,7 @@ import {
   createAgent,
   createAgentSession,
   createSessionStore,
+  DEFAULT_MAXIMUM_STEPS,
   type GenerateFunction,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   stopWhen,
@@ -80,7 +81,6 @@ async function start(
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
     ...(options.storage === undefined ? { persistence: textValueStore(new MemoryStorage()) } : {}),
-    stopWhen: stopWhen.noToolCalls(),
     ...options,
   });
   bureaus.push(bureau);
@@ -133,9 +133,11 @@ describe('createRun with a named agent', () => {
           generate: scripted('beta speaking', second),
           toolbox: createToolbox([namedTool('beta-tool'), namedTool('beta-extra')]),
         }),
+        default: createAgent({
+          generate: scripted('bureau speaking', wide),
+          toolbox: createToolbox([namedTool('bureau-tool')]),
+        }),
       },
-      generate: scripted('bureau speaking', wide),
-      toolbox: createToolbox([namedTool('bureau-tool')]),
     });
 
     const alpha = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
@@ -158,9 +160,11 @@ describe('createRun with a named agent', () => {
           generate: scripted('ok', seen),
           toolbox: createToolbox([namedTool('alpha-tool')]),
         }),
+        default: createAgent({
+          generate: scripted('wide'),
+          toolbox: createToolbox([namedTool('bureau-tool')]),
+        }),
       },
-      generate: scripted('wide'),
-      toolbox: createToolbox([namedTool('bureau-tool')]),
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
@@ -176,16 +180,18 @@ describe('createRun with a named agent', () => {
     const withoutOption: Observation[] = [];
     const nonDurable: Observation[] = [];
     const durableWithoutOption = await start({
-      agents: { alpha: createAgent({ generate: scripted('ok', withoutOption) }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('ok', withoutOption) }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     const optionWithoutEngine = await start({
-      agents: { alpha: createAgent({ generate: scripted('ok', nonDurable) }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('ok', nonDurable) }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
       humanInput: true,
     });
 
@@ -197,36 +203,15 @@ describe('createRun with a named agent', () => {
     expect(withoutOption.flatMap((entry) => entry.tools)).not.toContain('requestHumanInput');
     expect(nonDurable.flatMap((entry) => entry.tools)).not.toContain('requestHumanInput');
   });
-
-  it('leaves an unnamed run on a new session with the Bureau-wide runtime', async () => {
-    const wide: Observation[] = [];
-    const agent: Observation[] = [];
-    const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha', agent) }) },
-      generate: scripted('bureau speaking', wide),
-      toolbox: createToolbox([namedTool('bureau-tool')]),
-      systemPrompt: 'BUREAU PROMPT',
-    });
-
-    const run = await bureau.createRun({ message: 'hello' } as CreateRunRequest);
-    await finish(bureau, run.id);
-
-    expect(await replies(bureau, run.sessionId)).toEqual(['bureau speaking']);
-    expect(wide).toEqual([
-      { tools: ['bureau-tool'], systemPrompt: 'BUREAU PROMPT', maximumTokens: undefined },
-    ]);
-    expect(agent).toEqual([]);
-    const stored = await bureau.getSession(run.sessionId);
-    expect(stored?.agentName).toBe('bureau');
-  });
 });
 
 describe('an agent that is not in the catalog', () => {
   it('is refused with NOT_FOUND before anything is persisted', async () => {
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha') }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha') }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
     });
 
     const refusal = await rejectionOf(
@@ -242,9 +227,10 @@ describe('an agent that is not in the catalog', () => {
   it('is refused for an unnamed run on a session whose stored agent is gone', async () => {
     const persistence = textValueStore(new MemoryStorage());
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha') }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha') }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
       persistence,
     });
     // A session an earlier process bound to an agent this catalog no longer has.
@@ -273,9 +259,8 @@ describe('a session’s agent', () => {
       agents: {
         alpha: createAgent({ generate: scripted('alpha speaking') }),
         beta: createAgent({ generate: scripted('beta speaking') }),
+        default: createAgent({ generate: scripted('bureau speaking'), toolbox: createToolbox([]) }),
       },
-      generate: scripted('bureau speaking'),
-      toolbox: createToolbox([]),
     });
     const first = await bureau.createRun({ message: 'one', agentName: 'alpha' });
     await finish(bureau, first.id);
@@ -290,11 +275,12 @@ describe('a session’s agent', () => {
 
   it('is never promoted from the default agent to a named one', async () => {
     const bureau = await start({
-      agents: { assistant: createAgent({ generate: scripted('assistant speaking') }) },
-      generate: scripted('bureau speaking'),
-      toolbox: createToolbox([]),
+      agents: {
+        assistant: createAgent({ generate: scripted('assistant speaking') }),
+        default: createAgent({ generate: scripted('bureau speaking'), toolbox: createToolbox([]) }),
+      },
     });
-    const first = await bureau.createRun({ agentName: 'bureau', message: 'one' });
+    const first = await bureau.createRun({ agentName: 'default', message: 'one' });
     await finish(bureau, first.id);
 
     const promotion = await rejectionOf(
@@ -303,14 +289,15 @@ describe('a session’s agent', () => {
 
     expect((promotion as BureauError).code).toBe('BAD_REQUEST');
     const stored = await bureau.getSession(first.sessionId);
-    expect(stored?.agentName).toBe('bureau');
+    expect(stored?.agentName).toBe('default');
   });
 
   it('is inherited by a later run that names no agent, or the same one', async () => {
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha speaking') }) },
-      generate: scripted('bureau speaking'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha speaking') }),
+        default: createAgent({ generate: scripted('bureau speaking'), toolbox: createToolbox([]) }),
+      },
     });
     const first = await bureau.createRun({ message: 'one', agentName: 'alpha' });
     await finish(bureau, first.id);
@@ -407,79 +394,20 @@ describe('two runs creating one new session', () => {
     expect(calls[loserName]).toBe(0);
     expect(second).toBeDefined();
   });
-
-  it('words the refusal of an unnamed run that lost from what the request said', async () => {
-    const calls = { alpha: 0, house: 0 };
-    const base = textValueStore(new MemoryStorage());
-    // The unnamed run's first save to the session waits until the named run's has landed, so it
-    // is the one that finds the session already bound.
-    let alphaSaved!: () => void;
-    const alphaHasSaved = new Promise<void>((resolve) => {
-      alphaSaved = resolve;
-    });
-    const persistence: typeof base = {
-      ...base,
-      conditionalBatch: async (conditions, operations) => {
-        const sessionWrite = operations.find(
-          (operation) =>
-            operation.type === 'set' && operation.key.startsWith('agent-session-v2:body:'),
-        );
-        const writer =
-          sessionWrite?.type === 'set' && sessionWrite.value.includes('"agentName":"bureau"')
-            ? 'unnamed'
-            : 'named';
-        if (sessionWrite !== undefined && writer === 'unnamed') await alphaHasSaved;
-        const applied = await base.conditionalBatch(conditions, operations);
-        if (sessionWrite !== undefined && writer === 'named' && applied) alphaSaved();
-        return applied;
-      },
-    };
-    const bureau = await start({
-      agents: {
-        alpha: createAgent({
-          generate: async () => {
-            calls.alpha += 1;
-            return { content: 'alpha speaking', toolCalls: [] };
-          },
-        }),
-      },
-      generate: async () => {
-        calls.house += 1;
-        return { content: 'house speaking', toolCalls: [] };
-      },
-      toolbox: createToolbox([]),
-      persistence,
-    });
-
-    const outcomes = await Promise.allSettled([
-      bureau.createRun({ message: 'a', agentName: 'alpha', sessionId: 'mixed' }),
-      bureau.createRun({ message: 'b', sessionId: 'mixed' } as CreateRunRequest),
-    ]);
-
-    const [namedOutcome, unnamedOutcome] = outcomes;
-    expect(namedOutcome?.status).toBe('fulfilled');
-    expect(unnamedOutcome?.status).toBe('rejected');
-    const refusal = (unnamedOutcome as PromiseRejectedResult).reason as BureauError;
-    expect(refusal.code).toBe('BAD_REQUEST');
-    // It named no agent, so the refusal must not say it did; it says what happened instead.
-    expect(refusal.message).not.toContain('cannot name');
-    expect(refusal.message).toContain('named no agent');
-    expect(refusal.message).toContain('"alpha"');
-    expect(refusal.message).toContain('"mixed"');
-    await finish(bureau, (namedOutcome as PromiseFulfilledResult<{ id: string }>).value.id);
-    expect(bureau.listRuns()).toHaveLength(1);
-    expect(calls).toEqual({ alpha: 1, house: 0 });
-  });
 });
 
 describe('an agent named bureau', () => {
   it('is refused at construction, because the name is the Bureau-wide default agent', async () => {
     const attempt = createBureau<AgentDefinitions>({
-      agents: { bureau: createAgent({ generate: scripted('catalog bureau') }) },
-      generate: scripted('house default'),
-      toolbox: createToolbox([]),
+      agents: {
+        bureau: createAgent({ generate: scripted('catalog bureau') }),
+        default: createAgent({
+          generate: scripted('house default'),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     const refusal = await rejectionOf(attempt);
@@ -495,9 +423,8 @@ describe('an agent named bureau', () => {
       agents: {
         'bureau-2': createAgent({ generate: scripted('second') }),
         Bureau: createAgent({ generate: scripted('capitalized') }),
+        default: createAgent({ generate: scripted('house default'), toolbox: createToolbox([]) }),
       },
-      generate: scripted('house default'),
-      toolbox: createToolbox([]),
     });
 
     const run = await bureau.createRun({ message: 'hi', agentName: 'bureau-2' });
@@ -515,7 +442,7 @@ describe('run settings', () => {
     execute: async () => 'tick',
   });
 
-  it('take the request’s value, then the agent’s, then the Bureau’s', async () => {
+  it('take the request’s value, then the agent’s', async () => {
     const seen: Observation[] = [];
     const bureau = await start({
       agents: {
@@ -529,9 +456,6 @@ describe('run settings', () => {
         ),
         plain: createAgent({ generate: scripted('plain', seen), toolbox: createToolbox([]) }),
       },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
-      systemPrompt: 'BUREAU PROMPT',
     });
 
     const fromAgent = await bureau.createRun({ message: 'a', agentName: 'alpha' });
@@ -541,19 +465,19 @@ describe('run settings', () => {
       systemPrompt: 'REQUEST PROMPT',
       maximumTokens: 222,
     });
-    const fromBureau = await bureau.createRun({ message: 'c', agentName: 'plain' });
+    const fromNeither = await bureau.createRun({ message: 'c', agentName: 'plain' });
     await finish(bureau, fromAgent.id);
     await finish(bureau, fromRequest.id);
-    await finish(bureau, fromBureau.id);
+    await finish(bureau, fromNeither.id);
 
     expect(seen).toEqual([
       { tools: [], systemPrompt: 'AGENT PROMPT', maximumTokens: 111 },
       { tools: [], systemPrompt: 'REQUEST PROMPT', maximumTokens: 222 },
-      { tools: [], systemPrompt: 'BUREAU PROMPT', maximumTokens: undefined },
+      { tools: [], systemPrompt: undefined, maximumTokens: undefined },
     ]);
   });
 
-  it('cap the steps by the request, then the agent, then the Bureau', async () => {
+  it('cap the steps by the request, then the agent, then operative’s default', async () => {
     const stepsOf = async (
       agentSteps: number | undefined,
       requestSteps: number | undefined,
@@ -568,9 +492,6 @@ describe('run settings', () => {
             ...(agentSteps === undefined ? {} : { maximumSteps: agentSteps }),
           }),
         },
-        generate: scripted('wide'),
-        toolbox: createToolbox([]),
-        maximumSteps: 6,
       });
       const run = await bureau.createRun({
         message: 'go',
@@ -581,12 +502,12 @@ describe('run settings', () => {
       return seen.length;
     };
 
-    expect(await stepsOf(undefined, undefined)).toBe(6);
+    expect(await stepsOf(undefined, undefined)).toBe(DEFAULT_MAXIMUM_STEPS);
     expect(await stepsOf(3, undefined)).toBe(3);
     expect(await stepsOf(3, 2)).toBe(2);
   });
 
-  it('stop the run on the agent’s conditions rather than the Bureau’s', async () => {
+  it('stop the run on the agent’s conditions', async () => {
     const seen: Observation[] = [];
     const bureau = await start({
       agents: {
@@ -596,11 +517,6 @@ describe('run settings', () => {
           stopWhen: stopWhen.toolCalled('tick'),
         }),
       },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
-      // Never stops on its own: a run that used it would go to the step cap.
-      stopWhen: [],
-      maximumSteps: 5,
     });
 
     const run = await bureau.createRun({ message: 'go', agentName: 'alpha' });
@@ -611,7 +527,7 @@ describe('run settings', () => {
 });
 
 describe('a Bureau with only catalog agents', () => {
-  it('accepts a named run and refuses an unnamed one as not configured', async () => {
+  it('accepts a named run and refuses an unnamed one as an unknown agent', async () => {
     const bureau = await start({
       agents: { alpha: createAgent({ generate: scripted('alpha speaking') }) },
     });
@@ -621,6 +537,6 @@ describe('a Bureau with only catalog agents', () => {
     const unnamed = await rejectionOf(bureau.createRun({ message: 'hello' } as CreateRunRequest));
 
     expect(await replies(bureau, named.sessionId)).toEqual(['alpha speaking']);
-    expect((unnamed as BureauError).code).toBe('NOT_CONFIGURED');
+    expect((unnamed as BureauError).code).toBe('NOT_FOUND');
   });
 });

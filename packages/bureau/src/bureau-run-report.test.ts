@@ -1,18 +1,27 @@
-import { type GenerateFunction, stopWhen, waitForCondition } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  stopWhen,
+  waitForCondition,
+  createAgent,
+} from '@lostgradient/operative';
 import { createTestToolbox, createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import type { ServerFrame } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 describe('Bureau.getRunReport', () => {
   it('returns a cached succeeded report once the run completes, and emits a run-finished frame', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Done.', toolCalls: [] }),
-      toolbox: createToolbox<readonly Tool[]>([]),
-      stopWhen: stopWhen.noToolCalls(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'Done.', toolCalls: [] }),
+          toolbox: createToolbox<readonly Tool[]>([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
 
     const runEnvelopeFrames: Extract<ServerFrame, { type: 'run-envelope' }>[] = [];
@@ -20,7 +29,7 @@ describe('Bureau.getRunReport', () => {
       if (frame.type === 'run-envelope') runEnvelopeFrames.push(frame);
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
 
     await waitForCondition(() => {
       const report = bureau.getRunReport(run.id);
@@ -52,10 +61,13 @@ describe('Bureau.getRunReport', () => {
   });
 
   it('returns undefined for an unknown run id', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Done.', toolCalls: [] }),
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'Done.', toolCalls: [] }),
+          toolbox: createToolbox<readonly Tool[]>([]),
+        }),
+      },
     });
 
     expect(bureau.getRunReport('does-not-exist')).toBeUndefined();
@@ -101,14 +113,14 @@ describe('Bureau.getRunReport', () => {
       ]);
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createTestToolbox([addTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createTestToolbox([addTool]) }),
+      },
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Add 2 and 3, then keep going',
     });
 

@@ -4,7 +4,7 @@
  * which carries the finish reason the run ends with, because a `run.error` alone also ends it.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -20,6 +20,7 @@ import {
   readFrames,
   subscribeRequest,
 } from './management-fixtures.test-support.ts';
+import type { AgentDefinitions } from '../../agent-catalog';
 
 const nextTool = createTool({
   name: 'next',
@@ -35,17 +36,20 @@ describe.each([
   it('ends on a failed status that reads maximum-steps', async () => {
     const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'step-limit-events-bureau',
-      agents: {},
-      generate: async () => ({
-        content: 'still going',
-        toolCalls: [{ name: 'next', arguments: {} }],
-      }),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createToolbox([nextTool]),
-      maximumSteps: 2,
+      agents: {
+        default: createAgent({
+          generate: async () => ({
+            content: 'still going',
+            toolCalls: [{ name: 'next', arguments: {} }],
+          }),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createToolbox([nextTool]),
+          maximumSteps: 2,
+        }),
+      },
       ...(answer === undefined ? {} : { onMaximumSteps: answer }),
       runtime,
       storage: fixture.configuration,
@@ -56,7 +60,7 @@ describe.each([
     try {
       const handler = createBureauHandler(bureau, { authentication });
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Never settles',
         principal: OWNER.alice,
       });

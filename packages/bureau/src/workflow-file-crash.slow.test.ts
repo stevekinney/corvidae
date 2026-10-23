@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { BunSQLiteStorage, KEYS } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
@@ -51,10 +51,9 @@ function openBureau(storagePath: string, workflows: string, messages: string[]):
       },
     }),
   };
-  return createBureau({
-    agents,
+  return createBureau<AgentDefinitions>({
+    agents: { ...agents },
     workflowDirectory: workflows,
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'sqlite', path: storagePath },
     durableExecution: true,
     durableOwnership: {
