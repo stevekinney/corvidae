@@ -161,7 +161,11 @@ import {
   SessionOwnerConflictError,
 } from './session-authority';
 import { committedFireApprovalIds } from './scheduled-fire-review-state';
-import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
+import {
+  copyAgentOwnedRunOptions,
+  scheduledAgentRunOptions,
+  sessionExecuteOptions,
+} from './session-agent-options';
 import type {
   BureauMemoryAuthorityOptions,
   BureauOptions,
@@ -1678,6 +1682,18 @@ export type RuntimeCompositionDependencies = {
    * composition, and a run resolves it only when it starts.
    */
   contentSourceResolverFor?: (principalId: string | undefined) => ContentSourceResolver | undefined;
+  /**
+   * COR-1524 — the definition a file-backed agent's run started with. A scheduled fire records its
+   * binding here as a session run does, so recovering it resolves the agent it started with, not the
+   * file as it is now. Settlement and release follow the run's store actions. Absent when no agent
+   * files are wired.
+   */
+  agentRunReferences?: {
+    reference(
+      runId: string,
+    ): Promise<{ id: string; hash: string; definitionRevision?: number } | undefined>;
+    record(binding: FileAgentBinding, runId: string): Promise<void>;
+  };
   /**
    * COR-713: the media-admission port of a run's owning principal, built from the asset service
    * like {@link RuntimeCompositionDependencies.contentSourceResolverFor}. Without an asset service
@@ -4900,12 +4916,24 @@ async function buildRuntimeComposition(
     // none; `createBureau` always wires one) has no named agents, so the name is a label and the
     // fire runs the composition's own `generate`, as a recovered session run does.
     let fireAgent: SessionAgentRun | undefined;
+    // A recovered fire resolves the definition its first attempt recorded (COR-1524).
+    const firePriorReference = await dependencies.agentRunReferences?.reference(runId);
     const catalogWiring = await awaitCatalogAgentRunOptionsResolver(runId);
     if (catalogWiring.status !== 'absent') {
       const agentResolution =
         agentName === defaultBureauAgentName
           ? undefined
-          : await resolveSessionAgentRun(agentName, runId, owner);
+          : await resolveSessionAgentRun(
+              agentName,
+              runId,
+              owner,
+              firePriorReference === undefined || firePriorReference.id !== agentName
+                ? undefined
+                : {
+                    agentDefinitionHash: firePriorReference.hash,
+                    definitionRevision: firePriorReference.definitionRevision,
+                  },
+            );
       if (agentResolution?.status !== 'resolved') {
         return {
           status: 'unavailable',
@@ -4916,6 +4944,9 @@ async function buildRuntimeComposition(
         };
       }
       fireAgent = agentResolution.run;
+      if (fireAgent.agentBinding !== undefined && firePriorReference === undefined) {
+        await dependencies.agentRunReferences?.record(fireAgent.agentBinding, runId);
+      }
     }
 
     // COR-851: a goal's sessions are the goal's alone. A schedule can name any
@@ -4955,6 +4986,15 @@ async function buildRuntimeComposition(
       return {
         status: 'unavailable',
         reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
+      };
+    }
+    // COR-323 — a fire runs as its named agent, and a continued session keeps the system prompt
+    // of the agent that began it, so a session another agent owns is refused rather than run
+    // under instructions that are not the fire's own.
+    if (fireAgent !== undefined && existing !== undefined && existing.agentName !== agentName) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} runs agent "${agentName}" but session "${sessionId}" belongs to agent "${existing.agentName}"`,
       };
     }
     // The session's own metadata — not `info.schedule` — is the source of
@@ -5071,7 +5111,7 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: fireToolbox,
         conversation,
-        ...copyAgentOwnedRunOptions(fireAgent?.options),
+        ...scheduledAgentRunOptions(fireAgent?.options, requestContext),
         ...sessionRunMediaOptions(fireAgent, mediaOptionsFor(owner, 'session')),
         maximumSteps: fireAgent?.options.maximumSteps ?? maximumSteps,
         stopWhen: fireAgent?.options.stopWhen ?? options.stopWhen,
@@ -5105,7 +5145,6 @@ async function buildRuntimeComposition(
           ),
           fireAgent?.options.hooks,
         ),
-        executeOptions: sessionExecuteOptions(fireAgent?.options, requestContext),
         agentName,
         runId,
       },

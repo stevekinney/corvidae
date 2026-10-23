@@ -3,7 +3,12 @@
  * the catalog, with that agent's own `generate`. No Bureau-wide `generate` exists to run them on,
  * and the implicit `bureau` agent that used to stand for it is refused rather than run.
  */
-import { createAgent, createAgentSession, type GenerateFunction } from '@lostgradient/operative';
+import {
+  createAgent,
+  createAgentSession,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -91,6 +96,37 @@ describe('submitSchedulerTask', () => {
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
   });
 
+  it('carries the agent’s token cap into the task run', async () => {
+    let seen: number | undefined;
+    const base = createAgent({
+      generate: async ({ maximumTokens }) => {
+        seen = maximumTokens;
+        return { content: 'ok', toolCalls: [] };
+      },
+    });
+    const resolve = Reflect.get(base, OPERATIVE_RESOLVE_RUN_OPTIONS) as (
+      ...args: unknown[]
+    ) => Promise<Record<string, unknown>>;
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        capped: {
+          ...base,
+          [OPERATIVE_RESOLVE_RUN_OPTIONS]: async (...args: unknown[]) => ({
+            ...(await resolve.apply(base, args)),
+            maximumTokens: 77,
+          }),
+        },
+      },
+      scheduler: { enabled: true, idleDelay: 1 },
+    });
+    bureaus.push(bureau);
+
+    const { taskId } = await bureau.submitSchedulerTask({ agentName: 'capped', message: 'go' });
+    await bureau.awaitSchedulerTask(taskId);
+
+    expect(seen).toBe(77);
+  });
+
   it('requires an agent name', async () => {
     const { bureau } = await openWithTwoAgents();
 
@@ -142,6 +178,44 @@ describe('a schedule’s fire', () => {
     }, 'the fire to settle');
 
     expect(status).toBe('failed');
+    expect(worker.calls()).toBe(0);
+  });
+});
+
+describe('a fire into a session another agent began', () => {
+  it('fails with a diagnostic rather than running under the other agent’s instructions', async () => {
+    const worker = answering('never');
+    const other = answering('other answer');
+    const bureau = await harness.open({
+      agents: {
+        worker: createAgent({ generate: worker.generate }),
+        other: createAgent({ generate: other.generate }),
+      },
+    });
+    const begun = await bureau.createRun({
+      message: 'hello',
+      agentName: 'other',
+      sessionId: 'shared',
+      principal: OWNER.alice,
+    } as Parameters<typeof bureau.createRun>[0]);
+    await pollUntil(async () => {
+      const run = await bureau.getRun(begun.id);
+      return run?.status === 'completed' ? true : undefined;
+    }, 'the first run to finish');
+
+    const created = await bureau.createSchedule({
+      agentName: 'worker',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+      sessionId: 'shared',
+    });
+    await bureau.runDurableMaintenance(created!.nextFireAt!);
+    await pollUntil(async () => {
+      const page = await bureau.listDurableRuns();
+      return page?.items.some((run) => run.status === 'failed') ? true : undefined;
+    }, 'the fire to fail');
+
     expect(worker.calls()).toBe(0);
   });
 });

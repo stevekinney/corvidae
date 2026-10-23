@@ -401,7 +401,11 @@ import {
   scheduleFireSettledDedupeKey,
   type ScheduleFireSettledPayload,
 } from './schedule-fire-settled-event';
-import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
+import {
+  copyAgentOwnedRunOptions,
+  scheduledAgentRunOptions,
+  sessionExecuteOptions,
+} from './session-agent-options';
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
@@ -2182,6 +2186,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
     { ...options, id: bureauId, runtime: runtimeServices },
     {
+      agentRunReferences: {
+        reference: async (runId) => fileAgents?.snapshots.reference(runId),
+        record: async (binding, runId) => fileAgents?.recordBoundRun(binding, runId),
+      },
       contentSourceResolverFor: (principalId) =>
         assetServiceHolder.current === undefined
           ? undefined
@@ -8001,6 +8009,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? session
           : undefined;
       agentName = resolveRunAgentName(sessionId, visible, request.agentName);
+      // COR-323 — a session that is missing or not this principal's binds nothing, so the agent
+      // must then be named.
+      if (visible === undefined && request.agentName === undefined) {
+        toBadRequest('"agentName" is required when "sessionId" names no session you can see');
+      }
     }
     return ledger.locate({
       callerId: principal,
@@ -9714,7 +9727,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       );
     }
     if (resolution.status === 'resolver-failed') throw resolution.error;
-    const taskAgent = resolution.run;
+    // The agent resolved above is a stale read once `shutdown()` may have started during the await.
+    assertRunAdmissionOpen('scheduler task');
 
     // AB-13 — same admission gate as `createRun`, applied to the
     // scheduler-originated surface. `taskId` doubles as the flow-control run
@@ -9748,6 +9762,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // dispatched into a new run once it has; the scheduler records the
         // failed dispatch.
         assertRunAdmissionOpen('scheduler task');
+        // Each attempt resolves its own agent run: a preempted-and-requeued task starts a fresh
+        // conversation, and the guardrail hooks and skill client of the earlier attempt are stateful.
+        const attempt = await runtime.resolveSessionAgentRun(
+          agentName,
+          taskId,
+          ownerOrLocal(undefined),
+        );
+        if (attempt.status !== 'resolved') {
+          throw new BureauError(
+            `Agent "${agentName}" can no longer run scheduler task ${taskId}: ${attempt.status}`,
+            'NOT_FOUND',
+          );
+        }
+        const taskAgent = attempt.run;
+        const taskRequestContext = createSchedulerServiceRequestContext(taskId, agentName, taskId);
         const runRuntime = await runtime.createRunRuntime(
           {
             agentName,
@@ -9761,7 +9790,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // starts again (no engine), so a step that wrote memory can run
             // twice, and the memory write deduplicates on `<taskId>:<step>`.
             runId: taskId,
-            requestContext: createSchedulerServiceRequestContext(taskId, agentName, taskId),
+            requestContext: taskRequestContext,
           },
           // A scheduler task has no principal, so its memory is `anonymous:local`'s (COR-1546), not
           // the request authority's owner, which for a task is the agent's name.
@@ -9777,7 +9806,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
         return {
           conversation,
-          ...copyAgentOwnedRunOptions(taskAgent.options),
+          ...scheduledAgentRunOptions(taskAgent.options, taskRequestContext),
           ...sessionRunMediaOptions(taskAgent, {}),
           generate: runRuntime.generate,
           toolbox: runRuntime.toolbox,

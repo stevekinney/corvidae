@@ -473,6 +473,12 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
         bureau.locateRunCreationReceipt({ ...key, agentName: 'default', sessionId: 'bound' }),
       );
 
+      // An unseen session with no stated agent leaves nothing to look under.
+      const unseenWithoutAgent = await rejectionOf(
+        bureau.locateRunCreationReceipt({ ...key, sessionId: 'no-such-session' }),
+      );
+
+      expect((unseenWithoutAgent as BureauError).code).toBe('BAD_REQUEST');
       expect(unknownSession.status === 'recorded' && unknownSession.receipt.runId).toBe(omitted.id);
       expect(contradiction).toBeInstanceOf(BureauError);
       expect((contradiction as BureauError).code).toBe('BAD_REQUEST');
