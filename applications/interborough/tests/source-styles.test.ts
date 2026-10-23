@@ -111,3 +111,63 @@ test('no file under src declares a --cinder-* custom property', async () => {
   }
   expect(declarations).toEqual([]);
 });
+
+/**
+ * Spacing and type come from Cinder's tokens (COR-1647): the 4/8/12/16/24/32/48 spacing scale and
+ * the type roles, so no screen invents its own padding or font size. A raw `px` length in a
+ * `padding` or `font-size` declaration, in a stylesheet, a Svelte `<style>` block, or an inline
+ * `style` attribute, is how every screen drifted off the scale. A `var(--cinder-…, 15px)`
+ * fallback counts too: Cinder's stylesheet is always loaded, so the fallback is dead and only
+ * hides a missing token. `RAW_PIXEL_ALLOWLIST` names the `file:line` entries that may keep one,
+ * and it starts empty: a screen that needs a value the scale lacks asks Cinder for a token.
+ */
+const RAW_PIXEL_ALLOWLIST: readonly string[] = [];
+
+/** Replaces every comment in `source` with spaces, so the line numbers after it hold. */
+function blankComments(source: string): string {
+  const blank = (comment: string) => comment.replace(/[^\n]/g, ' ');
+  return source.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/<!--[\s\S]*?-->/g, blank);
+}
+
+/** The `padding` and `font-size` declarations in `source` that hold a raw `px` length. */
+function rawPixelDeclarations(source: string): string[] {
+  const text = blankComments(source);
+  const found: string[] = [];
+  const declaration = /(?<![\w-])(padding(?:-[a-z]+)*|font-size)\s*:\s*([^;{}"'`]*)/g;
+  for (const match of text.matchAll(declaration)) {
+    if (!/\d(?:\.\d+)?px\b/.test(match[2] ?? '')) continue;
+    const line = text.slice(0, match.index).split('\n').length;
+    found.push(`${line}: ${match[0].trim()}`);
+  }
+  return found;
+}
+
+test('the raw-pixel detector finds a px length in a padding or font-size and nothing else', () => {
+  expect(rawPixelDeclarations('.a { padding: 12px 16px; }')).toHaveLength(1);
+  expect(rawPixelDeclarations('.a { padding-inline-start: 18px }')).toHaveLength(1);
+  expect(rawPixelDeclarations('.a { font-size: var(--cinder-text-md, 15px); }')).toHaveLength(1);
+  expect(rawPixelDeclarations('<div style="color: red; padding: 15px;"></div>')).toHaveLength(1);
+  expect(rawPixelDeclarations('.a { padding: 0 var(--cinder-space-4) 0 calc(1px + 2px); }')).toHaveLength(1);
+  expect(rawPixelDeclarations('.a { padding: var(--cinder-density-pad-block) 0; }')).toEqual([]);
+  expect(
+    rawPixelDeclarations('.a { margin: 4px; gap: 8px; width: 36px; border: 1px solid red; }'),
+  ).toEqual([]);
+  expect(rawPixelDeclarations('/* padding: 10px */ .a { color: red; }')).toEqual([]);
+  expect(rawPixelDeclarations('<!-- font-size: 9px -->')).toEqual([]);
+});
+
+test('no stylesheet or Svelte source under src sets a raw px padding or font-size', async () => {
+  const uiSource = fileURLToPath(new URL('../src/', import.meta.url));
+  const violations: string[] = [];
+  for await (const file of new Bun.Glob('**/*.{css,svelte}').scan(uiSource)) {
+    if (/\.test(-support|-harness)?\./.test(file)) continue;
+    const text = await Bun.file(join(uiSource, file)).text();
+    for (const found of rawPixelDeclarations(text)) {
+      const entry = `${file}:${found}`;
+      if (!RAW_PIXEL_ALLOWLIST.some((allowed) => entry.startsWith(allowed))) {
+        violations.push(entry);
+      }
+    }
+  }
+  expect(violations).toEqual([]);
+});

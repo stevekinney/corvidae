@@ -139,20 +139,20 @@
 
 <style>
   .weft-schedules-dashboard-card__skeleton {
-    padding: 13px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 
   .weft-schedules-dashboard-card__grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    padding: 6px 4px;
+    padding: var(--cinder-space-2) var(--cinder-space-1);
   }
 
   .weft-schedules-dashboard-card__segment {
     display: flex;
     flex-direction: column;
     gap: 5px;
-    padding: 13px 14px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border: 0;
     background: transparent;
     border-radius: 8px;

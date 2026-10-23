@@ -170,7 +170,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 14px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     background: var(--cinder-status-warning-background);
     border: 1px solid var(--cinder-status-warning-border);
     border-radius: var(--cinder-radius-lg);
@@ -190,7 +190,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 14px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 
   .weft-mcp-panel__diagram-header,

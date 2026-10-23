@@ -78,7 +78,7 @@
 </script>
 
 {#if childrenQuery.isPending}
-  <div class="weft-children-tab"><div style="padding: 15px;"><Skeleton height="3rem" /></div></div>
+  <div class="weft-children-tab"><div style="padding: var(--cinder-density-pad-card);"><Skeleton height="3rem" /></div></div>
 {:else if children.length === 0}
   <EmptyState
     title="No child workflows"
@@ -144,7 +144,7 @@
 
 <style>
   .weft-children-tab__note {
-    padding: 12px 0 0;
+    padding: var(--cinder-density-pad-block) 0 0;
   }
 
   /* Adds an id column and makes rows real links — see module doc. Scoped
@@ -198,7 +198,7 @@
 
   .weft-children-tab__more {
     margin: 0;
-    padding: 10px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-text-disabled);
     border-top: 1px solid var(--cinder-border-muted);

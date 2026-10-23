@@ -339,7 +339,7 @@
   .weft-registry-detail__message-details {
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
-    padding: 8px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
   }
 
   .weft-registry-detail__message-header {
@@ -378,7 +378,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 14px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 
   .weft-registry-detail__panel-title {

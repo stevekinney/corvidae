@@ -105,7 +105,7 @@
   }
 
   .weft-mcp-diagram__lane-label {
-    font-size: 9px;
+    font-size: var(--cinder-text-2xs);
     font-weight: 600;
     fill: var(--cinder-text-subtle);
   }
@@ -140,7 +140,7 @@
 
   .weft-mcp-diagram__arrow-label {
     font-family: var(--cinder-font-mono);
-    font-size: 9px;
+    font-size: var(--cinder-text-2xs);
   }
 
   .weft-mcp-diagram__arrow-label--accent {

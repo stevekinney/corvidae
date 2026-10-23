@@ -99,7 +99,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 0 15px 11px;
+    padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
@@ -107,7 +107,7 @@
 
   .weft-attributes__heading {
     margin: 0 -15px;
-    padding: 11px 15px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border-bottom: 1px solid var(--cinder-border-muted);
     font-size: var(--cinder-text-sm);
     font-weight: 600;
