@@ -582,8 +582,8 @@ async function claimHoldsNone(
   try {
     const found = await ledger.locate(identity);
     if (found.state !== 'retained' || found.entry.state !== 'pending') return true;
-    const held = new Set((found.entry.claim.assets ?? []).map((asset) => asset.id));
-    return !admitted.some((asset) => held.has(asset.id));
+    const held = new Set((found.entry.claim.assets ?? []).map((asset) => asset.assetId));
+    return !admitted.some((asset) => held.has(asset.assetId));
   } catch {
     return false;
   }
