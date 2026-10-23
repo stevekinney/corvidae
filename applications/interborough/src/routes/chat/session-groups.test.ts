@@ -190,6 +190,7 @@ describe('the groups of the list', () => {
     agentName: 'assistant',
     updatedAt: at?.getTime() ?? null,
     needsYou,
+    failed: false,
   });
 
   test('puts Needs you first whatever the age, then Today, Yesterday and Earlier, newest first in each', () => {

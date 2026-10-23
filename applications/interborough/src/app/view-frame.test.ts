@@ -469,7 +469,8 @@ describe('the chat list, a new chat, and the agents', () => {
     await waitFor(() =>
       expect(queryClient()?.getQueryState(queryKeys.agents.list())?.status).toBe('success'),
     );
-    expect(queryClient()?.getQueryData(queryKeys.agents.list())).toEqual([]);
+    const answered: unknown = queryClient()?.getQueryData(queryKeys.agents.list());
+    expect(answered).toEqual([]);
     // One turn of the event loop lets the page take the answer in.
     await new Promise((resolve) => setImmediate(resolve));
 
