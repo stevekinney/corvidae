@@ -589,6 +589,34 @@ export function registerDeletionContract(backend: GovernedBackend): void {
       );
     });
 
+    it('records a sweep event when abandoned-derivation pruning is its only work', async () => {
+      // Nothing is left to expire once the seeded record is deleted.
+      await fixture.memory.delete(principalA, locator());
+      const started = fixture.runtime.clock.now();
+      // A derivation that never stored its record, started just before the audit cutoff.
+      await fixture.ledger.putPendingDerivation({
+        tenantId: 'tenant-a',
+        record: { id: 'never-stored', namespace: scope.namespace },
+        startedAt: started - 1,
+      });
+      // Every event and receipt so far is exactly at the cutoff, which is not older than it.
+      await fixture.runtime.advance(365 * DAY);
+      const sweep = await fixture.memory.sweepRetention(retentionService);
+      expect(sweep).toMatchObject({
+        deletionIds: [],
+        prunedEvents: 0,
+        prunedReceipts: 0,
+        prunedDerivations: 1,
+      });
+      expect(await fixture.ledger.listPendingDerivations({ tenantId: 'tenant-a' })).toEqual([]);
+      const events = await fixture.ledger.listEvents({
+        tenantId: 'tenant-a',
+        type: 'memory.retention.swept',
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]?.details).toMatchObject({ prunedDerivations: 1 });
+    });
+
     it('never writes restricted content or credentials into events, receipts, notifications, or manifests', async () => {
       await fixture.memory.search(principalA, 'vault key', { collection: 'notes' });
       await fixture.memory.recallForModel(principalA, 'vault key', { collection: 'notes' });

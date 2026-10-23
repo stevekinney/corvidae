@@ -75,6 +75,7 @@ function sweepResult(
     deletionIds: [],
     prunedEvents: 0,
     prunedReceipts: 0,
+    prunedDerivations: 0,
     ...overrides,
   };
 }
@@ -114,7 +115,7 @@ async function pruneAudit(
   context: GovernanceContext,
   tenantId: string,
   cutoff: number,
-): Promise<{ prunedEvents: number; prunedReceipts: number }> {
+): Promise<{ prunedEvents: number; prunedReceipts: number; prunedDerivations: number }> {
   const prunedEvents = await context.ledger.pruneEvents(tenantId, cutoff);
   let prunedReceipts = 0;
   for (const receipt of await context.ledger.listReceipts({ tenantId, open: false })) {
@@ -122,8 +123,8 @@ async function pruneAudit(
     await context.ledger.deleteReceipt(receipt.deletionId);
     prunedReceipts++;
   }
-  await pruneAbandonedDerivations(context, tenantId, cutoff);
-  return { prunedEvents, prunedReceipts };
+  const prunedDerivations = await pruneAbandonedDerivations(context, tenantId, cutoff);
+  return { prunedEvents, prunedReceipts, prunedDerivations };
 }
 
 /**
@@ -175,11 +176,13 @@ export async function sweepRetention(
     ? []
     : await deleteExpired(context, deletion, authority, operationId, expired);
   const pruned = dryRun
-    ? { prunedEvents: 0, prunedReceipts: 0 }
+    ? { prunedEvents: 0, prunedReceipts: 0, prunedDerivations: 0 }
     : await pruneAudit(context, authority.tenantId, now - tenantPolicy.auditReceiptMilliseconds);
   // A sweep that deleted and pruned nothing records nothing, so a host that sweeps on a timer does
   // not fill the ledger with idle events. A dry run is asked for, so it always records its report.
-  if (dryRun || deletionIds.length > 0 || pruned.prunedEvents > 0 || pruned.prunedReceipts > 0) {
+  const prunedAnything =
+    pruned.prunedEvents > 0 || pruned.prunedReceipts > 0 || pruned.prunedDerivations > 0;
+  if (dryRun || deletionIds.length > 0 || prunedAnything) {
     await context.recordEvent({
       tenantId: authority.tenantId,
       type: 'memory.retention.swept',

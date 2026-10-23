@@ -86,6 +86,8 @@ function fixture(
   options: {
     maxRecordsPerCollection?: number;
     sweep?: () => Promise<MemoryRetentionSweep>;
+    /** Holds every sweep until it settles, so a test can overlap two passes. */
+    gate?: Promise<void>;
   } = {},
 ) {
   const runtime = createManualRuntimeServices({ identifierSeed: 'memory-retention-sweep' });
@@ -114,8 +116,9 @@ function fixture(
     ...memory,
     init: () => memory.init(),
     close: () => memory.close(),
-    sweepRetention: (authority, sweepOptions) => {
+    sweepRetention: async (authority, sweepOptions) => {
       calls.push('sweepRetention');
+      await options.gate;
       return options.sweep === undefined
         ? memory.sweepRetention(authority, sweepOptions)
         : options.sweep();
@@ -201,6 +204,12 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     const swept = await sweptEvents(built);
     expect(swept).toHaveLength(1);
     expect(swept[0]?.recordIds).toEqual([recordId]);
+    // The timer's pass sweeps first, and only then advances the deletions the sweep opened.
+    await waitForCondition(
+      async () => built.calls.includes('processDeletionPropagation'),
+      'expected the automatic pass to propagate deletions',
+    );
+    expect(built.calls.slice(0, 2)).toEqual(['sweepRetention', 'processDeletionPropagation']);
   });
 
   it('deletes nothing under manual background tasks until runDurableMaintenance is called', async () => {
@@ -326,6 +335,69 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
   });
 });
 
+describe('overlapping maintenance passes share one sweep (COR-1629)', () => {
+  /** A promise a test settles by hand. */
+  function deferred() {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  }
+
+  it('lets a manual pass join the sweep the automatic timer has in flight', async () => {
+    const gate = deferred();
+    const built = fixture({ gate: gate.promise });
+    const { bureau, diagnostics } = await start(built, { manual: false });
+    const recordId = await remember(built.memory, 'alice', 'alpha', 'An old answer.');
+
+    // The timer fires while the record is expired and parks inside its sweep.
+    await built.runtime.advance(91 * DAY);
+    await waitForCondition(
+      async () => built.calls.includes('sweepRetention'),
+      'expected the automatic pass to start its sweep',
+    );
+    const manual = bureau.runDurableMaintenance();
+    await Promise.resolve();
+    expect(built.calls.filter((call) => call === 'sweepRetention')).toHaveLength(1);
+
+    gate.release();
+    expect(await manual).toBe(true);
+
+    expect(built.calls.filter((call) => call === 'sweepRetention')).toHaveLength(1);
+    const receipts = await built.ledger.listReceipts({ tenantId: BUREAU_ID });
+    expect(receipts.map((receipt) => [receipt.record.id, receipt.trigger])).toEqual([
+      [recordId, 'retention-expiry'],
+    ]);
+    expect(await contentsOf(built.memory, 'alice', 'alpha')).toEqual([]);
+    expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
+  });
+
+  it('runs one sweep for two concurrent manual passes and reports a failure once', async () => {
+    const gate = deferred();
+    const built = fixture({
+      gate: gate.promise,
+      sweep: () => Promise.reject(new Error('ledger unavailable')),
+    });
+    const { bureau, diagnostics } = await start(built);
+
+    const first = bureau.runDurableMaintenance();
+    const second = bureau.runDurableMaintenance();
+    await Promise.resolve();
+    gate.release();
+    expect(await Promise.all([first, second])).toEqual([true, true]);
+
+    expect(built.calls.filter((call) => call === 'sweepRetention')).toHaveLength(1);
+    // Each pass still advanced deletions, and the one sweep that failed was reported once.
+    expect(built.calls.filter((call) => call === 'processDeletionPropagation')).toHaveLength(2);
+    expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toHaveLength(1);
+
+    // The sweep is no longer in flight, so the next pass starts a fresh one.
+    await bureau.runDurableMaintenance();
+    expect(built.calls.filter((call) => call === 'sweepRetention')).toHaveLength(2);
+  });
+});
+
 describe('a full collection accepts writes again after a maintenance pass (COR-1629)', () => {
   it('rejects the answer with quota-exceeded before a pass and stores it after one', async () => {
     const built = fixture({ maxRecordsPerCollection: 3 });
@@ -371,6 +443,18 @@ describe('a full collection accepts writes again after a maintenance pass (COR-1
     expect(await contentsOf(built.memory, 'api-key:alice', 'alpha')).toEqual([
       'The newest answer.',
     ]);
+
+    // The runs wrote under their own authority, which never held a retention or delete capability.
+    const admitted = await built.ledger.listEvents({
+      tenantId: BUREAU_ID,
+      type: 'memory.write.admitted',
+    });
+    const runWrites = admitted.filter((event) => event.attribution?.principal.kind === 'run');
+    expect(runWrites.length).toBeGreaterThan(0);
+    for (const event of runWrites) {
+      expect(event.attribution?.capabilities).not.toContain('memory:retention');
+      expect(event.attribution?.capabilities).not.toContain('memory:delete');
+    }
   });
 });
 
@@ -389,6 +473,7 @@ describe('a failing retention sweep is isolated (COR-1629)', () => {
       deletionIds: [],
       prunedEvents: 0,
       prunedReceipts: 0,
+      prunedDerivations: 0,
     });
   };
   const failures: [string, () => Promise<MemoryRetentionSweep>][] = [
