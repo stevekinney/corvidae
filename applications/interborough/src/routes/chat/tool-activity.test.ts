@@ -18,7 +18,7 @@ function conversation(...rows: Row[]): ConversationHistory {
     messages: Object.fromEntries(rows.map((entry) => [entry.id, entry])),
     createdAt: '2026-10-23T00:00:00.000Z',
     updatedAt: '2026-10-23T00:00:00.000Z',
-  } as ConversationHistory;
+  };
 }
 
 const call = (id: string, callId: string, name: string, args: unknown = {}) =>

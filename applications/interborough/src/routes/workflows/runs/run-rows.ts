@@ -51,6 +51,8 @@ export const SINCE_RANGES = {
 
 export type SinceRange = keyof typeof SINCE_RANGES;
 
+const SINCE_KEYS: readonly SinceRange[] = ['1h', '24h', '7d'];
+
 export type RunFilter = {
   readonly status?: TaskState;
   readonly agent?: string;
@@ -161,12 +163,12 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
   const status = STATUSES.find((state) => state === search.get('status'));
   const agent = search.get('agent')?.trim();
   const startedBy = search.get('startedBy');
-  const since = search.get('since');
+  const since = SINCE_KEYS.find((range) => range === search.get('since'));
   return {
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
     ...(startedBy === 'chat' || startedBy === 'goal' ? { startedBy } : {}),
-    ...(since !== null && since in SINCE_RANGES ? { since: since as SinceRange } : {}),
+    ...(since === undefined ? {} : { since }),
   };
 }
 

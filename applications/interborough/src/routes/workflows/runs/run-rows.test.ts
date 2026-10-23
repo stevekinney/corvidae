@@ -48,7 +48,7 @@ describe('buildRunRows', () => {
       }),
     ],
     goals: [goal],
-    chats: [chat as never],
+    chats: [chat],
   });
 
   test('joins tasks and goal attempts, the most recently changed first', () => {
@@ -74,7 +74,7 @@ describe('filterRunRows', () => {
   const rows = buildRunRows({
     tasks: [taskFixture({ id: 'run-1', contextId: 'chat-1', status: 'submitted' })],
     goals: [goal],
-    chats: [chat as never],
+    chats: [chat],
   });
 
   test('narrows by status, agent, and what started the run', () => {

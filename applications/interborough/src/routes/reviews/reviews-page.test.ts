@@ -310,7 +310,8 @@ describe('a decision that took effect', () => {
       writeFails(world, decided.id);
       const reads = stub.callsTo('bureau.reviews.list').length;
 
-      await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
+      const approves = await findAllByRole('button', { name: 'Approve' });
+      await fireEvent.click(approves[0]!);
 
       // The refetch drops the decided review, and the warning is still on the page.
       await waitFor(() => expect(rows(container).length).toBe(others));
@@ -377,7 +378,8 @@ describe('what became of a decision', () => {
     stub?.on('bureau.reviews.resolve', () => {
       throw new Error('The Bureau broke.');
     });
-    await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
+    const approves = await findAllByRole('button', { name: 'Approve' });
+    await fireEvent.click(approves[0]!);
     await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
 
     expect(rows(container)[0]?.textContent).toContain(REVIEWS_COPY.decisionFailed);

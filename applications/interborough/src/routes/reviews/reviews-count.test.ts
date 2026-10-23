@@ -156,7 +156,8 @@ describe('the count in the navigation', () => {
     await until(() => expect(navigationLabel(container)).toBe('Reviews 2'));
     await until(() => expect(container.querySelectorAll('.ib-review').length).toBe(2));
 
-    await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
+    const approves = await findAllByRole('button', { name: 'Approve' });
+    await fireEvent.click(approves[0]!);
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1);
   });

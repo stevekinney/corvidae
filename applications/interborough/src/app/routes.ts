@@ -1,6 +1,6 @@
 import type { Component } from 'svelte';
 
-import { workflowDetailPath } from '../lib/router.svelte.ts';
+import { identifierPath } from '../lib/identifier-paths.ts';
 import { chatHomePath } from '../routes/chat/chat-home.ts';
 import type { ViewName } from './views.ts';
 
@@ -80,7 +80,11 @@ export const routes: readonly RouteDefinition[] = [
     pattern: '/tasks/:id',
     view: 'runs',
     load: placeholder,
-    redirect: ({ params }) => Promise.resolve(workflowDetailPath(params['id'] ?? '')),
+    // `workflowDetailPath` lives in the router, which reads this table, so the path is built here.
+    redirect: ({ params }) =>
+      Promise.resolve(
+        identifierPath('runs', '/runs/:id', params['id'] ?? '', new URLSearchParams()),
+      ),
   },
   { pattern: '/reviews', view: 'reviews', load: () => import('../routes/reviews/index.svelte') },
   { pattern: '/workers', view: 'workers', load: () => import('../routes/workers/index.svelte') },
