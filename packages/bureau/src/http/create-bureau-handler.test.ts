@@ -146,7 +146,10 @@ describe('createBureauHandler options', () => {
     await withBureau({}, (bureau) => {
       const retaining = (taskRetention: TestBureau['taskRetention']) => () =>
         createBureauHandler(
-          Object.create(bureau, { taskRetention: { value: taskRetention } }) as TestBureau,
+          Object.create(bureau, {
+            taskRetention: { value: taskRetention },
+            hasDurableEngine: { value: true },
+          }) as TestBureau,
           { unauthenticatedAccess: 'allow', publicUrl: 'https://example.test' },
         );
       expect(bureau.taskRetention).toEqual({ olderThan: 30 * 86_400_000 });
