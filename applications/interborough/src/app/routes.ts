@@ -1,5 +1,6 @@
 import type { Component } from 'svelte';
 
+import { identifierPath } from '../lib/identifier-paths.ts';
 import { chatHomePath } from '../routes/chat/chat-home.ts';
 import type { ViewName } from './views.ts';
 
@@ -22,7 +23,7 @@ export interface RouteDefinition {
    * Where the route goes instead of rendering, decided when it is opened. The outlet replaces the
    * history entry with the path this resolves, so Back does not return to the redirecting address.
    */
-  redirect?: () => Promise<string>;
+  redirect?: (match: { params: Readonly<Record<string, string | undefined>> }) => Promise<string>;
 }
 
 const placeholder = () => import('../routes/placeholder/index.svelte');
@@ -68,10 +69,23 @@ export const routes: readonly RouteDefinition[] = [
   // The list, and one schedule's page: one component dispatches on whether the path names one.
   { pattern: '/schedules', view: 'schedules', load: schedulesArea },
   { pattern: '/schedules/:id', view: 'schedules', load: schedulesArea },
-  // A task is reached from a chat session, from a run's page, and from a review, so the list is
-  // not in the navigation.
-  { pattern: '/tasks', view: 'tasks', load: () => import('../routes/tasks/index.svelte') },
-  { pattern: '/tasks/:id', view: 'tasks', load: () => import('../routes/tasks/index.svelte') },
+  // A task is a run. Old addresses for one go to the run's page, or to the runs a chat started.
+  {
+    pattern: '/tasks',
+    view: 'runs',
+    load: placeholder,
+    redirect: () => Promise.resolve('/runs?startedBy=chat'),
+  },
+  {
+    pattern: '/tasks/:id',
+    view: 'runs',
+    load: placeholder,
+    // `workflowDetailPath` lives in the router, which reads this table, so the path is built here.
+    redirect: ({ params }) =>
+      Promise.resolve(
+        identifierPath('runs', '/runs/:id', params['id'] ?? '', new URLSearchParams()),
+      ),
+  },
   { pattern: '/reviews', view: 'reviews', load: () => import('../routes/reviews/index.svelte') },
   { pattern: '/workers', view: 'workers', load: () => import('../routes/workers/index.svelte') },
   { pattern: '/storage', view: 'storage', load: () => import('../routes/storage/index.svelte') },

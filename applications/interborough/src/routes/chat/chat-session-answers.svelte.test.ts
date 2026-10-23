@@ -353,3 +353,47 @@ describe('a RUN_FAILED refusal of a resume', () => {
     },
   );
 });
+
+describe('a question answered somewhere else', () => {
+  test('is no longer open after the thread is read again, so the next message is a new turn and not its answer', async () => {
+    const mounted = mount([parkedStart([environment]), plainSuccess]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
+
+    // `/reviews` answered it: the thread has nothing going or waiting.
+    expect(await session.refresh()).toBe(true);
+
+    expect(session.humanRequests).toEqual([]);
+    await session.adapter.sendMessage({ role: 'user', content: 'Something else' }, []);
+    // A start with the person's message, and no resume that answers an interrupt the Bureau settled.
+    expect(mounted.bodies).toHaveLength(2);
+    expect(mounted.bodies[1]?.resume).toBeUndefined();
+    expect(appendedBy(mounted.bodies[1], [])).toContain('Something else');
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('is still open after the thread is read again when the run still waits on it', async () => {
+    const mounted = mount([parkedStart([environment])], [stillParkedOn(environment)]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    expect(await session.refresh()).toBe(true);
+    await until(() => !session.attaching && !session.streaming);
+
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
+  });
+
+  test('is not reported as read when the thread could not be read again', async () => {
+    const mounted = mount([parkedStart([environment])]);
+    const session = open(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      // The run's own stream is gone with the network; the transcript is still readable.
+      if (url.includes('/threads/') && url.endsWith('/run')) throw new TypeError('Failed to fetch');
+      return mounted.fetch(input, init);
+    });
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    expect(await session.refresh()).toBe(false);
+  });
+});

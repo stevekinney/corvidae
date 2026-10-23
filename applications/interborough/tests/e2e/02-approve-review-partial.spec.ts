@@ -11,6 +11,7 @@
  * pending review whose type badge reads "content" rather than a specific
  * document title, which the row itself never renders.
  */
+import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const REVIEWER = 'e2e-operator';
@@ -18,30 +19,34 @@ const FEEDBACK = 'Tighten the call to action; the rest reads well.';
 
 test('operator decides a sectioned review with a mixed partial outcome', async ({
   page,
+  request,
   checkA11y,
 }) => {
   await page.goto('/reviews');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.
-  await expect(page.getByRole('radiogroup', { name: 'Review state' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Engine reviews' })).toBeVisible();
   await checkA11y('reviews inbox');
 
-  const pendingContentReview = page.getByRole('button', { name: /content/ }).first();
-  await expect(pendingContentReview).toBeVisible();
-  await pendingContentReview.click();
+  // The engine's pending reviews are in their own section, each with its own form. The sectioned
+  // ones are `content` reviews; the first of them is decided here.
+  const review = page
+    .locator('.weft-review-detail')
+    .filter({ has: page.getByText('Section decisions') })
+    .first();
+  await expect(review).toBeVisible();
+  const reviewId = await review.getByRole('link').first().getAttribute('href');
 
-  await expect(page.getByText('Section decisions')).toBeVisible();
-
-  await page
+  await review
     .getByRole('radiogroup', { name: 'Headline decision' })
     .getByRole('radio', { name: 'Approve' })
     .click();
-  await page
+  await review
     .getByRole('radiogroup', { name: 'Body decision' })
     .getByRole('radio', { name: 'Approve' })
     .click();
-  await page
+  await review
     .getByRole('radiogroup', { name: 'Call to action decision' })
     .getByRole('radio', { name: 'Reject' })
     .click();
@@ -51,27 +56,28 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
   // partial-decision scenario this flow exercises, so the overall picker
   // is left on its suggestion rather than touched.
   await expect(
-    page.getByRole('radiogroup', { name: 'Overall decision' }).getByRole('radio', {
+    review.getByRole('radiogroup', { name: 'Overall decision' }).getByRole('radio', {
       name: 'Changes',
       checked: true,
     }),
   ).toBeVisible();
-  await expect(page.getByText('Suggested from sections')).toBeVisible();
+  await expect(review.getByText('Suggested from sections')).toBeVisible();
 
-  await page.getByRole('textbox', { name: 'Reviewer' }).fill(REVIEWER);
-  await page.getByRole('textbox', { name: /^Feedback/ }).fill(FEEDBACK);
+  await review.getByRole('textbox', { name: 'Reviewer' }).fill(REVIEWER);
+  await review.getByRole('textbox', { name: /^Feedback/ }).fill(FEEDBACK);
   await checkA11y('reviews inbox — decision form (partial sections)');
 
-  await page.getByRole('button', { name: 'Submit decision' }).click();
+  await review.getByRole('button', { name: 'Submit decision' }).click();
 
-  // There is no Archive: the engine's decided reviews are one state of the inbox itself.
-  await page
-    .getByRole('radiogroup', { name: 'Review state' })
-    .getByRole('radio', { name: 'Decided' })
-    .click();
-
-  const decidedRow = page.getByRole('button', { name: new RegExp(REVIEWER) });
-  await expect(decidedRow).toBeVisible();
-  await expect(decidedRow.getByText('Needs changes')).toBeVisible();
-  await checkA11y('reviews — decided');
+  // The page lists only what waits on someone, so the decided review leaves it. The engine has it
+  // as decided, with the reviewer and the outcome the form sent.
+  await expect(page.locator(`.weft-review-detail a[href="${reviewId ?? ''}"]`)).toHaveCount(0);
+  const decided = await request.get(`${E2E_BASE_URL}/v1/reviews`, {
+    params: { status: 'completed' },
+  });
+  const entries = ((await decided.json()) as { items: Array<Record<string, unknown>> }).items;
+  expect(entries.find((entry) => entry['reviewer'] === REVIEWER)).toMatchObject({
+    decision: 'needs-changes',
+  });
+  await checkA11y('reviews — after the decision');
 });

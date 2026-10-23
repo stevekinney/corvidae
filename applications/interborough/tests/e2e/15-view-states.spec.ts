@@ -21,7 +21,6 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
-  tasks: '/tasks',
   reviews: '/reviews',
   workers: '/workers',
   storage: '/storage',
@@ -75,12 +74,20 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
         ? { workflows: [], nextOffset: null }
         : { definitions: [] },
   },
+  // The runs are the Bureau's: the view asks it for one task and one goal, and is empty only when
+  // it has neither. The list that follows asks for a hundred of each.
   runs: {
-    matches: (url) => url.pathname === '/v1/workflows' && url.searchParams.get('limit') === '1',
-    empty: { items: [], total: 0 },
+    matches: (url, body) =>
+      url.pathname === '/bureau/jsonrpc' &&
+      /"bureau\.(tasks|goals)\.list"/.test(body) &&
+      /"limit":1[,}]/.test(body),
+    empty: { tasks: [], nextPageToken: null },
+    emptyFor: (body) =>
+      body.includes('"bureau.tasks.list"')
+        ? { tasks: [], nextPageToken: null }
+        : { goals: [], nextOffset: null },
   },
   schedules: { matches: (url) => url.pathname === '/v1/schedules', empty: { items: [], total: 0 } },
-  tasks: bureauProbe('bureau.tasks.list', { tasks: [], nextPageToken: null }),
   reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
@@ -148,9 +155,9 @@ for (const view of VIEW_NAMES) {
         checkA11y,
       }) => {
         await page.setViewportSize({ width, height: 900 });
-        // The chat list and the task list have something to show once the caller has a session,
-        // whose run is a task.
-        if ((view === 'chat' || view === 'tasks') && outcome === 'ready') {
+        // The chat list has something to show once the caller has a session,
+        // whose run is listed under Runs.
+        if (view === 'chat' && outcome === 'ready') {
           await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
         }
         await drive(page, view, outcome);

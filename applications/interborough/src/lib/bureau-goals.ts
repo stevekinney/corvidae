@@ -91,6 +91,26 @@ export async function listGoals(
   return pageSchema.parse(await callBureau('bureau.goals.list', input, options));
 }
 
+/** How many goals one request of {@link listAllGoals} asks for. */
+const GOALS_PAGE_SIZE = 100;
+
+/**
+ * Every goal the caller owns: pages are read, `nextOffset` followed, until the Bureau says there
+ * are no more. A reader that took one page would lose the attempts of every goal after the first
+ * hundred. An offset that does not move forward ends the read, so a Bureau that repeats itself
+ * cannot loop it.
+ */
+export async function listAllGoals(options?: Options): Promise<Goal[]> {
+  const goals: Goal[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await listGoals({ limit: GOALS_PAGE_SIZE, offset }, options);
+    goals.push(...page.goals);
+    if (page.nextOffset === null || page.nextOffset <= offset) return goals;
+    offset = page.nextOffset;
+  }
+}
+
 /** What a goal is created from. A validator is named by free text, exactly, because the Bureau holds its own. */
 export type GoalInput = {
   readonly agentName: string;
