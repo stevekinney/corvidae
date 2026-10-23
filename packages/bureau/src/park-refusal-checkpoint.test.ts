@@ -74,6 +74,31 @@ describe('countCheckpointParks ignores a refused park request (COR-1578)', () =>
   });
 });
 
+describe('a park that carries an input schema (COR-1487)', () => {
+  const inputSchema = { type: 'object', properties: { a: { type: 'string' } } };
+  const withSchema = {
+    outcome: 'success',
+    toolName: 'requestHumanInput',
+    result: { parked: true, signalName: 'a', prompt: 'Approve a?', inputSchema },
+  };
+
+  it('is the outstanding park, schema included', () => {
+    expect(countCheckpointParks([{ results: [withSchema] }])).toEqual({
+      baseline: 1,
+      outstanding: { signalName: 'a', prompt: 'Approve a?', inputSchema, ordinal: 0 },
+    });
+  });
+
+  it('is committed to a fire review, schema included', () => {
+    expect([...committedFireReviews(RUN, [{ results: [withSchema] }])]).toEqual([
+      [
+        `human-wait:${RUN}:a:0`,
+        { kind: 'human-wait', signalName: 'a', prompt: 'Approve a?', inputSchema },
+      ],
+    ]);
+  });
+});
+
 describe('a fire commits no review for a refused park request (COR-1578)', () => {
   const steps = [
     { results: [parked('a', 'Approve a?'), refusedHumanInput('b', 'a'), refusedWakeup] },

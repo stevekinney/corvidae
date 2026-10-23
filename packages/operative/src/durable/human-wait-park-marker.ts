@@ -1,6 +1,7 @@
 import type { WorkflowLogRecord } from '@lostgradient/weft';
 
 import { HumanWaitParkedEvent } from '../events';
+import { humanInputSchemaOf } from '../human-input-schema';
 import type { EventDispatcher } from '../run-step';
 
 /**
@@ -31,14 +32,16 @@ export function createHumanWaitMarkerSink(
 ): (record: WorkflowLogRecord) => void {
   return (record) => {
     if (record.message === HUMAN_WAIT_PARKED_LOG_MARKER) {
-      const { runId, signalName, prompt, emitter } = record.attributes ?? {};
+      const { runId, signalName, prompt, inputSchema, emitter } = record.attributes ?? {};
       if (
         typeof runId === 'string' &&
         typeof signalName === 'string' &&
         (prompt === undefined || typeof prompt === 'string') &&
         isDispatcher(emitter)
       ) {
-        emitter.dispatch(new HumanWaitParkedEvent(signalName, runId, prompt));
+        emitter.dispatch(
+          new HumanWaitParkedEvent(signalName, runId, prompt, humanInputSchemaOf(inputSchema)),
+        );
       }
       return;
     }

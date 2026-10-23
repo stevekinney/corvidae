@@ -142,7 +142,7 @@ describe('encode-time field projection (CIN-507)', () => {
     const event = hostileEvent({
       type: 'text',
       text: 'hi',
-      wireVersion: 4,
+      wireVersion: 5,
       sequence: 0,
     });
     expect(() => encodeChatStreamEvent(event)).toThrow(

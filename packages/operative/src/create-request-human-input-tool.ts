@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 import type { PendingHumanWait, PendingWakeup } from './durable/types';
 import { HumanWaitParkedEvent } from './events';
+import { checkHumanInputSchemas, type HumanInputSchema } from './human-input-schema';
 import { refuseIfStepIsParked, type RefusedParkRequest } from './park-refusal';
 
 type HumanInputEventDispatcher = {
@@ -36,6 +37,12 @@ export interface RequestHumanInputResult {
   parked: true;
   signalName: string;
   prompt?: string | undefined;
+  /**
+   * The JSON Schema the author configured for this signal, when one is. It rides in the tool
+   * result so the step record the checkpoint commits carries it, and a restarted run reads the
+   * wait's schema back from there.
+   */
+  inputSchema?: HumanInputSchema | undefined;
   /** Human-readable message the LLM can use in its response. */
   message: string;
 }
@@ -105,6 +112,17 @@ export interface CreateRequestHumanInputToolOptions {
    * transition emits an event).
    */
   emitter?: HumanInputEventDispatcher | undefined;
+  /**
+   * A JSON Schema (draft 2020-12) per signal name, describing the answer that signal expects. The
+   * author configures these; the model-facing tool input stays `{ signalName, prompt }` and never
+   * carries a schema. A park on a configured signal records its schema on the pending wait, the
+   * `HumanWaitParkedEvent`, and the tool result the checkpoint persists. Each schema is checked
+   * when the tool is created: it must be a valid 2020-12 schema of at most 32 KiB serialized and 8
+   * levels of nesting, or creation throws {@link HumanInputSchemaError}. The tool keeps its own
+   * copy, so changing the object afterwards changes nothing. A signal with no entry behaves as it
+   * always has.
+   */
+  inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined;
 }
 
 /**
@@ -164,6 +182,7 @@ export interface CreateRequestHumanInputToolOptions {
  */
 export function createRequestHumanInputTool(options: CreateRequestHumanInputToolOptions) {
   const { context, emitter } = options;
+  const schemas = checkHumanInputSchemas(options.inputSchemas ?? {});
 
   return {
     name: 'requestHumanInput',
@@ -209,9 +228,11 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
         return { parked: false, signalName: input.signalName, ...refusal };
       }
 
+      const inputSchema = schemas.get(input.signalName);
       context.pendingHumanWait = {
         signalName: input.signalName,
         ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+        ...(inputSchema !== undefined ? { inputSchema } : {}),
       };
 
       // F3 / C3 — emit HumanWaitParkedEvent so observers see the transition.
@@ -219,7 +240,12 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
       // approval or input is being requested (as the schema doc promises).
       if (emitter) {
         emitter.dispatchEvent(
-          new HumanWaitParkedEvent(input.signalName, context.runId ?? '', input.prompt),
+          new HumanWaitParkedEvent(
+            input.signalName,
+            context.runId ?? '',
+            input.prompt,
+            inputSchema,
+          ),
         );
       }
 
@@ -231,6 +257,7 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
         parked: true,
         signalName: input.signalName,
         ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+        ...(inputSchema !== undefined ? { inputSchema } : {}),
         message,
       };
     },

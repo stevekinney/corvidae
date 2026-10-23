@@ -27,6 +27,22 @@ export type ChatToolResult = ToolResult & {
  * monotonically increasing `sequence`.
  *
  * Version 2 adds the `assistant.step.*` and `elicitation.*` vocabulary.
+ * Version 4 changes no vocabulary; it names the conversation schema the
+ * terminal `run.completed` frame carries. A version 4 frame carries the
+ * current Conversationalist schema (8, which adds `providerCallId` provenance
+ * on tool calls and results). A version 1, 2, or 3 frame carries a schema 7
+ * conversation: the encoder strips every `providerCallId` and writes
+ * `schemaVersion: 7`, because a client built before the bump validates that
+ * shape strictly and would otherwise reject the terminal frame after
+ * applying every earlier one. The decoder accepts a schema 7 conversation on
+ * a version 1, 2, or 3 frame and returns it as schema 8, which is a superset.
+ * A producer picks the version its consumers can read: version 4 only once
+ * every consumer decodes it. Versions 3 and 4 are otherwise identical.
+ *
+ * The schema 7 projection applies only to the encoded version 1, 2, or 3
+ * wire. An in-memory event of any version (what a transport produces and what
+ * the decoder returns) carries the schema 8 conversation.
+ *
  * Version 3 adds the `run.started` frame and a required `messageId` on
  * `stream:text-delta`, so the wire maps losslessly to AG-UI `RUN_STARTED` and
  * `TEXT_MESSAGE_*`. A version 1 or 2 producer keeps working unchanged, and a
@@ -42,7 +58,7 @@ export type ChatToolResult = ToolResult & {
  * must decode them unchanged rather than break a deployed producer.
  */
 export type WireEnvelope = {
-  wireVersion: 1 | 2 | 3;
+  wireVersion: 1 | 2 | 3 | 4;
   sequence: number;
 };
 
@@ -54,16 +70,16 @@ export type WireEnvelope = {
  * so these members are equally legal at version 3.
  */
 export type WireEnvelopeFromV2 = {
-  wireVersion: 2 | 3;
+  wireVersion: 2 | 3 | 4;
   sequence: number;
 };
 
 /**
  * The envelope a member introduced by wire version 3 requires: only a
- * version 3 producer can construct a `run.started` frame.
+ * version 3 or later producer can construct a `run.started` frame.
  */
 export type WireEnvelopeFromV3 = {
-  wireVersion: 3;
+  wireVersion: 3 | 4;
   sequence: number;
 };
 
@@ -117,11 +133,11 @@ export type WithOptionalEnvelope<T> =
 export type OptionalWireEnvelope = WireEnvelope | { wireVersion?: never; sequence?: never };
 
 /** The supported wire versions. Any other value is rejected outright. */
-export const SUPPORTED_WIRE_VERSIONS = [1, 2, 3] as const;
+export const SUPPORTED_WIRE_VERSIONS = [1, 2, 3, 4] as const;
 
 /** Narrows an untrusted value to a wire version this codec speaks. */
-export function isSupportedWireVersion(value: unknown): value is 1 | 2 | 3 {
-  return value === 1 || value === 2 || value === 3;
+export function isSupportedWireVersion(value: unknown): value is 1 | 2 | 3 | 4 {
+  return value === 1 || value === 2 || value === 3 || value === 4;
 }
 
 // ---------------------------------------------------------------------------

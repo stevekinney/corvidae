@@ -36,6 +36,7 @@
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { checkFormSubmission } from '../../a2ui/input-form.ts';
 import {
   BureauLedgerConflictError,
   type CommandLedger,
@@ -68,6 +69,11 @@ export const tasksRespondInput = z
     messageId: z.string().min(1).max(200),
     /** Answer text; a list of parts is joined with a newline. */
     answer: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
+    /**
+     * The answer of a human wait that carries an input schema: one JSON object, validated against
+     * that schema before it is delivered as the signal's payload.
+     */
+    data: z.record(z.string(), z.unknown()).optional(),
     decision: z.enum(['approve', 'deny', 'reject']).optional(),
     /** Required, and non-blank, for `reject`. */
     reason: z.string().optional(),
@@ -76,10 +82,15 @@ export const tasksRespondInput = z
     /** Addresses the tool approval for this call. */
     callId: z.string().min(1).optional(),
   })
-  .refine((input) => (input.answer === undefined) !== (input.decision === undefined), {
-    message: 'Send exactly one of `answer` and `decision`',
-    path: ['answer'],
-  })
+  .refine(
+    (input) =>
+      [input.answer, input.data, input.decision].filter((value) => value !== undefined).length ===
+      1,
+    {
+      message: 'Send exactly one of `answer`, `data` and `decision`',
+      path: ['answer'],
+    },
+  )
   .refine((input) => input.decision !== 'reject' || (input.reason ?? '').trim() !== '', {
     message: 'reject requires a reason',
     path: ['reason'],
@@ -112,7 +123,16 @@ export type TasksRespondResult = z.infer<typeof tasksRespondOutput>;
  * advances its round, so the round is what tells a retry that its decision was about an earlier
  * one. Absent for a human wait, and in an entry written before the round was recorded.
  */
-export type TasksRespondClaim = { readonly reviewId: string; readonly round?: number };
+export type TasksRespondClaim = {
+  readonly reviewId: string;
+  readonly round?: number;
+  /**
+   * A structured answer, as admitted: validated against the wait's schema and normalised once, when
+   * the command was claimed. A retry of a pending claim delivers it, or finds the review already
+   * resolved by this command, without validating again.
+   */
+  readonly submission?: { readonly value: unknown };
+};
 
 /** The ledger this command records its receipts in. */
 export type TasksRespondLedger = CommandLedger<TasksRespondClaim, TasksRespondResult>;
@@ -196,6 +216,60 @@ function selectWait(
   return only;
 }
 
+/** JSON text with every object's keys sorted, so equal data digests equally whatever its key order. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, held: unknown) =>
+    typeof held === 'object' && held !== null && !Array.isArray(held)
+      ? Object.fromEntries(
+          Object.entries(held).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : held,
+  );
+}
+
+function unprocessable(message: string, reason: string): OperationFault {
+  return { code: 'Unprocessable', message, data: { reason } };
+}
+
+/**
+ * What a human wait with an input schema accepts, checked before anything is claimed or delivered
+ * (COR-1487). The answer is untrusted: structured `data` is validated against the schema the wait
+ * was parked with, text and a bare approval are refused for such a wait, and `data` is refused for
+ * a wait that has no schema. Returns the value to deliver as the signal's payload, or `undefined`
+ * when the command delivers the answer text or a decision as before.
+ */
+async function checkedSubmission(
+  host: BureauTasksRespondOperationHost,
+  reviewId: string,
+  input: z.infer<typeof tasksRespondInput>,
+): Promise<{ readonly value: unknown } | undefined> {
+  // A task's view names its waits by identifier only: the schema is on the review.
+  const review = await host.reviews.getReview(reviewId);
+  const schema = review?.kind === 'human-wait' ? review.inputSchema : undefined;
+  if (input.data === undefined) {
+    if (schema === undefined) return undefined;
+    if (input.answer !== undefined) {
+      throw unprocessable(
+        'This wait expects structured data matching its schema; send `data`, not text',
+        'text answer to a wait with an input schema',
+      );
+    }
+    if ((input.decision ?? 'approve') === 'approve') {
+      throw invalid('data', 'This wait expects `data` matching its input schema');
+    }
+    return undefined;
+  }
+  if (schema === undefined) {
+    throw unprocessable(
+      'This wait takes no structured data; answer with text',
+      'data addressed to a wait without an input schema',
+    );
+  }
+  const checked = checkFormSubmission(schema, input.data);
+  if (!checked.ok) throw invalid('data', checked.message);
+  return { value: checked.value };
+}
+
 /** The input {@link respondToTask} takes, as {@link tasksRespondInput} parses it. */
 export type TasksRespondInput = z.infer<typeof tasksRespondInput>;
 
@@ -252,6 +326,7 @@ async function respond({
   const decision = input.decision ?? 'approve';
   const digest = digestCommandPayload({
     answer: answerText,
+    data: input.data === undefined ? undefined : canonicalJson(input.data),
     decision: input.decision,
     reason: input.reason,
     signalName: input.signalName,
@@ -307,6 +382,17 @@ async function respond({
     } catch (error) {
       notAwaiting = error;
     }
+    // What the wait accepts is checked once it is chosen. A refusal is thrown after the ledger is
+    // consulted, so a retry of a command that was applied still gets its receipt.
+    let submission: { readonly value: unknown } | undefined;
+    let submissionRefusal: unknown;
+    if (wait !== undefined) {
+      try {
+        submission = await checkedSubmission(host, wait.reviewId, input);
+      } catch (error) {
+        submissionRefusal = error;
+      }
+    }
     // The round the command reads the approval at, recorded with its claim.
     let readRound: number | undefined;
     if (wait?.kind === 'tool-approval') {
@@ -318,6 +404,7 @@ async function respond({
       claimed = await host.respondLedger.claim(identity, digest, {
         reviewId: wait?.reviewId ?? '',
         ...(readRound === undefined ? {} : { round: readRound }),
+        ...(submission === undefined || submissionRefusal !== undefined ? {} : { submission }),
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
@@ -340,11 +427,18 @@ async function respond({
     // another attempt made belongs to it: that attempt may be resolving the review right
     // now, possibly in another process, and deleting its claim would lose its receipt.
     const ownClaim = claimed.outcome === 'claimed';
+    // A retry completes from the claim, not from current state: the submission was validated and
+    // normalised once, at the admission that made the claim, and is recorded in it. Revalidating
+    // here would judge the same command against a review that may since have closed, lost its
+    // schema in the audit record, or been joined by another wait.
+    const replay = !ownClaim && entry.claim.submission !== undefined;
+    const delivered = replay ? entry.claim.submission : submission;
     const refuse = async (fault: unknown): Promise<never> => {
       // The Bureau refused it before changing anything, so a retry may claim afresh.
       if (ownClaim) await host.respondLedger.release(entry);
       throw fault;
     };
+    if (!replay && submissionRefusal !== undefined) return refuse(submissionRefusal);
     // Nothing was addressed and nothing was applied: leave no claim of ours behind.
     if (reviewId === '') return refuse(notAwaiting ?? conflict('The task is not awaiting input'));
     let result: TasksRespondResult;
@@ -393,7 +487,11 @@ async function respond({
           id: reviewId,
           decision,
           principal: actor,
-          ...(answerText === undefined ? {} : { payload: answerText }),
+          ...(delivered !== undefined
+            ? { payload: delivered.value }
+            : answerText === undefined
+              ? {}
+              : { payload: answerText }),
           ...(input.reason === undefined ? {} : { reason: input.reason }),
         });
         result = {
