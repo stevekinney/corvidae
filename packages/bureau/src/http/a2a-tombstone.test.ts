@@ -5,7 +5,6 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { stopWhen } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';
@@ -58,7 +57,6 @@ async function serveWriter(): Promise<Served> {
     overrides: {
       id: 'tombstone-bureau',
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       resolveAgentGenerate: () => parksOnRequest,
       runtime: { ...runtime, clock: { ...runtime.clock, now: () => runtime.clock.now() + offset } },
     },
