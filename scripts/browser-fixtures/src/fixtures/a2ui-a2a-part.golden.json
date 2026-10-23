@@ -48,11 +48,7 @@
           {
             "id": "root",
             "component": "Column",
-            "children": [
-              "title",
-              "note",
-              "go"
-            ]
+            "children": ["title", "note", "go"]
           }
         ]
       }
