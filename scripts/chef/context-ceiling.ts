@@ -12,7 +12,9 @@
 //   - above it: allows the call and adds context telling the agent to write its handoff brief;
 //   - above the block threshold (default 400000): denies every call except what a handoff needs:
 //     writing a file under `tmp/chef/`, the session-start and handoff tools, `SendMessage`, the
-//     turn wrap-up tools, and `git` status, add, commit, push, log, diff and rev-parse.
+//     turn wrap-up tools, `git` status, add, commit, push, log, diff and rev-parse, and the
+//     `ToolSearch` that loads those deferred tools (a `select:` query naming only tools in that
+//     set; any keyword search or other name is denied).
 //
 // Environment: CHEF_CONTEXT_WARN_TOKENS, CHEF_CONTEXT_BLOCK_TOKENS (positive integers; an invalid
 // value keeps the default) and CHEF_CONTEXT_CEILING=off to disable the hook.
@@ -99,6 +101,23 @@ const handoffTools = [
   /^mcp__ccd_turn__(update_plan|wrap_up)$/,
   /^SendMessage$/,
 ];
+/**
+ * Whether a `ToolSearch` input only loads handoff tools: a `select:` query whose comma-separated
+ * names each match the handoff set. The session-start tool is deferred, so a session past the
+ * ceiling that has not loaded it could never hand off without this.
+ */
+function loadsOnlyHandoffTools(input: Record<string, unknown>): boolean {
+  const query = input['query'];
+  if (typeof query !== 'string') return false;
+  const match = /^select:(.*)$/s.exec(query.trim());
+  if (match === null) return false;
+  const names = (match[1] ?? '').split(',').map((name) => name.trim());
+  return (
+    names.length > 0 &&
+    names.every((name) => name !== '' && handoffTools.some((pattern) => pattern.test(name)))
+  );
+}
+
 const writeTools = new Set(['Write', 'Edit']);
 const gitHandoff =
   /^git(?: -C \S+)? (?:status|add|commit|push|log|diff|rev-parse|branch)(?: [^;&|`$<>\n\\]*)?$/;
@@ -115,6 +134,7 @@ function insideChefTemporaryDirectory(path: unknown): boolean {
 export function isHandoffCall(toolName: string, toolInput: unknown): boolean {
   if (handoffTools.some((pattern) => pattern.test(toolName))) return true;
   const input = (toolInput ?? {}) as Record<string, unknown>;
+  if (toolName === 'ToolSearch') return loadsOnlyHandoffTools(input);
   if (writeTools.has(toolName)) return insideChefTemporaryDirectory(input['file_path']);
   if (toolName === 'Bash')
     return typeof input['command'] === 'string' && gitHandoff.test(input['command'].trim());
@@ -157,7 +177,7 @@ export function decide(
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: `This session's context is ${kilo(context)} tokens, past the ${kilo(block)} ceiling (AGENTS.md "Parallel runs"). Stop the work. Write a handoff brief under tmp/chef/ (the task, what is done, what is left, the branch, commit and pull request, the exact next commands and evidence paths), commit and push any work, then start a fresh session from that brief and end this one. Only that handoff is allowed now: Write or Edit under tmp/chef/, git status/add/commit/push/log/diff, SendMessage, and the session-start and handoff tools.`,
+        permissionDecisionReason: `This session's context is ${kilo(context)} tokens, past the ${kilo(block)} ceiling (AGENTS.md "Parallel runs"). Stop the work. Write a handoff brief under tmp/chef/ (the task, what is done, what is left, the branch, commit and pull request, the exact next commands and evidence paths), commit and push any work, then start a fresh session from that brief and end this one. Only that handoff is allowed now: Write or Edit under tmp/chef/, git status/add/commit/push/log/diff, SendMessage, the session-start and handoff tools, and a ToolSearch select: query that loads only those tools.`,
       },
     };
   return {

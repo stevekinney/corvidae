@@ -116,6 +116,42 @@ describe('isHandoffCall', () => {
   });
 });
 
+describe('isHandoffCall for ToolSearch', () => {
+  test.each([
+    ['select of start_session', { query: 'select:mcp__ccd_session__start_session' }, true],
+    [
+      'select of start_session and hand_off_to_session',
+      {
+        query: 'select:mcp__ccd_session__start_session,mcp__ccd_session__hand_off_to_session',
+      },
+      true,
+    ],
+    [
+      'select with spaces around the names',
+      { query: 'select: mcp__ccd_session__start_session , SendMessage' },
+      true,
+    ],
+    ['select that adds Bash', { query: 'select:mcp__ccd_session__start_session,Bash' }, false],
+    [
+      'select that adds another server tool',
+      { query: 'select:mcp__ccd_session__start_session,mcp__foo__bar' },
+      false,
+    ],
+    ['select of a lookalike name', { query: 'select:mcp__ccd_session__start_session_x' }, false],
+    ['empty select', { query: 'select:' }, false],
+    ['keyword query', { query: 'session start handoff' }, false],
+    ['keyword query with a plus', { query: '+ccd_session start' }, false],
+    ['missing query', {}, false],
+    ['non-string query', { query: 5 }, false],
+  ])('%s', (_label, input, expected) => {
+    expect(isHandoffCall('ToolSearch', input)).toBe(expected);
+  });
+
+  test('a missing input is denied', () => {
+    expect(isHandoffCall('ToolSearch', undefined)).toBe(false);
+  });
+});
+
 describe('decide', () => {
   const input = (tool: string, toolInput: unknown = {}) => ({
     transcript_path: '/t.jsonl',
