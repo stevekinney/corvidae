@@ -7,7 +7,7 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import { VIEW_COPY } from '../../src/app/copy.ts';
+import { NOT_FOUND_ROUTE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, loggedFailedResponse, test, type PageErrorLog } from './fixtures.ts';
@@ -216,4 +216,54 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
   const frame = page.locator('[data-view="storage"]');
   await expect(frame).toHaveAttribute('data-state', 'forbidden');
   await expect(frame).toContainText('Requires storage:admin');
+});
+
+for (const width of WIDTHS) {
+  test(`an address no route names shows the not-found page inside the shell at ${width} pixels, and passes axe`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // A document navigation: the host answers it with the shell, not a bare 404.
+    const response = await page.goto('/nonsense/route');
+    expect(response?.status()).toBe(200);
+
+    const frame = page.locator('[data-view="not-found"]');
+    await expect(frame).toHaveAttribute('data-state', 'not-found');
+    await expect(frame.getByRole('heading', { level: 1 })).toHaveText(NOT_FOUND_ROUTE_COPY.title);
+    await expect(frame).toContainText(NOT_FOUND_ROUTE_COPY.description);
+    await expect(frame.locator('code')).toHaveText('/nonsense/route');
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await checkA11y(`not-found route at ${width}px`);
+
+    await frame.getByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label }).click();
+    await expect(page).toHaveURL(/\/chat$/);
+  });
+
+  test(`the not-found page keeps the sidebar at ${width} pixels`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/nonsense/route');
+    await expect(page.locator('[data-view="not-found"]')).toHaveAttribute(
+      'data-state',
+      'not-found',
+    );
+    // Beside the page on a desktop, behind the menu button on a phone.
+    if (width < 768) {
+      await page.getByRole('button', { name: 'Toggle navigation menu' }).click();
+    }
+    const navigation = page.getByRole('navigation', { name: 'Views' });
+    await expect(navigation).toBeVisible();
+    await expect(navigation.getByRole('link', { name: VIEW_COPY.agents.label })).toBeVisible();
+  });
+}
+
+test('a miss on an asset, the Bureau, or the host is still a 404, not the shell', async ({
+  request,
+}) => {
+  for (const path of ['/assets/missing-0000.js', '/bureau/missing', '/host/missing']) {
+    const response = await request.get(path, { headers: { accept: 'text/html' } });
+    expect(response.status(), path).toBe(404);
+  }
 });

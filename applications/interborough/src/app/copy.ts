@@ -90,6 +90,16 @@ export const ROUTE_LOAD_FAILURE_COPY = {
   action: 'Reload the page',
 } as const;
 
+/**
+ * The words for an address no route matches. It is not one of a view's states: no view owns the
+ * address, so the outlet shows this in its own frame (`data-view="not-found"`).
+ */
+export const NOT_FOUND_ROUTE_COPY = {
+  title: 'This page does not exist',
+  description: 'That address is not a page in Interborough.',
+  action: { label: 'Go to chats', href: '/chat' },
+} as const;
+
 /** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:id/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',

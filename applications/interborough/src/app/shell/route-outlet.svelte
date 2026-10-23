@@ -10,10 +10,10 @@
   import type { Component } from 'svelte';
 
   import { Button, Skeleton, EmptyState } from '@lostgradient/cinder';
-  import { CircleAlert } from '@lucide/svelte';
+  import { CircleAlert, SearchX } from '@lucide/svelte';
 
   import { router } from '../../lib/router.svelte.ts';
-  import { ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
+  import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
   import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
   import FaultBoundary from '../fault-boundary.svelte';
   import ViewFrame from '../view-frame.svelte';
@@ -28,6 +28,14 @@
   // to the query string, or a page that asked to be kept, `router.navigate`'s `keep`) is not a
   // new page: it must not unmount what is on screen.
   let loadedKey: string | undefined;
+
+  function goToChats(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(NOT_FOUND_ROUTE_COPY.action.href);
+  }
 
   $effect(() => {
     const match = router.current;
@@ -96,10 +104,27 @@
 <main class="weft-shell-outlet">
   <FaultBoundary>
     {#if notFound}
-      <EmptyState
-        title="Page not found"
-        description="This path isn't one of the console's routes. Use the sidebar or Cmd+K to navigate."
-      />
+      <div class="weft-view" data-view="not-found" data-state="not-found">
+        <EmptyState
+          title={NOT_FOUND_ROUTE_COPY.title}
+          description={NOT_FOUND_ROUTE_COPY.description}
+          headingLevel={1}
+        >
+          {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
+          {#snippet action()}
+            <div class="weft-not-found__action">
+              <code class="ib-identifier weft-not-found__path">{router.pathname}</code>
+              <Button
+                variant="primary"
+                href={router.href(NOT_FOUND_ROUTE_COPY.action.href)}
+                onclick={goToChats}
+              >
+                {NOT_FOUND_ROUTE_COPY.action.label}
+              </Button>
+            </div>
+          {/snippet}
+        </EmptyState>
+      </div>
     {:else if loadFailed}
       <div class="weft-view" data-state="error" data-view="route">
         <EmptyState

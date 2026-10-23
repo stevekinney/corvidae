@@ -704,3 +704,19 @@
   color: var(--cinder-accent-text);
   font-weight: 600;
 }
+
+/* The address that matched nothing, above the way back. It wraps so a long one never scrolls. */
+.weft-not-found__action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cinder-space-3, 0.75rem);
+  max-width: 100%;
+}
+
+.weft-not-found__path {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  color: var(--cinder-text-muted);
+}
