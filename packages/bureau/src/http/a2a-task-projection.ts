@@ -106,7 +106,7 @@ export function replyMessageId(taskId: string): string {
 }
 
 /** What an `INPUT_REQUIRED` task's status message names, so a continuation can address it. */
-function waitingMessage(view: TaskView): Message {
+export function waitingMessage(view: TaskView): Message {
   const signalNames = view.openWaits
     .filter(
       (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',

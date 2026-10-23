@@ -46,6 +46,7 @@ import {
   replyMessageId,
   resultArtifactId,
   textPart,
+  waitingMessage,
 } from './a2a-task-projection.ts';
 import { createTaskEventProjector, type TaskEvent } from './management/tasks-events-operation.ts';
 
@@ -239,6 +240,15 @@ function eventsOf(
         element.message ?? element.finishReason ?? 'The task failed.',
       ),
     ];
+  }
+  if (element.status === 'input-required' && view.openWaits.length > 0) {
+    // The waits are named, as a read's status message names them, so a stream client can address
+    // the one it answers when several are open.
+    const status = statusUpdate(view, state, timestamp);
+    if (status.payload?.$case === 'statusUpdate') {
+      status.payload.value.status!.message = waitingMessage(view);
+    }
+    return [status];
   }
   return [statusUpdate(view, state, timestamp)];
 }

@@ -47,6 +47,7 @@ function standIn(
 ) {
   let deliver: ((event: DurableEventEnvelope) => void) | undefined;
   let closed: ((error: unknown) => void) | undefined;
+  let changed: ((view: TaskView) => void) | undefined;
   const bureau: A2AStreamBureau = {
     eventHistory:
       overrides.eventHistory ??
@@ -66,11 +67,15 @@ function standIn(
         return overrides.view ?? VIEW;
       },
       onSettled: () => () => undefined,
-      onChanged: () => () => undefined,
+      onChanged: (_taskId, listener) => {
+        changed = listener;
+        return () => undefined;
+      },
     },
   };
   return {
     bureau,
+    change: (view: TaskView) => changed?.(view),
     deliver: (event: DurableEventEnvelope) => deliver?.(event),
     close: (error: unknown) => closed?.(error),
   };
@@ -80,12 +85,13 @@ function follow(
   bureau: A2AStreamBureau,
   buffer?: number,
   seen: { view?: TaskView; metadata?: unknown } = {},
+  durableHistoryActive = true,
 ) {
   return followTask({
     bureau,
     taskId: 'task-1',
     lastEventId: undefined,
-    durableHistoryActive: true,
+    durableHistoryActive,
     snapshot: async (view) => {
       seen.view = view;
       return {
@@ -221,6 +227,25 @@ describe('followTask', () => {
     });
     // The review opening and its closing both arrive ahead of the failure that ends the stream.
     expect(states.length).toBe(3);
+  });
+
+  it('sees a change made before the reader asks for the next event, and names the waits', async () => {
+    const { bureau, change } = standIn({
+      eventHistory: async () => ({ outcome: 'unsupported-capability' }) as never,
+    });
+    const stream = follow(bureau, undefined, {}, false);
+    expect((await stream.next()).value?.payload?.$case).toBe('task');
+    // The change lands between the snapshot and the next read.
+    change({
+      ...VIEW,
+      status: 'input-required',
+      updatedAt: '2026-10-22T00:00:01.000Z',
+      openWaits: [{ kind: 'human-wait', reviewId: 'review-1', signalName: 'human-response' }],
+    });
+    const next = (await stream.next()).value?.payload as any;
+    expect(next.value.status.state).toBe(6); // TASK_STATE_INPUT_REQUIRED
+    expect(next.value.status.message.metadata.signalNames).toEqual(['human-response']);
+    await stream.return(undefined);
   });
 
   it('fails the stream when its history subscription closes on an error', async () => {

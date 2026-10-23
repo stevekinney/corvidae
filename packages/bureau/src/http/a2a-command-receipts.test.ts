@@ -53,11 +53,14 @@ function parksThenAnswers(): GenerateFunction {
 async function withA2A<T>(
   generate: GenerateFunction,
   body: (opened: OpenedBureau) => Promise<T>,
-  options: { humanInput?: boolean } = {},
+  options: { humanInput?: boolean; second?: boolean } = {},
 ): Promise<T> {
   const opened = await openBureau({
-    agents: { asker: createAgent({ name: 'asker', generate }) },
-    publish: ['asker'],
+    agents: {
+      asker: createAgent({ name: 'asker', generate }),
+      ...(options.second === true ? { other: createAgent({ name: 'other', generate }) } : {}),
+    },
+    publish: options.second === true ? ['asker', 'other'] : ['asker'],
     durableHistory: true,
     ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: { publicUrl: 'http://localhost' },
@@ -73,9 +76,10 @@ async function send(
   opened: OpenedBureau,
   params: Json,
   headers: Record<string, string> = ACTIVE,
+  agent = 'asker',
 ): Promise<Json> {
   const response = await opened.handler(
-    new Request('http://localhost/a2a/asker', {
+    new Request(`http://localhost/a2a/${agent}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -202,6 +206,44 @@ describe('the command-receipts extension', () => {
         reason: 'deadline-exceeded',
       });
       expect(opened.bureau.getRun(late.result.task.id)).toBeUndefined();
+    });
+  });
+
+  it('gives one command sent to two agents after its deadline a task of each', async () => {
+    await withA2A(
+      answering('done'),
+      async (opened) => {
+        const late = message('too late', {
+          metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } },
+        });
+        const first = await send(opened, { message: late });
+        const second = await send(opened, { message: late }, ACTIVE, 'other');
+        expect(second.result.task.id).not.toBe(first.result.task.id);
+        expect((await opened.bureau.tasks.get(second.result.task.id))?.agentName).toBe('other');
+      },
+      { second: true },
+    );
+  });
+
+  it('finishes an expired task’s settlement and record when the first attempt stopped short', async () => {
+    await withA2A(answering('done'), async (opened) => {
+      const late = message('too late', {
+        metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } },
+      });
+      const tasks = opened.bureau.tasks;
+      const settle = tasks.recordSettled.bind(tasks);
+      let failed = false;
+      tasks.recordSettled = async (...input: Parameters<typeof settle>) => {
+        if (!failed) {
+          failed = true;
+          throw new Error('storage fault');
+        }
+        return settle(...input);
+      };
+      await send(opened, { message: late });
+      const retry = await send(opened, { message: late });
+      expect(retry.result.task.status.state).toBe('TASK_STATE_FAILED');
+      expect(receiptOf(retry).receipt.state).toBe('expired');
     });
   });
 
