@@ -137,6 +137,7 @@ async function withService(
     /** A handler over the durable state only: the Bureau it reads holds no run of its own. */
     const build = (restarted: boolean) =>
       createBureauA2ARequestHandler({
+        publicUrl: 'http://localhost',
         agentName: 'asker',
         card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
         bureau: restarted
