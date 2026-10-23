@@ -148,7 +148,12 @@ test.describe('each view declares how dense and how wide it is', () => {
     // The frame swaps its loading state for the page, so the element that was visible a moment ago
     // can be gone when its box is read (`boundingBox()` is then null). The locator is resolved again
     // on each poll, so the width is read from whichever element is there.
-    await expect.poll(async () => (await runsPage.boundingBox())?.width ?? 0).toBeGreaterThan(900);
+    await expect
+      .poll(async () => {
+        const box = await runsPage.boundingBox();
+        return box?.width ?? 0;
+      })
+      .toBeGreaterThan(900);
   });
 
   test('the compact density has shorter rows and tighter padding than the comfortable one', async ({
