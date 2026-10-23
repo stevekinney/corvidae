@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { rejectionOf } from '../promise-outcome.test-support.ts';
 import { batchValidate, decideDue, run, type BatchValidateOptions } from './batch-validate.ts';
 import type { GateRunOptions, GateRunResult } from './gate-run.ts';
 import { healthFilePath } from './main-health.ts';
@@ -105,7 +106,7 @@ describe('batchValidate', () => {
 
   function gateReturning(code: number) {
     const calls: GateRunOptions[] = [];
-    const gate = (gateOptions: GateRunOptions): GateRunResult => {
+    const gate = async (gateOptions: GateRunOptions): Promise<GateRunResult> => {
       calls.push(gateOptions);
       return {
         code,
@@ -131,12 +132,12 @@ describe('batchValidate', () => {
   const history = (count: number) =>
     Array.from({ length: count }, (_, index) => String(count - index).padStart(40, '0'));
 
-  test('runs the batch command in a new dedicated worktree once five merges landed', () => {
+  test('runs the batch command in a new dedicated worktree once five merges landed', async () => {
     const commits = history(8);
     record(commits[5] as string, 0, hoursAgo(0.2));
     const { runner, commands } = world(commits);
     const { gate, calls } = gateReturning(0);
-    const result = batchValidate(options, { runner, now: () => now, load: () => 1, gate });
+    const result = await batchValidate(options, { runner, now: () => now, load: () => 1, gate });
     expect(result).toMatchObject({ ran: true, code: 0 });
     expect(result.reason).toContain('5 merges');
     expect(calls).toHaveLength(1);
@@ -148,12 +149,12 @@ describe('batchValidate', () => {
     expect(existsSync(join(main, 'tmp', 'chef', 'batch-validate.lock'))).toBe(false);
   });
 
-  test('reuses the worktree by moving it to the tip, and reports a failing validate as exit 1', () => {
+  test('reuses the worktree by moving it to the tip, and reports a failing validate as exit 1', async () => {
     const commits = history(8);
     record(commits[5] as string, 0, hoursAgo(0.2));
     mkdirSync(join(sandbox, 'wt', 'batch-validate'), { recursive: true });
     const { runner, commands } = world(commits);
-    const result = batchValidate(options, {
+    const result = await batchValidate(options, {
       runner,
       now: () => now,
       load: () => 1,
@@ -164,11 +165,55 @@ describe('batchValidate', () => {
     expect(commands.some((c) => c.join(' ').includes('worktree add'))).toBe(false);
   });
 
-  test('skips when too few merges, high load, a live lock, or a dry run', () => {
+  test('retries a fetch that lost a ref-lock race, and fails at once on any other error', async () => {
+    const commits = history(8);
+    record(commits[5] as string, 0, hoursAgo(0.2));
+    const { runner } = world(commits);
+    const fetchWith = (stderr: string) => {
+      const sleeps: number[] = [];
+      let fetches = 0;
+      const wrapped: Runner = (command, runnerOptions) => {
+        if (command[1] === 'fetch') {
+          fetches += 1;
+          return fetches === 1
+            ? { code: 1, stdout: '', stderr }
+            : { code: 0, stdout: '', stderr: '' };
+        }
+        return runner(command, runnerOptions);
+      };
+      return { wrapped, sleeps, fetches: () => fetches };
+    };
+    const locked = fetchWith(
+      "fatal: cannot lock ref 'refs/remotes/origin/main': is at a but expected b",
+    );
+    const retried = await batchValidate(options, {
+      runner: locked.wrapped,
+      now: () => now,
+      load: () => 1,
+      gate: gateReturning(0).gate,
+      sleep: (milliseconds) => locked.sleeps.push(milliseconds),
+    });
+    expect(retried).toMatchObject({ ran: true, code: 0 });
+    expect(locked.fetches()).toBe(2);
+    expect(locked.sleeps).toHaveLength(1);
+    const refused = fetchWith('fatal: unable to access the remote');
+    const failed = await batchValidate(options, {
+      runner: refused.wrapped,
+      now: () => now,
+      load: () => 1,
+      gate: gateReturning(0).gate,
+      sleep: (milliseconds) => refused.sleeps.push(milliseconds),
+    });
+    expect(failed).toMatchObject({ ran: false, code: 1 });
+    expect(refused.fetches()).toBe(1);
+    expect(refused.sleeps).toEqual([]);
+  });
+
+  test('skips when too few merges, high load, a live lock, or a dry run', async () => {
     const commits = history(8);
     const { gate, calls } = gateReturning(0);
     record(commits[2] as string, 0, hoursAgo(0.2));
-    const quiet = batchValidate(options, {
+    const quiet = await batchValidate(options, {
       runner: world(commits).runner,
       now: () => now,
       load: () => 1,
@@ -176,7 +221,7 @@ describe('batchValidate', () => {
     });
     expect(quiet).toMatchObject({ ran: false, code: 0 });
     record(commits[5] as string, 0, hoursAgo(0.2));
-    const busy = batchValidate(options, {
+    const busy = await batchValidate(options, {
       runner: world(commits).runner,
       now: () => now,
       load: () => 12,
@@ -184,7 +229,7 @@ describe('batchValidate', () => {
     });
     expect(busy.reason).toContain('load');
     writeFileSync(join(main, 'tmp', 'chef', 'batch-validate.lock'), '4242\n');
-    const locked = batchValidate(options, {
+    const locked = await batchValidate(options, {
       runner: world(commits).runner,
       now: () => now,
       load: () => 1,
@@ -192,7 +237,7 @@ describe('batchValidate', () => {
       gate,
     });
     expect(locked.reason).toContain('already running');
-    const stale = batchValidate(
+    const stale = await batchValidate(
       { ...options, dryRun: true },
       {
         runner: world(commits).runner,
@@ -206,7 +251,7 @@ describe('batchValidate', () => {
     expect(calls).toHaveLength(0);
   });
 
-  test('a failing install is exit 1 and still releases the lock', () => {
+  test('a failing install is exit 1 and still releases the lock', async () => {
     const commits = history(8);
     record(commits[5] as string, 0, hoursAgo(0.2));
     const { runner } = world(commits);
@@ -214,7 +259,7 @@ describe('batchValidate', () => {
       command[0] === 'sh'
         ? { code: 1, stdout: '', stderr: 'boom' }
         : runner(command, runnerOptions);
-    const result = batchValidate(options, {
+    const result = await batchValidate(options, {
       runner: failing,
       now: () => now,
       load: () => 1,
@@ -227,8 +272,8 @@ describe('batchValidate', () => {
 });
 
 describe('run', () => {
-  test('rejects bad options', () => {
-    expect(() => run(['--min-merges', 'many'])).toThrow(UsageError);
-    expect(() => run(['extra'])).toThrow(UsageError);
+  test('rejects bad options', async () => {
+    expect(await rejectionOf(run(['--min-merges', 'many']))).toBeInstanceOf(UsageError);
+    expect(await rejectionOf(run(['extra']))).toBeInstanceOf(UsageError);
   });
 });

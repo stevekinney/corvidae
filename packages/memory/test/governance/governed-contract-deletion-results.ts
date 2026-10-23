@@ -190,7 +190,11 @@ export function registerDeletionResultContract(backend: GovernedBackend): void {
         status: 'unchanged',
         deletion: 'exempt',
       });
-      expect(expired.receipt?.trigger).toBe('retention-expiry');
+      // The first request's held receipt owns the record until the hold is
+      // released, so every later request reports it instead of opening another.
+      expect(expired.receipt?.deletionId).toBe(deleted.receipt?.deletionId);
+      expect(forgotten.receipt?.deletionId).toBe(deleted.receipt?.deletionId);
+      expect(await fixture.ledger.listReceipts({ tenantId: 'tenant-a' })).toHaveLength(1);
 
       expect(await fixture.memory.get(principalA, locator())).toMatchObject({
         id: recordId,

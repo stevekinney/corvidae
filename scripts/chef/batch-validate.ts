@@ -30,6 +30,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fetchWithRetry } from './fetch-retry.ts';
 import { runGate } from './gate-run.ts';
 import {
   firstParentHistory,
@@ -127,6 +128,8 @@ export interface BatchValidateDependencies {
   alive: (pid: number) => boolean;
   gate: typeof runGate;
   pid: number;
+  /** Blocks between fetch retries; defaults to `Bun.sleepSync`. */
+  sleep: (milliseconds: number) => void;
 }
 
 function isAlive(pid: number): boolean {
@@ -143,10 +146,10 @@ function firstLine(text: string): string {
 }
 
 /** Decide, and when due, run the batch validate. Never throws for a failed step; the result names it. */
-export function batchValidate(
+export async function batchValidate(
   options: BatchValidateOptions,
   partial: Partial<BatchValidateDependencies> = {},
-): BatchValidateResult {
+): Promise<BatchValidateResult> {
   const runner = partial.runner ?? defaultRunner;
   const now = partial.now ?? (() => new Date());
   const config = loadRepositoryConfig(options.configPath);
@@ -155,7 +158,10 @@ export function batchValidate(
   const mainCheckout = resolveMainCheckout(runner);
   const fail = (reason: string): BatchValidateResult => ({ ran: false, code: 1, reason });
 
-  const fetched = runner(['git', 'fetch', 'origin', config.defaultBranch], { cwd: mainCheckout });
+  const fetched = fetchWithRetry(
+    () => runner(['git', 'fetch', 'origin', config.defaultBranch], { cwd: mainCheckout }),
+    { sleep: partial.sleep },
+  );
   if (fetched.code !== 0)
     return fail(`git fetch origin ${config.defaultBranch} failed: ${firstLine(fetched.stderr)}`);
   const tipResult = runner(['git', 'rev-parse', `origin/${config.defaultBranch}`], {
@@ -219,7 +225,7 @@ export function batchValidate(
       return fail(`${config.installCommand} failed in ${worktree}: ${firstLine(install.stderr)}`);
     const stamp = now().toISOString().replace(/[:.]/g, '-');
     const log = join(mainCheckout, 'tmp', 'chef', 'batch-validate', `${stamp}.log`);
-    const result = (partial.gate ?? runGate)(
+    const result = await (partial.gate ?? runGate)(
       { configPath: options.configPath, worktree, log, command: config.batchCommand },
       { runner, now },
     );
@@ -244,17 +250,17 @@ function numberOption(parsed: Record<string, string>, name: string, fallback: nu
   return number;
 }
 
-export function run(
+export async function run(
   argv: string[],
   dependencies: Partial<BatchValidateDependencies> = {},
-): { code: number; output: string } {
+): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
     values: ['config', 'min-merges', 'max-age-hours', 'max-load', 'worktree'],
     flags: ['dry-run', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const result = batchValidate(
+  const result = await batchValidate(
     {
       configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
       minimumMerges: numberOption(parsed.values, 'min-merges', defaultMinimumMerges),
@@ -275,7 +281,7 @@ export function run(
 
 if (import.meta.main) {
   try {
-    const { code, output } = run(Bun.argv.slice(2));
+    const { code, output } = await run(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {

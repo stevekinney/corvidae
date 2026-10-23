@@ -19,7 +19,8 @@ import {
   AssetRecordCorruptError,
   AssetUnavailableError,
 } from './errors';
-import type { AssetService } from './types';
+import { bureauClaim, heldClaimsOf } from './internal-access';
+import type { AssetHeldClaim, AssetService } from './types';
 
 /**
  * A claim does not lapse by itself: it ends only when its row's session does, through
@@ -41,11 +42,61 @@ export function runRowHolderId(runId: string, rowId: string): string {
   return `run-row:${encodeURIComponent(runId)}:${encodeURIComponent(rowId)}`;
 }
 
+/** The start of every holder id a run's rows hold, whatever their row ids. */
+export function runRowHolderPrefix(runId: string): string {
+  return `run-row:${encodeURIComponent(runId)}:`;
+}
+
+/** The start of every holder id one incarnation of a session's rows hold, whatever their row ids. */
+export function sessionRowHolderPrefix(sessionId: string, incarnation: string): string {
+  return `session-row:${encodeURIComponent(sessionId)}:${encodeURIComponent(incarnation)}:`;
+}
+
+/** The run a `run-row` holder id belongs to, or `undefined` for any other holder. */
+export function runIdOfRowHolder(holderId: string): string | undefined {
+  const parts = holderId.split(':');
+  if (parts.length !== 3 || parts[0] !== 'run-row') return undefined;
+  // A holder id is an opaque string to the asset store, so a malformed escape is unrecognized, not fatal.
+  try {
+    return decodeURIComponent(parts[1]!);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The session incarnation a `session-row` holder id belongs to, or `undefined` for any other holder. */
+export function sessionOfRowHolder(
+  holderId: string,
+): { readonly sessionId: string; readonly incarnation: string } | undefined {
+  const parts = holderId.split(':');
+  if (parts.length !== 4 || parts[0] !== 'session-row') return undefined;
+  try {
+    return {
+      sessionId: decodeURIComponent(parts[1]!),
+      incarnation: decodeURIComponent(parts[2]!),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** A conversation row as the claim walker reads it: its content and, for a tool result, its parts. */
 export interface ClaimableRow {
   readonly id: string;
   readonly content: unknown;
   readonly toolResult?: { readonly parts?: unknown } | undefined;
+  /** Read for `compactionSummary`, which marks a row that stands in for rows compaction removed. */
+  readonly metadata?: { readonly compactionSummary?: unknown } | undefined;
+}
+
+/**
+ * Whether history compaction has replaced rows of this conversation with a summary (COR-1664).
+ * Rows it removed are not in the conversation any more, so a walk over the conversation cannot
+ * reach the claims they held.
+ */
+export function hasCompactedRows(rows: Iterable<ClaimableRow>): boolean {
+  for (const row of rows) if (row.metadata?.compactionSummary === true) return true;
+  return false;
 }
 
 /**
@@ -115,7 +166,11 @@ export async function claimRowAssets(
       const key = `${holderId}\u0000${assetId}`;
       if (alreadyClaimed?.has(key)) continue;
       try {
-        await assets.retain(assetId, { id: principalId }, { holderId, until: ROW_CLAIM_UNTIL });
+        await assets.retain(
+          assetId,
+          { id: principalId },
+          { holderId, until: ROW_CLAIM_UNTIL, [bureauClaim]: true },
+        );
         alreadyClaimed?.add(key);
       } catch (error) {
         if (isNotOurs(error)) {
@@ -152,6 +207,45 @@ export async function releaseRowAssetClaims(
       }
     }
   }
+}
+
+/**
+ * Releases every claim whose holder id starts with `holderPrefix`, found from the asset side
+ * (COR-1664). Walking the rows a conversation still holds misses a row that compaction removed, a
+ * session's rows once the session record is gone, and a run whose checkpoint cannot be read; the
+ * claims themselves are always there. Each claim is released as the principal that owns its asset,
+ * and one that is already gone is skipped quietly. Any other failure goes to `onFailure` and the
+ * rest are still released. Returns how many claims it released, and forgets them in `claimed`.
+ */
+export async function releaseClaimsByHolderPrefix(
+  assets: AssetService,
+  holderPrefix: string,
+  onFailure: (claim: AssetHeldClaim, error: unknown) => void,
+  claimed?: Set<string>,
+): Promise<number> {
+  return releaseHeldClaims(assets, await heldClaimsOf(assets, holderPrefix), onFailure, claimed);
+}
+
+/** Releases the claims already listed by {@link heldClaimsOf}; see {@link releaseClaimsByHolderPrefix}. */
+export async function releaseHeldClaims(
+  assets: AssetService,
+  claims: Iterable<AssetHeldClaim>,
+  onFailure: (claim: AssetHeldClaim, error: unknown) => void,
+  claimed?: Set<string>,
+): Promise<number> {
+  let released = 0;
+  for (const claim of claims) {
+    claimed?.delete(`${claim.holderId}\u0000${claim.assetId}`);
+    try {
+      // A claim another reconciler released first is no release of ours: it is not counted.
+      if (await assets.releaseClaim(claim.assetId, { id: claim.ownerId }, claim.holderId)) {
+        released += 1;
+      }
+    } catch (error) {
+      if (!isNotOurs(error)) onFailure(claim, error);
+    }
+  }
+  return released;
 }
 
 /**

@@ -52,6 +52,7 @@ import {
 } from 'conversationalist';
 import { z } from 'zod';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { runRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
@@ -790,6 +791,87 @@ describe.each([
       .filter((event) => event.type === 'released')
       .map((event) => `${event.holderId}\u0000${event.assetId}`);
     expect(new Set(pairs).size).toBe(pairs.length);
+  });
+});
+
+/**
+ * COR-1664 — the goal's session is deleted just before the forwarder's hand-over claims its rows.
+ * The forwarder holds the session it committed to, so the claim is made for a session that no
+ * longer exists, and must leave nothing behind.
+ */
+describe('a goal whose session is deleted before the hand-over claims for it', () => {
+  it('leaves no session claim on the attempt’s image, and still lets the attempt’s claim go', async () => {
+    let attempts = 0;
+    const worker = createAgent({
+      name: 'worker',
+      generate: withBackendDescriptors(async () => {
+        attempts += 1;
+        return attempts === 1
+          ? { content: '', parts: [generatedPart], toolCalls: [] }
+          : { content: 'done', parts: [{ type: 'text' as const, text: 'done' }], toolCalls: [] };
+      }, imageOutputDescriptors),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const validator: Validator = {
+      identity: { name: CHECK.name, version: CHECK.version },
+      determinism: 'deterministic',
+      async validate(input) {
+        return input.result.content.includes('done')
+          ? { kind: 'pass', evidence: [] }
+          : { kind: 'fail', feedback: 'say done', evidence: [], retryable: true };
+      },
+    };
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: { worker },
+      validators: [validator],
+      storage: { type: 'memory' },
+      durableExecution: true,
+      assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
+      onDiagnostic: () => undefined,
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+    // The first session claim of the goal finds its session deleted: the delete lands first.
+    const retain = bureau.assets!.retain.bind(bureau.assets!);
+    let deletedSession: string | undefined;
+    let deletedHolder = '';
+    spyOn(bureau.assets!, 'retain').mockImplementation(async (...args) => {
+      const [, , reference] = args;
+      if (deletedSession === undefined && reference.holderId.startsWith('session-row:')) {
+        const sessionId = decodeURIComponent(reference.holderId.split(':')[1]!);
+        deletedSession = sessionId;
+        deletedHolder = reference.holderId.split(':').slice(0, 3).join(':');
+        await bureau.sessionStore!.delete(sessionId);
+      }
+      return retain(...args);
+    });
+    const claims = watchClaims(bureau);
+
+    await bureau.goals.create(
+      goalRequest({
+        principal: alice.id,
+        conversationPolicy: { kind: 'continue' },
+        goalRunId: 'g1',
+      }),
+    );
+    await pollUntil(async () => deletedSession !== undefined);
+    const released = await pollUntil(async () =>
+      claims.some(
+        (event) => event.type === 'released' && event.holderId.startsWith('run-row:goal-g1-a0'),
+      ),
+    );
+    expect(released).toBe(true);
+
+    const generated = claims.find(
+      (event) => event.type === 'retained' && event.holderId.startsWith('run-row:goal-g1-a0'),
+    )!.assetId;
+    // A retry may recreate the session id as a new incarnation; the deleted one holds nothing.
+    const holders = await holdersOf(bureau, generated);
+    expect(deletedHolder).toStartWith('session-row:');
+    expect(holders.filter((holder) => holder.startsWith(`${deletedHolder}:`))).toEqual([]);
   });
 });
 

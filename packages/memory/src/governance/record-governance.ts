@@ -101,6 +101,13 @@ export interface RecordGovernance {
    * write, so nothing derived from it can appear after the plan is final.
    */
   readonly deletionRequestedAt?: number;
+  /**
+   * Which deletion may open the receipt for this record, and until when. Only
+   * the record a deletion names carries one; the records its plan reaches are
+   * only stamped with `deletionRequestedAt`. A record without one is
+   * unclaimed, including one claimed before this field existed.
+   */
+  readonly deletionClaim?: MemoryDeletionClaim;
   readonly runId?: string;
   readonly lineage?: MemoryRecordLineage;
   /**
@@ -113,6 +120,23 @@ export interface RecordGovernance {
    */
   readonly pendingDerivation?: true;
   readonly attribution: MemoryAttribution;
+}
+
+/**
+ * A deletion's claim on the record it names, written by compare-and-swap on
+ * the record's version. The claimant that wrote it may open the receipt
+ * `deletionId` until `leaseExpiresAt`; a claimant that finds the lease expired
+ * and no receipt stored under `deletionId` takes it over with a new `token`
+ * and lease but the same `deletionId`, so the receipt both could open lives
+ * under one ledger key that only one of them can create.
+ */
+export interface MemoryDeletionClaim {
+  /** The receipt this claim opens. Kept across a takeover; a new deletion of the record mints a new one. */
+  readonly deletionId: string;
+  /** Identifies the current claimant; a takeover replaces it. */
+  readonly token: string;
+  /** Until when the claimant may open the receipt; after it, another claimant may take the claim over. */
+  readonly leaseExpiresAt: number;
 }
 
 export interface ReadRecordGovernance {
@@ -161,6 +185,9 @@ const governanceSchema = z.object({
   invalidatedAt: z.number().optional(),
   supersededBy: nonEmpty.optional(),
   deletionRequestedAt: z.number().optional(),
+  deletionClaim: z
+    .object({ deletionId: nonEmpty, token: nonEmpty, leaseExpiresAt: z.number() })
+    .optional(),
   runId: nonEmpty.optional(),
   lineage: z
     .object({
