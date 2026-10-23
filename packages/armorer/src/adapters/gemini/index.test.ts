@@ -234,7 +234,7 @@ describe('formatGeminiToolResults', () => {
       { callId: 'generated-d', outcome: 'success', content: { n: 4 }, toolName: 'lookup' },
     ] as const;
     const ids = (providerCallIds: ReadonlySet<string> | undefined) =>
-      formatGeminiToolResults([...results], { providerCallIds }).map(
+      formatGeminiToolResults([...results], providerCallIds ? { providerCallIds } : {}).map(
         (part) => part.functionResponse.id,
       );
 
