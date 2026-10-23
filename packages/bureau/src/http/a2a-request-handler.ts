@@ -90,7 +90,12 @@ import {
   A2UI_EXTENSION_URI,
   declaredExtensionsOf,
 } from './a2a-agent-card.ts';
-import { type A2ATaskRecords, type A2AWireMessage, clearedRecord } from './a2a-task-record.ts';
+import {
+  type A2ATaskRecord,
+  type A2ATaskRecords,
+  type A2AWireMessage,
+  clearedRecord,
+} from './a2a-task-record.ts';
 import {
   agentMessage,
   bureauStateOf,
@@ -427,6 +432,63 @@ function boundedTask(task: unknown): unknown {
   return { ...record, history: history.slice(kept) };
 }
 
+/** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
+type ContinuationCommand =
+  | { readonly path: 'answer'; readonly input: TasksRespondInput }
+  | { readonly path: 'input'; readonly mode: 'queue' | 'steer'; readonly text: string };
+
+/**
+ * The one place a continuation is validated: a malformed answer or input is refused here, before
+ * the ledger is touched, so no handler downstream re-checks it.
+ */
+function parseContinuation(
+  message: Message,
+  path: 'answer' | 'input',
+  taskId: string,
+): ContinuationCommand {
+  const text = textOf(message);
+  if (path === 'input') {
+    const mode = message.metadata?.[DELIVERY_MODE_METADATA_KEY] ?? 'queue';
+    if (mode !== 'queue' && mode !== 'steer') {
+      throw invalid('metadata.deliveryMode must be "queue" or "steer".');
+    }
+    if (text === '') throw invalid('A message to a working task needs a text part.');
+    return { path, mode, text };
+  }
+  const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
+  const decision = data?.decision;
+  if (
+    decision !== undefined &&
+    decision !== 'approve' &&
+    decision !== 'deny' &&
+    decision !== 'reject'
+  ) {
+    throw invalid('decision must be "approve", "deny", or "reject".');
+  }
+  const reason = typeof data?.reason === 'string' ? data.reason : undefined;
+  if (decision === 'reject' && (reason ?? '').trim() === '') {
+    throw invalid('A reject decision requires a reason.');
+  }
+  const signalName = message.metadata?.[SIGNAL_NAME_METADATA_KEY];
+  const callId = message.metadata?.[CALL_ID_METADATA_KEY];
+  if (callId !== undefined && typeof callId !== 'string') {
+    throw invalid('metadata.callId must be a string.');
+  }
+  if (decision === undefined && text === '') {
+    throw invalid('An answer needs a text part, or a data part with a decision.');
+  }
+  const input = tasksRespondInput.safeParse({
+    taskId,
+    messageId: message.messageId,
+    ...(decision === undefined ? { answer: text } : { decision }),
+    ...(reason === undefined ? {} : { reason }),
+    ...(typeof signalName === 'string' ? { signalName } : {}),
+    ...(typeof callId === 'string' ? { callId } : {}),
+  });
+  if (!input.success) throw invalid(input.error.issues[0]?.message ?? 'The answer is not valid.');
+  return { path, input: input.data };
+}
+
 /** Creates the request handler that serves one published agent. */
 export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
@@ -529,7 +591,7 @@ export function createBureauA2ARequestHandler(
         [COMMAND_RECEIPTS_EXTENSION_URI]: receiptMetadata(
           currentState(receipt, view),
           receipt.commandId,
-          revisionOf(view.id),
+          revisionOf(view, record),
           receipt.reason,
         ),
       };
@@ -537,10 +599,16 @@ export function createBureauA2ARequestHandler(
     return task;
   }
 
-  /** The task's revision: its run's liveness revision, while the run is held here. */
-  function revisionOf(taskId: string): string | undefined {
-    const run = bureau.getRun(taskId);
-    return run === undefined ? undefined : String(run.liveness.revision);
+  /**
+   * The task's revision, from durable state alone so every instance computes the same one: its
+   * status, the waits open on it, and how many messages its A2A history holds (each admitted
+   * continuation adds one). A process that does not hold the run reads it exactly as one that does.
+   */
+  function revisionOf(view: TaskView, record: A2ATaskRecord | undefined): string {
+    const waits = view.openWaits
+      .map((wait) => (wait.kind === 'human-wait' ? wait.reviewId : wait.callId))
+      .toSorted();
+    return `${view.status}:${waits.join(',')}:${record?.history.length ?? 0}`;
   }
 
   /**
@@ -713,14 +781,13 @@ export function createBureauA2ARequestHandler(
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join('')}`;
     // A retry after a failed step resumes it: each step below is skipped once it has happened.
+    // The task's own record keeps the message, so there is no side record to outlive its retention.
     const existing = await bureau.tasks.get(taskId);
-    const contextId =
-      existing?.contextId ??
-      (message.contextId === '' ? runtime.identifiers.next('session') : message.contextId);
     if (existing === undefined) {
       await bureau.tasks.recordAdmission({
         taskId,
-        contextId,
+        contextId:
+          message.contextId === '' ? runtime.identifiers.next('session') : message.contextId,
         incarnation: '',
         agentName,
         owner,
@@ -735,14 +802,6 @@ export function createBureauA2ARequestHandler(
         message: 'The command’s deadline passed before the task started.',
       });
     }
-    if ((await records.read(taskId)) !== undefined) return taskId;
-    await records.create({
-      recordVersion: 1,
-      taskId,
-      contextId,
-      history: [historyEntryOf(message, taskId, contextId)],
-      replyRecorded: false,
-    });
     return taskId;
   }
 
@@ -775,52 +834,72 @@ export function createBureauA2ARequestHandler(
     return view;
   }
 
+  /** Admits a message to a working task's mailbox; the same message again replays its receipt. */
+  async function submitInput(
+    message: Message,
+    view: TaskView,
+    owner: Owner,
+    deadline: number | undefined,
+    command: Extract<ContinuationCommand, { path: 'input' }>,
+  ) {
+    const outcome = await bureau.submitSessionInput(view.contextId, {
+      id: message.messageId,
+      principal: owner,
+      deliveryMode: command.mode,
+      payload: command.text,
+      ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
+    });
+    if (outcome.outcome === 'not-found') throw taskNotFound(view.id);
+    if (outcome.outcome === 'conflict') {
+      throw invalid(`messageId '${message.messageId}' was already used with a different payload.`);
+    }
+    if (outcome.outcome === 'session-terminal') {
+      throw new UnsupportedOperationError(`Task '${view.id}' accepts no further message.`);
+    }
+    if (outcome.outcome !== 'admitted' && outcome.outcome !== 'replayed') {
+      throw new UnsupportedOperationError(
+        `The message could not be admitted (${outcome.outcome}).`,
+      );
+    }
+    return outcome;
+  }
+
+  /**
+   * A retried input's receipt as the mailbox holds it now (queued, promoted, superseded,
+   * expired): the ledger kept only the state at admission. Whatever cannot be read again keeps
+   * the ledger's.
+   */
+  async function currentInputResult(
+    message: Message,
+    owner: Owner,
+    deadline: number | undefined,
+    stored: A2ASendResult,
+  ): Promise<A2ASendResult> {
+    if (stored.path !== 'input' || stored.reason !== undefined) return stored;
+    try {
+      const view = await ownTask(stored.taskId, owner);
+      const command = parseContinuation(message, 'input', view.id);
+      if (command.path !== 'input') return stored;
+      const outcome = await submitInput(message, view, owner, deadline, command);
+      return { ...stored, state: inputReceiptState(outcome.receipt.state) };
+    } catch {
+      return stored;
+    }
+  }
+
   async function continueTask(
     message: Message,
     view: TaskView,
     owner: Owner,
     principal: Principal,
     deadline: number | undefined,
-    path: 'answer' | 'input',
+    command: ContinuationCommand,
     onEffect: () => void,
   ): Promise<{ readonly path: SendPath; readonly state: SendReceiptState }> {
     let answered: { readonly path: SendPath; readonly state: SendReceiptState };
-    if (path === 'answer') {
-      const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
-      const decision = data?.decision;
-      if (
-        decision !== undefined &&
-        decision !== 'approve' &&
-        decision !== 'deny' &&
-        decision !== 'reject'
-      ) {
-        throw invalid('decision must be "approve", "deny", or "reject".');
-      }
-      const reason = typeof data?.reason === 'string' ? data.reason : undefined;
-      if (decision === 'reject' && (reason ?? '').trim() === '') {
-        throw invalid('A reject decision requires a reason.');
-      }
-      const signalName = message.metadata?.[SIGNAL_NAME_METADATA_KEY];
-      const callId = message.metadata?.[CALL_ID_METADATA_KEY];
-      if (callId !== undefined && typeof callId !== 'string') {
-        throw invalid('metadata.callId must be a string.');
-      }
-      const text = textOf(message);
-      if (decision === undefined && text === '') {
-        throw invalid('An answer needs a text part, or a data part with a decision.');
-      }
-      const input = tasksRespondInput.safeParse({
-        taskId: view.id,
-        messageId: message.messageId,
-        ...(decision === undefined ? { answer: text } : { decision }),
-        ...(reason === undefined ? {} : { reason }),
-        ...(typeof signalName === 'string' ? { signalName } : {}),
-        ...(typeof callId === 'string' ? { callId } : {}),
-      });
-      if (!input.success)
-        throw invalid(input.error.issues[0]?.message ?? 'The answer is not valid.');
+    if (command.path === 'answer') {
       try {
-        const result = (await options.respond(principal, input.data)) as { receipt?: unknown };
+        const result = (await options.respond(principal, command.input)) as { receipt?: unknown };
         onEffect();
         answered = {
           path: 'answer',
@@ -835,33 +914,7 @@ export function createBureauA2ARequestHandler(
         );
       }
     } else {
-      const mode = message.metadata?.[DELIVERY_MODE_METADATA_KEY] ?? 'queue';
-      if (mode !== 'queue' && mode !== 'steer') {
-        throw invalid('metadata.deliveryMode must be "queue" or "steer".');
-      }
-      const text = textOf(message);
-      if (text === '') throw invalid('A message to a working task needs a text part.');
-      const outcome = await bureau.submitSessionInput(view.contextId, {
-        id: message.messageId,
-        principal: owner,
-        deliveryMode: mode,
-        payload: text,
-        ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
-      });
-      if (outcome.outcome === 'not-found') throw taskNotFound(view.id);
-      if (outcome.outcome === 'conflict') {
-        throw invalid(
-          `messageId '${message.messageId}' was already used with a different payload.`,
-        );
-      }
-      if (outcome.outcome === 'session-terminal') {
-        throw new UnsupportedOperationError(`Task '${view.id}' accepts no further message.`);
-      }
-      if (outcome.outcome !== 'admitted' && outcome.outcome !== 'replayed') {
-        throw new UnsupportedOperationError(
-          `The message could not be admitted (${outcome.outcome}).`,
-        );
-      }
+      const outcome = await submitInput(message, view, owner, deadline, command);
       onEffect();
       answered = { path: 'input', state: inputReceiptState(outcome.receipt.state) };
     }
@@ -926,7 +979,9 @@ export function createBureauA2ARequestHandler(
     const located = await ledger.locate(identity);
     if (located.state === 'retained' && located.entry.state === 'completed') {
       if (located.entry.payloadDigest !== digest) throw conflict(located.entry.result);
-      return admitted(located.entry.result);
+      return admitted(
+        await currentInputResult(message, owner, request.deadline, located.entry.result),
+      );
     }
     // A claim an earlier attempt left pending already took effect, or may have: it is finished
     // by the path it was admitted on, and the task's state since does not refuse it.
@@ -958,13 +1013,17 @@ export function createBureauA2ARequestHandler(
       continued === undefined
         ? undefined
         : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
+    const command =
+      continued === undefined || path === undefined
+        ? undefined
+        : parseContinuation(message, path, continued.id);
     // A pending claim's effect may already have moved the revision it was checked against.
     if (
       pending === undefined &&
       continued !== undefined &&
       request.expectedRevision !== undefined
     ) {
-      const current = revisionOf(continued.id);
+      const current = revisionOf(continued, await records.read(continued.id));
       if (current !== request.expectedRevision) {
         throw new CommandReceiptError(
           'STALE_REVISION',
@@ -973,7 +1032,7 @@ export function createBureauA2ARequestHandler(
             commandId: message.messageId,
             taskId: continued.id,
             expectedRevision: request.expectedRevision,
-            currentRevision: current ?? '',
+            currentRevision: current,
           },
         );
       }
@@ -994,7 +1053,9 @@ export function createBureauA2ARequestHandler(
       throw error;
     }
     if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
-      return admitted(claimed.entry.result);
+      return admitted(
+        await currentInputResult(message, owner, request.deadline, claimed.entry.result),
+      );
     }
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
@@ -1035,7 +1096,7 @@ export function createBureauA2ARequestHandler(
           owner,
           user.principal,
           request.deadline,
-          path ?? 'input',
+          command as ContinuationCommand,
           markEffected,
         );
         result = { taskId: continued.id, ...answered };
