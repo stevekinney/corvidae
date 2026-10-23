@@ -50,6 +50,8 @@ export interface GeminiFunctionCallPart {
 
 export interface GeminiFunctionResponsePart {
   functionResponse: {
+    /** The originating `functionCall.id`; present only when Gemini issued one (see `providerCallIds`). */
+    id?: string;
     name: string;
     response: Record<string, unknown>;
     /** Ordered inline media for a result that carries parts, named from `response.output`. */
