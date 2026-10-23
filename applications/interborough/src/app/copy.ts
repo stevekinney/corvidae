@@ -508,6 +508,29 @@ export const AUDIT_COPY = {
   },
 } as const;
 
+/**
+ * The words the agent list and an agent's page use for what an agent is and has: its model, its
+ * tools, how much it has been used, and the one badge an agent can carry.
+ * Where an agent is defined, and that it is published, are facts for the developer or the normal
+ * state, so neither is worded: only an agent that is not published says so.
+ */
+export const AGENTS_COPY = {
+  notPublished: 'Not published',
+  notPublishedHint: 'This agent is not published, so no one can start a chat with it.',
+  modelLabel: 'Model',
+  toolsLabel: 'Tools',
+  skillsLabel: 'Skills',
+  noTools: 'No tools',
+  toolCount: (count: number): string => (count === 1 ? '1 tool' : `${count} tools`),
+  chatCount: (count: number): string => (count === 1 ? '1 chat' : `${count} chats`),
+  noChats: 'No chats yet',
+  lastChat: (when: string): string => `Last chat ${when}`,
+  /** The Memory action with the agent's memory count; `more` is true when pages of it are unread. */
+  memoryWithCount: (shown: number, more: boolean): string => `Memory (${shown}${more ? '+' : ''})`,
+  fileVersion: 'File version',
+  history: 'History',
+} as const;
+
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
@@ -519,14 +542,6 @@ export const CHAT_COPY = {
   loadMore: 'Load more',
   noSessions: 'No chats yet',
   loadingSessions: 'Loading chats',
-  agentKind: { code: 'Defined in code', file: 'Defined in a file' },
-  agentNotPublished: 'Not published',
-  agentPublished: 'Published',
-  agentModel: 'Model',
-  agentTools: 'Tools',
-  agentSkills: 'Skills',
-  agentRevision: 'Revision',
-  noneListed: 'None',
   agentsTitle: 'Agents',
   tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',

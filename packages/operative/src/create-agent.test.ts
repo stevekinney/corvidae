@@ -7,6 +7,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+
 import { createAgent } from './create-agent';
 import { readGenerationProfile } from './generation-profile';
 import { hasDefinitionResolver, OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
@@ -115,4 +118,65 @@ describe('createAgent: generation profile revision (COR-1584)', () => {
       expect(() => createAgent({ generate: mockGenerate(), revision })).toThrow(/revision/u);
     },
   );
+});
+
+describe('createAgent: tool names', () => {
+  const lookup = createTool({
+    name: 'lookup-order',
+    description: 'Look up an order',
+    input: z.object({ id: z.string() }),
+    execute: async () => 'found',
+  });
+  const refund = createTool({
+    name: 'refund-order',
+    description: 'Refund an order',
+    input: z.object({ id: z.string() }),
+    execute: async () => 'refunded',
+  });
+
+  it('lists the keys of the tools map, which are the names the model calls them by', () => {
+    const agent = createAgent({ generate: mockGenerate(), tools: { 'look-up': lookup, refund } });
+
+    expect(agent.toolNames).toEqual(['look-up', 'refund']);
+  });
+
+  it('lists an empty array, not undefined, for an agent created without tools', () => {
+    expect(createAgent({ generate: mockGenerate() }).toolNames).toEqual([]);
+  });
+
+  it('lists the tools of a pre-built toolbox by their own names', () => {
+    const agent = createAgent({
+      generate: mockGenerate(),
+      toolbox: createToolbox([lookup, refund]),
+    });
+
+    expect(agent.toolNames).toEqual(['lookup-order', 'refund-order']);
+  });
+
+  it('lists a name once when a pre-built toolbox holds two tools under it', () => {
+    const lookupAgain = createTool({
+      name: 'lookup-order',
+      namespace: 'second',
+      description: 'Look up an order a second way',
+      input: z.object({ id: z.string() }),
+      execute: async () => 'found again',
+    });
+    const toolbox = createToolbox([lookup, refund, lookupAgain]);
+    // The toolbox keeps both: the duplicate is real, not an artifact of how the test built it.
+    expect(toolbox.tools().map((tool) => tool.name)).toEqual([
+      'lookup-order',
+      'refund-order',
+      'lookup-order',
+    ]);
+
+    const agent = createAgent({ generate: mockGenerate(), toolbox });
+
+    expect(agent.toolNames).toEqual(['lookup-order', 'refund-order']);
+  });
+
+  it('hands out a frozen list, so a caller cannot change what the agent reports', () => {
+    const agent = createAgent({ generate: mockGenerate(), tools: { refund } });
+
+    expect(Object.isFrozen(agent.toolNames)).toBe(true);
+  });
 });
