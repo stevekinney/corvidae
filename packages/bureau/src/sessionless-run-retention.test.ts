@@ -62,7 +62,15 @@ function viewer(seen: GenerateContext[], hold?: Promise<void>) {
   return createAgent({
     generate: withBackendDescriptors(async (context: GenerateContext) => {
       seen.push(context);
-      if (hold !== undefined && context.step === 0) await hold;
+      if (hold !== undefined && context.step === 0) {
+        // Held until released, but stops when the run is aborted, as a provider call does.
+        await new Promise<void>((resolve, reject) => {
+          context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true,
+          });
+          void hold.then(resolve);
+        });
+      }
       return { content: 'seen', toolCalls: [] };
     }, anthropicDescriptors),
     stopWhen: stopWhen.noToolCalls(),
@@ -258,13 +266,50 @@ describe.each([
 });
 
 describe('a sessionless bureau.run() across a restart', () => {
-  it('keeps the input asset resolvable after a new Bureau opens the same storage past the floor', async () => {
+  async function sqliteStorage() {
     const directory = await mkdtemp(join(tmpdir(), 'bureau-sessionless-retention-'));
     cleanups.push(async () => {
       await rm(directory, { recursive: true, force: true });
     });
+    return { type: 'sqlite' as const, path: join(directory, 'bureau') };
+  }
+
+  it('keeps the input asset resolvable past the floor when the process died with the run in flight, because the next boot resumes it', async () => {
     const environment = createEnvironment();
-    const storage = { type: 'sqlite' as const, path: join(directory, 'bureau') };
+    const storage = await sqliteStorage();
+    // Nothing owns the dead process's run any more, so the next boot recovers it at once.
+    const durable = {
+      storage,
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' as const },
+    };
+    const seen: GenerateContext[] = [];
+
+    const first = await openBureau(
+      environment,
+      { viewer: viewer(seen, new Promise<void>(() => {})) },
+      durable,
+    );
+    const image = await suppliedImage(first);
+    first.run('viewer', [image], { principal: alice.id });
+    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
+
+    // The recovered run is parked too, so it is still in flight when the floor passes.
+    const second = await openBureau(
+      environment,
+      { viewer: viewer([], new Promise<void>(() => {})) },
+      durable,
+    );
+    await second.waitForRecovery?.();
+    const report = await pastTheFloor(environment, second);
+
+    expect(report.expired).not.toContain(assetIdOf(image));
+    expect(await resolves(second, assetIdOf(image))).toBe(true);
+  });
+
+  it('lets the input asset expire on the floor when a graceful shutdown cancelled the run for good', async () => {
+    const environment = createEnvironment();
+    const storage = await sqliteStorage();
     const seen: GenerateContext[] = [];
 
     const first = await openBureau(
@@ -275,6 +320,7 @@ describe('a sessionless bureau.run() across a restart', () => {
     const image = await suppliedImage(first);
     first.run('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
+    // The default `abort` policy cancels the durable run for good, so it has ended.
     await first.dispose();
 
     const second = await openBureau(
@@ -284,8 +330,8 @@ describe('a sessionless bureau.run() across a restart', () => {
     );
     const report = await pastTheFloor(environment, second);
 
-    expect(report.expired).not.toContain(assetIdOf(image));
-    expect(await resolves(second, assetIdOf(image))).toBe(true);
+    expect(report.expired).toContain(assetIdOf(image));
+    expect(await resolves(second, assetIdOf(image))).toBe(false);
   });
 });
 

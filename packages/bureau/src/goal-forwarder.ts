@@ -101,6 +101,11 @@ export interface AttemptForwarderDependencies {
   /** COR-1630 — releases an ended attempt run's `run-row` claims. Absent for a Bureau with no asset service. */
   readonly releaseAssets?:
     Pick<CatalogRunAssetReleaser, 'releaseConversation' | 'releaseEndedRun'> | undefined;
+  /**
+   * COR-1630 — whether releases are closed (shutdown is about to shut the asset service): the
+   * attempt then takes no claim and the run keeps its own. Absent, nothing is ever closed.
+   */
+  readonly releasesClosed?: (() => boolean) | undefined;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
   /**
@@ -142,7 +147,7 @@ export function createAttemptForwarder(
 ): AttemptForwarder {
   const { store, runtime, getDurable, resolveCostEstimation, conversations, isClosing, diagnose } =
     dependencies;
-  const { claimSessionAssets, releaseAssets } = dependencies;
+  const { claimSessionAssets, releaseAssets, releasesClosed } = dependencies;
   const retryDelaysMs = dependencies.retryDelaysMs ?? DEFAULT_FORWARD_RETRY_DELAYS_MS;
   const watching = new Map<string, Promise<void>>();
   const sending = new Set<Promise<unknown>>();
@@ -252,7 +257,7 @@ export function createAttemptForwarder(
       NonNullable<typeof releaseAssets>['releaseConversation']
     >[0]['conversation'],
   ): Promise<void> {
-    if (releaseAssets === undefined) return;
+    if (releaseAssets === undefined || releasesClosed?.() === true) return;
     if (claimSessionAssets !== undefined) {
       try {
         await claimSessionAssets(session);

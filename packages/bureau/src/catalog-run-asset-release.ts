@@ -9,14 +9,15 @@
  * - the catalog dispatcher, for a run this process dispatched and watched (`bureau.run()`, a
  *   child run, a workflow step), through {@link CatalogRunAssetReleaser.releaseAfterHandle};
  * - the catalog-run settlement hook, for a run recovered after a restart
- *   ({@link CatalogRunAssetReleaser.releaseAfterRecovery});
- * - the goal forwarder, for a goal attempt, after the goal's session holds the attempt's rows
+ *   ({@link CatalogRunAssetReleaser.releaseAfterRecovery}), and for a recovered goal attempt whose
+ *   goal is already over;
+ * - the goal forwarder, for a goal attempt of a goal that goes on, after the goal's session holds the attempt's rows
  *   ({@link CatalogRunAssetReleaser.releaseConversation} and
  *   {@link CatalogRunAssetReleaser.releaseEndedRun}).
  *
- * The dispatcher and the hook skip a goal attempt, so each `(run, row, asset)` pair is released
- * once; the step is idempotent anyway, because it releases only the pairs the asset's own records
- * show as held.
+ * The dispatcher skips a goal attempt, and the hook skips one whose goal is still going, so each
+ * `(run, row, asset)` pair is released once; the step is idempotent anyway, because it releases
+ * only the pairs the asset's own records show as held.
  *
  * ## What is an end
  *
@@ -27,13 +28,18 @@
  * after the handle settles and only a terminal state releases. A run with no durable record at all
  * (a Bureau with no durable engine) ends when its handle settles.
  *
- * The one end the durable record cannot tell is the shutdown's own abort: `shutdown()` with the
- * default `abort` policy aborts every tracked catalog run, which cancels its durable workflow for
- * good, and a run that another process finished under `ownership: 'none'` settles its handle with
- * that process's result when this one is disposed. Neither is this process's run ending, and the
- * asset service is shutting down beside them, so once shutdown has begun nothing is released: a
- * run that finished while a draining shutdown waited for it keeps its claims too, as one that
- * ended in a process that died before it could release does.
+ * ## Shutdown
+ *
+ * The rule holds at shutdown too: a run that has durably ended releases, and a run that will
+ * resume does not. `shutdown()` with the default `abort` policy aborts every tracked catalog run,
+ * which cancels its durable workflow for good (record `cancelled`, task `canceled`, never resumed),
+ * and a run that completed while a `drain` shutdown waited for it has ended as well, so both
+ * release. A run whose durable record still reads running or suspended when the engine goes away
+ * (a goal attempt, a workflow step, a run recovered at boot) is lost, not ended: it releases
+ * nothing and keeps its claims for the boot that resumes it. A release that is under way when
+ * shutdown starts is awaited, under the grace `shutdown()` gives aborted runs, before the asset
+ * service closes; after that point {@link CatalogRunAssetReleaserDependencies.isClosed} is true
+ * and a release does nothing, so none runs against a closed service.
  *
  * @module catalog-run-asset-release
  */
@@ -75,8 +81,11 @@ export interface CatalogRunAssetReleaserDependencies {
   readonly durableEnd: DurableEndReader;
   /** Reads an ended run's conversation from its checkpoint. Rejects when it cannot be read. */
   readonly readEnded: (runId: string) => Promise<EndedRunConversation>;
-  /** Whether shutdown has begun. */
-  readonly isShuttingDown: () => boolean;
+  /**
+   * Whether releases are closed: `shutdown()` sets it once it has waited for the releases under
+   * way, just before the asset service goes. A release that starts afterwards does nothing.
+   */
+  readonly isClosed: () => boolean;
   readonly diagnose: DiagnosticSink;
 }
 
@@ -103,7 +112,7 @@ export interface CatalogRunAssetReleaser {
 export function createCatalogRunAssetReleaser(
   dependencies: CatalogRunAssetReleaserDependencies,
 ): CatalogRunAssetReleaser {
-  const { assets, durableEnd, readEnded, isShuttingDown, diagnose } = dependencies;
+  const { assets, durableEnd, readEnded, isClosed, diagnose } = dependencies;
 
   const warn = (message: string, cause?: unknown): void =>
     diagnose({
@@ -113,11 +122,15 @@ export function createCatalogRunAssetReleaser(
       ...(cause === undefined ? {} : { cause }),
     });
 
-  /** Where the run stands, with a read that fails counted as still going. */
+  /** Where the run stands, with a read that fails counted as still going, and said so. */
   async function endOf(runId: string): Promise<DurableEnd> {
     try {
       return await durableEnd(runId);
-    } catch {
+    } catch (error) {
+      warn(
+        `[bureau] Could not read where run "${runId}" stands in the durable engine, so it is treated as still going and its retention claims on managed assets were not released: ${serializeUnknownError(error)}`,
+        error,
+      );
       return 'in-flight';
     }
   }
@@ -126,7 +139,7 @@ export function createCatalogRunAssetReleaser(
     run: RunClaims & { readonly conversation: ReleasableConversation },
   ): Promise<void> {
     const service = assets();
-    if (service === undefined) return;
+    if (service === undefined || isClosed()) return;
     let rows: ReadonlyArray<ClaimableRow>;
     try {
       rows = run.conversation.getMessages({ includeHidden: true });
@@ -151,7 +164,7 @@ export function createCatalogRunAssetReleaser(
   }
 
   async function releaseEndedRun(run: RunClaims): Promise<void> {
-    if (assets() === undefined) return;
+    if (assets() === undefined || isClosed()) return;
     let reading: EndedRunConversation;
     try {
       reading = await readEnded(run.runId);
@@ -168,9 +181,9 @@ export function createCatalogRunAssetReleaser(
 
   return {
     async releaseAfterHandle({ runId, principalId, settled }) {
-      if (assets() === undefined || isShuttingDown()) return;
+      if (assets() === undefined || isClosed()) return;
       const end = await endOf(runId);
-      if (end === 'in-flight' || isShuttingDown()) return;
+      if (end === 'in-flight' || isClosed()) return;
       if (settled.kind === 'result') {
         await releaseConversation({ runId, principalId, conversation: settled.conversation });
         return;
@@ -186,7 +199,7 @@ export function createCatalogRunAssetReleaser(
     },
 
     async releaseAfterRecovery({ runId, principalId }) {
-      if (assets() === undefined || isShuttingDown()) return;
+      if (assets() === undefined || isClosed()) return;
       await releaseEndedRun({ runId, principalId });
     },
 
@@ -199,6 +212,11 @@ export function createCatalogRunAssetReleaser(
 export interface RecoveredRunReleaseDependencies {
   readonly releaser: Pick<CatalogRunAssetReleaser, 'releaseAfterRecovery'>;
   readonly loadRecoveryRecord: (runId: string) => Promise<CatalogRunRecoveryLoad>;
+  /**
+   * Whether a goal is over for its attempts: terminal, canceled, or no longer stored. A goal that
+   * is over has no forwarder left to release its recovered attempt's claims.
+   */
+  readonly goalIsOver: (goalRunId: string) => Promise<boolean>;
   /** The principal id a run's claims were taken as. */
   readonly ownerOf: (principal: string | undefined) => string;
   readonly diagnose: DiagnosticSink;
@@ -207,13 +225,15 @@ export interface RecoveredRunReleaseDependencies {
 /**
  * The hook listener that releases a recovered run's claims when it ends. A fresh dispatch is
  * released where it is dispatched, and a goal attempt by the goal forwarder, so this one acts on
- * a recovered publication only, and skips a goal attempt. A recovery record that cannot be read
+ * a recovered publication only, and skips a goal attempt unless its goal is over, which leaves no
+ * forwarder to release it. A recovery record that cannot be read
  * cannot say whether the run is a goal attempt, and releasing a goal attempt's claims before its
  * session holds them would leave the next attempt's seed unclaimed, so it releases nothing.
  */
 export function createRecoveredRunReleaseListener({
   releaser,
   loadRecoveryRecord,
+  goalIsOver,
   ownerOf,
   diagnose,
 }: RecoveredRunReleaseDependencies): (settlement: CatalogRunSettlement) => Promise<void> {
@@ -233,7 +253,25 @@ export function createRecoveredRunReleaseListener({
       });
       return;
     }
-    if (loaded.record.goalAttempt !== undefined) return;
+    const { goalAttempt } = loaded.record;
+    if (goalAttempt !== undefined) {
+      // A goal attempt is released by the goal forwarder while its goal goes on. A goal that is
+      // over (terminal, canceled or gone) has no forwarder to do it: recovery stops the attempt's
+      // run without watching it, so this is the only place its claims can be let go.
+      let over: boolean;
+      try {
+        over = await goalIsOver(goalAttempt.goalRunId);
+      } catch (error) {
+        diagnose({
+          level: 'warn',
+          scope: 'assets',
+          message: `[bureau] Could not read goal "${goalAttempt.goalRunId}", so the retention claims of its recovered attempt run "${settlement.runId}" on managed assets were not released: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        return;
+      }
+      if (!over) return;
+    }
     await releaser.releaseAfterRecovery({
       runId: settlement.runId,
       principalId: ownerOf(loaded.record.principal),

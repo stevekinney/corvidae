@@ -13,9 +13,12 @@
  * | seeding claim fails partway                       | catalog dispatcher     | release what was claimed      |
  * | non-durable run settles                           | catalog dispatcher     | release the held pairs        |
  * | recovered run ends                                | settlement hook        | release from the checkpoint   |
- * | graceful shutdown (dispose) with a run in flight  | nobody                 | release nothing               |
+ * | shutdown cancels a run for good (`abort` policy)  | catalog dispatcher     | release the held pairs        |
+ * | run completes while a `drain` shutdown waits      | catalog dispatcher     | release the held pairs        |
+ * | shutdown with a run that will resume (recovered)  | nobody until it ends   | release nothing, then at end  |
  * | run lost to another engine                        | nobody (the winner)    | release nothing               |
  * | goal attempt (live or recovered)                  | goal forwarder         | claim the session, release    |
+ * | recovered goal attempt, goal already over         | settlement hook        | release from the checkpoint   |
  * | an asset no row ever claimed                      | nobody                 | no `asset.released` event     |
  *
  * The unit-level rows (every forwarder return, an inspect that fails, an unreadable conversation,
@@ -39,6 +42,7 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   appendAssistantMessage,
@@ -46,6 +50,7 @@ import {
   createConversationHistory,
   type MediaContent,
 } from 'conversationalist';
+import { z } from 'zod';
 
 import { runRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
@@ -56,8 +61,14 @@ import {
   base64Of,
   pngBytes,
 } from './testing/asset-fixtures.test-support';
-import { CHECK, goalRequest, pollUntil } from './testing/goal-fixtures.test-support';
-import type { Bureau } from './types';
+import {
+  CHECK,
+  createCheckValidator,
+  goalRequest,
+  pollUntil,
+} from './testing/goal-fixtures.test-support';
+import { inspect } from './testing/goal-recovery-fixtures.test-support';
+import type { Bureau, BureauDiagnostic } from './types';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -251,6 +262,46 @@ function seededConversation(early: MediaContent, last: MediaContent) {
 
 const durableEngine = { storage: { type: 'memory' as const }, durableExecution: true };
 
+async function storageDirectory(): Promise<{
+  readonly storage: { type: 'sqlite'; path: string };
+}> {
+  const directory = await mkdtemp(join(tmpdir(), 'bureau-run-asset-claims-'));
+  cleanups.push(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+  return { storage: { type: 'sqlite', path: join(directory, 'bureau') } };
+}
+
+async function durableStatusOf(bureau: Bureau, runId: string): Promise<string | undefined> {
+  const run = await bureau.getDurableRun(runId);
+  return run?.status;
+}
+
+async function taskStatusOf(bureau: Bureau, runId: string): Promise<string | undefined> {
+  const task = await bureau.tasks.get(runId);
+  return task?.status;
+}
+
+async function goalStatusOf(bureau: Bureau, goalRunId = 'g1'): Promise<string | undefined> {
+  const goal = await bureau.goals.get(goalRunId);
+  return goal?.status;
+}
+
+/** Collects what a bureau reports, so a test can say that a shutdown reported nothing about assets. */
+function collectDiagnostics() {
+  const collected: BureauDiagnostic[] = [];
+  return {
+    onDiagnostic: (diagnostic: BureauDiagnostic): void => void collected.push(diagnostic),
+    /** Everything about managed assets, and anything that names a closed asset service. */
+    aboutAssets: () =>
+      collected.filter(
+        (diagnostic) =>
+          diagnostic.scope === 'assets' ||
+          /AssetServiceClosed|asset service/i.test(diagnostic.message),
+      ),
+  };
+}
+
 describe.each([
   ['a durable engine', durableEngine],
   ['no durable engine (the in-process path)', {}],
@@ -408,25 +459,69 @@ describe.each([
   });
 });
 
-describe('a bureau.run() that is cut short rather than ended', () => {
-  it('keeps its claims when the Bureau is disposed under it', async () => {
+describe('a bureau.run() at shutdown', () => {
+  const durable = { durableExecution: true };
+
+  it('releases its claims when the default abort policy cancels it for good, without a diagnostic', async () => {
     const environment = createEnvironment();
+    const location = await storageDirectory();
+    const diagnostics = collectDiagnostics();
     const seen: GenerateContext[] = [];
     const first = await openBureau(
       environment,
       { viewer: viewer(new Promise<void>(() => {}), seen) },
-      durableEngine,
+      { ...location, ...durable, onDiagnostic: diagnostics.onDiagnostic },
+    );
+    const image = await suppliedImage(first);
+    const run = first.run('viewer', [image], { principal: alice.id });
+    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
+    expect(heldByRun(await holdersOf(first, assetIdOf(image)), run.id)).toHaveLength(1);
+
+    await first.dispose();
+
+    // The shutdown's own abort ended the run for good, so the next boot has nothing to resume.
+    const replacement: GenerateContext[] = [];
+    const second = await openBureau(
+      environment,
+      { viewer: viewer(undefined, replacement) },
+      { ...location, ...durable },
+    );
+    await second.waitForRecovery?.();
+    expect(await durableStatusOf(second, run.id)).toBe('cancelled');
+    expect(await taskStatusOf(second, run.id)).toBe('canceled');
+    expect(heldByRun(await holdersOf(second, assetIdOf(image)), run.id)).toEqual([]);
+    expect(replacement).toEqual([]);
+    expect(diagnostics.aboutAssets()).toEqual([]);
+    const report = await pastTheFloor(environment, second);
+    expect(report.expired).toContain(assetIdOf(image));
+  });
+
+  it('releases its claims when it completes while a drain shutdown waits for it, without a diagnostic', async () => {
+    const environment = createEnvironment();
+    const location = await storageDirectory();
+    const diagnostics = collectDiagnostics();
+    const parked = gate();
+    const seen: GenerateContext[] = [];
+    const first = await openBureau(
+      environment,
+      { viewer: viewer(parked.promise, seen) },
+      { ...location, ...durable, onDiagnostic: diagnostics.onDiagnostic },
     );
     const image = await suppliedImage(first);
     const run = first.run('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
-    await first.dispose();
+    const shutdown = first.shutdown({ policy: 'drain' });
+    parked.open();
+    await shutdown;
+    const finished = await run.result();
+    expect(finished.finishReason).not.toBe('error');
 
-    const second = await openBureau(environment, { viewer: viewer() }, durableEngine);
-    expect(heldByRun(await holdersOf(second, assetIdOf(image)), run.id)).toHaveLength(1);
-    const report = await pastTheFloor(environment, second);
-    expect(report.expired).not.toContain(assetIdOf(image));
+    const second = await openBureau(environment, { viewer: viewer() }, { ...location, ...durable });
+    await second.waitForRecovery?.();
+    expect(await durableStatusOf(second, run.id)).toBe('completed');
+    expect(heldByRun(await holdersOf(second, assetIdOf(image)), run.id)).toEqual([]);
+    expect(diagnostics.aboutAssets()).toEqual([]);
   });
 
   it('keeps its claims when this process lost the run to another engine', async () => {
@@ -468,16 +563,6 @@ describe('a bureau.run() that is cut short rather than ended', () => {
 });
 
 describe('a run recovered after a restart', () => {
-  async function storageDirectory(): Promise<{
-    readonly storage: { type: 'sqlite'; path: string };
-  }> {
-    const directory = await mkdtemp(join(tmpdir(), 'bureau-run-asset-claims-'));
-    cleanups.push(async () => {
-      await rm(directory, { recursive: true, force: true });
-    });
-    return { storage: { type: 'sqlite', path: join(directory, 'bureau') } };
-  }
-
   const recovering = {
     durableExecution: true,
     durableOwnership: { ownership: 'none' as const },
@@ -532,17 +617,20 @@ describe('a run recovered after a restart', () => {
     const environment = createEnvironment();
     const location = await storageDirectory();
     const { run, last } = await startRunThatDies(environment, location);
+    const diagnostics = collectDiagnostics();
     const second = await openBureau(
       environment,
       { viewer: viewer(new Promise<void>(() => {})) },
-      { ...location, ...recovering },
+      { ...location, ...recovering, onDiagnostic: diagnostics.onDiagnostic },
     );
     await second.waitForRecovery?.();
     const releasedBySecond = watchReleases(second);
 
     await second.dispose();
 
+    // The recovered run is lost, not ended: its durable record still reads in flight.
     expect(releasedBySecond).toEqual([]);
+    expect(diagnostics.aboutAssets()).toEqual([]);
     const third = await openBureau(
       environment,
       { viewer: viewer() },
@@ -694,5 +782,157 @@ describe.each([
       .filter((event) => event.type === 'released')
       .map((event) => `${event.holderId}\u0000${event.assetId}`);
     expect(new Set(pairs).size).toBe(pairs.length);
+  });
+});
+
+/**
+ * A goal attempt's run is neither tracked by the shutdown nor released by the dispatcher: the goal
+ * forwarder owns its release, and a recovered attempt whose goal is already over has no forwarder,
+ * so the settlement hook releases it.
+ */
+describe('a goal attempt across a restart', () => {
+  const noop = createTool({
+    name: 'noop',
+    description: 'does nothing',
+    input: z.object({}),
+    execute: async () => ({}),
+  });
+
+  /** Step 0 generates an image and calls a tool, so a row holds a claim when step 1 is entered. */
+  function generating(
+    afterTheTool: (context: GenerateContext) => Promise<{ content: string; toolCalls: [] }>,
+  ) {
+    return createAgent({
+      name: 'worker',
+      toolbox: createToolbox([noop]),
+      generate: withBackendDescriptors(async (context: GenerateContext) => {
+        if (context.step === 0) {
+          return {
+            content: '',
+            parts: [generatedPart],
+            toolCalls: [{ id: 'call-1', name: 'noop', arguments: {} }],
+          };
+        }
+        return afterTheTool(context);
+      }, imageOutputDescriptors),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+  }
+
+  const hangForever = () => new Promise<never>(() => {});
+
+  /** A bureau over `location` whose goals run on the real clock and recover whatever was left. */
+  async function openGoalBureau(
+    fixture: ReturnType<typeof createMemoryAssetStorageFixture>,
+    location: Awaited<ReturnType<typeof storageDirectory>>,
+    worker: ReturnType<typeof generating>,
+    onDiagnostic: (diagnostic: BureauDiagnostic) => void,
+  ): Promise<Bureau> {
+    const bureau = await createBureau({
+      agents: { worker },
+      validators: [createCheckValidator()],
+      ...location,
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+      assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
+      onDiagnostic,
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+    return bureau as unknown as Bureau;
+  }
+
+  /** The asset the first attempt generated, as the claim its run took on it names it. */
+  async function generatedAssetOf(claims: ReturnType<typeof watchClaims>, runId: string) {
+    await pollUntil(() =>
+      claims.some(
+        (event) => event.type === 'retained' && event.holderId.startsWith(`run-row:${runId}`),
+      ),
+    );
+    const retained = claims.find(
+      (event) => event.type === 'retained' && event.holderId.startsWith(`run-row:${runId}`),
+    );
+    if (retained === undefined) throw new Error('the attempt never claimed its generated image');
+    return retained.assetId;
+  }
+
+  it('keeps its claims through a shutdown, and the forwarder releases them once the next boot finishes the goal', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const location = await storageDirectory();
+    const diagnostics = collectDiagnostics();
+
+    const first = await openGoalBureau(
+      fixture,
+      location,
+      generating(hangForever),
+      diagnostics.onDiagnostic,
+    );
+    const claims = watchClaims(first);
+    await first.goals.create(goalRequest({ principal: alice.id }));
+    const assetId = await generatedAssetOf(claims, 'goal-g1-a0');
+    // The attempt is mid-flight in its second step: its durable record reads running.
+    await first.dispose();
+
+    const resume = gate();
+    const second = await openGoalBureau(
+      fixture,
+      location,
+      generating(async () => {
+        await resume.promise;
+        return { content: 'done', toolCalls: [] };
+      }),
+      diagnostics.onDiagnostic,
+    );
+    await second.waitForRecovery?.();
+    // The run that will resume released nothing at shutdown, and still holds its claim.
+    expect(heldByRun(await holdersOf(second, assetId), 'goal-g1-a0').length).toBeGreaterThan(0);
+
+    resume.open();
+    expect(await pollUntil(async () => (await goalStatusOf(second)) === 'succeeded')).toBe(true);
+    await releasedHolders(second, assetId, 'goal-g1-a0');
+    const finalHolders = await holdersOf(second, assetId);
+    expect(finalHolders.some((holder) => holder.startsWith('session-row:'))).toBe(true);
+    expect(diagnostics.aboutAssets()).toEqual([]);
+  });
+
+  it('is released by the settlement hook when the goal was canceled before the recovered attempt ended', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const location = await storageDirectory();
+    const diagnostics = collectDiagnostics();
+
+    const dead = await openGoalBureau(
+      fixture,
+      location,
+      generating(hangForever),
+      diagnostics.onDiagnostic,
+    );
+    const claims = watchClaims(dead);
+    await dead.goals.create(goalRequest({ principal: alice.id }));
+    const assetId = await generatedAssetOf(claims, 'goal-g1-a0');
+    expect(heldByRun(await holdersOf(dead, assetId), 'goal-g1-a0').length).toBeGreaterThan(0);
+    // The control plane wrote the cancellation marker and the process died before anything else.
+    const view = await inspect(location.storage.path);
+    await view.store.requestCancellation(
+      'g1',
+      { requestedAt: '2026-10-02T12:00:00.000Z', reason: 'operator' },
+      '2026-10-02T12:00:00.000Z',
+    );
+    await view.dispose();
+
+    const second = await openGoalBureau(
+      fixture,
+      location,
+      generating(async () => ({ content: 'done', toolCalls: [] })),
+      diagnostics.onDiagnostic,
+    );
+    expect(await pollUntil(async () => (await goalStatusOf(second)) === 'canceled')).toBe(true);
+
+    // Recovery stops the attempt's run without a forwarder watching it, so only the hook can
+    // let go of what it holds.
+    await releasedHolders(second, assetId, 'goal-g1-a0');
+    expect(diagnostics.aboutAssets()).toEqual([]);
   });
 });

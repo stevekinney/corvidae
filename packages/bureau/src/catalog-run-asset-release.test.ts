@@ -4,9 +4,11 @@
  *
  * - A handle the catalog dispatcher watched (`releaseAfterHandle`): resolved or rejected, and the
  *   durable record terminal (or, with no durable engine, no record at all), releases. A durable
- *   record still in flight, or one that cannot be read, releases nothing: the run is cut short (an
- *   engine disposal, a lost compare-and-swap), not over. Once shutdown has begun, a run that
- *   `abort`ed or whose handle rejected releases nothing, because that abort was the shutdown's own.
+ *   record still in flight, or one that cannot be read (which warns once), releases nothing: the
+ *   run is cut short (an engine disposal, a lost compare-and-swap), not over. Shutdown changes
+ *   nothing: a run the shutdown's own abort cancelled for good, or that completed while a drain
+ *   waited, has ended and releases; only once releases are closed, just before the asset service
+ *   shuts down, does a release do nothing.
  * - A recovered run (`releaseAfterRecovery`): terminal in the durable record releases, from the
  *   checkpoint, before cleanup prunes it. A conversation that cannot be read releases nothing and
  *   warns once.
@@ -82,7 +84,7 @@ function setup(
           conversation: conversationOf([imageRow('row-1', 'checkpointed')]),
         };
       }),
-    isShuttingDown: overrides.isShuttingDown ?? (() => false),
+    isClosed: overrides.isClosed ?? (() => false),
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
   return { releaser, released, diagnostics, reads };
@@ -175,14 +177,36 @@ describe('a handle the dispatcher watched', () => {
     });
 
     expect(released).toEqual([]);
-    expect(diagnostics).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ level: 'warn', scope: 'assets' });
+    expect(diagnostics[0]?.message).toContain(RUN);
+    expect(diagnostics[0]?.message).toContain('storage closed');
   });
 
   it.each(['aborted', 'stop-condition', 'error'])(
-    'releases nothing once shutdown has begun, whatever the finish reason (%s) or the record reads',
+    'releases a run the durable record shows ended even when shutdown is under way, whatever the finish reason (%s)',
     async (finishReason) => {
-      const { releaser, released, reads } = setup({
-        isShuttingDown: () => true,
+      // `isClosed` stays false for the whole of a shutdown until its releases have been awaited.
+      const { releaser, released } = setup({
+        durableEnd: async () => 'canceled',
+        references: { photo: [held('row-1')] },
+      });
+
+      await releaser.releaseAfterHandle({
+        runId: RUN,
+        principalId: 'alice',
+        settled: result(finishReason),
+      });
+
+      expect(released).toEqual([['photo', held('row-1')]]);
+    },
+  );
+
+  it.each(['aborted', 'stop-condition', 'error'])(
+    'does nothing once releases are closed, whatever the finish reason (%s) or the record reads',
+    async (finishReason) => {
+      const { releaser, released, reads, diagnostics } = setup({
+        isClosed: () => true,
         durableEnd: async () => 'canceled',
         references: { photo: [held('row-1')] },
       });
@@ -198,16 +222,16 @@ describe('a handle the dispatcher watched', () => {
         settled: { kind: 'rejected' },
       });
 
-      expect([released, reads]).toEqual([[], []]);
+      expect([released, reads, diagnostics]).toEqual([[], [], []]);
     },
   );
 
-  it('releases nothing when shutdown begins while the durable record is being read', async () => {
-    let shuttingDown = false;
-    const { releaser, released } = setup({
-      isShuttingDown: () => shuttingDown,
+  it('does nothing when releases close while the durable record is being read', async () => {
+    let closed = false;
+    const { releaser, released, diagnostics } = setup({
+      isClosed: () => closed,
       durableEnd: async () => {
-        shuttingDown = true;
+        closed = true;
         return 'completed';
       },
       references: { photo: [held('row-1')] },
@@ -219,7 +243,7 @@ describe('a handle the dispatcher watched', () => {
       settled: result('stop-condition'),
     });
 
-    expect(released).toEqual([]);
+    expect([released, diagnostics]).toEqual([[], []]);
   });
 
   it('reads a rejected durable run’s conversation from its checkpoint, as an engine failure ends it', async () => {
@@ -293,8 +317,8 @@ describe('a recovered run', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  it('releases nothing once shutdown has begun', async () => {
-    const { releaser, released, reads } = setup({ isShuttingDown: () => true });
+  it('does nothing once releases are closed', async () => {
+    const { releaser, released, reads } = setup({ isClosed: () => true });
 
     await releaser.releaseAfterRecovery({ runId: RUN, principalId: 'alice' });
 
@@ -345,6 +369,22 @@ describe('releasing a run’s claims', () => {
     expect(released).toEqual([['checkpointed', held('row-1')]]);
   });
 
+  it('does nothing once releases are closed, whichever entry point the goal forwarder uses', async () => {
+    const { releaser, released, reads, diagnostics } = setup({
+      isClosed: () => true,
+      references: { photo: [held('row-1')], checkpointed: [held('row-1')] },
+    });
+
+    await releaser.releaseEndedRun({ runId: RUN, principalId: 'alice' });
+    await releaser.releaseConversation({
+      runId: RUN,
+      principalId: 'alice',
+      conversation: conversationOf([imageRow('row-1', 'photo')]),
+    });
+
+    expect([released, reads, diagnostics]).toEqual([[], [], []]);
+  });
+
   it('is idempotent: a second pass over the same run releases no pair twice', async () => {
     const references = { photo: [held('row-1')] };
     const { releaser, released } = setup({ references });
@@ -377,7 +417,10 @@ describe('the recovered-run listener', () => {
     ...overrides,
   });
 
-  function listening(load: CatalogRunRecoveryLoad | Error) {
+  function listening(
+    load: CatalogRunRecoveryLoad | Error,
+    goalIsOver: (goalRunId: string) => Promise<boolean> = async () => false,
+  ) {
     const calls: Array<{ runId: string; principalId: string }> = [];
     const diagnostics: BureauDiagnostic[] = [];
     const listener = createRecoveredRunReleaseListener({
@@ -386,6 +429,7 @@ describe('the recovered-run listener', () => {
         if (load instanceof Error) throw load;
         return load;
       },
+      goalIsOver,
       ownerOf: (principal) => principal ?? 'anonymous:local',
       diagnose: (diagnostic) => diagnostics.push(diagnostic),
     });
@@ -413,14 +457,49 @@ describe('the recovered-run listener', () => {
     expect(calls).toEqual([]);
   });
 
-  it('leaves a goal attempt to the goal forwarder', async () => {
+  it('leaves a goal attempt to the goal forwarder while its goal goes on', async () => {
+    const asked: string[] = [];
     const { listener, calls, diagnostics } = listening(
       found({ principal: 'alice', goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } }),
+      async (goalRunId) => {
+        asked.push(goalRunId);
+        return false;
+      },
     );
 
     await listener(settlement());
 
+    expect(asked).toEqual(['g1']);
     expect([calls, diagnostics]).toEqual([[], []]);
+  });
+
+  it('releases a goal attempt whose goal is over (terminal, canceled or gone), which no forwarder will', async () => {
+    const { listener, calls, diagnostics } = listening(
+      found({ principal: 'alice', goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } }),
+      async () => true,
+    );
+
+    await listener(settlement());
+
+    expect(calls).toEqual([{ runId: RUN, principalId: 'alice' }]);
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('releases nothing and warns once, naming the run, when the attempt’s goal cannot be read', async () => {
+    const { listener, calls, diagnostics } = listening(
+      found({ principal: 'alice', goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } }),
+      async () => {
+        throw new Error('the goal store is down');
+      },
+    );
+
+    await listener(settlement());
+
+    expect(calls).toEqual([]);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ level: 'warn', scope: 'assets' });
+    expect(diagnostics[0]?.message).toContain(RUN);
+    expect(diagnostics[0]?.message).toContain('g1');
   });
 
   it.each<[string, CatalogRunRecoveryLoad | Error]>([

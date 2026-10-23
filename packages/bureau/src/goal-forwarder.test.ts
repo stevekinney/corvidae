@@ -92,6 +92,8 @@ async function world(
     principal?: string;
     /** Runs in place of the session claim, after it is logged; a rejection is a failed claim. */
     claimSessionAssets?: (session: AgentSession) => Promise<void>;
+    /** Whether releases are closed; see `AttemptForwarderDependencies.releasesClosed`. */
+    releasesClosed?: () => boolean;
   } = {},
 ) {
   const storage = new MemoryStorage();
@@ -203,6 +205,9 @@ async function world(
       },
     },
     ...(forwarding.retryDelaysMs === undefined ? {} : { retryDelaysMs: forwarding.retryDelaysMs }),
+    ...(forwarding.releasesClosed === undefined
+      ? {}
+      : { releasesClosed: forwarding.releasesClosed }),
     isClosing: () => closing,
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
@@ -879,6 +884,27 @@ describe('createAttemptForwarder — releasing the attempt’s claims (COR-1630)
     expect(diagnostics[0]?.message).toContain('g1');
     expect(diagnostics[0]?.message).toContain('attempt 0');
     expect(diagnostics[0]?.message).toContain('the asset store is down');
+  });
+
+  it('takes no claim and releases nothing once releases are closed, and still sends the signal', async () => {
+    let closed = false;
+    const { durable, order, claimed, releases, sent, forwarder } = await world(
+      {},
+      {
+        // Closed after the transcript is committed, as shutdown shuts the asset service.
+        settle: async () => {
+          closed = true;
+        },
+        releasesClosed: () => closed,
+      },
+    );
+    await finishedRun(durable);
+
+    expect(await forwarder.reconcile(target)).toBe('signal-resent');
+
+    expect(order).toEqual(['settle', 'signal']);
+    expect([claimed, releases]).toEqual([[], []]);
+    expect(sent).toHaveLength(1);
   });
 
   it('releases at once, without claiming or committing, when the goal ended before the attempt was forwarded', async () => {
