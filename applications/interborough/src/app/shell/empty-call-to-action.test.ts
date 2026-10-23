@@ -68,7 +68,9 @@ const FLOWS = [
     view: 'runs',
     path: '/runs',
     creating: '/runs?view=start',
-    label: 'Start a run',
+    // The empty runs view points to a chat, which a caller without `workflows:read` can start; the
+    // engine's start flow is reached by its address.
+    label: null,
     heading: { role: 'heading', name: 'Start workflow' },
   },
   {
@@ -82,17 +84,20 @@ const FLOWS = [
 
 describe('an empty view’s call to action', () => {
   for (const flow of FLOWS) {
-    test(`opens the ${flow.view} creation flow`, async () => {
-      stubEmptyEngine();
-      landAt(flow.path);
-      const { container, findByRole } = mount();
+    const label = flow.label;
+    if (label !== null) {
+      test(`opens the ${flow.view} creation flow`, async () => {
+        stubEmptyEngine();
+        landAt(flow.path);
+        const { container, findByRole } = mount();
 
-      await fireEvent.click(await findByRole('link', { name: flow.label }));
+        await fireEvent.click(await findByRole('link', { name: label }));
 
-      expect(await findByRole(flow.heading.role, { name: flow.heading.name })).not.toBeNull();
-      const frame = container.querySelector(`.weft-view[data-view="${flow.view}"]`);
-      expect(frame?.getAttribute('data-state')).toBe('ready');
-    });
+        expect(await findByRole(flow.heading.role, { name: flow.heading.name })).not.toBeNull();
+        const frame = container.querySelector(`.weft-view[data-view="${flow.view}"]`);
+        expect(frame?.getAttribute('data-state')).toBe('ready');
+      });
+    }
 
     test(`shows the creation flow when ${flow.creating} is opened directly`, async () => {
       stubEmptyEngine();
@@ -127,7 +132,19 @@ describe('an empty view’s call to action', () => {
   }
 
   test('is the empty state’s own link, from the copy', () => {
-    expect(VIEW_COPY.runs.empty?.action?.href).toBe('/runs?view=start');
+    expect(VIEW_COPY.runs.empty?.action).toEqual({ label: 'Start a chat', href: '/chat/new' });
     expect(VIEW_COPY.schedules.empty?.action?.href).toBe('/schedules?create=1');
+  });
+
+  test('of the empty runs view is a chat, which a caller without the engine’s scope can start', async () => {
+    stubEmptyEngine();
+    landAt('/runs');
+    const { findByRole } = render(Harness, {
+      props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: [] },
+    });
+
+    const link = await findByRole('link', { name: 'Start a chat' });
+
+    expect(link.getAttribute('href')).toBe('/chat/new');
   });
 });

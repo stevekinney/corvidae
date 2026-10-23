@@ -298,6 +298,11 @@
     if (key === rereadFor) return;
     rereadFor = key;
     untrack(() => {
+      // A superseded approval keeps its review id, so what was read of it is out of date, and the
+      // run page's wait must read the approval it is at now.
+      for (const reviewId of decided.superseded) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.bureauReviews.detail(reviewId) });
+      }
       // A read the page could not make (a turn is going) is tried again at the next poll.
       void (async () => {
         // A read that threw is as unsuccessful as one that said no: the key is cleared for both, so

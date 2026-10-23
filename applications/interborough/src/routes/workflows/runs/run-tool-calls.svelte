@@ -10,10 +10,11 @@
    * whenever the set of waits changes (the key holds each open wait's review), because a decision
    * made elsewhere writes its result into the thread without changing the count of waits.
    */
+  import { ErrorState } from '@lostgradient/cinder';
   import { keepPreviousData, createQuery } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import ToolCalls from '../../chat/tool-calls.svelte';
@@ -57,6 +58,16 @@
   });
   const entries = $derived(toolCallsOfRun(task.id, thread.data ?? []));
   const questions = $derived(task.openWaits.filter((wait) => wait.kind === 'human-wait'));
+  // A tool approval is decided under its call. One whose call is not among the entries (the thread
+  // is still being read, failed to read, or does not hold the call) has no row to sit under, so it is
+  // shown on its own rather than lost, as the chat shows an approval with no call.
+  const unmatchedApprovals = $derived(
+    task.openWaits.filter(
+      (wait) =>
+        wait.kind === 'tool-approval' && !entries.some((entry) => entry.callId === wait.callId),
+    ),
+  );
+  const threadFailed = $derived(thread.isError && thread.data === undefined);
 </script>
 
 {#if entries.length > 0}
@@ -67,9 +78,20 @@
       {/each}
     {/snippet}
   </ToolCalls>
-{:else if questions.length === 0}
+{:else if threadFailed}
+  <ErrorState
+    title={TASK_COPY.toolCallsLoadFailed.title}
+    description={TASK_COPY.toolCallsLoadFailed.description}
+    headingLevel={3}
+    retryLabel={RETRY_LABEL}
+    onRetry={() => void thread.refetch()}
+  />
+{:else if questions.length === 0 && unmatchedApprovals.length === 0}
   <p class="ib-run__note">{TASK_COPY.noToolCalls}</p>
 {/if}
+{#each unmatchedApprovals as wait (wait.reviewId)}
+  <RunWait taskId={task.id} {wait} />
+{/each}
 {#each questions as wait (wait.reviewId)}
   <RunWait taskId={task.id} {wait} />
 {/each}

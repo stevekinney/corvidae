@@ -920,6 +920,10 @@ export const TASK_COPY = {
   noAnswerYet: 'The agent has not answered yet.',
   toolCallsHeading: 'Tool calls',
   noToolCalls: 'The agent has not used a tool.',
+  toolCallsLoadFailed: {
+    title: 'The tool calls could not be loaded',
+    description: 'The Bureau did not answer. Check that the host is running, then try again.',
+  },
   startedFromChat: 'Started from the chat',
   startedFromGoal: 'Started by the goal',
   runTitle: 'Run',
@@ -1190,8 +1194,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     loading: { title: 'Loading runs', description: 'Reading what your agents have run.' },
     empty: {
       title: 'No runs yet',
-      description: 'Nothing has run yet. Start a chat or a workflow to see it here.',
-      action: { label: 'Start a run', href: '/runs?view=start' },
+      description: 'Nothing has run yet. Start a chat to see its runs here.',
+      action: { label: 'Start a chat', href: '/chat/new' },
     },
     error: {
       title: 'Runs are unavailable',

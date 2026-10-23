@@ -81,6 +81,8 @@
     isOver: () => task.data !== undefined && isTerminalState(task.data.status),
     onElement: (element) => {
       taskEvents += 1;
+      // An approval gated again keeps its review id, so the waits are read again with the task.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.bureauReviews.details() });
       if (element.kind === 'task.snapshot') {
         const read = queryClient.getQueryData<TaskView>(detailKey);
         if (read !== undefined && read.status !== element.status) {

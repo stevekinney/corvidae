@@ -11,16 +11,20 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { RETRY_LABEL, TASK_COPY, VIEW_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
+import type { ChatContext } from '../../../lib/bureau-client.ts';
 import {
+  contextFixture,
   goalAttemptFixture,
   goalFixture,
   taskFixture,
+  toolApprovalFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
 import { StubFault } from '../../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
+  statusElement,
   type BureauWorld,
   type BureauWorldStub,
 } from '../../../lib/bureau-world.test-support.ts';
@@ -48,6 +52,10 @@ function open(
     scopes?: readonly AuthorizationScope[];
     /** Makes the Bureau fail to list goals for as long as this says so. */
     goalsFail?: () => boolean;
+    /** The sessions the Bureau holds, and how many it puts on one page. */
+    contexts?: readonly ChatContext[];
+    contextsPageSize?: number;
+    contextsFail?: () => boolean;
   } = {},
 ) {
   stub = installBureauWorld(emptyBureauWorld(options.world));
@@ -61,7 +69,16 @@ function open(
       nextOffset: offset + pageSize < goals.length ? offset + pageSize : null,
     };
   });
-  stub.on('bureau.contexts.list', () => ({ contexts: [], nextOffset: null }));
+  const contexts = options.contexts ?? [];
+  const contextsPageSize = options.contextsPageSize ?? 100;
+  stub.on('bureau.contexts.list', (params) => {
+    if (options.contextsFail?.()) throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
+    const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
+    return {
+      contexts: contexts.slice(offset, offset + contextsPageSize),
+      nextOffset: offset + contextsPageSize < contexts.length ? offset + contextsPageSize : null,
+    };
+  });
   stub.on('bureau.agents.list', () => ({ agents: [] }));
   landAt(path);
   return render(RouteOutletHarness, {
@@ -86,7 +103,10 @@ describe('the runs list', () => {
 
     await waitFor(() => expect(rowIds(container)).toEqual(['run-1']));
     expect(frameState(container)).toBe('ready');
-    expect(stub?.callsTo('bureau.tasks.list')[0]?.params).toEqual({ limit: 1 });
+    // The view's probe asks for one task; the list asks for its page.
+    expect(stub?.callsTo('bureau.tasks.list').map((call) => call.params)).toContainEqual({
+      limit: 1,
+    });
   });
 
   test('is not empty when the Bureau has a goal’s attempt and nothing else does', async () => {
@@ -147,6 +167,47 @@ describe('the runs list', () => {
         'echo',
       ]),
     );
+  });
+
+  test('is an error with a retry, and not a list of runs that lost their chats, when the sessions could not be read', async () => {
+    let failing = true;
+    const { container, findByRole } = open('/runs', {
+      world: { tasks: [taskFixture({ id: 'run-1', contextId: 'chat-1', status: 'completed' })] },
+      contexts: [contextFixture('chat-1', { title: 'Plan the week' })],
+      contextsFail: () => failing,
+    });
+
+    await findByRole('heading', { level: 2, name: TASK_COPY.loadFailed.title });
+    expect(rowIds(container)).toEqual([]);
+
+    failing = false;
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
+    await waitFor(() => expect(rowIds(container)).toEqual(['run-1']));
+    expect(container.textContent).toContain('Plan the week');
+  });
+
+  test('is an error with a retry when the goals could not be read, though the tasks were', async () => {
+    const { container, findByRole } = open('/runs', {
+      world: { tasks: [taskFixture({ id: 'run-1', status: 'completed' })] },
+      // The view's own probe asks first and is answered; the list's read after it fails.
+      goalsFail: () => (stub?.callsTo('bureau.goals.list').length ?? 0) > 1,
+    });
+
+    await findByRole('heading', { level: 2, name: TASK_COPY.loadFailed.title });
+    expect(rowIds(container)).toEqual([]);
+  });
+
+  test('names the chat of a run whose chat is past the first page of sessions', async () => {
+    const contexts = ['chat-0', 'chat-1', 'chat-2', 'chat-3', 'chat-4'].map((id) =>
+      contextFixture(id, { title: `Title of ${id}` }),
+    );
+    const { container } = open('/runs', {
+      world: { tasks: [taskFixture({ id: 'run-1', contextId: 'chat-4', status: 'completed' })] },
+      contexts,
+      contextsPageSize: 2,
+    });
+
+    await waitFor(() => expect(container.textContent).toContain('Title of chat-4'));
   });
 
   test('keeps Load more when what the pages hold is all narrowed out and the Bureau has more', async () => {
@@ -241,6 +302,25 @@ describe('a run’s page', () => {
     failing = false;
     await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await findByRole('heading', { level: 1, name: 'assistant' });
+  });
+
+  test('reads the waits again when the task’s stream reports something, because a superseded approval keeps its review id', async () => {
+    const waiting = taskFixture({
+      id: 'run-1',
+      status: 'input-required',
+      openWaits: [{ kind: 'tool-approval', reviewId: 'approval:run-1:call-1', callId: 'call-1' }],
+    });
+    const { findByRole } = open('/runs/run-1', {
+      world: { tasks: [waiting], reviews: [toolApprovalFixture()] },
+    });
+    await findByRole('heading', { level: 1, name: 'assistant' });
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.get').length).toBeGreaterThan(0));
+    await waitFor(() => expect(stub?.streams.length).toBeGreaterThan(0));
+    const before = stub?.callsTo('bureau.reviews.get').length ?? 0;
+
+    stub?.streams[0]?.push(statusElement('run-1', '5', 'input-required'));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.get').length).toBeGreaterThan(before));
   });
 
   test('is a run that was not found once the Bureau says the task was removed', async () => {

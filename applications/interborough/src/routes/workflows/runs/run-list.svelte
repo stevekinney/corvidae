@@ -10,7 +10,7 @@
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
-  import { listAgents, listContexts } from '../../../lib/bureau-client.ts';
+  import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listTasks, loadMoreTasks } from '../../../lib/bureau-tasks.ts';
   import { combinePages } from '../../../lib/combine-pages.ts';
@@ -78,7 +78,7 @@
   const chats = createQuery(
     () => ({
       queryKey: ['contexts', 'runs'] as const,
-      queryFn: ({ signal }) => listContexts({ limit: PAGE_SIZE }, { signal }),
+      queryFn: ({ signal }) => listAllContexts({ signal }),
       refetchInterval: REVIEW_POLL_MILLISECONDS,
       retry: false,
     }),
@@ -93,7 +93,7 @@
         (task) => task.id,
       ),
       goals: goals.data ?? [],
-      chats: chats.data?.contexts ?? [],
+      chats: chats.data ?? [],
     }),
   );
   const rows = $derived(filterRunRows(everyRun, filter, Date.now()));
@@ -144,7 +144,19 @@
     router.navigate(path);
   }
 
-  const failed = $derived(tasks.isError && tasks.data === undefined);
+  // A list built from what could be read would pass a missing goal or chat off as none: the runs
+  // of a goal would be gone and the runs of a chat would lose their origin. Any of the three
+  // failing with nothing cached is a failed list, and Retry reads the ones that failed.
+  const failed = $derived(
+    (tasks.isError && tasks.data === undefined) ||
+      (goals.isError && goals.data === undefined) ||
+      (chats.isError && chats.data === undefined),
+  );
+  function retry(): void {
+    if (tasks.isError) void tasks.refetch();
+    if (goals.isError) void goals.refetch();
+    if (chats.isError) void chats.refetch();
+  }
   const loading = $derived(tasks.isPending || goals.isPending || chats.isPending);
 </script>
 
@@ -202,7 +214,7 @@
       description={TASK_COPY.loadFailed.description}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
-      onRetry={() => void tasks.refetch()}
+      onRetry={retry}
     />
   {:else if rows.length === 0}
     <EmptyState

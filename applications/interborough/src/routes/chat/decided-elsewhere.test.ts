@@ -3,8 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
 
-const approval = (callId: string) =>
+const approval = (callId: string, round = 0) =>
   toolApprovalFixture({
+    round,
     approval: { ...toolApprovalFixture().approval, callId },
   });
 
@@ -14,7 +15,7 @@ describe('reviews decided somewhere else', () => {
     // The list is cached and shared with the navigation: it can predate the review a chat has
     // just raised, and says nothing about a decision.
     const read = seen.observe([], { shownCalls: ['call-1'], questionOpen: false });
-    expect(read).toEqual({ calls: [], questions: [] });
+    expect(read).toEqual({ calls: [], questions: [], superseded: [] });
     expect(decidedKey(read)).toBe('');
   });
 
@@ -53,5 +54,28 @@ describe('reviews decided somewhere else', () => {
     seen.clear();
 
     expect(seen.observe([], { shownCalls: [], questionOpen: true }).questions).toEqual([]);
+  });
+
+  test('an approval superseded at a new round is a change though its review and call are the same', () => {
+    const seen = new SeenReviews();
+    const shown = { shownCalls: ['call-1'], questionOpen: false };
+    seen.observe([approval('call-1', 0)], shown);
+
+    // The call was gated again: the same review id and call id, one round on.
+    const decided = seen.observe([approval('call-1', 1)], shown);
+
+    expect(decided.calls).toEqual(['call-1']);
+    expect(decided.superseded).toEqual(['approval:run-1:call-1']);
+    expect(decidedKey(decided)).toBe('call-1');
+    // It is reported at every read until the thread has been read for it.
+    expect(seen.observe([approval('call-1', 1)], shown).calls).toEqual(['call-1']);
+
+    seen.forget(decided);
+
+    // Read for, the new round is the approval now watched.
+    expect(seen.observe([approval('call-1', 1)], shown).calls).toEqual([]);
+    expect(seen.observe([approval('call-1', 2)], shown).superseded).toEqual([
+      'approval:run-1:call-1',
+    ]);
   });
 });
