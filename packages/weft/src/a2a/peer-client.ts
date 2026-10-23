@@ -225,10 +225,20 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
   return {
     async card(request) {
       const { card } = await resolveCard(request?.refresh === true);
-      return card;
+      // A detached copy: reading the card must never change what later requests do.
+      return Object.freeze({
+        ...card,
+        activeExtensions: Object.freeze([...card.activeExtensions]),
+      });
     },
-    async send(request) {
-      const { client, card } = await resolveCard(false);
+    async send(input) {
+      // The caller owns `input` and may change it while the card loads or authenticates.
+      const request = { ...input };
+      const current = await resolveCard(false);
+      const { client, card } = current;
+      const invalidate = (error: A2APeerError): void => {
+        if (STALE_CARD_CODES.has(error.code) && loaded === current) loaded = undefined;
+      };
       try {
         return await startPeerTask(
           {
@@ -247,6 +257,7 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
             acceptedOutputModes: ACCEPTED_OUTPUT_MODES,
             sleep: retryPolicy.sleep,
             classify: retryPolicy.classify,
+            onFailure: invalidate,
           },
           request,
         );
@@ -255,7 +266,7 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
         if (request.signal?.aborted === true) throw error;
         const classified = classifyPeerError(error);
         // A refusal can mean the peer changed since the card was cached; read the card again.
-        if (STALE_CARD_CODES.has(classified.code)) loaded = undefined;
+        invalidate(classified);
         throw classified;
       }
     },

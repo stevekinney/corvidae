@@ -52,9 +52,25 @@ function sizeOf(value: unknown): number {
   }
 }
 
+/** The most parts one artifact keeps, whatever their size. */
+export const MAX_PEER_ARTIFACT_PARTS = 256;
+
+function omitted(
+  mediaType: string,
+  filename: string,
+  reason: 'too-large' | 'binary',
+  remaining: number,
+): { part: A2APeerPart; size: number } {
+  // The placeholder keeps the peer's strings only while they fit the budget.
+  const size = mediaType.length + filename.length;
+  return size > remaining
+    ? { part: { kind: 'omitted', mediaType: '', filename: '', reason }, size: 0 }
+    : { part: { kind: 'omitted', mediaType, filename, reason }, size };
+}
+
 /**
  * Maps one wire part. Returns the mapped part and the size it counts against the artifact's
- * budget.
+ * budget: every string the part retains counts.
  */
 function mapPart(part: Part, remaining: number): { part: A2APeerPart; size: number } {
   const mediaType = part.mediaType;
@@ -64,38 +80,63 @@ function mapPart(part: Part, remaining: number): { part: A2APeerPart; size: numb
   switch (content.$case) {
     case 'text':
       return content.value.length > remaining
-        ? { part: { kind: 'omitted', mediaType, filename, reason: 'too-large' }, size: 0 }
+        ? omitted(mediaType, filename, 'too-large', remaining)
         : { part: { kind: 'text', text: content.value }, size: content.value.length };
     case 'data': {
       const size = sizeOf(content.value);
       return size > remaining
-        ? { part: { kind: 'omitted', mediaType, filename, reason: 'too-large' }, size: 0 }
+        ? omitted(mediaType, filename, 'too-large', remaining)
         : { part: { kind: 'data', data: content.value }, size };
     }
-    case 'url':
-      return { part: { kind: 'reference', url: content.value, mediaType, filename }, size: 0 };
+    case 'url': {
+      const size = content.value.length + mediaType.length + filename.length;
+      return size > remaining
+        ? omitted(mediaType, filename, 'too-large', remaining)
+        : { part: { kind: 'reference', url: content.value, mediaType, filename }, size };
+    }
     default:
-      return { part: { kind: 'omitted', mediaType, filename, reason: 'binary' }, size: 0 };
+      return omitted(mediaType, filename, 'binary', remaining);
   }
 }
 
-/** The content size of mapped parts, in the units {@link DEFAULT_PEER_ARTIFACT_LIMIT} counts. */
-function partsSize(parts: readonly A2APeerPart[]): number {
-  let total = 0;
-  for (const part of parts) {
-    if (part.kind === 'text') total += part.text.length;
-    else if (part.kind === 'data') total += sizeOf(part.data);
+function partSize(part: A2APeerPart): number {
+  switch (part.kind) {
+    case 'text':
+      return part.text.length;
+    case 'data':
+      return sizeOf(part.data);
+    case 'reference':
+      return part.url.length + part.mediaType.length + part.filename.length;
+    default:
+      return part.mediaType.length + part.filename.length;
   }
-  return total;
+}
+
+function headerSize(artifact: { artifactId: string; name: string; description: string }): number {
+  return artifact.artifactId.length + artifact.name.length + artifact.description.length;
+}
+
+/** What a mapped artifact has spent of its budget: its header strings and every part. */
+function artifactSize(artifact: A2APeerArtifact): number {
+  return artifact.parts.reduce((total, part) => total + partSize(part), headerSize(artifact));
 }
 
 /**
- * Maps a wire artifact, spending at most `limit - used` characters of content across its parts.
+ * Maps a wire artifact, spending at most `limit - used` characters across its parts and keeping
+ * at most {@link MAX_PEER_ARTIFACT_PARTS} parts including the `existingParts` already kept.
+ * Header strings are charged unless the update appends to an artifact that already paid them.
  */
-export function mapArtifact(artifact: Artifact, limit: number, used = 0): A2APeerArtifact {
-  let remaining = Math.max(0, limit - used);
+export function mapArtifact(
+  artifact: Artifact,
+  limit: number,
+  used = 0,
+  existingParts = 0,
+  chargeHeader = true,
+): A2APeerArtifact {
+  let remaining = Math.max(0, limit - used - (chargeHeader ? headerSize(artifact) : 0));
+  const room = Math.max(0, MAX_PEER_ARTIFACT_PARTS - existingParts);
   const parts: A2APeerPart[] = [];
-  for (const part of artifact.parts) {
+  for (const part of artifact.parts.slice(0, room)) {
     const mapped = mapPart(part, remaining);
     remaining -= mapped.size;
     parts.push(mapped.part);
@@ -132,7 +173,10 @@ export function foldArtifactUpdate(
   next[index] = append
     ? {
         ...existing,
-        parts: [...existing.parts, ...mapArtifact(update, limit, partsSize(existing.parts)).parts],
+        parts: [
+          ...existing.parts,
+          ...mapArtifact(update, limit, artifactSize(existing), existing.parts.length, false).parts,
+        ],
       }
     : mapArtifact(update, limit);
   return next;

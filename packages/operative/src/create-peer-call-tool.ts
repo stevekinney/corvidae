@@ -184,9 +184,6 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
 
       // Reading the card first means a peer this client must refuse never becomes a child.
       const card = await peer.card();
-      // A continuation supersedes the child that stopped at the question it answers.
-      if (params.taskId !== undefined)
-        interrupted.get(params.taskId)?.('continued by a later call');
       const childRunId = `peer-${crypto.randomUUID()}`;
       const controller = new AbortController();
       const signal =
@@ -269,6 +266,10 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
               remote(update.state, update.taskId, update.contextId),
             ),
         });
+        // The peer accepted the continuation, so it supersedes the child that stopped at the
+        // question it answers; until then that child keeps its way to cancel the task.
+        if (params.taskId !== undefined)
+          interrupted.get(params.taskId)?.('continued by a later call');
         identity = {
           peerName: remoteTask.provenance.agentName,
           cardUrl: remoteTask.provenance.cardUrl,

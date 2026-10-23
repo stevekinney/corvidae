@@ -37,6 +37,8 @@ export interface PeerTaskContext extends PeerRetryPolicy {
   readonly taskTimeoutMs: number;
   /** The most artifact content kept per artifact. */
   readonly artifactLimit: number;
+  /** Told of a failure that ends the wait for the task, so the client can drop a stale card. */
+  readonly onFailure?: ((error: A2APeerError) => void) | undefined;
 }
 
 type EventStream = AsyncGenerator<PeerStreamEvent, void, undefined>;
@@ -81,7 +83,7 @@ class PeerTaskRun implements A2APeerTask {
   constructor(context: PeerTaskContext, tracker: PeerTaskTracker) {
     this.context = context;
     this.tracker = tracker;
-    this.pollDelay = context.pollIntervalMs;
+    this.pollDelay = Math.min(context.pollIntervalMs, context.maxDelayMs);
   }
 
   get taskId(): string {
@@ -105,7 +107,7 @@ class PeerTaskRun implements A2APeerTask {
     if (this.context.streaming) {
       const first = await this.withRetry(async () => {
         const opened = this.context.client.sendMessageStream(request, this.callOptions());
-        const head = await opened.next();
+        const head = await this.boundedRead(opened);
         if (head.done === true) {
           throw new A2APeerError('protocol', 'The peer closed the stream without a response.');
         }
@@ -123,6 +125,32 @@ class PeerTaskRun implements A2APeerTask {
     }
     this.tracker.markHeadSeen();
     this.opened = true;
+  }
+
+  /**
+   * The first stream event, bounded by the task timeout: the request timeout ends once headers
+   * arrive, so a peer that never emits an event would otherwise hold `send()` open forever.
+   */
+  private async boundedRead(opened: EventStream): Promise<IteratorResult<PeerStreamEvent, void>> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new A2APeerError(
+            'timeout',
+            `The peer sent no first event within ${this.context.taskTimeoutMs} ms.`,
+          ),
+        );
+      }, this.context.taskTimeoutMs);
+    });
+    try {
+      return await Promise.race([opened.next(), expired]);
+    } catch (error) {
+      opened.return().catch(() => undefined);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Whether the first response has arrived, so the task has an identity to cancel. */
@@ -257,7 +285,10 @@ class PeerTaskRun implements A2APeerTask {
     if (this.follow.signal.aborted) return;
     const classified = this.context.classify(error);
     const recoverable = classified.retryable || classified.code === 'protocol';
-    if (this.stream === undefined || !recoverable) throw classified;
+    if (this.stream === undefined || !recoverable) {
+      this.context.onFailure?.(classified);
+      throw classified;
+    }
     this.closeStream();
   }
 

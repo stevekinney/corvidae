@@ -212,6 +212,24 @@ describe('createPeerCallTool', () => {
     },
   );
 
+  it('keeps the waiting child abortable when the continuation is not accepted', async () => {
+    const peer = fakePeer({ immediate: outcome('input-required') });
+    const { registry, call } = setup(peer);
+    await rejection(call({ message: 'find it' }));
+    const send = peer.client.send;
+    peer.client.send = () => Promise.reject(new Error('peer unreachable'));
+
+    await rejection(call({ message: 'the blue one', taskId: 'task-1', contextId: 'context-1' }));
+
+    const [first] = registry.children();
+    expect(first?.status).toBe('running');
+    peer.client.send = send;
+    registry.abortChild(first?.id ?? '', 'operator');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(registry.children()[0]?.status).toBe('aborted');
+    expect(peer.cancels).toEqual(['operator']);
+  });
+
   it('keeps an aborted waiting child aborted when a later call continues its task', async () => {
     const peer = fakePeer({ immediate: outcome('input-required') });
     const { registry, call } = setup(peer);
