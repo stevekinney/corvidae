@@ -297,7 +297,9 @@ export function deleteSurfacePart(surface: InteractiveSurface): Part {
   return {
     content: {
       $case: 'data' as const,
-      value: [{ version: A2UI_SPECIFICATION_VERSION, deleteSurface: { surfaceId: surface.surfaceId } }],
+      value: [
+        { version: A2UI_SPECIFICATION_VERSION, deleteSurface: { surfaceId: surface.surfaceId } },
+      ],
     },
     metadata: {
       mimeType: A2UI_MEDIA_TYPE,

@@ -778,7 +778,8 @@ export function createBureauA2ARequestHandler(
     shape: ProjectionShape,
     receipt?: Receipt,
   ): Promise<Task> {
-    return (await respondWithSurfaces(view, shape, receipt)).task;
+    const { task } = await respondWithSurfaces(view, shape, receipt);
+    return task;
   }
 
   /** {@link respondWith}, with the surfaces the response showed, for a stream's opening snapshot. */

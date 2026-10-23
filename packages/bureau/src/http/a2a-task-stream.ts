@@ -441,6 +441,9 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     options.buffer ?? A2A_STREAM_BUFFER,
   );
   let lastStatus = snapshotView.status;
+  // The state of the last status frame queued, which a surface frame repeats: `lastStatus` runs
+  // ahead of it while events wait to be mapped.
+  let sentState = snapshotView.status;
   const reconciler = createSurfaceReconciler(options.surfaces, shownInSnapshot);
   const stops: Array<() => void> = [];
   const abort = () => queue.end();
@@ -477,6 +480,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         if (isTerminal(view.status)) queue.end();
       } else if (lastStatus === 'submitted' && view.status !== 'submitted') {
         lastStatus = 'working';
+        sentState = 'working';
         queue.push({ event: statusUpdate(view, a2aStateOf('working'), view.updatedAt) });
       }
     });
@@ -575,7 +579,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           // and each revision above what was sent goes out once, under this event's cursor.
           mapping = chained(mapping, async () => {
             const view = (await bureau.tasks.get(taskId)) ?? initial;
-            const frame = await reconciler.reconcile(view, lastStatus, event.emittedAtMs);
+            const frame = await reconciler.reconcile(view, sentState, event.emittedAtMs);
             if (frame !== undefined) queue.push({ event: frame, cursor: event.cursor });
           }).catch((error: unknown) => queue.fail(error));
           return;
@@ -598,10 +602,13 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           const reply = status.status === 'completed' ? await options.replyOf(view) : undefined;
           const events = eventsOf(view, status, reply, await formsOf(bureau, view));
           // One last reconcile before the stream ends, so a surface the task froze or closed with
-          // its end is delivered; it follows the status, which is what the client already holds.
-          const closing = endsTask
-            ? await reconciler.reconcile(view, status.status, status.emittedAtMs)
-            : undefined;
+          // its end is delivered. It goes out ahead of the terminal status, which stays the last
+          // frame of the stream, and repeats the state the client already holds.
+          if (endsTask) {
+            const closing = await reconciler.reconcile(view, sentState, status.emittedAtMs);
+            if (closing !== undefined) queue.push({ event: closing });
+          }
+          sentState = status.status;
           for (const [index, mapped] of events.entries()) {
             // Only the last event of a durable one carries its cursor, so a resume never skips
             // the part of it a reader had not received.
@@ -609,10 +616,9 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
             queue.push({
               event: mapped,
               ...(last ? { cursor: event.cursor } : {}),
-              ends: endsTask && last && closing === undefined,
+              ends: endsTask && last,
             });
           }
-          if (closing !== undefined) queue.push({ event: closing, ends: true });
         }).catch((error: unknown) => queue.fail(error));
       },
       {
