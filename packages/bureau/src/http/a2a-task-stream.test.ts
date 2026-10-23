@@ -195,7 +195,8 @@ describe('followTask', () => {
     });
     const stream = follow(bureau);
     const opening = await stream.next();
-    const task = (opening.value?.payload as { value: { metadata: Record<string, any> } }).value;
+    const payload = opening.value?.payload as { value: { metadata: Record<string, any> } };
+    const task = payload.value;
     expect(Object.values(task.metadata)[0]?.cursor).toBe('4');
     await stream.return(undefined);
   });
@@ -214,9 +215,10 @@ describe('followTask', () => {
 
     const read = await second;
     const rest = await drain(stream);
-    const states = [read.value, ...rest].map(
-      (event) => (event?.payload as { value: { status?: { state: number } } }).value.status?.state,
-    );
+    const states = [read.value, ...rest].map((event) => {
+      const payload = event?.payload as { value: { status?: { state: number } } } | undefined;
+      return payload?.value.status?.state;
+    });
     // The review opening and its closing both arrive ahead of the failure that ends the stream.
     expect(states.length).toBe(3);
   });

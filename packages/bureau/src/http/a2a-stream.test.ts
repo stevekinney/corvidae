@@ -321,7 +321,8 @@ describe('SubscribeToTask', () => {
             rpc('SubscribeToTask', { id: parked.id }, { 'Last-Event-ID': 'not a cursor' }),
           ),
         );
-        expect((await ignored.next())?.data.result.task.id).toBe(parked.id);
+        const ignoredOpening = await ignored.next();
+        expect(ignoredOpening?.data.result.task.id).toBe(parked.id);
         await ignored.cancel();
 
         const metadata = again?.data.result.task.metadata[DURABLE_HISTORY_EXTENSION_URI];

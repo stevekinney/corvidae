@@ -206,9 +206,8 @@ describe('a send whose deadline has already passed', () => {
       const again = await run.retry(message);
 
       expect(again.id).toBe(retried.id);
-      const expired = (
-        await run.bureau.tasks.enumerate({ agentName: 'asker', limit: 50, offset: 0 })
-      ).tasks.filter((task) => task.finishReason === 'deadline-exceeded');
+      const listed = await run.bureau.tasks.enumerate({ agentName: 'asker', limit: 50, offset: 0 });
+      const expired = listed.tasks.filter((task) => task.finishReason === 'deadline-exceeded');
       expect(expired.map((task) => task.id)).toEqual([retried.id]);
     });
   });
