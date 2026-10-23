@@ -90,14 +90,19 @@ export function createClient(dependencies: LinearDependencies = {}): LinearClien
   };
 }
 
-/** Linear rewrites Markdown (escapes, list markers, spacing), so writes are compared in this form. */
+/** Linear rewrites Markdown (escapes, list markers, table rules, spacing), so writes are compared in this form. */
 export function normalizeMarkdown(text: string): string {
-  return text
-    .replace(/ /g, ' ')
-    .replace(/^(\s*)[*+] /gm, '$1- ')
-    .replace(/\\(?=[^A-Za-z0-9\s])/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    text
+      .replace(/ /g, ' ')
+      .replace(/^(\s*)[*+] /gm, '$1- ')
+      // Table rule rows: Linear shortens `---` to `--`, so every dash run becomes one dash.
+      .replace(/^[\s|:-]*-[\s|:-]*$/gm, (row) => row.replace(/-+/g, '-'))
+      .replace(/[ \t]*\|[ \t]*/g, '|')
+      .replace(/\\(?=[^A-Za-z0-9\s])/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 function firstLine(text: string, limit = 120): string {
