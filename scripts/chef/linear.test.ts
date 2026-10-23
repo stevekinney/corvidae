@@ -370,6 +370,12 @@ describe('normalizeMarkdown tables', () => {
     );
   });
 
+  test('leaves pipe spacing alone outside table rows', () => {
+    expect(normalizeMarkdown('const label = "A | B";')).not.toBe(
+      normalizeMarkdown('const label = "A|B";'),
+    );
+  });
+
   test('still tells a changed word apart', () => {
     expect(normalizeMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |')).not.toBe(
       normalizeMarkdown('| a | b |\n| -- | -- |\n| 1 | 3 |'),

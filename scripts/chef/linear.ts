@@ -90,15 +90,29 @@ export function createClient(dependencies: LinearDependencies = {}): LinearClien
   };
 }
 
+/**
+ * Normalizes a Markdown table row, and returns any other line unchanged. A table row, trimmed,
+ * starts and ends with a pipe or is a delimiter row (only pipes, dashes, colons and spaces, with
+ * a pipe and a dash). Linear shortens a delimiter's `---` to `--` and re-pads cells, so a
+ * delimiter's dash runs become one dash and the spacing around every pipe is dropped.
+ */
+function normalizeTableRow(line: string): string {
+  const trimmed = line.trim();
+  const delimiter = /^[\s|:-]*-[\s|:-]*$/.test(trimmed) && trimmed.includes('|');
+  const row = trimmed.length > 1 && trimmed.startsWith('|') && trimmed.endsWith('|');
+  if (!delimiter && !row) return line;
+  const cells = delimiter ? trimmed.replace(/-+/g, '-') : trimmed;
+  return cells.replace(/[ \t]*\|[ \t]*/g, '|');
+}
+
 /** Linear rewrites Markdown (escapes, list markers, table rules, spacing), so writes are compared in this form. */
 export function normalizeMarkdown(text: string): string {
   return (
     text
       .replace(/ /g, ' ')
       .replace(/^(\s*)[*+] /gm, '$1- ')
-      // Table delimiter rows only (they contain a pipe; a bare `---` horizontal rule is left alone): Linear shortens `---` to `--`, so every dash run becomes one dash.
-      .replace(/^(?=[^|\n]*\|)[\s|:-]*-[\s|:-]*$/gm, (row) => row.replace(/-+/g, '-'))
-      .replace(/[ \t]*\|[ \t]*/g, '|')
+      // Table normalization applies to table rows only; every other line is compared as written.
+      .replace(/^.*$/gm, normalizeTableRow)
       .replace(/\\(?=[^A-Za-z0-9\s])/g, '')
       .replace(/\s+/g, ' ')
       .trim()
