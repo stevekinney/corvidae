@@ -1,4 +1,4 @@
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -13,6 +13,7 @@ import {
   seamStorage,
 } from './test/session-input-fixtures';
 import type { BureauDiagnostic } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * COR-1476 — `submitSessionInput` writes the marker, commits the admission,
@@ -30,18 +31,21 @@ const input = { id: 'input-x', principal: 'alice', deliveryMode: 'steer' as cons
 async function finishedRunWithHeldTerminalWrite() {
   const seam = seamStorage(new MemoryStorage());
   const diagnostics: BureauDiagnostic[] = [];
-  const bureau = await createBureau({
-    agents: {},
-    generate: async () => ({ content: 'answer', toolCalls: [] }),
-    toolbox: createToolbox([]),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async () => ({ content: 'answer', toolCalls: [] }),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage: seam.storage,
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
   });
   const held = seam.holdWrite(savesSessionAs('completed'));
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'First',
     principal: 'alice',
     maximumSteps: 1,
@@ -117,22 +121,25 @@ describe('submitSessionInput marks the session again once its admission commits 
     const seam = seamStorage(real);
     const started = deferred();
     const release = deferred();
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        started.resolve();
-        await release.promise;
-        return { content: 'answer', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            started.resolve();
+            await release.promise;
+            return { content: 'answer', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([]),
       storage: seam.storage,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -165,22 +172,25 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
     const seam = seamStorage(new MemoryStorage());
     const started = deferred();
     const diagnostics: BureauDiagnostic[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        started.resolve();
-        return new Promise<never>(() => {});
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            started.resolve();
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([]),
       storage: seam.storage,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
     });
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -235,21 +245,24 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
   it('leaves the input admitted for the run to deliver', async () => {
     const started = deferred();
     const release = deferred();
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        started.resolve();
-        await release.promise;
-        return { content: 'answer', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            started.resolve();
+            await release.promise;
+            return { content: 'answer', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([]),
       storage: new MemoryStorage(),
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -267,21 +280,24 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
 /** A bureau whose runs park in `generate`, each signalling once it has started. */
 async function parkingBureau() {
   const starts: Array<() => void> = [];
-  const bureau = await createBureau({
-    agents: {},
-    generate: async () =>
-      new Promise<never>(() => {
-        starts.shift()?.();
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async () =>
+          new Promise<never>(() => {
+            starts.shift()?.();
+          }),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
       }),
-    toolbox: createToolbox([]),
+    },
     storage: new MemoryStorage(),
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
   });
   const startRun = async (request: { message: string; sessionId?: string }) => {
     const started = deferred();
     starts.push(started.resolve);
-    const run = await bureau.createRun({ agentName: 'bureau', ...request, principal: 'alice' });
+    const run = await bureau.createRun({ agentName: 'default', ...request, principal: 'alice' });
     await started.promise;
     return run;
   };

@@ -107,13 +107,17 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
     const catalog = await skillCatalogOnDisk();
     const executions: string[] = [];
     const bureau = await harness.open({
-      generate: activateThenPing(),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: pingToolbox(executions),
+      agents: {
+        default: createAgent({
+          generate: activateThenPing(),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
+          toolbox: pingToolbox(executions),
+        }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'activate, then ping' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'activate, then ping' });
     const recorded = await pollUntil(async () => {
       const session = await bureau.getSession(run.sessionId);
       const messages = session === undefined ? [] : getMessages(session.conversationHistory);
@@ -174,7 +178,7 @@ describe('a run whose recorded skills cannot be verified (COR-1628)', () => {
       toolbox: pingToolbox(executions),
     });
     const runRuntime = await runtime.createRunRuntime(
-      { agentName: 'bureau', message: 'Hello', sessionId: 'unverifiable-skill-session' },
+      { agentName: 'default', message: 'Hello', sessionId: 'unverifiable-skill-session' },
       {
         liveStreaming: false,
         initialActiveSkillRecords: [
@@ -221,7 +225,7 @@ describe('a run whose stored skill fails recovery (COR-1628)', () => {
       skills: { catalog: discovered },
     });
     const runRuntime = await runtime.createRunRuntime(
-      { agentName: 'bureau', message: 'Hello', sessionId: 'tampered-skill-session' },
+      { agentName: 'default', message: 'Hello', sessionId: 'tampered-skill-session' },
       { liveStreaming: false, initialActiveSkillRecords: tampered },
     );
     // Recovery runs in the first step's `prepareStep`, which every step awaits.
@@ -244,21 +248,25 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     const executions: string[] = [];
     let reachedLaterStep = false;
     const first = await harness.open({
-      generate: activateThenPing(
-        (context) =>
-          new Promise((_resolve, reject) => {
-            reachedLaterStep = true;
-            context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
-              once: true,
-            });
-          }),
-      ),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: pingToolbox(executions),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: activateThenPing(
+            (context) =>
+              new Promise((_resolve, reject) => {
+                reachedLaterStep = true;
+                context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+                  once: true,
+                });
+              }),
+          ),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
+          toolbox: pingToolbox(executions),
+        }),
+      },
     });
-    const run = await first.createRun({ agentName: 'bureau', message: 'activate, then ping' });
+    const run = await first.createRun({ agentName: 'default', message: 'activate, then ping' });
     await pollForTime(
       async () =>
         reachedLaterStep && (await skillsRecorded(first, run.sessionId)) ? true : undefined,
@@ -270,13 +278,17 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     // The process "crashes": a second Bureau recovers the run from the same store.
     const replayed: Array<{ outcome: string; code?: string; content: unknown } | undefined> = [];
     const recovered = await harness.open({
-      generate: activateThenPing(async (context) => {
-        replayed.push(resultOf(getMessages(context.conversation.current), 'ping-1'));
-      }),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: pingToolbox(executions),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: activateThenPing(async (context) => {
+            replayed.push(resultOf(getMessages(context.conversation.current), 'ping-1'));
+          }),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
+          toolbox: pingToolbox(executions),
+        }),
+      },
     });
     await pollUntil(
       () => (replayed.length > 0 ? true : undefined),
@@ -391,12 +403,16 @@ async function playScript(path: RunPath, script: ScriptedCall[][]): Promise<Scri
     await agent.run('play the script').result();
   } else {
     const bureau = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog },
-      toolbox: hostToolbox(executions),
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: createAgentSkills({ catalog }),
+          toolbox: hostToolbox(executions),
+        }),
+      },
     });
-    await bureau.createRun({ agentName: 'bureau', message: 'play the script' });
+    await bureau.createRun({ agentName: 'default', message: 'play the script' });
     await finished.promise;
   }
   return { toolsByStep, results, executions };
@@ -526,7 +542,7 @@ describe('a run whose stored skill fails recovery refuses the lifecycle tools (C
       skills: { catalog },
     });
     const runRuntime = await runtime.createRunRuntime(
-      { agentName: 'bureau', message: 'Hello', sessionId: 'tampered-lifecycle-session' },
+      { agentName: 'default', message: 'Hello', sessionId: 'tampered-lifecycle-session' },
       { liveStreaming: false, initialActiveSkillRecords: tampered },
     );
     const conversation = new Conversation();

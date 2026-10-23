@@ -4,7 +4,7 @@
  * the task's cleanup evidence.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';
@@ -27,10 +27,11 @@ const parks: GenerateFunction = ({ signal }) =>
 function open(path: ReturnType<typeof createSqliteStorageFixture>['configuration']) {
   return createBureau<AgentDefinitions>({
     id: 'surface-bureau',
-    agents: { worker: createAgent({ generate: parks }) },
+    agents: {
+      worker: createAgent({ generate: parks }),
+    },
     storage: path,
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 

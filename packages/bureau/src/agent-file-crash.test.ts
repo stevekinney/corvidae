@@ -12,7 +12,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
@@ -32,6 +31,7 @@ import {
   OTHER_MODEL,
 } from './testing/agent-file-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'agent-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -94,7 +94,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
 
     const calls: Call[] = [];
     bureau = await scope.phase('boot', () =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         agents: {},
         agentDirectory: agents,
         // The tool catalog is the deployment's, so it is the same after the restart.
@@ -111,7 +111,6 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
             });
             return { content: 'resumed', toolCalls: [] };
           },
-        stopWhen: stopWhen.noToolCalls(),
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: {
@@ -201,12 +200,11 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       const yearOn = createManualRuntimeServices({
         origin: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString(),
       });
-      bureau = await createBureau({
+      bureau = await createBureau<AgentDefinitions>({
         agents: {},
         agentDirectory: agents,
         agentTools: { 'lookup-order': lookupTool },
         resolveAgentGenerate: () => async () => ({ content: 'unused', toolCalls: [] }),
-        stopWhen: stopWhen.noToolCalls(),
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },

@@ -29,6 +29,8 @@ function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
 }
 
+const EFFECTIVE_MODEL = { provider: 'anthropic', model: 'claude-test' } as const;
+
 const disposals: Array<() => Promise<void>> = [];
 
 async function disposeAll(): Promise<void> {
@@ -44,7 +46,7 @@ afterEach(disposeAll);
  * Builds a harness, runs its `worker` agent to completion with an
  * `EventRecorder` attached to the run's own event stream, and assembles a
  * `ReproductionArtifact` from it. `overrides` lets a caller pin (or omit)
- * `runtime`/`provider` to exercise the seed and effective-model fields.
+ * `runtime` to exercise the seed fields.
  *
  * The catalog agent is constructed with the SAME `runtime` the harness
  * itself is given — `createAgent` resolves `options.runtime ??
@@ -75,10 +77,8 @@ async function runScriptedCase(
   const harness = await createBureauTestHarness({
     agents: {
       worker: createAgent({ name: 'worker', generate: mockGenerate('worker done'), runtime }),
+      default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
     },
-    generate: mockGenerate(),
-    toolbox: createToolbox([]),
-    provider: { provider: 'anthropic', model: 'claude-test' },
     storage,
     ...overrides,
     runtime,
@@ -101,6 +101,7 @@ async function runScriptedCase(
   await harness.runtime.deferred.drain();
 
   const artifact = await assembleReproductionArtifact(harness, recorder, {
+    effectiveModel: EFFECTIVE_MODEL,
     terminalResult,
     cleanupReport,
   });
@@ -126,10 +127,9 @@ async function assembleDeterministicCase(
 ): Promise<ReproductionArtifact> {
   const storage = createMemoryStorageFixture();
   const harness = await createBureauTestHarness({
-    agents: {},
-    generate: mockGenerate(),
-    toolbox: createToolbox([]),
-    provider: { provider: 'anthropic', model: 'claude-test' },
+    agents: {
+      default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+    },
     storage,
     // A fixed identifierSeed, not the generated (process-unique) default —
     // this case's own byte-identical-serialization guarantee (below) needs
@@ -145,6 +145,7 @@ async function assembleDeterministicCase(
 
   const recorder = createEventRecorder(harness.runtime);
   return assembleReproductionArtifact(harness, recorder, {
+    effectiveModel: EFFECTIVE_MODEL,
     terminalResult: { output: 'ok', usage: { totalTokens: 12 } },
     cleanupReport,
   });
@@ -183,10 +184,9 @@ describe('assembleReproductionArtifact', () => {
   it('redacts a privileged value out of terminalResult so it never appears in JSON.stringify(artifact)', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
-      provider: { provider: 'anthropic', model: 'claude-test' },
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       storage,
     });
     disposals.push(async () => {
@@ -196,6 +196,7 @@ describe('assembleReproductionArtifact', () => {
 
     const recorder = createEventRecorder(harness.runtime);
     const artifact = await assembleReproductionArtifact(harness, recorder, {
+      effectiveModel: EFFECTIVE_MODEL,
       terminalResult: { output: 'ok', apiKey: 'super-secret-value-should-not-leak' },
       cleanupReport: { status: 'completed' },
     });
@@ -268,35 +269,10 @@ describe('assembleReproductionArtifact', () => {
   });
 
   // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
-  it("reads effectiveModel from the harness bureau's configured provider", async () => {
+  it('records the effectiveModel the caller names, since no Bureau-wide provider holds one', async () => {
     const { artifact } = await runScriptedCase();
 
-    expect(artifact.effectiveModel).toEqual({ provider: 'anthropic', model: 'claude-test' });
-  });
-
-  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
-  it('throws rather than inventing a provider/model when the harness has no configured provider', async () => {
-    const storage = createMemoryStorageFixture();
-    const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
-      storage,
-    });
-    disposals.push(async () => {
-      await harness.bureau.dispose();
-      await storage.dispose();
-    });
-    const recorder = createEventRecorder(harness.runtime);
-
-    expect(
-      await throwingRejectionOf(
-        assembleReproductionArtifact(harness, recorder, {
-          terminalResult: undefined,
-          cleanupReport: { status: 'completed' },
-        }),
-      ),
-    ).toThrow(/no configured `provider`/);
+    expect(artifact.effectiveModel).toEqual(EFFECTIVE_MODEL);
   });
 
   // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
@@ -326,10 +302,9 @@ describe('assembleReproductionArtifact', () => {
   it('bypasses sourceRevision/packageVersions discovery when an explicit environment is supplied (AB-264)', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
-      provider: { provider: 'anthropic', model: 'claude-test' },
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       storage,
     });
     disposals.push(async () => {
@@ -341,7 +316,11 @@ describe('assembleReproductionArtifact', () => {
     const artifact = await assembleReproductionArtifact(
       harness,
       recorder,
-      { terminalResult: undefined, cleanupReport: { status: 'completed' } },
+      {
+        effectiveModel: EFFECTIVE_MODEL,
+        terminalResult: undefined,
+        cleanupReport: { status: 'completed' },
+      },
       {
         sourceRevision: 'explicit-revision-not-a-sha',
         packageVersions: { 'explicit-package-one': '1.2.3', 'explicit-package-two': '4.5.6' },

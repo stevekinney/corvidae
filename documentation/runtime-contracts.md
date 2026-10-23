@@ -82,7 +82,7 @@ The following complete example creates an in-memory Bureau, starts a run with a 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
 import { createTool, createToolbox } from 'armorer';
-import { stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
 import { z } from 'zod';
 
 const toolStarted = Promise.withResolvers<void>();
@@ -101,20 +101,27 @@ const waitForRelease = createTool({
 });
 
 const bureau = await createBureau({
-  agents: {},
-  generate: async () => {
-    generationCalls += 1;
-    return generationCalls === 1
-      ? { content: 'waiting', toolCalls: [{ name: 'wait-for-release', arguments: {} }] }
-      : { content: 'finished', toolCalls: [] };
+  agents: {
+    worker: createAgent({
+      generate: async () => {
+        generationCalls += 1;
+        return generationCalls === 1
+          ? { content: 'waiting', toolCalls: [{ name: 'wait-for-release', arguments: {} }] }
+          : { content: 'finished', toolCalls: [] };
+      },
+      toolbox: createToolbox([waitForRelease]),
+      stopWhen: stopWhen.noToolCalls(),
+    }),
   },
-  toolbox: createToolbox([waitForRelease]),
   storage: { type: 'memory' },
-  stopWhen: stopWhen.noToolCalls(),
 });
 
 try {
-  const run = await bureau.createRun({ message: 'start', principal: 'operator-1' });
+  const run = await bureau.createRun({
+    agentName: 'worker',
+    message: 'start',
+    principal: 'operator-1',
+  });
   await toolStarted.promise;
   const pause = await bureau.submitSteeringCommand(run.sessionId, {
     id: 'pause-1',

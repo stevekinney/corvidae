@@ -60,7 +60,7 @@ function parksThenAnswers(): GenerateFunction {
 }
 
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'bureau', message: 'park', principal });
+  const run = await opened.bureau.createRun({ agentName: 'default', message: 'park', principal });
   await waitForCondition(
     () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
     'the run never parked',
@@ -80,7 +80,7 @@ describe('bureau.tasks.events', () => {
       { generate: async () => ({ content: 'ok', toolCalls: [] }) },
       async (opened) => {
         const run = await opened.bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go',
           principal: OWNER.alice,
         });
@@ -142,7 +142,7 @@ describe('bureau.tasks.events', () => {
     };
     await withBureau({ generate, toolbox }, async (opened) => {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: OWNER.alice,
       });
@@ -224,7 +224,7 @@ describe('bureau.tasks.events', () => {
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await opened.bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'charge',
           principal: OWNER.alice,
         });
@@ -289,7 +289,7 @@ describe('bureau.tasks.events', () => {
   it('answers an ephemeral Bureau, which keeps no durable history, as an unsupported capability', async () => {
     await withBureau({ durableHistory: false }, async (opened) => {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: OWNER.alice,
       });

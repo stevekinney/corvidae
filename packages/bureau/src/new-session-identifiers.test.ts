@@ -10,6 +10,7 @@ import {
   createMockGenerate,
   createSessionStore,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
@@ -24,6 +25,7 @@ import {
   workerAgent,
 } from './testing/goal-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const open: Bureau[] = [];
 
@@ -32,17 +34,21 @@ afterEach(async () => {
 });
 
 async function boot() {
-  const bureau = await createBureau({
-    agents: { worker: workerAgent(hangUntilAborted) },
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      worker: workerAgent(hangUntilAborted),
+      default: createAgent({
+        generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     validators: [createCheckValidator()],
-    generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
-    toolbox: createToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
-  const typed = bureau as unknown as Bureau;
+  const typed = bureau;
   open.push(typed);
   return typed;
 }
@@ -54,7 +60,7 @@ describe('a session id a browser would resolve away', () => {
     const bureau = await boot();
 
     const error = await bureau
-      .createRun({ agentName: 'bureau', message: 'hello', sessionId })
+      .createRun({ agentName: 'default', message: 'hello', sessionId })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
@@ -78,7 +84,11 @@ describe('a session id a browser would resolve away', () => {
   it('is still free when it only contains dots', async () => {
     const bureau = await boot();
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'hello', sessionId: '...' });
+    const run = await bureau.createRun({
+      agentName: 'default',
+      message: 'hello',
+      sessionId: '...',
+    });
 
     expect(run.sessionId).toBe('...');
   });
@@ -107,16 +117,20 @@ function countingSessionReads() {
 }
 
 async function bootOver(storage: Storage) {
-  const bureau = await createBureau({
-    agents: { worker: workerAgent(hangUntilAborted) },
-    generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
-    toolbox: createToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      worker: workerAgent(hangUntilAborted),
+      default: createAgent({
+        generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage,
     durableExecution: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
-  const typed = bureau as unknown as Bureau;
+  const typed = bureau;
   open.push(typed);
   return typed;
 }
@@ -131,7 +145,7 @@ describe('a session that already holds an id a browser would resolve away', () =
       await createSessionStore(textValueStore(storage)).save(
         createAgentSession({
           id: sessionId,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: sessionId }),
           metadata: {},
         }),
@@ -139,7 +153,7 @@ describe('a session that already holds an id a browser would resolve away', () =
       const bureau = await bootOver(storage);
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hello again',
         sessionId,
       });

@@ -13,12 +13,13 @@
  * and has no bureau-managed run id for a subscriber to name, so it gets no
  * feed; a caller holding that handle already has the `AgentRun` itself.
  */
-import { type GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction, createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import type { BureauEventEnvelope } from './bureau-event-feed.ts';
 import { createBureau } from './create-bureau';
 import { waitForCondition, waitForRunState } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CANARY = 'ModelOutputCanary';
 
@@ -27,9 +28,12 @@ function createMockGenerate(content = 'Done.'): GenerateFunction {
 }
 
 async function buildBureau(content?: string) {
-  return createBureau({
-    agents: {},
-    generate: content === undefined ? createMockGenerate() : createMockGenerate(content),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: content === undefined ? createMockGenerate() : createMockGenerate(content),
+      }),
+    },
   });
 }
 
@@ -37,7 +41,7 @@ describe('a bureau’s own event feed', () => {
   it('records the events it dispatches, without being pumped by a host', async () => {
     const bureau = await buildBureau();
     try {
-      await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      await bureau.createRun({ agentName: 'default', message: 'hello' });
 
       const seen: BureauEventEnvelope[] = [];
       for await (const envelope of bureau.eventFeed.feed.replay()) seen.push(envelope);
@@ -55,10 +59,11 @@ describe('a bureau’s own event feed', () => {
   });
 
   it('takes its identity from options when one is supplied', async () => {
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'bureau-under-test',
-      agents: {},
-      generate: createMockGenerate(),
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
     });
     try {
       expect(bureau.id).toBe('bureau-under-test');
@@ -89,7 +94,7 @@ describe('a bureau’s own event feed', () => {
     // Wait for the subscription to finish replay and reach the live phase —
     // `subscribe` awaits a tail snapshot and drains replay first, so a bare
     // microtask yield would test a different thing.
-    const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+    const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
     await waitForRunState(bureau, summary.id);
     await waitForCondition(() => seen.length > 0, 'the watcher never received an event');
 
@@ -115,7 +120,7 @@ describe('the run feeds a bureau owns', () => {
   it('registers a feed for a run it creates and fills it from the run', async () => {
     const bureau = await buildBureau();
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       const runFeed = bureau.runEventFeeds.get(summary.id);
@@ -147,7 +152,7 @@ describe('the run feeds a bureau owns', () => {
         observed.push({ runId, feedPresent: bureau.runEventFeeds.get(runId) !== undefined });
       });
 
-      await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      await bureau.createRun({ agentName: 'default', message: 'hello' });
 
       expect(observed.length).toBeGreaterThan(0);
       for (const entry of observed) {
@@ -164,7 +169,7 @@ describe('the run feeds a bureau owns', () => {
     // completion, so a terminal run's log is intact and replayable.
     const bureau = await buildBureau();
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       const runFeed = bureau.runEventFeeds.get(summary.id);
@@ -188,14 +193,17 @@ describe('the run feeds a bureau owns', () => {
     // which carries the finish reason. A feed detached at `run.error` would
     // end one event early, and a client waiting for the terminal event of a
     // failed run would wait for one that was never recorded.
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        throw new Error('provider unavailable');
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            throw new Error('provider unavailable');
+          },
+        }),
       },
     });
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       const runFeed = bureau.runEventFeeds.get(summary.id);
@@ -213,7 +221,7 @@ describe('the run feeds a bureau owns', () => {
   it('reaps the feed when the run is deleted, ending a live reader', async () => {
     const bureau = await buildBureau();
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
       const runFeed = bureau.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
@@ -245,7 +253,7 @@ describe('the run feeds a bureau owns', () => {
     // reaches the transcript frames and never an `events:read` subscriber.
     const bureau = await buildBureau(CANARY);
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
       const runFeed = bureau.runEventFeeds.get(summary.id);
 
@@ -271,9 +279,10 @@ describe('the event-feed pump’s isolation', () => {
     // leaves a run launched but never registered. Recording an event must
     // not be able to break the thing it records.
     const diagnostics: Array<{ scope: string; message: string }> = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
       onDiagnostic: (diagnostic) => {
         diagnostics.push({ scope: diagnostic.scope, message: diagnostic.message });
       },
@@ -285,7 +294,7 @@ describe('the event-feed pump’s isolation', () => {
         throw new Error('feed exploded');
       };
 
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       // The run still ran, and the failure was reported rather than swallowed.
@@ -303,9 +312,10 @@ describe('the event-feed pump’s isolation', () => {
     // some caller's bounded wait gives up. This asserts the guard holds: a
     // feed that throws on every event costs the events, not the run.
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
       onDiagnostic: (diagnostic) => {
         diagnostics.push(diagnostic.scope);
       },
@@ -326,7 +336,7 @@ describe('the event-feed pump’s isolation', () => {
         poisoned = true;
       });
 
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       expect(poisoned).toBe(true);
 
       // Settles rather than hanging — the whole point.

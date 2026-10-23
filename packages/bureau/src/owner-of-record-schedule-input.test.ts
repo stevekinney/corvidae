@@ -8,12 +8,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -42,14 +43,17 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         runtime.disposeStorage?.();
       }
 
-      const bureau = await createBureau({
-        agents: {},
-        generate,
-        toolbox: createToolbox([], { context: {} }),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate,
+            toolbox: createToolbox([], { context: {} }),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
       try {
         expect(await bureau.getOwner({ kind: 'schedule', id: 'heartbeat' })).toBeUndefined();

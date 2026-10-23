@@ -4,12 +4,13 @@
  * A second Bureau on the same storage replays the deletion, with an empty in-memory
  * map: everything it knows about the owner it reads back from the key-value store.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const SIDE_RECORD_PREFIX = 'session-deletion-owner:v1:';
@@ -40,11 +41,11 @@ async function openBlockedBureau(storage: MemoryStorage, blocked: { value: boole
       ? Promise.reject(new Error('injected: outbox unavailable'))
       : undefined,
   );
-  const bureau = await createBureau({
-    agents: {},
-    generate,
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     persistence,
-    stopWhen: stopWhen.noToolCalls(),
   });
   return { bureau, base };
 }
@@ -53,7 +54,7 @@ type FirstBureau = Awaited<ReturnType<typeof openBlockedBureau>>['bureau'];
 
 async function settled(bureau: FirstBureau, principal: string, sessionId: string) {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'hello',
     sessionId,
     principal,
@@ -94,11 +95,11 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(1);
     await first.dispose().catch(() => undefined);
 
-    const second = await createBureau({
-      agents: {},
-      generate,
+    const second = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       await second.runDurableMaintenance();
@@ -128,11 +129,11 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(2);
     await first.dispose().catch(() => undefined);
 
-    const second = await createBureau({
-      agents: {},
-      generate,
+    const second = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       await second.runDurableMaintenance();
@@ -176,11 +177,11 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
         return undefined;
       },
     );
-    const second = await createBureau({
-      agents: {},
-      generate,
+    const second = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       persistence: flaky,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       // Boot drained while every read of the owner record failed, so the deletion was neither audited nor acknowledged,
@@ -214,11 +215,11 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     // Bytes that are not valid UTF-8, so every read of the record throws.
     await storage.put(sideKey!, new Uint8Array([0xff, 0xfe, 0xfd]));
 
-    const second = await createBureau({
-      agents: {},
-      generate,
+    const second = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       // Another session's deletion queues behind the poisoned one.
@@ -249,9 +250,10 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     await first.dispose().catch(() => undefined);
 
     const reading = { fails: true };
-    const second = await createBureau({
-      agents: {},
-      generate,
+    const second = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       persistence: intercepted(
         textValueStore(storage, { disposeUnderlyingStorage: false }),
         (method, args) =>
@@ -261,7 +263,6 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
               )
             : undefined,
       ),
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       // The failure is the store's, not the record's: the deletion waits, owner intact.

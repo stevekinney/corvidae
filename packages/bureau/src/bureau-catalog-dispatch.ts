@@ -12,7 +12,6 @@ import type {
   AgentRunContext,
   ClosedOptions,
   DefinitionResolvingAgentWithResolver,
-  GuardrailsOptions,
   RunnableAgent,
   RunOptions,
 } from '@lostgradient/operative';
@@ -114,11 +113,6 @@ export interface CatalogDispatcherDependencies {
    */
   readonly onCatalogRunEnded?: ((ended: CatalogRunEnded) => void | Promise<void>) | undefined;
   /**
-   * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
-   * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
-   */
-  readonly guardrails?: GuardrailsOptions | false | undefined;
-  /**
    * COR-1577 — `BureauOptions.humanInput`: offer `requestHumanInput` to a durable `bureau.run()`
    * run. Not to a child or a goal attempt, whose park nothing would be listening for.
    */
@@ -139,27 +133,21 @@ export interface CatalogDispatcherDependencies {
  * COR-1367 — the guardrail half of a catalog run's `AgentRunContext`.
  *
  * An agent that resolves its own guardrails (`createAgent`, marked by
- * `OPERATIVE_RESOLVES_GUARDRAILS`) is handed the bureau-level policy as its
- * inherited one: omitted means the agent falls back to the AB-40 preset
- * itself, `false` opts an undeclared agent out, and a configuration replaces
- * the preset for it. The agent's own `guardrails` declaration, when it has
- * one, wins over all three. Bureau then registers no guardrail invariant for
- * the run (`createBureauInvariantHooks(…, { agentResolvesGuardrails: true })`),
+ * `OPERATIVE_RESOLVES_GUARDRAILS`) applies them itself: its own `guardrails`
+ * declaration, else the AB-40 preset. Bureau then registers no guardrail
+ * invariant for the run (`createBureauInvariantHooks(…, { agentResolvesGuardrails: true })`),
  * so the policy runs exactly once.
  *
  * Any other agent — a hand-written `RunnableAgent`, or a `createLazyAgent`
- * wrapper whose underlying agent is unknown until it loads — keeps the
- * behaviour it always had: Bureau registers the policy in its own invariant
- * tier, and the context carries `false` so a `createAgent` behind a lazy
- * wrapper does not add the preset a second time underneath it. Such an inner
- * agent's own explicit declaration still runs, in addition to Bureau's.
+ * wrapper whose underlying agent is unknown until it loads — has no policy of
+ * its own to resolve, and the context carries `false` so a `createAgent` behind a
+ * lazy wrapper does not add the preset a second time underneath it. Such an inner
+ * agent's own explicit declaration still runs.
  */
 export function catalogRunGuardrailsContext(
   agent: object,
-  guardrails: GuardrailsOptions | false | undefined,
 ): Pick<AgentRunContext, 'inheritedGuardrails'> {
-  if (!resolvesOwnGuardrails(agent)) return { inheritedGuardrails: false };
-  return guardrails === undefined ? {} : { inheritedGuardrails: guardrails };
+  return resolvesOwnGuardrails(agent) ? {} : { inheritedGuardrails: false };
 }
 
 /**
@@ -303,7 +291,6 @@ export function createCatalogDispatcher({
   validateAgentRunInput,
   validateBureauRunOptions,
   onDurableRunAborted,
-  guardrails,
   humanInput,
   registerCatalogRun,
   onCatalogRunAdmitted,
@@ -1079,7 +1066,7 @@ export function createCatalogDispatcher({
     // COR-1367 — the agent's inherited guardrail policy travels in its context.
     const context: AgentRunContext = {
       ...prepared.context,
-      ...catalogRunGuardrailsContext(agent, guardrails),
+      ...catalogRunGuardrailsContext(agent),
     };
 
     // COR-1481 — the dispatch is a task from the moment its handle exists.
@@ -1186,7 +1173,7 @@ export function createCatalogDispatcher({
       agentName: start.agentName,
       ...start.context,
       ...(start.principal === undefined ? {} : { principal: start.principal }),
-      ...catalogRunGuardrailsContext(agent, guardrails),
+      ...catalogRunGuardrailsContext(agent),
     };
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
@@ -1260,7 +1247,7 @@ export function createCatalogDispatcher({
     const context: AgentRunContext = {
       agentName: start.agentName,
       ...(start.principal === undefined ? {} : { principal: start.principal }),
-      ...catalogRunGuardrailsContext(agent, guardrails),
+      ...catalogRunGuardrailsContext(agent),
     };
     let resolveStart!: () => void;
     let rejectStart!: (error: unknown) => void;
@@ -1309,7 +1296,7 @@ export function createCatalogDispatcher({
     const context: AgentRunContext = {
       agentName: start.agentName,
       ...(start.principal === undefined ? {} : { principal: start.principal }),
-      ...catalogRunGuardrailsContext(agent, guardrails),
+      ...catalogRunGuardrailsContext(agent),
     };
     return runDurableCatalogAgent(
       start.agentName,

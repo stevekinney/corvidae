@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -32,6 +32,7 @@ import { createBureau } from '../../create-bureau';
 import type { BureauShutdownReport } from '../../types';
 import { announce, fail, parseHostArguments, writeMarker } from './host-support';
 import { handleShutdownSignals } from './shutdown-handler';
+import type { AgentDefinitions } from '../../agent-catalog';
 
 /** Matches `process-crash-child.ts`, so a dead holder's claim lapses quickly. */
 const CLAIM_TTL_MS = 200;
@@ -55,41 +56,44 @@ const drainRelease = Promise.withResolvers<void>();
 let stepZeroCalls = 0;
 let laterStepCalls = 0;
 
-const bureau = await createBureau({
-  agents: {},
-  generate: async ({ step, signal }) => {
-    if (step === 0) {
-      stepZeroCalls += 1;
-      return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-    }
-    laterStepCalls += 1;
-    if (mode === 'recover') return { content: `recovered step ${step}`, toolCalls: [] };
-    stepOneReached.resolve();
-    if (mode === 'drain') {
-      await drainRelease.promise;
-      return { content: `drained step ${step}`, toolCalls: [] };
-    }
-    if (mode === 'abort') {
-      return new Promise<never>((_resolve, reject) => {
-        signal?.addEventListener('abort', () => reject(new Error('aborted during generate')), {
-          once: true,
-        });
-      });
-    }
-    // `timeout` and `interrupt`: a call that never settles and ignores its signal.
-    return new Promise<never>(() => {});
-  },
-  toolbox: createToolbox([
-    createTool({
-      name: 'next',
-      description: 'continue',
-      input: z.object({}),
-      execute: async () => 'ok',
+const bureau = await createBureau<AgentDefinitions>({
+  agents: {
+    default: createAgent({
+      generate: async ({ step, signal }) => {
+        if (step === 0) {
+          stepZeroCalls += 1;
+          return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        laterStepCalls += 1;
+        if (mode === 'recover') return { content: `recovered step ${step}`, toolCalls: [] };
+        stepOneReached.resolve();
+        if (mode === 'drain') {
+          await drainRelease.promise;
+          return { content: `drained step ${step}`, toolCalls: [] };
+        }
+        if (mode === 'abort') {
+          return new Promise<never>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(new Error('aborted during generate')), {
+              once: true,
+            });
+          });
+        }
+        // `timeout` and `interrupt`: a call that never settles and ignores its signal.
+        return new Promise<never>(() => {});
+      },
+      toolbox: createToolbox([
+        createTool({
+          name: 'next',
+          description: 'continue',
+          input: z.object({}),
+          execute: async () => 'ok',
+        }),
+      ]),
+      stopWhen: stopWhen.noToolCalls(),
     }),
-  ]),
+  },
   storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
   durableExecution: true,
-  stopWhen: stopWhen.noToolCalls(),
   durableOwnership: {
     ownership: 'workflow-lease',
     workflowClaimTtlMs: CLAIM_TTL_MS,
@@ -109,7 +113,7 @@ function summarize(report: BureauShutdownReport) {
 async function offerRunAfterAdmissionClosed(): Promise<string> {
   try {
     await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'offered during shutdown',
       principal: 'alice',
     });
@@ -166,7 +170,7 @@ handleShutdownSignals({
 });
 
 const run = await bureau.createRun({
-  agentName: 'bureau',
+  agentName: 'default',
   message: 'signal shutdown run',
   principal: 'alice',
 });

@@ -6,6 +6,7 @@ import {
   type GenerateContext,
   type GenerateFunction,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import {
   MemoryStorage,
@@ -40,6 +41,7 @@ import {
   userTexts,
 } from './test/session-input-fixtures';
 import type { Bureau, BureauDiagnostic, BureauOptions } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * COR-1476 — a run that ends cancels the input it never delivered, whatever
@@ -59,13 +61,16 @@ async function openBureau(
   generate: GenerateFunction,
   extra: Partial<BureauOptions> = {},
 ): Promise<Bureau> {
-  return createBureau({
-    agents: {},
-    generate,
-    toolbox: createToolbox([nextTool]),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate,
+        toolbox: createToolbox([nextTool]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage,
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     ...extra,
   });
 }
@@ -129,7 +134,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -170,7 +175,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -239,7 +244,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     try {
       const baseline = openIntervals;
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -284,7 +289,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     });
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -335,7 +340,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       });
       try {
         const first = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'First',
           principal: 'alice',
         });
@@ -407,7 +412,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     });
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -429,7 +434,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
 
       // The next run the user starts answers the dangling turn together with its own.
       await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'again',
         principal: 'alice',
         sessionId: first.sessionId,
@@ -464,14 +469,14 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     });
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
       });
       await started[0]!.promise;
       const second = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second',
         principal: 'alice',
         sessionId: first.sessionId,
@@ -526,7 +531,7 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -583,7 +588,7 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
     });
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -602,7 +607,7 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       let startError: unknown;
       const starting = bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Second',
           principal: 'alice',
           sessionId: first.sessionId,
@@ -653,7 +658,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 3,
@@ -731,7 +736,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 2,
@@ -814,7 +819,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -876,7 +881,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -924,7 +929,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -982,7 +987,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -1027,7 +1032,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -1087,7 +1092,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
     let incarnation = '';
     try {
       const run = await first.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
         maximumSteps: 1,
@@ -1154,7 +1159,7 @@ describe('a run promoted but never started (COR-1476)', () => {
     await sessionStore.save(
       createAgentSession({
         id: 'ghost-session',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'ghost-session' }),
         metadata: {
           lastRunId: 'run-ghost',
@@ -1224,7 +1229,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
     );
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -1289,7 +1294,7 @@ describe('shutdown releases open input (COR-1476)', () => {
       return new Promise<never>(() => {});
     });
     const run = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'First',
       principal: 'alice',
     });

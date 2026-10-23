@@ -7,6 +7,7 @@ import {
   type GenerateContext,
   stopWhen,
   withBackendDescriptors,
+  createAgent,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -14,6 +15,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
+import type { AgentDefinitions } from './agent-catalog';
 
 // The poll ends inside Bun's default per-test limit, which this file leaves as it is: a
 // 1 s schedule fires well within it, and a fire that does not is a failure, not a slow test.
@@ -32,22 +34,25 @@ describe('a scheduled fire with a media input (COR-716)', () => {
   it('seeds the fire with the parts as one user message and resolves its managed asset as the schedule owner', async () => {
     const seen: GenerateContext[] = [];
     const fixture = createMemoryAssetStorageFixture({});
-    const bureau = await createBureau({
-      agents: {},
-      generate: withBackendDescriptors(
-        async (context: GenerateContext) => {
-          seen.push(context);
-          return { content: 'ok', toolCalls: [] };
-        },
-        createModelCatalog().descriptors.filter(
-          (descriptor) => descriptor.provider === 'anthropic',
-        ),
-      ),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: withBackendDescriptors(
+            async (context: GenerateContext) => {
+              seen.push(context);
+              return { content: 'ok', toolCalls: [] };
+            },
+            createModelCatalog().descriptors.filter(
+              (descriptor) => descriptor.provider === 'anthropic',
+            ),
+          ),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       assets: { storage: fixture.storage },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const bytes = pngBytes(4, 3);
@@ -92,10 +97,13 @@ describe('a scheduled fire with a media input (COR-716)', () => {
   });
 
   it('refuses a schedule whose input no fire could read, at registration', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'ok', toolCalls: [] }),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'ok', toolCalls: [] }),
+          toolbox: createToolbox([]),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });

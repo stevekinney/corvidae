@@ -39,13 +39,15 @@ async function open(fixture: ReturnType<typeof newFixture>) {
     agents: {
       asker: createAskingAgent(),
       answerer: createAgent({ generate: finishes, toolbox: createToolbox([]) }),
+      default: createAgent({
+        generate: finishes,
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      }),
     },
-    generate: finishes,
-    toolbox: createToolbox([]),
     storage: fixture.configuration,
     durableExecution: true,
     humanInput: true,
-    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     durableOwnership: { ownership: 'none' },
   });
   bureaus.push(bureau);

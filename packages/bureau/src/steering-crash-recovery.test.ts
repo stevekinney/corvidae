@@ -18,11 +18,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
+import { STEERABLE_MODELS } from './testing/default-agent.test-support';
 import { createBureau } from './create-bureau';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import {
@@ -30,6 +31,7 @@ import {
   readSteeringLogEntries,
   readSteeringLogHead,
 } from './steering-log';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
 
@@ -75,10 +77,14 @@ async function runCrashingChild(
 }
 
 async function openBureau(directory: string) {
-  return createBureau({
-    agents: {},
-    generate: () => new Promise<never>(() => {}),
-    toolbox: createToolbox([]),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        allowedCandidates: STEERABLE_MODELS,
+        generate: () => new Promise<never>(() => {}),
+        toolbox: createToolbox([]),
+      }),
+    },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
     durableExecution: true,
     durableOwnership: CLAIM_OPTIONS,
@@ -160,7 +166,7 @@ const outcomes = {
       // The key is bureau-wide: the same key sent to another session is a
       // `session-mismatch`, though that session's own log never saw it.
       const other = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -241,17 +247,21 @@ const outcomes = {
     await Bun.sleep(CLAIM_TTL_MS * 10);
 
     let generateCalls = 0;
-    const recovering = await createBureau({
-      agents: {},
-      generate: async () => {
-        generateCalls += 1;
-        return { content: 'done', toolCalls: [] };
+    const recovering = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
+          generate: async () => {
+            generateCalls += 1;
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([]),
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
       durableExecution: true,
       durableOwnership: CLAIM_OPTIONS,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       await recovering.waitForRecovery?.();
@@ -266,7 +276,7 @@ const outcomes = {
     try {
       await reader.waitForRecovery?.();
       await reader.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'again',
         principal: 'alice',
         sessionId,
@@ -309,17 +319,21 @@ const outcomes = {
       await Bun.sleep(CLAIM_TTL_MS * 10);
 
       let generateCalls = 0;
-      const recovering = await createBureau({
-        agents: {},
-        generate: async () => {
-          generateCalls += 1;
-          return { content: 'done', toolCalls: [] };
+      const recovering = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            allowedCandidates: STEERABLE_MODELS,
+            generate: async () => {
+              generateCalls += 1;
+              return { content: 'done', toolCalls: [] };
+            },
+            toolbox: createToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([]),
         storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
         durableExecution: true,
         durableOwnership: CLAIM_OPTIONS,
-        stopWhen: stopWhen.noToolCalls(),
       });
       try {
         await recovering.waitForRecovery?.();
@@ -352,17 +366,21 @@ const outcomes = {
       await Bun.sleep(CLAIM_TTL_MS * 10);
 
       let generateCalls = 0;
-      const recovering = await createBureau({
-        agents: {},
-        generate: async () => {
-          generateCalls += 1;
-          return { content: 'done', toolCalls: [] };
+      const recovering = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            allowedCandidates: STEERABLE_MODELS,
+            generate: async () => {
+              generateCalls += 1;
+              return { content: 'done', toolCalls: [] };
+            },
+            toolbox: createToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([]),
         storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
         durableExecution: true,
         durableOwnership: CLAIM_OPTIONS,
-        stopWhen: stopWhen.noToolCalls(),
       });
       try {
         await recovering.waitForRecovery?.();

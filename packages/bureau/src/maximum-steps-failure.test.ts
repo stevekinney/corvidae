@@ -1,4 +1,9 @@
-import { stopWhen, waitForCondition } from '@lostgradient/operative';
+import {
+  stopWhen,
+  waitForCondition,
+  createAgent,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, type BatchOperation } from '@lostgradient/weft';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createTool, createToolbox } from 'armorer';
@@ -7,6 +12,7 @@ import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import type { Bureau, BureauOptions } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * COR-1627: a run that stops at its step limit is a failure on every Bureau surface. Its run
@@ -29,15 +35,18 @@ const nextTool = createTool({
 
 /** A Bureau whose model never stops, so every run ends at its second step. */
 async function openStepLimitBureau(options: Partial<BureauOptions>): Promise<Bureau> {
-  const bureau = await createBureau({
-    agents: {},
-    generate: async () => ({
-      content: 'still going',
-      toolCalls: [{ name: 'next', arguments: {} }],
-    }),
-    toolbox: createToolbox([nextTool]),
-    maximumSteps: 2,
-    stopWhen: stopWhen.noToolCalls(),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async () => ({
+          content: 'still going',
+          toolCalls: [{ name: 'next', arguments: {} }],
+        }),
+        toolbox: createToolbox([nextTool]),
+        maximumSteps: 2,
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     ...options,
   });
   bureaus.push(bureau);
@@ -47,7 +56,7 @@ async function openStepLimitBureau(options: Partial<BureauOptions>): Promise<Bur
 /** Starts a run and waits for the session to record how it ended. */
 async function runToLimit(bureau: Bureau) {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'Never settles',
     principal: 'alice',
   });
@@ -91,7 +100,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
   it('settles its task as failed with the step-limit error, and records one run.error in the audit trail', async () => {
     const bureau = await openStepLimitBureau(options);
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Never settles',
       principal: 'alice',
     });
@@ -171,7 +180,7 @@ class SettlementCountingStorage extends MemoryStorage {
 }
 
 /** The runs whose second step fails or never ends: a step limit, and a plain error. */
-const FAILURES: readonly (readonly [string, Partial<BureauOptions>])[] = [
+const FAILURES: readonly (readonly [string, { readonly generate?: GenerateFunction }])[] = [
   ['a step limit', {}],
   [
     'a plain error',
@@ -197,26 +206,29 @@ describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_na
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const bureau = await createBureau({
-        agents: {},
-        generate: async (input) => {
-          await gate;
-          const generate =
-            over.generate ??
-            (async () => ({
-              content: 'still going',
-              toolCalls: [{ name: 'next', arguments: {} }],
-            }));
-          return generate(input);
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async (input) => {
+              await gate;
+              const generate =
+                over.generate ??
+                (async () => ({
+                  content: 'still going',
+                  toolCalls: [{ name: 'next', arguments: {} }],
+                }));
+              return generate(input);
+            },
+            toolbox: createToolbox([nextTool]),
+            maximumSteps: 2,
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([nextTool]),
-        maximumSteps: 2,
-        stopWhen: stopWhen.noToolCalls(),
         ...configure(storage),
       });
       bureaus.push(bureau);
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Never settles',
         principal: 'alice',
       });
@@ -248,39 +260,48 @@ describe('a durable run that crashes before its step limit and is recovered (COR
       // Bureau A commits step 0, then its second generate hangs: the process "dies" there, before
       // the run ever reaches its step-limit exit, so it never announces anything.
       let reachedSecondStep = false;
-      const crashed = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0)
-            return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          reachedSecondStep = true;
-          return new Promise<never>(() => {});
+      const crashed = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0)
+                return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              reachedSecondStep = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([nextTool]),
+            maximumSteps: 2,
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([nextTool]),
-        maximumSteps: 2,
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
       bureaus.push(crashed);
       const run = await crashed.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Never settles',
         principal: 'alice',
       });
       await waitForCondition(() => reachedSecondStep, 'the first process never reached step 1');
 
       // Bureau B recovers the workflow, which replays step 0 and runs step 1 to the limit.
-      const recovering = await createBureau({
-        agents: {},
-        generate: async () => ({ content: 'again', toolCalls: [{ name: 'next', arguments: {} }] }),
-        toolbox: createToolbox([nextTool]),
-        maximumSteps: 2,
+      const recovering = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => ({
+              content: 'again',
+              toolCalls: [{ name: 'next', arguments: {} }],
+            }),
+            toolbox: createToolbox([nextTool]),
+            maximumSteps: 2,
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
       bureaus.push(recovering);
 

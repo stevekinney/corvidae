@@ -48,7 +48,7 @@ async function finishedSession(
   options: { principal: string; message: string; agentName?: string },
 ) {
   const run = await opened.bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: options.message,
     principal: options.principal,
     ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
@@ -84,7 +84,7 @@ describe('bureau.contexts.list', () => {
       expect(contextsOf(body)[0]).toMatchObject({
         id: second.sessionId,
         owner: OWNER.alice,
-        agentName: 'bureau',
+        agentName: 'default',
         title: 'second chat',
         lastMessagePreview: 'Done.',
         activity: 'idle',
@@ -290,12 +290,12 @@ describe('bureau.contexts.list activity', () => {
     await withBureau({ generate: byMessage, humanInput: true }, async (opened) => {
       const idle = await finishedSession(opened, { principal: OWNER.alice, message: 'idle' });
       const running = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hold',
         principal: OWNER.alice,
       });
       const waiting = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park',
         principal: OWNER.alice,
       });

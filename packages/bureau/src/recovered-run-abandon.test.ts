@@ -15,7 +15,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import {
@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 /** Matches the child's short workflow claim, so recovery can follow a kill quickly. */
@@ -113,16 +114,20 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
       await resolveStorage({ type: 'sqlite', path: storagePath }),
     );
     recovering = await scope.phase('boot', () =>
-      createBureau({
-        agents: {},
-        generate: async () => {
-          // The checkpoint the recovered step commits next is the one lost.
-          seam.arm();
-          generating.resolve();
-          await released.promise;
-          return { content: 'done', toolCalls: [] };
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              // The checkpoint the recovered step commits next is the one lost.
+              seam.arm();
+              generating.resolve();
+              await released.promise;
+              return { content: 'done', toolCalls: [] };
+            },
+            toolbox: createToolbox([nextTool]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([nextTool]),
         storage: seam.storage,
         durableExecution: true,
         durableOwnership: {
@@ -130,7 +135,6 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
           workflowClaimTtlMs: CLAIM_TTL_MS,
           workflowClaimRenewIntervalMs: 50,
         },
-        stopWhen: stopWhen.noToolCalls(),
         onDiagnostic: () => undefined,
       }),
     );

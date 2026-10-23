@@ -8,7 +8,7 @@
  * added later that an ending forgets, fails here. Each ending is also followed by a restart,
  * because the defect that cost the most was an approval a restart brought back.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -105,7 +105,10 @@ async function expectNothingRemains(
 
   // A restart finds nothing to bring back, and nothing to run.
   const restartedCharges: number[] = [];
-  const restarted = await harness.open({ ...options, toolbox: approvalToolbox(restartedCharges) });
+  const restarted = await harness.open({
+    ...options,
+    toolbox: approvalToolbox(restartedCharges),
+  });
   for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
   expect(reviewsOf(restarted, fireId)).toEqual([]);
   expect(scheduledFireHoldings(scheduledFireReviewStateOf(restarted), fireId)).toEqual([]);
@@ -291,10 +294,14 @@ describe('a fire with several approvals', () => {
       return { content: 'done', toolCalls: [] };
     };
     const bureau = await harness.open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
     // The second approval is a real delay behind the first, which a count of turns does not span.
@@ -361,8 +368,8 @@ async function fireForCrash() {
   const options = { generate, stopWhen: stopWhen.noToolCalls() };
   const first = await harness.open({
     ...options,
-    toolbox: approvalToolbox([]),
     storage: holdingStorage,
+    toolbox: approvalToolbox([]),
   });
   const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
   await reviewOf(first, fireId);
@@ -405,8 +412,8 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
       const charges: number[] = [];
       const restarted = await harness.open({
         ...crash.options,
-        toolbox: approvalToolbox(charges),
         storage: crash.raw,
+        toolbox: approvalToolbox(charges),
       });
       for (let turn = 0; turn < 50; turn += 1) {
         await new Promise((resolve) => setTimeout(resolve, 2));
@@ -449,11 +456,17 @@ describe('a cancel by a peer, with the holder alive', () => {
       storage,
       durableOwnership: { ownership: 'workflow-lease' as const },
     };
-    const holder = await harness.open({ ...options, toolbox: approvalToolbox(holderCharges) });
+    const holder = await harness.open({
+      ...options,
+      toolbox: approvalToolbox(holderCharges),
+    });
     const { fireId } = await fireOnce(holder, OWNER.alice, SESSION);
     const review = await reviewOf(holder, fireId);
     await new Promise((resolve) => setTimeout(resolve, 150));
-    const peer = await harness.open({ ...options, toolbox: approvalToolbox([]) });
+    const peer = await harness.open({
+      ...options,
+      toolbox: approvalToolbox([]),
+    });
 
     const outcome = await peer.cancelDurableRun(fireId);
     expect(outcome.status).toBe('requested');
@@ -482,7 +495,10 @@ describe('a restart keeps what the engine did not cancel', () => {
     const context = await fireWithApproval('stopped');
 
     const charges: number[] = [];
-    const restarted = await harness.open({ ...context.options, toolbox: approvalToolbox(charges) });
+    const restarted = await harness.open({
+      ...context.options,
+      toolbox: approvalToolbox(charges),
+    });
     const restored = await reviewOf(restarted, context.fireId);
     await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
 
@@ -508,7 +524,10 @@ describe('a restart keeps what the engine did not cancel', () => {
       storage,
       onDiagnostic: (diagnostic: { message: string }) => diagnostics.push(diagnostic.message),
     };
-    const bureau = await harness.open({ ...options, toolbox: approvalToolbox([]) });
+    const bureau = await harness.open({
+      ...options,
+      toolbox: approvalToolbox([]),
+    });
     const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
     await reviewOf(bureau, fireId);
     await pollUntil(async () => {
@@ -519,7 +538,10 @@ describe('a restart keeps what the engine did not cancel', () => {
     }, 'the fire to end after its approval');
 
     const charges: number[] = [];
-    const restarted = await harness.open({ ...options, toolbox: approvalToolbox(charges) });
+    const restarted = await harness.open({
+      ...options,
+      toolbox: approvalToolbox(charges),
+    });
     const restored = await reviewOf(restarted, fireId);
     await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
 
@@ -541,7 +563,11 @@ describe('a boot that cannot read the engine’s status', () => {
       generate,
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     };
-    const first = await harness.open({ ...options, toolbox: approvalToolbox([]), storage: raw });
+    const first = await harness.open({
+      ...options,
+      storage: raw,
+      toolbox: approvalToolbox([]),
+    });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
     const review = await reviewOf(first, fireId);
     await pollUntil(
@@ -566,9 +592,9 @@ describe('a boot that cannot read the engine’s status', () => {
     });
     const faulty = await harness.open({
       ...options,
-      toolbox: approvalToolbox([]),
       storage: faultyStorage,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      toolbox: approvalToolbox([]),
     });
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
@@ -577,7 +603,11 @@ describe('a boot that cannot read the engine’s status', () => {
     expect(diagnostics.filter((message) => message.includes('engine status'))).toHaveLength(1);
 
     unreadable = false;
-    const later = await harness.open({ ...options, toolbox: approvalToolbox([]), storage: raw });
+    const later = await harness.open({
+      ...options,
+      storage: raw,
+      toolbox: approvalToolbox([]),
+    });
     const restored = await reviewOf(later, fireId);
     expect(restored.id).toBe(review.id);
   });

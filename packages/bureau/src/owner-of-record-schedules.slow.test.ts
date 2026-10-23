@@ -8,12 +8,14 @@ import {
   ScheduleCompletedEvent,
   stopWhen,
   SESSION_OWNER_METADATA_KEY,
+  createAgent,
 } from '@lostgradient/operative';
 import { createConversationHistory } from 'conversationalist';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 // A schedule fire is driven by Weft's poller on real elapsed time, which is why
 // this file is a slow lane: nothing here can run faster than the schedule's
@@ -31,13 +33,16 @@ async function waitForReal(condition: () => boolean, timeoutMs = 20_000): Promis
 }
 
 async function openBureau() {
-  return createBureau({
-    agents: {},
-    generate,
-    toolbox: createToolbox([], { context: {} }),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate,
+        toolbox: createToolbox([], { context: {} }),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage: { type: 'memory' },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 
@@ -129,7 +134,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'mine',
         principal: 'api-key:bob',
       });
@@ -169,14 +174,17 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-fire-restart-'));
     const path = join(directory, 'bureau.sqlite');
     const open = () =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         id: 'owner-fire-restart',
-        agents: {},
-        generate,
-        toolbox: createToolbox([], { context: {} }),
+        agents: {
+          default: createAgent({
+            generate,
+            toolbox: createToolbox([], { context: {} }),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
     const first = await open();
     let second: Awaited<ReturnType<typeof open>> | undefined;
@@ -210,19 +218,22 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
   it('refuses a fire that built its services before another owner created its recurring session', async () => {
     const release = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ conversation }) => {
-        if (JSON.stringify(conversation.getMessages()).includes('racing tick')) {
-          entered.resolve();
-          await release.promise;
-        }
-        return { content: 'acknowledged', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ conversation }) => {
+            if (JSON.stringify(conversation.getMessages()).includes('racing tick')) {
+              entered.resolve();
+              await release.promise;
+            }
+            return { content: 'acknowledged', toolCalls: [] };
+          },
+          toolbox: createToolbox([], { context: {} }),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([], { context: {} }),
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const failed: string[] = [];
@@ -238,7 +249,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await entered.promise;
       await bureau.cancelSchedule(summary!.id);
       const created = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'bob got there first',
         sessionId: 'raced-recurring',
         principal: 'api-key:bob',

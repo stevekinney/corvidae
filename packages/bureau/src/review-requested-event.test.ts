@@ -2,7 +2,7 @@
 // task entering `input-required` the way an A2A status update does.
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import type { AgentDefinitions } from './agent-catalog';
 
 type HistoryEvent = { kind: string; payload: unknown };
 
@@ -41,19 +42,22 @@ describe('review.requested', () => {
         : { content: 'done', toolCalls: [] };
     };
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'review-requested-human',
-      agents: {},
-      generate,
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: fixture.configuration,
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park-me',
         principal: 'api-key:tester',
       });
@@ -118,18 +122,17 @@ describe('review.requested', () => {
       toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 424242 } }],
     });
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'review-requested-approval',
-      agents: {},
-      generate,
-      toolbox,
+      agents: {
+        default: createAgent({ generate, toolbox, stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: fixture.configuration,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'charge',
         principal: 'api-key:tester',
       });

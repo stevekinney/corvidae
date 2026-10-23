@@ -10,7 +10,12 @@
  * admission's commit" without reaching into Bureau. Not a test file: it is
  * imported by the `session-input-*.test.ts` files.
  */
-import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  type GenerateContext,
+  type GenerateFunction,
+  stopWhen,
+  createAgent,
+} from '@lostgradient/operative';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
@@ -485,11 +490,14 @@ export async function openProcess(
   const real = await resolveStorage({ type: 'sqlite', path });
   const seam = seamStorage(real);
   const bureau = await createBureau<AgentDefinitions>({
-    agents: {},
-    generate,
-    toolbox: createToolbox([]),
+    agents: {
+      default: createAgent({
+        generate,
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     ...options,
     storage: seam.storage,
   });

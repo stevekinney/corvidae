@@ -4,7 +4,7 @@
  * Server-Sent-Events routes, and Bureaus whose runs a test can hold open.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import {
   type AuthConfig,
   type AuthorizationScope,
@@ -22,6 +22,7 @@ import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import type { Bureau } from '../../types.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
+import type { AgentDefinitions } from '../../agent-catalog';
 
 export type Handler = (request: Request) => Promise<Response>;
 
@@ -222,11 +223,21 @@ export async function openBureau(
     options.durableHistory === true
       ? createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() })
       : undefined;
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: options.id ?? 'management-bureau',
-    agents: options.agents ?? {},
-    generate: options.generate ?? parkingUntilAborted,
-    toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
+    agents: {
+      ...options.agents,
+      default: createAgent({
+        generate: options.generate ?? parkingUntilAborted,
+        toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
+        stopWhen:
+          options.humanInput === true
+            ? stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls())
+            : options.stopAtApproval === true
+              ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
+              : stopWhen.noToolCalls(),
+      }),
+    },
     storage: options.storage ?? fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
     assets: {
@@ -236,12 +247,6 @@ export async function openBureau(
     },
     ...(options.validators === undefined ? {} : { validators: options.validators }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
-    stopWhen:
-      options.humanInput === true
-        ? stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls())
-        : options.stopAtApproval === true
-          ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
-          : stopWhen.noToolCalls(),
   });
   const handler = createBureauHandler(bureau, {
     authentication,

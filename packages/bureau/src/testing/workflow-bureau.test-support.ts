@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, type GenerateContext, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateContext } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
@@ -76,13 +76,10 @@ export async function startWorkflowBureau(
   const directory = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-workflow-run-')));
   const calls = options.calls ?? [];
   const bureau = await createBureau<AgentDefinitions>({
-    agents: scriptedAgents(
-      options.agentNames ?? ['writer', 'editor'],
-      options.replies ?? {},
-      calls,
-    ),
+    agents: {
+      ...scriptedAgents(options.agentNames ?? ['writer', 'editor'], options.replies ?? {}, calls),
+    },
     workflowDirectory: directory,
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     ...options.overrides,

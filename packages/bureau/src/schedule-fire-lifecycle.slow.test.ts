@@ -25,6 +25,7 @@ import {
   type RpcBody,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
+import type { AgentDefinitions } from './agent-catalog';
 
 const FIRE_TIMEOUT_MS = 20_000;
 
@@ -299,14 +300,17 @@ describe('a task registry that cannot write', () => {
     async () => {
       const diagnostics: string[] = [];
       const completed: string[] = [];
-      const bureau = await createBureau({
+      const bureau = await createBureau<AgentDefinitions>({
         id: 'stuck-registry',
-        agents: {},
-        generate: async () => ({ content: 'ran anyway', toolCalls: [] }),
-        toolbox: createToolbox([]),
+        agents: {
+          default: createAgent({
+            generate: async () => ({ content: 'ran anyway', toolCalls: [] }),
+            toolbox: createToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: new StuckTaskRecordStorage(),
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
       cleanups.push(() => bureau.dispose());

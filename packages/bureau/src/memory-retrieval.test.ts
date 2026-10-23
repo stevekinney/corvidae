@@ -12,7 +12,6 @@ import {
   createAgent,
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
-  stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import type { InputDetector, ToolRequestContext } from 'armorer';
@@ -131,9 +130,10 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
     });
     bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate }) },
+      agents: {
+        scout: createAgent({ generate }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
       // Each run's answer is refused for want of `memory:write`, which is the point; keep it quiet.
       onDiagnostic: () => {},

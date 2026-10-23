@@ -4,7 +4,7 @@
  * the receipts an idempotent run needs (`hasDurableEngine`).
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { waitForRunState } from '@lostgradient/operative';
+import { waitForRunState, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -19,6 +19,7 @@ import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -44,18 +45,21 @@ const userRow = (id: string, ...parts: string[]): MessageInput & { id: string } 
 describe('createRun appendMessages', () => {
   it('appends the rows verbatim, after the system prompt, and the run answers them', async () => {
     const seen: Array<ReadonlyArray<Message>> = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context) => {
-        seen.push(context.conversation.getMessages({ includeHidden: true }));
-        return { content: 'Done.', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context) => {
+            seen.push(context.conversation.getMessages({ includeHidden: true }));
+            return { content: 'Done.', toolCalls: [] };
+          },
+          instructions: 'You are helpful.',
+        }),
       },
-      systemPrompt: 'You are helpful.',
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'first part', 'second part')),
       });
       await settle(bureau, run.id);
@@ -75,9 +79,10 @@ describe('createRun appendMessages', () => {
   });
 
   it('refuses rows that leave the conversation ending in an assistant row', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Done.', toolCalls: [] }),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
@@ -87,7 +92,7 @@ describe('createRun appendMessages', () => {
         content: 'hello',
       });
 
-      const error = await bureau.createRun({ agentName: 'bureau', appendMessages: rows }).then(
+      const error = await bureau.createRun({ agentName: 'default', appendMessages: rows }).then(
         () => undefined,
         (rejection: unknown) => rejection,
       );
@@ -100,14 +105,15 @@ describe('createRun appendMessages', () => {
   });
 
   it('refuses an appendMessages that is not a list of messages', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Done.', toolCalls: [] }),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
+      },
     });
     try {
       for (const bad of ['text', [{ role: 'user' }], [null]]) {
         const error = await bureau
-          .createRun({ agentName: 'bureau', appendMessages: bad as never })
+          .createRun({ agentName: 'default', appendMessages: bad as never })
           .then(
             () => undefined,
             (rejection: unknown) => rejection,
@@ -120,21 +126,22 @@ describe('createRun appendMessages', () => {
   });
 
   it('refuses a row whose id the session already holds', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Done.', toolCalls: [] }),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         appendMessages: builtRows(ORIGIN, userRow('same', 'a')),
       });
       await settle(bureau, first.id);
 
       const error = await bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           sessionId: first.sessionId,
           appendMessages: builtRows(ORIGIN, userRow('same', 'b')),
         })
@@ -155,10 +162,13 @@ describe('createRun appendMessages and the task it admits', () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
     const open = () =>
-      createBureau({
-        agents: {},
-        generate: async () => ({ content: 'Done.', toolCalls: [] }),
-        toolbox: createToolbox<readonly Tool[]>([]),
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => ({ content: 'Done.', toolCalls: [] }),
+            toolbox: createToolbox<readonly Tool[]>([]),
+          }),
+        },
         runtime,
         storage: fixture.configuration,
         durableExecution: true,
@@ -167,7 +177,7 @@ describe('createRun appendMessages and the task it admits', () => {
     try {
       const first = await open();
       const run = await first.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         principal: 'alice',
         appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'plan ', 'my trip')),
       });
@@ -191,10 +201,13 @@ describe('createRun appendMessages under a run-creation request id', () => {
   async function withDurableBureau(body: (bureau: Bureau) => Promise<void>): Promise<void> {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Done.', toolCalls: [] }),
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'Done.', toolCalls: [] }),
+          toolbox: createToolbox<readonly Tool[]>([]),
+        }),
+      },
       runtime,
       storage: fixture.configuration,
       durableExecution: true,
@@ -209,7 +222,7 @@ describe('createRun appendMessages under a run-creation request id', () => {
   }
 
   const request = (rows: ReadonlyArray<Message>) => ({
-    agentName: 'bureau',
+    agentName: 'default',
     principal: 'alice',
     runCreationRequestId: 'request-1',
     sessionId: 'session-1',
@@ -261,9 +274,10 @@ describe('createRun appendMessages under a run-creation request id', () => {
 
 describe('Bureau.hasDurableEngine', () => {
   it('is false without a durable engine and true with one', async () => {
-    const plain = await createBureau({
-      agents: {},
-      generate: async () => ({ content: '', toolCalls: [] }),
+    const plain = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),
+      },
     });
     try {
       expect(plain.hasDurableEngine).toBe(false);
@@ -273,9 +287,10 @@ describe('Bureau.hasDurableEngine', () => {
 
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
-    const durable = await createBureau({
-      agents: {},
-      generate: async () => ({ content: '', toolCalls: [] }),
+    const durable = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),
+      },
       runtime,
       storage: fixture.configuration,
       durableExecution: true,
