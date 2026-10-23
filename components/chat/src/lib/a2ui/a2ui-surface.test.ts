@@ -295,6 +295,46 @@ describe('actions', () => {
     expect(Number.isNaN(Date.parse(actions[0]?.timestamp ?? ''))).toBe(false);
   });
 
+  test('reports the surface revision the host gave, as it stands when the Button is pressed', async () => {
+    const actions: A2uiAction[] = [];
+    const components = [
+      { id: 'root', component: 'Button', child: 'label', action: { event: { name: 'go' } } },
+      { id: 'label', component: 'Text', text: 'Go' },
+    ];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'revised',
+        surfaceRevision: 1,
+        components,
+        onAction: (action: A2uiAction) => actions.push(action),
+      },
+    });
+    await flush();
+    await fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+    await view.rerender({ surfaceRevision: 2 });
+    await fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+
+    expect(actions.map((action) => action.surfaceRevision)).toEqual([1, 2]);
+    expect(actions.map((action) => action.surfaceId)).toEqual(['revised', 'revised']);
+  });
+
+  test('carries no revision when the host gave none', async () => {
+    const actions: A2uiAction[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'plain',
+        components: [
+          { id: 'root', component: 'Button', child: 'label', action: { event: { name: 'go' } } },
+          { id: 'label', component: 'Text', text: 'Go' },
+        ],
+        onAction: (action: A2uiAction) => actions.push(action),
+      },
+    });
+    await flush();
+    await fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+    expect(actions[0]).not.toHaveProperty('surfaceRevision');
+  });
+
   test('a failing check disables its Button', async () => {
     render(A2uiSurface, {
       props: {
