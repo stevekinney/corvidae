@@ -272,14 +272,44 @@ export async function buildApplication(
   }
 }
 
+/** What the command line asks {@link buildApplication} for. */
+export type BuildCommandOptions = {
+  readonly development?: boolean;
+  readonly outdir?: string;
+};
+
+/**
+ * Read the command-line arguments: `--development` builds the unminified development bundle, and
+ * `--outdir <path>` builds somewhere other than `build/`. The development host runs this command
+ * in a child process, so an unknown argument fails loudly instead of building the wrong thing.
+ */
+export function parseBuildArguments(argv: readonly string[]): BuildCommandOptions {
+  let development = false;
+  let outdir: string | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--development') {
+      development = true;
+    } else if (argument === '--outdir') {
+      outdir = argv[index + 1];
+      if (outdir === undefined) throw new Error('--outdir needs a directory');
+      index += 1;
+    } else {
+      throw new Error(`Unknown build argument: ${argument}`);
+    }
+  }
+  return { development, ...(outdir === undefined ? {} : { outdir }) };
+}
+
 /** The command-line entry: build and report what was written. */
 export async function runBuildCommand(
   log: (line: string) => void = console.log,
   runBuild: typeof buildApplication = buildApplication,
+  argv: readonly string[] = [],
 ): Promise<ApplicationBuild> {
-  const build = await runBuild();
+  const build = await runBuild(parseBuildArguments(argv));
   log(`Built Interborough into ${build.directory} (${build.files.length} files)`);
   return build;
 }
 
-if (import.meta.main) await runBuildCommand();
+if (import.meta.main) await runBuildCommand(console.log, buildApplication, process.argv.slice(2));

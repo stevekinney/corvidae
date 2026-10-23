@@ -21,6 +21,7 @@ import {
   curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
+  parseBuildArguments,
   replaceDirectory,
   RETAINED_ASSETS_FILE,
   retainPreviousAssets,
@@ -419,5 +420,38 @@ describe('runBuildCommand', () => {
 
     expect(result).toBe(build as unknown as typeof result);
     expect(lines).toEqual([`Built Interborough into ${DEFAULT_BUILD_DIRECTORY} (1 files)`]);
+  });
+
+  it('passes the parsed command-line arguments to the build', async () => {
+    const received: unknown[] = [];
+    await runBuildCommand(
+      () => {},
+      async (options) => {
+        received.push(options);
+        return { directory: 'x', files: [], metafile: {} } as unknown as Awaited<
+          ReturnType<typeof buildApplication>
+        >;
+      },
+      ['--development'],
+    );
+    expect(received).toEqual([{ development: true }]);
+  });
+});
+
+describe('parseBuildArguments', () => {
+  it('builds for production into the default directory when given nothing', () => {
+    expect(parseBuildArguments([])).toEqual({ development: false });
+  });
+
+  it('reads --development and --outdir', () => {
+    expect(parseBuildArguments(['--development', '--outdir', '/tmp/somewhere'])).toEqual({
+      development: true,
+      outdir: '/tmp/somewhere',
+    });
+  });
+
+  it('refuses an unknown argument and an --outdir without a directory', () => {
+    expect(() => parseBuildArguments(['--watch'])).toThrow('Unknown build argument: --watch');
+    expect(() => parseBuildArguments(['--outdir'])).toThrow('--outdir needs a directory');
   });
 });
