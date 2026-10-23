@@ -1117,7 +1117,10 @@ export class UnknownScheduleAgentError extends BureauError {
   readonly agentName: string;
 
   constructor(agentName: string) {
-    super(`Unknown agent "${agentName}": a schedule can only run an agent in the catalog`, 'NOT_FOUND');
+    super(
+      `Unknown agent "${agentName}": a schedule can only run an agent in the catalog`,
+      'NOT_FOUND',
+    );
     this.name = 'UnknownScheduleAgentError';
     this.agentName = agentName;
   }
