@@ -1337,13 +1337,6 @@ export function createBureauA2ARequestHandler(
       );
     }
     const delivered: readonly AdmittedAsset[] = claimedAssets ?? [];
-    if (!expired && plan !== undefined && delivered.length !== plan.inlineCount) {
-      throw invalid(`messageId '${message.messageId}' was already used with a different payload.`);
-    }
-    const inbound: Inbound =
-      plan === undefined
-        ? { content: undefined, history: message }
-        : inboundOf(message, plan, delivered);
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     let result: A2ASendResult;
     // Whether the command may have taken effect: a run created, a wait answered, an input
@@ -1354,7 +1347,17 @@ export function createBureauA2ARequestHandler(
     const markEffected = () => {
       effected = true;
     };
+    let inbound: Inbound = { content: undefined, history: message };
     try {
+      // Everything from here may throw with the claim held, so it is inside the try that releases
+      // it. An expired command applies nothing and admitted nothing: it reads no assets.
+      if (plan !== undefined && delivered.length === plan.inlineCount) {
+        inbound = inboundOf(message, plan, delivered);
+      } else if (!expired && plan !== undefined) {
+        throw invalid(
+          `messageId '${message.messageId}' was already used with a different payload.`,
+        );
+      }
       if (continued === undefined) {
         result = expired
           ? {

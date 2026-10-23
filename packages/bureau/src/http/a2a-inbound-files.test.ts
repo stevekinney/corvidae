@@ -9,6 +9,7 @@ import type { GenerateFunction } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { base64Of, pngBytes, wavBytes } from '../testing/asset-fixtures.test-support.ts';
+import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
 
 const PUBLIC_URL = 'http://localhost';
@@ -544,6 +545,96 @@ describe('a message to a working task', () => {
         expect(calls).toBe(1);
       },
       { humanInput: true },
+    );
+  });
+});
+
+describe('a send whose deadline has already passed', () => {
+  const past = '2020-01-01T00:00:00Z';
+
+  async function sendExpired(opened: OpenedBureau, agent: string, message: Json): Promise<Json> {
+    const response = await opened.handler(
+      new Request(`${PUBLIC_URL}/a2a/${agent}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'A2A-Version': '1.0',
+          'X-API-Key': 'alice-assets-key',
+          'A2A-Extensions': COMMAND_RECEIPTS_EXTENSION_URI,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'SendMessage',
+          params: {
+            message: {
+              ...message,
+              metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: past } },
+            },
+            configuration: { returnImmediately: true },
+          },
+        }),
+      }),
+    );
+    return response.json();
+  }
+
+  const rawMessage = (extra: Json = {}) =>
+    messageWith([{ text: 'x' }, { raw: base64Of(png(80)), mediaType: 'image/png' }], extra);
+
+  it('answers a new task’s raw part with the deadline receipt, every time, and admits nothing', async () => {
+    await withAgents(
+      { seer: seeing({ calls: 0, rows: [] }) },
+      async (opened) => {
+        const message = rawMessage();
+        const first = await sendExpired(opened, 'seer', message);
+        const again = await sendExpired(opened, 'seer', message);
+
+        for (const body of [first, again]) {
+          expect(body.error).toBeUndefined();
+          const task = body.result.task ?? body.result;
+          expect(task.status.state).toBe('TASK_STATE_FAILED');
+          expect(task.metadata[COMMAND_RECEIPTS_EXTENSION_URI]).toMatchObject({
+            receipt: { state: 'expired', reason: 'deadline-exceeded' },
+          });
+        }
+        expect((again.result.task ?? again.result).id).toBe((first.result.task ?? first.result).id);
+        expect(await admissions(opened)).toBe(0);
+      },
+      { durableHistory: true },
+    );
+  });
+
+  it('answers a working task’s raw part with the deadline receipt, every time, and admits nothing', async () => {
+    await withAgents(
+      {
+        asker: withBackendDescriptors(
+          (async ({ signal }: { signal?: AbortSignal }) =>
+            new Promise((_resolve, reject) =>
+              signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+            )) as unknown as GenerateFunction,
+          vision,
+        ),
+      },
+      async (opened) => {
+        const working = await send(opened, 'asker', messageWith([{ text: 'start' }]), undefined, {
+          configuration: { returnImmediately: true },
+        });
+        const taskId = (working.result.task ?? working.result).id;
+        const message = rawMessage({ taskId });
+        const first = await sendExpired(opened, 'asker', message);
+        const again = await sendExpired(opened, 'asker', message);
+
+        for (const body of [first, again]) {
+          expect(body.error).toBeUndefined();
+          const task = body.result.task ?? body.result;
+          expect(task.metadata[COMMAND_RECEIPTS_EXTENSION_URI]).toMatchObject({
+            receipt: { state: 'expired', reason: 'deadline-exceeded' },
+          });
+        }
+        expect(await admissions(opened)).toBe(0);
+      },
+      { durableHistory: true },
     );
   });
 });
