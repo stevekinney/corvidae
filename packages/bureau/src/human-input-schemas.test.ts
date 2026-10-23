@@ -19,6 +19,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
 
 const deploySchema: HumanInputSchema = {
@@ -54,7 +55,7 @@ describe('BureauOptions.humanInput with inputSchemas', () => {
       },
     });
 
-    await expect(rejected).rejects.toBeInstanceOf(HumanInputSchemaError);
+    expect(await rejectionOf(rejected)).toBeInstanceOf(HumanInputSchemaError);
   });
 
   it('gives a run recovered after a restart the schema on its next park', async () => {
