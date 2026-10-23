@@ -19,8 +19,12 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 import { z } from 'zod';
 
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { noToolCalls } from './conditions/predicates';
+
+import type { OperativeHookMap } from './hooks';
 import { executeLoop } from './loop';
+import { sealDanglingToolCalls } from './run-step-support';
 import type { GenerateResponse } from './types';
 
 const requestContext = {
@@ -172,5 +176,36 @@ describe('Gemini providerCallId provenance', () => {
     const replayed = await toolbox.execute(second!, { requestContext });
     expect(echoedIds([executed])).toEqual(['gem-a']);
     expect(echoedIds([replayed])).toEqual(['gem-b']);
+  });
+
+  it('survives the onError skip result and sealed dangling-call results', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onError', async () => 'skip');
+    hooks.on('beforeToolExecution', () => {
+      throw new Error('hook failed');
+    });
+    let step = 0;
+    const result = await executeLoop({
+      generate: async (): Promise<GenerateResponse> =>
+        step++ === 0
+          ? { content: '', toolCalls: geminiCalls() }
+          : { content: 'done', toolCalls: [] },
+      toolbox: createToolbox([lookup]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+      runId: 'run-1',
+    });
+    const skipped = result.conversation
+      .getMessages()
+      .flatMap((message) => (message.toolResult ? [message.toolResult] : []));
+    expect(skipped.map((toolResult) => toolResult.providerCallId)).toEqual(['gem-1', 'gem-2']);
+
+    const conversation = new Conversation();
+    const calls = materializeToolCalls(geminiCalls());
+    conversation.appendToolCalls(calls);
+    const sealed = await sealDanglingToolCalls(conversation, false, 'cancelled', calls);
+    expect(sealed.map((toolResult) => toolResult.providerCallId)).toEqual(['gem-1', 'gem-2']);
+    expect(echoedIds(sealed)).toEqual(['gem-1', 'gem-2']);
   });
 });

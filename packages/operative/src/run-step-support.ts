@@ -150,6 +150,7 @@ export async function sealDanglingToolCalls(
   const danglingResults = calls.map((tc) => ({
     callId: tc.id,
     toolCallId: tc.id,
+    ...(tc.providerCallId === undefined ? {} : { providerCallId: tc.providerCallId }),
     toolName: tc.name,
     outcome: 'error' as const,
     content: reason,
