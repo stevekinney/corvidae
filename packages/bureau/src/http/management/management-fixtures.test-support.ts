@@ -21,7 +21,7 @@ import { createBureau } from '../../create-bureau.ts';
 import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import type { Bureau } from '../../types.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
-import { type BureauHandlerOptions, createBureauHandler } from '../create-bureau-handler.ts';
+import { createBureauHandler } from '../create-bureau-handler.ts';
 
 export type Handler = (request: Request) => Promise<Response>;
 
@@ -212,7 +212,10 @@ export async function openBureau(
     /** The asset service's injected ports: a metadata extractor or a safety gate a test scripts. */
     assetPorts?: AssetPorts;
     /** Passed to `createBureauHandler` beside the authentication. */
-    handlerOptions?: Pick<BureauHandlerOptions, 'maxRequestBodyBytes' | 'mcp'>;
+    handlerOptions?: Omit<
+      Parameters<typeof createBureauHandler>[1],
+      'authentication' | 'unauthenticatedAccess' | 'publish'
+    >;
   } = {},
 ): Promise<OpenedBureau> {
   const fixture =

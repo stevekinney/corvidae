@@ -42,13 +42,15 @@ createBureauHandler(bureau, { unauthenticatedAccess: 'maybe' });
 // @ts-expect-error -- a string is not a string array
 createBureauHandler(bureau, { publish: 'support' });
 
-// The options deferred to A2A and hosting are not options.
-// @ts-expect-error -- publicUrl returns with its consumer
+// A2A is mounted by `publicUrl` (COR-903), and `signing` is the kit's complete option shape.
 createBureauHandler(bureau, { publicUrl: 'https://example.test' });
-// @ts-expect-error -- discoveryUrl returns with its consumer
-createBureauHandler(bureau, { discoveryUrl: 'https://example.test' });
-// @ts-expect-error -- signing returns with its consumer
+createBureauHandler(bureau, {
+  publicUrl: 'https://example.test',
+  discoveryUrl: 'https://discovery.example.test',
+});
+// @ts-expect-error -- signing needs a key, an algorithm, and a key id
 createBureauHandler(bureau, { signing: {} });
+// The options deferred to hosting are not options.
 // @ts-expect-error -- cors returns with its consumer
 createBureauHandler(bureau, { cors: {} });
 // @ts-expect-error -- rateLimitKey returns with its consumer

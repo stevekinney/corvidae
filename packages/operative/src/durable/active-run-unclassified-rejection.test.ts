@@ -18,6 +18,7 @@ import {
   RunErrorEvent,
   type CombinedOperativeEventMap,
 } from '../events';
+import { withTwoPhaseStart } from '../test/durable-engine';
 import type { RunOptions, RunResult } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
@@ -107,10 +108,10 @@ const drivers: readonly Driver[] = [
   {
     name: 'fresh-run driver',
     settle: async (rejection, emitter, engineOverrides = {}) => {
-      const engine = {
+      const engine = withTwoPhaseStart({
         start: async () => ({ result: () => Promise.reject(rejection) }),
         ...engineOverrides,
-      } as unknown as RegistryAgnosticEngine;
+      }) as unknown as RegistryAgnosticEngine;
       const activeRun = createDurableActiveRun(
         { engine, checkpointStore: emptyCheckpointStore },
         { runId: 'fresh-run', sessionId: 'fresh-run', options: runOptions(), emitter },
@@ -202,14 +203,14 @@ describe('a durable run whose result rejects with an unclassified error', () => 
     const stepError = new AgentRunError('the model refused', { kind: 'generate', code: 'UNKNOWN' });
     const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
     const terminalEvents = observeTerminalLifecycle(emitter);
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({
         result: () => {
           emitter.dispatch(new RunErrorEvent(0, stepError, 'generate'));
           return Promise.reject(new Error('the activity failed afterwards'));
         },
       }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
 
     const activeRun = createDurableActiveRun(
       { engine, checkpointStore: emptyCheckpointStore },
@@ -326,9 +327,9 @@ describe('a durable run whose resolved summary is malformed', () => {
   it('settles a fresh run as error with the field named', async () => {
     const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
     const terminalEvents = observeTerminalLifecycle(emitter);
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({ result: () => Promise.resolve(malformed) }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
 
     const result = await createDurableActiveRun(
       { engine, checkpointStore: emptyCheckpointStore },

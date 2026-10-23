@@ -8,6 +8,7 @@ import { createConversationHistory } from 'conversationalist';
 import { stopWhen } from '../conditions/index';
 import { createActiveRun } from '../create-run';
 import { type CombinedOperativeEventMap, RunCompletedEvent, RunErrorEvent } from '../events';
+import { withTwoPhaseStart } from '../test/durable-engine';
 import type { RunOptions } from '../types';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine, type RegistryAgnosticEngine } from './create-run-engine';
@@ -233,9 +234,9 @@ describe('a durable run that fails after a committed step', () => {
   });
 
   it('settles from the launch conversation, and warns once, when the checkpoint cannot be read', async () => {
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({ result: () => Promise.reject(new Error('the activity failed')) }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
     const checkpointStore = {
       loadCheckpoint: async () => {
         throw new Error('the checkpoint store is unavailable');

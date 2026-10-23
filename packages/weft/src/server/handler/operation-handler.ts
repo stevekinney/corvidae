@@ -225,7 +225,7 @@ export function createOperationHandler<Host>(
 
   const handle = async (request: Request): Promise<Response> => {
     const pathname = normalizedPathname(request);
-    const isPublic = publicPaths.has(pathname) || mounts.publicPaths.has(pathname);
+    const isPublic = publicPaths.has(pathname) || mounts.isPublic(pathname);
     let authContext: AuthContext | undefined;
     if (authenticate !== undefined && !isPublic) {
       const outcome = await authenticate(request);

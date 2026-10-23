@@ -95,6 +95,8 @@ export interface TaskListingRecord<T> extends TaskListingScope {
   readonly entries: readonly TaskListingEntry<T>[];
   /** The key the next window starts strictly after, or `null` when this window ends the listing. */
   readonly continuation: TaskListingKey | null;
+  /** How many tasks the listing matched when its first page was read, across every window. */
+  readonly total: number;
 }
 
 /** The decoded page token. */

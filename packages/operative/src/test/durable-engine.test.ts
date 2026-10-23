@@ -6,6 +6,7 @@ import {
   createManualCheckpointStore,
   createManualDurableEngine,
   spyEngine,
+  withTwoPhaseStart,
 } from './durable-engine';
 
 describe('durable engine test helpers', () => {
@@ -33,6 +34,77 @@ describe('durable engine test helpers', () => {
     expect(spy.resumes).toEqual(['run-2']);
     expect(spy.cancels).toEqual(['run-3']);
     expect(delegated).toEqual(['suspend:run-1', 'resume:run-2', 'cancel:run-3']);
+  });
+
+  it('spies on start, prepare, and the prepared handle’s launch and abandon (COR-297)', async () => {
+    const delegated: string[] = [];
+    const engine = {
+      suspend: async () => {},
+      resume: async () => {},
+      cancel: async () => {},
+      start: async (_type: string, _input: unknown, options?: { id?: string }) => {
+        delegated.push(`start:${options?.id}`);
+        return { id: options?.id };
+      },
+      prepare: async (_type: string, _input: unknown, options?: { id?: string }) => ({
+        id: options?.id ?? '',
+        launch: async () => {
+          delegated.push(`launch:${options?.id}`);
+          return { id: options?.id };
+        },
+        abandon: async () => {
+          delegated.push(`abandon:${options?.id}`);
+        },
+      }),
+    } as unknown as RegistryAgnosticEngine;
+
+    const spy = spyEngine(engine);
+    await spy.engine.start('agentRun', {}, { id: 'started' });
+    const launched = await spy.engine.prepare('agentRun', {}, { id: 'launched' });
+    await launched.launch();
+    const abandoned = await spy.engine.prepare('agentRun', {}, { id: 'abandoned' });
+    await abandoned.abandon();
+
+    expect(spy.starts).toEqual(['started']);
+    expect(spy.prepares).toEqual(['launched', 'abandoned']);
+    expect(spy.launches).toEqual(['launched']);
+    expect(spy.abandons).toEqual(['abandoned']);
+    expect(delegated).toEqual(['start:started', 'launch:launched', 'abandon:abandoned']);
+  });
+
+  it('gives a fake engine literal a prepare whose launch calls its start (COR-297)', async () => {
+    const calls: unknown[] = [];
+    const engine = withTwoPhaseStart({
+      start: async (type: string, input: unknown, options?: { id?: string }) => {
+        calls.push([type, input, options]);
+        return 'handle';
+      },
+    });
+
+    const prepared = await engine.prepare('agentRun', { prompt: 'hi' }, { id: 'run-1' });
+    await prepared.abandon();
+    expect(calls).toEqual([]);
+
+    expect(prepared.id).toBe('run-1');
+    expect(await prepared.launch()).toBe('handle');
+    expect(calls).toEqual([['agentRun', { prompt: 'hi' }, { id: 'run-1' }]]);
+  });
+
+  it('prepares a manual durable run whose launch returns the shared result (COR-297)', async () => {
+    const manual = createManualDurableEngine();
+    const prepared = await manual.engine.prepare('agentRun', {}, { id: 'manual-run' });
+    const handle = await prepared.launch();
+    await prepared.abandon();
+    const result = handle.result();
+
+    manual.resolveResult();
+
+    expect(await result).toMatchObject({ runId: 'manual-run', finishReason: 'stop-condition' });
+    expect(manual.calls).toEqual({
+      prepares: ['manual-run'],
+      launches: ['manual-run'],
+      abandons: ['manual-run'],
+    });
   });
 
   it('creates a manual durable engine whose result can be resolved or cancelled', async () => {

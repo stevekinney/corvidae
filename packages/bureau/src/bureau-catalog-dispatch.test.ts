@@ -711,15 +711,15 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const { dispatcher, engine, runAttribution } = await world(
         priced({ model: 'm', pricing: PRICING(1) }, []),
       );
-      let startCalls = 0;
+      let prepareCalls = 0;
       let openSecond: () => void = () => {};
       const secondMayFail = new Promise<void>((resolve) => {
         openSecond = resolve;
       });
-      engine.start = async () => {
-        startCalls += 1;
-        if (startCalls === 2) await secondMayFail;
-        throw new Error(`durable start ${startCalls} rejected`);
+      engine.prepare = async () => {
+        prepareCalls += 1;
+        if (prepareCalls === 2) await secondMayFail;
+        throw new Error(`durable start ${prepareCalls} rejected`);
       };
 
       const first = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
@@ -747,7 +747,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         const { dispatcher, engine, runAttribution } = await world(
           priced({ model: 'm', pricing: PRICING(1) }, []),
         );
-        engine.start = async () => {
+        engine.prepare = async () => {
           throw new Error('the engine refused the workflow');
         };
 
