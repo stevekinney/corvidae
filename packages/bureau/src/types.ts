@@ -2249,7 +2249,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * COR-1631 — the task's interactive surfaces: create, compare-and-swap update,
    * snapshot, action admission, close, owner abort, and cleanup, kept in the
    * task's durable history (see `documentation/interactive-surface.md`).
-   * `undefined` for a Bureau with no persistent storage, which keeps no history.
+   * `undefined` for a Bureau without persistent durable execution
+   * (`durableExecution` over persistent storage), which keeps no durable history.
    */
   readonly surfaces: InteractiveSurfaces | undefined;
   /**

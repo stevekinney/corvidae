@@ -1202,6 +1202,30 @@ describe('closing, cancellation, and cleanup', () => {
     });
   });
 
+  it('requires a new instanceId when an MCP App moves to a new sandbox domain', async () => {
+    const { surfaces } = harness();
+    const app = {
+      kind: 'mcp-app',
+      resourceUri: 'ui://reviews/pending',
+      mimeType: 'text/html;profile=mcp-app',
+      contentDigest: `sha256:${'c'.repeat(64)}`,
+      instanceId: 'instance-1',
+      csp: { connectDomains: [], resourceDomains: [] },
+      permissions: {},
+      domain: 'one.apps.example.test',
+    } as const;
+    await surfaces.create(createCommand({ actions: [], representation: app }));
+
+    expect(
+      await surfaces.update(
+        updateCommand({
+          data: undefined,
+          representation: { ...app, domain: 'two.apps.example.test' },
+        }),
+      ),
+    ).toMatchObject({ reason: 'invalid' });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

@@ -99,7 +99,8 @@ const bureau = await createBureau({
   durableExecution: true,
 });
 const surfaces = bureau.surfaces;
-if (surfaces === undefined) throw new Error('surfaces need persistent storage');
+if (surfaces === undefined)
+  throw new Error('surfaces need durable execution over persistent storage');
 
 const created = await surfaces.create({
   type: 'surface.create',

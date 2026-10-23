@@ -939,11 +939,13 @@ export function createInteractiveSurfaces(
           next?.kind === 'mcp-app' &&
           previous?.kind === 'mcp-app' &&
           (next.resourceUri !== previous.resourceUri ||
-            next.contentDigest !== previous.contentDigest) &&
+            next.contentDigest !== previous.contentDigest ||
+            next.domain !== previous.domain) &&
           next.instanceId === previous.instanceId
         ) {
+          // A new sandbox origin reloads the document as surely as a new resource does.
           throw new InteractiveSurfaceValidationError(
-            'a new MCP App resource or digest needs a new instanceId',
+            'a new MCP App resource, digest, or domain needs a new instanceId',
           );
         }
         const revision = before.revision + 1;
