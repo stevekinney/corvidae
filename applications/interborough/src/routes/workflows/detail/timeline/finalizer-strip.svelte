@@ -96,7 +96,7 @@
 <style>
   .weft-finalizer-strip {
     margin-top: 12px;
-    padding: 12px;
+    padding: var(--cinder-density-pad-card);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
@@ -119,7 +119,7 @@
   .weft-finalizer-strip__section {
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-md);
-    padding: 8px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     display: flex;
     flex-direction: column;
     gap: 6px;

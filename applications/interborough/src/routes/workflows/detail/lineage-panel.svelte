@@ -438,7 +438,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 9px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-xs);
     white-space: nowrap;

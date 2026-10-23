@@ -268,7 +268,7 @@
   .weft-update-tab__notice,
   .weft-update-tab__empty {
     margin: 0;
-    padding: 11px 15px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-subtle);
   }
@@ -280,6 +280,6 @@
   .weft-update-tab__fault,
   .weft-update-tab__loading,
   .weft-update-tab__more {
-    padding: 11px 15px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 </style>

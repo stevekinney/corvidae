@@ -122,7 +122,7 @@
     gap: 8px 16px;
     align-items: flex-start;
     justify-content: space-between;
-    padding: 12px 14px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);

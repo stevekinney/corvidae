@@ -47,7 +47,7 @@
     </p>
 
     {#if replayQuery.isPending}
-      <div style="padding: 12px;"><Skeleton height="6rem" /></div>
+      <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="6rem" /></div>
     {:else if replayQuery.data === null}
       <EmptyState
         title="No replay available"
@@ -109,7 +109,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 14px;
+    padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
     background: var(--cinder-status-warning-background);
     color: var(--cinder-status-warning-text);
     border-bottom: 1px solid var(--cinder-status-warning-border);
@@ -119,13 +119,13 @@
 
   .weft-replay-view__description {
     margin: 0;
-    padding: 12px 14px 0;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline) 0;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
   }
 
   .weft-replay-view__body {
-    padding: 14px;
+    padding: var(--cinder-density-pad-card);
     display: flex;
     flex-direction: column;
     gap: 14px;
