@@ -18865,6 +18865,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
     );
     taskResyncInstance = createTaskResync({
+      answerOf: (taskId) => {
+        const content = bureau.getRun(taskId)?.stepDetails.findLast((step) => step.final)?.content;
+        if (content === undefined || content === '') return undefined;
+        return {
+          text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+          truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+        };
+      },
       tasks,
       history: eventHistoryInstance,
       producer: durableEventProducerInstance,

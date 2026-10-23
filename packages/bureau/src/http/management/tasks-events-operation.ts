@@ -785,12 +785,15 @@ export const tasksEventsOperation = defineOperation<
         taskId,
         settledEventRetained ? { ...task, status: 'working' } : task,
       );
-      for (const event of retained) {
+      // A resync later in the history can restate a task an earlier terminal event ended (the
+      // lost event was a review opening), so the replay does not close before the last one.
+      const lastResync = retained.findLastIndex((event) => event.kind === TASK_RESYNCED_EVENT_KIND);
+      for (const [index, event] of retained.entries()) {
         const element = projector.project(event);
         if (element !== undefined && (decodeCursor(event.cursor) ?? -1) > emitAfter) {
           queue.push(element);
         }
-        if (projector.ended) {
+        if (projector.ended && index >= lastResync) {
           queue.end();
           onReplayComplete();
           return;

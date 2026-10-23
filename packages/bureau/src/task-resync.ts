@@ -96,6 +96,9 @@ export function bearsSettlement(event: {
   );
 }
 
+/** A bounded answer text. */
+export type TaskAnswer = { readonly text: string; readonly truncated: boolean };
+
 /** What the repair needs from the Bureau. */
 export interface TaskResyncOptions {
   readonly tasks: Pick<
@@ -105,6 +108,13 @@ export interface TaskResyncOptions {
   readonly history: Pick<DurableEventHistory, 'page' | 'record' | 'retentionFloorTimestamp'>;
   readonly producer: Pick<DurableEventProducer, 'serialize'>;
   readonly diagnose: (message: string, cause: unknown) => void;
+  /**
+   * The bounded answer of a session run that completed, from the run the Bureau still holds. A
+   * session run's registry record keeps no answer, and its `run.completed` is the event that was
+   * lost, so the repair reads it here. A run the Bureau no longer holds (a restart) has none to
+   * give, and the repair states the end without it.
+   */
+  readonly answerOf?: ((taskId: string) => TaskAnswer | undefined) | undefined;
 }
 
 /** The repair. */
@@ -153,7 +163,12 @@ export function createTaskResync(options: TaskResyncOptions): TaskResync {
     }
   }
 
-  function payloadOf(view: TaskView, record: TaskRecord, revision: number): TaskResyncedPayload {
+  function payloadOf(
+    view: TaskView,
+    record: TaskRecord,
+    revision: number,
+    held: TaskAnswer | undefined,
+  ): TaskResyncedPayload {
     return {
       runId: view.id,
       revision,
@@ -167,7 +182,7 @@ export function createTaskResync(options: TaskResyncOptions): TaskResync {
               status: record.settled.status,
               finishReason: record.settled.finishReason,
               message: record.settled.message,
-              answer: record.settled.answer ?? null,
+              answer: record.settled.answer ?? held ?? null,
             },
       openReviewIds: view.openWaits.map((wait) => wait.reviewId),
     };
@@ -199,7 +214,11 @@ export function createTaskResync(options: TaskResyncOptions): TaskResync {
     const revision = record.revision ?? 0;
     // Marked first: a crash between here and the append leaves the repair owed.
     if (!(await tasks.markResyncPending(taskId))) return false;
-    await history.record(owner, TASK_RESYNCED_EVENT_KIND, payloadOf(view, record, revision));
+    const held =
+      record.settled?.status === 'completed' && record.settled.answer === undefined
+        ? options.answerOf?.(taskId)
+        : undefined;
+    await history.record(owner, TASK_RESYNCED_EVENT_KIND, payloadOf(view, record, revision, held));
     await tasks.clearResyncPending(taskId, revision);
     return true;
   }

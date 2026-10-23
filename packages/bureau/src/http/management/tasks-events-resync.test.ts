@@ -14,6 +14,8 @@ import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import { TASK_RESYNCED_EVENT_KIND } from '../../task-resync.ts';
 import { createTaskEventProjector } from './tasks-events-operation.ts';
 import {
+  approvalToolbox,
+  chargesOnce,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -101,8 +103,17 @@ function parksThenAnswers(onFinish?: () => void): GenerateFunction {
   };
 }
 
-async function open(faulty: Faulty, generate: GenerateFunction): Promise<OpenedBureau> {
-  const opened = await openBureau({ storage: faulty.storage, generate, humanInput: true });
+async function open(
+  faulty: Faulty,
+  generate: GenerateFunction,
+  extra: Partial<Parameters<typeof openBureau>[0]> = {},
+): Promise<OpenedBureau> {
+  const opened = await openBureau({
+    storage: faulty.storage,
+    generate,
+    humanInput: true,
+    ...extra,
+  });
   cleanups.push(() => opened.dispose());
   return opened;
 }
@@ -221,10 +232,10 @@ describe('task.resynced', () => {
       status: 'completed',
       settled: { status: 'completed' },
     });
-    // A stream ends at the terminal event, so a reader that replays the history is not told the
-    // end twice.
+    // The replay reads through to the resync, so it is the last thing the reader is told.
     const frames = await framesOf(opened, run.id);
-    expect(resyncs(frames)).toHaveLength(0);
+    expect(resyncs(frames)).toHaveLength(1);
+    expect(frames.at(-1)?.event).toBe('task.resynced');
     expect(lastStatus(frames)).toBe('completed');
   }, 20_000);
 
@@ -278,6 +289,56 @@ async function clearMark(faulty: Faulty, runId: string): Promise<void> {
   delete record['resyncPending'];
   await faulty.storage.put(key, new TextEncoder().encode(JSON.stringify(record)));
 }
+
+describe('the repair of a lost end', () => {
+  it('carries the answer of a completed session run, read from the run the Bureau holds', async () => {
+    const faulty = await faultyStorage();
+    const opened = await open(
+      faulty,
+      parksThenAnswers(() => {
+        // The run's end fails to append; the resync after it does not.
+        faulty.faults.failAppends = 1;
+      }),
+    );
+    const run = await park(opened, faulty.faults, 0);
+    await answer(opened, run.id);
+    await waitForCondition(async () => (await resyncCount(opened, run.id)) > 0, 'no resync');
+
+    const frames = await framesOf(opened, run.id);
+    const [resync] = frames.filter((frame) => frame.event === 'task.resynced');
+    expect(resync?.data).toMatchObject({
+      status: 'completed',
+      artifact: { artifactId: `${run.id}:result`, text: 'the answer' },
+    });
+  }, 20_000);
+
+  it('keeps a task that finished with an approval open as input-required once its lost event is repaired', async () => {
+    const faulty = await faultyStorage();
+    const charges: number[] = [];
+    const opened = await open(faulty, chargesOnce, {
+      toolbox: approvalToolbox(charges),
+      stopAtApproval: true,
+      humanInput: false,
+    });
+    // The approval's event and the repair after it fail; the run's end commits.
+    faulty.faults.failAppends = 2;
+    const run = await opened.bureau.createRun({
+      agentName: 'default',
+      message: 'charge',
+      principal: OWNER.alice,
+    });
+    await waitForCondition(
+      () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+      'the approval never became pending',
+    );
+    await opened.bureau.runDurableMaintenance();
+    await waitForCondition(async () => (await resyncCount(opened, run.id)) > 0, 'no resync');
+
+    const frames = await framesOf(opened, run.id, (seen) => seen.length >= 3);
+    expect(frames.at(-1)?.event).toBe('task.resynced');
+    expect(lastStatus(frames)).toBe('input-required');
+  }, 20_000);
+});
 
 describe('the task event projection of task.resynced', () => {
   const source = (payload: unknown) => ({
