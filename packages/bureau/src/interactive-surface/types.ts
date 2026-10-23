@@ -60,7 +60,11 @@ export interface InteractiveSurfaceA2ui {
   readonly specificationVersion: typeof INTERACTIVE_SURFACE_A2UI_VERSION;
   /** The catalog the components come from, as A2UI's `createSurface` names it. */
   readonly catalogId: string;
-  /** The component list, as A2UI's `updateComponents` carries it; one has the id `root`. */
+  /**
+   * The whole component list, as the adapter has folded A2UI's incremental
+   * `updateComponents` messages into it. It may be empty after `createSurface`
+   * and need not hold `root` yet, since components may arrive before it.
+   */
   readonly components: readonly InteractiveSurfaceJsonObject[];
   /** Theme parameters for the catalog's `theme` schema. */
   readonly theme?: InteractiveSurfaceJsonObject | undefined;
@@ -106,6 +110,10 @@ export interface InteractiveSurfaceMcpApp {
   readonly permissions: InteractiveSurfaceMcpAppPermissions;
   /** The tool whose result the app presents, when it is linked to one. */
   readonly toolName?: string | undefined;
+  /** MCP Apps' `domain`: the dedicated sandbox origin the resource asks its host for. */
+  readonly domain?: string | undefined;
+  /** MCP Apps' `prefersBorder`: whether the app asks its host to draw a border around it. */
+  readonly prefersBorder?: boolean | undefined;
 }
 
 /** What a surface shows: a closed union, grown only by a new contract version. */

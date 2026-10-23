@@ -378,6 +378,8 @@ function readMcpApp(value: Record<string, unknown>): InteractiveSurfaceRepresent
       'csp',
       'permissions',
       'toolName',
+      'domain',
+      'prefersBorder',
     ],
     'representation',
   );
@@ -435,6 +437,14 @@ function readMcpApp(value: Record<string, unknown>): InteractiveSurfaceRepresent
     if (typeof granted !== 'boolean') fail(`representation.permissions.${name} must be a boolean`);
   }
   const toolName = readOptionalString(value['toolName'], 'representation.toolName');
+  const domain =
+    value['domain'] === undefined
+      ? undefined
+      : readIdentifier(value['domain'], 'representation.domain');
+  const prefersBorder = value['prefersBorder'];
+  if (prefersBorder !== undefined && typeof prefersBorder !== 'boolean') {
+    fail('representation.prefersBorder must be a boolean');
+  }
   return {
     kind: 'mcp-app',
     resourceUri,
@@ -444,6 +454,8 @@ function readMcpApp(value: Record<string, unknown>): InteractiveSurfaceRepresent
     csp,
     permissions: { ...value['permissions'] },
     ...(toolName === undefined ? {} : { toolName }),
+    ...(domain === undefined ? {} : { domain }),
+    ...(prefersBorder === undefined ? {} : { prefersBorder }),
   };
 }
 

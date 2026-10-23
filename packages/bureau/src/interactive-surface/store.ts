@@ -811,7 +811,6 @@ export function createInteractiveSurfaces(
       );
       const digest = digestOf(record);
 
-      await assertOwnContinuations(actions, taskId, task, options.reviewIdsOf);
       // Watch before committing, so a settlement after this point freezes the new surface.
       watch(taskId);
 
@@ -826,6 +825,9 @@ export function createInteractiveSurfaces(
           );
         }
         if (task.settled !== undefined) return rejection('closed', 'the task has ended');
+        // Ownership is checked only for a command not yet committed: an exact
+        // retry replays above even after the review it named has resolved.
+        await assertOwnContinuations(actions, taskId, task, options.reviewIdsOf);
         const at = isoNow();
         const surface: InteractiveSurface = {
           contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
@@ -901,15 +903,14 @@ export function createInteractiveSurfaces(
       }
       const digest = digestOf(record);
 
-      if (changes.actions !== undefined) {
-        await assertOwnContinuations(changes.actions, taskId, task, options.reviewIdsOf);
-      }
-
       return retrying(async () => {
         const loaded = await current(task, taskId, surfaceId);
         if (loaded === undefined) return rejection('not-found');
         const replayed = await replay(loaded.stored, commandId, digest);
         if (replayed !== undefined) return replayed;
+        if (changes.actions !== undefined) {
+          await assertOwnContinuations(changes.actions, taskId, task, options.reviewIdsOf);
+        }
         const before = loaded.stored.surface;
         if (ended(task, before)) return rejection('closed', 'the surface is closed');
         if (before.revision !== baseRevision) {
@@ -918,6 +919,16 @@ export function createInteractiveSurfaces(
         if (changes.representation !== undefined && changes.representation.kind !== before.kind) {
           throw new InteractiveSurfaceValidationError(
             `representation.kind must stay "${before.kind}"`,
+          );
+        }
+        // A2UI fixes a surface's catalog at `createSurface`; `updateComponents` names none.
+        if (
+          changes.representation?.kind === 'a2ui' &&
+          before.representation?.kind === 'a2ui' &&
+          changes.representation.catalogId !== before.representation.catalogId
+        ) {
+          throw new InteractiveSurfaceValidationError(
+            `representation.catalogId must stay "${before.representation.catalogId}"`,
           );
         }
         // A new MCP App resource is a new app instance, so it must carry a new

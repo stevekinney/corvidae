@@ -1141,6 +1141,67 @@ describe('closing, cancellation, and cleanup', () => {
     });
   });
 
+  it('replays an exact create retry after its review resolved', async () => {
+    const held = new Set(['approval:agent-run-1:call-1']);
+    const { surfaces } = harness(undefined, { reviewIdsOf: async () => held });
+    const command = createCommand({
+      actions: [
+        {
+          name: 'approve',
+          intent: 'approve',
+          continuation: { type: 'review', reviewId: 'approval:agent-run-1:call-1' },
+        },
+      ],
+    });
+    expect(await surfaces.create(command)).toMatchObject({ outcome: 'accepted' });
+    held.clear();
+
+    expect(await surfaces.create(command)).toMatchObject({ outcome: 'accepted', replayed: true });
+  });
+
+  it('keeps an A2UI surface on its catalog, and carries MCP Apps resource metadata', async () => {
+    const { surfaces } = harness();
+    const a2ui = {
+      kind: 'a2ui',
+      specificationVersion: 'v0.9.1',
+      catalogId: 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json',
+      components: [],
+    } as const;
+    await surfaces.create(createCommand({ actions: [], representation: a2ui }));
+    expect(
+      await surfaces.update(
+        updateCommand({
+          data: undefined,
+          representation: { ...a2ui, catalogId: 'https://example.test/other-catalog.json' },
+        }),
+      ),
+    ).toMatchObject({ reason: 'invalid' });
+
+    expect(
+      await surfaces.create(
+        createCommand({
+          commandId: 'app',
+          surfaceId: 'app',
+          actions: [],
+          representation: {
+            kind: 'mcp-app',
+            resourceUri: 'ui://reviews/pending',
+            mimeType: 'text/html;profile=mcp-app',
+            contentDigest: `sha256:${'c'.repeat(64)}`,
+            instanceId: 'instance-1',
+            csp: { connectDomains: [], resourceDomains: [] },
+            permissions: {},
+            domain: 'reviews.apps.example.test',
+            prefersBorder: false,
+          },
+        }),
+      ),
+    ).toMatchObject({
+      outcome: 'accepted',
+      surface: { representation: { domain: 'reviews.apps.example.test', prefersBorder: false } },
+    });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());
