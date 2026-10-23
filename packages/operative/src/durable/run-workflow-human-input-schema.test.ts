@@ -71,7 +71,9 @@ describe('the model-facing requestHumanInput result', () => {
       },
       inputSchemas: { deploy: formSchema },
     });
-    const toolbox = createToolbox([tool]) as unknown as RegistryToolbox;
+    const toolbox = createToolbox([tool] as unknown as Parameters<
+      typeof createToolbox
+    >[0]) as unknown as RegistryToolbox;
 
     const seenByModel: string[] = [];
     let calls = 0;
