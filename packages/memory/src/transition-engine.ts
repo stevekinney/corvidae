@@ -1,9 +1,11 @@
 import type { EvidenceProjectionStorage } from './evidence-projection-storage';
 import { MemoryEvidenceValidationError } from './evidence-schema';
-import type {
-  TransitionEvent,
-  TransitionEventSink,
-  TransitionSourceReference,
+import {
+  type MemoryCorrelation,
+  memoryCorrelationSchema,
+  type TransitionEvent,
+  type TransitionEventSink,
+  type TransitionSourceReference,
 } from './transition-events';
 import { classifyStoreError, type TransitionResult } from './transition-outcome';
 import { plannedProjections, type TransitionPlan } from './transition-plan';
@@ -57,6 +59,11 @@ export interface CreateTransitionEngineOptions {
 export interface SubmitTransitionOptions {
   /** Aborting before the batch call ends the submission as `canceled`; after it, the commit stands. */
   readonly signal?: AbortSignal;
+  /**
+   * The run, session, and context epoch this attempt belongs to. Every event of
+   * the attempt carries it; it is not part of the proposal or its digest.
+   */
+  readonly correlation?: MemoryCorrelation;
 }
 
 export interface TransitionEngine {
@@ -199,6 +206,11 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
     const { proposal, digest } = snapshotTransitionProposal(raw);
     const { tenantId, operationId, authority } = proposal;
     const signal = submitOptions?.signal;
+    // Parsed and detached once, so every event of the attempt carries the same, valid correlation.
+    const correlation =
+      submitOptions?.correlation === undefined
+        ? undefined
+        : memoryCorrelationSchema.parse(submitOptions.correlation);
     // A call, not a property read, so no narrowing hides a signal that aborts between awaits.
     const isAborted = (): boolean => signal?.aborted === true;
     const requestedAt = now();
@@ -217,6 +229,7 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
           principal: { kind: authority.principal.kind, id: authority.principal.id },
           ownerId: authority.ownerId,
           at: eventAt,
+          ...(correlation === undefined ? {} : { correlation }),
           ...event,
         } as TransitionEvent);
       } catch {

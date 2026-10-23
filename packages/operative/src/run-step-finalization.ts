@@ -26,6 +26,7 @@ export interface StepFinalizationDependencies {
   messageId: string | undefined;
   materializedToolCalls: ToolCall[];
   results: ToolExecutionResult[];
+  contextEpochId: string | undefined;
 }
 
 export async function finalizeStep(input: StepFinalizationDependencies): Promise<StepOutcome> {
@@ -40,6 +41,7 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     messageId,
     materializedToolCalls,
     results,
+    contextEpochId,
   } = input;
   const { hooks } = deps;
   const { content, usage, metadata } = response;
@@ -64,6 +66,7 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     results,
     usage,
     metadata,
+    ...(contextEpochId === undefined ? {} : { contextEpochId }),
     final: false,
   };
 

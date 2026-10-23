@@ -25,10 +25,7 @@ import {
   failWorkflow as failWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
-import {
-  captureTerminatedRun,
-  type TerminatedRun,
-} from './termination/settle-refused-terminal.ts';
+import { captureTerminatedRun, type TerminatedRun } from './termination/settle-refused-terminal.ts';
 
 export type ParkedWorkflowResumeDisposition = 'resumable' | 'terminal-or-missing' | 'corrupt';
 
@@ -303,7 +300,10 @@ export async function handleStrategyMessage(
   try {
     await dispatchStrategyMessage(internals, message, callbacks, run);
     // A terminal message that returned with its run's waiter still pending did not settle it.
-    if (terminalWrite !== undefined && isTerminalWaiterPending(internals, message.workflowId, run)) {
+    if (
+      terminalWrite !== undefined &&
+      isTerminalWaiterPending(internals, message.workflowId, run)
+    ) {
       await settleUnsettledTerminalMessage(internals, message.workflowId, callbacks, run);
     }
   } catch (error) {

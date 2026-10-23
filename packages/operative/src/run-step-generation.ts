@@ -66,6 +66,8 @@ export interface GenerationResult {
   streamedRowId: string | undefined;
   stepSkipped: boolean;
   generateDurationMilliseconds: number | undefined;
+  /** The epoch the producing attempt sealed; a retried step reports its last attempt's. */
+  contextEpochId: string | undefined;
 }
 
 export async function executeGeneration(
@@ -92,6 +94,7 @@ export async function executeGeneration(
   let response: GenerateResponse = undefined!;
   let streamedRowId: string | undefined;
   let stepRetryCount = 0;
+  let contextEpochId: string | undefined;
   let shouldRetryStep: boolean;
   let stepSkipped = false;
   // AB-302: hoisted out of the generate block below so `GenerateCompletedEvent`
@@ -273,6 +276,7 @@ export async function executeGeneration(
           toolNames: generateContext.toolbox.tools().map((tool) => tool.name),
           consumer: { runId: deps.runId, step, attempt: stepRetryCount },
         });
+        contextEpochId = sealedEpoch?.epochId;
 
         // AB-68: record the configuration this call is issued under. Read
         // from the gate rather than re-planning — `prepareStep` already
@@ -303,8 +307,8 @@ export async function executeGeneration(
         const sealMutatedEpoch =
           deps.contextEpoch === undefined
             ? undefined
-            : (mutatedContext: GenerateContext, providerAttempt: number): string =>
-                deps.contextEpoch!.seal({
+            : (mutatedContext: GenerateContext, providerAttempt: number): string => {
+                const mutatedEpochId = deps.contextEpoch!.seal({
                   conversation: mutatedContext.conversation,
                   steering: steeringDesiredState,
                   plan: deps.selection?.getPlan(),
@@ -318,6 +322,10 @@ export async function executeGeneration(
                     attempt: stepRetryCount + providerAttempt,
                   },
                 }).epochId;
+                // The mutated request is what a successful retry sends, so the step names its epoch.
+                contextEpochId = mutatedEpochId;
+                return mutatedEpochId;
+              };
         try {
           response =
             deps.parentContext !== undefined && deps.withTraceContext !== undefined
@@ -539,7 +547,7 @@ export async function executeGeneration(
     }
   } while (shouldRetryStep);
 
-  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds };
+  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds, contextEpochId };
 }
 
 /**
