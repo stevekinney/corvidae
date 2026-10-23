@@ -95,7 +95,7 @@ A request passes through these steps in order, and the first that fails answers 
 2. The HTTP method: anything other than `POST` gets `405` with `Allow: POST`.
 3. `Content-Type`. A request without one is accepted; one naming any media type other than `application/json` gets a JSON-RPC `ContentTypeNotSupportedError` (`-32005`) with a `null` id, as the SDK's own HTTP adapter answers.
 4. The body, read up to `maxRequestBodyBytes`: a declared or streamed body beyond it gets `413`; a body stream that fails gets `400`. A body that is not JSON gets the JSON-RPC parse error (`-32700`) with a `null` id.
-5. `A2A-Version`. Only `1.0` is served. Any other value, including an empty or absent header, gets a JSON-RPC `VersionNotSupportedError` (`-32009`).
+5. `A2A-Version`. `1.0` is served, and so is any patch version of it such as `1.0.1`, because A2A 1.0.1 section 3.6 makes patch versions equivalent; the request handler always sees the normalized `1.0`. Any other value, including an empty or absent header, gets a JSON-RPC `VersionNotSupportedError` (`-32009`).
 6. The request's `params.tenant`, described below.
 7. The SDK's `JsonRpcTransportHandler`, with a `ServerCallContext` built by the SDK's `defaultServerCallContextBuilder`. Its `user` is the result of `authenticate`, its `state` holds every request header under `STATE_HEADERS_KEY` (so a request handler can read `last-event-id` and `traceparent`), and its requested extensions come from the `A2A-Extensions` request header.
 
