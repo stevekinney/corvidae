@@ -127,6 +127,26 @@ export interface SignaledChildRunHandle<
 export type ChildRunStatus = 'running' | 'completed' | 'failed' | 'aborted';
 
 /**
+ * Where a remote child lives and what it last reported. `state` is the peer's own task state,
+ * so `input-required` and `auth-required` stay visible even though the local `status` of a
+ * child that is waiting is still `running`.
+ */
+export interface ChildRunRemote {
+  /** The protocol the child is reached over. */
+  readonly protocol: 'a2a';
+  /** The peer card's name. */
+  readonly peerName: string;
+  /** The URL of the peer's Agent Card. */
+  readonly cardUrl: string;
+  /** The task's identifier on the peer; empty until the peer names it. */
+  readonly taskId: string;
+  /** The task's context identifier on the peer; empty until the peer names it. */
+  readonly contextId: string;
+  /** The peer's latest task state, for example `working`, `input-required` or `completed`. */
+  readonly state: string;
+}
+
+/**
  * A parent-owned, read-only description of one child — "enough edge
  * information to reassemble the tree without promoting any child to an
  * independently owned resource" (the Child discovery capability in
@@ -134,6 +154,12 @@ export type ChildRunStatus = 'running' | 'completed' | 'failed' | 'aborted';
  */
 export interface ChildRunDescriptor {
   readonly id: string;
+  /**
+   * Present when the child is a task on a remote A2A peer (`createPeerCallTool`) rather than a
+   * local run: the peer's task identity and latest observed state, so a remote child's status,
+   * interruptions and failures stay visible instead of collapsing into `status`.
+   */
+  readonly remote?: ChildRunRemote | undefined;
   readonly parentId: string;
   readonly agentName: string;
   readonly durable: boolean;
@@ -227,7 +253,13 @@ interface ChildRunRegistrar {
     agentName: string;
     durable: boolean;
     abort: (reason?: string) => void;
+    remote?: ChildRunRemote | undefined;
   }): void;
+  /**
+   * Records the latest state of a remote child (`ChildRunDescriptor.remote`). A no-op for an
+   * unknown `id`, a child that is not remote, or one already settled.
+   */
+  updateRemote(id: string, remote: ChildRunRemote): void;
   settle(id: string, status: Exclude<ChildRunStatus, 'running'>, result?: RunResult): void;
   /**
    * Wires a child's own `LivenessObservable` (its `AgentRun`, once
@@ -277,19 +309,22 @@ export type MutableChildRunRegistry = ChildRunRegistry & ChildRunRegistrar;
  * the full mutable surface.
  */
 export function isMutableChildRunRegistry(value: unknown): value is MutableChildRunRegistry {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Partial<MutableChildRunRegistry>).register === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).settle === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).attachLiveness === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).attachClosed === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).children === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).abortChild === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).subscribeLiveness === 'function' &&
-    typeof (value as Partial<MutableChildRunRegistry>).awaitChildrenClosed === 'function'
-  );
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return MUTABLE_REGISTRY_METHODS.every((method) => typeof candidate[method] === 'function');
 }
+
+const MUTABLE_REGISTRY_METHODS = [
+  'register',
+  'settle',
+  'updateRemote',
+  'attachLiveness',
+  'attachClosed',
+  'children',
+  'abortChild',
+  'subscribeLiveness',
+  'awaitChildrenClosed',
+] as const;
 
 /**
  * The complete, closed value sets for {@link DelegatedAuthority}'s two
@@ -451,9 +486,16 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
           agentName: entry.agentName,
           durable: entry.durable,
           status: 'running',
+          ...(entry.remote === undefined ? {} : { remote: Object.freeze({ ...entry.remote }) }),
         },
         abort: entry.abort,
       });
+    },
+    updateRemote(id, remote): void {
+      const existing = entries.get(id);
+      if (!existing || existing.descriptor.remote === undefined) return;
+      if (existing.descriptor.status !== 'running') return;
+      existing.descriptor = { ...existing.descriptor, remote: Object.freeze({ ...remote }) };
     },
     settle(id, status, result): void {
       const existing = entries.get(id);
@@ -522,7 +564,14 @@ export function createChildRunRegistry(): MutableChildRunRegistry {
       // control state (e.g. forcing it to `'completed'` would make a later
       // `abortChild(id)` treat a still-running child as already terminal and
       // silently no-op instead of aborting it).
-      return [...entries.values()].map((entry) => Object.freeze({ ...entry.descriptor }));
+      return [...entries.values()].map((entry) =>
+        Object.freeze({
+          ...entry.descriptor,
+          ...(entry.descriptor.remote === undefined
+            ? {}
+            : { remote: Object.freeze({ ...entry.descriptor.remote }) }),
+        }),
+      );
     },
     abortChild(childId, reason): void {
       const entry = entries.get(childId);

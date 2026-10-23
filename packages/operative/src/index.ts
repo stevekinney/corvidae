@@ -14,6 +14,7 @@ export type {
   ChildRunDescriptor,
   ChildRunHandle,
   ChildRunRegistry,
+  ChildRunRemote,
   ChildRunStatus,
   ChildRunSummary,
   ChildRunTerminalStatus,
@@ -105,6 +106,7 @@ export { createMcpElicitationResponder } from './create-mcp-elicitation-responde
 export type { CreateMcpElicitationResponderOptions } from './create-mcp-elicitation-responder';
 export { createMemoryBridge } from './create-memory-bridge';
 export type { CreateMemoryBridgeOptions, MemoryLike } from './create-memory-bridge';
+export * from './create-peer-call-tool';
 export * from './create-policy-enforcement-hook';
 export { createActiveRun } from './create-run';
 export type { ActiveRun, DurableRunRouting } from './create-run';

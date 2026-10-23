@@ -1709,9 +1709,9 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
         'The real process runners behind `test:a2a-tck`: `spawnAndWait`, `runGit`, and `ensureCheckout` run `git` and `uv` against a network clone of the TCK, `startExample` spawns the example agent, and `processDependencies` binds them for the one-line `import.meta.main` entry. They need Python, `uv`, and the network, so only the opt-in `test:a2a-tck` runs them, outside the default gate. Every decision the runner makes (argument parsing, the per-level TCK command, report collection, the pass rule, and stopping the example) is in `runA2ATck`, which scripts/run-a2a-tck.test.ts runs in process with stand-ins for each runner and a stub system under test.',
       functions: 5,
       lines: new Set([
-        186, 190, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209,
-        214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231,
-        232, 233, 234, 235, 236, 240, 241, 242, 243, 244,
+        92, 211, 215, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233,
+        234, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255,
+        256, 257, 258, 259, 260, 261, 265, 266, 267, 268, 269,
       ]),
       requireUncoveredLines: true,
     },

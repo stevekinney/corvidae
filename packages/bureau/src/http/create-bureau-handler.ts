@@ -33,6 +33,7 @@ import {
   type OperationHandler,
   type OperationHandlerAuthenticate,
   type OperationHandlerMount,
+  type Outbox,
   type AuthenticatedPrincipal,
   textValueStore,
   unauthenticatedLocalAuthContext,
@@ -42,7 +43,11 @@ import {
   readGenerationProfile,
   type RunEventsOperationHost,
 } from '@lostgradient/operative';
-import { type A2ASigningOptions, securitySchemesFromAuthConfig } from '@lostgradient/weft/a2a';
+import {
+  type A2ASigningOptions,
+  type OutboxPushNotificationSender,
+  securitySchemesFromAuthConfig,
+} from '@lostgradient/weft/a2a';
 
 import {
   type BureauEventsOperationHost,
@@ -61,7 +66,7 @@ import {
 } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
-import { createBureauA2AMount } from './a2a-mount.ts';
+import { type BureauA2AMountOptions, createBureauA2AMount } from './a2a-mount.ts';
 import { type BureauMcpOptions, createBureauMcpMount } from './mcp-mount.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,
@@ -69,7 +74,10 @@ import {
   type A2ASendLedger,
   type A2ASendResult,
 } from './a2a-request-handler.ts';
-import { createA2ATaskRecords } from './a2a-task-record.ts';
+import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
+import { createA2APushProjector } from './a2a-push-projector.ts';
+import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
+import { createTaskReader } from './a2a-task-reader.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -298,6 +306,22 @@ export type BureauHandlerOptions = {
    */
   readonly signing?: A2ASigningOptions;
   /**
+   * Delivers A2A push notifications (COR-1543): Weft's outbox push sender
+   * (`createOutboxPushNotificationSender`) and the outbox it enqueues to, whose adapter is
+   * `createHttpDeliveryAdapter`. Needs `publicUrl`. A published agent's card declares
+   * `capabilities.pushNotifications` only when this is set and the Bureau also keeps a durable
+   * event history, because a push notification is a projection of that history; otherwise every
+   * push operation answers `PushNotificationNotSupportedError`.
+   *
+   * The sender's push store holds the configurations and the Bureau stores each configuration's
+   * checkpoint beside the task's A2A record. The host drives delivery itself, with
+   * `startPushDelivery` on the same outbox, and stops it when it shuts down.
+   */
+  readonly pushNotifications?: {
+    readonly sender: OutboxPushNotificationSender;
+    readonly outbox: Outbox;
+  };
+  /**
    * How a caller proves who it is. API-key authentication only in v1, and only
    * through `resolveApiKeyPrincipal`: a `jwt` or `mtls` configuration throws at
    * construction, and so does a static `apiKeys` list, because every static key
@@ -374,6 +398,7 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'publicUrl',
   'discoveryUrl',
   'signing',
+  'pushNotifications',
   'authentication',
   'unauthenticatedAccess',
   'mounts',
@@ -500,6 +525,9 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
   if (options.publicUrl === undefined) {
     if (options.discoveryUrl !== undefined) fail('discoveryUrl needs publicUrl, which mounts A2A');
     if (options.signing !== undefined) fail('signing needs publicUrl, which mounts A2A');
+    if (options.pushNotifications !== undefined) {
+      fail('pushNotifications needs publicUrl, which mounts A2A');
+    }
     return;
   }
   assertA2AUrl('publicUrl', options.publicUrl);
@@ -740,8 +768,12 @@ function createA2AMount(
   const publish = options.publish ?? [];
   const kv = bureau.kv ?? textValueStore(new MemoryStorage());
   const records = createA2ATaskRecords(kv);
+  const push = createPushSupport(bureau, options, kv, records);
   bureau.addEventListener('run.removed', (event) => {
     void records.remove(event.runId).catch(() => undefined);
+    // Each configuration is deleted through the sender, which stops its deliveries, and only
+    // then its checkpoint.
+    void push?.projector.cleanup(event.runId).catch(() => undefined);
   });
   // Message text does not outlive its context: deleting one empties its tasks' A2A history, as
   // it empties their own. Another instance clears a record when it next reads it.
@@ -793,11 +825,37 @@ function createA2AMount(
         : securitySchemesFromAuthConfig(options.authentication),
     records,
     ledger,
+    push,
     respond: (principal, input) => respondToTask(host, principal, input),
     ...(options.maxRequestBodyBytes === undefined
       ? {}
       : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
   });
+}
+
+/** The push projector, its checkpoints, and delivery, when the handler was given an outbox. */
+function createPushSupport(
+  bureau: BureauHandlerSource,
+  options: BureauHandlerOptions,
+  kv: ConditionalTextValueStore,
+  records: A2ATaskRecords,
+): NonNullable<BureauA2AMountOptions['push']> | undefined {
+  const delivery = options.pushNotifications;
+  if (delivery === undefined) return undefined;
+  const checkpoints = createA2APushCheckpoints(kv);
+  const projector = createA2APushProjector({
+    bureau,
+    checkpoints,
+    delivery,
+    tenant: bureau.id,
+    reader: createTaskReader({ bureau, records }),
+    timers: createDefaultRuntimeServices().timers,
+  });
+  // A restart resumes every checkpoint from where it stopped.
+  const ready = projector.recover().catch((error: unknown) => {
+    console.error('A2A push recovery failed:', error);
+  });
+  return { delivery, checkpoints, projector, ready };
 }
 
 /** How often the respond ledger drops its expired bindings, at most. */

@@ -104,6 +104,7 @@ async function withAgent(
   const sent: Sent[] = [];
   const sender: OutboxPushNotificationSender = {
     pushStore,
+    sendKeyed: async (event, context) => sender.send(event, context),
     async send(event: StreamResponse, context: ServerCallContext) {
       const payload = event.payload;
       const taskId =

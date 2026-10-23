@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import type { AnyToolDefinition } from '../../core';
 import { createRegistry, defineTool, serializeToolDefinition } from '../../core';
+import { createTool } from '../../create-tool';
+import { createToolbox } from '../../create-toolbox';
 import {
   formatGeminiToolResults,
   formatGeminiToolResultsAsync,
@@ -183,10 +185,10 @@ describe('formatGeminiToolResults', () => {
     expect(
       formatGeminiToolResults([
         {
-          callId: 'call-1',
+          callId: 'result-1',
           outcome: 'success',
           content: { ok: true },
-          toolCallId: 'call-1',
+          toolCallId: 'result-1',
           toolName: 'search',
           result: { ok: true },
         },
@@ -220,33 +222,55 @@ describe('formatGeminiToolResults', () => {
     ]);
   });
 
-  it('echoes only provider-issued call ids, on two calls to the same function', () => {
-    const results = [
-      { callId: 'call-a', outcome: 'success', content: { n: 1 }, toolName: 'lookup' },
-      { callId: 'call-b', outcome: 'success', content: { n: 2 }, toolName: 'lookup' },
-      {
-        callId: 'call-c',
-        outcome: 'success',
-        content: 'text',
-        toolName: 'lookup',
-        parts: [{ type: 'text', text: 'three' }],
-      },
-      { callId: 'generated-d', outcome: 'success', content: { n: 4 }, toolName: 'lookup' },
-    ] as const;
-    const ids = (providerCallIds: ReadonlySet<string> | undefined) =>
-      formatGeminiToolResults([...results], providerCallIds ? { providerCallIds } : {}).map(
-        (part) => part.functionResponse.id,
-      );
+  it('round-trips Gemini-issued ids through execution with no formatter option', async () => {
+    const lookup = createTool({
+      name: 'lookup',
+      version: '1.0.0',
+      description: 'Look something up',
+      input: z.object({ q: z.string() }),
+      execute: async ({ q }) => ({ q }),
+    });
+    const toolbox = createToolbox([lookup]);
+    const calls = parseGeminiToolCalls([
+      { functionCall: { id: 'gem-1', name: 'lookup', args: { q: 'first' } } },
+      { functionCall: { id: 'gem-2', name: 'lookup', args: { q: 'second' } } },
+      { functionCall: { name: 'lookup', args: { q: 'no id' } } },
+    ]);
+    const results = await toolbox.execute(calls);
 
-    expect(ids(new Set(['call-a', 'call-b', 'call-c']))).toEqual([
-      'call-a',
-      'call-b',
-      'call-c',
+    const parts = formatGeminiToolResults(results);
+    expect(parts.map((part) => part.functionResponse.id)).toEqual(['gem-1', 'gem-2', undefined]);
+    expect(parts.map((part) => part.functionResponse.response)).toEqual([
+      { q: 'first' },
+      { q: 'second' },
+      { q: 'no id' },
+    ]);
+    expect(parts[2]?.functionResponse).not.toHaveProperty('id');
+    const asyncParts = await formatGeminiToolResultsAsync(results);
+    expect(asyncParts.map((part) => part.functionResponse.id)).toEqual([
+      'gem-1',
+      'gem-2',
       undefined,
     ]);
-    expect(ids(undefined)).toEqual([undefined, undefined, undefined, undefined]);
-    const part = formatGeminiToolResults(results[3], { providerCallIds: () => false })[0];
-    expect(part?.functionResponse).not.toHaveProperty('id');
+  });
+
+  it('echoes a provider-issued id on a result with parts and never an unseen id', () => {
+    parseGeminiToolCalls([{ functionCall: { id: 'gem-parts', name: 'lookup', args: {} } }]);
+    const withParts = formatGeminiToolResults({
+      callId: 'gem-parts',
+      outcome: 'success',
+      content: 'text',
+      toolName: 'lookup',
+      parts: [{ type: 'text', text: 'three' }],
+    });
+    expect(withParts[0]?.functionResponse.id).toBe('gem-parts');
+    const generated = formatGeminiToolResults({
+      callId: 'generated-never-parsed',
+      outcome: 'success',
+      content: { n: 4 },
+      toolName: 'lookup',
+    });
+    expect(generated[0]?.functionResponse).not.toHaveProperty('id');
   });
 
   it('resolves tool names from explicit mappings and defaults', () => {
