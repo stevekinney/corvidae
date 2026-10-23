@@ -67,9 +67,12 @@ const workflowListingSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   owner: z.string(),
   hash: z.string().nullable(),
+  description: z.string().nullable(),
   agent: z.string().nullable(),
   paused: z.boolean(),
   version: z.string().nullable(),
+  /** The file's trigger as written, `{ kind, ... }`, for a `ready` file, else `null`. */
+  trigger: z.record(z.string(), z.unknown()).nullable(),
   problem: problemSchema.nullable(),
 });
 
@@ -77,6 +80,13 @@ const scheduleSchema = z.object({
   id: z.string(),
   status: z.enum(['active', 'paused']),
   nextFireAt: z.string().nullable(),
+});
+
+/** How busy a workflow is: see `WorkflowRunCounts`. */
+const runCountsSchema = z.object({
+  active: z.number().int(),
+  last24Hours: z.number().int(),
+  lastRunAt: z.string().nullable(),
 });
 
 const workflowDetailSchema = workflowListingSchema.extend({
@@ -91,6 +101,7 @@ const workflowDetailSchema = workflowListingSchema.extend({
  * the keys that kind does not declare.
  */
 const definitionSchema = z.strictObject({
+  description: z.string().optional(),
   agent: z.string().optional(),
   paused: z.boolean().optional(),
   trigger: z.looseObject({ kind: z.string() }),
@@ -177,9 +188,11 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     state: listing.state,
     owner: listing.owner,
     hash: listing.hash ?? null,
+    description: listing.description,
     agent: listing.agent,
     paused: listing.paused,
     version: listing.version ?? null,
+    trigger: listing.trigger === null ? null : { ...listing.trigger },
     problem:
       listing.problem === undefined
         ? null
@@ -253,7 +266,7 @@ export const workflowsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a workflow file',
   description:
-    'Writes a new workflow file for `id`, the workflow’s identifier: a lowercase letter, then letters, digits, and hyphens, at most 64 characters. `definition` is the workflow document without its `name` (Bureau sets it to `id`) plus the optional `agent` that wrote it and `paused`. The file is written to a temporary file and renamed into place, and the workflow is registered and its schedule created before the call returns. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows. A taken identifier is a `Conflict` (`workflow-file-exists`); a document that would not load is `Unprocessable`, its message listing every issue, and nothing is written.',
+    'Writes a new workflow file for `id`, the workflow’s identifier: a lowercase letter, then letters, digits, and hyphens, at most 64 characters. `definition` is the workflow document without its `name` (Bureau sets it to `id`) plus the optional `description` (a sentence on what the workflow is for), the optional `agent` that wrote it, and `paused`. The file is written to a temporary file and renamed into place, and the workflow is registered and its schedule created before the call returns. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows. A taken identifier is a `Conflict` (`workflow-file-exists`); a document that would not load is `Unprocessable`, its message listing every issue, and nothing is written.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: createInput,
@@ -423,7 +436,7 @@ export const workflowsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one workflow',
   description:
-    'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, who wrote it, whether it is paused, its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+    'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, its `description`, who wrote it, whether it is paused, its `trigger` as written, its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: getInput,
@@ -441,9 +454,13 @@ export const workflowsGetOperation = defineOperation<
   },
 });
 
-const listInput = z.object({ ...pageFields });
+const listInput = z.object({
+  ...pageFields,
+  /** Counts each ready file's instances. Off unless asked, because each count reads the engine. */
+  includeRuns: z.boolean().optional(),
+});
 const listOutput = z.object({
-  workflows: z.array(workflowListingSchema),
+  workflows: z.array(workflowListingSchema.extend({ runs: runCountsSchema.nullable() })),
   nextOffset: z.number().int().nullable(),
 });
 
@@ -456,7 +473,7 @@ export const workflowsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List workflows',
   description:
-    'Lists every workflow file by identifier, `ready` and `invalid` alike. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
+    'Lists every workflow file by identifier, `ready` and `invalid` alike, each with its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine, and `null` too for a file whose count the engine could not give, which never withholds the list). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: listInput,
@@ -474,8 +491,18 @@ export const workflowsListOperation = defineOperation<
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
     const all = workflows.list();
+    const page = all.slice(offset, offset + limit);
     return {
-      workflows: all.slice(offset, offset + limit).map(listingView),
+      workflows: await Promise.all(
+        page.map(async (listing) => ({
+          ...listingView(listing),
+          // A file the Bureau cannot use is never registered, so it has had no instance to count.
+          runs:
+            input.includeRuns === true && listing.state === 'ready'
+              ? await workflows.runCounts(listing.id)
+              : null,
+        })),
+      ),
       nextOffset: all.length > offset + limit ? offset + limit : null,
     };
   },

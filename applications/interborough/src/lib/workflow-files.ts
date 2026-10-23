@@ -24,21 +24,42 @@ const problemSchema = z.object({
 
 export type WorkflowProblem = z.infer<typeof problemSchema>;
 
-const listingSchema = z.object({
+const fileSchema = z.object({
   id: z.string(),
   state: z.enum(['ready', 'invalid']),
   owner: z.string(),
   hash: z.string().nullable(),
+  /** What the workflow is for, in a sentence, when the file says. */
+  description: z.string().nullable(),
   agent: z.string().nullable(),
   paused: z.boolean(),
   version: z.string().nullable(),
+  /** The trigger as written (`kind`, and `spec` or `name`), for a file that loaded. */
+  trigger: z.record(z.string(), z.unknown()).nullable(),
   problem: problemSchema.nullable(),
+});
+
+const runCountsSchema = z.object({
+  /** Instances that have not finished. */
+  active: z.number(),
+  /** Instances that began in the last 24 hours. */
+  last24Hours: z.number(),
+  /** When the newest instance began (ISO 8601), or `null` for a workflow that has not run. */
+  lastRunAt: z.string().nullable(),
+});
+
+/** How busy a workflow is, as the Bureau counts its instances. */
+export type WorkflowRunCounts = z.infer<typeof runCountsSchema>;
+
+const listingSchema = fileSchema.extend({
+  /** The counts of a file that loaded, and `null` for one the Bureau cannot use. */
+  runs: runCountsSchema.nullable(),
 });
 
 /** One entry of `bureau.workflows.list`: a file, with whether the Bureau could use it. */
 export type WorkflowFileListing = z.infer<typeof listingSchema>;
 
-const detailSchema = listingSchema.extend({
+const detailSchema = fileSchema.extend({
   text: z.string().nullable(),
   schedule: z
     .object({
@@ -86,9 +107,13 @@ export type SignalResult = z.infer<typeof signalResultSchema>;
 /** The largest page `bureau.workflows.list` answers. */
 const LISTING_PAGE_SIZE = 100;
 
-/** Every workflow file, `ready` and `invalid` alike. It follows the pages to the end. */
+/**
+ * Every workflow file, `ready` and `invalid` alike. It follows the pages to the end. The counts of
+ * each file's instances are asked for only by a caller that shows them, because the Bureau reads
+ * the engine for each one.
+ */
 export async function listWorkflowFiles(
-  options?: Options,
+  options?: Options & { readonly includeRuns?: boolean },
 ): Promise<readonly WorkflowFileListing[]> {
   const listings: WorkflowFileListing[] = [];
   let offset: number | null = 0;
@@ -98,7 +123,15 @@ export async function listWorkflowFiles(
   });
   while (offset !== null) {
     const page: z.infer<typeof pageSchema> = pageSchema.parse(
-      await callBureau('bureau.workflows.list', { limit: LISTING_PAGE_SIZE, offset }, options),
+      await callBureau(
+        'bureau.workflows.list',
+        {
+          limit: LISTING_PAGE_SIZE,
+          offset,
+          ...(options?.includeRuns === true ? { includeRuns: true } : {}),
+        },
+        options,
+      ),
     );
     listings.push(...page.workflows);
     offset = page.nextOffset;
@@ -126,6 +159,49 @@ export async function listWorkflowRevisions(
  * kept as it was written, so the Bureau can refuse one that is wrong.
  */
 export type WorkflowDefinitionInput = Readonly<Record<string, unknown>>;
+
+/** Writes a new workflow file for `id`, which a taken identifier refuses (`Conflict`). */
+export async function createWorkflowFile(
+  id: string,
+  definition: WorkflowDefinitionInput,
+  options?: Options,
+): Promise<WorkflowWriteResult> {
+  return writeResultSchema.parse(
+    await callBureau('bureau.workflows.create', { id, definition }, options),
+  );
+}
+
+const runSummarySchema = z.object({
+  id: z.string(),
+  workflow: z.string(),
+  workflowVersion: z.string(),
+  status: z.enum([
+    'pending',
+    'running',
+    'completed',
+    'failed',
+    'cancelled',
+    'timed-out',
+    'suspended',
+  ]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+/** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
+export type WorkflowFileRun = z.infer<typeof runSummarySchema>;
+
+/** The newest `limit` instances of one workflow file. */
+export async function listWorkflowFileRuns(
+  id: string,
+  limit: number,
+  options?: Options,
+): Promise<readonly WorkflowFileRun[]> {
+  const page = z
+    .object({ runs: z.array(runSummarySchema) })
+    .parse(await callBureau('bureau.workflows.runs.list', { workflow: id, limit }, options));
+  return page.runs;
+}
 
 /** Replaces the workflow's file, if it still hashes to `expectedHash`. */
 export async function updateWorkflowFile(
@@ -193,11 +269,17 @@ export function isApplyFailure(error: unknown): boolean {
   return error instanceof HttpClientError && error.data?.['reason'] === 'workflow-apply-failed';
 }
 
+/** Whether a create answered that the identifier is taken (`Conflict`, `data.reason` `workflow-file-exists`). */
+export function isIdentifierTaken(error: unknown): boolean {
+  return error instanceof HttpClientError && error.data?.['reason'] === 'workflow-file-exists';
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 const documentSchema = z.looseObject({
+  description: z.string().optional(),
   agent: z.string().optional(),
   paused: z.boolean().optional(),
   trigger: z.looseObject({ kind: z.string() }),
@@ -239,4 +321,47 @@ export function updateDefinitionFromText(text: string): UpdateDefinition {
   if (!isRecord(value)) return { ok: false, reason: 'not-object' };
   const { name: _name, ...definition } = value;
   return { ok: true, definition };
+}
+
+/** What turning a new workflow's text into a create gave: the identifier and definition, or why not. */
+export type CreateDefinition =
+  | { readonly ok: true; readonly id: string; readonly definition: Record<string, unknown> }
+  | {
+      readonly ok: false;
+      readonly reason: 'not-json' | 'not-object' | 'no-name' | 'invalid-name' | 'reserved-name';
+    };
+
+/** What a workflow's identifier must look like: the Bureau's rule, checked before the call. */
+const IDENTIFIER_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+const IDENTIFIER_MAXIMUM_LENGTH = 64;
+
+/**
+ * `/workflows/new` is the address of the page that creates a workflow, so a workflow called `new`
+ * could never be opened.
+ */
+export const RESERVED_WORKFLOW_IDENTIFIER = 'new';
+
+/**
+ * The text of the new-workflow editor as a create: its `name` is the identifier, so it is read and
+ * not sent, as an update strips it. The Bureau still decides whether the rest is a workflow.
+ */
+export function createDefinitionFromText(text: string): CreateDefinition {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: 'not-json' };
+  }
+  if (!isRecord(value)) return { ok: false, reason: 'not-object' };
+  const { name, ...definition } = value;
+  if (name === undefined) return { ok: false, reason: 'no-name' };
+  if (
+    typeof name !== 'string' ||
+    name.length > IDENTIFIER_MAXIMUM_LENGTH ||
+    !IDENTIFIER_PATTERN.test(name)
+  ) {
+    return { ok: false, reason: 'invalid-name' };
+  }
+  if (name === RESERVED_WORKFLOW_IDENTIFIER) return { ok: false, reason: 'reserved-name' };
+  return { ok: true, id: name, definition };
 }

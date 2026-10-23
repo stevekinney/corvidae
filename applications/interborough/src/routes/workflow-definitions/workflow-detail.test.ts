@@ -19,6 +19,7 @@ import {
   installWorkflowWorld,
   invalidFile,
   readyFile,
+  runFixture,
   scheduleFixture,
   sourceDefinition,
   STUB_WORKFLOW_DIRECTORY,
@@ -82,10 +83,14 @@ function open(path: string, overrides: Partial<World> = {}) {
 const page = (container: HTMLElement) =>
   container.querySelector<HTMLElement>('[data-page="workflow-detail"]');
 
-/** The page, once what the type is has been read: the schedules section follows it. */
+/** The page, once what the type is has been read: its recent runs, or an invalid file's problem, follow it. */
 async function ready(container: HTMLElement): Promise<HTMLElement> {
   await waitFor(() =>
-    expect(page(container)?.querySelector('[data-testid="workflow-schedules"]')).toBeTruthy(),
+    expect(
+      page(container)?.querySelector(
+        '[data-testid="workflow-recent-runs"], [data-testid="workflow-problem"]',
+      ),
+    ).toBeTruthy(),
   );
   return page(container) as HTMLElement;
 }
@@ -93,21 +98,92 @@ async function ready(container: HTMLElement): Promise<HTMLElement> {
 const testId = (root: HTMLElement, id: string) =>
   root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
+/** Opens a disclosure on the page by its trigger's name, and answers its panel's content. */
+async function openDisclosure(root: HTMLElement, name: string): Promise<void> {
+  const trigger = [...root.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find(
+    (button) => button.textContent?.trim() === name,
+  );
+  if (trigger === undefined) throw new Error(`No disclosure called ${name}.`);
+  await fireEvent.click(trigger);
+  await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+}
+
+const disclosures = (root: HTMLElement) =>
+  [...root.querySelectorAll('button[aria-expanded]')].map((button) => button.textContent?.trim());
+
 describe('a code-defined type', () => {
-  test('shows its definition: description, schemas, signals, updates, queries, and active revision', async () => {
+  test('leads with what it is for, what starts it, and its runs, and has no row whose value is none', async () => {
     const { container } = open('/workflows/order-processing');
     const root = await ready(container);
     expect(root.querySelector('h1')?.textContent).toContain('order-processing');
+    expect(root.textContent).toContain(WORKFLOW_COPY.codeBadge);
     expect(root.textContent).not.toContain(WORKFLOW_COPY.agentAuthoredBadge);
+    expect(testId(root, 'workflow-description')?.textContent).toBe(
+      'The order-processing workflow.',
+    );
+    // Two schedules start it, so the page counts them, and the section below lists each.
+    await waitFor(() =>
+      expect(testId(root, 'workflow-trigger')?.textContent?.trim()).toBe(
+        WORKFLOW_COPY.list.schedules(2),
+      ),
+    );
+    expect(root.textContent).not.toMatch(/\bNone\b/);
+    expect(root.textContent).not.toContain('No description');
+  });
 
+  test('keeps its schemas, signals, updates, queries, and active revision behind a collapsed Details', async () => {
+    const { container } = open('/workflows/order-processing');
+    const root = await ready(container);
+    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.details, WORKFLOW_COPY.page.engine]);
+    expect(testId(root, 'workflow-definition')).toBeNull();
+
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
     const definition = testId(root, 'workflow-definition');
-    expect(definition?.textContent).toContain('The order-processing workflow.');
-    expect(definition?.textContent).toContain(WORKFLOW_COPY.definition.inputSchema);
-    expect(definition?.textContent).toContain(WORKFLOW_COPY.definition.outputSchema);
+    expect(definition?.textContent).toContain(WORKFLOW_COPY.page.inputSchema);
+    expect(definition?.textContent).toContain(WORKFLOW_COPY.page.outputSchema);
     expect(definition?.textContent).toContain('orderId');
     expect(definition?.textContent).toContain('pause-it');
     expect(definition?.textContent).toContain('progress');
-    expect(definition?.textContent).toContain('revision-1');
+    expect(testId(root, 'workflow-file-path')).toBeNull();
+  });
+
+  test('has no Details at all when its contract declares nothing, and no row for what it lacks', async () => {
+    const { container } = open('/workflows/order-processing', {
+      definitions: [
+        codeDefinition('order-processing', {
+          signals: null,
+          updates: null,
+          queries: null,
+          contract: null,
+          description: null,
+        }),
+      ],
+    });
+    const root = await ready(container);
+    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.engine]);
+    expect(testId(root, 'workflow-description')).toBeNull();
+    expect(root.textContent).not.toMatch(/\bNone\b/);
+  });
+
+  test('shows only the rows of its contract that it has', async () => {
+    const { container } = open('/workflows/order-processing', {
+      definitions: [
+        codeDefinition('order-processing', {
+          signals: ['pause-it'],
+          updates: null,
+          queries: null,
+          contract: null,
+        }),
+      ],
+    });
+    const root = await ready(container);
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
+    const definition = testId(root, 'workflow-definition');
+    expect(definition?.textContent).toContain(WORKFLOW_COPY.page.signals);
+    expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.updates);
+    expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.queries);
+    expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.inputSchema);
+    expect(definition?.textContent).not.toContain(WORKFLOW_COPY.page.outputSchema);
   });
 
   test('lists the active and paused schedules that start it, and not a cancelled generation or another type’s', async () => {
@@ -125,24 +201,31 @@ describe('a code-defined type', () => {
     });
   });
 
-  test('says there is no schedule when none starts it', async () => {
+  test('has no schedules section, and says nothing of one, when none starts it', async () => {
     const { container } = open('/workflows/order-processing', { schedules: [] });
     const root = await ready(container);
-    await waitFor(() =>
-      expect(testId(root, 'workflow-schedules')?.textContent).toContain(
-        WORKFLOW_COPY.schedules.none,
-      ),
-    );
+    await waitFor(() => expect(stub?.callsTo('GET /schedules').length).toBeGreaterThan(0));
+    expect(testId(root, 'workflow-schedules')).toBeNull();
+    expect(testId(root, 'workflow-trigger')).toBeNull();
   });
 
-  test('shows the engine’s revision panel, and offers none of a file’s actions', async () => {
+  test('keeps the engine’s revision panel, and its install form, behind a collapsed Engine', async () => {
     const { container } = open('/workflows/order-processing');
     const root = await ready(container);
+    expect(root.querySelector('.weft-revisions-panel')).toBeNull();
+    expect(stub?.callsTo('weft.workflows.revisions.list')).toEqual([]);
+
+    await openDisclosure(root, WORKFLOW_COPY.page.engine);
     await waitFor(() => expect(root.querySelector('.weft-revisions-panel')).not.toBeNull());
     expect(stub?.callsTo('weft.workflows.revisions.list')[0]?.params).toEqual({
       name: 'order-processing',
     });
     expect(stub?.callsTo('bureau.workflows.revisions')).toEqual([]);
+  });
+
+  test('offers none of a file’s actions, and links to its runs', async () => {
+    const { container } = open('/workflows/order-processing');
+    const root = await ready(container);
 
     const buttons = [...root.querySelectorAll('button, a')].map((node) => node.textContent?.trim());
     for (const label of [
@@ -155,37 +238,179 @@ describe('a code-defined type', () => {
     }
     expect(testId(root, 'workflow-signal')).toBeNull();
     expect(testId(root, 'workflow-file-path')).toBeNull();
-    // It links to its runs.
-    expect(root.querySelector(`a[href="/workflows/order-processing/runs"]`)).not.toBeNull();
+    const all = [...root.querySelectorAll('a')].find(
+      (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
+    );
+    expect(all?.getAttribute('href')).toBe('/workflows/order-processing/runs');
+  });
+
+  test('shows its last five runs, newest first, each a link to the run', async () => {
+    const { container } = open('/workflows/order-processing', {
+      runs: Array.from({ length: 7 }, (_, index) =>
+        runFixture(`run-${String(index)}`, 'order-processing', {
+          createdAt: 1_760_000_000_000 + index * 1000,
+          updatedAt: 1_760_000_000_000 + index * 1000 + 400,
+          status: index === 6 ? 'running' : 'completed',
+        }),
+      ),
+    });
+    const root = await ready(container);
+    await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBe(5));
+    const runs = [...root.querySelectorAll<HTMLElement>('[data-run]')];
+    expect(runs.map((run) => run.dataset['run'])).toEqual([
+      'run-6',
+      'run-5',
+      'run-4',
+      'run-3',
+      'run-2',
+    ]);
+    expect(runs[0]?.dataset['status']).toBe('running');
+    expect(runs[0]?.querySelector('a')?.getAttribute('href')).toBe('/runs/run-6');
+    // A run that has ended says how long it took; one that is going has no duration yet.
+    expect(runs[0]?.textContent).not.toContain('took');
+    expect(runs[1]?.textContent).toContain(WORKFLOW_COPY.page.runDuration('400ms'));
+  });
+
+  test('says nothing has run it when nothing has', async () => {
+    const { container } = open('/workflows/order-processing', { runs: [] });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-recent-runs')?.textContent).toContain(
+        WORKFLOW_COPY.page.noRuns,
+      ),
+    );
+  });
+});
+
+describe('the recent runs', () => {
+  test('say they could not be loaded, rather than that there are none', async () => {
+    const { container } = open('/workflows/digest');
+    stub?.on('bureau.workflows.runs.list', () => {
+      throw workflowFaults.unavailable();
+    });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-recent-runs')?.textContent).toContain(
+        WORKFLOW_COPY.page.runsFailed,
+      ),
+    );
+    expect(testId(root, 'workflow-recent-runs')?.textContent).not.toContain(
+      WORKFLOW_COPY.page.noRuns,
+    );
+  });
+
+  test('link each run to its page', async () => {
+    const { container } = open('/workflows/order-processing', {
+      runs: [runFixture('run-1', 'order-processing')],
+    });
+    const root = await ready(container);
+    await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBeGreaterThan(0));
+    const link = root.querySelector<HTMLAnchorElement>('[data-run] a');
+    const href = link?.getAttribute('href') ?? '';
+    expect(href).toMatch(/^\/runs\//);
+    link?.click();
+    expect(router.pathname).toBe(href);
+  });
+});
+
+describe('a type with several signals', () => {
+  test('lists them in one row, separated by commas', async () => {
+    const { container } = open('/workflows/order-processing', {
+      definitions: [
+        codeDefinition('order-processing', {
+          signals: ['pause-it', 'resume-it'],
+          updates: null,
+          queries: null,
+          contract: null,
+        }),
+      ],
+    });
+    const root = await ready(container);
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
+    const row = [...root.querySelectorAll('dd')].find((entry) =>
+      entry.textContent?.includes('pause-it'),
+    );
+    expect(row?.textContent?.replace(/\s+/g, ' ').trim()).toBe('pause-it, resume-it');
+  });
+});
+
+describe('a type the Bureau registers for itself', () => {
+  test('has no Engine disclosure, because a person never installs a revision of one', async () => {
+    const { container } = open('/workflows/agentRun', {
+      definitions: [codeDefinition('agentRun')],
+    });
+    const root = await ready(container);
+    expect(root.querySelector('h1')?.textContent).toContain('agentRun');
+    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.details]);
+    expect(stub?.callsTo('weft.workflows.revisions.list')).toEqual([]);
   });
 });
 
 describe('an agent-authored type', () => {
-  test('shows its steps, trigger, owning agent, and file path, beside the engine’s definition', async () => {
-    const { container } = open('/workflows/digest');
+  test('leads with its agent, what it is for, what starts it and whether it is active, and its steps', async () => {
+    const { container } = open('/workflows/digest', {
+      files: [readyFile('digest', { description: 'Writes the daily digest.' })],
+    });
     const root = await ready(container);
 
     expect(root.textContent).toContain(WORKFLOW_COPY.agentAuthoredBadge);
-    expect(testId(root, 'workflow-agent')?.textContent).toContain('writer');
-    expect(testId(root, 'workflow-trigger')?.textContent).toContain('0 6 * * *');
+    const agent = testId(root, 'workflow-agent');
+    expect(agent?.textContent).toBe('writer');
+    expect(agent?.tagName).toBe('CODE');
+    expect(testId(root, 'workflow-description')?.textContent).toBe('Writes the daily digest.');
+    expect(testId(root, 'workflow-trigger')?.textContent?.trim()).toBe('Every day at 06:00');
+    expect(testId(root, 'workflow-state')?.textContent).toBe(WORKFLOW_COPY.page.statusActive);
     const steps = [...(testId(root, 'workflow-steps')?.querySelectorAll('li') ?? [])];
     expect(steps.map((step) => step.textContent)).toEqual([
       expect.stringContaining('writer'),
       expect.stringContaining('approve'),
     ]);
+  });
+
+  test('names a signal trigger by its signal, in monospace', async () => {
+    const { container } = open('/workflows/digest', {
+      files: [
+        readyFile('digest', {
+          text: JSON.stringify({
+            name: 'digest',
+            trigger: { kind: 'signal', name: 'deploy' },
+            steps: [{ kind: 'sleep', duration: '1m' }],
+          }),
+        }),
+      ],
+    });
+    const root = await ready(container);
+    const trigger = testId(root, 'workflow-trigger');
+    expect(trigger?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `${WORKFLOW_COPY.list.onSignal} deploy`,
+    );
+    expect(trigger?.querySelector('code')?.textContent).toBe('deploy');
+  });
+
+  test('keeps its file path, its trigger as written, and its signals behind a collapsed Details', async () => {
+    const { container } = open('/workflows/digest');
+    const root = await ready(container);
+    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.details, WORKFLOW_COPY.page.engine]);
+    expect(testId(root, 'workflow-file-path')).toBeNull();
+
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
     expect(testId(root, 'workflow-file-path')?.textContent).toBe(
       `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
     );
+    expect(testId(root, 'workflow-trigger-source')?.textContent).toContain('0 6 * * *');
     // Its accepted signals are the signals its steps wait for, not what the engine lists.
     const signals = testId(root, 'workflow-accepted-signals');
     expect(signals?.textContent).toContain('approve');
     expect(signals?.textContent).not.toContain('pause-it');
-    expect(testId(root, 'workflow-definition')).not.toBeNull();
   });
 
-  test('shows the versions that have run, and none the engine merely installed, and cannot activate', async () => {
+  test('keeps the versions that have run behind a collapsed Engine, shows none the engine merely installed, and cannot activate', async () => {
     const { container } = open('/workflows/digest');
     const root = await ready(container);
+    expect(testId(root, 'workflow-revisions')).toBeNull();
+    expect(stub?.callsTo('bureau.workflows.revisions')).toEqual([]);
+
+    await openDisclosure(root, WORKFLOW_COPY.page.engine);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain('version-ran'),
     );
@@ -198,13 +423,31 @@ describe('an agent-authored type', () => {
     expect(root.textContent).not.toContain('Activate');
   });
 
-  test('says so, and shows the rest, when the engine has no definition for the file yet', async () => {
+  test('shows the rest, with no definition of its own, when the engine has none for the file yet', async () => {
     const { container } = open('/workflows/digest', { definitions: [] });
     const root = await ready(container);
-    expect(testId(root, 'workflow-definition')).toBeNull();
-    expect(root.textContent).toContain(WORKFLOW_COPY.definition.notRegistered);
     expect(testId(root, 'workflow-steps')).not.toBeNull();
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
     expect(testId(root, 'workflow-accepted-signals')?.textContent).toContain('approve');
+  });
+
+  test('shows its last runs from the Bureau’s own list of its instances', async () => {
+    const { container } = open('/workflows/digest', {
+      runs: [
+        runFixture('digest-run-1', 'digest', { createdAt: 1_760_000_000_000 }),
+        runFixture('digest-run-2', 'digest', { createdAt: 1_760_000_100_000, status: 'failed' }),
+      ],
+    });
+    const root = await ready(container);
+    await waitFor(() => expect(root.querySelectorAll('[data-run]').length).toBe(2));
+    expect(
+      [...root.querySelectorAll<HTMLElement>('[data-run]')].map((run) => run.dataset['run']),
+    ).toEqual(['digest-run-2', 'digest-run-1']);
+    expect(stub?.callsTo('bureau.workflows.runs.list')[0]?.params).toEqual({
+      workflow: 'digest',
+      limit: 5,
+    });
+    expect(stub?.callsTo('GET /workflows')).toEqual([]);
   });
 
   test('offers pause, delete, edit, and send signal for a file that loaded, and resume once it is paused', async () => {
@@ -224,14 +467,14 @@ describe('an agent-authored type', () => {
       files: [readyFile('digest', { paused: true })],
     });
     const root = await ready(container);
-    expect(root.textContent).toContain(WORKFLOW_COPY.pausedBadge);
+    expect(testId(root, 'workflow-state')?.textContent).toBe(WORKFLOW_COPY.page.statusPaused);
     expect(getByRole('button', { name: WORKFLOW_COPY.resumeAction })).not.toBeNull();
     expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
   });
 });
 
 describe('an invalid file', () => {
-  test('shows its problem, its path, and its issues, with delete and edit and no definition section', async () => {
+  test('shows its problem, its path, and its issues, with delete and edit and no definition, runs, or status', async () => {
     const { container, getByRole, queryByRole } = open('/workflows/broken');
     const root = await ready(container);
 
@@ -243,6 +486,9 @@ describe('an invalid file', () => {
       `${STUB_WORKFLOW_DIRECTORY}/broken.json`,
     );
     expect(testId(root, 'workflow-definition')).toBeNull();
+    expect(testId(root, 'workflow-recent-runs')).toBeNull();
+    expect(testId(root, 'workflow-state')).toBeNull();
+    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.engine]);
     expect(getByRole('button', { name: WORKFLOW_COPY.deleteAction })).not.toBeNull();
     expect(getByRole('link', { name: WORKFLOW_COPY.editAction })).not.toBeNull();
     expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
@@ -474,7 +720,7 @@ describe('send signal', () => {
 });
 
 describe('a type with little to show', () => {
-  test('says what the engine does not declare, and shows when a schedule last fired', async () => {
+  test('says nothing of what the engine does not declare, and shows when a schedule last fired', async () => {
     const { container } = open('/workflows/plain', {
       definitions: [
         codeDefinition('plain', {
@@ -496,10 +742,10 @@ describe('a type with little to show', () => {
       ],
     });
     const root = await ready(container);
-    const definition = testId(root, 'workflow-definition');
-    expect(definition?.textContent).toContain(WORKFLOW_COPY.definition.noDescription);
-    expect(definition?.textContent).toContain(WORKFLOW_COPY.definition.noRevision);
-    expect(definition?.textContent?.split(WORKFLOW_COPY.definition.noSchema)).toHaveLength(3);
+    // The contract declares no signal, update, query, or schema, so there is nothing to disclose.
+    expect(disclosures(root)).toEqual([WORKFLOW_COPY.page.engine]);
+    expect(testId(root, 'workflow-description')).toBeNull();
+    expect(root.textContent).not.toMatch(/\bNone\b/);
     await waitFor(() => expect(root.querySelectorAll('[data-schedule]').length).toBe(1));
     expect(root.querySelector('[data-schedule="hourly"]')?.textContent).toContain('ago');
   });
@@ -538,11 +784,11 @@ describe('a part of the page that fails', () => {
     const { container } = open('/workflows/order-processing', { failSchedules: true });
     const root = await ready(container);
     await waitFor(() =>
-      expect(testId(root, 'workflow-schedules')?.textContent).toContain(
-        WORKFLOW_COPY.schedules.failed,
+      expect(root.querySelector('[role="alert"]')?.textContent).toContain(
+        WORKFLOW_COPY.page.schedulesFailed,
       ),
     );
-    expect(testId(root, 'workflow-definition')).not.toBeNull();
+    expect(disclosures(root)).toContain(WORKFLOW_COPY.page.details);
   });
 
   test('says the revision history could not be loaded, and shows the rest', async () => {
@@ -551,6 +797,7 @@ describe('a part of the page that fails', () => {
       throw workflowFaults.unprocessable('No history.');
     });
     const root = await ready(container);
+    await openDisclosure(root, WORKFLOW_COPY.page.engine);
     await waitFor(() =>
       expect(testId(root, 'workflow-revisions')?.textContent).toContain(
         WORKFLOW_COPY.revisions.failed,
@@ -594,6 +841,18 @@ describe('a write the Bureau refuses', () => {
     await waitFor(() =>
       expect(queryByText(WORKFLOW_COPY.pauseFailed)?.outerHTML ?? null).toBeNull(),
     );
+  });
+
+  test('says only that the pause failed for a fault that names nothing this page can act on', async () => {
+    const { container, findByRole, getByRole } = open('/workflows/digest');
+    await ready(container);
+    stub?.on('bureau.workflows.pause', () => {
+      throw workflowFaults.conflict('agent-file-exists');
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toContain(WORKFLOW_COPY.pauseFailed);
+    expect(alert.textContent).not.toContain('already used');
   });
 
   test('shows the Bureau’s own words when it could not apply a resume or a delete', async () => {

@@ -49,6 +49,7 @@
       result = answer;
       // A signal can start a run, so the runs lists are no longer what they were.
       void queryClient.invalidateQueries({ queryKey: ['workflows', 'list'] });
+      void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
     },
   }));
 

@@ -10,8 +10,10 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   availableActions,
   defaultSignalName,
+  isEngineType,
   joinCatalog,
   loadCatalog,
+  loadCodeActivity,
   resolveWorkflow,
   startingSchedules,
 } from './workflow-catalog.ts';
@@ -22,6 +24,7 @@ import {
   installWorkflowWorld,
   invalidFile,
   readyFile,
+  runFixture,
   scheduleFixture,
   sourceDefinition,
   workflowFaults,
@@ -115,6 +118,57 @@ describe('the list', () => {
     const [row] = joinCatalog([codeDefinition('order-processing')], []);
     expect(row).toMatchObject({ kind: 'code', agent: null, file: null, problem: null });
     expect(row?.description).toBe('The order-processing workflow.');
+  });
+
+  test('describes a file in its own words, and a code type in the engine’s', () => {
+    const rows = joinCatalog(
+      [codeDefinition('order-processing'), sourceDefinition('digest')],
+      [listingOf(readyFile('digest', { description: 'Writes the digest.' }))],
+    );
+    expect(rows.map((row) => [row.name, row.description])).toEqual([
+      ['digest', 'Writes the digest.'],
+      ['order-processing', 'The order-processing workflow.'],
+    ]);
+  });
+
+  test('describes a file with none of its own by nothing the engine did not say', () => {
+    const [row] = joinCatalog(
+      [sourceDefinition('digest', { description: null })],
+      [listingOf(readyFile('digest'))],
+    );
+    expect(row?.description).toBeNull();
+  });
+
+  test('carries a file’s trigger and the Bureau’s counts of its instances, and none for a code type', () => {
+    const runs = { active: 2, last24Hours: 9, lastRunAt: '2026-10-23T11:00:00.000Z' };
+    const rows = joinCatalog(
+      [codeDefinition('order-processing')],
+      [listingOf(readyFile('digest', { runs, trigger: { kind: 'signal', name: 'go' } }))],
+    );
+    expect(rows.map((row) => [row.name, row.trigger, row.runs])).toEqual([
+      ['digest', { kind: 'signal', name: 'go' }, runs],
+      ['order-processing', null, null],
+    ]);
+  });
+
+  test('marks the types the Bureau registers for itself, and only those', () => {
+    const rows = joinCatalog(
+      [
+        codeDefinition('agentRun'),
+        codeDefinition('durableHeartbeatTick'),
+        codeDefinition('goalRun'),
+        codeDefinition('order-processing'),
+      ],
+      [],
+    );
+    expect(rows.map((row) => [row.name, row.engine])).toEqual([
+      ['agentRun', true],
+      ['durableHeartbeatTick', true],
+      ['goalRun', true],
+      ['order-processing', false],
+    ]);
+    expect(isEngineType('agentRun')).toBe(true);
+    expect(isEngineType('digest')).toBe(false);
   });
 
   test('is ordered by name', () => {
@@ -317,5 +371,106 @@ describe('the signal a form starts with', () => {
   test('is empty when the workflow names no signal at all, or cannot be read', () => {
     expect(defaultSignalName(documentOf({ kind: 'schedule', spec: '1h' }, []))).toBe('');
     expect(defaultSignalName(undefined)).toBe('');
+  });
+});
+
+describe('the activity of a code-defined type', () => {
+  const NOW = Date.parse('2026-10-23T12:00:00.000Z');
+  const MINUTE = 60_000;
+
+  test('is counted from the engine’s own totals: the unfinished, the last day’s, and the newest', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        runs: [
+          runFixture('a', 'order-processing', {
+            createdAt: NOW - 10 * MINUTE,
+            status: 'completed',
+          }),
+          runFixture('b', 'order-processing', { createdAt: NOW - 20 * MINUTE, status: 'running' }),
+          runFixture('c', 'order-processing', {
+            createdAt: NOW - 30 * MINUTE,
+            status: 'suspended',
+          }),
+          runFixture('d', 'order-processing', { createdAt: NOW - 2 * 86_400_000 }),
+          runFixture('e', 'other', { createdAt: NOW - MINUTE }),
+        ],
+        schedules: [scheduleFixture('every-5', 'order-processing')],
+      }),
+    );
+    const activity = await loadCodeActivity(stub.client, ['order-processing'], NOW);
+    expect(activity.get('order-processing')?.runs).toEqual({
+      active: 2,
+      last24Hours: 3,
+      lastRunAt: new Date(NOW - 10 * MINUTE).toISOString(),
+    });
+    expect(activity.get('order-processing')?.schedules).toHaveLength(1);
+    // One total at a time: it never asks the engine for more than a page of one.
+    for (const call of stub.callsTo('weft.workflows.list')) expect(call.params['limit']).toBe(1);
+  });
+
+  test('finds the newest instance of a quiet type beyond the day, reading only what it must', async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    stub = installWorkflowWorld(
+      emptyWorld({
+        runs: [
+          runFixture('old-1', 'quiet', { createdAt: NOW - 40 * DAY }),
+          runFixture('old-2', 'quiet', { createdAt: NOW - 10 * DAY }),
+          runFixture('ancient', 'rare', { createdAt: NOW - 400 * DAY }),
+        ],
+      }),
+    );
+    const activity = await loadCodeActivity(stub.client, ['quiet', 'rare'], NOW);
+    expect(activity.get('quiet')?.runs).toEqual({
+      active: 0,
+      last24Hours: 0,
+      lastRunAt: new Date(NOW - 10 * DAY).toISOString(),
+    });
+    expect(activity.get('rare')?.runs).toEqual({
+      active: 0,
+      last24Hours: 0,
+      lastRunAt: new Date(NOW - 400 * DAY).toISOString(),
+    });
+    // A type that ran in the last day needs no look back at all.
+    stub.restore();
+    stub = installWorkflowWorld(
+      emptyWorld({ runs: [runFixture('fresh', 'busy', { createdAt: NOW - 10 * MINUTE })] }),
+    );
+    const busy = await loadCodeActivity(stub.client, ['busy'], NOW);
+    expect(busy.get('busy')?.runs?.lastRunAt).toBe(new Date(NOW - 10 * MINUTE).toISOString());
+    expect(stub.callsTo('weft.workflows.list')).toHaveLength(2);
+  });
+
+  test('says a type that has never run has not, with no newest', async () => {
+    stub = installWorkflowWorld(emptyWorld());
+    const activity = await loadCodeActivity(stub.client, ['quiet'], NOW);
+    expect(activity.get('quiet')?.runs).toEqual({ active: 0, last24Hours: 0, lastRunAt: null });
+    expect(activity.get('quiet')?.schedules).toEqual([]);
+  });
+
+  test('leaves out a cancelled schedule generation', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        schedules: [
+          scheduleFixture('live', 'order-processing'),
+          scheduleFixture('retired', 'order-processing', { status: 'cancelled' }),
+        ],
+      }),
+    );
+    const activity = await loadCodeActivity(stub.client, ['order-processing'], NOW);
+    expect(activity.get('order-processing')?.schedules).toHaveLength(1);
+  });
+
+  test('has null for what the engine would not give, and still gives the rest', async () => {
+    stub = installWorkflowWorld(emptyWorld({ schedules: [scheduleFixture('live', 'a')] }));
+    stub.on('weft.workflows.list', () => {
+      throw workflowFaults.unavailable();
+    });
+    const activity = await loadCodeActivity(stub.client, ['a'], NOW);
+    expect(activity.get('a')?.runs).toBeNull();
+    expect(activity.get('a')?.schedules).toHaveLength(1);
+
+    stub.world.failSchedules = true;
+    const failed = await loadCodeActivity(stub.client, ['a'], NOW);
+    expect(failed.get('a')).toEqual({ runs: null, schedules: null });
   });
 });
