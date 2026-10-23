@@ -40,6 +40,12 @@ const memoryPageSchema = z.object({
 
 export type MemoryPage = z.infer<typeof memoryPageSchema>;
 
+/**
+ * How many memories a page of the list asks for. The memory page and an agent's page read the same
+ * query (`queryKeys.memory.list`), so they ask for the same page size.
+ */
+export const MEMORY_PAGE_SIZE = 20;
+
 /** One page of what the agent remembers of the caller's chats, newest first. */
 export async function listMemories(
   agentId: string,

@@ -55,6 +55,8 @@ export type BureauWorldStub = {
   readonly weftDecisions: Array<{ reviewId: string; body: unknown }>;
   /** Every subscription the page has opened, in order. */
   readonly streams: StreamControl[];
+  /** The task of every subscription the page asked for, answered or not, so a test can say it never asked. */
+  readonly streamRequests: string[];
   /** Makes the next subscriptions refuse with this status, or fail to connect when `'offline'`. */
   refuseStreams(status: number | 'offline' | undefined): void;
   restore(): void;
@@ -128,6 +130,7 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
   const table = new Map(Object.entries(defaultHandlers(world)));
   const calls: BureauCall[] = [];
   const streams: StreamControl[] = [];
+  const streamRequests: string[] = [];
   const weftRequests: URL[] = [];
   const weftDecisions: Array<{ reviewId: string; body: unknown }> = [];
   let refusal: number | 'offline' | undefined;
@@ -141,6 +144,7 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
         return Response.json({ error: 'The Bureau refused the stream.' }, { status: refusal });
       }
       const taskId = url.searchParams.get('taskId') ?? '';
+      streamRequests.push(taskId);
       if (!world.tasks.some((task) => task.id === taskId)) {
         return Response.json({ error: `No task with id "${taskId}"` }, { status: 404 });
       }
@@ -237,6 +241,7 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
       table.set(method, handler);
     },
     streams,
+    streamRequests,
     weftRequests,
     weftDecisions,
     refuseStreams: (status) => {
