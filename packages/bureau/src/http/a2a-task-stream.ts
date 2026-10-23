@@ -38,6 +38,7 @@ import type { DurableEventEnvelope } from '@lostgradient/operative';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
+import { TERMINAL_RUN_EVENT_KINDS } from '../task-resync.ts';
 import type { Bureau } from '../types.ts';
 import { formsOf, type WaitForm } from './a2a-input-forms.ts';
 import {
@@ -333,9 +334,7 @@ export function createFoldProjector(
   retained: RetainedEvents | undefined,
 ) {
   const terminalRetained =
-    retained?.events.some((event) =>
-      ['run.completed', 'run.error', 'run.aborted', 'run.tripwire'].includes(event.kind),
-    ) ?? false;
+    retained?.events.some((event) => TERMINAL_RUN_EVENT_KINDS.has(event.kind)) ?? false;
   return createTaskEventProjector(taskId, {
     status: terminalRetained || !isTerminal(initial.status) ? 'working' : initial.status,
     finishReason: initial.finishReason,
