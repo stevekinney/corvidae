@@ -43,6 +43,8 @@ export interface GeminiTool {
 
 export interface GeminiFunctionCallPart {
   functionCall: {
+    /** The id Gemini issued for the call; `parseGeminiToolCalls` records it as `providerCallId`. */
+    id?: string;
     name: string;
     args: Record<string, unknown>;
   };
