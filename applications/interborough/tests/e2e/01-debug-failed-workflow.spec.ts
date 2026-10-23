@@ -13,7 +13,7 @@
 import { expect, test } from './fixtures.ts';
 
 test('operator finds, reads, and exports a failed workflow', async ({ page, checkA11y }) => {
-  await page.goto('/runs');
+  await page.goto('/workflows/payment-failing/runs');
   // Gate the first axe check behind the real screen, not the lazy-route
   // boot skeleton `page.goto()`'s `load` event resolves under — an
   // ungated check here audits whatever DOM happens to be present the
@@ -31,7 +31,7 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(failedRow).toBeVisible();
   await failedRow.getByRole('link').click();
 
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('h1.weft-workflow-detail__title')).toBeVisible();
   await expect(
     page.getByText(
       'The workflow or an activity threw an error that did not match a timeout, cancellation, resource, or system failure.',
