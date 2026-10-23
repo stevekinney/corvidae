@@ -129,7 +129,7 @@ async function example(console: Recorder): Promise<void> {
   const listed = await summarizer.listTasks({
     tenant: '',
     contextId: '', // empty filters match everything
-    status: TaskState.TASK_STATE_UNSPECIFIED,
+    status: TaskState.TASK_STATE_UNSPECIFIED, // no state filter
     pageToken: '',
     statusTimestampAfter: undefined,
   });

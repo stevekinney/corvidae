@@ -27,6 +27,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
+  - [Multimodal content and managed assets](#multimodal-content-and-managed-assets)
   - [Governed memory (COR-41)](#governed-memory-cor-41)
 - [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog)
   - [Agent files (COR-1524)](#agent-files-cor-1524)
@@ -619,7 +620,7 @@ The handler has no run-starting operation of its own, so the host starts the run
 - Authentication other than an API key, and the `bureau.deliveries.*` management operations.
 - Wiring a human-input form from an agent file or the catalog (COR-1674). An author can configure `inputSchemas` on Operative's `requestHumanInput` tool today, and the form is projected to the A2UI data part the extension row describes.
 
-**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key. The `ListTasks` request names `status: TaskState.TASK_STATE_UNSPECIFIED` explicitly because the server answers an undefined status with an empty list, which [COR-1679](https://linear.app/lost-gradient/issue/COR-1679) tracks; the example works around it.
+**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key.
 
 ```typescript
 import { type Message, Role, TaskState } from '@a2a-js/sdk';
@@ -735,7 +736,7 @@ console.log(TaskState[fetched.status?.state ?? 0]); // 'TASK_STATE_COMPLETED'
 const listed = await summarizer.listTasks({
   tenant: '',
   contextId: '', // empty filters match everything
-  status: TaskState.TASK_STATE_UNSPECIFIED,
+  status: TaskState.TASK_STATE_UNSPECIFIED, // no state filter
   pageToken: '',
   statusTimestampAfter: undefined,
 });
@@ -1056,6 +1057,164 @@ A goal's audit events are recorded in the durable event history under a `goal` o
 `close` is for a goal that has ended. It sets `closedAt` once and answers with the truthful cleanup acknowledgement for the checkpoint history of the controller workflow and of every attempt's run under the bureau's `checkpointRetention`, the least favorable of them: `not-required` when the policy keeps everything or the goal never had a workflow, `completed` once pruned, `unresolved` or `failed` when any could not be. Attempt histories are pruned here, not as each attempt ends, because the goal reads an ended attempt's checkpoint until it is terminal. Calling it again retries the cleanup. A `canceled` goal is closed only once the same read-back `cancel` answers from finds its controller, finalizer, and attempt run ended: until then `close` answers `cancellation-pending` with `awaiting` and leaves `closedAt` unset, because a closed goal leaves the boot sweep and nothing would be left to finish it.
 
 Not supported: `retry-now`, pause and resume, goals on an ephemeral bureau (`create` answers `durable-unavailable`), and the Bureau test harness's `startManagedGoal`.
+
+### Multimodal content and managed assets
+
+Bureau carries images, audio, video, documents, and files as **managed assets**: bytes that Bureau's asset service admitted, inspected, and now owns, referenced everywhere else by a `{ kind: 'managed-asset', assetId, revision? }` content source. This section is the map and the contract in one place: which package documents each surface, how an asset moves through its lifecycle, a worked example that runs as a test, and what is not supported. It links to the detailed sections instead of repeating them; the as-built wire contract is [`documentation/external-control-plane.md`](./documentation/external-control-plane.md#assets).
+
+**Where each surface is documented.**
+
+| Surface | What it carries | Documentation |
+| --- | --- | --- |
+| Content vocabulary | `ContentSource`, `Modality`, `MediaLimits`, the portable parts and their A2A mapping | [Conversationalist](../conversationalist/README.md#a2a-content-mapping), `src/multi-modal.ts` |
+| Tool results | `toolContent(parts, { value })` from a native tool, and MCP content blocks both ways | [Armorer README](../armorer/README.md) ("Text and media parts") and [MCP](../armorer/documentation/mcp.md) |
+| Agent input | An ordered list of parts, the admission invariant, safety verdicts, selection, and cost | [Operative: Media input](../operative/README.md#media-input-cor-716), [Bureau: Media input](#media-input-cor-716) |
+| Model output | Response `parts`, streamed parts, and generated media admitted before anything sees it | [Operative: Response parts](../operative/README.md#response-parts-and-generated-media-cor-713), [Bureau: Generated media](#generated-media-cor-713) |
+| Management plane | `bureau.assets.uploads.create`, `append`, `complete`, `bureau.assets.get`, and `GET /assets/{assetId}/content` | [External control plane](./documentation/external-control-plane.md#assets) |
+| AG-UI | A user row's `file` parts, the `bureau.asset-part` events, and `UNSUPPORTED_MEDIA_TYPE` | [The AG-UI mount](#the-ag-ui-mount-cor-855) ("Multimodal content") |
+| A2A | Inbound text, file, and data parts, outbound file parts on the asset route, and the card's input and output modes | [A2A](#a2a) ("Content") |
+
+**The asset lifecycle.** An asset is admitted from bounded inline bytes, a completed upload, an authorized URL, a provider file identifier, or an existing asset, and `admit` answers at once with the asset's identity while the rest of the admission runs as started work (`work.result()` settles as `completed`, `failed` with the rejection, or `aborted`, and never throws). It starts `pending` and settles `available`, `rejected` (for example `media-type-mismatch`), or `quarantined` (a safety gate flagged it); later it can be `expired` or `deleted`. Only an `available` asset resolves. Each asset has one owner, the principal that admitted it, and a monotonic revision. A row that references an asset claims it, so retention cannot expire one a persisted row names. Events and audit records never carry bytes, secrets, or signed URLs.
+
+**Authority.** Three boundaries hold on every surface. An asset is the owner's: another principal's read, a guessed identifier, an expired asset, and a deleted asset all read as missing, with nothing that tells them apart. A scope (`bureau.assets:read`, `bureau.assets:write`) gates who may ask and never grants access across owners. And the route `GET /assets/{assetId}/content` is an address, not a credential: it needs the same authentication as every other call and is never a signed URL.
+
+**Setup.** Media needs `assets` on `createBureau` (a storage, and optionally a `policy` of limits, an allowed media-type list, and retention). Without it, Bureau refuses media input, the Agent Card advertises text and data only, and `createBureauHandler` throws at construction. What an agent can take or give is its backend descriptors, not a guess: a function with no descriptor is a text-only agent, and none of the shipped catalog rows advertises media output, so generated media comes from a backend you describe.
+
+**Worked example.** The path end to end: admit an asset, run an agent on it, receive generated media as an asset, read it back as its owner, and fetch it over the asset route as the owner and as someone else. It runs in [`src/multimodal-guide.test.ts`](./src/multimodal-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. [`src/http/a2a-ag-ui-contract.test.ts`](./src/http/a2a-ag-ui-contract.test.ts) pins the A2A and AG-UI views of one multimodal exchange.
+
+```typescript
+import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
+import {
+  createAgent,
+  createModelCatalog,
+  withBackendDescriptors,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { principalFromApiKey } from '@lostgradient/weft';
+
+// A backend's descriptor says which media it takes in and gives out. Bureau admits only what a
+// descriptor advertises, so a function with no descriptor is a text-only agent.
+const visionBackends = createModelCatalog().descriptors.filter(
+  (descriptor) => descriptor.provider === 'anthropic',
+);
+const drawingBackends = visionBackends.map((descriptor) => ({
+  ...descriptor,
+  modalities: {
+    ...descriptor.modalities,
+    image: { ...descriptor.modalities.image, output: true },
+  },
+}));
+
+// The viewer reads an image. The painter answers with one: a 1x1 PNG standing in for the bytes
+// a model returns.
+const png =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const pixel = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
+const view: GenerateFunction = async ({ conversation }) => {
+  const kinds = conversation
+    .getMessages()
+    .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+    .map((part) => part.type);
+  return { content: `I received: ${kinds.join(', ')}`, toolCalls: [] };
+};
+const paint: GenerateFunction = async () => ({
+  content: 'Here it is.',
+  parts: [
+    { type: 'text', text: 'Here it is.' },
+    {
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'inline', encoding: 'base64', data: png },
+    },
+  ],
+  toolCalls: [],
+});
+const bureau = await createBureau({
+  agents: {
+    viewer: createAgent({
+      name: 'viewer',
+      generate: withBackendDescriptors(view, visionBackends),
+    }),
+    painter: createAgent({
+      name: 'painter',
+      generate: withBackendDescriptors(paint, drawingBackends),
+    }),
+  },
+  // The asset service is what makes media possible: without `assets`, Bureau refuses media input
+  // and has nowhere to put generated media.
+  assets: { storage: createMemoryAssetStorage() },
+});
+
+// Admit: bytes become an asset the principal owns. `admit` answers at once with the asset's
+// identity, and `work.result()` waits for inspection and the safety gates to settle it, as a
+// value (`completed`, `failed` with the rejection, or `aborted`) and never a throw. The id is the
+// one the handler derives from an API key whose subject is `alice`.
+const alice = { id: 'api-key:alice' };
+const admission = await bureau.assets!.admit(
+  { source: { kind: 'inline', bytes: pixel }, declaredMediaType: 'image/png' },
+  alice,
+);
+const settled = await admission.work.result();
+if (settled.outcome !== 'completed') throw new Error('the asset was not admitted');
+console.log(settled.value.state, settled.value.mediaType); // 'available' 'image/png'
+
+// Input: a run takes an ordered list of parts. The asset travels as a reference, never as bytes.
+const viewing = bureau.run(
+  'viewer',
+  [
+    { type: 'text', text: 'What is in this picture?' },
+    { type: 'image', mimeType: 'image/png', source: admission.source },
+  ],
+  { principal: alice.id },
+);
+const seen = await viewing.result();
+console.log(seen.content); // 'I received: text, image'
+
+// Output: media a model generates is admitted as the run's owner before anything sees it, so the
+// result holds a reference to an asset, and the bytes are read back through the asset service.
+const painting = bureau.run('painter', 'Draw a pixel.', { principal: alice.id });
+const painted = await painting.result();
+const image = painted.parts.find((part) => part.type === 'image');
+if (image?.source.kind !== 'managed-asset') throw new Error('generated media is an asset');
+console.log(image.source.kind); // 'managed-asset'
+const owned = await bureau.assets!.resolve(image.source, alice);
+console.log(owned.content.kind === 'bytes' && owned.content.bytes.byteLength > 0); // true
+
+// Authority: the owner reads the asset, and anybody else is told it does not exist.
+const bob = { id: 'api-key:bob' };
+const refusal = await bureau.assets!.resolve(image.source, bob).catch((error: unknown) => error);
+console.log(refusal instanceof Error); // true
+
+// Wire: over HTTP the bytes come from the authenticated asset route, as the credential's owner.
+const keys: Record<string, string> = { 'alice-key': 'alice', 'bob-key': 'bob' };
+const handler = createBureauHandler(bureau, {
+  authentication: {
+    auditSink: () => undefined,
+    resolveApiKeyPrincipal: async (key) =>
+      keys[key] === undefined
+        ? null
+        : principalFromApiKey({ subject: keys[key], scopes: ['bureau.assets:read'] }),
+  },
+});
+const route = `http://localhost/assets/${admission.assetId}/content`;
+const fetched = await handler(new Request(route, { headers: { 'X-API-Key': 'alice-key' } }));
+console.log(fetched.status, fetched.headers.get('Content-Type')); // 200 'image/png'
+const other = await handler(new Request(route, { headers: { 'X-API-Key': 'bob-key' } }));
+console.log(other.status); // 404: another owner's asset reads as missing
+
+await bureau.dispose();
+```
+
+**Not supported, and pending.** Do not promise these to your own users.
+
+- **Media the backend does not advertise.** An unadvertised modality, source form, MIME family, or limit is refused before any provider call (`MediaAdmissionError`; `UNSUPPORTED_MEDIA_TYPE` over AG-UI, `-32005` over A2A). Bureau does no silent OCR, captioning, extraction, or transcoding to make a part fit.
+- **Remote URLs** are deny-by-default: an A2A file part is accepted only on this server's own asset route or as inline bytes, and a URL admitted as an asset needs an asset policy that authorizes it.
+- **The MCP adapter** does not read assets or carry media. Its tools are the observe-and-steer set; upload and read stay on the management plane. A tool's own result can carry MCP content blocks ([Armorer MCP](../armorer/documentation/mcp.md)); Bureau does not project them through its adapter.
+- **Asset deletion and upload abort** are not served on the management plane: an upload that is never completed expires, and aborting one is for the embedding host through `AssetService`.
+- **One protocol's private blocks** do not appear on another. A2UI surfaces, AG-UI `CUSTOM` events, and MCP Apps stay on their protocol.
+- **An unreferenced asset** (a step admitted it and then no persisted row named it) stays `available` until the policy's default retention expires it; no reconciliation runs. [Generated media](#generated-media-cor-713) lists each path.
+- **An ambiguous ledger claim** on an inbound A2A send can delete assets an exact retry then expects: when the claim write commits but its response is lost, the discard runs without checking. [COR-1680](https://linear.app/lost-gradient/issue/COR-1680) tracks it.
+- **Not goals of this project:** an OpenAI-compatible endpoint, an MCP Apps renderer, arbitrary public asset URLs, one hard-coded object-storage vendor, treating validated JSON output as conversational media, and a host's own upload interface.
 
 ### Generated media (COR-713)
 
