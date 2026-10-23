@@ -30,6 +30,7 @@ import {
   curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
+  exitWhenStandardInputCloses,
   PACKAGE_DIRECTORY,
   parseBuildArguments,
   replaceDirectory,
@@ -37,6 +38,7 @@ import {
   RETAINED_ASSETS_FILE,
   retainPreviousAssets,
   runBuildCommand,
+  runBuildMain,
   wasmPlugin,
 } from './build.ts';
 
@@ -540,5 +542,60 @@ describe('the output directory guard', () => {
     }
     expect(bundled).toBe(false);
     expect(existsSync(join(PACKAGE_DIRECTORY, 'src', 'host', 'host.ts'))).toBe(true);
+  });
+});
+
+describe('the build process entry', () => {
+  const fakeBuild: typeof buildApplication = async () =>
+    ({ directory: 'x', files: [], metafile: {} }) as unknown as Awaited<
+      ReturnType<typeof buildApplication>
+    >;
+
+  it('builds and does not exit by itself when the parent is not watched', async () => {
+    const exits: number[] = [];
+    const lines: string[] = [];
+    await runBuildMain(
+      [],
+      (code) => void exits.push(code),
+      (line) => void lines.push(line),
+      fakeBuild,
+    );
+    expect(exits).toEqual([]);
+    expect(lines).toHaveLength(1);
+  });
+
+  it('exits 0 after a build that was asked to follow its parent, and 1 once standard input closes', async () => {
+    const exits: number[] = [];
+    let closeInput: () => void = () => {};
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeInput = () => controller.close();
+      },
+    });
+    await runBuildMain(
+      ['--exit-with-parent'],
+      (code) => void exits.push(code),
+      () => {},
+      fakeBuild,
+      input,
+    );
+    expect(exits).toEqual([0]);
+
+    closeInput();
+    await Bun.sleep(10);
+    expect(exits).toEqual([0, 1]);
+  });
+
+  it('removes nothing and exits 1 when standard input closes with no build running', async () => {
+    const exits: number[] = [];
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.close();
+      },
+    });
+    exitWhenStandardInputCloses(input, (code) => void exits.push(code));
+    await Bun.sleep(10);
+    expect(exits).toEqual([1]);
   });
 });

@@ -37,6 +37,27 @@ function storageReporting(overrides: Partial<StorageCapabilities>): Storage {
 }
 
 describe('createWeftPushNotificationStore', () => {
+  it('checks a create without writing, and refuses what the create would refuse', async () => {
+    const storage = new MemoryStorage();
+    const store = createWeftPushNotificationStore({ storage, namespace: 'agent' });
+    const config = pushConfigFixture('task-1', { id: 'config-1', url: 'https://hook.example/a' });
+
+    expect(await store.check('task-1', ALICE, config)).toBeUndefined();
+    expect(await store.get('task-1', 'config-1', ALICE)).toBeUndefined();
+
+    const created = await store.create('task-1', ALICE, config);
+    expect(await store.check('task-1', ALICE, config)).toEqual(created);
+    const different = { ...config, url: 'https://hook.example/b' };
+    expect(await rejectionOf(store.check('task-1', ALICE, different))).toBeInstanceOf(
+      A2APushConfigurationConflictError,
+    );
+
+    await store.delete('task-1', ALICE, 'config-1');
+    expect(await rejectionOf(store.check('task-1', ALICE, config))).toBeInstanceOf(
+      A2APushConfigurationConflictError,
+    );
+  });
+
   it('refuses a storage adapter without conditional batches', () => {
     expect(() =>
       createWeftPushNotificationStore({
