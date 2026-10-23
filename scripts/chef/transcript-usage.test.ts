@@ -10,6 +10,7 @@ import {
   readTranscript,
   report,
   run,
+  totalUsage,
   transcriptFiles,
   UsageError,
 } from './transcript-usage.ts';
@@ -222,6 +223,35 @@ describe('prices', () => {
         'another-model': { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 },
       }).cost,
     ).toBeUndefined();
+  });
+});
+
+describe('totalUsage', () => {
+  test('sums input (uncached plus cache writes), cached input and output over a directory', () => {
+    write(join(sandbox, 'coordinator.jsonl'), claudeTranscript());
+    mkdirSync(join(sandbox, 'codex'));
+    write(join(sandbox, 'codex', 'rollout-1.jsonl'), codexTranscript());
+    write(join(sandbox, 'notes.jsonl'), ['{"not":"a transcript"}']);
+    const reports = [
+      join(sandbox, 'coordinator.jsonl'),
+      join(sandbox, 'codex', 'rollout-1.jsonl'),
+    ].map((path) => report(readTranscript(path)!, undefined));
+    const sum = (pick: (entry: (typeof reports)[number]) => number) =>
+      reports.reduce((total, entry) => total + pick(entry), 0);
+    const totals = totalUsage([sandbox]);
+    expect(totals).toEqual({
+      input: sum((entry) => entry.uncachedInput + entry.cacheWrite),
+      cachedInput: sum((entry) => entry.cacheRead),
+      output: sum((entry) => entry.output),
+    });
+    expect(totals.input).toBeGreaterThan(0);
+    expect(totals.cachedInput).toBeGreaterThan(0);
+    expect(totals.output).toBeGreaterThan(0);
+  });
+
+  test('is zero for no transcripts and refuses a path that does not exist', () => {
+    expect(totalUsage([])).toEqual({ input: 0, cachedInput: 0, output: 0 });
+    expect(() => totalUsage([join(sandbox, 'missing')])).toThrow(UsageError);
   });
 });
 

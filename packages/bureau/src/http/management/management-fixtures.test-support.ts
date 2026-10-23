@@ -212,7 +212,10 @@ export async function openBureau(
     /** The asset service's injected ports: a metadata extractor or a safety gate a test scripts. */
     assetPorts?: AssetPorts;
     /** Passed to `createBureauHandler` beside the authentication. */
-    handlerOptions?: { readonly maxRequestBodyBytes?: number };
+    handlerOptions?: Omit<
+      Parameters<typeof createBureauHandler>[1],
+      'authentication' | 'unauthenticatedAccess' | 'publish'
+    >;
   } = {},
 ): Promise<OpenedBureau> {
   const fixture =

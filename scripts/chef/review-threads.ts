@@ -7,6 +7,8 @@
 // Usage:
 //   bun scripts/chef/review-threads.ts list <owner/repo> <pr> [--unresolved] [--json]
 //   bun scripts/chef/review-threads.ts resolve <owner/repo> <pr> --file <tsv> [--json]
+//   bun scripts/chef/review-threads.ts classes --pr <n> [--repository <owner/repo>] [--config <json>]
+//                                      [--classes <json>] [--json]
 //
 // `list` prints one line per thread (thread id, first comment's databaseId, path:line, author,
 // resolved or open, first line of the first comment) and a final `SEEN=<n> TOTAL=<n>
@@ -15,10 +17,20 @@
 // lists again and prints `RESOLVED <n>/<n>` and what remains. A thread that is already resolved is
 // counted without a second reply.
 //
-// Exit codes: 0 every thread seen (and, for `resolve`, every target resolved), 1 SEEN differs from
-// TOTAL, GitHub failed, or a target is still unresolved, 2 invalid CLI usage.
+// `classes` pages every thread the way `list` does and tags each thread's first comment with the
+// defect classes in `defect-classes.json` (case-insensitive regular expressions; a thread can carry
+// several classes). A round is a burst of bot comments with no gap over 10 minutes, so each push
+// that a review bot answers is one round. It prints, per class, the thread count and the rounds the
+// class appeared in. A class that shows up in two or more distinct rounds survived a fix pass: the
+// causal model was wrong, so stop patching instances and reassess the shared cause. The repository
+// comes from `--repository`, else from the configuration's `repository`.
+//
+// Exit codes: 0 every thread seen (and, for `resolve`, every target resolved; for `classes`, no
+// class repeats across rounds), 1 SEEN differs from TOTAL, GitHub failed, a target is still
+// unresolved, or a defect class repeats across rounds, 2 invalid CLI usage.
 
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   defaultRunner,
   emitResult,
@@ -26,6 +38,7 @@ import {
   type Runner,
   UsageError,
 } from './process-runner.ts';
+import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 
 export { UsageError };
 export type { Runner };
@@ -39,6 +52,12 @@ export interface ReviewThread {
   /** The first comment's `databaseId`, the key the reply endpoint takes. */
   commentId: number | null;
   firstLine: string;
+  /** The whole first comment. */
+  body: string;
+  /** When the first comment was posted (ISO 8601), or `null` when GitHub gave none. */
+  createdAt: string | null;
+  /** Whether the first comment's author is a bot account (`Bot` type or a `[bot]` login). */
+  authorIsBot: boolean;
 }
 
 export interface ThreadListing {
@@ -66,7 +85,7 @@ const threadsQuery = `query($owner: String!, $name: String!, $pr: Int!, $after: 
           path
           line
           originalLine
-          comments(first: 1) { nodes { databaseId body author { login } } }
+          comments(first: 1) { nodes { databaseId body createdAt author { login __typename } } }
         }
       }
     }
@@ -101,7 +120,8 @@ interface ThreadNode {
     nodes?: {
       databaseId?: unknown;
       body?: unknown;
-      author?: { login?: unknown } | null;
+      createdAt?: unknown;
+      author?: { login?: unknown; __typename?: unknown } | null;
     }[];
   };
 }
@@ -141,6 +161,11 @@ function toThread(node: ThreadNode): ReviewThread {
     author: typeof first?.author?.login === 'string' ? first.author.login : null,
     commentId: typeof first?.databaseId === 'number' ? first.databaseId : null,
     firstLine: (body.split('\n').find((candidate) => candidate.trim() !== '') ?? '').trim(),
+    body,
+    createdAt: typeof first?.createdAt === 'string' ? first.createdAt : null,
+    authorIsBot:
+      first?.author?.['__typename'] === 'Bot' ||
+      (typeof first?.author?.login === 'string' && /\[bot\]$/i.test(first.author.login)),
   };
 }
 
@@ -332,6 +357,161 @@ export function resolveThreads(
   };
 }
 
+/** One defect class: a name, what it means, and the case-insensitive patterns that tag it. */
+export interface DefectClass {
+  name: string;
+  description: string;
+  patterns: RegExp[];
+}
+
+/** The classes `classes` tags with unless `--classes` names another file. */
+export const DEFAULT_DEFECT_CLASSES_PATH = join(import.meta.dir, 'defect-classes.json');
+
+/** A gap longer than this between two bot comments starts a new round. */
+export const ROUND_GAP_MILLISECONDS = 10 * 60 * 1000;
+
+/** Parse and validate a defect-class file; every problem is a `UsageError` naming the file. */
+export function parseDefectClasses(text: string, source: string): DefectClass[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new UsageError(`${source} is not JSON.`);
+  }
+  const entries = (parsed as { classes?: unknown } | null)?.classes;
+  if (!Array.isArray(entries) || entries.length === 0)
+    throw new UsageError(`${source} needs a non-empty "classes" array.`);
+  const names = new Set<string>();
+  return entries.map((entry: unknown, index) => {
+    const record = (entry ?? {}) as { name?: unknown; description?: unknown; patterns?: unknown };
+    if (typeof record.name !== 'string' || record.name === '')
+      throw new UsageError(`${source}: class ${index + 1} needs a name.`);
+    if (names.has(record.name)) throw new UsageError(`${source}: class ${record.name} repeats.`);
+    const name = record.name;
+    names.add(name);
+    if (
+      !Array.isArray(record.patterns) ||
+      record.patterns.length === 0 ||
+      record.patterns.some((pattern) => typeof pattern !== 'string')
+    )
+      throw new UsageError(`${source}: class ${record.name} needs a non-empty "patterns" array.`);
+    return {
+      name,
+      description: typeof record.description === 'string' ? record.description : '',
+      patterns: (record.patterns as string[]).map((pattern) => {
+        try {
+          return new RegExp(pattern, 'is');
+        } catch {
+          throw new UsageError(`${source}: class ${name} has an invalid pattern ${pattern}.`);
+        }
+      }),
+    };
+  });
+}
+
+/** Read the defect-class file at `path`. */
+export function loadDefectClasses(path: string = DEFAULT_DEFECT_CLASSES_PATH): DefectClass[] {
+  if (!existsSync(path)) throw new UsageError(`No such defect-class file: ${path}`);
+  return parseDefectClasses(readFileSync(path, 'utf8'), path);
+}
+
+/** The names of the classes whose patterns match `text`, in file order. */
+export function tagText(text: string, classes: DefectClass[]): string[] {
+  return classes
+    .filter((defectClass) => defectClass.patterns.some((pattern) => pattern.test(text)))
+    .map((defectClass) => defectClass.name);
+}
+
+/**
+ * Number the bot comments' rounds: sort by time, and start a new round whenever the gap to the
+ * previous bot comment is over ten minutes. A thread whose first comment is not a bot's, or has no
+ * readable time, belongs to no round and is absent from the result.
+ */
+export function assignRounds(threads: ReviewThread[]): Map<string, number> {
+  const stamped = threads
+    .filter((thread) => thread.authorIsBot)
+    .map((thread) => ({ id: thread.id, time: Date.parse(thread.createdAt ?? '') }))
+    .filter((entry) => Number.isFinite(entry.time))
+    .toSorted((left, right) => left.time - right.time);
+  const rounds = new Map<string, number>();
+  let round = 0;
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const entry of stamped) {
+    if (entry.time - previous > ROUND_GAP_MILLISECONDS) round += 1;
+    rounds.set(entry.id, round);
+    previous = entry.time;
+  }
+  return rounds;
+}
+
+export interface ClassSummary {
+  name: string;
+  threads: number;
+  /** The distinct rounds in which a thread of this class was opened, ascending. */
+  rounds: number[];
+  /** Whether the class appeared in two or more distinct rounds. */
+  repeating: boolean;
+}
+
+export interface ClassesReport {
+  /** How many rounds of bot comments the pull request had. */
+  rounds: number;
+  classes: ClassSummary[];
+  /** Threads that matched no class. */
+  untagged: number;
+  /** Names of the classes that repeat across rounds. */
+  repeating: string[];
+}
+
+/** Tag every thread's first comment, group by class, and find the classes that repeat across rounds. */
+export function summarizeClasses(threads: ReviewThread[], classes: DefectClass[]): ClassesReport {
+  const roundOf = assignRounds(threads);
+  const tally = new Map(classes.map((defectClass) => [defectClass.name, new Set<string>()]));
+  const roundsOf = new Map(classes.map((defectClass) => [defectClass.name, new Set<number>()]));
+  let untagged = 0;
+  for (const thread of threads) {
+    const names = tagText(thread.body, classes);
+    if (names.length === 0) untagged += 1;
+    for (const name of names) {
+      tally.get(name)?.add(thread.id);
+      const round = roundOf.get(thread.id);
+      if (round !== undefined) roundsOf.get(name)?.add(round);
+    }
+  }
+  const summaries = classes.map((defectClass): ClassSummary => {
+    const rounds = [...(roundsOf.get(defectClass.name) ?? [])].toSorted((a, b) => a - b);
+    return {
+      name: defectClass.name,
+      threads: tally.get(defectClass.name)?.size ?? 0,
+      rounds,
+      repeating: rounds.length >= 2,
+    };
+  });
+  return {
+    rounds: new Set(roundOf.values()).size,
+    classes: summaries,
+    untagged,
+    repeating: summaries.filter((summary) => summary.repeating).map((summary) => summary.name),
+  };
+}
+
+function renderClasses(report: ClassesReport): string {
+  return [
+    ...report.classes.map(
+      (summary) =>
+        `${summary.name}: ${summary.threads} thread${summary.threads === 1 ? '' : 's'}${
+          summary.rounds.length === 0
+            ? ''
+            : `, round${summary.rounds.length === 1 ? '' : 's'} ${summary.rounds.join(', ')}`
+        }${summary.repeating ? '  REPEATING' : ''}`,
+    ),
+    `untagged: ${report.untagged}  rounds of bot comments: ${report.rounds}`,
+    report.repeating.length === 0
+      ? 'No class repeats across rounds.'
+      : `Repeating across rounds: ${report.repeating.join(', ')}. Stop patching instances and reassess the shared cause.`,
+  ].join('\n');
+}
+
 function renderThread(thread: ReviewThread): string {
   const location = thread.path === null ? '-' : `${thread.path}:${thread.line ?? '?'}`;
   const first =
@@ -339,13 +519,69 @@ function renderThread(thread: ReviewThread): string {
   return `${thread.id} ${thread.commentId ?? '-'} ${location} @${thread.author ?? 'unknown'} ${thread.isResolved ? 'resolved' : 'open'}  ${first}`;
 }
 
+function runClasses(
+  argv: string[],
+  runner: Runner,
+  injected: DefectClass[] | undefined,
+): { code: number; output: string } {
+  const parsed = parseOptions(argv, {
+    values: ['pr', 'repository', 'config', 'classes'],
+    flags: ['json'],
+  });
+  if (parsed.positionals.length > 0)
+    throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
+  const prValue = parsed.values['pr'];
+  if (prValue === undefined || prValue === '') throw new UsageError('--pr is required.');
+  const pr = parsePullRequest(prValue);
+  const repository =
+    parsed.values['repository'] ??
+    loadRepositoryConfig(parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH).repository;
+  parseRepository(repository);
+  const classes = injected ?? loadDefectClasses(parsed.values['classes']);
+  const json = parsed.flags.has('json');
+  try {
+    const listing = listThreads(repository, pr, runner);
+    const complete = listing.seen === listing.total;
+    const report = summarizeClasses(listing.threads, classes);
+    const ok = complete && report.repeating.length === 0;
+    return {
+      code: ok ? 0 : 1,
+      output: json
+        ? JSON.stringify({
+            repository,
+            pr,
+            seen: listing.seen,
+            total: listing.total,
+            complete,
+            ok,
+            ...report,
+          })
+        : [
+            renderClasses(report),
+            ...(complete
+              ? []
+              : [
+                  `incomplete: SEEN=${listing.seen} TOTAL=${listing.total}; the counts above miss threads`,
+                ]),
+          ].join('\n'),
+    };
+  } catch (error) {
+    if (!(error instanceof ReviewThreadsError)) throw error;
+    return {
+      code: 1,
+      output: json ? JSON.stringify({ ok: false, error: error.message }) : error.message,
+    };
+  }
+}
+
 export function run(
   argv: string[],
-  dependencies: { runner?: Runner } = {},
+  dependencies: { runner?: Runner; classes?: DefectClass[] } = {},
 ): { code: number; output: string } {
   const runner = dependencies.runner ?? defaultRunner;
   const command = argv[0];
-  if (command === undefined) throw new UsageError('Name a command: list or resolve.');
+  if (command === undefined) throw new UsageError('Name a command: list, resolve or classes.');
+  if (command === 'classes') return runClasses(argv.slice(1), runner, dependencies.classes);
   if (command !== 'list' && command !== 'resolve')
     throw new UsageError(`Unknown command ${command}.`);
   const parsed = parseOptions(argv.slice(1), {

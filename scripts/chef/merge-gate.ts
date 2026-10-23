@@ -6,6 +6,7 @@
 // Usage:
 //   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --gate-log <file>
 //                                  --comment-file <md> [--dry-run] [--json]
+//                                  [--usage-log <file> --transcript <path>...]
 //
 // The steps run in order and stop at the first failure, which is named:
 //   1. fetch          `git fetch origin <default>`;
@@ -23,10 +24,19 @@
 //
 // It prints { pr, head, base, gateRc, threads, merged, mergeCommit, treesMatch, failedStep }.
 //
+// Spend record (optional): `--usage-log <file>` with one or more `--transcript <path>` (a
+// transcript file, or a directory searched recursively) totals those transcripts' tokens with
+// `transcript-usage.ts` after a successful merge and appends one tab-separated line to the file:
+// ISO time, pull request number, merge SHA, input, cached input and output tokens (input is what
+// was not read from cache). The two flags go together, and a missing transcript is refused before
+// anything is posted. Without them nothing changes. If the record cannot be written, the report
+// names a `usage` step as failed, with the pull request already merged.
+//
 // Exit codes: 0 every step passed (under --dry-run: every check passed), 1 a step failed or the
 // merged tree differs from the gated tree, 2 invalid CLI usage.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { readGateLog } from './gate-run.ts';
 import {
   defaultRunner,
@@ -38,6 +48,7 @@ import {
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { listThreads, ReviewThreadsError } from './review-threads.ts';
+import { totalUsage, type UsageTotals } from './transcript-usage.ts';
 
 export { UsageError };
 
@@ -48,6 +59,10 @@ export interface MergeGateOptions {
   gateLog: string;
   commentFile: string;
   dryRun: boolean;
+  /** Where to append the spend record after a successful merge; needs `transcripts`. */
+  usageLog?: string | undefined;
+  /** Transcript files or directories whose token usage the spend record totals. */
+  transcripts?: string[] | undefined;
 }
 
 export interface MergeGateReport {
@@ -66,10 +81,15 @@ export interface MergeGateReport {
   failedStep: string | null;
   /** Why it failed, in one line. */
   detail: string | null;
+  /** The tokens appended to the usage log; present only when a spend record was written. */
+  usage?: UsageTotals;
 }
 
 export interface MergeGateDependencies {
   runner: Runner;
+  /** Totals the tokens of the transcripts at these paths; defaults to `transcript-usage.ts`. */
+  usage: (paths: string[]) => UsageTotals;
+  now: () => Date;
 }
 
 interface PullRequestView {
@@ -112,6 +132,12 @@ export function mergeGate(
     throw new UsageError(`No such comment file: ${options.commentFile}`);
   if (readFileSync(options.commentFile, 'utf8').trim() === '')
     throw new UsageError(`${options.commentFile} is empty.`);
+  const transcripts = options.transcripts ?? [];
+  if ((options.usageLog === undefined) !== (transcripts.length === 0))
+    throw new UsageError('--usage-log and --transcript go together.');
+  for (const transcript of transcripts) {
+    if (!existsSync(transcript)) throw new UsageError(`No such transcript: ${transcript}`);
+  }
 
   const { repository, defaultBranch } = config;
   const report: MergeGateReport = {
@@ -295,6 +321,31 @@ export function mergeGate(
       'confirm',
       `merged but the merge commit's tree differs from the gated head ${head.slice(0, 12)}.`,
     );
+
+  // 10. usage (optional): the spend record for this merge
+  if (options.usageLog !== undefined) {
+    try {
+      const totals = (partial.usage ?? totalUsage)(transcripts);
+      mkdirSync(dirname(options.usageLog), { recursive: true });
+      appendFileSync(
+        options.usageLog,
+        `${[
+          (partial.now ?? (() => new Date()))().toISOString(),
+          options.pr,
+          mergeCommit,
+          totals.input,
+          totals.cachedInput,
+          totals.output,
+        ].join('\t')}\n`,
+      );
+      report.usage = totals;
+    } catch (error) {
+      return fail(
+        'usage',
+        `merged, but the spend record was not written: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   return report;
 }
 
@@ -315,6 +366,10 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
     lines.push(
       `merged=true mergeCommit=${report.mergeCommit?.slice(0, 12) ?? 'unknown'} treesMatch=${report.treesMatch ?? 'unchecked'}`,
     );
+    if (report.usage !== undefined)
+      lines.push(
+        `usage recorded: input=${report.usage.input} cachedInput=${report.usage.cachedInput} output=${report.usage.output}`,
+      );
   }
   return lines.join('\n');
 }
@@ -324,7 +379,8 @@ export function run(
   dependencies: Partial<MergeGateDependencies> = {},
 ): { code: number; output: string } {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'gate-log', 'comment-file'],
+    values: ['config', 'pr', 'worktree', 'gate-log', 'comment-file', 'usage-log'],
+    repeated: ['transcript'],
     flags: ['dry-run', 'json'],
   });
   if (parsed.positionals.length > 0)
@@ -338,6 +394,8 @@ export function run(
     gateLog: requireOption(parsed, 'gate-log'),
     commentFile: requireOption(parsed, 'comment-file'),
     dryRun: parsed.flags.has('dry-run'),
+    usageLog: parsed.values['usage-log'],
+    transcripts: parsed.repeated['transcript'] ?? [],
   };
   const report = mergeGate(options, dependencies);
   return {

@@ -6,6 +6,7 @@
 // Usage:
 //   bun scripts/chef/gate-run.ts run [--config <json>] --worktree <dir> --log <file> [--command <shell>]
 //   bun scripts/chef/gate-run.ts read <log> [--json]
+//   bun scripts/chef/gate-run.ts triage <log> --base <sha> [--repository <dir>] [--json]
 //   bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>
 //                                   --iterations <n> --log <tsv> [--json]
 //
@@ -25,10 +26,19 @@
 // paired with another run's passing code. A log with no exit code is reported as such and never
 // inferred to have passed.
 //
+// `triage` takes the failed turbo tasks (`<package>#<task>`) that `read` finds in a log and says
+// which pull requests could have broken each. It resolves the package's workspace directory from
+// the workspace `package.json` names under the repository, lists the first-parent commits in
+// `<base>..HEAD` that touched that directory, and takes the pull request number from a `(#123)`
+// suffix on each subject. It prints `<task>: PR #a, #b` or `<task>: no change since base
+// (pre-existing or flaky)`; a task whose package is not a workspace is reported and not mapped,
+// and a commit with no `(#123)` suffix is named by its short hash.
+//
 // `control` runs a command alternately in a candidate and a base tree and compares how often each
 // fails, which tells a shared or pre-existing failure from one the candidate introduced.
 //
-// Exit codes: `run` the gate's own code; `read` 0 only when the log holds exit code 0; `control`
+// Exit codes: `run` the gate's own code; `read` 0 only when the log holds exit code 0; `triage` 1
+// when any failed task maps to a commit since the base (so to a pull request), else 0; `control`
 // 0 when the base fails at least as often as the candidate, else 1; 2 invalid CLI usage.
 
 import {
@@ -37,13 +47,15 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   readSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { loadavg } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { workspaceParentDirectories } from '../workspace-directories.ts';
 import { findLockProcesses } from './leftovers.ts';
 import {
   defaultRunner,
@@ -325,6 +337,130 @@ export function runGate(
   };
 }
 
+export interface TriageCommit {
+  sha: string;
+  subject: string;
+  /** The `(#123)` number at the end of the subject, or `null` when it has none. */
+  pr: number | null;
+}
+
+export interface TriageTask {
+  /** The failed turbo task, `<package>#<task>`. */
+  task: string;
+  package: string;
+  /** The package's workspace directory relative to the repository, or `null` when it is no workspace. */
+  directory: string | null;
+  /** First-parent commits in `base..HEAD` that touched the directory, oldest first. */
+  commits: TriageCommit[];
+  /** The distinct pull requests those commits came from, oldest first. */
+  prs: number[];
+}
+
+export interface TriageResult {
+  base: string;
+  tasks: TriageTask[];
+}
+
+/** The failed tasks in `<package>#<task>` form; the other shapes `read` collects name no package. */
+export function turboTasks(failedTasks: string[]): { task: string; package: string }[] {
+  return failedTasks.flatMap((task) => {
+    const separator = task.lastIndexOf('#');
+    return /^\S+#\S+$/.test(task) ? [{ task, package: task.slice(0, separator) }] : [];
+  });
+}
+
+/** Each workspace's package name and its directory relative to `repository`. */
+export function workspaceDirectories(repository: string): Map<string, string> {
+  const directories = [
+    ...workspaceParentDirectories.flatMap((parent) => {
+      const root = join(repository, parent);
+      if (!existsSync(root)) return [];
+      return readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => `${parent}/${entry.name}`);
+    }),
+    'scripts/browser-fixtures',
+  ];
+  const byName = new Map<string, string>();
+  for (const directory of directories.toSorted()) {
+    const manifest = join(repository, directory, 'package.json');
+    if (!existsSync(manifest)) continue;
+    try {
+      const name = (JSON.parse(readFileSync(manifest, 'utf8')) as { name?: unknown }).name;
+      if (typeof name === 'string' && !byName.has(name)) byName.set(name, directory);
+    } catch {
+      // A manifest that is not JSON names no workspace; `bun install` is what rejects it.
+    }
+  }
+  return byName;
+}
+
+/**
+ * For each failed turbo task in a gate log, the pull requests that changed its package since
+ * `base`. A task with no commits since `base` failed on code this branch did not touch, so it is
+ * pre-existing or flaky rather than something a merged pull request introduced.
+ */
+export function triageGateLog(
+  log: string,
+  base: string,
+  repository: string,
+  runner: Runner = defaultRunner,
+): TriageResult {
+  const workspaces = workspaceDirectories(repository);
+  const tasks = turboTasks(readGateLog(log).failedTasks).map(
+    ({ task, package: name }): TriageTask => {
+      const directory = workspaces.get(name) ?? null;
+      if (directory === null) return { task, package: name, directory, commits: [], prs: [] };
+      const result = runner(
+        ['git', 'log', '--first-parent', '--format=%H%x09%s', `${base}..HEAD`, '--', directory],
+        { cwd: repository },
+      );
+      if (result.code !== 0)
+        throw new UsageError(
+          `git log ${base}..HEAD failed in ${repository} (exit ${result.code}): ${result.stderr.trim().split('\n').at(-1) ?? ''}`,
+        );
+      const commits = result.stdout
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+        .map((line): TriageCommit => {
+          const tab = line.indexOf('\t');
+          const subject = tab === -1 ? '' : line.slice(tab + 1);
+          const number = /\(#(\d+)\)\s*$/.exec(subject)?.[1];
+          return {
+            sha: tab === -1 ? line : line.slice(0, tab),
+            subject,
+            pr: number === undefined ? null : Number(number),
+          };
+        })
+        .toReversed();
+      const prs = [
+        ...new Set(commits.flatMap((commit) => (commit.pr === null ? [] : [commit.pr]))),
+      ];
+      return { task, package: name, directory, commits, prs };
+    },
+  );
+  return { base, tasks };
+}
+
+export function renderTriage(result: TriageResult): string {
+  if (result.tasks.length === 0) return 'No failed turbo tasks (<package>#<task>) in the log.';
+  return result.tasks
+    .map((entry) => {
+      if (entry.directory === null)
+        return `${entry.task}: ${entry.package} is not a workspace here, so it cannot be mapped`;
+      if (entry.commits.length === 0)
+        return `${entry.task}: no change since base (pre-existing or flaky)`;
+      const named = [
+        ...entry.prs.map((pr) => `#${pr}`),
+        ...entry.commits
+          .filter((commit) => commit.pr === null)
+          .map((commit) => commit.sha.slice(0, 9)),
+      ];
+      return `${entry.task}: PR ${named.join(', ')}`;
+    })
+    .join('\n');
+}
+
 export interface ControlOptions {
   candidate: string;
   base: string;
@@ -437,6 +573,23 @@ export function run(
       output: parsed.flags.has('json') ? JSON.stringify(summary) : renderGateSummary(summary),
     };
   }
+  if (command === 'triage') {
+    const parsed = parseOptions(rest, { values: ['base', 'repository'], flags: ['json'] });
+    const [path, ...extra] = parsed.positionals;
+    if (path === undefined || extra.length > 0)
+      throw new UsageError(
+        'Usage: gate-run.ts triage <log> --base <sha> [--repository <dir>] [--json]',
+      );
+    const base = requireOption(parsed, 'base');
+    const repository = parsed.values['repository'] ?? process.cwd();
+    if (!existsSync(path)) throw new UsageError(`No such log: ${path}`);
+    if (!existsSync(repository)) throw new UsageError(`No such repository: ${repository}`);
+    const result = triageGateLog(readFileSync(path, 'utf8'), base, repository, dependencies.runner);
+    return {
+      code: result.tasks.some((entry) => entry.commits.length > 0) ? 1 : 0,
+      output: parsed.flags.has('json') ? JSON.stringify(result) : renderTriage(result),
+    };
+  }
   if (command === 'control') {
     const parsed = parseOptions(rest, {
       values: ['candidate', 'base', 'command', 'iterations', 'log'],
@@ -463,7 +616,7 @@ export function run(
       output: parsed.flags.has('json') ? JSON.stringify(result) : renderControl(result),
     };
   }
-  throw new UsageError('Usage: gate-run.ts run|read|control ...');
+  throw new UsageError('Usage: gate-run.ts run|read|triage|control ...');
 }
 
 if (import.meta.main) {

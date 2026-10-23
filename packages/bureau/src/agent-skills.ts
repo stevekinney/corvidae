@@ -30,6 +30,31 @@ import {
   type SkillGuardrailOptions,
 } from './skills';
 
+/**
+ * The names of the skill lifecycle tools. An active skill's `allowed-tools` never narrows these
+ * (COR-1633): a skill that left them out could neither deactivate itself nor load its own
+ * resources for the rest of the run.
+ */
+const SKILL_LIFECYCLE_TOOL_NAMES: readonly string[] = [
+  'activate_skill',
+  'load_skill_resource',
+  'deactivate_skill',
+];
+
+/**
+ * The tool policy an active skill's `allowed-tools` imposes on a run: the narrowed tool names plus
+ * the exact names of the skill lifecycle tools, or `undefined` when no active skill narrows. Both
+ * Bureau policy builders (`createAgentSkills` and the runtime composition) call this on their
+ * final list, so an attenuated client's grant is exempted the same way. The fail-closed policy
+ * for unverifiable skill recovery does not pass through here and still refuses every tool.
+ */
+export function activeSkillToolPolicy(
+  narrowed: readonly string[] | undefined,
+): { allowList: string[] } | undefined {
+  if (narrowed === undefined) return undefined;
+  return { allowList: [...new Set([...narrowed, ...SKILL_LIFECYCLE_TOOL_NAMES])] };
+}
+
 /** Options for {@link createAgentSkills}. */
 export interface AgentSkillsOptions {
   /**
@@ -173,10 +198,9 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
         },
       );
 
-      return withActiveSkillToolPolicy(toolbox, () => {
-        const narrowed = client.narrowedTools();
-        return narrowed === undefined ? undefined : { allowList: [...narrowed] };
-      });
+      return withActiveSkillToolPolicy(toolbox, () =>
+        activeSkillToolPolicy(client.narrowedTools()),
+      );
     },
   };
 }

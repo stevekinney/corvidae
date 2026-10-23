@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readGateLog, renderGateSummary, run, runGate } from './gate-run.ts';
@@ -250,6 +250,171 @@ describe('runGate with a fake runner', () => {
       const gate = commands.find((command) => command[0] === 'sh') ?? [];
       expect(gate.slice(0, 2)).toEqual(['sh', '-c']);
       expect(gate[2]).toStartWith("wrap sh -c 'the-gate' >> ");
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('triage', () => {
+  /** A repository with the named workspaces, and a gate log that failed the named tasks. */
+  function repositoryWith(workspaces: Record<string, string>, failedTasks: string[]) {
+    const sandbox = mkdtempSync(join(tmpdir(), 'gate-run-triage-'));
+    for (const [directory, name] of Object.entries(workspaces)) {
+      mkdirSync(join(sandbox, directory), { recursive: true });
+      writeFileSync(join(sandbox, directory, 'package.json'), JSON.stringify({ name }));
+    }
+    const log = join(sandbox, 'gate.log');
+    writeFileSync(
+      log,
+      [
+        'HEAD abc LOAD 1',
+        ...failedTasks.map((task) => ` Failed:    ${task}`),
+        'GATE_RC=1',
+        '',
+      ].join('\n'),
+    );
+    return { sandbox, log };
+  }
+
+  /** A fake commit-history lookup that answers per pathspec directory, newest commit first. */
+  function fakeHistory(history: Record<string, string[]>) {
+    const calls: { command: string[]; cwd: string | undefined }[] = [];
+    const runner: Runner = (command, options) => {
+      calls.push({ command, cwd: options?.cwd });
+      const directory = command.at(-1) ?? '';
+      return { code: 0, stdout: (history[directory] ?? []).join('\n'), stderr: '' };
+    };
+    return { runner, calls };
+  }
+
+  test('maps each failed task to the pull requests that changed its package since the base', () => {
+    const { sandbox, log } = repositoryWith(
+      { 'packages/weft': '@lostgradient/weft', 'packages/chat': '@lostgradient/chat' },
+      ['@lostgradient/weft#test', '@lostgradient/chat#lint'],
+    );
+    try {
+      const fake = fakeHistory({
+        'packages/weft': [
+          `${'b'.repeat(40)}\tFix replay (#482)`,
+          `${'a'.repeat(40)}\tStart durable runs in two phases (#467)`,
+          `${'c'.repeat(40)}\tAnother pass on #467 (#482)`,
+        ],
+      });
+      const result = run(['triage', log, '--base', 'base123', '--repository', sandbox], {
+        runner: fake.runner,
+      });
+      // Oldest first, and a pull request that landed two commits is named once.
+      expect(result.output).toBe(
+        [
+          '@lostgradient/weft#test: PR #482, #467',
+          '@lostgradient/chat#lint: no change since base (pre-existing or flaky)',
+        ].join('\n'),
+      );
+      expect(result.code).toBe(1);
+      expect(fake.calls[0]).toEqual({
+        command: [
+          'git',
+          'log',
+          '--first-parent',
+          '--format=%H%x09%s',
+          'base123..HEAD',
+          '--',
+          'packages/weft',
+        ],
+        cwd: sandbox,
+      });
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('exits 0 when no failed task changed since the base, and prints JSON on request', () => {
+    const { sandbox, log } = repositoryWith({ 'packages/weft': '@lostgradient/weft' }, [
+      '@lostgradient/weft#test',
+    ]);
+    try {
+      const result = run(['triage', log, '--base', 'b', '--repository', sandbox, '--json'], {
+        runner: fakeHistory({}).runner,
+      });
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.output)).toEqual({
+        base: 'b',
+        tasks: [
+          {
+            task: '@lostgradient/weft#test',
+            package: '@lostgradient/weft',
+            directory: 'packages/weft',
+            commits: [],
+            prs: [],
+          },
+        ],
+      });
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('names a commit without a pull request number, and a package that is no workspace', () => {
+    const { sandbox, log } = repositoryWith({ 'packages/weft': '@lostgradient/weft' }, [
+      '@lostgradient/weft#test',
+      'ghost#test',
+    ]);
+    try {
+      const result = run(['triage', log, '--base', 'b', '--repository', sandbox], {
+        runner: fakeHistory({ 'packages/weft': [`${'d'.repeat(40)}\tdirect push`] }).runner,
+      });
+      expect(result.output).toBe(
+        [
+          '@lostgradient/weft#test: PR ddddddddd',
+          'ghost#test: ghost is not a workspace here, so it cannot be mapped',
+        ].join('\n'),
+      );
+      expect(result.code).toBe(1);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('skips failures that name no package and runs no command when there are none', () => {
+    const { sandbox, log } = repositoryWith({}, []);
+    try {
+      writeFileSync(
+        log,
+        'HEAD a LOAD 1\n@lostgradient/weft:test: ERROR: command finished with error: command (/w/packages/weft) /bin/bun exited (1)\nGATE_RC=1\n',
+      );
+      const fake = fakeHistory({});
+      const result = run(['triage', log, '--base', 'b', '--repository', sandbox], {
+        runner: fake.runner,
+      });
+      expect(result).toEqual({
+        code: 0,
+        output: 'No failed turbo tasks (<package>#<task>) in the log.',
+      });
+      expect(fake.calls).toEqual([]);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('a failing history lookup is an error, and bad arguments are rejected', () => {
+    const { sandbox, log } = repositoryWith({ 'packages/weft': '@lostgradient/weft' }, [
+      '@lostgradient/weft#test',
+    ]);
+    try {
+      expect(() =>
+        run(['triage', log, '--base', 'nope', '--repository', sandbox], {
+          runner: () => ({ code: 128, stdout: '', stderr: 'fatal: bad revision' }),
+        }),
+      ).toThrow('fatal: bad revision');
+      expect(() => run(['triage', log, '--repository', sandbox])).toThrow('--base is required');
+      expect(() => run(['triage', '--base', 'b'])).toThrow('Usage');
+      expect(() => run(['triage', join(sandbox, 'missing.log'), '--base', 'b'])).toThrow(
+        'No such log',
+      );
+      expect(() => run(['triage', log, '--base', 'b', '--repository', join(sandbox, 'x')])).toThrow(
+        'No such repository',
+      );
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }

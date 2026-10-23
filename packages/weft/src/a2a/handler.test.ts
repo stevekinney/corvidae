@@ -177,8 +177,21 @@ describe('createA2AHandler: A2A-Version', () => {
     expect(body.result).toBeDefined();
   });
 
+  test('serves a patch version of 1.0 as 1.0, since patch versions are equivalent', async () => {
+    const { handler, contexts } = capturingHandler();
+
+    const body = await rpcJson(
+      await handler(rpcRequest(sendMessageBody(), { 'a2a-version': '1.0.1' })),
+    );
+
+    expect(body.error).toBeUndefined();
+    expect(contexts[0]?.requestedVersion).toBe('1.0');
+  });
+
   test.each([
     ['0.3', { 'a2a-version': '0.3' }],
+    ['1.1', { 'a2a-version': '1.1' }],
+    ['1.0.x', { 'a2a-version': '1.0.x' }],
     ['empty', { 'a2a-version': '' }],
   ])('rejects A2A-Version %s with VersionNotSupportedError', async (_label, headers) => {
     const { handler, contexts } = capturingHandler();

@@ -139,7 +139,7 @@ import {
 } from 'conversationalist';
 
 import type { FileAgentBinding } from './agent-file-catalog';
-import { createSkillGuardrailOptions } from './agent-skills';
+import { activeSkillToolPolicy, createSkillGuardrailOptions } from './agent-skills';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -3596,10 +3596,7 @@ async function buildRuntimeComposition(
       // the provider-backed snapshot could carry; narrowing to it here would throw away the
       // provenance every reader of this snapshot now depends on.
       getActiveSkillRecords = () => skillClient.activationRecords();
-      getActiveSkillToolPolicy = () => {
-        const narrowed = skillClient.narrowedTools();
-        return narrowed === undefined ? undefined : { allowList: [...narrowed] };
-      };
+      getActiveSkillToolPolicy = () => activeSkillToolPolicy(skillClient.narrowedTools());
 
       if (options.skills.includeTools !== false) {
         const skillToolset = createSkillClientToolbox(

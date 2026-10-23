@@ -3,12 +3,19 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  assignRounds,
+  type DefectClass,
   listThreads,
+  loadDefectClasses,
+  parseDefectClasses,
   parseReplies,
   parseRepository,
   resolveThreads,
+  type ReviewThread,
   run,
   type Runner,
+  summarizeClasses,
+  tagText,
   UsageError,
 } from './review-threads.ts';
 
@@ -20,6 +27,8 @@ interface FakeThread {
   databaseId: number | null;
   author: string;
   body: string;
+  createdAt?: string;
+  authorType?: string;
 }
 
 function makeThreads(count: number, resolvedEvery = 0): FakeThread[] {
@@ -94,7 +103,11 @@ function fakeGitHub(
                               {
                                 databaseId: thread.databaseId,
                                 body: thread.body,
-                                author: { login: thread.author },
+                                createdAt: thread.createdAt ?? null,
+                                author: {
+                                  login: thread.author,
+                                  __typename: thread.authorType ?? 'User',
+                                },
                               },
                             ],
                     },
@@ -162,6 +175,9 @@ describe('listThreads', () => {
       author: 'reviewer',
       commentId: 1001,
       firstLine: 'Finding 1',
+      body: 'Finding 1\nmore detail',
+      createdAt: null,
+      authorIsBot: false,
     });
   });
 
@@ -365,6 +381,281 @@ describe('resolve', () => {
         runner: fake.runner,
       }).code,
     ).toBe(1);
+  });
+});
+
+/** A bot-authored thread posted at `createdAt`, as GitHub would list it. */
+function botThread(index: number, body: string, createdAt: string, bot = true): FakeThread {
+  return {
+    id: `T${index}`,
+    isResolved: false,
+    path: 'src/a.ts',
+    line: index,
+    databaseId: 2000 + index,
+    author: bot ? 'review-bot[bot]' : 'steve',
+    authorType: bot ? 'Bot' : 'User',
+    body,
+    createdAt,
+  };
+}
+
+function asThread(fake: FakeThread): ReviewThread {
+  return {
+    id: fake.id,
+    isResolved: fake.isResolved,
+    path: fake.path,
+    line: fake.line,
+    author: fake.author,
+    commentId: fake.databaseId,
+    firstLine: fake.body,
+    body: fake.body,
+    createdAt: fake.createdAt ?? null,
+    authorIsBot: fake.authorType === 'Bot',
+  };
+}
+
+describe('defect classes', () => {
+  const classes = loadDefectClasses();
+
+  test('the shipped file defines the nine classes with valid patterns', () => {
+    expect(classes.map((defectClass) => defectClass.name)).toEqual([
+      'adapter-drop',
+      'pre-commit-exposure',
+      'unfenced-check-then-act',
+      'stale-generation',
+      'receipt-mismatch',
+      'missing-authorization',
+      'boundary-validation',
+      'unsnapshotted-input',
+      'spec-contradiction',
+    ]);
+    for (const defectClass of classes) {
+      expect(defectClass.description).not.toBe('');
+      expect(defectClass.patterns.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('each class tags its own typical finding, case-insensitively', () => {
+    const findings: [string, string][] = [
+      ['adapter-drop', 'The projection DROPS the metadata field when it maps to the wire format.'],
+      ['pre-commit-exposure', 'This publishes the event before the transaction commits.'],
+      ['unfenced-check-then-act', 'A classic check-then-act race: two callers can both pass.'],
+      ['stale-generation', 'Cleanup runs against a stale generation after the worker restarts.'],
+      [
+        'receipt-mismatch',
+        'A retry with the same key replays a different operation than the receipt.',
+      ],
+      [
+        'missing-authorization',
+        "There is no authorization check, so any caller can cancel another tenant's run.",
+      ],
+      ['boundary-validation', 'This accepts a negative timeout, and NaN is never rejected.'],
+      [
+        'unsnapshotted-input',
+        'The options are read again after the await, so the caller can mutate them.',
+      ],
+      ['spec-contradiction', 'This contradicts the spec, which says the run must be cancelled.'],
+    ];
+    for (const [name, finding] of findings) {
+      expect(tagText(finding, classes)).toContain(name);
+    }
+    expect(tagText('Rename this variable for clarity.', classes)).toEqual([]);
+  });
+
+  test('one comment can carry several classes', () => {
+    const tags = tagText(
+      'Missing authorization here, and the retry replays a different payload than its receipt.',
+      classes,
+    );
+    expect(tags).toContain('missing-authorization');
+    expect(tags).toContain('receipt-mismatch');
+  });
+
+  test('rejects a malformed class file', () => {
+    expect(() => parseDefectClasses('nope', 'x.json')).toThrow('not JSON');
+    expect(() => parseDefectClasses('{"classes":[]}', 'x.json')).toThrow('non-empty');
+    expect(() => parseDefectClasses('{"classes":[{"patterns":["a"]}]}', 'x.json')).toThrow(
+      'needs a name',
+    );
+    expect(() => parseDefectClasses('{"classes":[{"name":"a","patterns":[]}]}', 'x.json')).toThrow(
+      'patterns',
+    );
+    expect(() =>
+      parseDefectClasses('{"classes":[{"name":"a","patterns":["("]}]}', 'x.json'),
+    ).toThrow('invalid pattern');
+    expect(() =>
+      parseDefectClasses(
+        '{"classes":[{"name":"a","patterns":["a"]},{"name":"a","patterns":["b"]}]}',
+        'x.json',
+      ),
+    ).toThrow('repeats');
+    expect(() => loadDefectClasses(join(sandbox, 'missing.json'))).toThrow(UsageError);
+  });
+});
+
+describe('assignRounds', () => {
+  test('starts a new round only after a gap of more than ten minutes between bot comments', () => {
+    const threads = [
+      botThread(1, 'a', '2026-10-22T12:00:00Z'),
+      botThread(2, 'b', '2026-10-22T12:09:59Z'),
+      // A human's comment in the middle neither joins nor splits a round.
+      botThread(3, 'c', '2026-10-22T12:30:00Z', false),
+      botThread(4, 'd', '2026-10-22T12:19:59Z'),
+      botThread(5, 'e', '2026-10-22T12:40:00Z'),
+      botThread(6, 'f', '2026-10-22T12:50:00Z'),
+      botThread(7, 'g', '2026-10-22T13:00:01Z'),
+    ].map(asThread);
+    const rounds = assignRounds(threads);
+    expect([...rounds.entries()].toSorted((a, b) => a[0].localeCompare(b[0]))).toEqual([
+      ['T1', 1],
+      ['T2', 1],
+      ['T4', 1],
+      ['T5', 2],
+      ['T6', 2],
+      ['T7', 3],
+    ]);
+  });
+
+  test('leaves out a bot thread without a readable time', () => {
+    const thread = asThread(botThread(1, 'a', 'not a date'));
+    expect(assignRounds([thread, { ...thread, id: 'T2', createdAt: null }]).size).toBe(0);
+  });
+});
+
+describe('summarizeClasses', () => {
+  const classes: DefectClass[] = [
+    { name: 'race', description: '', patterns: [/\brace\b/i] },
+    { name: 'auth', description: '', patterns: [/\bauthorization\b/i] },
+  ];
+
+  test('counts threads per class and lists each class once per round', () => {
+    const threads = [
+      botThread(1, 'A race here', '2026-10-22T12:00:00Z'),
+      botThread(2, 'Another RACE there', '2026-10-22T12:02:00Z'),
+      botThread(3, 'Missing authorization', '2026-10-22T12:03:00Z'),
+      botThread(4, 'Nit: naming', '2026-10-22T12:04:00Z'),
+    ].map(asThread);
+    expect(summarizeClasses(threads, classes)).toEqual({
+      rounds: 1,
+      classes: [
+        { name: 'race', threads: 2, rounds: [1], repeating: false },
+        { name: 'auth', threads: 1, rounds: [1], repeating: false },
+      ],
+      untagged: 1,
+      repeating: [],
+    });
+  });
+
+  test('a class in two distinct rounds repeats; one round twice does not', () => {
+    const threads = [
+      botThread(1, 'A race here', '2026-10-22T12:00:00Z'),
+      botThread(2, 'Missing authorization', '2026-10-22T12:01:00Z'),
+      botThread(3, 'Missing authorization again', '2026-10-22T12:02:00Z'),
+      botThread(4, 'The race is back', '2026-10-22T13:00:00Z'),
+    ].map(asThread);
+    const report = summarizeClasses(threads, classes);
+    expect(report.rounds).toBe(2);
+    expect(report.repeating).toEqual(['race']);
+    expect(report.classes[0]).toEqual({
+      name: 'race',
+      threads: 2,
+      rounds: [1, 2],
+      repeating: true,
+    });
+    expect(report.classes[1]?.repeating).toBe(false);
+  });
+
+  test('a human-authored thread is tagged but belongs to no round', () => {
+    const threads = [
+      botThread(1, 'A race here', '2026-10-22T12:00:00Z'),
+      botThread(2, 'A race there', '2026-10-22T14:00:00Z', false),
+    ].map(asThread);
+    const report = summarizeClasses(threads, classes);
+    expect(report.classes[0]).toEqual({ name: 'race', threads: 2, rounds: [1], repeating: false });
+  });
+});
+
+describe('classes', () => {
+  const repeating = [
+    botThread(1, 'This is a check-then-act race.', '2026-10-22T12:00:00Z'),
+    botThread(2, 'Cleanup uses a stale generation.', '2026-10-22T12:01:00Z'),
+    botThread(3, 'Still a race: two callers interleave.', '2026-10-22T13:00:00Z'),
+  ];
+
+  test('prints the thread count and rounds per class, and exits 1 when a class repeats', () => {
+    const result = run(['classes', '--pr', '7', '--repository', 'acme/widgets'], {
+      runner: fakeGitHub(structuredClone(repeating)).runner,
+    });
+    expect(result.code).toBe(1);
+    const lines = result.output.split('\n');
+    expect(lines).toContain('unfenced-check-then-act: 2 threads, rounds 1, 2  REPEATING');
+    expect(lines).toContain('stale-generation: 1 thread, round 1');
+    expect(lines).toContain('adapter-drop: 0 threads');
+    expect(result.output).toContain('Stop patching instances and reassess the shared cause.');
+  });
+
+  test('exits 0 when no class appears in two rounds', () => {
+    const result = run(['classes', '--pr', '7', '--repository', 'acme/widgets'], {
+      runner: fakeGitHub(structuredClone(repeating).slice(0, 2)).runner,
+    });
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('No class repeats across rounds.');
+  });
+
+  test('--json carries the report and ok; the repository comes from the configuration', () => {
+    const config = file(
+      'config.json',
+      JSON.stringify({
+        repository: 'acme/widgets',
+        defaultBranch: 'main',
+        worktreeRoots: { claude: '/c', codex: '/x' },
+        manifestName: 'widgets',
+        installCommand: 'true',
+        gateCommand: 'true',
+        affectedCheckCommand: 'true',
+        mergeMethod: 'squash',
+      }),
+    );
+    const fake = fakeGitHub(structuredClone(repeating));
+    const result = run(['classes', '--pr', '7', '--config', config, '--json'], {
+      runner: fake.runner,
+    });
+    const parsed = JSON.parse(result.output);
+    expect(result.code).toBe(1);
+    expect(fake.calls[0]).toContain('owner=acme');
+    expect(parsed).toMatchObject({
+      repository: 'acme/widgets',
+      pr: 7,
+      ok: false,
+      complete: true,
+      rounds: 2,
+      untagged: 0,
+      repeating: ['unfenced-check-then-act'],
+    });
+  });
+
+  test('exits 1 when the listing is incomplete or GitHub fails, and 2 on bad usage', () => {
+    const incomplete = run(['classes', '--pr', '7', '--repository', 'acme/widgets'], {
+      runner: fakeGitHub(structuredClone(repeating).slice(0, 2), { totalOverride: 9 }).runner,
+    });
+    expect(incomplete.code).toBe(1);
+    expect(incomplete.output).toContain('incomplete: SEEN=2 TOTAL=9');
+    expect(
+      run(['classes', '--pr', '7', '--repository', 'acme/widgets'], {
+        runner: () => ({ code: 1, stdout: '', stderr: 'HTTP 502' }),
+      }).code,
+    ).toBe(1);
+    const runner = fakeGitHub([]).runner;
+    expect(() => run(['classes'], { runner })).toThrow(UsageError);
+    expect(() => run(['classes', '--pr', 'x', '--repository', 'a/b'], { runner })).toThrow(
+      UsageError,
+    );
+    expect(() => run(['classes', '--pr', '7', '--repository', 'ab'], { runner })).toThrow(
+      UsageError,
+    );
+    expect(() => run(['classes', '--pr', '7', '--repository', 'a/b', 'extra'], { runner })).toThrow(
+      UsageError,
+    );
   });
 });
 

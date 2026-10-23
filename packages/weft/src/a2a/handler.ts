@@ -98,6 +98,15 @@ export type A2AHandler = (request: Request) => Promise<Response>;
 
 export const DEFAULT_MAX_STREAM_DURATION_MS = 900_000;
 const A2A_PROTOCOL_VERSION = '1.0';
+
+/**
+ * A2A 1.0.1 section 3.6 makes patch versions equivalent, so `1.0.1` is served as `1.0`, and
+ * the handler's context always carries the normalized Major.Minor value. An absent or empty
+ * header is `0.3` (section 3.6.2), which this agent does not serve.
+ */
+function isServedVersion(requested: string | null): boolean {
+  return requested !== null && /^1\.0(?:\.(?:0|[1-9]\d*))?$/.test(requested);
+}
 const EXTENSIONS_HEADER = 'A2A-Extensions';
 const JSON_MEDIA_TYPE = 'application/json';
 
@@ -220,7 +229,7 @@ async function receiveJsonRpcRequest(
   const requestId = requestIdOf(parsed);
 
   const requestedVersion = request.headers.get('A2A-Version');
-  if (requestedVersion !== A2A_PROTOCOL_VERSION) {
+  if (!isServedVersion(requestedVersion)) {
     const error = new VersionNotSupportedError(
       `A2A-Version '${requestedVersion ?? ''}' is not supported; this agent serves '${A2A_PROTOCOL_VERSION}'.`,
     );
