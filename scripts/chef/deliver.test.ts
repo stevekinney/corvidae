@@ -445,13 +445,16 @@ describe('a base that moves during the gate', () => {
   });
 
   test('merges the new base in, re-gates and merges on the second attempt', async () => {
-    const world = movedWorld();
+    // The head stays put across the merge-in, so the first attempt's passing log would still look
+    // valid: only the reset after the merge-in makes the retry gate again into its own log.
+    const world = { ...movedWorld(), headAfterMerge: HEAD };
     const { runner, calls } = fake(world);
     const { partial, record, lines } = movingBase(world, 1);
     const report = await deliver(options, { ...partial, runner });
     expect(report).toMatchObject({ merged: true, failedStep: null, attempts: 2 });
     expect(record.merges).toHaveLength(2);
-    expect(record.gates).toEqual([join(sandbox, `gate-${MERGED_HEAD.slice(0, 12)}.log`)]);
+    expect(record.merges[1]).not.toBe(record.merges[0]);
+    expect(record.gates).toEqual([join(sandbox, `gate-${HEAD.slice(0, 12)}.log`)]);
     expect(calls).toContainEqual(['git', 'push', 'origin', 'HEAD']);
     expect(lines).toHaveLength(2);
     expect(lines[0]).toStartWith('attempt 1:');
