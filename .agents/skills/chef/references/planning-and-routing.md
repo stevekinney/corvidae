@@ -50,4 +50,29 @@ Keep the same owner, meaning the same package, charter, and findings, through a 
 
 Escalate only the failing package. After two unsuccessful attempts at the same defect or acceptance criterion, stop patching, inspect the failure and control, and reassess the causal model before another correction. Record the revised diagnosis and whether scope, budget, ownership, or quality requires a user decision. The counter belongs to the defect across agents, renamed tasks, and follow-ups; replacement never resets it. A regression that a correction introduces in the same module or state machine counts as another attempt at the same class, not as a new defect. After the second, hand the class to the escalation tier for a design pass over the whole outcome space, not a third local patch. A worker whose `review-threads.ts classes` check exits 1 has reached the same point by a different count, and gets the same reassessment. A missing credential, active owner, or absent external artifact requires resolving that dependency, not a larger model. Never lower quality gates to save tokens.
 
-For concurrency, replay, retry, or state-machine work, require an outcome matrix before implementation: every input or failure the code can meet, crossed with every exit it can take, each with its required result. Write it into the acceptance criteria and have the worker turn it into a table-driven test that is red first. The matrix is the guard for the class; scenario lists invite one correction per missed cell.
+For concurrency, replay, retry, or state-machine work (finish reasons, run, task or settlement lifecycle, parks or suspends, recovery or reattach, shutdown or dispose, retries), require an outcome matrix in the charter before dispatch: every input or failure the code can meet, crossed with every exit it can take, each with its required result. Write it into the acceptance criteria and have the worker turn it into a table-driven test that is red first. The matrix is the guard for the class; scenario lists invite one correction per missed cell. When a second correction round surfaces the same class, escalate to a design pass over the whole outcome space. An escalation (Fable) charter never includes merging main, resolving conflicts, or running `bun run check`; a cheaper tier does that after the design lands.
+
+## Inputs that block
+
+Unreadable or truncated required input blocks affected packages until it is retrieved completely. Conflicting requirements or irreducibly ambiguous prose need a recorded decision and `needs input`, not a convenient interpretation; continue only work independent of that decision.
+
+## Repository inspection
+
+Inspect each owning repository: instructions, working-tree state, worktree ownership, remote, exact base revision, manifests, pinned toolchain, validation scripts, release contracts, relevant source, and shared contracts between repositories. Reuse one compact repository packet with exact paths and commands across workers. For a whole Linear project, or work spanning more than one batch, read [program runs](references/program-runs.md) before planning.
+
+## Batching
+
+Batch work when it shares one repository, a cohesive change, compatible files, validation, and delivery boundary. Use as few pull requests as those boundaries allow, tracking every included issue. Split cross-repository work and independently released artifacts. Serialize overlapping files, shared contract changes, and integration operations; use separate worktrees for concurrent edits in one repository. Close each independently completed issue as its own gates pass.
+
+## Resolving the runtime
+
+Resolve current tools, agent roles, models, effort controls, and concurrency limits before planning dispatch. A model name in a prompt is not proof that the worker ran on it, and fixed role settings beat requested overrides. On an unsupported capability, record one fallback decision and do not repeat the rejected dispatch without new capability evidence. Preserve required independent review or report that boundary blocked.
+
+## Claude Code prices
+
+On Claude Code, subject to what the runtime offers (Anthropic list prices per million input/output tokens, cached 2026-10-06; recheck before any monetary comparison):
+
+- Sonnet 5.5 ($2/$10): implementation, effort `high`.
+- Opus 5.5 ($4/$20): coordinator and primary reviewer, effort `xhigh`.
+- Haiku 5.5 ($0.10/$0.50, 1M context): bounded lookups and mechanically checkable volume work, effort `low`.
+- Fable 5.1 ($10/$50): escalation only, effort `high`: a one-way door (a persisted format, wire protocol, authorization rule, or published surface), irreducible ambiguity, or a defect that survived two corrections.
