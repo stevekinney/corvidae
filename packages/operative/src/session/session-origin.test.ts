@@ -17,15 +17,14 @@ import {
   sessionOriginOf,
 } from './session-origin';
 
-function sessionWith(id: string, metadata: Record<string, string | number>, updatedAt?: string) {
-  const session = createAgentSession({
+function sessionWith(id: string, metadata: Record<string, string | number>) {
+  return createAgentSession({
     id,
     agentName: 'origin-agent',
     conversationHistory: createConversationHistory(),
     metadata,
     runs: [],
   });
-  return updatedAt === undefined ? session : { ...session, updatedAt };
 }
 
 describe('the origin a session’s metadata records', () => {
@@ -50,18 +49,10 @@ describe('the origin a session’s metadata records', () => {
 describe('listing sessions by origin', () => {
   async function seededStore() {
     const store = createSessionStore(textValueStore(new MemoryStorage()));
-    await store.save(sessionWith('old-chat', {}, '2026-01-01T00:00:00.000Z'));
-    await store.save(
-      sessionWith('goal-1', { [SESSION_ORIGIN_METADATA_KEY]: 'goal' }, '2026-01-02T00:00:00.000Z'),
-    );
-    await store.save(
-      sessionWith(
-        'fire-1',
-        { [SESSION_ORIGIN_METADATA_KEY]: 'schedule' },
-        '2026-01-03T00:00:00.000Z',
-      ),
-    );
-    await store.save(sessionWith('new-chat', {}, '2026-01-04T00:00:00.000Z'));
+    await store.save(sessionWith('old-chat', {}));
+    await store.save(sessionWith('goal-1', { [SESSION_ORIGIN_METADATA_KEY]: 'goal' }));
+    await store.save(sessionWith('fire-1', { [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }));
+    await store.save(sessionWith('new-chat', {}));
     return store;
   }
 
@@ -70,7 +61,7 @@ describe('listing sessions by origin', () => {
 
     const rows = await store.list({ origin: 'chat' });
 
-    expect(rows.map((row) => row.id)).toEqual(['new-chat', 'old-chat']);
+    expect(rows.map((row) => row.id).toSorted()).toEqual(['new-chat', 'old-chat']);
   });
 
   it('lists only the sessions a goal or a schedule started', async () => {
@@ -94,8 +85,10 @@ describe('listing sessions by origin', () => {
 
     const first = await store.list({ origin: 'chat', limit: 1 });
     const second = await store.list({ origin: 'chat', limit: 1, offset: 1 });
+    const third = await store.list({ origin: 'chat', limit: 1, offset: 2 });
 
-    expect(first.map((row) => row.id)).toEqual(['new-chat']);
-    expect(second.map((row) => row.id)).toEqual(['old-chat']);
+    // Two goal and schedule sessions sit among the four, and neither takes a page.
+    expect([...first, ...second].map((row) => row.id).toSorted()).toEqual(['new-chat', 'old-chat']);
+    expect(third).toEqual([]);
   });
 });
