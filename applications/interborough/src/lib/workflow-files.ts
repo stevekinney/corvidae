@@ -107,9 +107,13 @@ export type SignalResult = z.infer<typeof signalResultSchema>;
 /** The largest page `bureau.workflows.list` answers. */
 const LISTING_PAGE_SIZE = 100;
 
-/** Every workflow file, `ready` and `invalid` alike. It follows the pages to the end. */
+/**
+ * Every workflow file, `ready` and `invalid` alike. It follows the pages to the end. The counts of
+ * each file's instances are asked for only by a caller that shows them, because the Bureau reads
+ * the engine for each one.
+ */
 export async function listWorkflowFiles(
-  options?: Options,
+  options?: Options & { readonly includeRuns?: boolean },
 ): Promise<readonly WorkflowFileListing[]> {
   const listings: WorkflowFileListing[] = [];
   let offset: number | null = 0;
@@ -119,7 +123,15 @@ export async function listWorkflowFiles(
   });
   while (offset !== null) {
     const page: z.infer<typeof pageSchema> = pageSchema.parse(
-      await callBureau('bureau.workflows.list', { limit: LISTING_PAGE_SIZE, offset }, options),
+      await callBureau(
+        'bureau.workflows.list',
+        {
+          limit: LISTING_PAGE_SIZE,
+          offset,
+          ...(options?.includeRuns === true ? { includeRuns: true } : {}),
+        },
+        options,
+      ),
     );
     listings.push(...page.workflows);
     offset = page.nextOffset;

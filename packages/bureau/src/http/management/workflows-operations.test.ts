@@ -229,7 +229,7 @@ describe('results', () => {
     const described = { ...DEFINITION, description: 'Writes the daily digest.' };
     await served.bureau.workflows!.create('digest', described);
     await served.bureau.workflows!.create('bare', DEFINITION);
-    const before = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    const before = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     const byId = (response: RpcBody, id: string) =>
       listOf(response, 'workflows').find((entry) => entry.id === id) as
         Record<string, unknown> | undefined;
@@ -242,7 +242,7 @@ describe('results', () => {
 
     const run = await served.bureau.durableEngine()!.start('digest', null, { id: 'digest-run' });
     await run.result();
-    const after = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    const after = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     const counted = byId(after, 'digest')?.['runs'] as {
       active: number;
       last24Hours: number;
@@ -261,9 +261,23 @@ describe('results', () => {
       steps: [{ kind: 'await-signal', signal: 'never-sent' }],
     });
     await served.bureau.durableEngine()!.start('waiting', null, { id: 'waiting-run' });
-    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).toMatchObject([
       { id: 'waiting', runs: { active: 1, last24Hours: 1 } },
+    ]);
+  });
+
+  it('leaves the counts out unless the caller asks for them, because each one reads the engine', async () => {
+    const served = await serve();
+    await seed(served);
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    expect(listed.result?.['workflows']).toMatchObject([
+      { id: 'digest', state: 'ready', description: null, runs: null },
+    ]);
+    const counted = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+    expect(listed.result?.['workflows']).not.toEqual(counted.result?.['workflows']);
+    expect(counted.result?.['workflows']).toMatchObject([
+      { id: 'digest', runs: { active: 0, last24Hours: 1 } },
     ]);
   });
 
@@ -271,7 +285,7 @@ describe('results', () => {
     const served = await serve();
     await writeFile(join(served.directory, 'broken.json'), '{ not json');
     await served.bureau.workflows!.refresh();
-    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).toMatchObject([
       { id: 'broken', state: 'invalid', description: null, trigger: null, runs: null },
     ]);

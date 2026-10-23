@@ -182,7 +182,7 @@ function compareNames(first: string, second: string): number {
 export async function loadCatalog(client: HttpClient, options?: Options): Promise<CatalogRow[]> {
   const [definitions, files] = await Promise.all([
     listDefinitions(client),
-    listWorkflowFiles(options),
+    listWorkflowFiles({ ...options, includeRuns: true }),
   ]);
   return joinCatalog(definitions, files);
 }

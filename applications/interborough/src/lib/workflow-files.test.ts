@@ -252,12 +252,24 @@ describe('the listing of a file', () => {
         ],
       }),
     );
-    const [listed] = await listWorkflowFiles();
+    const [listed] = await listWorkflowFiles({ includeRuns: true });
     expect(listed).toMatchObject({
       description: 'Does one thing.',
       trigger: { kind: 'schedule', spec: '1h' },
       runs: { active: 1, last24Hours: 4, lastRunAt: '2026-10-23T11:00:00.000Z' },
     });
+    expect(stub.callsTo('bureau.workflows.list')[0]?.params).toMatchObject({ includeRuns: true });
+  });
+
+  test('asks for the counts only when the caller shows them, because the Bureau reads the engine for each', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        files: [readyFile('one', { runs: { active: 1, last24Hours: 4, lastRunAt: null } })],
+      }),
+    );
+    const [listed] = await listWorkflowFiles();
+    expect(listed?.runs).toBeNull();
+    expect(stub.callsTo('bureau.workflows.list')[0]?.params).not.toHaveProperty('includeRuns');
   });
 
   test('refuses an answer without the counts the Bureau now sends, instead of showing a zero', async () => {

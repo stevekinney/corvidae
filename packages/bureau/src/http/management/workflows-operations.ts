@@ -454,7 +454,11 @@ export const workflowsGetOperation = defineOperation<
   },
 });
 
-const listInput = z.object({ ...pageFields });
+const listInput = z.object({
+  ...pageFields,
+  /** Counts each ready file's instances. Off unless asked, because each count reads the engine. */
+  includeRuns: z.boolean().optional(),
+});
 const listOutput = z.object({
   workflows: z.array(workflowListingSchema.extend({ runs: runCountsSchema.nullable() })),
   nextOffset: z.number().int().nullable(),
@@ -469,7 +473,7 @@ export const workflowsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List workflows',
   description:
-    'Lists every workflow file by identifier, `ready` and `invalid` alike, each with its `description`, its `trigger`, and, for a `ready` file, its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
+    'Lists every workflow file by identifier, `ready` and `invalid` alike, each with its `description`, its `trigger`, and, when `includeRuns` is `true`, for a `ready` file its `runs`: how many instances are `active`, how many began in the last 24 hours, and when the newest began (`null` otherwise, because each count reads the engine). Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: listInput,
@@ -493,7 +497,10 @@ export const workflowsListOperation = defineOperation<
         page.map(async (listing) => ({
           ...listingView(listing),
           // A file the Bureau cannot use is never registered, so it has had no instance to count.
-          runs: listing.state === 'ready' ? await workflows.runCounts(listing.id) : null,
+          runs:
+            input.includeRuns === true && listing.state === 'ready'
+              ? await workflows.runCounts(listing.id)
+              : null,
         })),
       ),
       nextOffset: all.length > offset + limit ? offset + limit : null,

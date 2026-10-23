@@ -468,9 +468,16 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       touch(schedule);
       return receipt(schedule);
     },
-    'bureau.workflows.list': () => {
+    'bureau.workflows.list': (params) => {
       if (world.failBureauFiles) throw workflowFaults.unavailable();
-      return { workflows: world.files.map(listing), nextOffset: null };
+      // The Bureau counts a file's instances only for a caller that asks, as it does.
+      return {
+        workflows: world.files.map((file) => ({
+          ...listing(file),
+          runs: params['includeRuns'] === true ? file.runs : null,
+        })),
+        nextOffset: null,
+      };
     },
     'bureau.workflows.create': (params) => {
       const id = String(params['id']);
