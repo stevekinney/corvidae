@@ -13,6 +13,7 @@ import { settleToolResult } from './toolbox-execution-settlement';
 import { isRecord } from './toolbox-policy-primitives';
 import type { ToolCall, ToolCallInput, ToolExecutionResult } from './types';
 
+import { providerCallIdField } from './provider-call-id';
 import type { ExecutionTaskContext } from './toolbox-execution-task-contract';
 
 export function createExecutionTask(
@@ -170,7 +171,16 @@ async function runToolInvocation(
       durableOperationKey === undefined
         ? { ...baseInvocationOptions, executionId: childExecutionId }
         : { ...baseInvocationOptions, durableOperationKey, executionId: childExecutionId };
-    const result = await tool.execute(toolCall, invocationOptions);
+    const executed = await tool.execute(toolCall, invocationOptions);
+    // A wrapped tool (idempotency, a custom proxy) may rebuild the result; the marker must be on
+    // it before approval binding, settlement, and the events read it. The tool owns its result
+    // (it may be frozen), so a missing marker is added to a copy.
+    const providerMarker = providerCallIdField(toolCall);
+    const result: ToolExecutionResult =
+      'providerCallId' in providerMarker &&
+      executed.providerCallId !== providerMarker.providerCallId
+        ? { ...executed, ...providerMarker }
+        : executed;
     bindPendingApproval({
       result,
       tool,
@@ -269,6 +279,7 @@ function handleInvocationError(
     outcome: 'error',
     content: toolError.message,
     toolCallId: toolCall.id,
+    ...providerCallIdField(toolCall),
     toolName: tool.name,
     result: undefined,
     error: toolError,

@@ -22,6 +22,9 @@ function parseToolResultContent(callId: string, content: string, isError?: boole
       ...(parsed.action ? { action: parsed.action } : {}),
       ...(typeof parsed.inputDigest === 'string' ? { inputDigest: parsed.inputDigest } : {}),
       ...(typeof parsed.outputDigest === 'string' ? { outputDigest: parsed.outputDigest } : {}),
+      ...(typeof parsed.providerCallId === 'string'
+        ? { providerCallId: parsed.providerCallId }
+        : {}),
     };
   }
 

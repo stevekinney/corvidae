@@ -147,21 +147,6 @@ function toGeminiMediaPart(
 }
 
 /**
- * Message metadata key under which a tool-call message records the id Gemini
- * issued on its `functionCall` part. Gemini 3 always sends one; earlier models
- * may send none. `toGeminiMessages` echoes it as `functionCall.id` and on the
- * matching `functionResponse.id`, and never sends an id Gemini did not issue
- * (the internal `toolCall.id` is not one).
- */
-export const GEMINI_FUNCTION_CALL_ID_METADATA_KEY = 'geminiFunctionCallId';
-
-/** The Gemini-issued id recorded on a tool-call message, if any. */
-export function geminiIssuedCallId(message: Message): string | undefined {
-  const value = message.metadata[GEMINI_FUNCTION_CALL_ID_METADATA_KEY];
-  return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-/**
  * Converts an internal ToolCall to Gemini functionCall part. Pass `geminiId`
  * only when Gemini issued it.
  */

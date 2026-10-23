@@ -12,6 +12,7 @@ import {
   policyAuthorizationResultSymbol,
 } from '../internal/approval-resume';
 import { isToolContent } from '../protocol';
+import { providerCallIdField } from '../provider-call-id';
 import type { AnyToolbox } from '../toolbox-interface';
 import type { ToolApprovalAction, ToolCallInput, ToolExecutionResult } from '../types';
 import { normalizeConcurrency } from '../utilities/concurrency';
@@ -235,18 +236,20 @@ export function withToolboxIdempotency(
   function extractCallFields(call: ToolCallInput): {
     name: string;
     id: string;
+    providerCallId?: string;
     arguments: unknown;
   } {
     const asRecord = call as unknown as Record<string, unknown>;
     return {
       name: asRecord['name'] as string,
       id: (asRecord['id'] as string) ?? '',
+      ...providerCallIdField(call),
       arguments: asRecord['arguments'],
     };
   }
 
   function createIdempotencyApprovalAction(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     cacheKey: string,
     toolName: string,
     purpose: 'authorization-required' | 'unknown-outcome',
@@ -273,7 +276,7 @@ export function withToolboxIdempotency(
   }
 
   function createUnknownOutcomeResult(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     cacheKey: string,
     toolName: string,
     outcomeOptions: { attemptId?: string; inputDigest?: string; legacyStartedAt?: number } = {},
@@ -283,6 +286,7 @@ export function withToolboxIdempotency(
       outcome: 'action_required',
       content: 'Tool execution started earlier, but no result was recorded.',
       toolCallId: fields.id,
+      ...providerCallIdField(fields),
       toolName,
       result: undefined,
       idempotency: {
@@ -305,7 +309,7 @@ export function withToolboxIdempotency(
   }
 
   function createInterruptedResult(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     toolName: string,
     category: 'cancelled' | 'timeout',
     message: string,
@@ -317,6 +321,7 @@ export function withToolboxIdempotency(
       outcome: 'error',
       content: message,
       toolCallId: fields.id,
+      ...providerCallIdField(fields),
       toolName,
       result: undefined,
       error,
@@ -327,7 +332,7 @@ export function withToolboxIdempotency(
 
   async function awaitBeforeExecution<T>(
     operation: () => Promise<T>,
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     toolName: string,
     executeOptions: unknown,
   ): Promise<
@@ -433,7 +438,7 @@ export function withToolboxIdempotency(
   }
 
   function createAuthorizationRequiredResult(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     cacheKey: string,
     toolName: string,
   ): ToolExecutionResult {
@@ -442,6 +447,7 @@ export function withToolboxIdempotency(
       outcome: 'action_required',
       content: 'Cached result requires authorization under the current policy revision.',
       toolCallId: fields.id,
+      ...providerCallIdField(fields),
       toolName,
       result: undefined,
       idempotency: { key: cacheKey, outcome: 'authorization-required' },
@@ -476,7 +482,7 @@ export function withToolboxIdempotency(
   }
 
   async function createCompletedCacheHitResult(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     cacheKey: string,
     cached: CachedToolResult,
     call: ToolCallInput,
@@ -540,7 +546,7 @@ export function withToolboxIdempotency(
   }
 
   async function createUnknownOutcomeAfterReplacementRace(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     cacheKey: string,
     fallbackToolName: string,
     call: ToolCallInput,
@@ -582,7 +588,7 @@ export function withToolboxIdempotency(
   }
 
   function createDedupedResult(
-    fields: { id: string },
+    fields: { id: string; providerCallId?: string },
     cacheKey: string,
     cached: CachedToolResult,
   ): ToolExecutionResult {
@@ -596,6 +602,7 @@ export function withToolboxIdempotency(
               typeof cached.result === 'string' ? cached.result : JSON.stringify(cached.result),
           }),
       toolCallId: fields.id,
+      ...providerCallIdField(fields),
       toolName: cached.toolName,
       result: cached.result,
       idempotency: {

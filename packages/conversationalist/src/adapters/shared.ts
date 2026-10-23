@@ -96,6 +96,7 @@ export function fromCanonicalToolResultPayload(
     action?: ToolResult['action'];
     inputDigest?: string;
     outputDigest?: string;
+    providerCallId?: string;
   },
 ): ToolResult {
   const parts = canonicalToolResultSchema.safeParse(payload).data?.parts;
@@ -108,6 +109,9 @@ export function fromCanonicalToolResultPayload(
     ...(payload.action ? { action: payload.action } : {}),
     ...(typeof payload.inputDigest === 'string' ? { inputDigest: payload.inputDigest } : {}),
     ...(typeof payload.outputDigest === 'string' ? { outputDigest: payload.outputDigest } : {}),
+    ...(typeof payload.providerCallId === 'string'
+      ? { providerCallId: payload.providerCallId }
+      : {}),
   };
 }
 
@@ -122,6 +126,7 @@ export function isCanonicalToolResultPayload(value: JSONValue): value is JSONVal
   action?: ToolResult['action'];
   inputDigest?: string;
   outputDigest?: string;
+  providerCallId?: string;
 } {
   return canonicalToolResultSchema.safeParse(value).success;
 }

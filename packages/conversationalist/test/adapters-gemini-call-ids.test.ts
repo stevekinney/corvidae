@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import { GEMINI_FUNCTION_CALL_ID_METADATA_KEY } from '../src/adapters/gemini/content';
 import { fromGeminiMessages } from '../src/adapters/gemini/inbound';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
+import { fromMarkdown, toMarkdown } from '../src/index';
 import { createToolCallConversation, requireRecord } from './adapter-test-fixtures';
 
 function idsOf(parts: ReadonlyArray<unknown>, key: 'functionCall' | 'functionResponse') {
@@ -31,11 +31,11 @@ const sameNamePayload = {
 };
 
 describe('Gemini function-call ids (COR-1671)', () => {
-  it('pairs same-name calls by id on import and records the id in metadata', () => {
+  it('pairs same-name calls by id on import and records the id on the tool call', () => {
     const messages = Object.values(fromGeminiMessages(sameNamePayload).messages);
     const calls = messages.filter((m) => m.role === 'tool-call');
     const results = messages.filter((m) => m.role === 'tool-result');
-    expect(calls.map((m) => m.metadata[GEMINI_FUNCTION_CALL_ID_METADATA_KEY])).toEqual(['a', 'b']);
+    expect(calls.map((m) => m.toolCall?.providerCallId)).toEqual(['a', 'b']);
     expect(results.map((m) => m.toolResult?.callId)).toEqual([
       calls[1]?.toolCall?.id,
       calls[0]?.toolCall?.id,
@@ -81,5 +81,14 @@ describe('Gemini function-call ids (COR-1671)', () => {
     const parts = toGeminiMessages(imported).contents.flatMap((c) => c.parts);
     expect(idsOf(parts, 'functionCall')).toEqual(['a', undefined]);
     expect(idsOf(parts, 'functionResponse')).toEqual(['a', undefined]);
+  });
+
+  it('keeps the id through a Markdown round trip', () => {
+    const imported = fromGeminiMessages(sameNamePayload);
+    const restored = fromMarkdown(toMarkdown(imported, { includeMetadata: true }));
+    const calls = Object.values(restored.messages).filter((m) => m.role === 'tool-call');
+    expect(calls.map((m) => m.toolCall?.providerCallId)).toEqual(['a', 'b']);
+    const parts = toGeminiMessages(restored).contents.flatMap((c) => c.parts);
+    expect(idsOf(parts, 'functionCall')).toEqual(['a', 'b']);
   });
 });

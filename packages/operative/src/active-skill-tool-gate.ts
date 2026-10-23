@@ -29,6 +29,7 @@ function refusalFor(call: ToolCallInput, toolName: string): ToolExecutionResult 
     outcome: 'error',
     content: message,
     toolCallId: callId,
+    ...(call.providerCallId === undefined ? {} : { providerCallId: call.providerCallId }),
     toolName,
     result: undefined,
     error: { code: SKILL_TOOL_DENIED_CODE, category: 'permission', retryable: false, message },
