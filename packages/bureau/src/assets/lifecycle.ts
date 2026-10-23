@@ -27,6 +27,7 @@
  */
 import {
   AssetAdmissionError,
+  AssetConflictError,
   AssetHeldError,
   AssetRecordCorruptError,
   AssetUnavailableError,
@@ -165,33 +166,46 @@ export async function releaseHolder(
   principal: AssetPrincipal,
   holderId: string,
 ): Promise<{ readonly descriptor: AssetDescriptor; readonly removed: boolean }> {
-  let removed = false;
-  const record = await transition(
-    internals,
-    assetId,
-    (current) => authorize(current, assetId, principal),
-    ({ record: current }) => {
-      if (!current.references.some((entry) => entry.holderId === holderId)) return undefined;
-      removed = true;
-      return {
-        next: bump(internals, current, {
-          references: current.references.filter((entry) => entry.holderId !== holderId),
-        }),
-      };
-    },
-  );
-  if (removed) {
-    await internals.emit({
-      type: 'asset.released',
-      assetId,
-      revision: record.revision,
-      state: record.state,
-      principal: principal.id,
-      holderId,
-    });
+  // The per-asset lock covers this process only. Another Bureau over the same store can change a
+  // different reference between the read and the write, which loses the compare-and-swap with an
+  // `AssetConflictError`; reloading and trying again settles it, and a holder the other writer
+  // already released is then a no-op.
+  for (let attempt = 1; ; attempt += 1) {
+    let removed = false;
+    try {
+      const record = await transition(
+        internals,
+        assetId,
+        (current) => authorize(current, assetId, principal),
+        ({ record: current }) => {
+          if (!current.references.some((entry) => entry.holderId === holderId)) return undefined;
+          removed = true;
+          return {
+            next: bump(internals, current, {
+              references: current.references.filter((entry) => entry.holderId !== holderId),
+            }),
+          };
+        },
+      );
+      if (removed) {
+        await internals.emit({
+          type: 'asset.released',
+          assetId,
+          revision: record.revision,
+          state: record.state,
+          principal: principal.id,
+          holderId,
+        });
+      }
+      return { descriptor: projectFor(record, principal), removed };
+    } catch (error) {
+      if (!(error instanceof AssetConflictError) || attempt >= RELEASE_ATTEMPTS) throw error;
+    }
   }
-  return { descriptor: projectFor(record, principal), removed };
 }
+
+/** How many times a release reloads the record and retries after losing a compare-and-swap. */
+const RELEASE_ATTEMPTS = 3;
 
 export async function heldClaims(
   internals: AssetInternals,

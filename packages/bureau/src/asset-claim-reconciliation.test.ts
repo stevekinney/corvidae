@@ -19,7 +19,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAssetService } from './assets/asset-service';
-import { runRowHolderId, sessionRowHolderId } from './assets/row-asset-claims';
+import { releaseHeldClaims, runRowHolderId, sessionRowHolderId } from './assets/row-asset-claims';
 import { createMemoryAssetStorage } from './assets/storage';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
@@ -284,6 +284,72 @@ describe('reconciling claims that other holders or other reconcilers also touch'
     await service.auditRecords();
 
     expect(events).toEqual([]);
+  });
+});
+
+describe('releasing a claim while another Bureau updates the same asset (COR-1664)', () => {
+  /** Two services over one store, so the per-asset lock of one cannot hide the other's write. */
+  async function twoServices() {
+    const storage = createMemoryAssetStorage();
+    let beforeCommit: (() => Promise<void>) | undefined;
+    const contended: typeof storage = {
+      ...storage,
+      conditionalBatch: async (conditions, operations) => {
+        const hook = beforeCommit;
+        beforeCommit = undefined;
+        await hook?.();
+        return storage.conditionalBatch(conditions, operations);
+      },
+    };
+    const reconciling = await createAssetService({ storage: contended });
+    const other = await createAssetService({ storage });
+    services.push(reconciling, other);
+    return { reconciling, other, interleave: (hook: () => Promise<void>) => (beforeCommit = hook) };
+  }
+
+  it('retries after a lost compare-and-swap and releases the dead holder once', async () => {
+    const { reconciling, other, interleave } = await twoServices();
+    const assetId = await admitAsset(reconciling);
+    const dead = runRowHolderId('agent-run-1', 'row-1');
+    await reconciling.retain(assetId, alice, { holderId: dead, until: UNTIL });
+    const failures: unknown[] = [];
+    const claims = await reconciling.heldClaims({ holderPrefix: 'run-row:' });
+    const events: string[] = [];
+    reconciling.subscribe((event) => {
+      if (event.type === 'asset.released') events.push(event.holderId ?? '');
+    });
+    // Another Bureau renews a different reference between the reconciler's read and its write.
+    interleave(async () => {
+      await other.retain(assetId, alice, { holderId: 'session-row:s:i:r', until: UNTIL });
+    });
+
+    const released = await releaseHeldClaims(reconciling, claims, (_claim, error) =>
+      failures.push(error),
+    );
+    await reconciling.auditRecords();
+
+    expect(failures).toEqual([]);
+    expect(released).toBe(1);
+    expect(events).toEqual([dead]);
+    expect(await holdersOf(reconciling, assetId)).toEqual(['session-row:s:i:r']);
+  });
+
+  it('counts a claim the other Bureau released meanwhile as no release', async () => {
+    const { reconciling, other, interleave } = await twoServices();
+    const assetId = await admitAsset(reconciling);
+    const dead = runRowHolderId('agent-run-1', 'row-1');
+    await reconciling.retain(assetId, alice, { holderId: dead, until: UNTIL });
+    const claims = await reconciling.heldClaims({ holderPrefix: 'run-row:' });
+    interleave(async () => {
+      await other.release(assetId, alice, dead);
+    });
+
+    const released = await releaseHeldClaims(reconciling, claims, () => {
+      throw new Error('unexpected failure');
+    });
+
+    expect(released).toBe(0);
+    expect(await holdersOf(reconciling, assetId)).toEqual([]);
   });
 });
 
