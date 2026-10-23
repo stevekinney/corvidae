@@ -35,4 +35,22 @@ describe('the data model', () => {
     model.replace(undefined);
     expect(model.snapshot()).toEqual({});
   });
+
+  test('an array is written only at an index; any other token writes nothing', () => {
+    const changes: unknown[] = [];
+    const model = new A2uiDataModel(['first', 'second'], (value) => changes.push(value));
+    for (const pointer of ['/', '/abc', '/01', '/-1', '/1.5']) model.set(pointer, 'x');
+    expect(model.snapshot()).toEqual(['first', 'second']);
+
+    const nested = new A2uiDataModel({ list: ['a'] });
+    nested.set('/list/', 'x');
+    nested.set('/list/name/deep', 'x');
+    expect(nested.snapshot()).toEqual({ list: ['a'] });
+
+    model.set('/1', 'changed');
+    nested.set('/list/1', 'b');
+    expect(model.snapshot()).toEqual(['first', 'changed']);
+    expect(nested.snapshot()).toEqual({ list: ['a', 'b'] });
+    expect(changes).toEqual([['first', 'changed']]);
+  });
 });

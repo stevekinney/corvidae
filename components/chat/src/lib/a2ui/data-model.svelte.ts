@@ -56,6 +56,15 @@ function childOf(container: Container, segment: string): A2uiJsonValue | undefin
   return Array.isArray(container) ? container[Number(segment)] : container[segment];
 }
 
+/**
+ * Whether `segment` can name a member of `container`. An array has only its
+ * indices (RFC 6901: `0` or a digit string with no leading zero); `Number`
+ * would read `''` as `0`, so any other token must never reach one.
+ */
+function addresses(container: Container, segment: string): boolean {
+  return !Array.isArray(container) || /^(?:0|[1-9]\d*)$/.test(segment);
+}
+
 function assign(container: Container, segment: string, value: A2uiJsonValue): void {
   if (Array.isArray(container)) container[Number(segment)] = value;
   else container[segment] = value;
@@ -135,6 +144,13 @@ export class A2uiDataModel {
       this.#root = ownCopy(value);
     } else {
       if (!isContainer(this.#root)) this.#root = ownCopy({});
+      // A token an array cannot hold anywhere on the path writes nothing.
+      let probe: A2uiJsonValue | undefined = this.#root;
+      for (const segment of [...segments, last]) {
+        if (!isContainer(probe)) break;
+        if (!addresses(probe, segment)) return;
+        probe = childOf(probe, segment);
+      }
       let current: A2uiJsonValue | undefined = this.#root;
       for (const segment of segments) {
         if (!isContainer(current)) break;
