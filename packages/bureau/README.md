@@ -583,6 +583,63 @@ The handler has no run-starting operation of its own, so the host starts the run
 
 `bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
 
+### MCP adapter (COR-839, COR-910)
+
+`createBureauHandler(bureau, { mcp: {} })` mounts Bureau's `mcpExposable` management operations as MCP tools, at `/mcp` unless `mcp.pathPrefix` says otherwise. It is a thin wrapper over Weft's [`createOperationMcpMount`](../weft/README.md#mcp-for-an-operation-catalog), so it serves both protocol eras (2026-07-28 and 2025-11-25) statelessly, and every call runs through the catalog pipeline as the caller the handler authenticated: the same access policy, owner predicate, and scopes as `POST /jsonrpc`. A caller sees only what it could already read there. Omit `mcp` and nothing is mounted.
+
+The target is an AI host that observes and steers existing work: Claude Desktop and Claude Code, over Streamable HTTP. Interborough mounts the adapter at `/bureau/mcp` (not `/mcp`, which is the engine's own endpoint) and its on-demand `smoke:claude-code-mcp` script connects a real Claude Code to it. Other hosts that speak Streamable HTTP MCP should work, but none is tested or supported.
+
+Twenty-one operations are exposed, as tools of the same name:
+
+| Area | Tools |
+| --- | --- |
+| Tasks | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
+| Reviews | `bureau.reviews.list`, `get`, `resolve` |
+| Contexts | `bureau.contexts.list`, `get`, `input` |
+| Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get` |
+| Workflows | `bureau.workflows.list`, `get`; `bureau.workflows.runs.list`, `get` |
+| Agents | `bureau.agents.list` |
+
+`bureau.tasks.events` is the one subscription: a call answers with the events recorded after its `fromCursor`, up to `maxEvents`, and the cursor to resume from, so a client polls it rather than holding a stream. `respond`, `cancel`, `resolve`, and `input` change state and carry the matching tool annotations. Nothing here starts a run, creates or edits a goal, schedule, or workflow, reads memory or assets, or touches agent definitions: those stay on the management plane, and `bureau.surfaces` commands have no MCP tool.
+
+```ts
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import type { createBureauHandler } from '@lostgradient/bureau';
+
+// A handler created with `createBureauHandler(bureau, { authentication, mcp: {} })`.
+declare const handler: ReturnType<typeof createBureauHandler>;
+
+const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+  fetch: (url, init) => {
+    const request = new Request(url, init);
+    request.headers.set('X-API-Key', 'alice-key');
+    return handler(request);
+  },
+});
+const client = new Client({ name: 'review-desk', version: '1.0.0' });
+await client.connect(transport);
+
+// Find the reviews waiting for this caller, then approve the first one.
+const pending = await client.callTool({ name: 'bureau.reviews.list', arguments: {} });
+console.log(pending.structuredContent);
+await client.callTool({
+  name: 'bureau.reviews.resolve',
+  arguments: { id: 'review-1', decision: 'approve' },
+});
+await client.close();
+```
+
+#### MCP Apps on the adapter
+
+Two further options let an application publish MCP Apps beside the tools. `resources` injects `ui://` resources the server lists and reads, and `toolMeta` attaches `_meta` to a tool's listing by operation name. Both are injected because Bureau must not depend on an application's bundle: Interborough builds the pages and hands them in. Bureau adds no operation for an app; each page uses the tools above, as the signed-in caller.
+
+| Resource | Linked tool | What it does |
+| --- | --- | --- |
+| `ui://bureau/run-inspector/v1` | `bureau.tasks.inspect` | One task's liveness, ownership tree, progress, result, and abort. Reads `bureau.tasks.inspect` (`bureau.task-inspection.v1`: no transcript, prompt, tool argument, result, or checkpoint) and aborts through `bureau.tasks.cancel`. |
+| `ui://bureau/pending-review/v1` | `bureau.reviews.list` | The caller's pending reviews. Reads through `bureau.reviews.get` and decides through `bureau.reviews.resolve`: approve, deny, or reject with feedback, which `reject` carries as its `reason`. |
+
+The inspector also follows a task through `bureau.tasks.events`. Both declare an empty content-security policy (no network origin, frame, or base URI) and no permissions, which a host reads as denied, and neither asks for a dedicated sandbox origin. The version is part of each URI: a changed contract is a new URI. Closing an app never cancels a run; abort is the explicit `bureau.tasks.cancel`. The MCP Apps contract Bureau uses for tracked surfaces, including the `mcp-app` representation, is [`documentation/interactive-surface.md`](./documentation/interactive-surface.md); the adapter's apps are plain tool-linked pages and do not create surfaces.
+
 ### Owner of record (COR-718)
 
 Every resource has one **owner**: the principal that owns it, stored once when the resource is created. The **actor** is whoever performed an action, and is recorded on the audit entry's `principal`. A service principal (`system:scheduler`, `system:recovery`, `system:expiry`) is only ever an actor: work the scheduler, recovery, or expiry starts or changes keeps the owner of the resource it acts on.
