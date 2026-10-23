@@ -1301,6 +1301,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly hasExplicitId: boolean;
   /**
+   * How long a settled task stays addressable: {@link BureauOptions.taskRetention}, or its
+   * 30-day default when none was given.
+   */
+  readonly taskRetention: RetentionWindowOption;
+  /**
    * Whether this bureau has storage and a durable engine. Only such a bureau
    * keeps run-creation receipts and human-wait parks across a restart, so an
    * adapter that promises either (the AG-UI mount of `createBureauHandler`)

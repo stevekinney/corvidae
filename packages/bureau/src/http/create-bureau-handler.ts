@@ -54,7 +54,11 @@ import {
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
-import { type CommandLedger, createCommandLedger } from '../command-ledger.ts';
+import {
+  COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
+  type CommandLedger,
+  createCommandLedger,
+} from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import { createBureauA2AMount } from './a2a-mount.ts';
@@ -160,6 +164,7 @@ export type BureauHandlerSource = Pick<
   Bureau,
   | 'id'
   | 'hasExplicitId'
+  | 'taskRetention'
   | 'kv'
   | 'eventFeed'
   | 'runEventFeeds'
@@ -211,6 +216,7 @@ export type BureauHandlerSource = Pick<
   | 'sessionInputsDeliveredBy'
   | 'assets'
   | 'addEventListener'
+  | 'removeEventListener'
 > & {
   readonly agents: {
     has(name: string): boolean;
@@ -500,6 +506,20 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
         '`durableExecution` on createBureau',
     );
   }
+  // An exact retry of a send resolves through its binding to the task it created, so the task
+  // has to outlive the binding: a binding left pointing at a removed task would answer a retry
+  // with not-found, or start the work again.
+  const retention = bureau.taskRetention;
+  if (
+    retention !== 'forever' &&
+    retention.olderThan < COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS
+  ) {
+    fail(
+      `serving A2A needs the Bureau's taskRetention to be at least the ` +
+        `${COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} ms a send's idempotency binding is kept ` +
+        `(got ${retention.olderThan} ms)`,
+    );
+  }
 }
 
 function assertAssets(bureau: BureauHandlerSource): void {
@@ -733,6 +753,10 @@ function createA2AMount(
     ...(options.signing === undefined ? {} : { signing: options.signing }),
     bureau,
     publication: createPublication(bureau, publish),
+    hasTasks: async (agentName) => {
+      const page = await bureau.tasks.enumerate({ agentName, limit: 1, offset: 0 });
+      return page.tasks.length > 0;
+    },
     describe: (agentName) => {
       const described = publishedAgentsOf(bureau, publish).find(
         (agent) => agent.name === agentName,

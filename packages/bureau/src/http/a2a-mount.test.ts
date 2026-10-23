@@ -153,7 +153,7 @@ describe('the A2A Agent Card', () => {
             protocolVersion: '1.0',
           },
         ]);
-        expect(card.capabilities.streaming ?? false).toBe(false);
+        expect(card.capabilities.streaming).toBe(true);
         expect(card.capabilities.pushNotifications ?? false).toBe(false);
         expect(card.capabilities.extendedAgentCard ?? false).toBe(false);
         expect(card.capabilities.extensions.map((entry: Json) => entry.uri).toSorted()).toEqual(
@@ -868,33 +868,7 @@ describe('signed Agent Cards', () => {
   });
 });
 
-describe('what part 1 does not serve, and ListTasks input', () => {
-  it('answers SendStreamingMessage and SubscribeToTask with -32004, since streaming is not declared', async () => {
-    await withA2A({ asker: answering('done') }, async (opened) => {
-      const response = await opened.handler(
-        new Request('http://localhost/a2a/asker', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'A2A-Version': '1.0',
-            'X-API-Key': 'alice-key',
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'SendStreamingMessage',
-            params: { message: message('stream') },
-          }),
-        }),
-      );
-      const streamed: Json = await response.json();
-      const subscribed = await call(opened, 'asker', 'SubscribeToTask', { id: 'any' });
-
-      expect(streamed.error.code).toBe(-32004);
-      expect(subscribed.body.error.code).toBe(-32004);
-    });
-  });
-
+describe('ListTasks input', () => {
   it('refuses a statusTimestampAfter that is not a timestamp, and reads pageSize 0 as the default', async () => {
     await withA2A({ asker: answering('done') }, async (opened) => {
       await send(opened, 'asker', { message: message('one') });
@@ -1110,6 +1084,28 @@ describe('the third review pass', () => {
       const entry = listed.body.result.tasks.find((candidate: Json) => candidate.id === task.id);
       expect(JSON.stringify(entry).length).toBeLessThan(LISTED_HISTORY_BYTES);
       expect(read.body.result.history.length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('a context deleted and created again', () => {
+  it('refuses a continuation of the earlier incarnation’s task with -32602, and lists only the new one', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const old = await sendForTask(opened, 'asker', {
+        message: message('first life', { contextId: 'ctx-reused' }),
+      });
+      await opened.bureau.deleteSession('ctx-reused');
+      const fresh = await sendForTask(opened, 'asker', {
+        message: message('second life', { contextId: 'ctx-reused' }),
+      });
+
+      const continued = await send(opened, 'asker', {
+        message: message('again', { taskId: old.id, contextId: 'ctx-reused' }),
+      });
+      const listed = await call(opened, 'asker', 'ListTasks', { contextId: 'ctx-reused' });
+
+      expect(continued.body.error.code).toBe(-32602);
+      expect(listed.body.result.tasks.map((task: Json) => task.id)).toEqual([fresh.id]);
     });
   });
 });

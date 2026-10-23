@@ -104,6 +104,19 @@ describe('the A2A mount with the @a2a-js/sdk client', () => {
       }, 'the task never read as canceled');
       const after = await waiter.getTask({ tenant: '', id: running.id });
       expect(after.status?.state).toBe(TaskState.TASK_STATE_CANCELED);
+
+      // The SDK's own streaming client reads the task, then its completion.
+      const streamed: string[] = [];
+      for await (const event of asker.sendMessageStream(send('stream'))) {
+        const payload = event.payload;
+        streamed.push(
+          payload?.$case === 'statusUpdate'
+            ? `status:${TaskState[payload.value.status?.state ?? 0]}`
+            : (payload?.$case ?? 'none'),
+        );
+      }
+      expect(streamed[0]).toBe('task');
+      expect(streamed.at(-1)).toBe('status:TASK_STATE_COMPLETED');
     } finally {
       await opened.dispose();
     }
