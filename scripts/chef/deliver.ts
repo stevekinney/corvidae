@@ -8,7 +8,7 @@
 //                               [--log-dir <dir>] [--issue <ID> --completion-file <md>]
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
-//                               [--config <json>] [--json]
+//                               [--max-attempts <n>] [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
 //   fetch      `git fetch origin <default>`;
@@ -29,8 +29,14 @@
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
+// Retry: fetch, base, gate and merge are one attempt. When the merge gate refuses at `contains-base`
+// (another session merged into the default branch during the gate), the whole attempt repeats: merge
+// the new base in, install, push, gate again, merge. `--max-attempts` (default 3, minimum 1) caps the
+// total attempts; every other refusal stops at once. Each attempt writes one line to standard error
+// (attempt number, base sha, gate exit code), and the result carries `attempts`.
+//
 // Output: at most six lines, or with `--json` one object: pr, merged, mergeCommit, basePath,
-// gateLog, failedStep, detail and issue (the Linear state it was left in, or null).
+// gateLog, failedStep, detail, issue and attempts (the Linear state it was left in, or null).
 //
 // Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named), 2 invalid
 // CLI usage.
@@ -65,6 +71,9 @@ import {
 
 export { UsageError };
 
+/** Total attempts at base, gate and merge when the base keeps moving during the gate. */
+const DEFAULT_MAX_ATTEMPTS = 3;
+
 export interface DeliverOptions {
   configPath: string;
   pr: number;
@@ -77,6 +86,8 @@ export interface DeliverOptions {
   removeWorktree?: { provider: string; name: string } | undefined;
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
+  /** Total attempts when the base moves during the gate; defaults to 3, minimum 1. */
+  maxAttempts?: number | undefined;
 }
 
 export interface DeliverReport {
@@ -89,6 +100,8 @@ export interface DeliverReport {
   detail: string | null;
   /** The Linear state the issue was left in, or `null` when no issue was named or it failed. */
   issue: string | null;
+  /** How many times base, gate and merge ran: more than 1 only when the base moved mid-gate. */
+  attempts: number;
 }
 
 export interface DeliverDependencies {
@@ -101,6 +114,8 @@ export interface DeliverDependencies {
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
+  /** Receives one progress line per attempt; the command line writes it to standard error. */
+  log: (line: string) => void;
 }
 
 function firstLine(text: string): string {
@@ -127,6 +142,7 @@ export async function deliver(
   partial: Partial<DeliverDependencies> = {},
 ): Promise<DeliverReport> {
   const runner = partial.runner ?? defaultRunner;
+  const log = partial.log ?? (() => undefined);
   const config = loadRepositoryConfig(options.configPath);
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
   if (!existsSync(options.commentFile))
@@ -149,6 +165,7 @@ export async function deliver(
     failedStep: null,
     detail: null,
     issue: null,
+    attempts: 0,
   };
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
@@ -157,100 +174,110 @@ export async function deliver(
   };
   const headOf = (): string => git('rev-parse', 'HEAD').stdout.trim();
 
-  // fetch
-  const fetched = git('fetch', 'origin', defaultBranch);
-  if (fetched.code !== 0)
-    return fail(
-      'fetch',
-      `git fetch origin ${defaultBranch} failed (exit ${fetched.code}): ${firstLine(fetched.stderr)}`,
-    );
-
-  // base
   let gateLog = options.gateLog;
-  const baseCheck = checkMergeBase(runner, options.worktree, defaultBranch);
-  if (typeof baseCheck === 'string') {
-    const status = git('status', '--porcelain');
-    if (status.code !== 0 || status.stdout.trim() !== '')
+  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  for (let attempt = 1; ; attempt++) {
+    report.attempts = attempt;
+    // fetch
+    const fetched = git('fetch', 'origin', defaultBranch);
+    if (fetched.code !== 0)
       return fail(
-        'base',
-        `${baseCheck} The worktree is not clean, so ${remote} was not merged in.`,
+        'fetch',
+        `git fetch origin ${defaultBranch} failed (exit ${fetched.code}): ${firstLine(fetched.stderr)}`,
       );
-    const previousHead = headOf();
-    const merged = git('merge', '--no-edit', remote);
-    if (merged.code !== 0) {
-      const aborted = git('merge', '--abort');
-      return fail(
-        'conflict',
-        `merging ${remote} conflicts${aborted.code === 0 ? '; the merge was aborted and the tree is unchanged' : `; git merge --abort failed (exit ${aborted.code}): ${firstLine(aborted.stderr)}`}.`,
-      );
+
+    // base
+    const baseCheck = checkMergeBase(runner, options.worktree, defaultBranch);
+    if (typeof baseCheck === 'string') {
+      const status = git('status', '--porcelain');
+      if (status.code !== 0 || status.stdout.trim() !== '')
+        return fail(
+          'base',
+          `${baseCheck} The worktree is not clean, so ${remote} was not merged in.`,
+        );
+      const previousHead = headOf();
+      const merged = git('merge', '--no-edit', remote);
+      if (merged.code !== 0) {
+        const aborted = git('merge', '--abort');
+        return fail(
+          'conflict',
+          `merging ${remote} conflicts${aborted.code === 0 ? '; the merge was aborted and the tree is unchanged' : `; git merge --abort failed (exit ${aborted.code}): ${firstLine(aborted.stderr)}`}.`,
+        );
+      }
+      const installed = runner(['sh', '-c', config.installCommand], { cwd: options.worktree });
+      // A failure after the merge-in puts the branch back, so a rerun sees the same pending update
+      // instead of a local merge commit that was never pushed.
+      const restore = (): string => {
+        const reset = git('reset', '--hard', previousHead);
+        return reset.code === 0
+          ? 'the branch was restored to its previous head'
+          : `git reset --hard ${previousHead.slice(0, 12)} failed (exit ${reset.code}): ${firstLine(reset.stderr)}`;
+      };
+      if (installed.code !== 0)
+        return fail(
+          'install',
+          `${config.installCommand} failed (exit ${installed.code}): ${firstLine(installed.stderr || installed.stdout)}; ${restore()}.`,
+        );
+      const pushed = git('push', 'origin', 'HEAD');
+      if (pushed.code !== 0)
+        return fail(
+          'push',
+          `git push failed (exit ${pushed.code}): ${firstLine(pushed.stderr)}; ${restore()}.`,
+        );
+      // The old log describes the previous head, so it must never be offered to the merge gate.
+      if (gateLog !== undefined) rmSync(gateLog, { force: true });
+      gateLog = undefined;
+      report.gateLog = null;
     }
-    const installed = runner(['sh', '-c', config.installCommand], { cwd: options.worktree });
-    // A failure after the merge-in puts the branch back, so a rerun sees the same pending update
-    // instead of a local merge commit that was never pushed.
-    const restore = (): string => {
-      const reset = git('reset', '--hard', previousHead);
-      return reset.code === 0
-        ? 'the branch was restored to its previous head'
-        : `git reset --hard ${previousHead.slice(0, 12)} failed (exit ${reset.code}): ${firstLine(reset.stderr)}`;
-    };
-    if (installed.code !== 0)
-      return fail(
-        'install',
-        `${config.installCommand} failed (exit ${installed.code}): ${firstLine(installed.stderr || installed.stdout)}; ${restore()}.`,
-      );
-    const pushed = git('push', 'origin', 'HEAD');
-    if (pushed.code !== 0)
-      return fail(
-        'push',
-        `git push failed (exit ${pushed.code}): ${firstLine(pushed.stderr)}; ${restore()}.`,
-      );
-    // The old log describes the previous head, so it must never be offered to the merge gate.
-    if (gateLog !== undefined) rmSync(gateLog, { force: true });
-    gateLog = undefined;
-    report.gateLog = null;
-  }
 
-  // gate
-  const head = headOf();
-  if (head === '') return fail('gate', `${options.worktree} has no readable HEAD.`);
-  if (unusableGateLog(gateLog, head) !== undefined || gateLog === undefined) {
-    const directory = resolve(
-      options.logDirectory ??
-        (options.gateLog === undefined
-          ? join(options.worktree, 'tmp', 'chef')
-          : dirname(options.gateLog)),
-    );
-    gateLog = join(directory, `gate-${head.slice(0, 12)}.log`);
-    report.gateLog = gateLog;
-    const gate = partial.gate;
-    if (gate === undefined) return fail('gate', 'no gate runner was provided.');
-    const result = gate({
+    // gate
+    const head = headOf();
+    const baseSha = git('rev-parse', remote).stdout.trim().slice(0, 12);
+    if (head === '') return fail('gate', `${options.worktree} has no readable HEAD.`);
+    if (unusableGateLog(gateLog, head) !== undefined || gateLog === undefined) {
+      const directory = resolve(
+        options.logDirectory ??
+          (options.gateLog === undefined
+            ? join(options.worktree, 'tmp', 'chef')
+            : dirname(options.gateLog)),
+      );
+      gateLog = join(directory, `gate-${head.slice(0, 12)}.log`);
+      report.gateLog = gateLog;
+      const gate = partial.gate;
+      if (gate === undefined) return fail('gate', 'no gate runner was provided.');
+      const result = gate({
+        configPath: options.configPath,
+        worktree: options.worktree,
+        log: gateLog,
+      });
+      log(`attempt ${attempt}: base ${baseSha} gate exit ${result.code}`);
+      if (result.code !== 0) return fail('gate', `the gate exited ${result.code}; see ${gateLog}.`);
+    } else log(`attempt ${attempt}: base ${baseSha} gate exit 0 (log reused)`);
+
+    // merge
+    const merge = partial.merge;
+    if (merge === undefined) return fail('merge', 'no merge runner was provided.');
+    const merged = await merge({
       configPath: options.configPath,
+      pr: options.pr,
       worktree: options.worktree,
-      log: gateLog,
+      gateLog,
+      commentFile: options.commentFile,
+      dryRun: false,
+      checkMainHealth: true,
+      ...(options.usageLog === undefined
+        ? {}
+        : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
     });
-    if (result.code !== 0) return fail('gate', `the gate exited ${result.code}; see ${gateLog}.`);
-  }
+    // The base moved while the gate ran: merge it in, install, push and gate again.
+    if (merged.failedStep === 'contains-base' && attempt < maxAttempts) continue;
+    report.merged = merged.merged;
+    report.mergeCommit = merged.mergeCommit;
+    report.basePath = merged.basePath ?? null;
+    if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
 
-  // merge
-  const merge = partial.merge;
-  if (merge === undefined) return fail('merge', 'no merge runner was provided.');
-  const merged = await merge({
-    configPath: options.configPath,
-    pr: options.pr,
-    worktree: options.worktree,
-    gateLog,
-    commentFile: options.commentFile,
-    dryRun: false,
-    checkMainHealth: true,
-    ...(options.usageLog === undefined
-      ? {}
-      : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
-  });
-  report.merged = merged.merged;
-  report.mergeCommit = merged.mergeCommit;
-  report.basePath = merged.basePath ?? null;
-  if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
+    break;
+  }
 
   // issue
   if (options.issue !== undefined && options.completionFile !== undefined) {
@@ -296,6 +323,7 @@ export function renderDeliver(report: DeliverReport): string {
     `pr #${report.pr} merged=${report.merged} mergeCommit=${report.mergeCommit?.slice(0, 12) ?? 'none'} basePath=${report.basePath ?? 'none'}`,
     `gate log: ${report.gateLog ?? 'none'}`,
   ];
+  if (report.attempts > 1) lines.push(`attempts: ${report.attempts}`);
   if (report.issue !== null) lines.push(`issue: ${report.issue}`);
   if (report.failedStep !== null)
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
@@ -319,6 +347,7 @@ export async function run(
       'usage-log',
       'provider',
       'name',
+      'max-attempts',
     ],
     repeated: ['transcript'],
     flags: ['remove-worktree', 'json'],
@@ -335,6 +364,9 @@ export async function run(
   const transcripts = parsed.repeated['transcript'] ?? [];
   if ((usageLog === undefined) !== (transcripts.length === 0))
     throw new UsageError('--usage-log and --transcript go together.');
+  const maxAttemptsText = parsed.values['max-attempts'];
+  if (maxAttemptsText !== undefined && !/^[1-9]\d*$/.test(maxAttemptsText))
+    throw new UsageError(`"${maxAttemptsText}" is not an attempt count of at least 1.`);
   const remove = parsed.flags.has('remove-worktree');
   const provider = parsed.values['provider'];
   const name = parsed.values['name'];
@@ -356,6 +388,7 @@ export async function run(
       completionFile,
       usageLog,
       transcripts,
+      maxAttempts: maxAttemptsText === undefined ? undefined : Number(maxAttemptsText),
       removeWorktree:
         remove && provider !== undefined && name !== undefined ? { provider, name } : undefined,
     },
@@ -375,6 +408,7 @@ function productionDependencies(): Partial<DeliverDependencies> {
     merge: (options) => mergeGateExclusively(options),
     remove: (options) => removeWorktree(options),
     client: createClient(),
+    log: (line) => process.stderr.write(`${line}\n`),
   };
 }
 

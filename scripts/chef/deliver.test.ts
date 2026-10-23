@@ -405,6 +405,148 @@ describe('deliver', () => {
   });
 });
 
+describe('a base that moves during the gate', () => {
+  const refusal = mergedReport({
+    merged: false,
+    mergeCommit: null,
+    failedStep: 'contains-base',
+    detail: 'origin/main moved. Merge it in and re-gate.',
+  });
+
+  /** Seams whose merge gate refuses `moves` times, each time moving the base in the fake world. */
+  function movingBase(world: World, moves: number, after?: MergeGateReport) {
+    const { partial, record } = seams();
+    const lines: string[] = [];
+    let calls = 0;
+    return {
+      record,
+      lines,
+      partial: {
+        ...partial,
+        log: (line: string) => lines.push(line),
+        merge: async (mergeOptions: MergeGateOptions) => {
+          record.merges.push(mergeOptions.gateLog);
+          calls += 1;
+          if (calls <= moves) {
+            world.contains = false;
+            world.mergeTreeCode = 0;
+            return refusal;
+          }
+          return after ?? mergedReport();
+        },
+      },
+    };
+  }
+
+  const movedWorld = (): World => ({
+    contains: true,
+    pullRequestFiles: ['packages/a/x.ts'],
+    baseFiles: ['bun.lock'],
+  });
+
+  test('merges the new base in, re-gates and merges on the second attempt', async () => {
+    const world = movedWorld();
+    const { runner, calls } = fake(world);
+    const { partial, record, lines } = movingBase(world, 1);
+    const report = await deliver(options, { ...partial, runner });
+    expect(report).toMatchObject({ merged: true, failedStep: null, attempts: 2 });
+    expect(record.merges).toHaveLength(2);
+    expect(record.gates).toEqual([join(sandbox, `gate-${MERGED_HEAD.slice(0, 12)}.log`)]);
+    expect(calls).toContainEqual(['git', 'push', 'origin', 'HEAD']);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toStartWith('attempt 1:');
+    expect(lines[1]).toContain('attempt 2:');
+    expect(lines[1]).toContain('gate exit 0');
+    expect(renderDeliver(report)).toContain('attempts: 2');
+  });
+
+  test('stops after the maximum with contains-base when the base keeps moving', async () => {
+    const world = movedWorld();
+    const { runner } = fake(world);
+    const { partial, record } = movingBase(world, 99);
+    const report = await deliver(options, { ...partial, runner });
+    expect(report).toMatchObject({ merged: false, failedStep: 'contains-base', attempts: 3 });
+    expect(record.merges).toHaveLength(3);
+  });
+
+  test('--max-attempts caps the attempts, and 1 never retries', async () => {
+    const world = movedWorld();
+    const { runner } = fake(world);
+    const { partial, record } = movingBase(world, 99);
+    const report = await deliver({ ...options, maxAttempts: 1 }, { ...partial, runner });
+    expect(report).toMatchObject({ failedStep: 'contains-base', attempts: 1 });
+    expect(record.merges).toHaveLength(1);
+  });
+
+  test('a conflict while merging the new base in aborts cleanly as step conflict', async () => {
+    const world = movedWorld();
+    const { runner, calls } = fake(world);
+    const { partial, record } = movingBase(world, 1);
+    const conflicting = {
+      ...partial,
+      merge: async (mergeOptions: MergeGateOptions) => {
+        world.mergeCode = 1;
+        return partial.merge(mergeOptions);
+      },
+    };
+    const report = await deliver(options, { ...conflicting, runner });
+    expect(report).toMatchObject({ merged: false, failedStep: 'conflict', attempts: 2 });
+    expect(calls).toContainEqual(['git', 'merge', '--abort']);
+    expect(record.gates).toEqual([]);
+    expect(record.merges).toHaveLength(1);
+  });
+
+  test('a gate failure on the retry stops without merging again', async () => {
+    const world = movedWorld();
+    const { runner } = fake(world);
+    const { partial, record } = movingBase(world, 1);
+    const failing = {
+      ...partial,
+      gate: (gateOptions: { log: string }) => ({
+        ...seams().partial.gate(gateOptions),
+        code: 1,
+      }),
+    };
+    const report = await deliver(options, { ...failing, runner });
+    expect(report).toMatchObject({ merged: false, failedStep: 'gate', attempts: 2 });
+    expect(record.merges).toHaveLength(1);
+  });
+
+  test('a refusal other than contains-base does not retry', async () => {
+    const world = movedWorld();
+    const { runner } = fake(world);
+    const { partial, record } = movingBase(
+      world,
+      0,
+      mergedReport({ merged: false, mergeCommit: null, failedStep: 'threads', detail: 'open' }),
+    );
+    const report = await deliver(options, { ...partial, runner });
+    expect(report).toMatchObject({ failedStep: 'threads', attempts: 1 });
+    expect(record.merges).toHaveLength(1);
+  });
+
+  test('--max-attempts must be a positive integer', async () => {
+    for (const bad of ['0', '-1', 'x', '1.5']) {
+      let thrown: unknown;
+      try {
+        await run([
+          '--pr',
+          '12',
+          '--worktree',
+          sandbox,
+          '--comment-file',
+          'c.md',
+          '--max-attempts',
+          bad,
+        ]);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(UsageError);
+    }
+  });
+});
+
 describe('spend record', () => {
   test('--usage-log and --transcript reach the merge gate', async () => {
     const { runner } = fake({ contains: true });
