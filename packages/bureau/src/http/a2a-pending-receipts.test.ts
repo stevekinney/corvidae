@@ -118,7 +118,7 @@ async function withCrashedAnswer(
       new ServerCallContext({
         user: new BureauA2AUser(principal),
         requestedVersion: '1.0',
-        requestedExtensions: new Set([COMMAND_RECEIPTS_EXTENSION_URI]),
+        requestedExtensions: [COMMAND_RECEIPTS_EXTENSION_URI],
       });
     const send = (message: Message) =>
       handler.sendMessage(
