@@ -53,6 +53,53 @@ export type OperationMcpMountOptions = {
    * 250 milliseconds.
    */
   readonly idleMs?: number;
+  /**
+   * Resources the server serves through `resources/list` and `resources/read` (COR-910), such as an
+   * MCP App's `ui://` page. Injected at mount time, so the mount knows nothing of what they hold.
+   * Absent, the server advertises no `resources` capability.
+   */
+  readonly resources?: readonly OperationMcpResource[];
+  /**
+   * Metadata attached to a tool's listing as its `_meta`, keyed by operation name, such as the
+   * `ui.resourceUri` that links a tool to an MCP App. An entry for an operation that is not served
+   * as a tool is ignored.
+   */
+  readonly toolMeta?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+};
+
+/**
+ * One resource an {@link OperationMcpMountOptions.resources} option serves.
+ *
+ * @example
+ * ```ts
+ * import type { OperationMcpResource } from '@lostgradient/weft';
+ *
+ * const page: OperationMcpResource = {
+ *   uri: 'ui://probe/page',
+ *   name: 'probe-page',
+ *   mimeType: 'text/html;profile=mcp-app',
+ *   text: '<!doctype html><title>probe</title>',
+ * };
+ * void page;
+ * ```
+ */
+export type OperationMcpResource = {
+  /** The resource's URI; unique among the mount's resources. */
+  readonly uri: string;
+  /** The resource's name in a listing. */
+  readonly name: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly mimeType: string;
+  /** The contents. A function runs on every read, with the context of the request. */
+  readonly text: string | ((context: OperationHandlerMountContext) => string | Promise<string>);
+  /** Metadata for the resource's listing and its contents, such as an MCP App's `ui` declaration. */
+  readonly _meta?: Readonly<Record<string, unknown>>;
+  /**
+   * Whether the request's caller may see the resource. A caller it refuses finds the resource
+   * neither listed nor readable, as if it did not exist. Absent, every caller the mount serves may.
+   */
+  readonly authorize?: (context: OperationHandlerMountContext) => boolean;
 };
 
 const DEFAULT_MAX_EVENTS = 100;
@@ -108,8 +155,10 @@ export function createOperationMcpMount(
 ): OperationHandlerMount {
   const limits = collectionLimits(options);
   const serverInfo = { name: 'weft', title: 'Weft', version: VERSION, ...options.serverInfo };
+  const resources = validatedResources(options.resources ?? []);
+  const toolMeta = options.toolMeta ?? {};
   const handler = createMcpHandler(
-    (request) => buildServer(contextOf(request), serverInfo, limits),
+    (request) => buildServer(contextOf(request), serverInfo, limits, resources, toolMeta),
     {
       legacy: 'stateless',
       maxRequestBodySize: options.maxBodyBytes ?? DEFAULT_MCP_MAX_BODY_BYTES,
@@ -131,6 +180,24 @@ function collectionLimits(options: OperationMcpMountOptions): CollectionLimits {
     throw new RangeError('createOperationMcpMount: idleMs must be a non-negative number');
   }
   return { maxEvents, idleMs };
+}
+
+function validatedResources(
+  resources: readonly OperationMcpResource[],
+): readonly OperationMcpResource[] {
+  const seen = new Set<string>();
+  for (const resource of resources) {
+    if (resource.uri === '' || resource.name === '' || resource.mimeType === '') {
+      throw new RangeError(
+        'createOperationMcpMount: a resource needs a uri, a name, and a mimeType',
+      );
+    }
+    if (seen.has(resource.uri)) {
+      throw new RangeError(`createOperationMcpMount: resource "${resource.uri}" is declared twice`);
+    }
+    seen.add(resource.uri);
+  }
+  return [...resources];
 }
 
 function authInfoFor(context: OperationHandlerMountContext): AuthInfo {
@@ -158,8 +225,35 @@ function buildServer(
   context: OperationHandlerMountContext,
   serverInfo: { readonly name: string; readonly title?: string; readonly version: string },
   limits: CollectionLimits,
+  resources: readonly OperationMcpResource[],
+  toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
 ): McpServer {
-  const server = new McpServer(serverInfo, { capabilities: { tools: {} } });
+  const server = new McpServer(serverInfo, {
+    capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
+  });
+  for (const resource of resources) {
+    if (resource.authorize !== undefined && !resource.authorize(context)) continue;
+    server.registerResource(
+      resource.name,
+      resource.uri,
+      {
+        ...(resource.title === undefined ? {} : { title: resource.title }),
+        ...(resource.description === undefined ? {} : { description: resource.description }),
+        mimeType: resource.mimeType,
+        ...(resource._meta === undefined ? {} : { _meta: { ...resource._meta } }),
+      },
+      async (uri) => ({
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: resource.mimeType,
+            text: typeof resource.text === 'string' ? resource.text : await resource.text(context),
+            ...(resource._meta === undefined ? {} : { _meta: { ...resource._meta } }),
+          },
+        ],
+      }),
+    );
+  }
   for (const operation of context.operations) {
     if (!operation.mcpExposable || operation.mcpTool !== undefined) continue;
     server.registerTool(
@@ -172,6 +266,9 @@ function buildServer(
           readOnlyHint: !operation.destructive && operation.kind === 'subscription',
           destructiveHint: operation.destructive,
         },
+        ...(toolMeta[operation.name] === undefined
+          ? {}
+          : { _meta: { ...toolMeta[operation.name] } }),
       },
       async (input, handlerContext) =>
         operation.kind === 'subscription'

@@ -17,7 +17,7 @@ import {
 import { createOperationHandler } from '../server/handler/operation-handler.ts';
 import { defineOperation } from '../server/operation-registry.ts';
 import type { NegotiationMode } from './mcp-client.test-support.ts';
-import { createOperationMcpMount } from './operation-tools.ts';
+import { createOperationMcpMount, type OperationMcpMountOptions } from './operation-tools.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';
 
 const transports = { http: true, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false };
@@ -139,13 +139,17 @@ afterEach(async () => {
   while (clients.length > 0) await clients.pop()!.close();
 });
 
-async function connect(mode: NegotiationMode, caller: () => AuthContext = readerContext) {
+async function connect(
+  mode: NegotiationMode,
+  caller: () => AuthContext = readerContext,
+  mountOptions: OperationMcpMountOptions = {},
+) {
   const host = createTestHost();
   const handler = createOperationHandler({
     operations: [echo, hidden, missing, events, finite],
     host,
     authenticate: async () => caller(),
-    mounts: [createOperationMcpMount({ idleMs: 20 })],
+    mounts: [createOperationMcpMount({ idleMs: 20, ...mountOptions })],
   });
   const transport = new StreamableHTTPClientTransport(new URL('http://catalog.test/mcp'), {
     fetch: (url, init) => handler(new Request(url, init)),
@@ -250,5 +254,63 @@ describe('createOperationMcpMount options', () => {
   it('refuses a non-positive event bound and a negative idle wait', () => {
     expect(() => createOperationMcpMount({ maxEvents: 0 })).toThrow(RangeError);
     expect(() => createOperationMcpMount({ idleMs: -1 })).toThrow(RangeError);
+  });
+});
+
+describe.each(eras)('injected resources and tool metadata ($era era)', ({ mode }) => {
+  const page = {
+    uri: 'ui://probe/page',
+    name: 'probe-page',
+    mimeType: 'text/html;profile=mcp-app',
+    text: '<!doctype html><title>probe</title>',
+    _meta: { ui: { csp: { connectDomains: [] } } },
+  };
+
+  it('lists and reads an injected resource, and attaches _meta to the named tool only', async () => {
+    const { client } = await connect(mode, readerContext, {
+      resources: [page],
+      toolMeta: { 'probe.echo': { ui: { resourceUri: page.uri } }, 'probe.absent': { x: 1 } },
+    });
+    const { resources } = await client.listResources();
+    expect(resources.map((resource) => resource.uri)).toEqual([page.uri]);
+    const read = await client.readResource({ uri: page.uri });
+    expect(read.contents).toMatchObject([
+      { uri: page.uri, mimeType: page.mimeType, text: page.text, _meta: page._meta },
+    ]);
+    const { tools } = await client.listTools();
+    expect(tools.find((tool) => tool.name === 'probe.echo')?._meta).toEqual({
+      ui: { resourceUri: page.uri },
+    });
+    expect(tools.find((tool) => tool.name === 'probe.missing')?._meta).toBeUndefined();
+  });
+
+  it('runs a function body per read with the request context', async () => {
+    let reads = 0;
+    const { client } = await connect(mode, readerContext, {
+      resources: [{ ...page, text: () => `read ${(reads += 1)}` }],
+    });
+    await client.readResource({ uri: page.uri });
+    const second = await client.readResource({ uri: page.uri });
+    expect(second.contents).toMatchObject([{ text: 'read 2' }]);
+  });
+
+  it('neither lists nor reads a resource its authorize refuses', async () => {
+    const { client } = await connect(mode, strangerContext, {
+      resources: [{ ...page, authorize: () => false }],
+    });
+    expect((await client.listResources()).resources).toEqual([]);
+    await expect(client.readResource({ uri: page.uri })).rejects.toThrow();
+  });
+});
+
+describe('resources in createOperationMcpMount options', () => {
+  it('advertises no resources without any, and refuses a duplicate or empty one', async () => {
+    const { client } = await connect({ pin: MCP_PROTOCOL_VERSION });
+    expect(client.getServerCapabilities()?.resources).toBeUndefined();
+    const resource = { uri: 'ui://a', name: 'a', mimeType: 'text/plain', text: '' };
+    expect(() => createOperationMcpMount({ resources: [resource, resource] })).toThrow(RangeError);
+    expect(() => createOperationMcpMount({ resources: [{ ...resource, uri: '' }] })).toThrow(
+      RangeError,
+    );
   });
 });

@@ -136,6 +136,10 @@ import {
   tasksEventsOperation,
 } from './management/tasks-events-operation.ts';
 import {
+  type BureauTasksInspectOperationHost,
+  tasksInspectOperation,
+} from './management/tasks-inspect-operation.ts';
+import {
   type BureauTasksOperationHost,
   tasksCancelOperation,
   tasksGetOperation,
@@ -239,6 +243,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauOwnershipHost &
   BureauDeploymentOperationHost &
   BureauTasksOperationHost &
+  BureauTasksInspectOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
@@ -552,6 +557,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   agentsModelsOperation,
   tasksListOperation,
   tasksGetOperation,
+  tasksInspectOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -819,6 +825,10 @@ export function buildBureauHandlerHost(
       mayAccess: mayAccessOwnedResource,
     },
     tasks: bureau.tasks,
+    inspection: {
+      liveness: (runId) => bureau.getRun(runId)?.liveness,
+      children: (runId) => bureau.children.list(runId),
+    },
     taskHistory: bureau,
     contexts: bureau,
     agentModels: {
