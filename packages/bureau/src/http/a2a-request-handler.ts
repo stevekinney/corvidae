@@ -1452,6 +1452,13 @@ export function createBureauA2ARequestHandler(
     ): Promise<TaskPushNotificationConfig> {
       const { projector } = requirePush();
       const view = await ownTask(params.taskId, ownerOf(context));
+      // A withdrawn agent's tombstone keeps its tasks readable and their webhooks flowing, but
+      // starts no new delivery for a task that has already ended (COR-1669).
+      if (options.acceptsNewTasks?.() === false && isTerminal(view.status)) {
+        throw new UnsupportedOperationError(
+          `Agent '${agentName}' was withdrawn, and task '${view.id}' has ended.`,
+        );
+      }
       // Read before the configuration exists, so an event that lands meanwhile reaches it.
       const cursor = (await projector.tailOf(view.id)) ?? '-1';
       return installPush(view.id, params, context, cursor);
