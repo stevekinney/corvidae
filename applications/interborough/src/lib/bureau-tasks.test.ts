@@ -7,6 +7,7 @@ import {
   cancelTask,
   followTaskEvents,
   getTask,
+  isRefusedPageToken,
   isTerminalState,
   listTasks,
   respondToTask,
@@ -272,5 +273,28 @@ describe('following a task', () => {
     );
     expect(opened).toEqual(['open']);
     expect(elements.map((element) => element.cursor)).toEqual(['16']);
+  });
+});
+
+describe('a refused page token', () => {
+  const refusal = (weftCode: string, issues: unknown) =>
+    new HttpClientError(400, 'The request was refused.', {
+      data: { weftCode, issues },
+    });
+
+  test('is the Bureau saying the listing expired or changed, so the list starts again from its first page', () => {
+    expect(isRefusedPageToken(refusal('InvalidParams', [{ code: 'page-token-expired' }]))).toBe(
+      true,
+    );
+    expect(
+      isRefusedPageToken(refusal('InvalidParams', [{ code: 'page-token-filter-mismatch' }])),
+    ).toBe(true);
+  });
+
+  test('is not any other refusal, or any other kind of error', () => {
+    expect(isRefusedPageToken(refusal('InvalidParams', [{ code: 'too-small' }]))).toBe(false);
+    expect(isRefusedPageToken(refusal('InvalidParams', 'page-token-expired'))).toBe(false);
+    expect(isRefusedPageToken(refusal('NotFound', [{ code: 'page-token-expired' }]))).toBe(false);
+    expect(isRefusedPageToken(new Error('page-token-expired'))).toBe(false);
   });
 });
