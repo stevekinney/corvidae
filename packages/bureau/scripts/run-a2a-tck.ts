@@ -21,16 +21,13 @@ const URL_PATTERN = /^A2A_TCK_SUT_URL=(\S+)$/m;
  * is a capability Bureau does not serve, so it is a Bureau limit and not a TCK defect: the owner
  * rules on each entry before this list is final.
  *
- * - The file, file-URL, and data artifact tests need an agent that answers with a non-text
- *   artifact. A Bureau agent answers in `text/plain` (the card's `defaultOutputModes`), and
- *   COR-788 projects other content.
  * - The message-response test needs an agent that answers a send with a bare `Message`. Every
  *   Bureau send creates a task, whose history holds the reply.
+ *
+ * The file, file-URL, and data artifact tests ran here until COR-788: a Bureau agent answers with
+ * generated media as a file part on the asset route, or a small JSON document as a data part.
  */
 export const BUREAU_TCK_EXCLUSIONS = [
-  'tests/compatibility/core_operations/test_artifacts.py::TestFileArtifact::test_task_has_file_artifact[jsonrpc]',
-  'tests/compatibility/core_operations/test_artifacts.py::TestFileUrlArtifact::test_task_has_file_url_artifact[jsonrpc]',
-  'tests/compatibility/core_operations/test_artifacts.py::TestDataArtifact::test_task_has_data_artifact[jsonrpc]',
   'tests/compatibility/core_operations/test_artifacts.py::TestMessageResponse::test_returns_message_with_text_part[jsonrpc]',
 ] as const;
 

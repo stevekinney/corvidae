@@ -7,6 +7,7 @@
 import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 
@@ -105,6 +106,18 @@ describe('the card', () => {
     expect(body.capabilities.streaming).toBe(true);
     expect(body.capabilities.extendedAgentCard).toBeFalsy();
     expect(body.capabilities.extensions.every((entry: Json) => !entry.required)).toBe(true);
+  });
+});
+
+describe('the sweep interval', () => {
+  it('accepts a positive integer and refuses anything else at construction', async () => {
+    await fixtureOf(answering('done'), { sweepIntervalMs: 60_000 });
+    for (const bad of [0, -1, 1.5, Number.NaN, 2_147_483_648]) {
+      const failure = await throwingRejectionOf(
+        openPushBureau(answering('done'), { sweepIntervalMs: bad }),
+      );
+      expect(failure).toThrow(/sweepIntervalMs/);
+    }
   });
 });
 
@@ -470,6 +483,35 @@ describe('the push projection of a task a configuration outlives', () => {
       // neither.
       expect(live.includes(id)).toBe((await checkpoints.read(taskId, id)) !== undefined);
     }
+  });
+
+  it('leaves no settled delivery of a deleted configuration, and refuses the id again', async () => {
+    const fixture = await fixtureOf(answering('done'));
+    fixture.startDelivery();
+    const sent = await call(fixture, 'SendMessage', {
+      message: message('go'),
+      configuration: {
+        returnImmediately: true,
+        taskPushNotificationConfig: webhook(fixture, { id: 'hook-1', token: 'token-a' }),
+      },
+    });
+    const taskId = sent.result.task.id;
+    await eventually(() => fixture.receiver.kinds().includes('status:TASK_STATE_COMPLETED'));
+    await eventually(async () => {
+      const settled = await fixture.outbox.list({ states: ['acknowledged'] });
+      return settled.length > 0;
+    });
+
+    await call(fixture, 'DeleteTaskPushNotificationConfig', { taskId, id: 'hook-1' });
+    // The settled records carry the task's payload and the spent idempotency keys.
+    expect(await fixture.outbox.list()).toEqual([]);
+
+    // A deleted id stays a tombstone on its task: it is refused, never reused.
+    const recreated = await call(fixture, 'CreateTaskPushNotificationConfig', {
+      taskId,
+      ...webhook(fixture, { id: 'hook-1', token: 'token-b' }),
+    });
+    expect(recreated.error).toBeDefined();
   });
 
   it('finishes an expired task whose install failed, and refuses another payload under its id', async () => {
