@@ -451,4 +451,59 @@ describe('the push projection of a task a configuration outlives', () => {
 
     expect(await checkpoints.read(taskId, 'hook-1')).toBeUndefined();
   });
+
+  it('never leaves a configuration without its checkpoint when a create and a delete of one id race', async () => {
+    const fixture = await fixtureOf(answering('done'));
+    const taskId = await startTask(fixture);
+    const checkpoints = createA2APushCheckpoints(
+      fixture.opened.bureau.kv as NonNullable<typeof fixture.opened.bureau.kv>,
+    );
+
+    for (const id of ['race-1', 'race-2', 'race-3']) {
+      await Promise.all([
+        call(fixture, 'CreateTaskPushNotificationConfig', { taskId, ...webhook(fixture, { id }) }),
+        call(fixture, 'DeleteTaskPushNotificationConfig', { taskId, id }),
+      ]);
+      const listed = await call(fixture, 'ListTaskPushNotificationConfigs', { taskId });
+      const live = listed.result.configs.map((config: Json) => config.id);
+      // The two orders both leave a consistent pair: the configuration and its checkpoint, or
+      // neither.
+      expect(live.includes(id)).toBe((await checkpoints.read(taskId, id)) !== undefined);
+    }
+  });
+
+  it('finishes an expired task whose install failed, and refuses another payload under its id', async () => {
+    const fixture = await fixtureOf(answering('done'));
+    const store = fixture.sender.pushStore as { create: (...input: never[]) => Promise<unknown> };
+    const create = store.create.bind(store);
+    store.create = async () => {
+      store.create = create;
+      throw new Error('the push store is down');
+    };
+    const send = (text: string) =>
+      call(fixture, 'SendMessage', {
+        message: {
+          ...message(text),
+          messageId: 'expired-1',
+          metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } },
+        },
+        configuration: {
+          returnImmediately: true,
+          taskPushNotificationConfig: webhook(fixture, { id: 'hook-1' }),
+        },
+      });
+
+    const failed = await send('too late');
+    expect(failed.error).toBeDefined();
+
+    // The task exists, so the claim stays: another payload under the same id is refused.
+    const rebound = await send('something else');
+    expect(rebound.error).toBeDefined();
+    const retried = await send('too late');
+    expect(retried.error).toBeUndefined();
+    const listed = await call(fixture, 'ListTaskPushNotificationConfigs', {
+      taskId: retried.result.task.id,
+    });
+    expect(listed.result.configs.map((config: Json) => config.id)).toEqual(['hook-1']);
+  });
 });
