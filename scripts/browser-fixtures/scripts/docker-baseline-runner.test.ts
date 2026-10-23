@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,6 +28,7 @@ import {
   dockerArchitectureProblem,
   dockerBuildArguments,
   dockerRunArguments,
+  extractCommitArchive,
   normalizeDockerArchitecture,
   parseWrapperArguments,
   readHostLoad,
@@ -34,6 +36,28 @@ import {
   terminateContainer,
   type DockerRunner,
 } from './docker-baseline-runner.ts';
+
+// `git archive` and `tar` are real processes, so these scenarios also run once at module scope.
+const archivedPath = 'scripts/browser-fixtures/visual-baselines.md';
+const extractCommitArchiveOutcome = await outcomeOf(async () => {
+  const root = mkdtempSync(join(tmpdir(), 'extract-commit-archive-'));
+  try {
+    const destination = join(root, 'committed');
+    mkdirSync(destination);
+    const tarPath = join(root, 'committed.tar');
+    extractCommitArchive('HEAD', tarPath, [archivedPath], destination);
+    expect(existsSync(join(destination, archivedPath))).toBe(true);
+    expect(existsSync(tarPath)).toBe(false);
+
+    const failedTarPath = join(root, 'failed.tar');
+    expect(() =>
+      extractCommitArchive('HEAD', failedTarPath, [archivedPath], join(root, 'missing')),
+    ).toThrow(/Extracting/);
+    expect(existsSync(failedTarPath)).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 // The stub docker binary is a real shell process, so this scenario runs once at module scope,
 // off the per-test clock (COR-1507), and its test rethrows what it recorded.
@@ -238,6 +262,13 @@ describe('kill on signal', () => {
         signals as unknown as Pick<NodeJS.Process, 'once' | 'off'>,
       ),
     ).toBe(3);
+  });
+});
+
+describe('extractCommitArchive', () => {
+  // A kept run directory once carried this archive after the run, ~33 MB each.
+  it('extracts the commit and deletes the archive, whether or not extraction succeeds', () => {
+    rethrow(extractCommitArchiveOutcome);
   });
 });
 

@@ -8,6 +8,7 @@
  * directory the container copies its results into. See
  * `scripts/browser-fixtures/visual-baselines.md`.
  */
+import { rmSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { constants, cpus, loadavg, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -273,6 +274,25 @@ export function extractArchive(tarPath: string, destination: string): void {
   const result = Bun.spawnSync(['tar', '-x', '-f', tarPath, '-C', destination]);
   if (result.exitCode !== 0) {
     throw new Error(`Extracting ${tarPath} failed: ${result.stderr.toString().trim()}`);
+  }
+}
+
+/**
+ * Extract `git archive <sha>` (limited to paths) into `destination` by way of `tarPath`, then
+ * delete the tar file whether or not extraction succeeded. The run directory that holds it is kept
+ * for review, and the archive is only an input.
+ */
+export function extractCommitArchive(
+  sha: string,
+  tarPath: string,
+  paths: readonly string[],
+  destination: string,
+): void {
+  try {
+    archiveCommit(sha, tarPath, paths);
+    extractArchive(tarPath, destination);
+  } finally {
+    rmSync(tarPath, { force: true });
   }
 }
 
