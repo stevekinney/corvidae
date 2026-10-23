@@ -59,6 +59,7 @@ import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import type { AnswerRow } from './ag-ui-messages.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { eventsResponse } from './ag-ui-sink.ts';
+import type { AgUiA2uiDeclaration } from './ag-ui-surface-source.ts';
 import {
   interruptibleReviews,
   openRunStream,
@@ -124,6 +125,8 @@ export type ResumeRequest = {
   readonly entries: ReadonlyArray<ResumeEntry>;
   readonly principal: Principal;
   readonly owner: string;
+  /** Set when the client opted into A2UI surface events (COR-837). */
+  readonly a2ui?: AgUiA2uiDeclaration | undefined;
   /**
    * The owner of the thread's session when the caller may read the thread, by the predicate the
    * attach route uses (its owner, or `bureau.tasks:read`), or `undefined` when it may not. A
@@ -241,6 +244,7 @@ export function createResume(context: ResumeContext) {
       ...(fresh?.prelude === undefined ? {} : { preludeEvents: fresh.prelude }),
       ...(fresh?.answerRows === undefined ? {} : { answerRows: fresh.answerRows }),
       answered: request.entries.map((entry) => entry.interruptId),
+      ...(request.a2ui === undefined ? {} : { a2ui: request.a2ui }),
     });
   }
 

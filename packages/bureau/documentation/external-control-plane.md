@@ -320,7 +320,7 @@ Bureau publishes these A2A extensions. Each URI names a specification document, 
 
 `…` is `https://github.com/stevekinney/weft/blob/main/packages/weft/documentation`.
 
-Bureau also advertises one third-party extension, A2UI's A2A extension at the URI the pinned A2UI release (`v0.9.1`) defines, as optional. It carries interactive surfaces to A2A clients that render them (experimental, pinned to A2UI v0.9.1); its card `params` are `supportedCatalogIds` (the basic catalog and Cinder's), `acceptsInlineCatalogs: false`, and `experimental: true`. Bureau's own rules below apply to it as well.
+Bureau also advertises one third-party extension, A2UI's A2A extension at the URI the pinned A2UI release (`v0.9.1`) defines, as optional. It carries interactive surfaces to A2A clients that render them (experimental, pinned to A2UI v0.9.1); its card `params` are `supportedCatalogIds` (the basic catalog and Cinder's), `acceptsInlineCatalogs: false`, and `experimental: true`. Bureau's own rules below apply to it as well. A2A reads (`GetTask`, `ListTasks`, `SubscribeToTask`) declare no client catalogs and so offer the basic catalog only; a Cinder surface reads as its text summary there. The AG-UI mount carries the same surfaces as `ACTIVITY_SNAPSHOT`s for a client that opts in (see [interactive surfaces](./interactive-surface.md#a2ui-over-ag-ui)).
 
 The rules for every extension:
 

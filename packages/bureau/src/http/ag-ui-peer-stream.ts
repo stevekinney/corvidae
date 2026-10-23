@@ -108,6 +108,8 @@ export type PeerStreamContext = {
   readonly markOpened: () => void;
   /** Runs `cleanup` when the stream ends, however it ends. */
   readonly onDispose: (cleanup: () => void) => void;
+  /** The surfaces that changed since the last call, as `ACTIVITY_SNAPSHOT`s (COR-837). */
+  readonly surfaceEvents: () => Promise<Event[]>;
   readonly interruptNow: (interrupts: Interrupt[]) => void;
   readonly fail: (code: AgUiErrorCode, message: string) => void;
   /** Ends the stream with `last`, its durable cursor when it has one. */
@@ -294,6 +296,7 @@ export async function openPeerStream(
       },
     }),
   ]);
+  context.writeEvents(await context.surfaceEvents());
   context.writeEvents(context.preludeEvents());
   if (context.isEnded()) return;
   context.markOpened();
@@ -470,6 +473,8 @@ async function endParked(
 ): Promise<void> {
   const durable = await context.bureau.getDurableRun(context.nativeRunId).catch(() => undefined);
   if (context.isEnded()) return;
+  context.writeEvents(await context.surfaceEvents());
+  if (context.isEnded()) return;
   context.writeEvents([
     stamp(
       {
@@ -610,6 +615,7 @@ async function finishPeer(
     );
     return;
   }
+  context.writeEvents(await context.surfaceEvents());
   context.writeEvents([
     stamp(
       {
