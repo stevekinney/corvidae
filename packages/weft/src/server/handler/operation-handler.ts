@@ -34,6 +34,7 @@ import {
   resolveMounts,
   type OperationHandlerMount,
   type OperationHandlerMountContext,
+  type OperationHandlerMountDispatchOptions,
 } from './operation-handler-mounts.ts';
 import {
   DEFAULT_MAX_STREAM_DURATION_MS,
@@ -163,9 +164,11 @@ function normalizedPathname(request: Request): string {
  * AsyncAPI documents generated from the registry alone), and finally CORS
  * decoration of the response.
  *
- * It does not serve `/mcp`, `/.well-known/*`, `/v1/metrics`, the workflow
- * WebSocket streams, or any remote-worker route; those need an `Engine` and
- * stay behind `serve()`. Rate limiting stays there too, since its key falls back
+ * It does not serve the engine's `/mcp` (its workflow tools and resources),
+ * `/.well-known/*`, `/v1/metrics`, the workflow WebSocket streams, or any
+ * remote-worker route; those need an `Engine` and stay behind `serve()`. A
+ * catalog's own `mcpExposable` operations can be served as MCP tools by
+ * mounting `createOperationMcpMount` from `@lostgradient/weft`. Rate limiting stays there too, since its key falls back
  * to the client address a fetch handler cannot see; put a limiter in front.
  *
  * A factory rather than a per-request function, so registry construction, CORS
@@ -222,7 +225,7 @@ export function createOperationHandler<Host>(
 
   const handle = async (request: Request): Promise<Response> => {
     const pathname = normalizedPathname(request);
-    const isPublic = publicPaths.has(pathname) || mounts.publicPaths.has(pathname);
+    const isPublic = publicPaths.has(pathname) || mounts.isPublic(pathname);
     let authContext: AuthContext | undefined;
     if (authenticate !== undefined && !isPublic) {
       const outcome = await authenticate(request);
@@ -279,11 +282,15 @@ function mountContext(
   host: unknown,
   principal: Principal,
 ): OperationHandlerMountContext {
-  const context = { principal, host, transport: 'http-rest', registry } as const;
+  const contextFor = (options: OperationHandlerMountDispatchOptions | undefined) =>
+    ({ principal, host, transport: options?.transport ?? 'http-rest', registry }) as const;
   return {
     principal,
-    dispatch: (operationName, input) => executeOperation(operationName, input, context),
-    subscribe: (operationName, input) => executeSubscription(operationName, input, context),
+    operations: registry.list(),
+    dispatch: (operationName, input, options) =>
+      executeOperation(operationName, input, contextFor(options)),
+    subscribe: (operationName, input, options) =>
+      executeSubscription(operationName, input, contextFor(options)),
   };
 }
 

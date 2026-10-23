@@ -342,7 +342,7 @@ export const reviewsListOperation = defineOperation<
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List the reviews that are waiting for a decision',
   description:
     'Returns the pending reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. A resolved review is reached by id with `bureau.reviews.get`.',
@@ -375,7 +375,7 @@ export const reviewsGetOperation = defineOperation<
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one review by id',
   description:
     'Returns a review of one of the caller’s own runs, pending or resolved where the Bureau persists resolutions; a caller holding `bureau.reviews:read` reads any owner’s. Another owner’s review answers as a missing id does.',
@@ -446,7 +446,7 @@ export const reviewsResolveOperation = defineOperation<
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.resolve',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:
     'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. A `Conflict` whose `reason` begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost.',

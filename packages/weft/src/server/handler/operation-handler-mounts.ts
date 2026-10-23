@@ -1,5 +1,6 @@
 import type {
   DispatchResult,
+  ErasedOperation,
   executeSubscription,
   OperationRegistry,
 } from '../operation-catalog.ts';
@@ -7,23 +8,58 @@ import type { Principal } from '../principal.ts';
 import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX } from '../route-model.ts';
 
 /**
+ * One registered operation as a mounted adapter sees it: what it needs to
+ * describe the operation in its own protocol (an MCP bridge lists tools from
+ * these), and nothing that would let it run the operation outside the pipeline.
+ */
+export type OperationHandlerMountOperation = Pick<
+  ErasedOperation,
+  | 'name'
+  | 'summary'
+  | 'description'
+  | 'mcpExposable'
+  | 'mcpTool'
+  | 'destructive'
+  | 'inputSchema'
+  | 'outputSchema'
+  | 'unknownKeyPolicy'
+  | 'kind'
+>;
+
+/**
+ * Which transport a mounted adapter's dispatch is attributed to. `http-rest` is the default;
+ * `mcp` admits exactly the operations the catalog marks `mcpExposable`.
+ */
+export type OperationHandlerMountDispatchOptions = {
+  readonly transport?: 'http-rest' | 'mcp';
+};
+
+/**
  * What an adapter mounted on the operation handler receives with each request.
  *
  * An adapter translates its protocol and the catalog executes: `dispatch` and
  * `subscribe` run the full catalog pipeline (transport, access policy,
  * parsing, `authorize`, output validation) as the resolved `principal`, over
- * the `http-rest` transport. An adapter that bypassed them and reached into the
- * host directly would also bypass access policy.
+ * the `http-rest` transport unless the adapter names `mcp`. An adapter that
+ * bypassed them and reached into the host directly would also bypass access
+ * policy.
  */
 export type OperationHandlerMountContext = {
   /** The caller `authenticate` resolved, or the anonymous principal on a public path. */
   readonly principal: Principal;
+  /** Every registered operation, in registration order. */
+  readonly operations: ReadonlyArray<OperationHandlerMountOperation>;
   /** Runs one unary catalog operation through the full pipeline, as this principal. */
-  readonly dispatch: (operationName: string, input: unknown) => Promise<DispatchResult<unknown>>;
+  readonly dispatch: (
+    operationName: string,
+    input: unknown,
+    options?: OperationHandlerMountDispatchOptions,
+  ) => Promise<DispatchResult<unknown>>;
   /** Runs one `subscription` catalog operation through the full pipeline, as this principal. */
   readonly subscribe: (
     operationName: string,
     input: unknown,
+    options?: OperationHandlerMountDispatchOptions,
   ) => ReturnType<typeof executeSubscription>;
 };
 
@@ -42,6 +78,13 @@ export type OperationHandlerMount = {
    * `/.well-known/agent-card.json`. The mount also handles them.
    */
   readonly publicPaths?: ReadonlyArray<string>;
+  /**
+   * Decides, for a path under `pathPrefix`, whether it skips `authenticate`: for routes a fixed
+   * list cannot name, such as an Agent Card at `<prefix>/<agent>/.well-known/agent-card.json`
+   * for an agent published after construction. It is consulted only for paths the prefix covers,
+   * so a mount cannot make another route public.
+   */
+  readonly isPublicPath?: (pathname: string) => boolean;
   readonly fetch: (request: Request, context: OperationHandlerMountContext) => Promise<Response>;
 };
 
@@ -87,6 +130,8 @@ export type ResolvedMounts = {
   readonly match: (pathname: string) => OperationHandlerMount | undefined;
   /** Every mount public path, normalized. */
   readonly publicPaths: ReadonlySet<string>;
+  /** Whether `pathname` skips authentication: a public path, or one its mount's predicate passes. */
+  readonly isPublic: (pathname: string) => boolean;
 };
 
 /**
@@ -172,6 +217,11 @@ export function resolveMounts(mounts: ReadonlyArray<OperationHandlerMount>): Res
   const publicPaths = new Set(normalized.flatMap((entry) => entry.publicPaths));
   return {
     publicPaths,
+    isPublic(pathname) {
+      if (publicPaths.has(pathname)) return true;
+      const owner = normalized.find((entry) => isAtOrUnder(pathname, entry.pathPrefix));
+      return owner?.mount.isPublicPath?.(pathname) === true;
+    },
     match(pathname) {
       for (const entry of normalized) {
         if (isAtOrUnder(pathname, entry.pathPrefix) || entry.publicPaths.includes(pathname)) {

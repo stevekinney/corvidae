@@ -195,9 +195,11 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 543,
       functionsHit: 532,
     },
+    // COR-1311 redrew the MCP session diagram with 5 fewer covered lines; the 35 missed lines are
+    // unchanged, so the floor is re-recorded at the measured counts.
     'src/routes/system': {
-      linesFound: 10532,
-      linesHit: 10497,
+      linesFound: 10527,
+      linesHit: 10492,
       functionsFound: 2106,
       functionsHit: 2076,
     },

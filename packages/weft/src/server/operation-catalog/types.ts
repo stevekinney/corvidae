@@ -109,11 +109,12 @@ export type OperationInvocationResult<Output, Element = unknown> =
   Output | StreamOperationInvocation<Element> | SubscriptionOperationInvocation<Element, Output>;
 
 /**
- * Metadata that connects an operation-catalog entry to a live MCP tool.
+ * Metadata that connects an operation-catalog entry to a live, engine-served
+ * MCP workflow tool. The exact MCP tool name is resolved from the live engine
+ * registry during discovery because `tools/list` owns collision handling.
  *
- * v1 only supports workflow-backed MCP tools. The exact MCP tool name is
- * resolved from the live engine registry during discovery because `tools/list`
- * owns collision handling.
+ * An `mcpExposable` operation without it is served as an MCP tool of its own
+ * name by dispatch through the catalog pipeline, by `createOperationMcpMount`.
  */
 export type McpToolMetadata = {
   readonly workflowType: string;

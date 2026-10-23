@@ -301,6 +301,7 @@
     "packages/bureau": {
       "name": "@lostgradient/bureau",
       "dependencies": {
+        "@a2a-js/sdk": "catalog:",
         "@ag-ui/core": "catalog:",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
@@ -317,6 +318,7 @@
         "@ag-ui/client": "catalog:",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "@types/js-yaml": "catalog:",
         "ajv": "catalog:",

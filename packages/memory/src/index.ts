@@ -344,6 +344,7 @@ export { createMemoryForgetTool, createMemoryRecallTool, createMemoryStoreTool }
 
 // Immutable evidence, versioned projections, and the indexes derived from them.
 export { consolidateProjections } from './consolidate-projections';
+// COR-770 — validated procedural memory over evidence and projections.
 export { createInMemoryEvidenceProjectionStorage } from './create-in-memory-evidence-projection-storage';
 export { createWeftEvidenceProjectionStorage } from './create-weft-evidence-projection-storage';
 export {
@@ -385,6 +386,42 @@ export {
   encodeEvidenceRecord,
   evidenceRecordSchema,
 } from './evidence-schema';
+export { ProcedureCandidateError, extractProcedureCandidate } from './procedure-candidate';
+export type {
+  ExtractProcedureCandidateOptions,
+  ProcedureCandidate,
+  ProcedureCandidateErrorCode,
+  ProcedureDraft,
+} from './procedure-candidate';
+export {
+  ProcedureLifecycleError,
+  recordProcedureOutcome,
+  retireProcedure,
+} from './procedure-lifecycle';
+export type {
+  ProcedureOutcome,
+  ProcedureOutcomeRecord,
+  RecordProcedureOutcomeBase,
+  RecordProcedureOutcomeOptions,
+  RetireProcedureOptions,
+} from './procedure-lifecycle';
+export { promoteProcedure } from './procedure-promotion';
+export type {
+  ProcedurePromotion,
+  ProcedureReviewDecision,
+  ProcedureReviewRequest,
+  ProcedureValidationRun,
+  ProcedureValidator,
+  PromoteProcedureOptions,
+} from './procedure-promotion';
+export { retrieveProcedures } from './procedure-retrieval';
+export type {
+  ProcedureEnvironmentEntry,
+  ProcedureExclusionReason,
+  ProcedureMatch,
+  ProcedureRetrieval,
+  RetrieveProceduresOptions,
+} from './procedure-retrieval';
 export { projectAssetChunks } from './project-asset-chunks';
 
 // Atomic, verified, observable memory transitions over evidence and projections.

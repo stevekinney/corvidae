@@ -33,7 +33,7 @@
  * @module tasks-respond-operation
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import {
@@ -60,7 +60,8 @@ export const TASKS_RESPOND_OPERATION_VERSION = 'bureau.tasks.respond.v1';
 /** The key prefix of this command's ledger, disjoint from run creation's. */
 export const TASKS_RESPOND_LEDGER_KEY_PREFIX = 'command-ledger:tasks-respond:v1';
 
-const tasksRespondInput = z
+/** The command's input: also how an A2A continuation's answer is validated. */
+export const tasksRespondInput = z
   .object({
     taskId: z.string().min(1),
     /** The caller's idempotency key for this command. */
@@ -195,13 +196,29 @@ function selectWait(
   return only;
 }
 
+/** The input {@link respondToTask} takes, as {@link tasksRespondInput} parses it. */
+export type TasksRespondInput = z.infer<typeof tasksRespondInput>;
+
+/**
+ * Answers one open wait of a task as `principal`: the body of `bureau.tasks.respond`, which an
+ * A2A continuation of an `INPUT_REQUIRED` task reaches too. A refusal is thrown as the
+ * operation's fault.
+ */
+export async function respondToTask(
+  host: BureauTasksRespondOperationHost,
+  principal: Principal,
+  input: TasksRespondInput,
+): Promise<TasksRespondResult> {
+  return respond({ input, host, principal });
+}
+
 export const tasksRespondOperation = defineOperation<
   typeof tasksRespondInput,
   typeof tasksRespondOutput,
   BureauTasksRespondOperationHost
 >({
   name: 'bureau.tasks.respond',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Answer a task’s open human-input or approval wait',
   description:
     'Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run).',
@@ -214,187 +231,193 @@ export const tasksRespondOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ input, host, principal }) => {
-    const answerText =
-      input.answer === undefined
-        ? undefined
-        : Array.isArray(input.answer)
-          ? input.answer.join('\n')
-          : input.answer;
-    const decision = input.decision ?? 'approve';
-    const digest = digestCommandPayload({
-      answer: answerText,
-      decision: input.decision,
-      reason: input.reason,
-      signalName: input.signalName,
-      callId: input.callId,
-    });
-    const caller = ownerOfPrincipal(principal);
-    const identityOf = (actor: string): CommandLedgerIdentity => ({
-      callerId: actor,
-      target: input.taskId,
-      requestId: input.messageId,
-      operationVersion: TASKS_RESPOND_OPERATION_VERSION,
-    });
-    // The caller's own receipt first: a retry of a command that was applied is owed its receipt
-    // while the ledger retains it, whether or not the task still has a record.
-    if (caller !== undefined) {
-      const located = await host.respondLedger.locate(identityOf(caller));
-      if (
-        located.state === 'retained' &&
-        located.entry.state === 'completed' &&
-        located.entry.payloadDigest === digest
-      ) {
-        return located.entry.result;
-      }
-    }
-    if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
-      throw resourceNotFound('task', input.taskId);
-    }
-    const task = await host.tasks.get(input.taskId);
-    if (task === undefined) throw resourceNotFound('task', input.taskId);
-    const actor = caller;
-    if (actor === undefined) {
-      throw {
-        code: 'Forbidden',
-        message: 'Answering a task requires an API-key or local caller',
-        data: { reason: 'unsupported credential' },
-      } satisfies OperationFault;
-    }
-    const isOwner = task.owner === actor;
-    const identity = identityOf(actor);
-
-    const flightKey = `${actor}\u0000${input.taskId}\u0000${input.messageId}\u0000${digest}`;
-    const running = host.respondInFlight.get(flightKey);
-    if (running !== undefined) return running;
-
-    const respond = async (): Promise<TasksRespondResult> => {
-      // The wait is chosen first, so a command that addresses nothing claims nothing.
-      // A retry of a command that has since been answered finds no open wait, so the
-      // ledger is consulted before that is held against it.
-      let wait: OpenWait | undefined;
-      let notAwaiting: unknown;
-      try {
-        wait = selectWait(task, input, isOwner);
-      } catch (error) {
-        notAwaiting = error;
-      }
-      // The round the command reads the approval at, recorded with its claim.
-      let readRound: number | undefined;
-      if (wait?.kind === 'tool-approval') {
-        const read = await host.reviews.getReview(wait.reviewId).catch(() => undefined);
-        readRound = read?.kind === 'tool-approval' ? read.round : undefined;
-      }
-      let claimed;
-      try {
-        claimed = await host.respondLedger.claim(identity, digest, {
-          reviewId: wait?.reviewId ?? '',
-          ...(readRound === undefined ? {} : { round: readRound }),
-        });
-      } catch (error) {
-        if (error instanceof BureauLedgerConflictError) {
-          throw conflict(
-            `Message "${input.messageId}" was already used for a different command on this task`,
-          );
-        }
-        throw error;
-      }
-      if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
-        return claimed.entry.result;
-      }
-      const entry = claimed.entry as Parameters<TasksRespondLedger['release']>[0];
-      // An earlier attempt that was cut short names the review it meant to resolve.
-      const reviewId =
-        claimed.outcome === 'existing' && entry.claim.reviewId !== ''
-          ? entry.claim.reviewId
-          : (wait?.reviewId ?? '');
-      // Only a claim this invocation made is this invocation's to release. A pending claim
-      // another attempt made belongs to it: that attempt may be resolving the review right
-      // now, possibly in another process, and deleting its claim would lose its receipt.
-      const ownClaim = claimed.outcome === 'claimed';
-      const refuse = async (fault: unknown): Promise<never> => {
-        // The Bureau refused it before changing anything, so a retry may claim afresh.
-        if (ownClaim) await host.respondLedger.release(entry);
-        throw fault;
-      };
-      // Nothing was addressed and nothing was applied: leave no claim of ours behind.
-      if (reviewId === '') return refuse(notAwaiting ?? conflict('The task is not awaiting input'));
-      let result: TasksRespondResult;
-      try {
-        const review = await host.reviews.getReview(reviewId);
-        if (review === undefined) return await refuse(resourceNotFound('task', input.taskId));
-        const claimedRound = entry.claim.round;
-        const currentRound = review.kind === 'tool-approval' ? review.round : undefined;
-        if (
-          claimedRound !== undefined &&
-          currentRound !== undefined &&
-          currentRound > claimedRound
-        ) {
-          if (ownClaim) {
-            // Gated again between this command's read and its claim: its decision was about
-            // the round before, and nothing has been applied.
-            return await refuse(conflict('The approval was gated again; read it and decide again'));
-          }
-          // An earlier attempt of this command was cut short after the approval was gated
-          // again, so what it decided was the earlier round, whose outcome was `superseded`.
-          // The replacement round is another decision; resolving it here would approve it.
-          result = {
-            taskId: input.taskId,
-            messageId: input.messageId,
-            reviewId,
-            kind: review.kind,
-            decision,
-            receipt: 'superseded',
-          };
-        } else if (
-          !ownClaim &&
-          review.status === EXPECTED_STATUS[decision] &&
-          review.resolvedBy === actor
-        ) {
-          // An earlier attempt of this same command (it left its claim pending) resolved it
-          // before it could record its receipt. A fresh claim has no such history: the review
-          // was decided by another command, whoever made it, and its text was never delivered.
-          result = {
-            taskId: input.taskId,
-            messageId: input.messageId,
-            reviewId,
-            kind: review.kind,
-            decision,
-            receipt: 'applied',
-          };
-        } else if (review.status !== 'pending') {
-          return await refuse(conflict('The review was already resolved'));
-        } else {
-          const resolved = await host.reviews.resolveReview({
-            id: reviewId,
-            decision,
-            principal: actor,
-            ...(answerText === undefined ? {} : { payload: answerText }),
-            ...(input.reason === undefined ? {} : { reason: input.reason }),
-          });
-          result = {
-            taskId: input.taskId,
-            messageId: input.messageId,
-            reviewId,
-            kind: resolved.kind,
-            decision: resolved.decision,
-            receipt: receiptFor(resolved.result),
-            ...(resolved.feedback === undefined ? {} : { feedback: resolved.feedback }),
-          };
-        }
-      } catch (error) {
-        if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-          return await refuse(resourceNotFound('task', input.taskId));
-        }
-        if (error instanceof BureauError) return await refuse(reviewFault(error, reviewId));
-        throw error;
-      }
-      const completed = await host.respondLedger.complete(entry, result);
-      return completed.result;
-    };
-
-    const flight = respond().finally(() => host.respondInFlight.delete(flightKey));
-    host.respondInFlight.set(flightKey, flight);
-    return flight;
-  },
+  invoke: (context) => respond(context),
 });
+
+async function respond({
+  input,
+  host,
+  principal,
+}: {
+  readonly input: TasksRespondInput;
+  readonly host: BureauTasksRespondOperationHost;
+  readonly principal: Principal;
+}): Promise<TasksRespondResult> {
+  const answerText =
+    input.answer === undefined
+      ? undefined
+      : Array.isArray(input.answer)
+        ? input.answer.join('\n')
+        : input.answer;
+  const decision = input.decision ?? 'approve';
+  const digest = digestCommandPayload({
+    answer: answerText,
+    decision: input.decision,
+    reason: input.reason,
+    signalName: input.signalName,
+    callId: input.callId,
+  });
+  const caller = ownerOfPrincipal(principal);
+  const identityOf = (actor: string): CommandLedgerIdentity => ({
+    callerId: actor,
+    target: input.taskId,
+    requestId: input.messageId,
+    operationVersion: TASKS_RESPOND_OPERATION_VERSION,
+  });
+  // The caller's own receipt first: a retry of a command that was applied is owed its receipt
+  // while the ledger retains it, whether or not the task still has a record.
+  if (caller !== undefined) {
+    const located = await host.respondLedger.locate(identityOf(caller));
+    if (
+      located.state === 'retained' &&
+      located.entry.state === 'completed' &&
+      located.entry.payloadDigest === digest
+    ) {
+      return located.entry.result;
+    }
+  }
+  if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
+    throw resourceNotFound('task', input.taskId);
+  }
+  const task = await host.tasks.get(input.taskId);
+  if (task === undefined) throw resourceNotFound('task', input.taskId);
+  const actor = caller;
+  if (actor === undefined) {
+    throw {
+      code: 'Forbidden',
+      message: 'Answering a task requires an API-key or local caller',
+      data: { reason: 'unsupported credential' },
+    } satisfies OperationFault;
+  }
+  const isOwner = task.owner === actor;
+  const identity = identityOf(actor);
+
+  const flightKey = `${actor}\u0000${input.taskId}\u0000${input.messageId}\u0000${digest}`;
+  const running = host.respondInFlight.get(flightKey);
+  if (running !== undefined) return running;
+
+  const answer = async (): Promise<TasksRespondResult> => {
+    // The wait is chosen first, so a command that addresses nothing claims nothing.
+    // A retry of a command that has since been answered finds no open wait, so the
+    // ledger is consulted before that is held against it.
+    let wait: OpenWait | undefined;
+    let notAwaiting: unknown;
+    try {
+      wait = selectWait(task, input, isOwner);
+    } catch (error) {
+      notAwaiting = error;
+    }
+    // The round the command reads the approval at, recorded with its claim.
+    let readRound: number | undefined;
+    if (wait?.kind === 'tool-approval') {
+      const read = await host.reviews.getReview(wait.reviewId).catch(() => undefined);
+      readRound = read?.kind === 'tool-approval' ? read.round : undefined;
+    }
+    let claimed;
+    try {
+      claimed = await host.respondLedger.claim(identity, digest, {
+        reviewId: wait?.reviewId ?? '',
+        ...(readRound === undefined ? {} : { round: readRound }),
+      });
+    } catch (error) {
+      if (error instanceof BureauLedgerConflictError) {
+        throw conflict(
+          `Message "${input.messageId}" was already used for a different command on this task`,
+        );
+      }
+      throw error;
+    }
+    if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
+      return claimed.entry.result;
+    }
+    const entry = claimed.entry as Parameters<TasksRespondLedger['release']>[0];
+    // An earlier attempt that was cut short names the review it meant to resolve.
+    const reviewId =
+      claimed.outcome === 'existing' && entry.claim.reviewId !== ''
+        ? entry.claim.reviewId
+        : (wait?.reviewId ?? '');
+    // Only a claim this invocation made is this invocation's to release. A pending claim
+    // another attempt made belongs to it: that attempt may be resolving the review right
+    // now, possibly in another process, and deleting its claim would lose its receipt.
+    const ownClaim = claimed.outcome === 'claimed';
+    const refuse = async (fault: unknown): Promise<never> => {
+      // The Bureau refused it before changing anything, so a retry may claim afresh.
+      if (ownClaim) await host.respondLedger.release(entry);
+      throw fault;
+    };
+    // Nothing was addressed and nothing was applied: leave no claim of ours behind.
+    if (reviewId === '') return refuse(notAwaiting ?? conflict('The task is not awaiting input'));
+    let result: TasksRespondResult;
+    try {
+      const review = await host.reviews.getReview(reviewId);
+      if (review === undefined) return await refuse(resourceNotFound('task', input.taskId));
+      const claimedRound = entry.claim.round;
+      const currentRound = review.kind === 'tool-approval' ? review.round : undefined;
+      if (claimedRound !== undefined && currentRound !== undefined && currentRound > claimedRound) {
+        if (ownClaim) {
+          // Gated again between this command's read and its claim: its decision was about
+          // the round before, and nothing has been applied.
+          return await refuse(conflict('The approval was gated again; read it and decide again'));
+        }
+        // An earlier attempt of this command was cut short after the approval was gated
+        // again, so what it decided was the earlier round, whose outcome was `superseded`.
+        // The replacement round is another decision; resolving it here would approve it.
+        result = {
+          taskId: input.taskId,
+          messageId: input.messageId,
+          reviewId,
+          kind: review.kind,
+          decision,
+          receipt: 'superseded',
+        };
+      } else if (
+        !ownClaim &&
+        review.status === EXPECTED_STATUS[decision] &&
+        review.resolvedBy === actor
+      ) {
+        // An earlier attempt of this same command (it left its claim pending) resolved it
+        // before it could record its receipt. A fresh claim has no such history: the review
+        // was decided by another command, whoever made it, and its text was never delivered.
+        result = {
+          taskId: input.taskId,
+          messageId: input.messageId,
+          reviewId,
+          kind: review.kind,
+          decision,
+          receipt: 'applied',
+        };
+      } else if (review.status !== 'pending') {
+        return await refuse(conflict('The review was already resolved'));
+      } else {
+        const resolved = await host.reviews.resolveReview({
+          id: reviewId,
+          decision,
+          principal: actor,
+          ...(answerText === undefined ? {} : { payload: answerText }),
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+        });
+        result = {
+          taskId: input.taskId,
+          messageId: input.messageId,
+          reviewId,
+          kind: resolved.kind,
+          decision: resolved.decision,
+          receipt: receiptFor(resolved.result),
+          ...(resolved.feedback === undefined ? {} : { feedback: resolved.feedback }),
+        };
+      }
+    } catch (error) {
+      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
+        return await refuse(resourceNotFound('task', input.taskId));
+      }
+      if (error instanceof BureauError) return await refuse(reviewFault(error, reviewId));
+      throw error;
+    }
+    const completed = await host.respondLedger.complete(entry, result);
+    return completed.result;
+  };
+
+  const flight = answer().finally(() => host.respondInFlight.delete(flightKey));
+  host.respondInFlight.set(flightKey, flight);
+  return flight;
+}
