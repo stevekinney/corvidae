@@ -409,7 +409,7 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
 
     try {
       const schedule = await harness.createRecurringSchedule({
-        agentName: 'worker',
+        agentName: 'default',
         input: 'fire',
         spec: '1h',
       });

@@ -45,7 +45,11 @@ import {
 import type { Outbox } from '@lostgradient/weft';
 
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
+import type {
+  A2APushCaller,
+  A2APushCheckpoint,
+  A2APushCheckpoints,
+} from './a2a-push-checkpoint.ts';
 import { isTerminal } from './a2a-task-projection.ts';
 import type { A2ATaskReader } from './a2a-task-reader.ts';
 import {
@@ -110,8 +114,23 @@ export type A2APushProjector = {
   watch(taskId: string): void;
   /** Enqueues what one configuration is owed, once. Resolves when it has caught up. */
   pump(taskId: string, configId: string): Promise<void>;
-  /** Resumes every checkpoint, as a restarted process does. */
+  /**
+   * Resumes every checkpoint, as a restarted process does. A task whose recovery fails does not
+   * stop the others; the first failure is thrown once every task has been tried.
+   */
   recover(): Promise<void>;
+  /**
+   * Recovers every task once and resolves, whatever failed: a task that failed keeps being
+   * retried in the background with backoff, and holds up no other task. An install waits for
+   * this, then takes its task's fence, which a retry of the same task's reconciliation also takes.
+   */
+  recoverUntilReady(): Promise<void>;
+  /**
+   * Runs `work` once at a time per task, in call order. Every mutation of a task's push
+   * configurations and checkpoints (an install, a delete, a removal's cleanup) runs through it, so
+   * a create and a delete of the same id never interleave.
+   */
+  fence<T>(taskId: string, work: () => Promise<T>): Promise<T>;
   /**
    * Deletes a removed task's configurations through the sender's deletion path, then their
    * checkpoints. A checkpoint whose configuration will not delete is kept for a later attempt.
@@ -165,6 +184,21 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       }
     })();
     flights.set(key, run);
+    return run;
+  }
+
+  const fences = new Map<string, Promise<unknown>>();
+  function fence<T>(taskId: string, work: () => Promise<T>): Promise<T> {
+    const previous = fences.get(taskId) ?? Promise.resolve();
+    const run = previous.then(work);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    fences.set(taskId, tail);
+    void tail.finally(() => {
+      if (fences.get(taskId) === tail) fences.delete(taskId);
+    });
     return run;
   }
 
@@ -238,7 +272,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     };
 
     if (retained.gap !== undefined) {
-      return snapshotPump({ taskId, configId, initial, retained, projector, send });
+      return snapshotPump({ taskId, configId, initial, retained, projector, send, checkpoint });
     }
     const floor = sequenceOf(checkpoint.cursor);
     let view: TaskView | undefined;
@@ -297,16 +331,24 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     readonly retained: RetainedEvents;
     readonly projector: ReturnType<typeof createFoldProjector>;
     readonly send: (response: StreamResponse, eventKey: string) => Promise<boolean>;
+    readonly checkpoint: A2APushCheckpoint;
   }): Promise<boolean> {
-    const { taskId, configId, initial, retained, projector } = input;
+    const { taskId, configId, initial, retained, projector, checkpoint } = input;
     let folded: Extract<TaskEvent, { kind: 'task.status' }> | undefined;
     for (const event of retained.events) {
       const element = projector.project(event);
       if (element?.kind === 'task.status') folded = element;
     }
     const cursor = retained.events.at(-1)?.cursor ?? retained.reached ?? '-1';
+    // A configuration is owed one terminal delivery: a gap after it was sent repairs nothing.
+    if (checkpoint.terminalSent !== undefined) {
+      await checkpoints.advance(taskId, configId, cursor);
+      return true;
+    }
+    // A settled registry state is authoritative: a task can settle without a durable event, so a
+    // retained status older than that must not roll the snapshot back to a live one.
     const view: TaskView =
-      folded === undefined
+      folded === undefined || isTerminal(initial.status)
         ? initial
         : {
             ...initial,
@@ -444,15 +486,17 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     watching.get(taskId)?.();
     let failed = false;
     try {
-      for (const checkpoint of await checkpoints.listForTask(taskId)) {
-        try {
-          await store.delete(taskId, contextOf(checkpoint.caller), checkpoint.configId);
-          await checkpoints.remove(taskId, checkpoint.configId);
-        } catch (error) {
-          failed = true;
-          report(error);
+      await fence(taskId, async () => {
+        for (const checkpoint of await checkpoints.listForTask(taskId)) {
+          try {
+            await store.delete(taskId, contextOf(checkpoint.caller), checkpoint.configId);
+            await checkpoints.remove(taskId, checkpoint.configId);
+          } catch (error) {
+            failed = true;
+            report(error);
+          }
         }
-      }
+      });
     } catch (error) {
       failed = true;
       report(error);
@@ -486,6 +530,85 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     }
   }
 
+  /** Recovers one task's checkpoints. Resolves the failure, or `undefined` on success. */
+  async function recoverTask(taskId: string): Promise<{ readonly error: unknown } | undefined> {
+    try {
+      if ((await bureau.tasks.get(taskId)) === undefined) await cleanup(taskId);
+      else {
+        // Under the task's fence, so an install of the same task cannot race its reconciliation.
+        await fence(taskId, () => reconcile(taskId));
+        watch(taskId);
+      }
+      return undefined;
+    } catch (error) {
+      return { error };
+    }
+  }
+
+  /** Tries every task; resolves the failures. A task's failure never stops the others. */
+  async function recoverTasks(taskIds: readonly string[]) {
+    const failures: Array<{ readonly taskId: string; readonly error: unknown }> = [];
+    for (const taskId of taskIds) {
+      const failure = await recoverTask(taskId);
+      if (failure !== undefined) failures.push({ taskId, error: failure.error });
+    }
+    return failures;
+  }
+
+  async function recover(): Promise<void> {
+    const failures = await recoverTasks(await checkpoints.listTaskIds());
+    if (failures[0] !== undefined) throw failures[0].error;
+  }
+
+  /** Keeps trying `taskIds` (or, when `undefined`, the whole listing) until all have recovered. */
+  function retryRecovery(taskIds: readonly string[] | undefined, attempt: number): void {
+    if (stopped()) return;
+    timers.setTimeout(
+      () => {
+        void (async () => {
+          if (stopped()) return;
+          try {
+            const failures = await recoverTasks(taskIds ?? (await checkpoints.listTaskIds()));
+            for (const failure of failures) report(failure.error);
+            if (failures.length > 0) {
+              retryRecovery(
+                failures.map((failure) => failure.taskId),
+                attempt + 1,
+              );
+            }
+          } catch (error) {
+            report(error);
+            retryRecovery(taskIds, attempt + 1);
+          }
+        })();
+      },
+      Math.min(retryMs * 2 ** attempt, MAXIMUM_CLEANUP_BACKOFF_MS),
+    );
+  }
+
+  /**
+   * One pass over every task, after which installs may proceed whatever its outcome: a task that
+   * failed keeps being retried in the background, and its failure holds up no other task.
+   */
+  async function recoverUntilReady(): Promise<void> {
+    let taskIds: string[];
+    try {
+      taskIds = await checkpoints.listTaskIds();
+    } catch (error) {
+      report(error);
+      retryRecovery(undefined, 0);
+      return;
+    }
+    const failures = await recoverTasks(taskIds);
+    for (const failure of failures) report(failure.error);
+    if (failures.length > 0) {
+      retryRecovery(
+        failures.map((failure) => failure.taskId),
+        0,
+      );
+    }
+  }
+
   return {
     contextOf,
     tailOf,
@@ -494,15 +617,11 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       await pumpGuarded(taskId, configId);
     },
 
-    async recover() {
-      for (const taskId of await checkpoints.listTaskIds()) {
-        if ((await bureau.tasks.get(taskId)) === undefined) await cleanup(taskId);
-        else {
-          await reconcile(taskId);
-          watch(taskId);
-        }
-      }
-    },
+    recover,
+
+    recoverUntilReady,
+
+    fence,
 
     cleanup,
   };
