@@ -8,6 +8,7 @@ import { createA2APeerClient } from './peer-client.ts';
 import { classifyPeerError } from './peer-errors.ts';
 import { foldArtifactUpdate, mapArtifact } from './peer-parts.ts';
 import { retryRequest } from './peer-retry.ts';
+import { PeerTaskTracker } from './peer-task-tracker.ts';
 
 const polling: ScriptedPeerOptions['card'] = (card) => {
   if (card.capabilities !== undefined) card.capabilities.streaming = false;
@@ -155,6 +156,41 @@ describe('peer client edges', () => {
     );
     expect(failure).toMatchObject({ code: 'unreachable' });
     expect(calls).toBe(2);
+  });
+});
+
+describe('a bare reply to a continuation', () => {
+  test('stops the task at once instead of waiting for a status change', () => {
+    const tracker = new PeerTaskTracker(
+      { agentName: 'p', agentVersion: '1', cardUrl: 'u' },
+      { text: '', taskId: 't' },
+      1000,
+      true,
+    );
+    tracker.apply({
+      payload: {
+        $case: 'message',
+        value: {
+          messageId: 'm',
+          contextId: 'c',
+          taskId: 't',
+          role: 2,
+          parts: [
+            {
+              content: { $case: 'text', value: 'done' },
+              metadata: undefined,
+              filename: '',
+              mediaType: '',
+            },
+          ],
+          metadata: undefined,
+          extensions: [],
+          referenceTaskIds: [],
+        },
+      },
+    });
+    expect(tracker.stopped()).toBe(true);
+    expect(tracker.outcome()).toMatchObject({ state: 'completed', message: 'done' });
   });
 });
 

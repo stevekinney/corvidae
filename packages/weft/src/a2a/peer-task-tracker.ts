@@ -197,6 +197,8 @@ export class PeerTaskTracker {
     const identity = ingestIdentity(message.taskId, message.contextId);
     this.snapshot = emptyTask(identity.taskId, identity.contextId);
     this.current = 'completed';
+    // A bare reply is the peer's whole answer, so it counts at once even to a continuation.
+    this.fresh = true;
     this.emit();
   }
 
