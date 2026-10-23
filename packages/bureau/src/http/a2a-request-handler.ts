@@ -930,7 +930,12 @@ export function createBureauA2ARequestHandler(
       continued === undefined
         ? undefined
         : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
-    if (continued !== undefined && request.expectedRevision !== undefined) {
+    // A pending claim's effect may already have moved the revision it was checked against.
+    if (
+      pending === undefined &&
+      continued !== undefined &&
+      request.expectedRevision !== undefined
+    ) {
       const current = revisionOf(continued.id);
       if (current !== request.expectedRevision) {
         throw new CommandReceiptError(
@@ -987,7 +992,7 @@ export function createBureauA2ARequestHandler(
               path: 'create',
               state: 'applied',
             };
-      } else if (expired) {
+      } else if (expired && pending === undefined) {
         // An expired continuation leaves the task as it is, still waiting if it was.
         result = {
           taskId: continued.id,

@@ -348,7 +348,6 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   const abort = () => queue.end();
   signal?.addEventListener('abort', abort, { once: true });
 
-  // The facts with no durable event: a run starting, and, without a history, every change.
   // The facts with no durable event: a run starting and, without a history, every change. A
   // view a listener is handed is the change itself, so a short-lived state (WORKING between a
   // review's close and the run's end) is seen even when the task has moved on by the next read.
