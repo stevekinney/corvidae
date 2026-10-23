@@ -39,6 +39,7 @@ import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
+import { formsOf, type WaitForm } from './a2a-input-forms.ts';
 import {
   a2aStateOf,
   agentMessage,
@@ -66,7 +67,11 @@ const FOLLOW_POLL_MS = 1_000;
 /** The part of a Bureau a stream reads. */
 export type A2AStreamBureau = Pick<
   Bureau,
-  'eventHistory' | 'subscribeEventHistory' | 'addEventListener' | 'removeEventListener'
+  | 'eventHistory'
+  | 'subscribeEventHistory'
+  | 'addEventListener'
+  | 'removeEventListener'
+  | 'getReview'
 > & {
   readonly tasks: Pick<TaskRegistry, 'get' | 'onSettled' | 'onChanged'>;
 };
@@ -206,6 +211,7 @@ export function eventsOf(
   view: TaskView,
   element: Extract<TaskEvent, { kind: 'task.status' }>,
   reply: string | undefined,
+  forms: readonly WaitForm[] = [],
 ): StreamResponse[] {
   const timestamp = new Date(element.emittedAtMs).toISOString();
   const state = a2aStateOf(element.status);
@@ -246,7 +252,7 @@ export function eventsOf(
     // the one it answers when several are open.
     const status = statusUpdate(view, state, timestamp);
     if (status.payload?.$case === 'statusUpdate') {
-      status.payload.value.status!.message = waitingMessage(view);
+      status.payload.value.status!.message = waitingMessage(view, forms);
     }
     return [status];
   }
@@ -418,7 +424,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           message: view.statusMessage,
           artifact: null,
         };
-        for (const event of eventsOf(view, element, reply)) queue.push({ event });
+        const forms = await formsOf(bureau, view);
+        for (const event of eventsOf(view, element, reply, forms)) queue.push({ event });
         if (isTerminal(view.status)) queue.end();
       } else if (lastStatus === 'submitted' && view.status !== 'submitted') {
         lastStatus = 'working';
@@ -489,7 +496,10 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         if (!watching || element.status === lastStatus) return;
         lastStatus = element.status;
         const view = (await bureau.tasks.get(taskId)) ?? initial;
-        for (const mapped of eventsOf(view, element, undefined)) queue.push({ event: mapped });
+        const forms = await formsOf(bureau, view);
+        for (const mapped of eventsOf(view, element, undefined, forms)) {
+          queue.push({ event: mapped });
+        }
       });
     };
     for (const kind of reviewKinds) bureau.addEventListener(kind, onReview);
@@ -527,7 +537,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         mapping = chained(mapping, async () => {
           const view = (await bureau.tasks.get(taskId)) ?? initial;
           const reply = element.status === 'completed' ? await options.replyOf(view) : undefined;
-          const events = eventsOf(view, element, reply);
+          const events = eventsOf(view, element, reply, await formsOf(bureau, view));
           for (const [index, mapped] of events.entries()) {
             // Only the last event of a durable one carries its cursor, so a resume never skips
             // the part of it a reader had not received.

@@ -32,6 +32,8 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import {
   type CombinedOperativeEventMap,
+  type HumanInputSchema,
+  humanInputSchemaOf,
   isScheduledAgentRunInput,
   type DurableRunDeps,
   HumanWaitParkedEvent,
@@ -159,6 +161,8 @@ type Wait = {
   readonly runId: string;
   readonly signalName: string;
   readonly prompt: string | undefined;
+  /** The schema the author configured for the signal, when the park carries one. */
+  readonly inputSchema?: HumanInputSchema | undefined;
   readonly ordinal: number;
   readonly requestedAt: number;
   readonly agentName: string | undefined;
@@ -219,10 +223,12 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       const signalName = detail?.['signalName'];
       if (typeof signalName !== 'string' || signalName.length === 0) continue;
       const prompt = detail?.['prompt'];
+      const inputSchema = humanInputSchemaOf(detail?.['inputSchema']);
       waits.push({
         runId,
         signalName,
         prompt: typeof prompt === 'string' ? prompt : undefined,
+        ...(inputSchema === undefined ? {} : { inputSchema }),
         ordinal: humanWaitParkOrdinal(run.actions, baselines.get(runId) ?? 0),
         requestedAt: parked.timestamp,
         agentName: runAttribution.get(runId)?.agentName,
@@ -241,6 +247,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       ...(wait.sessionId === undefined ? {} : { sessionId: wait.sessionId }),
       signalName: wait.signalName,
       prompt: wait.prompt,
+      ...(wait.inputSchema === undefined ? {} : { inputSchema: wait.inputSchema }),
       requestedAt: wait.requestedAt,
       ageMilliseconds: dependencies.now() - wait.requestedAt,
       status: 'pending',
@@ -306,6 +313,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       runId,
       signalName: outstanding.signalName,
       prompt: outstanding.prompt,
+      ...(outstanding.inputSchema === undefined ? {} : { inputSchema: outstanding.inputSchema }),
       ordinal: outstanding.ordinal,
       requestedAt: dependencies.now(),
       agentName: target.agentName,
@@ -331,6 +339,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
                 signalName: seeded.signalName,
                 parkOrdinal: seeded.ordinal,
                 ...(seeded.prompt === undefined ? {} : { prompt: seeded.prompt }),
+                ...(seeded.inputSchema === undefined ? {} : { inputSchema: seeded.inputSchema }),
               },
             },
           ];
@@ -344,12 +353,14 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         detail: {
           signalName: event.signalName,
           ...(event.prompt === undefined ? {} : { prompt: event.prompt }),
+          ...(event.inputSchema === undefined ? {} : { inputSchema: event.inputSchema }),
         },
       });
       restored.set(runId, {
         runId,
         signalName: event.signalName,
         prompt: event.prompt,
+        ...(event.inputSchema === undefined ? {} : { inputSchema: event.inputSchema }),
         ordinal: humanWaitParkOrdinal(actions, baselines.get(runId) ?? 0),
         requestedAt: dependencies.now(),
         agentName: target.agentName,
@@ -462,6 +473,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
           runId,
           signalName: outstanding.signalName,
           prompt: outstanding.prompt,
+          ...(outstanding.inputSchema === undefined
+            ? {}
+            : { inputSchema: outstanding.inputSchema }),
           ordinal: outstanding.ordinal,
           requestedAt: state.updatedAt,
           agentName: input.agentName,
@@ -479,6 +493,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       runId,
       signalName: outstanding.signalName,
       prompt: outstanding.prompt,
+      ...(outstanding.inputSchema === undefined ? {} : { inputSchema: outstanding.inputSchema }),
       ordinal: outstanding.ordinal,
       requestedAt: state.updatedAt,
       agentName:

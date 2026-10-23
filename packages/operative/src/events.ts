@@ -19,6 +19,7 @@ import {
   toAgentRunError,
   type ValidatorError,
 } from './errors';
+import type { HumanInputSchema } from './human-input-schema';
 import type { SemanticProgress } from './liveness';
 import type { SelectionOutcomeKind } from './providers/selection';
 import type { DroppedReplayData } from './providers/shared/replay-data';
@@ -1374,12 +1375,18 @@ export class HumanWaitParkedEvent extends Event {
    * input is being requested without subscribing to the tool result.
    */
   readonly prompt: string | undefined;
+  /**
+   * The JSON Schema (2020-12) the agent's author configured for the signal, when one is: the shape
+   * of the answer the wait expects.
+   */
+  readonly inputSchema: HumanInputSchema | undefined;
 
-  constructor(signalName: string, runId: string, prompt?: string) {
+  constructor(signalName: string, runId: string, prompt?: string, inputSchema?: HumanInputSchema) {
     super(HumanWaitParkedEvent.type);
     this.signalName = signalName;
     this.runId = runId;
     this.prompt = prompt;
+    this.inputSchema = inputSchema;
   }
 }
 
