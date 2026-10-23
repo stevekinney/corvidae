@@ -275,7 +275,8 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
         );
         expect(refusal).toBeInstanceOf(RequestMalformedError);
       }
-      expect((await fixture.bureau.tasks.get(task.id))?.status).toBe('input-required');
+      const view = await fixture.bureau.tasks.get(task.id);
+      expect(view?.status).toBe('input-required');
     } finally {
       await fixture.opened.dispose();
     }

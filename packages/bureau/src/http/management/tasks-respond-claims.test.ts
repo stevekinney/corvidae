@@ -444,10 +444,10 @@ describe('bureau.tasks.respond completes a form submission from its claim', () =
       input: submit,
       host: hostOver(ledger, {
         openWaits: [openWait, otherWait],
-        getReview: async (id: string) => ({ ...resolved('pending', undefined), id }) as never,
+        getReview: async (id: string) => ({ ...resolved('pending', undefined), id }),
         resolveReview: async (request) => {
           delivered.push(request);
-          return applied as never;
+          return applied;
         },
       }),
       principal,
@@ -467,7 +467,7 @@ describe('bureau.tasks.respond completes a form submission from its claim', () =
       input: submit,
       host: hostOver(ledger, {
         openWaits: [],
-        getReview: async () => resolved('approved', owner) as never,
+        getReview: async () => resolved('approved', owner),
       }),
       principal,
     } as never);
@@ -492,7 +492,7 @@ describe('bureau.tasks.respond completes a form submission from its claim', () =
           }) as never,
         resolveReview: async (request) => {
           delivered.push(request);
-          return applied as never;
+          return applied;
         },
       }),
       principal,
@@ -509,7 +509,7 @@ describe('bureau.tasks.respond completes a form submission from its claim', () =
         openWaits: [openWait],
         getReview: async () =>
           ({ ...resolved('pending', undefined), inputSchema: schema }) as never,
-        resolveReview: async () => applied as never,
+        resolveReview: async () => applied,
       }),
       principal,
     } as never);
