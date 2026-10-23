@@ -14,6 +14,15 @@ const polling: ScriptedPeerOptions['card'] = (card) => {
   return card;
 };
 
+async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('expected the promise to reject');
+}
+
 async function codeOf(promise: Promise<unknown>): Promise<string> {
   try {
     await promise;
@@ -113,7 +122,9 @@ describe('peer client edges', () => {
     // A signal that is already aborted ends a wait before it starts.
     const aborted = new AbortController();
     aborted.abort();
-    await expect(patient.send({ text: 'never', signal: aborted.signal })).rejects.toBeDefined();
+    expect(
+      await rejectionOf(patient.send({ text: 'never', signal: aborted.signal })),
+    ).toBeDefined();
   });
 
   test('the scripted peer logs a redirect only when fetch is told to follow it', async () => {
@@ -136,12 +147,13 @@ describe('peer client edges', () => {
       sleep: async () => {},
       classify: classifyPeerError,
     };
-    await expect(
+    const failure = await rejectionOf(
       retryRequest(policy, async () => {
         calls += 1;
         throw new TypeError('network');
       }),
-    ).rejects.toMatchObject({ code: 'unreachable' });
+    );
+    expect(failure).toMatchObject({ code: 'unreachable' });
     expect(calls).toBe(2);
   });
 });
