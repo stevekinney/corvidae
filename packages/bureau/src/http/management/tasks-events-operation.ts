@@ -41,7 +41,11 @@ import { z } from 'zod';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
 import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from '../../schedule-fire-settled-event.ts';
-import { bearsSettlement, TASK_RESYNCED_EVENT_KIND } from '../../task-resync.ts';
+import {
+  bearsSettlement,
+  TASK_RESYNCED_EVENT_KIND,
+  TERMINAL_RUN_EVENT_KINDS,
+} from '../../task-resync.ts';
 import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
@@ -374,12 +378,6 @@ export function createTaskEventProjector(
     },
   };
 }
-
-const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
-  'run.completed',
-  'run.error',
-  'run.aborted',
-]);
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
@@ -780,7 +778,7 @@ export const tasksEventsOperation = defineOperation<
       // events themselves say how the task ended, answer included.
       const settledEventRetained = retained.some(
         (event) =>
-          TERMINAL_RUN_EVENTS.has(event.kind) ||
+          TERMINAL_RUN_EVENT_KINDS.has(event.kind) ||
           (event.kind === TASK_RESYNCED_EVENT_KIND && bearsSettlement(event)),
       );
       projector = createTaskEventProjector(

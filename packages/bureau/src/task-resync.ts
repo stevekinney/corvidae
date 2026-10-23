@@ -67,12 +67,14 @@ export interface TaskResyncedPayload {
   readonly openReviewIds: readonly string[];
 }
 
-/** The durable kinds that say how a run ended. */
-const SETTLING_RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
+/**
+ * The durable kinds that say how a run ended. `run.tripwire` is not one: it is followed by the
+ * `run.completed` that ends the run, so a history holding only a tripwire has lost the end.
+ */
+export const TERMINAL_RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
   'run.completed',
   'run.error',
   'run.aborted',
-  'run.tripwire',
 ]);
 
 /**
@@ -83,7 +85,7 @@ export function bearsSettlement(event: {
   readonly kind: string;
   readonly payload: unknown;
 }): boolean {
-  if (SETTLING_RUN_EVENT_KINDS.has(event.kind)) return true;
+  if (TERMINAL_RUN_EVENT_KINDS.has(event.kind)) return true;
   if (event.kind !== TASK_RESYNCED_EVENT_KIND) return false;
   const payload = event.payload;
   return (
