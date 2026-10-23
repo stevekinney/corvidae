@@ -30,7 +30,10 @@ import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts
 /** What an install reads and writes. */
 export type A2APushInstallDependencies = {
   readonly store: Pick<WeftPushNotificationStore, 'check' | 'create'>;
-  readonly checkpoints: Pick<A2APushCheckpoints, 'claim' | 'settle' | 'removePending'>;
+  readonly checkpoints: Pick<
+    A2APushCheckpoints,
+    'claim' | 'settle' | 'removePending' | 'fingerprint'
+  >;
   /** Starts (or nudges) the projection of the task's history. */
   readonly watch: (taskId: string) => void;
   /** A fresh identifier. Defaults to `crypto.randomUUID`. */
@@ -46,15 +49,6 @@ export type A2APushInstallInput = {
   /** Where the checkpoint starts; the configuration receives every event after it. */
   readonly cursor: string;
 };
-
-/** A digest of the webhook a configuration names, so two installs of different ones differ. */
-async function fingerprintOf(configuration: TaskPushNotificationConfig): Promise<string> {
-  const bytes = new TextEncoder().encode(
-    JSON.stringify([configuration.url, configuration.token, configuration.authentication ?? null]),
-  );
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
 
 /**
  * Installs a push configuration on a task and starts its checkpoint at the cursor. Both writes
@@ -72,7 +66,7 @@ export async function installPushConfiguration(
     configuration.id === '' ? await store.check(taskId, context, configuration) : undefined;
   const configId = configuration.id === '' ? (repeated?.id ?? newId()) : configuration.id;
   const installId = newId();
-  const fingerprint = await fingerprintOf(configuration);
+  const fingerprint = await checkpoints.fingerprint(configuration);
   const pendingCheckpoint = (id: string) => ({
     recordVersion: 1 as const,
     taskId,
