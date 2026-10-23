@@ -1,8 +1,12 @@
 import {
   embeddingProfileOf,
   type EvidenceProjectionRecord,
+  type ProcedureStep,
+  procedureStepKey,
+  procedureStepText,
   sameEmbeddingProfile,
 } from './evidence-projection-schema';
+import { digestOfText } from './evidence-schema';
 import type { TransitionRefusal } from './transition-outcome';
 import {
   plannedProjections,
@@ -37,6 +41,59 @@ function hasRepeat(values: readonly string[]): boolean {
   return new Set(values).size !== values.length;
 }
 
+type ProcedureRecord = Extract<EvidenceProjectionRecord, { kind: 'procedure' }>;
+
+/**
+ * A procedure's own invariants. Steps compare by their key, so a step object
+ * and a string step follow the same rule. A validated (v2) procedure also
+ * claims at least one causal step, so a run that merely succeeded is not a
+ * procedure, and a high-impact one carries the review its promotion waited for.
+ */
+function procedureInvariant(record: ProcedureRecord): TransitionRefusal | undefined {
+  const { payload } = record;
+  const steps = payload.steps as readonly (string | ProcedureStep)[];
+  if (
+    hasRepeat(steps.map(procedureStepKey)) ||
+    steps.some((step) => procedureStepText(step) === payload.title)
+  ) {
+    return violation(
+      'procedure.steps-distinct',
+      record,
+      'repeats a step, or a step repeats its title.',
+    );
+  }
+  if (!('version' in payload)) return undefined;
+  const { validation } = payload.provenance;
+  if (validation.observationDigest !== digestOfText(validation.observation)) {
+    return violation(
+      'procedure.observation-digest',
+      record,
+      'records a validation observation whose digest does not match it.',
+    );
+  }
+  if (!payload.steps.some((step) => step.causal)) {
+    return violation('procedure.causal-step-claimed', record, 'claims no step caused its outcome.');
+  }
+  if (payload.approval.required !== (payload.approval.scope === 'high-impact')) {
+    return violation(
+      'procedure.approval-follows-scope',
+      record,
+      'requires approval when its scope says otherwise, or the reverse.',
+    );
+  }
+  if (
+    payload.approval.scope === 'high-impact' &&
+    (!payload.approval.required || payload.provenance.review === undefined)
+  ) {
+    return violation(
+      'procedure.high-impact-reviewed',
+      record,
+      'is high-impact but was not promoted through a required human review.',
+    );
+  }
+  return undefined;
+}
+
 /** Invariants a record carries by itself, from its own payload. */
 function ownInvariant(record: EvidenceProjectionRecord): TransitionRefusal | undefined {
   switch (record.kind) {
@@ -53,13 +110,7 @@ function ownInvariant(record: EvidenceProjectionRecord): TransitionRefusal | und
           )
         : undefined;
     case 'procedure':
-      return hasRepeat(record.payload.steps) || record.payload.steps.includes(record.payload.title)
-        ? violation(
-            'procedure.steps-distinct',
-            record,
-            'repeats a step, or a step repeats its title.',
-          )
-        : undefined;
+      return procedureInvariant(record);
     case 'preference':
       return record.payload.subject === record.payload.statement
         ? violation('preference.subject-differs', record, 'states nothing beyond its subject.')
