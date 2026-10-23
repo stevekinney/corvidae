@@ -74,6 +74,8 @@ A run that delivers several issues at once is limited by this host's lock and pr
 - Implement with an economical coding model (Claude Sonnet, or the Codex equivalent) when the interfaces are known and the issue has tests. Reserve stronger models for review, one-way doors, and defects that survived two corrections.
 - Gate each pull request as "Gate on local checks" describes: `bun run check`, run shared, plus one review fix pass. A session queues at most one full `validate` at a time, and only for an exception.
 - Follow the review rules in "Review guidelines": answer every thread, cap review at three rounds, and push once per round. A comment the bot re-reports gets no new answer.
+- End a turn only on a state change: merged, blocked, needs a decision, or ready for review. Wait for a check, a gate, or a review bot in a background command. Every turn a worker ends wakes its coordinator, which re-reads its whole context, so a turn that says only "still waiting" is pure cost.
+- A coordinator's broadcast to running sessions names the commit and the section that changed, for example "rules changed at `<sha>`; reread AGENTS.md "Parallel runs"". It never restates policy text. A brief for a new session still states these rules, as above.
 - Report spend at every batch boundary: tokens per merged pull request, and the share of the plan's usage. When tokens per merged pull request double from the run's earlier batches, stop dispatching and ask the owner.
 
 ## Dev Container

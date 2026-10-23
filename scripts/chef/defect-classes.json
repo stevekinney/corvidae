@@ -1,0 +1,102 @@
+{
+  "classes": [
+    {
+      "name": "adapter-drop",
+      "description": "Fields or parts dropped across an adapter, projection, or wire mapping.",
+      "patterns": [
+        "\\b(drop|drops|dropped|dropping|omit|omits|omitted|lose|loses|lost|losing|discard|discards|discarded|strip|strips|stripped)\\b.{0,60}\\b(field|fields|part|parts|property|properties|attribute|attributes|key|keys|metadata)\\b",
+        "\\b(field|fields|part|parts|property|properties|metadata)\\b.{0,60}\\b(dropped|omitted|lost|discarded|stripped|not (?:copied|forwarded|mapped|carried|preserved|propagated))\\b",
+        "\\b(adapter|projection|serializer|serialiser|deserializ\\w*|wire (?:format|mapping|shape)|mapper|mapping|round-?trip)\\b.{0,80}\\b(drop|omit|lose|lost|ignore|ignores|missing|skips?)\\b",
+        "\\bnot (?:forwarded|propagated|carried over|preserved) (?:through|across|to)\\b"
+      ]
+    },
+    {
+      "name": "pre-commit-exposure",
+      "description": "State written or exposed before its durable commit, or a post-commit failure swallowed.",
+      "patterns": [
+        "\\bbefore (?:it(?:'s| is| has been)? |the )?(?:durabl\\w*|commit\\w*|persist\\w*|flush\\w*|fsync\\w*)",
+        "\\b(?:publish\\w*|emit\\w*|expos\\w*|visible|observable|notif\\w*)\\b.{0,60}\\bbefore\\b.{0,40}\\b(?:commit\\w*|persist\\w*|durabl\\w*|stor\\w*|writ\\w*)",
+        "\\b(?:after|post)[- ]commit\\b.{0,80}\\b(?:fail\\w*|throw\\w*|error\\w*|swallow\\w*|ignor\\w*|catch\\w*)",
+        "\\b(?:swallow\\w*|ignor\\w*|silent\\w*)\\b.{0,60}\\b(?:error|errors|failure|failures|rejection|exception)\\b.{0,60}\\b(?:after|post)\\b.{0,20}\\bcommit",
+        "\\buncommitted (?:state|write|writes|data)\\b"
+      ]
+    },
+    {
+      "name": "unfenced-check-then-act",
+      "description": "A check and the action it guards are not atomic or fenced against a concurrent writer.",
+      "patterns": [
+        "\\bcheck[- ]then[- ](?:act|set|write|insert|update)\\b",
+        "\\bTOCTOU\\b",
+        "\\btime[- ]of[- ]check\\b",
+        "\\b(?:race|races|racy|racing)\\b",
+        "\\b(?:not|un)-?(?:atomic\\w*|fenced|serialized|serialised|transactional|guarded|locked)\\b",
+        "\\b(?:concurrent|interleav\\w*|simultaneous)\\b.{0,80}\\b(?:check|read|insert|write|claim|lease|acquire)\\w*",
+        "\\bwithout (?:a |an |any )?(?:lock|fence|transaction|compare-and-(?:set|swap)|CAS|atomic\\w*|mutex)\\b"
+      ]
+    },
+    {
+      "name": "stale-generation",
+      "description": "Cleanup or settlement bound to a stale generation, incarnation, or round.",
+      "patterns": [
+        "\\b(?:stale|old|previous|prior|superseded|earlier)\\b.{0,40}\\b(?:generation|incarnation|epoch|round|attempt|lease|token)\\b",
+        "\\b(?:generation|incarnation|epoch|round)\\b.{0,60}\\b(?:mismatch\\w*|stale|changed|differs?|advanced|bumped|no longer)\\b",
+        "\\b(?:cleanup|clean-up|teardown|settle\\w*|finaliz\\w*|finalis\\w*|release\\w*|cancel\\w*)\\b.{0,80}\\b(?:wrong|stale|newer|later|different|another|next)\\b.{0,30}\\b(?:generation|incarnation|epoch|round|attempt|lease)\\b",
+        "\\bABA\\b",
+        "\\bresurrect\\w*\\b"
+      ]
+    },
+    {
+      "name": "receipt-mismatch",
+      "description": "A retry replays a different operation than the one its receipt records.",
+      "patterns": [
+        "\\breceipts?\\b",
+        "\\bidempoten\\w+\\b.{0,100}\\b(?:differ\\w*|mismatch\\w*|different|changed|another|conflict\\w*)\\b",
+        "\\b(?:retry|retries|replay|replays|replayed)\\b.{0,80}\\b(?:different|another|changed|mismatch\\w*|same key)\\b",
+        "\\b(?:same|reused?) (?:idempotency |request |dedup\\w* )?key\\b.{0,60}\\b(?:different|another|changed)\\b"
+      ]
+    },
+    {
+      "name": "missing-authorization",
+      "description": "An operation lacks an authorization, ownership, or permission check.",
+      "patterns": [
+        "\\b(?:authoriz\\w*|authoris\\w*)\\b.{0,60}\\b(?:missing|absent|lacks?|lacking|skipped|bypass\\w*|not (?:checked|enforced|verified))\\b",
+        "\\b(?:missing|lacks?|lacking|no|without|skips?|bypass\\w*)\\b.{0,40}\\b(?:authoriz\\w*|authoris\\w*|permission check|ownership check|access check|ACL|access control)\\b",
+        "\\b(?:unauthori[sz]ed|unauthenticated)\\b",
+        "\\b(?:any(?:one| caller| user| tenant)|other (?:users?|tenants?|accounts?))\\b.{0,60}\\b(?:can|could|may)\\b.{0,60}\\b(?:read|write|delete|cancel|modify|access|invoke|call)\\b",
+        "\\b(?:IDOR|privilege escalation|cross-tenant)\\b"
+      ]
+    },
+    {
+      "name": "boundary-validation",
+      "description": "Input from a boundary (caller, wire, file, environment) is not validated or is trusted unchecked.",
+      "patterns": [
+        "\\b(?:validat\\w*|sanitiz\\w*|sanitis\\w*)\\b.{0,60}\\b(?:missing|absent|lacks?|lacking|skipped|insufficient|incomplete|not (?:performed|enforced|checked))\\b",
+        "\\b(?:missing|lacks?|lacking|no|without|skips?)\\b.{0,40}\\b(?:validat\\w*|bounds? check\\w*|range check\\w*|type check\\w*|schema check\\w*|input check\\w*)\\b",
+        "\\b(?:unvalidated|unchecked|untrusted|unsanitized|unsanitised|unbounded|malformed)\\b",
+        "\\baccepts?\\b.{0,60}\\b(?:invalid|negative|NaN|Infinity|empty|non-integer|out-of-range|out of range|arbitrary)\\b",
+        "\\b(?:NaN|Infinity|negative|non-finite|out[- ]of[- ]range)\\b.{0,60}\\b(?:accepted|passes|pass through|not rejected|not validated)\\b",
+        "\\b(?:path traversal|injection)\\b"
+      ]
+    },
+    {
+      "name": "unsnapshotted-input",
+      "description": "Caller-owned input is read after an await, so the caller can mutate it mid-flight.",
+      "patterns": [
+        "\\b(?:snapshot\\w*|copy|copies|clone[sd]?|structuredClone|freeze|frozen)\\b.{0,80}\\b(?:before|prior to)\\b.{0,30}\\b(?:await\\w*|yield\\w*|async|suspend\\w*)",
+        "\\b(?:after|across|following)\\b.{0,20}\\b(?:the |an |any )?await\\b.{0,100}\\b(?:mutat\\w*|caller|caller-owned|re-reads?)\\b",
+        "\\bcaller[- ](?:owned|supplied|provided|controlled)\\b.{0,100}\\b(?:mutat\\w*|after|await\\w*|later)\\b",
+        "\\b(?:mutat\\w*|modif\\w*|alias\\w*)\\b.{0,60}\\b(?:by the caller|while (?:awaiting|suspended|in flight)|during (?:the )?await|after (?:the )?await)\\b",
+        "\\bnot (?:snapshot\\w*|copied|cloned)\\b"
+      ]
+    },
+    {
+      "name": "spec-contradiction",
+      "description": "The change contradicts the specification, documented contract, or stated acceptance criteria.",
+      "patterns": [
+        "\\b(?:contradict\\w*|conflicts? with|inconsistent with|violates?|violation of|at odds with|diverges? from|deviates? from|does not match|doesn't match|disagrees? with)\\b.{0,80}\\b(?:spec|specification|contract|docs?|documentation|requirement\\w*|acceptance criteria|issue|ticket|RFC|protocol|AGENTS\\.md|README)\\b",
+        "\\b(?:spec|specification|contract|documentation|requirement\\w*|acceptance criteria|RFC)\\b.{0,80}\\b(?:says|states|requires|mandates?|defines?)\\b.{0,100}\\b(?:but|however|whereas|yet)\\b",
+        "\\bcontradiction\\b"
+      ]
+    }
+  ]
+}
