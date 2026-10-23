@@ -17,6 +17,7 @@
 @import './chat.css';
 @import './workflow-definitions.css';
 @import './tasks.css';
+@import './schedules.css';
 @import './decisions.css';
 @import './agents.css';
 

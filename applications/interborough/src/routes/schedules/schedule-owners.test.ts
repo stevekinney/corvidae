@@ -54,6 +54,7 @@ function world(overrides: Partial<World> = {}): World {
       scheduleFixture(CODE_SCHEDULE, 'order-processing', { revision: 5 }),
     ],
     scheduleAgents: { [AGENT_SCHEDULE]: 'assistant' },
+    scheduleInputs: { [AGENT_SCHEDULE]: 'Summarize what happened yesterday.' },
     ...overrides,
   });
 }
@@ -67,7 +68,7 @@ function open(path: string, overrides: Partial<World> = {}) {
 }
 
 const row = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLElement>(`tr[data-schedule="${id}"]`);
+  container.querySelector<HTMLElement>(`li[data-schedule="${id}"]`);
 
 /** The list once it has said what each schedule starts. */
 async function listed(container: HTMLElement): Promise<void> {
@@ -76,7 +77,10 @@ async function listed(container: HTMLElement): Promise<void> {
 
 async function openMenu(container: HTMLElement, id: string) {
   const view = within(container.ownerDocument.body);
-  await fireEvent.click(view.getByRole('button', { name: `Actions for ${id}` }));
+  // A row's menu is named for the schedule's name, which is not its identifier.
+  const owner = row(container, id);
+  if (owner === null) throw new Error(`no row for ${id}`);
+  await fireEvent.click(within(owner).getByRole('button', { name: /^Actions for / }));
   return view;
 }
 
@@ -89,7 +93,8 @@ describe('what a schedule starts', () => {
 
     const agent = within(row(container, AGENT_SCHEDULE) as HTMLElement);
     expect(row(container, AGENT_SCHEDULE)?.dataset['kind']).toBe('agent-run');
-    expect(agent.getByText(SCHEDULE_COPY.kind['agent-run'])).not.toBeNull();
+    // An agent run is said by its agent alone; a workflow says which kind it is.
+    expect(agent.queryByText(SCHEDULE_COPY.kind.code)).toBeNull();
     expect(agent.getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe(
       '/agents/assistant',
     );
@@ -113,7 +118,7 @@ describe('what a schedule starts', () => {
     const { findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
     await waitFor(async () => {
       const target = await findByTestId('schedule-target');
-      expect(target.textContent).toContain(SCHEDULE_COPY.kind['agent-run']);
+      expect(target.textContent).toContain('assistant');
     });
     const target = await findByTestId('schedule-target');
     expect(within(target).getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe(
@@ -513,7 +518,8 @@ describe('one schedule’s page, by kind', () => {
   test('an agent run is cancelled through the Bureau, after the confirmation', async () => {
     const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`);
 
-    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
+    await fireEvent.click(await findByRole('button', { name: 'More actions' }));
+    await fireEvent.click(await findByRole('menuitem', { name: /Cancel/ }));
     expect(stub?.callsTo('bureau.schedules.cancel')).toEqual([]);
     await fireEvent.click(await findByText('Cancel schedule'));
 
@@ -640,5 +646,50 @@ describe('a schedule of an agent-authored workflow’s type that is not the file
     const view = await openMenu(container, EXTRA);
     expect(view.queryByRole('menuitem', { name: /Pause/ }) === null).toBe(true);
     expect(view.queryByRole('menuitem', { name: /Cancel/ }) === null).toBe(true);
+  });
+});
+
+describe('a schedule is named by what it does', () => {
+  test('a row says its name, its agent, its cadence in words, and what it sends, and never its identifier', async () => {
+    const { container } = open('/schedules');
+    await listed(container);
+
+    const agent = row(container, AGENT_SCHEDULE) as HTMLElement;
+    const view = within(agent);
+    expect(view.getByRole('link', { name: 'Daily summary' }).getAttribute('href')).toBe(
+      `/schedules/${AGENT_SCHEDULE}`,
+    );
+    expect(view.getByRole('link', { name: 'assistant' })).not.toBeNull();
+    expect(view.getByText('Every 5 minutes')).not.toBeNull();
+    expect(view.getByTestId('schedule-input').textContent).toBe(
+      '“Summarize what happened yesterday.”',
+    );
+    expect(agent.textContent).not.toContain(AGENT_SCHEDULE);
+    // A schedule with no description is named by what it starts.
+    const code = within(row(container, CODE_SCHEDULE) as HTMLElement);
+    expect(code.getByRole('link', { name: 'Schedule for order-processing' })).not.toBeNull();
+    const menu = await openMenu(container, AGENT_SCHEDULE);
+    expect(menu.getByRole('menuitem', { name: 'Copy id' })).not.toBeNull();
+  });
+
+  test('the Agent filter narrows the list to that agent’s schedules, and the address carries it', async () => {
+    const { container, findByRole } = open('/schedules');
+    await listed(container);
+
+    await fireEvent.change(await findByRole('combobox', { name: 'Agent' }), {
+      target: { value: 'assistant' },
+    });
+
+    await waitFor(() => expect(router.search.get('agent')).toBe('assistant'));
+    // Only the agent's schedule is left of the three.
+    await waitFor(() => expect(container.querySelectorAll('li[data-schedule]').length).toBe(1));
+    expect(row(container, AGENT_SCHEDULE)).not.toBeNull();
+  });
+
+  test('one schedule’s page says what it sends', async () => {
+    const { findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
+
+    const input = await findByTestId('schedule-input');
+    expect(input.textContent).toContain('“Summarize what happened yesterday.”');
   });
 });

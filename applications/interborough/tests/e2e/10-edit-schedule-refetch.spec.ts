@@ -29,12 +29,16 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   checkA11y,
 }) => {
   await page.goto('/schedules');
-  await expect(page.getByRole('button', { name: 'Create schedule' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New schedule' })).toBeVisible();
 
-  // Create the schedule under a fixed id, active-at-fire, no jitter.
-  await page.getByRole('button', { name: 'Create schedule' }).click();
+  // Create the schedule under a fixed id, active-at-fire, no jitter. A code-defined workflow is
+  // under "Advanced", because a new schedule runs an agent.
+  await page.getByRole('button', { name: 'New schedule' }).click();
   const createDrawer = page.getByRole('dialog', { name: 'Create schedule' });
   await expect(createDrawer).toBeVisible();
+  await createDrawer
+    .getByRole('button', { name: 'Advanced: start a code-defined workflow' })
+    .click();
   await createDrawer.getByLabel('Schedule ID').fill(SCHEDULE_ID);
   await createDrawer
     .getByRole('combobox', { name: 'Workflow type' })
@@ -87,9 +91,11 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await drawer.getByRole('button', { name: 'Save changes' }).click();
   await expect(drawer).not.toBeVisible();
 
-  // Persisted: the detail page reflects every saved change.
+  // Persisted: the detail page reflects every saved change. The overlap policy is one line; the
+  // engine's fields (the revision policy, the jitter) are under the Engine disclosure.
+  await expect(page.getByText('Queues a fire if the previous run is still going')).toBeVisible();
+  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
-  await expect(page.getByText('Overlap policy: Queue')).toBeVisible();
   await expect(page.getByText('±30000ms')).toBeVisible();
   await checkA11y('schedule detail — edited options persisted');
 

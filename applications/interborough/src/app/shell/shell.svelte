@@ -19,6 +19,7 @@
   import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
+  import { subscribeScheduleInvalidation } from '../../lib/live-source/cache-integration.ts';
   import { stepChord } from '../../lib/navigation-shortcuts.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
@@ -116,6 +117,9 @@
   // Dashboard's alerts without a manual refresh. This rides the one shared fleet subscription.
   const queryClient = useQueryClient();
   $effect(() => subscribeTaskEvidenceInvalidation(engineStatus.fleetSource, queryClient));
+  // A schedule that fires, and the run it launches settling, refresh what every schedule view shows
+  // of its last run, on whichever page is open.
+  $effect(() => subscribeScheduleInvalidation(engineStatus.fleetSource, queryClient));
 
   /**
    * `collapsed` doubles as "drawer closed" once Cinder's `Sidebar` switches
