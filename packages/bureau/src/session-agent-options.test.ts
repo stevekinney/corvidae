@@ -81,7 +81,7 @@ describe('scheduledAgentRunOptions', () => {
   it('carries every agent-owned option, the token cap, and the execute options under the scheduler context', () => {
     const agentOptions = {
       maximumTokens: 5,
-      executeOptions: { concurrency: 2, requestContext: { principal: 'agent' } },
+      executeOptions: { concurrency: 2, requestContext: { principal: 'agent' } as never },
     } as never as RunOptions;
     for (const key of AGENT_OWNED_RUN_OPTION_KEYS) Object.assign(agentOptions, { [key]: key });
 
@@ -89,7 +89,7 @@ describe('scheduledAgentRunOptions', () => {
 
     for (const key of AGENT_OWNED_RUN_OPTION_KEYS) expect(projected[key]).toBe(key as never);
     expect(projected.maximumTokens).toBe(5);
-    expect(projected.executeOptions).toEqual({
+    expect(projected.executeOptions as unknown).toEqual({
       concurrency: 2,
       requestContext: { principal: 'scheduler' },
     });

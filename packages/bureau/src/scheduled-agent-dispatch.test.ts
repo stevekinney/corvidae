@@ -44,6 +44,23 @@ function answering(reply: string): { generate: GenerateFunction; calls: () => nu
   };
 }
 
+/** `agent`, resolving the token cap a `createAgent` agent has no option for. */
+function withMaximumTokens<TAgent extends AgentDefinitions[string]>(
+  agent: TAgent,
+  maximumTokens: number,
+): TAgent {
+  const resolve = Reflect.get(agent, OPERATIVE_RESOLVE_RUN_OPTIONS) as (
+    ...args: unknown[]
+  ) => Promise<Record<string, unknown>>;
+  return {
+    ...agent,
+    [OPERATIVE_RESOLVE_RUN_OPTIONS]: async (...args: unknown[]) => ({
+      ...(await resolve.apply(agent, args)),
+      maximumTokens,
+    }),
+  };
+}
+
 describe('submitSchedulerTask', () => {
   async function openWithTwoAgents() {
     const worker = answering('worker answer');
@@ -104,19 +121,8 @@ describe('submitSchedulerTask', () => {
         return { content: 'ok', toolCalls: [] };
       },
     });
-    const resolve = Reflect.get(base, OPERATIVE_RESOLVE_RUN_OPTIONS) as (
-      ...args: unknown[]
-    ) => Promise<Record<string, unknown>>;
     const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        capped: {
-          ...base,
-          [OPERATIVE_RESOLVE_RUN_OPTIONS]: async (...args: unknown[]) => ({
-            ...(await resolve.apply(base, args)),
-            maximumTokens: 77,
-          }),
-        },
-      },
+      agents: { capped: withMaximumTokens(base, 77) },
       scheduler: { enabled: true, idleDelay: 1 },
     });
     bureaus.push(bureau);
