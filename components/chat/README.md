@@ -201,3 +201,75 @@ const controller = createChatSessionController({
 Every event is validated against the pinned `@ag-ui/core` schema, and an invalid or out-of-order one fails the run with an `AGUIChatTransportError`. `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `STEP_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `REASONING_*`, and `MESSAGES_SNAPSHOT` are mapped. The types in `AG_UI_UNSUPPORTED_EVENT_TYPES` (state, activity, raw, custom, and subagent events) are validated and then ignored, as is any event that carries a `subagentRunId`.
 
 The client's rows are authoritative. The terminal `run.completed` frame carries the history the run was asked from, grown by each `MESSAGES_SNAPSHOT` and then by the messages the run produced, merged by message id: a snapshot or a streamed message adds the rows the client lacks and never deletes or rewrites one it has, and a mid-run snapshot does not discard what the run had already produced. Messages land in the order they started, and the AG-UI message ids become the row ids, so a streamed assistant row keeps its wire `messageId`. That merge is row for row when the backend echoes the ids of the run input, as AG-UI backends do. A snapshot that shares no message with a thread the client already holds is not a copy of it: its earlier history is not merged a second time, but the messages after its last user message (all of it, when it holds none) are this turn's output and are kept. A message still streaming is left out of a snapshot because its whole row is written when it ends. A tool call is filed under the assistant message it names as its parent, so it gets the row id a snapshot of the same thread gives it. Messages that overlap are written to the wire one at a time, in the order they started, because a version 3 stream has one open step at a time. Text from another role (the user's own message echoed back, a system or developer message) is not added to history, and a `RUN_FINISHED` interrupt outcome completes the run without surfacing its interrupt details, which the resume flow will map to elicitation. A `RUN_ERROR` keeps the backend's code as `backendCode`. Use `executionOwner: 'server'`: the AG-UI backend runs the whole turn.
+
+The transport does not read `ACTIVITY_SNAPSHOT`, so an A2UI surface a Bureau streams as one (activity type `a2ui-surface`) never reaches the chat history. A host that wants the surface reads those events from the same stream itself and renders them with [`A2uiSurface`](#a2ui-surfaces-experimental); [Bureau's interactive-surface contract](../../packages/bureau/documentation/interactive-surface.md#reconnecting-and-reconstructing-a-surface) shows the fold. The transport also has no path for a surface action: it sends nothing back to the backend, and Bureau serves no AG-UI route that takes one.
+
+## Tool input forms
+
+A tool result with `outcome: 'action_required'` and an `input` action that carries a JSON Schema object renders as a form, not as a plain result. Chat derives a `tool-input` message part from it and shows the action's `message` above a Cinder [`SchemaForm`](../cinder/src/components/schema-form/README.md) built from the schema (COR-1309). The part is titled "Input requested by" the tool's name.
+
+```ts
+import type { ChatProps } from '@lostgradient/chat';
+
+const onInputSubmit: ChatProps['onInputSubmit'] = async (toolCallId, value) => {
+  // `value` already passed the form's validation against the action's schema.
+  await fetch(`/inputs/${toolCallId}`, { method: 'POST', body: JSON.stringify(value) });
+};
+```
+
+`onInputSubmit(toolCallId, value)` is called only with a value that validated against the schema, and it is called once per successful submit. The `toolCallId` is the tool result's `callId`. If the promise rejects, the form stays open with "The input could not be sent. Try again." and the user can resubmit; when it resolves, the form is replaced by "Input submitted." and cannot be submitted again. Without `onInputSubmit`, Chat shows the request's message and no form. An `input` action whose schema is not an object keeps the neutral tool-result presentation. The submitted state lives in the view only: it is never written back to the transcript, so a remounted row asks again until the host's conversation no longer holds the `action_required` result.
+
+[Bureau's human-input forms](../../packages/bureau/documentation/interactive-surface.md#human-input-forms-cor-1487-and-cor-1309) are the server side of the same request: the host maps `onInputSubmit` onto the form's `answer` or `submit` action.
+
+## A2UI surfaces (experimental)
+
+> [!WARNING] Experimental, pinned to A2UI v0.9.1 `A2uiSurface` renders the A2UI **v0.9.1** basic catalog and nothing else. The pin is deliberate and may change until a stable A2UI 1.0 compatibility review. See [Bureau's adapter](../../packages/bureau/documentation/interactive-surface.md#the-adapter-experimental) for the producing side.
+
+`A2uiSurface` renders one surface from its components and data model, using Cinder components, two-way data binding, the catalog's client functions, and actions delivered to the host (COR-1486). It renders data a host already holds; it opens no connection and folds no messages. The host folds A2UI's `createSurface`, `updateComponents`, and `updateDataModel` messages into `components` and `dataModel` itself (Bureau's example does it for the messages of an AG-UI `ACTIVITY_SNAPSHOT`), and passes the result in.
+
+```svelte
+<script lang="ts">
+  import { A2uiSurface, type A2uiAction, type A2uiDiagnostic } from '@lostgradient/chat';
+
+  let { surface, send, fetchAsset } = $props();
+
+  function onAction(action: A2uiAction): void {
+    // surfaceId, sourceComponentId, name, timestamp, a context resolved against the data model,
+    // and the surfaceRevision the user acted on.
+    send(action);
+  }
+
+  function onDiagnostic(diagnostic: A2uiDiagnostic): void {
+    console.warn(diagnostic.code, diagnostic.componentId, diagnostic.message);
+  }
+</script>
+
+<A2uiSurface
+  surfaceId={surface.surfaceId}
+  surfaceRevision={surface.revision}
+  components={surface.components}
+  dataModel={surface.dataModel}
+  {onAction}
+  {onDiagnostic}
+  resolveAssetUrl={fetchAsset}
+/>
+```
+
+| Prop | Meaning |
+| --- | --- |
+| `surfaceId` | The surface's id, reported on every action. A new id starts a new surface: the data model copy and the reported diagnostics reset. |
+| `surfaceRevision` | The revision the components and data model show. It is read when an action fires and reported as `action.surfaceRevision`, so an action taken after an update carries the updated revision. Bureau reads it as `metadata.a2uiSurfaceRevision` and refuses an action on a stale revision. |
+| `components` | Every component the surface has received; a later entry replaces an earlier one with the same `id`. The component with id `root` is the tree's root, and nothing renders without one. A record without a string `id` and `component` is skipped with an `unsupported-value` diagnostic. |
+| `dataModel` | The surface's data model. The surface keeps its own copy that input components write to; a new value from the host replaces it. |
+| `onAction` | `(action, resolvedContext)`, called when a Button dispatches a server event. The context is resolved against the data model at that moment. The renderer sends nothing itself. |
+| `onDataModelChange` | Called each time an input component writes to the data model. |
+| `resolveAssetUrl` | Resolves every Image, Video, and AudioPlayer URL before a media element receives it, for example to a `blob:` URL the host fetched with its own credentials. Without it, assets render nothing and report an `asset-error`. |
+| `releaseAssetUrl` | Called with a resolved URL once the surface no longer shows it, so the host can revoke it. |
+| `onDiagnostic` | Hears each problem the renderer could not honor, once per distinct problem per surface. |
+| `locale`, `timeZone` | Used by the formatting functions and by `DateTimeInput`. Pass the user's zone from a server-rendering host so the server's output and the hydrated page agree. |
+
+A diagnostic has a `code` and, when the problem is on a component, its `componentId`. The codes are `unsupported-component` (a type outside the basic catalog), `unsupported-value` (an enumerated value the mapping does not list; it renders the default), `unknown-icon`, `missing-component` (a reference to an id the surface lacks), `component-cycle`, `function-error` (a function the catalog does not define, or one that failed), and `asset-error`. The renderer keeps rendering what it can and renders the failing component as nothing. Diagnostics report; they do not fail the surface.
+
+**What it supports.** The 18 basic-catalog components (`A2UI_COMPONENT_TARGETS` lists which Cinder component each maps to) and the basic catalog's client functions, including `openUrl`, which opens only `http:` and `https:` URLs and only from a user-activated action. `TextField`'s `validationRegexp` runs under RE2, so a pattern needing backreferences or lookaround is reported and not enforced.
+
+**What it does not.** It does not take a `catalogId` and renders no other catalog: a component from Cinder's A2UI catalog (`Meter`, `Rating`, and the rest) is an `unsupported-component` diagnostic and renders nothing. A Bureau offers its Cinder catalog only to a client that lists it in `supportedCatalogIds`, so a host using `A2uiSurface` lists the basic catalog alone. It does not fold messages, apply `deleteSurface`, or honor a surface's `theme`. It does not apply `sendDataModel`; the host decides whether to send the data model back. It never contacts a server, so authorization is the host's: render only a surface the stream delivered to your authenticated connection.

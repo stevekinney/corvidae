@@ -234,6 +234,71 @@ The AG-UI stream merges a run's surfaces in as a second source (experimental, pi
 - **Order and reconnect.** The mount has no resume cursor (the SSE `id` is output only); a reconnect is an attach. At open the stream reads the run's history, subscribes to it strictly after the highest cursor it held, and reads the surfaces as they stand, so nothing falls in the gap and a revision is sent once. Surface snapshots are ordered among themselves by revision; against the run's live frames, which are ordered by in-process sequence and include live-only text deltas, they interleave in arrival order. Before the terminal event (and before an interrupt) the stream sends any surface the run last changed; a freeze recorded after the run's terminal record is read on the next attach.
 - **Holders and peers.** The holder's stream and a peer's (a process that does not hold the run) use the same source; a child run's stream has none.
 
+### Reconnecting and reconstructing a surface
+
+The primary consumer workflow: a frontend loses its connection, attaches to the run again, and rebuilds every surface it may see from the stream alone. The steps, in order:
+
+1. **Authenticate and attach.** `GET <prefix>/threads/<threadId>/run` (or `GET <prefix>/runs/<runId>`) as a principal that may read the run, with the opt-in header: `X-A2A-Extensions` naming `A2UI_EXTENSION_URI`, or `X-A2UI-Client-Capabilities` carrying `{ "v0.9": { "supportedCatalogIds": [...] } }`. An attach has no body, so a header is the only way to opt in. A principal that may not read the run is answered `RUN_NOT_FOUND`, as for a missing run, and its stream carries no surface.
+2. **Read the opening.** The stream opens with the run's snapshot events (`STATE_SNAPSHOT`, and `MESSAGES_SNAPSHOT` where the run has a thread to show), then one `ACTIVITY_SNAPSHOT` for each surface the run holds, as it stands now. Each is the surface's whole state, so the client needs no earlier event.
+3. **Keep reading.** Each later revision of a surface is another `ACTIVITY_SNAPSHOT` with `replace: true` and a higher `surfaceRevision`. A surface that was closed arrives as a snapshot whose messages are a lone `deleteSurface`.
+4. **Render what it holds.** Hand each held surface to a renderer, and keep its `surfaceRevision` for the user's action. Over AG-UI there is nowhere to send an action (see [Unsupported](#unsupported)); it goes to the task over A2A, carrying the revision as `metadata.a2uiSurfaceRevision`.
+
+The fold below is the client half of steps 2 and 3. It is also the executable copy in `src/interactive-surface-guide.test.ts`, where a guard compares it with this block, so the two cannot drift. The test drives it with a real run: it reads a surface from a live stream, reconnects with a second attach, and checks that both clients hold the same surface, that a stranger's attach holds none, and that a closed surface is dropped.
+
+```ts
+/** What a client holds of one surface after folding its snapshots. */
+export type HeldSurface = {
+  readonly surfaceId: string;
+  /** Keep this for the user's action: it is `a2uiSurfaceRevision` on the way back. */
+  readonly surfaceRevision: number;
+  readonly catalogId: string;
+  readonly components: readonly Record<string, unknown>[];
+  readonly dataModel: unknown;
+};
+
+type SurfaceMessage = {
+  createSurface?: { catalogId: string };
+  updateComponents?: { components: Record<string, unknown>[] };
+  updateDataModel?: { value?: unknown };
+  deleteSurface?: unknown;
+};
+
+/** Folds one AG-UI event into the surfaces a client holds. Anything but a surface snapshot is ignored. */
+export function foldSurfaceEvent(
+  held: Map<string, HeldSurface>,
+  event: { type: string; activityType?: string; content?: unknown },
+): void {
+  if (event.type !== 'ACTIVITY_SNAPSHOT' || event.activityType !== 'a2ui-surface') return;
+  const { surfaceId, surfaceRevision, messages } = event.content as {
+    surfaceId: string;
+    surfaceRevision: number;
+    messages: SurfaceMessage[];
+  };
+  // A snapshot older than what the client holds changes nothing.
+  const current = held.get(surfaceId);
+  if (current !== undefined && surfaceRevision < current.surfaceRevision) return;
+  let next: HeldSurface | undefined;
+  for (const message of messages) {
+    if (message.deleteSurface !== undefined) {
+      held.delete(surfaceId);
+      return;
+    }
+    if (message.createSurface !== undefined) {
+      const { catalogId } = message.createSurface;
+      next = { surfaceId, surfaceRevision, catalogId, components: [], dataModel: {} };
+    } else if (next !== undefined && message.updateComponents !== undefined) {
+      next = { ...next, components: message.updateComponents.components };
+    } else if (next !== undefined && message.updateDataModel !== undefined) {
+      // A snapshot always sets the whole model, at the root path.
+      next = { ...next, dataModel: message.updateDataModel.value };
+    }
+  }
+  if (next !== undefined) held.set(surfaceId, next);
+}
+```
+
+`components`, `dataModel`, and `surfaceRevision` are the props of [`A2uiSurface`](../../../components/chat/README.md#a2ui-surfaces-experimental) in `@lostgradient/chat`, which renders only the basic catalog, so such a client lists only the basic catalog in `supportedCatalogIds`. The fold keys a surface by `surfaceId` alone; surface snapshots and the run's native events interleave in arrival order, and no cursor ties a surface to a text delta. `RUN_ERROR` with `STREAM_DEADLINE` or `STREAM_OVERFLOW` is the cue to attach again and fold the new opening. The AG-UI mount has no resume cursor, so a reconnect always re-reads the surfaces as they stand.
+
 ### MCP Apps (COR-910)
 
 An `mcp-app` surface is one MCP App instance on a task: the resource it shows (`resourceUri`, `contentDigest`, `mimeType`), the policy its host enforces (`csp`, `permissions`), the tool it presents (`toolName`), and the resource's optional MCP Apps metadata, its dedicated sandbox origin (`domain`) and whether it asks for a border (`prefersBorder`). Reloading the app, or a new resource digest, is an update with a new `instanceId` (an update that changes `resourceUri` or `contentDigest` and keeps the `instanceId` is `invalid`), so a call from the old instance is `stale-instance`. A tool result the app presents is the surface's `data`. An app-to-host call that continues the task (an approval, an answer) is a `surface.action` carrying the app's `instanceId`; a call that only reads (a snapshot, a run's events) is a query the host authorizes as the app's user. An app never reaches a management-plane command, because no action intent names one.
@@ -241,6 +306,26 @@ An `mcp-app` surface is one MCP App instance on a task: the resource it shows (`
 ### Human input forms (COR-1487 and COR-1309)
 
 A human-input request with a schema is an `input-form` surface: the request's JSON Schema is `representation.schema`, its prompt is the `summary`, and its answer is an `answer` or `submit` action continuing the human-wait signal, so an admitted value is the signal's payload and has already been validated against the schema. `@lostgradient/chat` renders it with `SchemaForm` and reports a valid submission as `onInputSubmit(toolCallId, value)`, the same `{ toolCallId, value }` an `input` tool action produces, so a host maps that callback onto `surface.action` without reshaping it. Projected as A2UI, the same request becomes a basic-catalog form, with the summary as its text fallback.
+
+**Configuring it (COR-1487, COR-1674).** An agent's author gives `createRequestHumanInputTool({ inputSchemas })` a JSON Schema per `signalName` ([Operative's rules](../../operative/README.md)), and a Bureau enables the tool and the same map with `BureauOptions.humanInput: boolean | { inputSchemas }`. `humanInput: true` offers the tool with no schemas, so any answer is taken; the object form validates every schema at `createBureau` with `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one it cannot accept. A park on a signal with a schema records the schema on the wait, so a run recovered after a restart parks with the same one, and an answer that does not satisfy it is refused before the run resumes.
+
+**When the form is projected.** Only an A2A request that activated A2UI's extension receives the form, as one data part per open wait in the `INPUT_REQUIRED` status message, typed `application/a2ui+json`. A read that did not activate it, a stream that did not (`SendStreamingMessage`, `SubscribeToTask`), and every push notification (the push projector never activates A2UI) carry the prompt text and the instruction to answer with a data part of the form's values, and no form. The form is not on the AG-UI stream either: AG-UI reports the same wait as a `RUN_FINISHED` interrupt.
+
+**Replacing a stale form.** Each wait's form is its own surface, named after the wait's review. When a run parks again on a form wait, the status message for the new wait opens with a `deleteSurface` for the previous form wait's surface, then creates the new one, so a client never keeps answering a form whose wait has passed. The previous form is found from the audit trail, which marks the reviews that showed a form; without an audit trail, no delete is sent. A task that leaves `input-required` does not send a delete for its last form: a form appears only in an activated status message, which carries no deletes of its own.
+
+## Unsupported
+
+What the surface contract and its A2UI and AG-UI projections do not do, so a consumer does not infer a guarantee from silence:
+
+- **No AG-UI action route.** An AG-UI stream delivers surface snapshots one way. A renderer's action goes to the task as an A2A `SendMessage` data part (see [Over A2A](#over-a2a-experimental)), or in-process through `bureau.surfaces.act`. The mount's routes take no surface action, and `A2uiSurface` sends nothing itself.
+- **Snapshots only.** The stream sends `ACTIVITY_SNAPSHOT` with `replace: true`; it never sends `ACTIVITY_DELTA`. Beyond surfaces, the AG-UI mount also never sends `STATE_DELTA`, `RAW`, `SUBAGENT_*`, `REASONING_*`, or the `*_CHUNK` forms, and its only `CUSTOM` event is `bureau.asset-part`. `@lostgradient/chat`'s AG-UI transport, in turn, validates and ignores `ACTIVITY_*`, `STATE_*`, `RAW`, `CUSTOM`, and `SUBAGENT_*`.
+- **No resume cursor on AG-UI.** A reconnect is an attach that re-reads the surfaces as they stand. A client that wants a cursor-resumable history uses `bureau.eventHistory` and `subscribeEventHistory`.
+- **No opt-in, no surface.** A client that does not opt in receives no surface event over AG-UI, and AG-UI has no text fallback, so a surface in a catalog the client did not list is skipped. Over A2A, such a surface arrives as its `summary` text.
+- **Two catalogs, no inline catalogs.** Only the vendored basic catalog and Cinder's are known; the Agent Card says `acceptsInlineCatalogs: false`.
+- **A child run has no surfaces on its stream.**
+- **Client messages other than `action`.** A client `error` is reported by the adapter and is not a command. A client's data model (`a2uiClientDataModel` with `sendDataModel`) is not written back to the surface (`surface.context-update` is defined and not served).
+- **The renderer is not Bureau's.** `A2uiSurface` renders the basic catalog only; it does not render Cinder's catalog, apply a `theme`, or fold messages.
+- **Not stable.** A2UI support is experimental and pinned to v0.9.1 (`A2UI_SUPPORT_STATUS`). The envelope in an `ACTIVITY_SNAPSHOT`'s `content` may change without a contract-version bump until an A2UI 1.0 compatibility review.
 
 ## Design
 
@@ -258,6 +343,6 @@ The contract is a one-way door, so how it changes is part of it.
 - **State beside the history, in the same batch.** A surface's state is a projection written in the same storage batch as its history event, not a fold over the history. The batch is conditioned on the projection the command was checked against, which is what makes the compare-and-swap atomic: a fold alone cannot refuse a stale write without a fence of its own. It also makes a snapshot one storage read. Nothing outside the batch is a source of truth, and the history alone still replays every change.
 - **The payload cap** is a constant, `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, equal to the handler's default `maxRequestBodyBytes` (1 MiB), with a `maxPayloadBytes` option on `createInteractiveSurfaces` rather than a new `BureauOptions` field, until a deployment needs another value.
 - **`ajv` is a dependency of Bureau now.** `input-form` is the native kind, and admitting its answer means validating the value against its schema; a shape check alone would admit any value.
-- **A2UI is shape-checked only.** Bureau does not vendor the basic catalog's schema yet; COR-837's adapter validates components against their catalog, and Cinder's catalog generator already exports a validator for A2UI messages against Cinder's catalog.
+- **A2UI is validated against vendored catalogs.** The store checks an `a2ui` representation's shape; COR-837's adapter then validates every component, property, function, and binding against the vendored basic catalog or Cinder's catalog (`src/a2ui/basic-catalog.schema.json` and `cinder-catalog.schema.json`, with their provenance), and the messages against the vendored `server_to_client.json`.
 - **Admitted actions are dispatched by the caller.** Admission returns a typed receipt naming the continuation (`resolveReview` for a review, `signalSession` for a signal), and the adapter that received the action runs it, rather than Bureau dispatching it inside admission. The receipt is the wire contract either way; a later version can dispatch inside Bureau without changing it, and each catalog entry already names its continuation's type.
 - **Names.** Surface fields follow the existing taxonomy row (`revision`, `baseRevision`, `owner`, `audience`). The event kinds are `surface.*`, recorded under the task's `run` owner, the precedent reviews set: a surface is not a durable-history owner kind of its own.
