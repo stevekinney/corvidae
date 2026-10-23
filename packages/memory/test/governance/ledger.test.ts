@@ -116,39 +116,72 @@ describe('createMemoryGovernanceLedger', () => {
   });
 
   it('round-trips deletion receipts, filters open ones, and survives a new ledger instance', async () => {
-    await ledger.putReceipt(receipt());
-    await ledger.putReceipt(
+    await ledger.openReceipt(receipt());
+    await ledger.openReceipt(
       receipt({ deletionId: 'deletion-2', tenantId: 'tenant-b', open: false, targets: [] }),
     );
 
     const restarted = createMemoryGovernanceLedger(storage);
     expect(await restarted.getReceipt('deletion-1')).toEqual(receipt());
     expect(await restarted.getReceipt('missing')).toBeUndefined();
+    expect(await restarted.readReceipt('missing')).toBeUndefined();
     expect(pluck(await restarted.listReceipts({ open: true }), 'deletionId')).toEqual([
       'deletion-1',
     ]);
     expect(pluck(await restarted.listReceipts({ tenantId: 'tenant-b' }), 'deletionId')).toEqual([
       'deletion-2',
     ]);
-    await restarted.deleteReceipt('deletion-2');
+    const stored = await restarted.readReceipt('deletion-2');
+    expect(stored?.receipt.deletionId).toBe('deletion-2');
+    expect(await restarted.deleteReceipt(stored!)).toBe(true);
     expect(await restarted.getReceipt('deletion-2')).toBeUndefined();
   });
 
   it('opens a receipt only when none is stored under its deletion id', async () => {
-    expect(await ledger.openReceipt(receipt())).toBe(true);
+    const opened = await ledger.openReceipt(receipt());
+    expect(opened?.receipt).toEqual(receipt());
     // A second claimant building a receipt under the same deletion id opens nothing.
     expect(
       await ledger.openReceipt(receipt({ trigger: 'retention-expiry', requestedAt: 20 })),
-    ).toBe(false);
+    ).toBeUndefined();
     expect(await ledger.getReceipt('deletion-1')).toEqual(receipt());
-    expect(await ledger.openReceipt(receipt({ deletionId: 'deletion-2' }))).toBe(true);
+    expect(await ledger.openReceipt(receipt({ deletionId: 'deletion-2' }))).toBeDefined();
+  });
+
+  it('replaces a receipt only as it was read, so a writer with a stale read changes nothing', async () => {
+    const opened = await ledger.openReceipt(receipt());
+    const read = await ledger.readReceipt('deletion-1');
+    const first = await ledger.replaceReceipt(opened!, receipt({ updatedAt: 20 }));
+    expect(first?.receipt).toEqual(receipt({ updatedAt: 20 }));
+    // `read` was taken before the first replacement landed.
+    expect(await ledger.replaceReceipt(read!, receipt({ open: false }))).toBeUndefined();
+    expect(await ledger.deleteReceipt(read!)).toBe(false);
+    expect(await ledger.getReceipt('deletion-1')).toEqual(receipt({ updatedAt: 20 }));
+
+    // A writer that re-reads moves it on.
+    const current = await ledger.readReceipt('deletion-1');
+    expect(await ledger.replaceReceipt(current!, receipt({ open: false }))).toBeDefined();
+    expect(await ledger.getReceipt('deletion-1')).toEqual(receipt({ open: false }));
+    expect(
+      await throwingRejectionOf(
+        ledger.replaceReceipt(current!, receipt({ deletionId: 'deletion-2' })),
+      ),
+    ).toThrow('cannot change its deletionId');
+  });
+
+  it('replaces nothing once the receipt was deleted', async () => {
+    const opened = await ledger.openReceipt(receipt());
+    expect(await ledger.deleteReceipt(opened!)).toBe(true);
+    expect(await ledger.replaceReceipt(opened!, receipt({ open: false }))).toBeUndefined();
+    expect(await ledger.getReceipt('deletion-1')).toBeUndefined();
   });
 
   it('rejects a corrupt persisted receipt instead of treating it as absent', async () => {
-    await ledger.putReceipt(receipt());
+    await ledger.openReceipt(receipt());
     const key = [...storage.snapshot().keys()].find((candidate) => candidate.includes('receipt:'))!;
     await storage.put(key, new TextEncoder().encode('{"version":1}'));
     expect(await throwingRejectionOf(ledger.getReceipt('deletion-1'))).toThrow();
+    expect(await throwingRejectionOf(ledger.readReceipt('deletion-1'))).toThrow();
   });
 
   it('stores export manifests and finds them by record', async () => {
