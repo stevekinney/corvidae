@@ -1373,6 +1373,14 @@ export function createMemoryPersistHook(
         sessionId: target.sessionId,
       },
       ...(dedupeKey === undefined ? {} : { dedupeKey }),
+      ...(runId === undefined ? {} : { runId }),
+      // COR-768: every notification of this write names the run, the chat, and, when the run
+      // seals effective-context epochs, the epoch of the attempt that produced the answer.
+      correlation: {
+        ...(runId === undefined ? {} : { runId }),
+        sessionId: target.sessionId,
+        ...(context.contextEpochId === undefined ? {} : { contextEpochId: context.contextEpochId }),
+      },
     });
     if (receipt.status === 'rejected') onRejected?.(receipt);
   };

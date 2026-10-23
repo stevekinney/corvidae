@@ -800,6 +800,36 @@ describe('createOperationHandler mounts', () => {
     expect(calls).toBe(1);
   });
 
+  it('skips authenticate for a path its own mount’s predicate passes, and never for another mount’s', async () => {
+    let calls = 0;
+    const isCard = (pathname: string) => pathname.endsWith('/.well-known/agent-card.json');
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: async () => {
+        calls += 1;
+        return new Response('nope', { status: 401 });
+      },
+      mounts: [mount('/a2a', { isPublicPath: isCard }), mount('/ag-ui')],
+    });
+
+    const card = await handler(
+      new Request('http://localhost/a2a/published-later/.well-known/agent-card.json'),
+    );
+    expect(await card.text()).toBe('mounted');
+    expect(calls).toBe(0);
+
+    const rpc = await handler(new Request('http://localhost/a2a/published-later'));
+    const elsewhere = await handler(
+      new Request('http://localhost/ag-ui/x/.well-known/agent-card.json'),
+    );
+    const catalog = await handler(
+      new Request('http://localhost/jsonrpc/.well-known/agent-card.json'),
+    );
+    expect([rpc.status, elsewhere.status, catalog.status]).toEqual([401, 401, 401]);
+    expect(calls).toBe(3);
+  });
+
   it('receives the agent card at /.well-known/agent-card.json unauthenticated', async () => {
     let principal: unknown;
     const handler = createOperationHandler({

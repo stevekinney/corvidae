@@ -48,8 +48,8 @@ import {
   putsWorkflowStatus,
   type RefusingStorage,
 } from './storage-write-refusal.test-support.ts';
-import { holdStorageWriteRetryWaitsForTesting } from './storage-write-retry.ts';
 import { ATTEMPTS, NO_WAIT, readState } from './storage-write-retry.test-support.ts';
+import { holdStorageWriteRetryWaitsForTesting } from './storage-write-retry.ts';
 
 type ExecuteBody = Parameters<ReturnType<typeof workflow>['execute']>[0];
 
@@ -726,7 +726,9 @@ describe('a failure write the exit itself issues', () => {
     expect(abandonedExecutionAttemptCount(internals)).toBe(0);
     expect(currentExecutionAttempt(internals, run.id)).toBeUndefined();
     expect(internals.resultResolvers.has(run.id)).toBe(false);
-    expect(decode((await run.refusing.base.get(KEYS.workflow(run.id)))!) as WorkflowState).toMatchObject({
+    expect(
+      decode((await run.refusing.base.get(KEYS.workflow(run.id)))!) as WorkflowState,
+    ).toMatchObject({
       status: 'failed',
     });
   });

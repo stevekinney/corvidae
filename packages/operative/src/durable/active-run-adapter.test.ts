@@ -51,7 +51,7 @@ import type { OperativeHookMap } from '../hooks';
 import { type StallWatchdogClock, TOOL_CALL_POLICY } from '../liveness';
 import { UnsupportedRunResultVersionError } from '../run-envelope';
 import type { RunnableAgent } from '../runnable-agent';
-import { createManualDurableEngine, spyEngine } from '../test/durable-engine';
+import { createManualDurableEngine, spyEngine, withTwoPhaseStart } from '../test/durable-engine';
 import { createManualCheckpointStore, createMockGenerate, waitForCondition } from '../test/index';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { RunOptions, RunResult } from '../types';
@@ -159,6 +159,31 @@ async function buildContextWithManualInlineLaunch() {
     inlineLaunchScheduling: 'manual',
   });
   return { engine, checkpointStore };
+}
+
+/**
+ * COR-297 — resolves once the engine's next prepared run has launched, which on a
+ * 'manual' inline-launch engine is when the run is queued for a flush.
+ */
+function observeLaunch(engine: RegistryAgnosticEngine): { launched(): Promise<void> } {
+  let resolveLaunched!: () => void;
+  const launched = new Promise<void>((resolve) => {
+    resolveLaunched = resolve;
+  });
+  const realPrepare = engine.prepare.bind(engine);
+  engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+    const prepared = await realPrepare(...args);
+    return {
+      id: prepared.id,
+      launch: async () => {
+        const handle = await prepared.launch();
+        resolveLaunched();
+        return handle;
+      },
+      abandon: () => prepared.abandon(),
+    };
+  };
+  return { launched: () => launched };
 }
 
 function runOptions(generate: RunOptions['generate']): RunOptions {
@@ -774,11 +799,11 @@ describe('createRun with durable routing', () => {
     const disposedError = Object.assign(new Error('engine disposed'), {
       code: 'EngineDisposedError',
     });
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({
         result: () => Promise.reject(disposedError),
       }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
     const context = {
       engine,
       checkpointStore: {
@@ -810,11 +835,11 @@ describe('createRun with durable routing', () => {
     const disposedError = Object.assign(new Error('engine disposed'), {
       code: 'EngineDisposedError',
     });
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({
         result: () => Promise.reject(disposedError),
       }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
     const context = {
       engine,
       checkpointStore: {
@@ -840,12 +865,12 @@ describe('createRun with durable routing', () => {
     const timeoutError = Object.assign(new Error('timed out'), {
       code: 'WorkflowTimeoutError',
     });
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({
         result: () => Promise.reject(timeoutError),
       }),
       get: async () => ({ status: 'timed-out' }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
     const context = {
       engine,
       checkpointStore: createCheckpointStore(
@@ -867,11 +892,11 @@ describe('createRun with durable routing', () => {
 
   it('settles an unexpected durable handle result rejection as an error (COR-1587)', async () => {
     const unexpectedError = new Error('unexpected durable rejection');
-    const engine = {
+    const engine = withTwoPhaseStart({
       start: async () => ({
         result: () => Promise.reject(unexpectedError),
       }),
-    } as unknown as RegistryAgnosticEngine;
+    }) as unknown as RegistryAgnosticEngine;
     const context = {
       engine,
       checkpointStore: createCheckpointStore(
@@ -1296,6 +1321,8 @@ describe('createRun with durable routing', () => {
   it('two durable runs with two manual runtimes (different origins/seeds) carry disjoint ids and origin-derived timestamps', async () => {
     const contextA = await buildContextWithManualInlineLaunch();
     const contextB = await buildContextWithManualInlineLaunch();
+    const launchesA = observeLaunch(contextA.engine);
+    const launchesB = observeLaunch(contextB.engine);
     try {
       const runtimeA = createManualRuntimeServices({
         origin: '2021-01-01T00:00:00.000Z',
@@ -1355,11 +1382,14 @@ describe('createRun with durable routing', () => {
       runB.addEventListener('tool.started', (e) => startedB.push(e));
 
       // Both engines are 'manual': the launches only enqueue until drained. Wait
-      // for each initial durable record, then drain each engine's queue once.
+      // for each initial durable record, then for each run's launch (COR-297:
+      // `durablyStarted` settles at `prepare()`, before the start lifecycle and
+      // `launch()` run), then drain each engine's queue once.
       expect(runA.durablyStarted).toBeDefined();
       expect(runB.durablyStarted).toBeDefined();
       await runA.durablyStarted;
       await runB.durablyStarted;
+      await Promise.all([launchesA.launched(), launchesB.launched()]);
       await contextA.engine.flushInlineLaunches();
       await contextB.engine.flushInlineLaunches();
 
@@ -2308,25 +2338,25 @@ describe('createDurableActiveRun.closed()', () => {
 
   // AB-339: this test previously encoded the exact bug the issue fixed —
   // it asserted that an abort landing before the deferred microtask fired
-  // still durably LAUNCHED the workflow (`engine.start`), then had
+  // still durably LAUNCHED the workflow (`engine.prepare`), then had
   // `resolveDurableOutcome` fire its own `engine.cancel`/`engine.get`
   // re-read against that just-launched record. That launch is what let a
   // concurrent `Bureau.shutdown()` dispose the durable engine mid-flight
   // and misclassify the run `unresolved`/`unreachable` (the false leak
   // AB-339 reports). The fix (`drive()`'s `abortedBeforeDrive` snapshot,
   // taken in the SAME synchronous step `driveStarted` flips in) makes this
-  // scenario settle WITHOUT ever calling `engine.start`, so there is
+  // scenario settle WITHOUT ever calling `engine.prepare`, so there is
   // nothing for `engine.cancel`/`engine.get` to confirm — updated to assert
   // that instead, per the coordinator's note to update rather than delete
   // a test whose scenario name is still exactly right.
   it('settles completed without ever launching the workflow when abort() ran before the deferred microtask fired (AB-339)', async () => {
     const { engine } = createManualDurableEngine();
-    const startCalls: unknown[] = [];
+    const prepareCalls: unknown[] = [];
     const cancelledIds: string[] = [];
-    const realStart = engine.start.bind(engine);
-    engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
+    const realPrepare = engine.prepare.bind(engine);
+    engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args);
+      return realPrepare(...args);
     };
     engine.cancel = async (id: string) => {
       cancelledIds.push(id);
@@ -2346,7 +2376,7 @@ describe('createDurableActiveRun.closed()', () => {
     // Abort SYNCHRONOUSLY, before the deferred-microtask `drive()` call has
     // fired — `driveStarted` is still false. `drive()` captures this exact
     // window (`combinedSignal.aborted` read in the SAME microtask
-    // `driveStarted` flips true in) and skips `context.engine.start`
+    // `driveStarted` flips true in) and skips `context.engine.prepare`
     // entirely once it runs.
     activeRun.abort();
     expect(cancelledIds).toEqual([]);
@@ -2358,17 +2388,17 @@ describe('createDurableActiveRun.closed()', () => {
     expect(await closedAcknowledgement).toEqual({ status: 'completed' });
     // The load-bearing assertions: nothing was ever durably launched, so
     // there was nothing for `engine.cancel` to confirm either.
-    expect(startCalls).toEqual([]);
+    expect(prepareCalls).toEqual([]);
     expect(cancelledIds).toEqual([]);
   });
 
-  it('returns an error result — never engine.start — when onRunStart fails on the abort-before-drive path (AB-339)', async () => {
+  it('returns an error result — never engine.prepare — when onRunStart fails on the abort-before-drive path (AB-339)', async () => {
     const { engine } = createManualDurableEngine();
-    const startCalls: unknown[] = [];
-    const realStart = engine.start.bind(engine);
-    engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
+    const prepareCalls: unknown[] = [];
+    const realPrepare = engine.prepare.bind(engine);
+    engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args);
+      return realPrepare(...args);
     };
     const hooks = new HookRegistry<OperativeHookMap>();
     hooks.on('onRunStart', async () => {
@@ -2396,7 +2426,7 @@ describe('createDurableActiveRun.closed()', () => {
 
     expect(result.finishReason).toBe('error');
     expect((result.error as Error).message).toBe('start hook failed');
-    expect(startCalls).toEqual([]);
+    expect(prepareCalls).toEqual([]);
   });
 
   it('resolves unresolved/persistence-failed when the post-cancel re-read throws (coordinator persistence-failed fixture)', async () => {
@@ -4300,7 +4330,7 @@ describe('B6 — abort-into-generate load-bearing abort', () => {
   // calls generate()" — true, but only because `runStep`'s OWN internal
   // pre-aborted-signal check (`if (signal?.aborted) return { kind: 'abort'
   // }`) rescued a workflow `driveDurableRun` had ALREADY durably launched
-  // via `context.engine.start`. That launch is exactly the false-leak
+  // via `context.engine.prepare`. That launch is exactly the false-leak
   // mechanism AB-339 fixed: this run's `abortedBeforeDrive` snapshot
   // (captured the same microtask `driveStarted` flips true in) is `true`
   // here, so `driveDurableRun` now settles this run WITHOUT ever reaching
@@ -4310,11 +4340,11 @@ describe('B6 — abort-into-generate load-bearing abort', () => {
   it('abort() before the first microtask fires the AbortSignal without ever launching the workflow (AB-339)', async () => {
     const context = await buildContext();
     const spy = spyEngine(context.engine);
-    const startCalls: unknown[] = [];
-    const realStart = spy.engine.start.bind(spy.engine);
-    spy.engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
+    const prepareCalls: unknown[] = [];
+    const realPrepare = spy.engine.prepare.bind(spy.engine);
+    spy.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args);
+      return realPrepare(...args);
     };
     const { generate, abortFired } = makeBlockingGenerate();
 
@@ -4344,7 +4374,7 @@ describe('B6 — abort-into-generate load-bearing abort', () => {
     // was registered with the engine.
     expect(['aborted', 'error']).toContain(result.finishReason);
     expect(abortFired.value).toBe(false);
-    expect(startCalls).toEqual([]);
+    expect(prepareCalls).toEqual([]);
     expect(spy.cancels).toEqual([]);
 
     context.engine[Symbol.dispose]();
@@ -4358,7 +4388,7 @@ describe('B6 — abort-into-generate load-bearing abort', () => {
   // `driveStarted` flips; an abort delivered ONE microtask later (after
   // `driveStarted` is already `true`, matching this file's other
   // "`await Promise.resolve(); activeRun.abort()`" tests) still reaches
-  // `context.engine.start`, with the signal already aborted by the time
+  // `context.engine.prepare`, with the signal already aborted by the time
   // `runStep` itself checks it.
   it('runStep detects a signal that aborted during startup and short-circuits without invoking generate()', async () => {
     const context = await buildContext();
@@ -4383,7 +4413,7 @@ describe('B6 — abort-into-generate load-bearing abort', () => {
 
     // One microtask so `driveStarted` has already flipped true (and
     // `abortedBeforeDrive` was already captured `false`) before this fires
-    // — the run still reaches `context.engine.start`, matching every
+    // — the run still reaches `context.engine.prepare`, matching every
     // other "abort after the workflow started" test in this file.
     await Promise.resolve();
     activeRun.abort('abort races the workflow launch');
@@ -4574,18 +4604,18 @@ describe('AB-317: durable toolbox listeners survive abort() until the settle-awa
 });
 
 describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow record write', () => {
-  it('does not settle until context.engine.start commits — a fresh run genuinely gates on the durable write, not on the deferred microtask alone', async () => {
+  it('does not settle until context.engine.prepare commits — a fresh run genuinely gates on the durable write, not on the deferred microtask alone', async () => {
     const context = await buildContext();
-    let releaseStart: (() => void) | undefined;
-    const startGate = new Promise<void>((resolve) => {
-      releaseStart = resolve;
+    let releasePrepare: (() => void) | undefined;
+    const prepareGate = new Promise<void>((resolve) => {
+      releasePrepare = resolve;
     });
-    const startCalls: string[] = [];
-    const realStart = context.engine.start.bind(context.engine);
-    context.engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args[2]?.id ?? '');
-      await startGate;
-      return realStart(...args);
+    const prepareCalls: string[] = [];
+    const realPrepare = context.engine.prepare.bind(context.engine);
+    context.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args[2]?.id ?? '');
+      await prepareGate;
+      return realPrepare(...args);
     };
 
     const runId = 'ab-361-gated-start';
@@ -4606,18 +4636,18 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
 
     // Exhaust every microtask the deferred `drive()` chain and
     // `startRunLifecycle`'s own await could possibly run on before
-    // `context.engine.start` is ever reached — proves this is a genuine
+    // `context.engine.prepare` is ever reached — proves this is a genuine
     // gate on the write itself, not an artifact of too few ticks.
     for (let tick = 0; tick < 20; tick += 1) {
       await Promise.resolve();
     }
     expect(durablyStartedSettled).toBe(false);
-    // The call HAS been made (proving the gate is inside `engine.start`,
+    // The call HAS been made (proving the gate is inside `engine.prepare`,
     // not blocking the call from happening at all) — it just has not
     // resolved yet.
-    expect(startCalls).toEqual([runId]);
+    expect(prepareCalls).toEqual([runId]);
 
-    releaseStart?.();
+    releasePrepare?.();
     await activeRun.durablyStarted;
     expect(durablyStartedSettled).toBe(true);
 
@@ -4625,10 +4655,10 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     context.engine[Symbol.dispose]();
   });
 
-  it('rejects durablyStarted but resolves result with an error RunResult when context.engine.start itself rejects (PRRT_kwDORvupsc6gWc39)', async () => {
+  it('rejects durablyStarted but resolves result with an error RunResult when context.engine.prepare itself rejects (PRRT_kwDORvupsc6gWc39)', async () => {
     const context = await buildContext();
     const startFailure = new Error('sqlite: disk full');
-    context.engine.start = async () => {
+    context.engine.prepare = async () => {
       throw startFailure;
     };
 
@@ -4663,13 +4693,13 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     expect(completed).toHaveLength(1);
   });
 
-  it('rejects durablyStarted and resolves result with an error RunResult when a caller-supplied onServices throws, never reaching engine.start (copilot PRRT_kwDORvupsc6gWb3a)', async () => {
+  it('rejects durablyStarted and resolves result with an error RunResult when a caller-supplied onServices throws, never reaching engine.prepare (copilot PRRT_kwDORvupsc6gWb3a)', async () => {
     const context = await buildContext();
-    const startCalls: unknown[] = [];
-    const realStart = context.engine.start.bind(context.engine);
-    context.engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
+    const prepareCalls: unknown[] = [];
+    const realPrepare = context.engine.prepare.bind(context.engine);
+    context.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args);
+      return realPrepare(...args);
     };
     const onServicesFailure = new Error('onServices: caller-supplied callback exploded');
 
@@ -4698,19 +4728,19 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     expect(result.error).toBeInstanceOf(Error);
     expect((result.error as Error).message).toBe('onServices: caller-supplied callback exploded');
     expect(completed).toHaveLength(1);
-    // The failure happened before `engine.start` was ever reached — never a
+    // The failure happened before `engine.prepare` was ever reached — never a
     // durable launch to clean up, mirroring the `startError`/
     // `abortedBeforeDrive` branches' own "never launched" guarantee.
-    expect(startCalls).toEqual([]);
+    expect(prepareCalls).toEqual([]);
   });
 
   it('resolves immediately when the run never durably launches at all (aborted before the deferred microtask fires, AB-339)', async () => {
     const context = await buildContext();
-    const startCalls: unknown[] = [];
-    const realStart = context.engine.start.bind(context.engine);
-    context.engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
+    const prepareCalls: unknown[] = [];
+    const realPrepare = context.engine.prepare.bind(context.engine);
+    context.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args);
+      return realPrepare(...args);
     };
 
     const runId = 'ab-361-never-launched';
@@ -4725,13 +4755,13 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     );
 
     // Synchronous abort, before the first microtask — the AB-339 window in
-    // which `driveDurableRun` never reaches `context.engine.start` at all.
+    // which `driveDurableRun` never reaches `context.engine.prepare` at all.
     activeRun.abort('immediate pre-start cancel');
 
-    // Settles without ever calling engine.start — there is no durable
+    // Settles without ever calling engine.prepare — there is no durable
     // write to await, so nothing should hang here.
     await activeRun.durablyStarted;
-    expect(startCalls).toEqual([]);
+    expect(prepareCalls).toEqual([]);
 
     await activeRun.result;
     context.engine[Symbol.dispose]();
@@ -4765,19 +4795,14 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     }
   });
 
-  it('rejects durablyStarted and resolves result with an error RunResult when a toObservable() subscriber throws on run.started, never reaching engine.start (codex P2 PRRT_kwDORvupsc6gXHn4)', async () => {
+  it('resolves durablyStarted, abandons the prepared record, and resolves result with an error RunResult when a toObservable() subscriber throws on run.started (codex P2 PRRT_kwDORvupsc6gXHn4, COR-297)', async () => {
     const context = await buildContext();
-    const startCalls: unknown[] = [];
-    const realStart = context.engine.start.bind(context.engine);
-    context.engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
-    };
+    const spy = spyEngine(context.engine);
     const subscriberFailure = new Error('observable subscriber exploded on run.started');
 
     const runId = 'ab-361-observable-throws-on-run-started';
     const activeRun = createDurableActiveRun(
-      { engine: context.engine, checkpointStore: context.checkpointStore },
+      { engine: spy.engine, checkpointStore: context.checkpointStore },
       {
         runId,
         sessionId: runId,
@@ -4790,8 +4815,7 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     // calls every `toObservable()` subscriber directly, unguarded, after the
     // native dispatch returns — a synchronous throw here propagates straight
     // out of `startRunLifecycle`'s own `emitter.dispatch(new
-    // RunStartedEvent(...))` call, before `driveDurableRun` ever reaches its
-    // `startError !== undefined` check.
+    // RunStartedEvent(...))` call.
     activeRun.toObservable().subscribe({
       next(event) {
         if (event.type === 'run.started') throw subscriberFailure;
@@ -4801,27 +4825,29 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     const completed: unknown[] = [];
     activeRun.addEventListener('run.completed', (event) => completed.push(event.result));
 
-    expect(await throwingRejectionOf(activeRun.durablyStarted)).toThrow(
-      'observable subscriber exploded on run.started',
-    );
+    // COR-297: the start lifecycle runs after `prepare()` has committed the
+    // record, so `durablyStarted` has already resolved when it throws.
+    await activeRun.durablyStarted;
     const result = await activeRun.result;
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(Error);
     expect((result.error as Error).message).toBe('observable subscriber exploded on run.started');
     expect(completed).toHaveLength(1);
-    // The failure happened before `engine.start` was ever reached — never a
-    // durable launch to clean up, mirroring the sibling `onServices`/
-    // `startError` branches' own "never launched" guarantee.
-    expect(startCalls).toEqual([]);
+    // The prepared record is abandoned, never launched.
+    expect(spy.abandons).toEqual([runId]);
+    expect(spy.launches).toEqual([]);
+    const record = await context.engine.get(runId);
+    expect(record?.status).toBe('cancelled');
+    context.engine[Symbol.dispose]();
   });
 
-  it('rejects durablyStarted (never resolves) when a caller-supplied onServices throws a literal undefined, never reaching engine.start (codex P2 PRRT_kwDORvupsc6gXHn8)', async () => {
+  it('rejects durablyStarted (never resolves) when a caller-supplied onServices throws a literal undefined, never reaching engine.prepare (codex P2 PRRT_kwDORvupsc6gXHn8)', async () => {
     const context = await buildContext();
-    const startCalls: unknown[] = [];
-    const realStart = context.engine.start.bind(context.engine);
-    context.engine.start = async (...args: Parameters<RegistryAgnosticEngine['start']>) => {
-      startCalls.push(args);
-      return realStart(...args);
+    const prepareCalls: unknown[] = [];
+    const realPrepare = context.engine.prepare.bind(context.engine);
+    context.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      prepareCalls.push(args);
+      return realPrepare(...args);
     };
 
     const runId = 'ab-361-on-services-throws-undefined';
@@ -4853,7 +4879,7 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(Error);
     expect(completed).toHaveLength(1);
-    expect(startCalls).toEqual([]);
+    expect(prepareCalls).toEqual([]);
   });
 });
 

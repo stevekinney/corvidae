@@ -2,6 +2,7 @@ import {
   Engine,
   MemoryStorage,
   WorkflowHandle,
+  type PreparedWorkflowHandle,
   type QueryDefinition,
   type RegistryAgnosticEngine,
   type SignalDefinition,
@@ -32,6 +33,7 @@ export interface SessionEngineBehavior {
 }
 
 type EngineStartOptions = Parameters<Engine['start']>[2];
+type EnginePrepareOptions = Parameters<Engine['prepare']>[2];
 
 const activeEngines = new Set<SessionEngineFixture>();
 
@@ -99,6 +101,28 @@ export class SessionEngineFixture extends Engine {
     if (configured === undefined)
       return super.start(type, input, options).then(trackRecoveryHandle);
     return configured.then((value) => toWorkflowHandle(options?.id ?? type, this, value));
+  }
+
+  /**
+   * COR-297 — the durable driver starts a run with `prepare()` then `launch()`, so a configured
+   * `start` behavior runs at `launch()`, still after the run's drive has begun.
+   */
+  override prepare(
+    type: string,
+    input: unknown,
+    options?: EnginePrepareOptions,
+  ): Promise<PreparedWorkflowHandle> {
+    const start = this.#behavior.start;
+    const id = options?.id;
+    if (start === undefined || id === undefined) return super.prepare(type, input, options);
+    return Promise.resolve({
+      id,
+      launch: () =>
+        start(type, input, { id, services: options?.services }).then((value) =>
+          toWorkflowHandle(id, this, value),
+        ),
+      abandon: async () => {},
+    });
   }
 
   override signal(workflowId: string, name: SignalDefinition): Promise<void>;

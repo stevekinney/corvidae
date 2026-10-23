@@ -32,6 +32,7 @@ import type { RuntimeIdentifiers } from '@lostgradient/lifecycle';
 import {
   type AgentInput,
   type CleanupAcknowledgement,
+  type CleanupAcknowledgementReason,
   isFailureFinishReason,
 } from '@lostgradient/operative';
 import { messageText } from 'conversationalist';
@@ -147,7 +148,19 @@ export interface TaskRecord {
   readonly history: readonly TaskMessage[];
   readonly settled?: TaskSettlement | undefined;
   readonly cleanup?: TaskCleanupState | undefined;
+  /**
+   * The acknowledgement `cleanup` was read from, once one arrived: what A2A's cleanup extension
+   * reports beside the state, since the state alone does not say whether cleanup completed or was
+   * not required, or why it is unresolved. Absent before an acknowledgement, and in a record
+   * written before it was kept.
+   */
+  readonly cleanupAcknowledgement?: TaskCleanupAcknowledgement | undefined;
 }
+
+/** A cleanup acknowledgement as a task record keeps it: its status and, when unresolved, why. */
+export type TaskCleanupAcknowledgement =
+  | { readonly status: 'not-required' | 'completed' | 'failed' }
+  | { readonly status: 'unresolved'; readonly reason: CleanupAcknowledgementReason };
 
 /** What a task is created from. */
 export interface TaskAdmission {
@@ -255,6 +268,11 @@ export interface TaskListPage<T = TaskView> {
   readonly tasks: readonly T[];
   /** Opaque; `null` when no entries remain. */
   readonly nextPageToken: string | null;
+  /**
+   * How many tasks matched when the listing's first page was read: the snapshot's size before
+   * windowing, the same on every page. A task removed since is still counted.
+   */
+  readonly totalSize: number;
 }
 
 /** What {@link TaskRegistry.list} filters and pages by. */
@@ -619,6 +637,25 @@ function isTaskSettlement(value: unknown): boolean {
   );
 }
 
+const ACKNOWLEDGEMENT_STATUSES: ReadonlySet<unknown> = new Set([
+  'not-required',
+  'completed',
+  'failed',
+  'unresolved',
+]);
+
+const UNRESOLVED_REASONS: ReadonlySet<unknown> = new Set([
+  'timed-out',
+  'unreachable',
+  'persistence-failed',
+  'unknown-effect',
+]);
+
+function isCleanupAcknowledgement(value: unknown): boolean {
+  if (!isRecord(value) || !ACKNOWLEDGEMENT_STATUSES.has(value['status'])) return false;
+  return value['status'] !== 'unresolved' || UNRESOLVED_REASONS.has(value['reason']);
+}
+
 /** Whether a stored value is a task record in every field a reader depends on. */
 function isTaskRecord(value: unknown): value is TaskRecord {
   return (
@@ -635,7 +672,9 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     Array.isArray(value['history']) &&
     value['history'].every(isTaskMessage) &&
     (value['settled'] === undefined || isTaskSettlement(value['settled'])) &&
-    (value['cleanup'] === undefined || CLEANUP_STATES.has(value['cleanup']))
+    (value['cleanup'] === undefined || CLEANUP_STATES.has(value['cleanup'])) &&
+    (value['cleanupAcknowledgement'] === undefined ||
+      isCleanupAcknowledgement(value['cleanupAcknowledgement']))
   );
 }
 
@@ -872,7 +911,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     query: TaskListQuery<T>,
     scope: TaskListingScope,
     after: TaskListingKey | null,
-  ): Promise<{ entries: TaskListingEntry<T>[]; continuation: TaskListingKey | null }> {
+  ): Promise<{
+    entries: TaskListingEntry<T>[];
+    continuation: TaskListingKey | null;
+    matched: number;
+  }> {
     const { statusTimestampAfter } = scope.filters;
     const views = await matchingViews(query);
     const keyed = views
@@ -891,12 +934,16 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const entryBytes = listingEntryBytes(entry);
       if (!fitsListingWindow(entries.length, bytes, entryBytes)) {
         const last = entries.at(-1);
-        return { entries, continuation: last === undefined ? null : { at: last.at, id: last.id } };
+        return {
+          entries,
+          continuation: last === undefined ? null : { at: last.at, id: last.id },
+          matched: keyed.length,
+        };
       }
       entries.push(entry);
       bytes += entryBytes;
     }
-    return { entries, continuation: null };
+    return { entries, continuation: null, matched: keyed.length };
   }
 
   /** The page of `record` starting at `position`, skipping tasks removed since the snapshot. */
@@ -919,7 +966,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         position: Math.min(end, record.entries.length),
       });
     }
-    return { tasks, nextPageToken };
+    return { tasks, nextPageToken, totalSize: record.total };
   }
 
   async function startListing<T>(
@@ -939,7 +986,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       incarnation,
       createdAt,
       expiresAt: createdAt + TASK_LISTING_LIFETIME_MILLISECONDS,
-      ...window,
+      entries: window.entries,
+      continuation: window.continuation,
+      total: window.matched,
     };
     const page = await pageOf(record, 0, query.limit);
     // A listing that fits its first page has no next page and leaves nothing behind.
@@ -957,7 +1006,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const stored = await listings.find<T>(scope, previous.listingId, previous.expiresAt, window);
     if (stored !== undefined) return stored;
     const built = await buildWindow(query, scope, previous.continuation);
-    const record: TaskListingRecord<T> = { ...previous, window, ...built };
+    // A later window keeps the listing's total, counted once when its first page was read.
+    const record: TaskListingRecord<T> = {
+      ...previous,
+      window,
+      entries: built.entries,
+      continuation: built.continuation,
+    };
     await listings.save(record);
     return record;
   }
@@ -976,7 +1031,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     let { position } = token;
     if (position >= record.entries.length) {
       // The window is spent: the token after its last entry starts the next window.
-      if (record.continuation === null) return { tasks: [], nextPageToken: null };
+      if (record.continuation === null) {
+        return { tasks: [], nextPageToken: null, totalSize: record.total };
+      }
       record = await nextWindow(query, scope, record);
       position = 0;
     }
@@ -1004,7 +1061,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const state = cleanupStateOf(acknowledgement);
       observed.set(taskId, state);
       try {
-        await track(update(taskId, (record) => ({ ...record, cleanup: state })));
+        await track(
+          update(taskId, (record) => ({
+            ...record,
+            cleanup: state,
+            // The error an acknowledgement may carry is the run's own detail, never stored.
+            cleanupAcknowledgement:
+              acknowledgement.status === 'unresolved'
+                ? { status: 'unresolved', reason: acknowledgement.reason }
+                : { status: acknowledgement.status },
+          })),
+        );
       } catch (error) {
         diagnose(`Could not record the cleanup of task "${taskId}"`, error);
       }
