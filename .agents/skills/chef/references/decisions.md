@@ -43,6 +43,15 @@ The result is the answer, its probability, the model, and whether it cleared the
 - Exit 2: invalid usage. Fix the command; it is not an answer.
 - Exit 3: Jev is unavailable (no credential, a 401, a 5xx or 529, or a network error; a 429 is retried once after the wait the response asks for). Skip Jev: routine calls go back to the coordinator, and owner decisions go to the owner, with no probabilities to show. Record in the note that Jev was skipped and why. Do not retry in a loop, and do not let the outage stall independent work.
 
+## Owner instructions outrank process rules
+
+An explicit owner instruction in the current scope outranks process rules and guards: the repeating-class guard, the three-round review cap, main-health refusals, the context ceiling's advice, and grooming gates. Once the owner has said to merge a pull request, a guard firing on it is not a conflict to put back to them.
+
+- A guard stops the worker and hands the case to the coordinator. The coordinator decides on the evidence and the owner's instruction, records the decision and the waived guard in its log and on the pull request, and files any reassessment of the repeating class as a follow-up issue.
+- The coordinator asks the owner only about what is reserved for them: irreversible or outward-facing actions, security and credentials, anything the owner reserved by name, and real conflicts between two owner instructions. A conflict between an owner instruction and a process rule is none of these, so the coordinator does not ask.
+- **Relays.** A coordinator never asks the owner to repeat themselves in another session. If an action needs the owner's own words in a particular session and that session cannot act on a relayed message, the coordinator does the work itself or through its own Agent-tool workers. If neither can, it says once, plainly, what is blocked and why.
+- **Agent-tool workers.** The app does not start sessions from a turn woken by another session's message, or over Remote Control. When starting new sessions is not possible, the default dispatch is native Agent-tool workers, which need no click from the owner.
+
 ## Asking the owner
 
 When Jev does not decide an owner decision, ask the owner directly with a recommendation. In Claude Code, use `AskUserQuestion`: two to four genuinely comparable options per question, the recommended option first with "(Recommended)" in its label, and each description stating the consequence for this codebase, with Jev's probabilities in the description of the options they rate. In Codex, ask the same question directly in the conversation, in that shape. A subagent or worker cannot ask: it returns the question and its recommendation to the coordinator, which asks. Keep working on packages that do not depend on the answer. Never park a decision in a ticket; see [the Linear policy](linear-policy.md).
