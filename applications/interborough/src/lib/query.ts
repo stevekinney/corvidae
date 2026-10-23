@@ -130,11 +130,8 @@ export const queryKeys = {
   },
   /** The Bureau's tasks (`bureau.tasks.*`), apart from `tasks`, which is the engine's task ledger. */
   bureauTasks: {
-    /** One list: a filter and no page, because the page is the infinite query's own. */
-    list: (filter: { agentName?: string; status?: string; contextId?: string }) =>
-      ['bureau-tasks', 'list', filter] as const,
     detail: (taskId: string) => ['bureau-tasks', 'detail', taskId] as const,
-    /** The tasks of one chat session, paged like `list` but under the session's own entry. */
+    /** The tasks of one chat session, paged, under the session's own entry. */
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
   },
   /** The Bureau's reviews (`bureau.reviews.*`), apart from `reviews`, which is the engine's. */

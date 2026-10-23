@@ -275,6 +275,33 @@ describe('an existing session', () => {
     expect(queryByRole('combobox', { name: 'Agent' })).toBeNull();
   });
 
+  test('names its agent as a link to the agent’s page, which a modified click leaves to the browser', async () => {
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      return undefined;
+    }).restore;
+    landAt('/chat/session-1');
+    const { container } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+
+    const link = await waitFor(() => {
+      const found = container.querySelector<HTMLAnchorElement>('a.weft-chat-header__agent');
+      if (found === null) throw new Error('The agent link did not render.');
+      return found;
+    });
+    expect(link.getAttribute('href')).toBe('/agents/assistant');
+    expect(await fireEvent.click(link, { button: 0, ctrlKey: true })).toBe(true);
+    expect(router.pathname).toBe('/chat/session-1');
+    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
+    expect(router.pathname).toBe('/agents/assistant');
+  });
+
   test('reads its title once when it opens and once more when its run is over, and never in a loop', async () => {
     // A loop never lets a timer run, so a test that waits on a clock waits for ever. This one counts
     // the reads instead, and the read past the cap never answers, which stops a loop where it is.

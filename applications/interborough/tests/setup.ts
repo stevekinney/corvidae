@@ -135,3 +135,14 @@ async function registerGlobalCleanup(): Promise<void> {
 }
 
 await registerGlobalCleanup();
+
+// The router is a module-scope singleton over `window.location`, so a test that navigates (the
+// route tests' `landAt('/runs/run-1')`) would leave that address for every later test file in the
+// same process, because the coverage run shares one. A view that reads the route, such as
+// `WorkflowsView`, then renders the page for that address instead of the one under test
+// (COR-1676). Return to the root and tell the router, which resyncs on `popstate`, after each test.
+afterEach(() => {
+  if (!(window instanceof Window)) return;
+  window.happyDOM.setURL('http://localhost/');
+  window.dispatchEvent(new window.PopStateEvent('popstate'));
+});
