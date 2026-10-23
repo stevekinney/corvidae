@@ -198,6 +198,8 @@ export function probeFor(
       return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);
     }
     case 'workflows': {
+      // The page that makes a workflow asks for nothing: it is where the first one is written.
+      if (pattern === '/workflows/new') return undefined;
       const type = parameters['type'];
       return type === undefined
         ? probeWorkflowList

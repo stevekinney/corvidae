@@ -2,9 +2,8 @@
  * COR-1487 — an `INPUT_REQUIRED` task whose human wait carries an input schema is projected with an
  * A2UI form, and the form's submission is validated against the schema before the wait is released.
  *
- * Nothing in Bureau configures `inputSchemas` on the `requestHumanInput` tool yet, so a park here
- * carries no schema of its own. The Bureau is seen through a task registry that adds one to the
- * wait, as the registry does when a review carries it; the answer then travels the real path: the
+ * The schema is configured on the Bureau (`humanInput: { inputSchemas }`, COR-1674), so the park
+ * carries it from the real tool with nothing injected; the answer then travels the real path: the
  * A2A continuation, `bureau.tasks.respond`, `resolveReview`, and the engine's signal.
  */
 import { Message, type Task, TaskState } from '@a2a-js/sdk';
@@ -20,11 +19,11 @@ import {
 import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import { waitForCondition } from '../test';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { PendingReview } from '../types.ts';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,
@@ -50,18 +49,19 @@ const deploySchema: HumanInputSchema = {
 
 type Seen = { resumed: string[] };
 
-function parksThenAnswers(seen: Seen): GenerateFunction {
+function parksThenAnswers(seen: Seen, signals: readonly string[] = ['deploy']): GenerateFunction {
   let calls = 0;
   return async (context: GenerateContext) => {
     calls += 1;
-    if (calls === 1) {
+    const signal = signals[calls - 1];
+    if (signal !== undefined) {
       return {
         content: '',
         toolCalls: [
           {
-            id: 'wait-1',
+            id: `wait-${calls}`,
             name: 'requestHumanInput',
-            arguments: { signalName: 'deploy', prompt: 'Where should this deploy?' },
+            arguments: { signalName: signal, prompt: 'Where should this deploy?' },
           },
         ],
       };
@@ -69,23 +69,6 @@ function parksThenAnswers(seen: Seen): GenerateFunction {
     seen.resumed.push(JSON.stringify(context.conversation.current));
     return { content: 'done', toolCalls: [] };
   };
-}
-
-/** The Bureau, with the schema added to every human-wait review it reads, as a review carries it. */
-function withSchema<T extends { getReview: (id: string) => Promise<PendingReview | undefined> }>(
-  bureau: T,
-  schema: HumanInputSchema | undefined,
-): T {
-  return Object.create(bureau, {
-    getReview: {
-      value: async (id: string) => {
-        const review = await bureau.getReview(id);
-        return review?.kind === 'human-wait' && schema !== undefined
-          ? { ...review, inputSchema: schema }
-          : review;
-      },
-    },
-  }) as T;
 }
 
 async function statusOf(
@@ -100,14 +83,18 @@ function userMessage(messageId: string, taskId: string, part: Record<string, unk
   return Message.fromJSON({ messageId, taskId, role: 'ROLE_USER', parts: [part] });
 }
 
-async function open(schema: HumanInputSchema | undefined) {
+async function open(schema: HumanInputSchema | undefined, signals: readonly string[] = ['deploy']) {
   const seen: Seen = { resumed: [] };
   const opened = await openBureau({
-    agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers(seen) }) },
+    agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers(seen, signals) }) },
     publish: ['asker'],
-    humanInput: true,
+    // The schema is configured the way a host configures it: on the Bureau option, per signal.
+    humanInput:
+      schema === undefined
+        ? true
+        : { inputSchemas: Object.fromEntries(signals.map((signal) => [signal, schema])) },
   });
-  const bureau = withSchema(opened.bureau, schema);
+  const bureau = opened.bureau;
   const runtime = createDefaultRuntimeServices();
   const host = buildBureauHandlerHost(bureau, ['asker']);
   const card = createBureauAgentCard({
@@ -135,8 +122,14 @@ async function open(schema: HumanInputSchema | undefined) {
     respond: (principal, input) => respondToTask(host, principal, input),
   });
   const principal = principalFromApiKey({ subject: 'alice', scopes: [] });
-  const context = () =>
-    new ServerCallContext({ user: new BureauA2AUser(principal), requestedVersion: '1.0' });
+  const context = (requestedExtensions: string[] = [A2UI_EXTENSION_URI]) =>
+    new ServerCallContext({
+      user: new BureauA2AUser(principal),
+      requestedVersion: '1.0',
+      requestedExtensions,
+    });
+  const read = (id: string, extensions: string[]) =>
+    handler.getTask({ tenant: '', id, historyLength: undefined }, context(extensions));
   const send = (message: Message) =>
     handler.sendMessage(
       { tenant: '', message, configuration: undefined, metadata: undefined },
@@ -150,7 +143,7 @@ async function open(schema: HumanInputSchema | undefined) {
     expect(parked.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
     return parked;
   };
-  return { opened, bureau, host, principal, handler, send, start, seen, context };
+  return { opened, bureau, host, principal, handler, send, start, read, seen, context };
 }
 
 describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
@@ -178,6 +171,52 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
         update?.['updateComponents'].components.map((c: { component: string }) => c.component),
       ).toEqual(['ChoicePicker', 'TextField', 'Text', 'Button', 'Column']);
       expect(message?.metadata).toEqual({ signalNames: ['deploy'] });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('projects only the prompt text to a request that did not activate A2UI', async () => {
+    const fixture = await open(deploySchema);
+    try {
+      const task = await fixture.start();
+
+      const read = await fixture.read(task.id, []);
+
+      expect(read.status?.message?.parts).toHaveLength(1);
+      expect(read.status?.message?.parts[0]?.content?.$case).toBe('text');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('closes the answered form’s surface when the task parks again, on another signal', async () => {
+    const fixture = await open(deploySchema, ['deploy', 'region']);
+    try {
+      const task = await fixture.start();
+      await fixture.send(userMessage('m-first', task.id, { data: { environment: 'staging' } }));
+      await waitForCondition(async () => {
+        const view = await fixture.bureau.tasks.get(task.id);
+        return (
+          view?.status === 'input-required' &&
+          view.openWaits.some((wait) => wait.kind === 'human-wait' && wait.signalName === 'region')
+        );
+      }, 'the task never parked on the second signal');
+
+      const read = await fixture.read(task.id, [A2UI_EXTENSION_URI]);
+
+      const data = (read.status?.message?.parts ?? []).find(
+        (part) => part.content?.$case === 'data',
+      );
+      const messages =
+        data?.content?.$case === 'data' ? (data.content.value as Record<string, any>[]) : [];
+      expect(messages[0]).toEqual({
+        version: 'v0.9',
+        deleteSurface: { surfaceId: `input-form:human-wait:${task.id}:deploy:0` },
+      });
+      expect(messages[1]?.['createSurface'].surfaceId).toBe(
+        `input-form:human-wait:${task.id}:region:1`,
+      );
     } finally {
       await fixture.opened.dispose();
     }

@@ -292,7 +292,9 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await row.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}$`));
   const detail = page.locator('[data-page="workflow-detail"]');
-  await expect(detail.getByTestId('workflow-trigger')).toContainText(JOURNEY_WORKFLOW_CADENCE);
+  await expect(detail.getByTestId('workflow-trigger')).toHaveText(
+    describeCadence({ intervalMs: 5_000 }),
+  );
   await expect(detail.getByTestId('workflow-agent')).toContainText(AUTHOR_ID);
 
   // The schedule fires every few seconds. This page may open before the first fire, says there are

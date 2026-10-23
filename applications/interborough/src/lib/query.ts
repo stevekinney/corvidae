@@ -72,6 +72,11 @@ export const queryKeys = {
   /** The Workflows area: the engine's definitions joined with the Bureau's files (`lib/workflow-catalog.ts`). */
   workflowCatalog: {
     list: () => ['workflow-catalog', 'list'] as const,
+    /** What the engine says of the code-defined types the list shows: their counts and schedules. */
+    activity: (names: readonly string[]) => ['workflow-catalog', 'activity', names] as const,
+    /** The newest runs of one type, from the Bureau for a file and the engine for a code type. */
+    recentRuns: (kind: 'code' | 'agent-authored', type: string) =>
+      ['workflow-catalog', 'recent-runs', kind, type] as const,
     /** One type, and what each service says of it. */
     detail: (type: string) => ['workflow-catalog', 'detail', type] as const,
     /** One workflow file as `bureau.workflows.get` shows it, for the editor. */

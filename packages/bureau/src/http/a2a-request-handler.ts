@@ -1538,6 +1538,7 @@ export function createBureauA2ARequestHandler(
       lastEventId:
         resuming && durableHistoryActive ? headerOf(context, 'last-event-id') : undefined,
       durableHistoryActive,
+      a2ui: shape.activated.has(A2UI_EXTENSION_URI),
       snapshot: (view) => respondWithSurfaces(view, shape, receipt),
       // Only a client that activated A2UI is sent surface frames; it names the catalogs it renders
       // on a send, and a subscription declares none, which offers the basic catalog only.

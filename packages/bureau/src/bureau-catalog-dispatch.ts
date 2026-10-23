@@ -42,7 +42,8 @@ import {
   wireDurableOptInTools,
 } from './runtime-composition';
 import type { RunAttribution } from './serialization';
-import type { BureauRunOptions } from './types';
+import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import type { BureauHumanInputOption, BureauRunOptions } from './types';
 
 type CatalogRunErrorCode = 'CONFLICT' | 'NOT_FOUND';
 
@@ -116,7 +117,7 @@ export interface CatalogDispatcherDependencies {
    * COR-1577 — `BureauOptions.humanInput`: offer `requestHumanInput` to a durable `bureau.run()`
    * run. Not to a child or a goal attempt, whose park nothing would be listening for.
    */
-  readonly humanInput?: boolean | undefined;
+  readonly humanInput?: BureauHumanInputOption | undefined;
   /**
    * COR-1524 — what a run of a file-based agent needs: its snapshot recorded before it starts,
    * and its reference settled when it ends. Absent when the Bureau has no agent directory.
@@ -581,7 +582,7 @@ export function createCatalogDispatcher({
     // the tool parks the workflow through the run's own `ctx.services`, captured by `onServices`
     // as the engine starts it, and announces the park on the emitter the run's `ActiveRun` uses.
     const offersHumanInput =
-      humanInput === true &&
+      humanInputEnabled(humanInput) &&
       runIdOverride === undefined &&
       goalAttempt === undefined &&
       workflowStep === undefined;
@@ -598,6 +599,7 @@ export function createCatalogDispatcher({
           : {
               toolbox: wireDurableOptInTools(withRuntime.toolbox, humanInputServices, {
                 humanInput: true,
+                inputSchemas: humanInputSchemasOf(humanInput),
                 wakeup: false,
                 runId,
                 humanInputEmitter,

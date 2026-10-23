@@ -44,9 +44,13 @@ export type FileFixture = {
   state: 'ready' | 'invalid';
   owner: string;
   hash: string | null;
+  description: string | null;
   agent: string | null;
   paused: boolean;
   version: string | null;
+  trigger: Record<string, unknown> | null;
+  /** What `bureau.workflows.list` counts for the file, or `null` for one the Bureau cannot use. */
+  runs: { active: number; last24Hours: number; lastRunAt: string | null } | null;
   problem: {
     code: string;
     message: string;
@@ -148,9 +152,12 @@ export function readyFile(id: string, overrides: Partial<FileFixture> = {}): Fil
     state: 'ready',
     owner: 'anonymous:local',
     hash: 'hash-1',
+    description: null,
     agent: 'writer',
     paused: false,
     version: 'version-1',
+    trigger: { kind: 'schedule', spec: '0 6 * * *' },
+    runs: { active: 0, last24Hours: 0, lastRunAt: null },
     problem: null,
     text: DOCUMENT_TEXT.replace('"digest"', JSON.stringify(id)),
     schedule: { id: `bureau-workflow-schedule:${id}:1`, status: 'active', nextFireAt: null },
@@ -165,9 +172,12 @@ export function invalidFile(id: string, overrides: Partial<FileFixture> = {}): F
     state: 'invalid',
     owner: 'anonymous:local',
     hash: 'hash-bad',
+    description: null,
     agent: null,
     paused: false,
     version: null,
+    trigger: null,
+    runs: null,
     problem: {
       code: 'invalid-document',
       message: 'The document is not a workflow.',
@@ -235,6 +245,9 @@ export const workflowFaults = {
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
+  /** An identifier the Bureau will not take for a new file, as its create answers. */
+  conflict: (reason: string) =>
+    new StubFault('Conflict', 409, 'That identifier is already used.', { reason }),
   /** The Bureau replaced the file, and then the engine or the schedule could not follow. */
   applyFailed: () =>
     new StubFault('Unavailable', 503, 'The change was written but the engine did not apply it.', {
@@ -463,9 +476,55 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       touch(schedule);
       return receipt(schedule);
     },
-    'bureau.workflows.list': () => {
+    'bureau.workflows.list': (params) => {
       if (world.failBureauFiles) throw workflowFaults.unavailable();
-      return { workflows: world.files.map(listing), nextOffset: null };
+      // The Bureau counts a file's instances only for a caller that asks, as it does.
+      return {
+        workflows: world.files.map((file) => ({
+          ...listing(file),
+          runs: params['includeRuns'] === true ? file.runs : null,
+        })),
+        nextOffset: null,
+      };
+    },
+    'bureau.workflows.create': (params) => {
+      const id = String(params['id']);
+      if (find(id) !== undefined) {
+        throw new StubFault('Conflict', 409, `The workflow file "${id}" already exists.`, {
+          reason: 'workflow-file-exists',
+        });
+      }
+      const definition = params['definition'];
+      if (!isRecord(definition) || 'name' in definition) {
+        throw new StubFault('InvalidParams', 400, 'Unrecognized key: "name"', {});
+      }
+      const file = readyFile(id, {
+        description:
+          typeof definition['description'] === 'string' ? definition['description'] : null,
+        agent: typeof definition['agent'] === 'string' ? definition['agent'] : null,
+        paused: definition['paused'] === true,
+        trigger: isRecord(definition['trigger']) ? definition['trigger'] : null,
+        text: JSON.stringify({ name: id, ...definition }, null, 2),
+      });
+      rehash(file);
+      world.files.push(file);
+      return written(file);
+    },
+    'bureau.workflows.runs.list': (params) => {
+      const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
+      const runs = world.runs
+        .filter((run) => run.type === params['workflow'])
+        .toSorted((left, right) => right.createdAt - left.createdAt)
+        .slice(0, limit)
+        .map((run) => ({
+          id: run.id,
+          workflow: run.type,
+          workflowVersion: 'version-1',
+          status: run.status,
+          createdAt: new Date(run.createdAt).toISOString(),
+          updatedAt: new Date(run.updatedAt).toISOString(),
+        }));
+      return { runs, nextOffset: null };
     },
     'bureau.workflows.get': (params) => {
       const file = find(params['id']);
@@ -526,6 +585,23 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       if (found === undefined)
         throw workflowFaults.notFound(`definition ${String(params['name'])}`);
       return found;
+    },
+    'weft.workflows.list': (params) => {
+      const status = params['status'];
+      const statuses = typeof status === 'string' ? [status] : Array.isArray(status) ? status : [];
+      const createdAt = params['createdAt'];
+      const since =
+        isRecord(createdAt) && typeof createdAt['gte'] === 'number' ? createdAt['gte'] : 0;
+      const matching = world.runs
+        .filter(
+          (run) =>
+            (params['type'] === undefined || run.type === params['type']) &&
+            (statuses.length === 0 || statuses.includes(run.status)) &&
+            run.createdAt >= since,
+        )
+        .toSorted((left, right) => right.createdAt - left.createdAt);
+      const limit = typeof params['limit'] === 'number' ? params['limit'] : matching.length;
+      return { items: matching.slice(0, limit), total: matching.length };
     },
     'weft.system.registry': () => ({
       activeRevisions: Object.fromEntries(
@@ -652,12 +728,15 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       calls.push({ method: 'GET /workflows', params: Object.fromEntries(url.searchParams) });
       const type = url.searchParams.get('type');
       const statuses = url.searchParams.getAll('status');
-      const items = world.runs.filter(
-        (run) =>
-          (type === null || run.type === type) &&
-          (statuses.length === 0 || statuses.includes(run.status)),
-      );
-      return Response.json({ items, total: items.length });
+      const matching = world.runs
+        .filter(
+          (run) =>
+            (type === null || run.type === type) &&
+            (statuses.length === 0 || statuses.includes(run.status)),
+        )
+        .toSorted((left, right) => right.createdAt - left.createdAt);
+      const limit = Number(url.searchParams.get('limit') ?? matching.length);
+      return Response.json({ items: matching.slice(0, limit), total: matching.length });
     }
     return new Response('Not found', { status: 404 });
   });

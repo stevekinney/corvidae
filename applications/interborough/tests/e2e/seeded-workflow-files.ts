@@ -7,6 +7,7 @@ export const SEEDED_WORKFLOW_FILES = {
   // Loads, names the seeded `assistant`, and is started by a schedule that will not fire for a day.
   'e2e-digest': {
     name: 'e2e-digest',
+    description: 'Writes the daily digest.',
     agent: 'assistant',
     trigger: { kind: 'schedule', spec: '24h' },
     steps: [
