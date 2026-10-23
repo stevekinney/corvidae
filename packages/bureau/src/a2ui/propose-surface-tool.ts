@@ -92,7 +92,8 @@ type Input = z.infer<typeof input>;
  * Each call is its own command. The store fingerprints a command by its content, including the
  * revision the adapter fills in, so a key derived from the proposal would conflict when a model
  * legitimately repeats one (true, false, true). Armorer's execute context carries no tool-call id,
- * so the key is a fresh UUID.
+ * so the key is a fresh UUID. A durable replay of a call after a crash is therefore a new command,
+ * which only adds a revision for an update (a repeated create is refused as existing).
  */
 function commandIdOf(): string {
   return `a2ui-${crypto.randomUUID()}`;
