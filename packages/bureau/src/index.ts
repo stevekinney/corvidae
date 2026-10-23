@@ -493,6 +493,7 @@ export type {
   SkillCatalogEntry,
   SkillProvider,
   SkillRuntimeConfiguration,
+  BureauHumanInputOption,
   StreamFrame,
   StreamingConfiguration,
   SubmitSchedulerTaskRequest,

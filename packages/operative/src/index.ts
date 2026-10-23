@@ -509,6 +509,7 @@ export {
   HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES,
   HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH,
   HumanInputSchemaError,
+  checkHumanInputSchemas,
   humanInputSchemaOf,
   type HumanInputSchema,
 } from './human-input-schema';

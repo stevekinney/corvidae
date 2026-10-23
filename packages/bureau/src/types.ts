@@ -341,6 +341,13 @@ export interface BureauMemoryAuthorityOptions {
  */
 export type RetentionWindowOption = 'forever' | { readonly olderThan: number };
 
+/**
+ * COR-1674 — the shape of {@link BureauOptions.humanInput}: `true` offers `requestHumanInput`
+ * with free-form answers; the object form also supplies the answer schema per signal name.
+ */
+export type BureauHumanInputOption =
+  boolean | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
+
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
@@ -656,8 +663,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Omit
    * (the default) to leave the toolbox as configured — this tool is opt-in, never an ambient
    * grant.
+   *
+   * COR-1674 — pass `{ inputSchemas }` instead of `true` to give a signal a JSON Schema (2020-12)
+   * for the answer a person must give. `inputSchemas` maps a `signalName` to its schema; a call
+   * to `requestHumanInput` on that signal carries the schema into its park, so an A2A client sees
+   * a form and an answer that does not satisfy the schema is refused before the run resumes. The
+   * object form enables the tool exactly as `true` does; `createBureau` checks every schema
+   * eagerly with operative's `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one
+   * it cannot accept. A signal with no entry takes any answer, as before.
    */
-  humanInput?: boolean;
+  humanInput?: BureauHumanInputOption;
   /**
    * AB-201 — opt into operative's `scheduleWakeup` self-scheduling tool for
    * durable runs (`createRun` only; has no effect without a durable engine

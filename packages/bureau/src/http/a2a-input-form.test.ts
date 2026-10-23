@@ -2,9 +2,8 @@
  * COR-1487 — an `INPUT_REQUIRED` task whose human wait carries an input schema is projected with an
  * A2UI form, and the form's submission is validated against the schema before the wait is released.
  *
- * Nothing in Bureau configures `inputSchemas` on the `requestHumanInput` tool yet, so a park here
- * carries no schema of its own. The Bureau is seen through a task registry that adds one to the
- * wait, as the registry does when a review carries it; the answer then travels the real path: the
+ * The schema is configured on the Bureau (`humanInput: { inputSchemas }`, COR-1674), so the park
+ * carries it from the real tool with nothing injected; the answer then travels the real path: the
  * A2A continuation, `bureau.tasks.respond`, `resolveReview`, and the engine's signal.
  */
 import { Message, type Task, TaskState } from '@a2a-js/sdk';
@@ -24,7 +23,6 @@ import { createCommandLedger } from '../command-ledger.ts';
 import { waitForCondition } from '../test';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { PendingReview } from '../types.ts';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,
@@ -71,23 +69,6 @@ function parksThenAnswers(seen: Seen): GenerateFunction {
   };
 }
 
-/** The Bureau, with the schema added to every human-wait review it reads, as a review carries it. */
-function withSchema<T extends { getReview: (id: string) => Promise<PendingReview | undefined> }>(
-  bureau: T,
-  schema: HumanInputSchema | undefined,
-): T {
-  return Object.create(bureau, {
-    getReview: {
-      value: async (id: string) => {
-        const review = await bureau.getReview(id);
-        return review?.kind === 'human-wait' && schema !== undefined
-          ? { ...review, inputSchema: schema }
-          : review;
-      },
-    },
-  }) as T;
-}
-
 async function statusOf(
   bureau: { tasks: { get(id: string): Promise<TaskView | undefined> } },
   id: string,
@@ -105,9 +86,10 @@ async function open(schema: HumanInputSchema | undefined) {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers(seen) }) },
     publish: ['asker'],
-    humanInput: true,
+    // The schema is configured the way a host configures it: on the Bureau option, per signal.
+    humanInput: schema === undefined ? true : { inputSchemas: { deploy: schema } },
   });
-  const bureau = withSchema(opened.bureau, schema);
+  const bureau = opened.bureau;
   const runtime = createDefaultRuntimeServices();
   const host = buildBureauHandlerHost(bureau, ['asker']);
   const card = createBureauAgentCard({

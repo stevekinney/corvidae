@@ -19,7 +19,7 @@ import { type AssetStorage, createMemoryAssetStorage } from '../../assets/storag
 import type { AssetPolicyInput, AssetPorts } from '../../assets/types';
 import { createBureau } from '../../create-bureau.ts';
 import { createSqliteStorageFixture } from '../../test/storage-fixtures';
-import type { Bureau } from '../../types.ts';
+import type { Bureau, BureauHumanInputOption } from '../../types.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
 import type { AgentDefinitions } from '../../agent-catalog';
@@ -197,7 +197,7 @@ export async function openBureau(
     id?: string;
     generate?: GenerateFunction;
     toolbox?: Toolbox;
-    humanInput?: boolean;
+    humanInput?: BureauHumanInputOption;
     /** Stop a run at a tool call that needs approval, as a real host does. */
     stopAtApproval?: boolean;
     storage?: StorageConfiguration | Storage;
@@ -231,7 +231,7 @@ export async function openBureau(
         generate: options.generate ?? parkingUntilAborted,
         toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
         stopWhen:
-          options.humanInput === true
+          options.humanInput !== undefined && options.humanInput !== false
             ? stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls())
             : options.stopAtApproval === true
               ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
@@ -246,7 +246,9 @@ export async function openBureau(
       ...(options.assetPorts === undefined ? {} : { ports: options.assetPorts }),
     },
     ...(options.validators === undefined ? {} : { validators: options.validators }),
-    ...(options.humanInput === true ? { humanInput: true } : {}),
+    ...(options.humanInput === undefined || options.humanInput === false
+      ? {}
+      : { humanInput: options.humanInput }),
   });
   const handler = createBureauHandler(bureau, {
     authentication,
