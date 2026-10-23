@@ -1,6 +1,6 @@
 /**
  * COR-839 — Bureau's v1 MCP adapter: the official MCP SDK client, in both
- * protocol eras, lists the twenty "observe and steer" tools and calls them as
+ * protocol eras, lists the twenty-one "observe and steer" tools and calls them as
  * the authenticated caller, through the catalog pipeline and each operation's
  * owner predicate.
  */
@@ -10,6 +10,7 @@ import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from '@lostgradient
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';
+import type { BureauMcpOptions } from './mcp-mount.ts';
 import {
   type Handler,
   OWNER,
@@ -33,6 +34,7 @@ const V1_TOOLS = [
   'bureau.tasks.cancel',
   'bureau.tasks.events',
   'bureau.tasks.get',
+  'bureau.tasks.inspect',
   'bureau.tasks.list',
   'bureau.tasks.respond',
   'bureau.workflows.get',
@@ -52,11 +54,11 @@ afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
 });
 
-async function open(): Promise<OpenedBureau> {
+async function open(mcp: BureauMcpOptions = {}): Promise<OpenedBureau> {
   const opened = await openBureau({
     durableHistory: true,
     agents: { worker: createAgent({ generate: parkingUntilAborted }) },
-    handlerOptions: { mcp: {} },
+    handlerOptions: { mcp },
   });
   cleanups.push(() => opened.dispose());
   return opened;
@@ -89,7 +91,7 @@ async function startRun(opened: OpenedBureau, principal: string) {
 }
 
 describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => {
-  it('lists exactly the twenty v1 tools', async () => {
+  it('lists exactly the twenty-one v1 tools', async () => {
     const opened = await open();
     const client = await connect(opened.handler, 'alice-key', mode);
     expect(client.getNegotiatedProtocolVersion()).toBe(version);
@@ -150,6 +152,54 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
       () => opened.bureau.getRun(run.id)?.status !== 'running',
       `run ${run.id} was not cancelled`,
     );
+  });
+
+  it('inspects a task: liveness, children, and nothing of its content', async () => {
+    const opened = await open();
+    const run = await startRun(opened, OWNER.alice);
+    const alice = await connect(opened.handler, 'alice-key', mode);
+    const bob = await connect(opened.handler, 'bob-key', mode);
+
+    const inspected = await alice.callTool({
+      name: 'bureau.tasks.inspect',
+      arguments: { taskId: run.id },
+    });
+    expect(inspected.isError).toBeFalsy();
+    expect(inspected.structuredContent).toMatchObject({
+      schemaVersion: 'bureau.task-inspection.v1',
+      taskId: run.id,
+      canCancel: true,
+      task: { id: run.id, owner: OWNER.alice },
+      liveness: { id: run.id, status: 'running', cancellable: true },
+      children: [],
+    });
+    expect(JSON.stringify(inspected.structuredContent)).not.toMatch(/transcript|prompt|checkpoint/);
+
+    const hidden = await bob.callTool({
+      name: 'bureau.tasks.inspect',
+      arguments: { taskId: run.id },
+    });
+    expect(hidden.isError).toBe(true);
+    expect(hidden.structuredContent).toMatchObject({ code: 'NotFound' });
+  });
+
+  it('serves injected resources and tool metadata through the adapter', async () => {
+    const uri = 'ui://bureau/probe';
+    const opened = await open({
+      resources: [
+        { uri, name: 'probe', mimeType: 'text/html;profile=mcp-app', text: '<!doctype html>' },
+      ],
+      toolMeta: { 'bureau.tasks.inspect': { ui: { resourceUri: uri } } },
+    });
+    const alice = await connect(opened.handler, 'alice-key', mode);
+    const listed = await alice.listResources();
+    expect(listed.resources.map((resource) => resource.uri)).toEqual([uri]);
+    const read = await alice.readResource({ uri });
+    expect(read.contents).toMatchObject([{ text: '<!doctype html>' }]);
+    const { tools } = await alice.listTools();
+    expect(tools.find((tool) => tool.name === 'bureau.tasks.inspect')?._meta).toEqual({
+      ui: { resourceUri: uri },
+    });
   });
 
   it('answers arguments the operation refuses as an InvalidParams tool error', async () => {

@@ -1,4 +1,8 @@
-import { createOperationMcpMount, type OperationHandlerMount } from '@lostgradient/weft';
+import {
+  createOperationMcpMount,
+  type OperationHandlerMount,
+  type OperationMcpMountOptions,
+} from '@lostgradient/weft';
 
 /**
  * Options for the Bureau MCP adapter that `createBureauHandler`'s `mcp`
@@ -7,6 +11,13 @@ import { createOperationMcpMount, type OperationHandlerMount } from '@lostgradie
 export type BureauMcpOptions = {
   /** The path the adapter owns. Defaults to `/mcp`. */
   readonly pathPrefix?: string;
+  /**
+   * Resources the adapter serves beside its tools (COR-910), such as an MCP App's `ui://` page. The
+   * host application builds them and hands them in, so Bureau depends on no application's bundle.
+   */
+  readonly resources?: OperationMcpMountOptions['resources'];
+  /** Metadata attached to a tool's listing, keyed by operation name, such as `ui.resourceUri`. */
+  readonly toolMeta?: OperationMcpMountOptions['toolMeta'];
 };
 
 /**
@@ -31,6 +42,8 @@ export function createBureauMcpMount(
   return createOperationMcpMount({
     ...(options.pathPrefix === undefined ? {} : { pathPrefix: options.pathPrefix }),
     ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
+    ...(options.resources === undefined ? {} : { resources: options.resources }),
+    ...(options.toolMeta === undefined ? {} : { toolMeta: options.toolMeta }),
     serverInfo: { name: 'bureau', title: 'Bureau' },
   });
 }
