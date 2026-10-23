@@ -81,7 +81,14 @@ function normalizeMarkdownToolCall(value: unknown): unknown {
     record['arguments'] === undefined
   )
     return undefined;
-  return { id: record['id'], name: record['name'], arguments: record['arguments'] };
+  return {
+    id: record['id'],
+    name: record['name'],
+    arguments: record['arguments'],
+    ...(typeof record['providerCallId'] === 'string' && record['providerCallId'] !== ''
+      ? { providerCallId: record['providerCallId'] }
+      : {}),
+  };
 }
 
 function normalizeMarkdownToolResult(value: unknown): unknown {

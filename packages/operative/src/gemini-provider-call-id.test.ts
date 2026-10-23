@@ -16,7 +16,7 @@ import {
   withToolboxIdempotency,
 } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, materializeToolCalls } from 'conversationalist';
+import { Conversation, materializeToolCalls, toGeminiMessages } from 'conversationalist';
 import { z } from 'zod';
 
 import { HookRegistry } from '@lostgradient/lifecycle';
@@ -207,5 +207,33 @@ describe('Gemini providerCallId provenance', () => {
     const sealed = await sealDanglingToolCalls(conversation, false, 'cancelled', calls);
     expect(sealed.map((toolResult) => toolResult.providerCallId)).toEqual(['gem-1', 'gem-2']);
     expect(echoedIds(sealed)).toEqual(['gem-1', 'gem-2']);
+  });
+
+  it('emits functionCall.id and functionResponse.id on the second model request', async () => {
+    let step = 0;
+    let secondRequest: ReturnType<typeof toGeminiMessages> | undefined;
+    await executeLoop({
+      generate: async (context): Promise<GenerateResponse> => {
+        if (step++ === 0) return { content: '', toolCalls: geminiCalls() };
+        secondRequest = toGeminiMessages(context.conversation.current);
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([lookup]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      runId: 'run-1',
+    });
+    const parts = (secondRequest?.contents ?? []).flatMap((content) => content.parts);
+    const idsOf = (key: 'functionCall' | 'functionResponse') =>
+      parts.flatMap((part) => {
+        const body: unknown = Reflect.get(part, key);
+        return body === undefined ? [] : [Reflect.get(Object(body), 'id') as string | undefined];
+      });
+    expect(idsOf('functionCall')).toEqual(['gem-1', 'gem-2']);
+    expect(
+      idsOf('functionResponse').toSorted((left, right) =>
+        String(left).localeCompare(String(right)),
+      ),
+    ).toEqual(['gem-1', 'gem-2']);
   });
 });

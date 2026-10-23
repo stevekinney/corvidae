@@ -10,7 +10,6 @@ import {
 } from '../media';
 import {
   extractSystemInstruction,
-  geminiIssuedCallId,
   toFunctionCallPart,
   toFunctionResponsePart,
   toGeminiParts,
@@ -58,7 +57,7 @@ export function toGeminiMessages(
   for (const message of ordered) {
     if (message.role === 'tool-call' && message.toolCall) {
       toolCallNames.set(message.toolCall.id, message.toolCall.name);
-      const issued = geminiIssuedCallId(message);
+      const issued = message.toolCall.providerCallId;
       if (issued !== undefined) geminiCallIds.set(message.toolCall.id, issued);
     }
   }
