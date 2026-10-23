@@ -3,6 +3,7 @@ import type { Embedder } from 'armorer';
 
 import type { MemoryRecordStorage } from '../memory-record-storage';
 import type { TextSearchProvider } from '../text-search-provider';
+import type { MemoryCorrelation } from '../transition-events';
 import type { MemoryAuthority } from './authority';
 import type { MemoryEvidence, MemoryEvidenceKind } from './evidence';
 import type { MemoryGovernanceLedger } from './ledger';
@@ -51,6 +52,11 @@ export interface GovernedWriteOptions {
   readonly dedupeKey?: string;
   /** The owning run. Required for working memory, whose lifetime is the run's. */
   readonly runId?: string;
+  /**
+   * The run, session, and context epoch the write came from. Every notification
+   * the write produces carries it; it is not stored on the record or the ledger event.
+   */
+  readonly correlation?: MemoryCorrelation;
   /** Event or observation time. Defaults to the write time. */
   readonly eventAt?: number;
   /**
@@ -399,6 +405,8 @@ export interface MemoryGovernanceNotification {
   readonly operationId?: string;
   readonly principalId?: string;
   readonly projection?: string;
+  /** The run, session, and context epoch of the operation, when its caller named them. */
+  readonly correlation?: MemoryCorrelation;
 }
 
 export interface CreateGovernedMemoryOptions {
