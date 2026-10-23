@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Chef stash guard: a Claude Code `PreToolUse` hook for Bash that denies a bare `git stash` and
-// `git stash pop`. The stash stack is shared by every worktree of a repository, so a bare stash
+// `git stash pop`, `git stash clear`, and `apply`/`drop` without a ref. The stash stack is shared by every worktree of a repository, so a bare stash
 // from one session can be popped by another, and a bare pop applies whichever entry is on top. This
 // is a Claude Code hook (`.claude/settings.json`), not a Git hook.
 //
@@ -12,7 +12,7 @@
 //     The reason says to use a WIP commit, or `git stash push -u -m <unique-tag>` and later
 //     `git stash apply <sha>`;
 //   - ALLOWED: `git stash push -u -m <tag>`, `git stash -u -m <tag>`, `list`, `show`, `apply`, `drop`,
-//     `branch`, `create`, `store`, `clear`, `save <message>`, and every command that is not a stash.
+//     `branch`, `create`, `store`, `save <message>`, and every command that is not a stash.
 //
 // It fails open: malformed input, a missing command, or any unexpected error prints nothing. A
 // quoted `git stash` inside a longer string (an echo, a commit message) can still be matched; a
@@ -70,7 +70,10 @@ function deniedSegment(segment: string): boolean {
   if (tokens[index] !== 'stash') return false;
   const rest = tokens.slice(index + 1);
   const subcommand = rest[0];
-  if (subcommand === 'pop') return true;
+  if (subcommand === 'pop' || subcommand === 'clear') return true;
+  // apply and drop act on whichever entry is on top unless told which, and the top may be another session's.
+  if (subcommand === 'apply' || subcommand === 'drop')
+    return !rest.slice(1).some((word) => !word.startsWith('-'));
   const stores = subcommand === 'push' || subcommand === 'save';
   if (subcommand !== undefined && !subcommand.startsWith('-') && !stores) return false;
   // A push (explicit or implied by options alone) must carry a message; `save` takes it as its
@@ -90,7 +93,9 @@ export function decide(input: HookInput): HookDecision | undefined {
   if (toolInput === null || typeof toolInput !== 'object') return undefined;
   const command = (toolInput as { command?: unknown }).command;
   if (typeof command !== 'string') return undefined;
-  if (!command.split(/&&|\|\||;|\||\n/).some(deniedSegment)) return undefined;
+  // Redirections (`>log`, `2>&1`) are shell syntax, not stash subcommands, and a lone `&` ends a command.
+  const syntax = command.replace(/\d*[<>]{1,2}&?\s*[^\s;&|]*/g, ' ');
+  if (!syntax.split(/&&|\|\||;|\||&|\n/).some(deniedSegment)) return undefined;
   return {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',

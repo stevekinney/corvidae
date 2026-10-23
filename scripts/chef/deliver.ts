@@ -175,6 +175,7 @@ export async function deliver(
         'base',
         `${baseCheck} The worktree is not clean, so ${remote} was not merged in.`,
       );
+    const previousHead = headOf();
     const merged = git('merge', '--no-edit', remote);
     if (merged.code !== 0) {
       const aborted = git('merge', '--abort');
@@ -184,14 +185,25 @@ export async function deliver(
       );
     }
     const installed = runner(['sh', '-c', config.installCommand], { cwd: options.worktree });
+    // A failure after the merge-in puts the branch back, so a rerun sees the same pending update
+    // instead of a local merge commit that was never pushed.
+    const restore = (): string => {
+      const reset = git('reset', '--hard', previousHead);
+      return reset.code === 0
+        ? 'the branch was restored to its previous head'
+        : `git reset --hard ${previousHead.slice(0, 12)} failed (exit ${reset.code}): ${firstLine(reset.stderr)}`;
+    };
     if (installed.code !== 0)
       return fail(
         'install',
-        `${config.installCommand} failed (exit ${installed.code}): ${firstLine(installed.stderr || installed.stdout)}`,
+        `${config.installCommand} failed (exit ${installed.code}): ${firstLine(installed.stderr || installed.stdout)}; ${restore()}.`,
       );
     const pushed = git('push', 'origin', 'HEAD');
     if (pushed.code !== 0)
-      return fail('push', `git push failed (exit ${pushed.code}): ${firstLine(pushed.stderr)}`);
+      return fail(
+        'push',
+        `git push failed (exit ${pushed.code}): ${firstLine(pushed.stderr)}; ${restore()}.`,
+      );
     // The old log describes the previous head, so it must never be offered to the merge gate.
     if (gateLog !== undefined) rmSync(gateLog, { force: true });
     gateLog = undefined;

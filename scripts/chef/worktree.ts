@@ -216,9 +216,12 @@ export function createWorktree(
   const resolvedInstallLog = resolve(
     options.installLog ?? join(dirname(path), `${name}-install.log`),
   );
+  const logExisted = existsSync(resolvedInstallLog);
   try {
     mkdirSync(dirname(resolvedInstallLog), { recursive: true });
-    writeFileSync(resolvedInstallLog, '');
+    writeFileSync(resolvedInstallLog, '', { flag: 'a' });
+    // Only a probe: a refusal before the install must not leave a log for an install that never ran.
+    if (!logExisted) rmSync(resolvedInstallLog, { force: true });
   } catch (error) {
     throw new Refusal(
       `Cannot write the install log ${resolvedInstallLog}: ${error instanceof Error ? error.message : String(error)}. Nothing was created.`,

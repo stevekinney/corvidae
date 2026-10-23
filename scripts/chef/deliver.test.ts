@@ -365,16 +365,19 @@ describe('deliver', () => {
     const { partial, record } = seams();
     const report = await deliver(options, { ...partial, runner });
     expect(report).toMatchObject({ merged: false, failedStep: 'install' });
+    expect(calls).toContainEqual(['git', 'reset', '--hard', HEAD]);
     expect(calls.some((command) => command[1] === 'push')).toBe(false);
     expect(record.gates).toEqual([]);
     expect(record.merges).toEqual([]);
   });
 
   test('a push failure after a clean merge-in stops before the gate and merge', async () => {
-    const { runner } = fake({ ...mergedInWorld, pushCode: 1 });
+    const { runner, calls } = fake({ ...mergedInWorld, pushCode: 1 });
     const { partial, record } = seams();
     const report = await deliver(options, { ...partial, runner });
     expect(report).toMatchObject({ merged: false, failedStep: 'push' });
+    expect(calls).toContainEqual(['git', 'reset', '--hard', HEAD]);
+    expect(report.detail).toContain('restored');
     expect(record.gates).toEqual([]);
     expect(record.merges).toEqual([]);
   });
