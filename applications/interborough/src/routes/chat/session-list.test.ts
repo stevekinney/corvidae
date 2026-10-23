@@ -301,6 +301,25 @@ describe('the list of sessions', () => {
     expect(router.pathname).toBe('/chat/session-0');
   });
 
+  test('leaves a modified click on a row to the browser, and shows no time for a chat whose time is unreadable', async () => {
+    const served = bureau({
+      'bureau.contexts.list': () => ({
+        contexts: [{ ...CONTEXT, id: 'session-0', title: 'Chat 0', updatedAt: 'not a date' }],
+        nextOffset: null,
+      }),
+      'bureau.reviews.list': () => ({ reviews: [] }),
+    });
+    restore = served.restore;
+    landAt('/chat');
+    const { findByRole } = mount();
+    const row = await findByRole('link', { name: /Chat 0/ });
+
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+
+    expect(router.pathname).toBe('/chat');
+    expect(row.querySelector('time')).toBeNull();
+  });
+
   test('has a New chat action that opens /chat/new, and leaves a modified click to the browser', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),

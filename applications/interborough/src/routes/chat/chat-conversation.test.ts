@@ -214,6 +214,34 @@ describe('a new chat', () => {
     expect(router.current.search.get('agent')).toBe('researcher');
   });
 
+  test('names an agent whose display name is its identifier once, in monospace, on its card and on its choice', async () => {
+    const echo = { ...AGENT, name: 'echo', displayName: 'echo', description: null };
+    const runner = {
+      ...AGENT,
+      name: 'tool-runner',
+      displayName: 'tool-runner',
+      description: null,
+    };
+    restore = bureau({ 'bureau.agents.list': () => ({ agents: [echo, runner] }) }).restore;
+    landAt('/chat/new');
+    const { findByTestId, findByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'echo',
+      isNew: true,
+    });
+
+    const card = await findByTestId('agent-card');
+    const others = await findByRole('heading', { name: 'Or start with another agent' });
+    const choice = others.parentElement?.querySelector('li');
+
+    expect(card.querySelector('h2')?.textContent?.trim()).toBe('echo');
+    expect(card.querySelectorAll('h2 code.ib-identifier')).toHaveLength(1);
+    expect(choice?.textContent?.trim()).toBe('tool-runner');
+    expect(choice?.querySelectorAll('code.ib-identifier')).toHaveLength(1);
+    expect(choice?.querySelector('.ib-agent-choice__description')).toBeNull();
+  });
+
   test('replaces a draft in the composer with the prompt, however many times it is clicked', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, examples: ['Say hello'] }] }),
