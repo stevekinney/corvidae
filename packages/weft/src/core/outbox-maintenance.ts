@@ -377,7 +377,8 @@ export async function purgeSettledDeliveries(
   const batchSize = runtime.policy.maintenanceBatchSize;
   let purged = 0;
   let cursor: string | undefined;
-  for (;;) {
+  let fullPage = true;
+  while (fullPage) {
     const page: [string, Uint8Array][] = [];
     const options = cursor === undefined ? { limit: batchSize } : { limit: batchSize, gt: cursor };
     for await (const [key, value] of runtime.storage.scan(runtime.keys.terminalPrefix, options)) {
@@ -388,6 +389,7 @@ export async function purgeSettledDeliveries(
       if (runtime.disposal.aborted) return purged;
       if (await purgeEntry(runtime, destinationRef, indexKey, bytes)) purged += 1;
     }
-    if (page.length < batchSize) return purged;
+    fullPage = page.length === batchSize;
   }
+  return purged;
 }
