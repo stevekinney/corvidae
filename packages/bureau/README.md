@@ -22,6 +22,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
   - [The AG-UI mount (COR-855)](#the-ag-ui-mount-cor-855)
   - [External control plane](#external-control-plane)
+  - [A2A](#a2a)
   - [Interactive surfaces (COR-1631)](#interactive-surfaces-cor-1631)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
@@ -572,6 +573,230 @@ await bureau.dispose();
 ```
 
 The handler has no run-starting operation of its own, so the host starts the run above with `createRun`, which is deprecated but is the call that makes a session run. A run started with `bureau.run()` is a catalog run, which records no durable `run.*` events, so its `bureau.tasks.events` stream is its snapshot alone and the example would have nothing to await. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
+
+### A2A
+
+`createBureauHandler` serves each published agent as an [A2A](https://a2a-protocol.org/v1.0.1/specification/) agent when it is given a `publicUrl`. This section is for the consumer and for the host that publishes: what is served, what makes an agent publishable, which capabilities the Agent Card declares, and a worked example that runs as a test. The as-built contract (state mapping, identity, retention, and every limit) is [`documentation/external-control-plane.md`](./documentation/external-control-plane.md#as-built); this section links to it instead of repeating it.
+
+**Pinned versions.** A2A 1.0.1 over the JSON-RPC binding, with `A2A-Version: 1.0` on every request (a patch version such as `1.0.1` is read as `1.0`; any other value is a `VersionNotSupportedError`). The interoperability test, [`src/http/a2a-interop.test.ts`](./src/http/a2a-interop.test.ts), drives the handler with `@a2a-js/sdk` `1.3.0`, the version Weft's `@lostgradient/weft/a2a` subpath pins exactly. `bun run --filter=@lostgradient/bureau test:a2a-tck` runs the official A2A TCK against a Bureau host, at the commit that [`packages/weft/scripts/run-a2a-tck.ts`](../weft/scripts/run-a2a-tck.ts) pins (`A2A_TCK_COMMIT`); it needs Python 3.11 or later, `uv`, and network access, and it is outside `bun run validate`. One TCK test is deselected for Bureau, the message-response test, because every Bureau send creates a task and never answers with a bare `Message`.
+
+**Publishing an agent.**
+
+- A code-defined agent is published only by the `publish` allowlist of `createBureauHandler`; an agent file (COR-1524) is published by its own `published` frontmatter. Publication is read on every request, so publishing or withdrawing takes effect without a restart. An unpublished agent has no card, starts no task, and reads as not found.
+- One agent, one interface: `<publicUrl>/a2a/<catalog-name>` for JSON-RPC, `<publicUrl>/a2a/<catalog-name>/.well-known/agent-card.json` for the card, and, when `signing` is set, `<publicUrl>/a2a/<catalog-name>/.well-known/jwks.json` for the key. The catalog name is a URL path segment, and the handler throws at construction for a `publish` name that is not in the agent catalog.
+- The card is projected from the catalog and the agent's definition: `name` (the display name, else the catalog name), `description`, `version` (the definition revision), the agent's skill descriptors as `skills` (or one skill standing for the agent), and the input and output modes. It carries no tools, no internal endpoint, no credential, and no capability the deployment does not serve; `securitySchemes` and `securityRequirements` describe the credentials the handler enforces and nothing more.
+- The card is public, and every JSON-RPC request needs the handler's authentication (an API key resolved by `authentication.resolveApiKeyPrincipal`, or `unauthenticatedAccess: 'allow'` on a loopback host). A caller owns the tasks it creates, and another owner's task reads as missing.
+- `publicUrl` needs a Bureau with a durable engine and a `taskRetention` of at least the 24 hours a send's idempotency binding is kept, or construction throws. The Bureau's `id` must be explicit when storage persists.
+
+**Methods.**
+
+| Method | Served | Notes |
+| --- | --- | --- |
+| `SendMessage` | Yes | Always answers with a `Task`. Without `taskId` it admits a new run; with `taskId` it continues an open wait. Retry-safe on the caller, the agent, and `messageId`. |
+| `SendStreamingMessage` | Yes | The same send, then a Server-Sent Events stream: the task first, then only later events, closing when the task is terminal. It stays open through `INPUT_REQUIRED`. |
+| `GetTask` | Yes | The caller's task, with `historyLength` applied. |
+| `ListTasks` | Yes | The caller's tasks with the mounted agent, filtered by `contextId`, `status`, and `statusTimestampAfter`, newest first, paginated. |
+| `CancelTask` | Yes | Cancels a task that has not ended. Cleanup may still be pending when it returns; the cleanup extension reports it. |
+| `SubscribeToTask` | Yes | Resumable with `Last-Event-ID` where the durable-history extension is declared. A terminal task answers `UnsupportedOperationError` (`-32004`). |
+| `CreateTaskPushNotificationConfig`, `GetTaskPushNotificationConfig`, `ListTaskPushNotificationConfigs`, `DeleteTaskPushNotificationConfig` | Only where push is declared | Elsewhere each answers `PushNotificationNotSupportedError` (`-32003`), as does a send carrying `taskPushNotificationConfig`. |
+| `GetExtendedAgentCard` | No | Answers `UnsupportedOperationError` (`-32004`); the card never declares `extendedAgentCard`. |
+
+**Capabilities the card declares.** `streaming` is always `true`. `pushNotifications` is `true` only when `createBureauHandler` is given `pushNotifications` (Weft's outbox push sender and its outbox) and the Bureau keeps a durable event history, because a push notification is a projection of that history; the host drives delivery with `startPushDelivery` on the same outbox. `extendedAgentCard` is `false`. Every extension below is `required: false`, so a plain A2A client works without knowing any of them.
+
+| Extension | Declared | What it adds |
+| --- | --- | --- |
+| Cleanup | Always | Reports whether a canceled task's cleanup finished, beside its terminal state. [Specification](../weft/documentation/a2a/extensions/cleanup-v1.md). |
+| Durable history | Where the Bureau keeps a durable event history | Makes `SubscribeToTask` resumable from a cursor in `Last-Event-ID`. [Specification](../weft/documentation/a2a/extensions/durable-history-v1.md). |
+| Command receipts | Always | The send's receipt and the task's revision, `expectedRevision` and `deadline` on a send, and a typed error for a reused `messageId`. [Specification](../weft/documentation/a2a/extensions/command-receipts-v1.md). |
+| A2UI v0.9.1 | Always | Carries A2UI surfaces to a client that renders them. A human wait with an input schema projects its form as A2UI whether or not the request activated the extension; see [interactive surfaces](./documentation/interactive-surface.md). |
+
+**Content.** A message carries text and data parts, and any other part is `ContentTypeNotSupportedError` (`-32005`). Generated media leaves a completed task as file parts whose `url` is the authenticated asset route `<publicUrl>/assets/<id>/content`, never inline bytes, and a small generated JSON document is a data part; the card's `defaultOutputModes` follow the agent's backend descriptors. The shape mapping is [Conversationalist's A2A content mapping](../conversationalist/README.md#a2a-content-mapping).
+
+**Not available.** Do not promise these to your own users:
+
+- `GetExtendedAgentCard`, and any binding other than JSON-RPC (HTTP+JSON and gRPC).
+- Inbound file parts. A message's file parts are refused, and the card's `defaultInputModes` stay `text/plain` and `application/json`, until COR-788 part 2 (#533) merges.
+- `task.resynced`, the repair of a failed durable append for push notifications (COR-1669 part 2b-3, still open).
+- Authentication other than an API key, and the `bureau.deliveries.*` management operations.
+- Wiring a human-input form from an agent file or the catalog (COR-1674). An author can configure `inputSchemas` on Operative's `requestHumanInput` tool today, and the form is projected to the A2UI data part the extension row describes.
+
+**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key.
+
+```typescript
+import { type Message, Role, TaskState } from '@a2a-js/sdk';
+import {
+  ClientFactory,
+  ClientFactoryOptions,
+  DefaultAgentCardResolver,
+  JsonRpcTransportFactory,
+} from '@a2a-js/sdk/client';
+import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
+import { createAgent, waitForCondition, type GenerateFunction } from '@lostgradient/operative';
+import { principalFromApiKey } from '@lostgradient/weft';
+
+const publicUrl = 'https://agents.example.com';
+
+// Two agents. `summarizer` answers at once; `watcher` runs until somebody cancels it.
+const summarize: GenerateFunction = async () => ({ content: 'Three findings.', toolCalls: [] });
+const watch: GenerateFunction = ({ signal }) =>
+  new Promise((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new Error('canceled')), { once: true });
+  });
+const bureau = await createBureau({
+  id: 'acme', // required once the handler serves persistent storage
+  agents: {
+    summarizer: createAgent({
+      name: 'summarizer',
+      description: 'Summarizes a document.',
+      generate: summarize,
+    }),
+    watcher: createAgent({ name: 'watcher', description: 'Watches a feed.', generate: watch }),
+    private: createAgent({ name: 'private', generate: summarize }),
+  },
+  storage: { type: 'memory' },
+  durableExecution: true, // A2A needs a durable engine: every send creates its task through it
+  assets: { storage: createMemoryAssetStorage() },
+});
+
+// The `publish` allowlist is the only thing that makes a code-defined agent visible. `private`
+// is not on it, so it has no card and starts no task.
+const handler = createBureauHandler(bureau, {
+  publish: ['summarizer', 'watcher'],
+  publicUrl, // mounts A2A at <publicUrl>/a2a/<name>
+  authentication: {
+    auditSink: () => undefined,
+    resolveApiKeyPrincipal: async (key) =>
+      key === 'alice-key' ? principalFromApiKey({ subject: 'alice', scopes: [] }) : null,
+  },
+});
+
+// Discover: a card is public. Fetching it needs no credentials, and a withdrawn agent has none.
+const cardUrl = `${publicUrl}/a2a/summarizer/.well-known/agent-card.json`;
+const publicCard = await handler(new Request(cardUrl));
+console.log(publicCard.status); // 200
+const hiddenUrl = `${publicUrl}/a2a/private/.well-known/agent-card.json`;
+const hiddenCard = await handler(new Request(hiddenUrl));
+console.log(hiddenCard.status); // 404
+
+// The consumer is the official A2A client, with its requests routed to the handler in process
+// and the API key on each one. Over a network this is just `ClientFactory` with its defaults.
+const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const headers = new Headers(init?.headers);
+  headers.set('X-API-Key', 'alice-key');
+  return handler(new Request(input, { ...init, headers }));
+}) as typeof fetch;
+const factory = new ClientFactory(
+  ClientFactoryOptions.createFrom(ClientFactoryOptions.default, {
+    transports: [new JsonRpcTransportFactory({ fetchImpl })],
+    cardResolver: new DefaultAgentCardResolver({ fetchImpl }),
+  }),
+);
+const summarizer = await factory.createFromUrl(`${publicUrl}/a2a/summarizer/`);
+const card = await summarizer.getAgentCard();
+console.log(card.capabilities?.streaming); // true
+console.log(card.capabilities?.pushNotifications); // false: no outbox is composed
+console.log(card.capabilities?.extendedAgentCard); // false
+
+// Send: a message becomes a task. A Bureau send answers with a Task, never a bare Message.
+const userMessage = (text: string): Message => ({
+  messageId: crypto.randomUUID(), // a retry with the same id returns the original task
+  contextId: '',
+  taskId: '',
+  role: Role.ROLE_USER,
+  parts: [
+    {
+      content: { $case: 'text', value: text },
+      metadata: undefined,
+      filename: '',
+      mediaType: 'text/plain',
+    },
+  ],
+  metadata: undefined,
+  extensions: [],
+  referenceTaskIds: [],
+});
+const send = (text: string, returnImmediately: boolean) => ({
+  tenant: '',
+  message: userMessage(text),
+  configuration: {
+    acceptedOutputModes: [],
+    taskPushNotificationConfig: undefined,
+    returnImmediately, // false waits for the task to settle or stop for input
+  },
+  metadata: undefined,
+});
+const reply = await summarizer.sendMessage(send('Summarize the quarterly report.', false));
+if (!('status' in reply)) throw new Error('a Bureau send answers with a task');
+console.log(TaskState[reply.status?.state ?? 0]); // 'TASK_STATE_COMPLETED'
+console.log(reply.artifacts[0]?.parts[0]?.content); // { $case: 'text', value: 'Three findings.' }
+
+// Observe: read the task again, and list the caller's tasks with this agent.
+const fetched = await summarizer.getTask({ tenant: '', id: reply.id });
+console.log(TaskState[fetched.status?.state ?? 0]); // 'TASK_STATE_COMPLETED'
+const listed = await summarizer.listTasks({
+  tenant: '',
+  contextId: '', // empty filters match everything
+  status: TaskState.TASK_STATE_UNSPECIFIED,
+  pageToken: '',
+  statusTimestampAfter: undefined,
+});
+console.log(listed.tasks.some((task) => task.id === reply.id)); // true
+
+// Stream: the stream opens with the task, then carries only later events, and ends when the task
+// is terminal. Dropping a stream never cancels the task.
+const events: string[] = [];
+for await (const event of summarizer.sendMessageStream(send('Again, as a stream.', false))) {
+  const payload = event.payload;
+  events.push(payload?.$case === 'statusUpdate' ? 'status' : (payload?.$case ?? 'none'));
+}
+console.log(events[0]); // 'task'
+
+// Cancel: ask for a task that keeps running, wait for it to start, then cancel it.
+const watcher = await factory.createFromUrl(`${publicUrl}/a2a/watcher/`);
+const running = await watcher.sendMessage(send('Watch the feed.', true));
+if (!('status' in running)) throw new Error('a Bureau send answers with a task');
+await waitForCondition(() => bureau.getRun(running.id)?.status === 'running', 'it never ran');
+await watcher.cancelTask({ tenant: '', id: running.id, metadata: undefined });
+await waitForCondition(async () => {
+  const task = await watcher.getTask({ tenant: '', id: running.id });
+  return task.status?.state === TaskState.TASK_STATE_CANCELED;
+}, 'the task never read as canceled');
+console.log('canceled'); // the task is terminal once the cancel settles
+
+// An operation the deployment does not serve is an error, not a silent no-op.
+const extended = await handler(
+  new Request(`${publicUrl}/a2a/summarizer/`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': 'alice-key',
+      'a2a-version': '1.0',
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'GetExtendedAgentCard', params: {} }),
+  }),
+);
+console.log(((await extended.json()) as { error: { code: number } }).error.code); // -32004
+
+await bureau.dispose();
+```
+
+**The outbound client.** Calling another A2A agent is a separate surface and is built (COR-905): Weft's `createA2APeerClient` from `@lostgradient/weft/a2a` reads and validates the peer's Agent Card, refuses a peer whose card requires an extension the client does not implement, applies an egress policy to every URL, retries transient failures, and cancels a task that outlives its timeout. Operative's `createPeerCallTool` wraps a client as a tool: the call is a child run in the parent's child registry with the peer's task identity, aborting it sends `CancelTask`, and a peer's reply is returned marked `untrusted: true`. The call is synchronous and persists nothing, so a restart of the caller does not resume it. Bureau does not call peers on its own; a host composes the tool into an agent's toolbox.
+
+```typescript
+import { createPeerCallTool } from '@lostgradient/operative';
+import { createA2APeerClient } from '@lostgradient/weft/a2a';
+
+const peer = createA2APeerClient({
+  url: 'https://agents.example.com/a2a/summarizer/', // the card is read from .well-known/agent-card.json under it
+  authenticate: async () => ({ 'X-API-Key': 'alice-key' }),
+});
+
+export const askSummarizer = createPeerCallTool({
+  name: 'askSummarizer',
+  description: 'Ask the remote summarizer agent to summarize a document.',
+  peer,
+});
+```
 
 ### Interactive surfaces (COR-1631)
 
