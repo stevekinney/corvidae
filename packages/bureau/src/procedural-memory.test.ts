@@ -10,7 +10,6 @@ import {
   createAgent,
   createPolicyEnforcementHook,
   type GenerateFunction,
-  stopWhen,
 } from '@lostgradient/operative';
 import {
   createMemoryAuthority,
@@ -221,7 +220,6 @@ describe('a procedure from proposal to revocation through public APIs (COR-770)'
           toolbox: createToolbox(allowed),
           skillDescriptors: [skill],
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
     });
     bureaus.push(bureau);

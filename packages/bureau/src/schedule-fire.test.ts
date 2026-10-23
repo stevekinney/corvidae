@@ -100,7 +100,7 @@ describe('D6 scheduled-fire path (#109)', () => {
         // A bare duration shorthand ('1s') is registered as an interval
         // ({ every: '1s' }), not cron — see toScheduleSpec.
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'stateless tick prompt',
           spec: '1s',
         });
@@ -148,7 +148,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
       try {
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'digest prompt',
           spec: '1s',
           sessionId,
@@ -209,7 +209,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(ScheduleCancelledEvent.type, (event) => cancelled.push(event));
 
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'paused forever',
           spec: '1h',
         });
@@ -248,7 +248,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(AgentScheduledEvent.type, (event) => created.push(event));
 
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'daily digest',
           spec: '1h',
           sessionId: 'daily-digest',
@@ -257,7 +257,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
 
         expect(created.map((event) => event.type)).toEqual(['schedule.created']);
         expect(created[0]).toMatchObject({
-          agentName: 'researcher',
+          agentName: 'default',
           scheduleId: summary!.id,
           spec: { every: '1h' },
           sessionId: 'daily-digest',

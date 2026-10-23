@@ -25,7 +25,7 @@ async function withBureau<T>(
 
 /** A session whose run is still going, so it can take input. */
 async function liveSession(opened: OpenedBureau, principal: string = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'bureau', message: 'work', principal });
+  const run = await opened.bureau.createRun({ agentName: 'default', message: 'work', principal });
   await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'run started');
   return run;
 }
@@ -91,7 +91,7 @@ describe('bureau.contexts.input', () => {
   it('answers a context that has ended as a Conflict with reason session-terminal', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'done soon',
         principal: OWNER.alice,
       });

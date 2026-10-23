@@ -151,7 +151,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
     });
     try {
       const summary = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Go.',
         sessionId: 'thread-1',
       });
@@ -228,7 +228,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
     });
     try {
       const summary = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Go.',
         sessionId: 'thread-1',
       });

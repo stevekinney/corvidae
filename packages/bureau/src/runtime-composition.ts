@@ -40,6 +40,7 @@ import type {
   SessionStore,
   SessionSummary,
   StepRecord,
+  StopCondition,
   StreamEventMap,
 } from '@lostgradient/operative';
 import {
@@ -140,7 +141,7 @@ import {
 } from 'conversationalist';
 
 import type { FileAgentBinding } from './agent-file-catalog';
-import { activeSkillToolPolicy, createSkillGuardrailOptions } from './agent-skills';
+import { activeSkillToolPolicy, agentSkillsRun, createSkillGuardrailOptions } from './agent-skills';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -169,7 +170,9 @@ import type {
   PersistenceOptions,
   ProviderConfiguration,
   RedactedProviderConfiguration,
+  ProviderRouteConfiguration,
   RedactedProviderRouteConfiguration,
+  SkillRuntimeConfiguration,
   RoutingConfiguration,
   ToolSummary,
 } from './types';
@@ -2377,6 +2380,7 @@ export interface RuntimeComposition {
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
     recovering: boolean,
+    agentHasSkills?: boolean,
   ): Promise<SkillSnapshot>;
   /**
    * COR-1620 — the same for a session run: the records its session holds, a verified absence
@@ -2386,6 +2390,7 @@ export interface RuntimeComposition {
   readSessionSkillSnapshot(
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
+    agentHasSkills?: boolean,
   ): SkillSnapshot;
   /**
    * COR-1265 criterion 3b — a fresh registry holding only the Bureau invariants
@@ -3242,10 +3247,13 @@ async function buildRuntimeComposition(
   }
 
   const nonStreamingGenerate = composeConfiguredGenerate(undefined);
-  const schedulerGenerate = nonStreamingGenerate;
+  // COR-323: a Bureau composes no `generate` of its own, so the scheduler's default is one that
+  // refuses. Every task supplies its named agent's `generate` and toolbox through `createRun`.
+  const schedulerGenerate: GenerateFunction =
+    nonStreamingGenerate ?? (() => Promise.reject(new Error('No generate function configured')));
 
   const scheduler =
-    schedulerGenerate && options.scheduler?.enabled === true
+    options.scheduler?.enabled === true
       ? createScheduler({
           generate: schedulerGenerate,
           toolbox: fallbackToolbox,
@@ -3567,7 +3575,38 @@ async function buildRuntimeComposition(
         : undefined;
 
     let skillRecovery: Promise<SkillRecoveryOutcome> | undefined;
-    if (options.skills && skillCatalog !== undefined) {
+    // COR-323: the named agent's own skills. Its client already owns the run's toolbox and the
+    // catalog prompt, so Bureau adds only what the agent cannot see: the durable snapshot of the
+    // active set after every step, and the re-validation of a stored set on recovery.
+    const agentSkills = agentSkillsRun(sessionAgent?.options.hooks);
+    if (agentSkills !== undefined) {
+      const { client, catalog } = agentSkills;
+      const recoverable = runtimeOptions?.initialActiveSkillRecords;
+      if (recoverable !== undefined && recoverable.length > 0) {
+        skillRecovery = agentSkills.recover(recoverable).then((outcome) => {
+          if (outcome.refused.length > 0) skillPolicyUnverified = true;
+          return outcome;
+        });
+      }
+      getActiveSkillRecords = () => client.activationRecords();
+      getActiveSkillToolPolicy = () => activeSkillToolPolicy(client.narrowedTools());
+      if (sessionStore) {
+        const writeSkillSnapshot = createSkillRecordSnapshotHook(
+          client,
+          catalog,
+          request.sessionId,
+          sessionStore,
+          request.runId,
+        );
+        hooks.on(
+          'onStep',
+          async (context) => {
+            if (!skillPolicyUnverified) await writeSkillSnapshot(context);
+          },
+          { id: 'bureau:skill-record-snapshot', replay: 'effectful' },
+        );
+      }
+    } else if (options.skills && skillCatalog !== undefined) {
       // COR-892 — the catalog-backed path. Bureau composes policy and durability *around*
       // Agent-owned behaviour rather than reimplementing it: discovery, trust admission,
       // digest-verified activation and the active set all live in `@lostgradient/bureau/skills`, and what
@@ -3708,7 +3747,11 @@ async function buildRuntimeComposition(
     }
 
     // Records the run was given but no skill client is configured to enforce cannot be honoured.
-    if (!skillsConfigured && (runtimeOptions?.initialActiveSkillRecords?.length ?? 0) > 0) {
+    if (
+      !skillsConfigured &&
+      agentSkills === undefined &&
+      (runtimeOptions?.initialActiveSkillRecords?.length ?? 0) > 0
+    ) {
       skillPolicyUnverified = true;
     }
     const skillToolPolicy: (() => ToolPolicy | undefined) | undefined =
@@ -3867,10 +3910,18 @@ async function buildRuntimeComposition(
     // COR-1620: the snapshot it can verify, or none and no tools: a reattached run whose policy
     // cannot be verified, or whose stored skill the catalog refuses, is offered no tool, has its
     // approvals refused at approve, and keeps the snapshot it has.
+    // COR-1577 — a recovered named run resumes under its agent, by the catalog path's policy: an
+    // agent gone from the catalog fails the run, and a definition that changed since the run
+    // started is logged and the current one runs.
+    const sessionAgent = await resolveRecoveredSessionAgent(session, runId, agentName);
     const skillSnapshot: SkillSnapshot =
       runId === undefined
         ? { status: 'verified', records: undefined }
-        : readSessionSkillSnapshot(session, runId);
+        : readSessionSkillSnapshot(
+            session,
+            runId,
+            agentSkillsRun(sessionAgent?.options.hooks) !== undefined,
+          );
     const initialActiveSkillRecords =
       skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
     const requestContext = recoveredRequestContext(
@@ -3880,10 +3931,6 @@ async function buildRuntimeComposition(
       agentName,
       runtimeServices.clock.now,
     );
-    // COR-1577 — a recovered named run resumes under its agent, by the catalog path's policy: an
-    // agent gone from the catalog fails the run, and a definition that changed since the run
-    // started is logged and the current one runs.
-    const sessionAgent = await resolveRecoveredSessionAgent(session, runId, agentName);
     const runRuntime = await createRunRuntime(
       {
         message: typeof message === 'string' ? message : '',
@@ -4033,7 +4080,7 @@ async function buildRuntimeComposition(
     runId: string | undefined,
     agentName: string | undefined,
   ): Promise<SessionAgentRun | undefined> {
-    if (agentName === undefined || agentName === BUREAU_AGENT_NAME) return undefined;
+    if (agentName === undefined) return undefined;
     // A composition with no catalog wired (`createBureau` always wires one) has no named agents,
     // so the name is only a label and the run is the Bureau-wide runtime's. A Bureau that is
     // still being built has one coming, and the run waits for it (COR-1586): resuming it under the
@@ -4042,6 +4089,14 @@ async function buildRuntimeComposition(
     const label = runId === undefined ? 'a recovered run' : `run ${runId}`;
     if (wired.status === 'absent') return undefined;
     if (wired.status === 'abandoned') throw new Error(`${label}: ${wired.reason}`);
+    // COR-323 — the implicit Bureau-wide agent no longer exists, so a run stored under it names
+    // the cause instead of failing on a missing `generate`.
+    if (agentName === BUREAU_AGENT_NAME) {
+      throw new Error(
+        `${label}: it belongs to the implicit "${BUREAU_AGENT_NAME}" agent, which no longer ` +
+          'exists; it is not resumed',
+      );
+    }
     const owner = resolveSessionOwner(session.metadata);
     const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
     const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner, {
@@ -4622,6 +4677,7 @@ async function buildRuntimeComposition(
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
     recovering: boolean,
+    agentHasSkills = false,
   ): Promise<SkillSnapshot> {
     const none: SkillSnapshot = { status: 'verified', records: undefined };
     if (!recovering || !session) return none;
@@ -4630,7 +4686,7 @@ async function buildRuntimeComposition(
     const lastFireRunId = metadata['lastScheduledFireRunId'];
     const recordsRunId = metadata['activeSkillRecordsRunId'];
     // Without skills there is no policy to verify, and whatever the session holds is not it.
-    if (!skillsConfigured && recordsRunId !== runId) return none;
+    if (!skillsConfigured && !agentHasSkills && recordsRunId !== runId) return none;
     // A fire writes its own run id with its snapshot, at every step. A session that names
     // another fire, as a recurring schedule's newer fire leaves it, holds that fire's snapshot;
     // one whose run id was cleared (null, as the start of a later run in the session does) or
@@ -4711,6 +4767,7 @@ async function buildRuntimeComposition(
   function readSessionSkillSnapshot(
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
+    agentHasSkills = false,
   ): SkillSnapshot {
     if (session === undefined) {
       return { status: 'unverifiable', reason: 'its session is not found' };
@@ -4719,7 +4776,7 @@ async function buildRuntimeComposition(
     const recordsRunId = metadata['activeSkillRecordsRunId'];
     const lastRunId = metadata['lastRunId'];
     // Without skills there is no policy to verify, and whatever the session holds is not it.
-    if (!skillsConfigured && recordsRunId !== runId)
+    if (!skillsConfigured && !agentHasSkills && recordsRunId !== runId)
       return { status: 'verified', records: undefined };
     if (typeof recordsRunId === 'string' && recordsRunId !== runId) {
       return {
@@ -4839,20 +4896,26 @@ async function buildRuntimeComposition(
     // and instructions. The implicit Bureau-wide agent no longer exists, so a schedule stored under
     // it (or under an agent that has left the catalog) fails its fire with a diagnostic instead of
     // running on something it never named.
-    const agentResolution =
-      agentName === defaultBureauAgentName
-        ? undefined
-        : await resolveSessionAgentRun(agentName, runId, owner);
-    if (agentResolution?.status !== 'resolved') {
-      return {
-        status: 'unavailable',
-        reason:
-          agentResolution === undefined
-            ? `scheduled fire ${info.workflowId} names the implicit agent "${agentName}", which no longer runs: schedule it under a catalog agent`
-            : `scheduled fire ${info.workflowId} cannot run agent "${agentName}": ${agentResolution.status}`,
-      };
+    // A composition with no catalog wired (only a direct `createRuntimeComposition` caller has
+    // none; `createBureau` always wires one) has no named agents, so the name is a label and the
+    // fire runs the composition's own `generate`, as a recovered session run does.
+    let fireAgent: SessionAgentRun | undefined;
+    if ((await awaitCatalogAgentRunOptionsResolver(runId)).status !== 'absent') {
+      const agentResolution =
+        agentName === defaultBureauAgentName
+          ? undefined
+          : await resolveSessionAgentRun(agentName, runId, owner);
+      if (agentResolution?.status !== 'resolved') {
+        return {
+          status: 'unavailable',
+          reason:
+            agentResolution === undefined
+              ? `scheduled fire ${info.workflowId} names the implicit agent "${agentName}", which no longer runs: schedule it under a catalog agent`
+              : `scheduled fire ${info.workflowId} cannot run agent "${agentName}": ${agentResolution.status}`,
+        };
+      }
+      fireAgent = agentResolution.run;
     }
-    const fireAgent = agentResolution.run;
 
     // COR-851: a goal's sessions are the goal's alone. A schedule can name any
     // session (an agent registers one itself through `scheduleSelf`, and one
@@ -4915,7 +4978,7 @@ async function buildRuntimeComposition(
       );
     } else {
       conversation = new Conversation(createConversationHistory({ id: sessionId }));
-      const firePrompt = fireAgent.instructions ?? systemPrompt;
+      const firePrompt = fireAgent?.instructions ?? systemPrompt;
       if (firePrompt) {
         conversation.appendSystemMessage(firePrompt);
       }
@@ -4932,6 +4995,7 @@ async function buildRuntimeComposition(
       existing,
       runId,
       isRecoveredFireReplay,
+      agentSkillsRun(fireAgent?.options.hooks) !== undefined,
     );
     const initialActiveSkillRecords =
       skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
@@ -5006,9 +5070,10 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: fireToolbox,
         conversation,
-        ...mediaOptionsFor(owner, 'session'),
-        maximumSteps: fireAgent.options.maximumSteps ?? maximumSteps,
-        stopWhen: fireAgent.options.stopWhen,
+        ...copyAgentOwnedRunOptions(fireAgent?.options),
+        ...sessionRunMediaOptions(fireAgent, mediaOptionsFor(owner, 'session')),
+        maximumSteps: fireAgent?.options.maximumSteps ?? maximumSteps,
+        stopWhen: fireAgent?.options.stopWhen ?? options.stopWhen,
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a scheduled fire.
         runtime: runtimeServices,
@@ -5037,8 +5102,9 @@ async function buildRuntimeComposition(
               requestContext,
             ),
           ),
+          fireAgent?.options.hooks,
         ),
-        executeOptions: { requestContext },
+        executeOptions: sessionExecuteOptions(fireAgent?.options, requestContext),
         agentName,
         runId,
       },

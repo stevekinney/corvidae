@@ -5,6 +5,7 @@
  */
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type AgentSkills,
   type BackendDescriptor,
   createAgent,
   type MediaCostEstimator,
@@ -118,8 +119,8 @@ export type HarnessOptions = {
   readonly backends?: readonly BackendDescriptor[];
   /** Costs each media part of a run, in place of the backends' own rows: an agent may supply one. */
   readonly mediaCostEstimator?: MediaCostEstimator;
-  /** The skills every run of this Bureau may activate (COR-1628). */
-  readonly skills?: BureauOptions['skills'];
+  /** The skills the `default` agent may activate (COR-1628). */
+  readonly skills?: AgentSkills;
 };
 
 /** Keys the suites present, by name, with the scopes each holds. */
@@ -184,6 +185,7 @@ async function build(
             name,
             ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
             ...(options.guardrails === undefined ? {} : { guardrails: options.guardrails }),
+            ...(options.skills === undefined ? {} : { skills: options.skills }),
             ...(options.mediaCostEstimator === undefined
               ? {}
               : { mediaCostEstimator: options.mediaCostEstimator }),
@@ -199,6 +201,7 @@ async function build(
       default: createAgent({
         generate,
         toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
+        ...(options.skills === undefined ? {} : { skills: options.skills }),
         stopWhen:
           options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
@@ -215,7 +218,6 @@ async function build(
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     ...(options.memory === undefined ? {} : { memory: options.memory }),
-    ...(options.skills === undefined ? {} : { skills: options.skills }),
     ...(options.durableOwnership === undefined
       ? {}
       : { durableOwnership: options.durableOwnership }),

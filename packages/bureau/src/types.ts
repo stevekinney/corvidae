@@ -26,7 +26,6 @@ import type {
   FlowControlPolicy,
   FreshAttemptSourceResolver,
   GenerateFunction,
-  GuardrailsOptions,
   LivenessSnapshot,
   RunFrame,
   RunReport,
@@ -42,7 +41,6 @@ import type {
   SessionListOptions,
   SessionStore,
   SessionSummary,
-  StopCondition,
   Store,
   TokenUsage,
   Validator,
@@ -69,11 +67,7 @@ import type {
   WorkflowSummary,
 } from '@lostgradient/weft';
 import type {
-  AnyToolbox,
-  GrantListFilter,
   PendingToolApproval,
-  ReusableApprovalGrant,
-  ReusableApprovalGrantInput,
   SignedPendingToolApproval,
   Tool,
   ToolRequestContext,
@@ -369,12 +363,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * bureau that only uses the session/durability-backed `createRun` surface
    * and doesn't dispatch through the catalog at all. There is no
    * register/unregister lifecycle: the map is fixed for the bureau's
-   * lifetime, independent of and additive to `createRun`/`generate`/
-   * `provider` below (a bureau may use either, both, or neither surface).
+   * lifetime, independent of and additive to `createRun` (a bureau may use
+   * either surface or both). Every run, scheduler task, and schedule fire
+   * belongs to one of these agents.
    *
-   * The name `bureau` is reserved for the Bureau-wide default agent that a
-   * `createRun` call without `agentName` runs; an entry called `bureau` is
-   * refused with `BureauError` (`BAD_REQUEST`).
+   * The name `bureau` is reserved (it named the implicit Bureau-wide agent,
+   * which no longer exists); an entry called `bureau` is refused with
+   * `BureauError` (`BAD_REQUEST`).
    */
   agents: D;
   /**
@@ -1260,7 +1255,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   readonly store: Store;
   readonly memory: GovernedMemory | undefined;
   readonly scheduler: Scheduler | undefined;
-  readonly ready: boolean;
   /**
    * AB-246 — the model-catalog refresh service (AB-64's catalog, AB-34's
    * started-work control contract). Present regardless of `D`, matching the
@@ -1374,7 +1368,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * retention window has passed (the same request id then creates a new
    * run), or `not-found`. Scoped like the ledger key, to the principal and to
    * the agent the run is: the session's, when the request continued an existing session (name it
-   * with `sessionId`), otherwise `agentName`, default `bureau`. A query that finds the
+   * with `sessionId`), otherwise `agentName`, which is then required. A query that finds the
    * run started records its receipt, exactly as a retry would. Rejects
    * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
    * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
@@ -1927,21 +1921,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `now` defaults to the bureau's own clock.
    */
   sweepExpiredReviews(now?: number): Promise<number>;
-
-  /**
-   * Mints and signs a reusable approval grant (AB-46, AB-346) via the
-   * bureau's base toolbox — a grant lets a matching future tool call skip
-   * human review entirely. Delegates to `Toolbox.issueGrant`, so it throws
-   * the same "approvalSecret is required" error when the base toolbox has
-   * no `approvalSecret`/`grantStateStore` configured.
-   */
-  issueGrant(input: ReusableApprovalGrantInput): Promise<ReusableApprovalGrant>;
-
-  /** Revokes a reusable approval grant by id; idempotent on an unknown or already-revoked id. */
-  revokeGrant(id: string): Promise<void>;
-
-  /** Lists reusable approval grants, optionally narrowed by principal, agent, or tool. */
-  listGrants(filter?: GrantListFilter): Promise<ReusableApprovalGrant[]>;
 
   /**
    * Installs the host-owned authority freshness check used immediately before
@@ -2501,19 +2480,16 @@ export interface CreateRunRequest {
   /**
    * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
    * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
-   * tools (`requestHumanInput`, `scheduleWakeup`, skills), guardrails and memory around them.
-   * `'bureau'` names the default agent, which runs the Bureau-wide `generate` and toolbox.
+   * tools (`requestHumanInput`, `scheduleWakeup`) and memory around them.
    *
    * A session is bound to the agent of the run that created it. A later run names that same agent;
    * a request that leaves the field out at runtime (the type no longer allows it) still inherits
-   * the session's agent. Naming another, including naming a
-   * catalog agent on a session bound to `bureau`, is refused with `BAD_REQUEST`. A name that is
-   * not in the catalog is refused with `NOT_FOUND`; both land before anything is persisted. The
-   * default agent `bureau` is always valid.
+   * the session's agent. Naming another is refused with `BAD_REQUEST`. A name that is not in the
+   * catalog, `bureau` (the implicit agent that no longer exists) included, is refused with
+   * `NOT_FOUND`; both land before anything is persisted.
    *
    * For the system prompt, `maximumSteps` and `maximumTokens`, the request's own field wins, then
-   * the agent's value, then the Bureau's default. Stop conditions come from the agent, then the
-   * Bureau. The session's request context governs tool approvals, never the agent's
+   * the agent's value. Stop conditions come from the agent. The session's request context governs tool approvals, never the agent's
    * `executeOptions.requestContext`.
    *
    * The run uses that agent's own `generate`, tools, and stop condition. A durable run
@@ -2560,8 +2536,8 @@ export interface LocateRunCreationReceiptRequest {
   /** The authenticated caller that issued the request. */
   principal: string;
   /**
-   * The agent the request ran as. When omitted, it resolves the way `createRun` resolves it: the
-   * agent bound to `sessionId` when that session exists, otherwise `bureau`.
+   * The agent the request ran as. Required unless `sessionId` names an existing session, whose
+   * agent it then is.
    */
   agentName?: string | undefined;
   /**

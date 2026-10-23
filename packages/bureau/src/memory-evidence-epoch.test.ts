@@ -20,7 +20,6 @@ import {
   createContextEpochSealer,
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
-  stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
@@ -172,7 +171,6 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       id: 'tenant-a',
       agents: {
         scout: createAgent({ generate, createContextEpoch }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       memory,
       requestAuthorityValidator: () => true,
@@ -200,7 +198,6 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       id: 'tenant-a',
       agents: {
         scout: createAgent({ generate, createContextEpoch }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
     });
     bureaus.push(plain);
@@ -225,7 +222,6 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       id: 'tenant-a',
       agents: {
         scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([probe]) }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       memory,
       requestAuthorityValidator: () => true,
@@ -263,7 +259,6 @@ describe('a session’s next run (COR-771)', () => {
       id: 'tenant-a',
       agents: {
         scout: createAgent({ generate, createContextEpoch }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       memory,
       requestAuthorityValidator: () => true,
@@ -422,12 +417,6 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
         id: 'tenant-a',
         agents: {
           scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([]) }),
-          default: createAgent({
-            stopWhen: stopWhen.some(
-              stopWhen.toolCalled('requestHumanInput'),
-              stopWhen.noToolCalls(),
-            ),
-          }),
         },
         memory,
         storage: fixture.configuration,

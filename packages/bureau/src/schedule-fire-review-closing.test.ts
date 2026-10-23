@@ -41,7 +41,6 @@ import {
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -166,7 +165,7 @@ describe('a re-gated fire approval with a task stream open', () => {
     const holder = await harness.open({
       ...peerOptions,
       storage: await harness.sqliteStorage(path),
-      agents: { default: createAgent({ toolbox: regatingApprovalToolbox(charges) }) },
+      toolbox: regatingApprovalToolbox(charges),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, 'regate-peer-session');
     const review = await reviewOf(holder, fireId);
@@ -180,7 +179,7 @@ describe('a re-gated fire approval with a task stream open', () => {
     const peer = await harness.open({
       ...peerOptions,
       storage: await harness.sqliteStorage(path),
-      agents: { default: createAgent({ toolbox: regatingApprovalToolbox([]) }) },
+      toolbox: regatingApprovalToolbox([]),
     });
     await reviewOf(peer, fireId);
 

@@ -3,9 +3,8 @@
  *
  * The example test reproduces the documented example as written. Only the
  * imports (`./index` stands in for `@lostgradient/bureau`), the SQLite path (a
- * per-process temporary file, removed afterwards), and the provider differ: the
- * README resolves a real Anthropic provider, which needs a network connection
- * and an API key, so the test passes a mock `generate` in its place. The test
+ * per-process temporary file, removed afterwards), and the `generate` differ: the
+ * README declares one, and the test passes a mock in its place. The test
  * also waits for the run's session save before disposing; see
  * `terminalSessionSaved`. Every result the README claims in a comment is
  * asserted. Change the example and this test together.
@@ -32,8 +31,7 @@ afterEach(() => {
 
 /**
  * Stands in for the README's Anthropic provider: answers every step without
- * calling a tool. The example sets no stop condition, so the run keeps
- * stepping until the default step limit.
+ * calling a tool.
  */
 const answerWithoutTools: GenerateFunction = async () => ({
   content: 'Q3 revenue grew while costs held flat.',
@@ -64,15 +62,12 @@ async function terminalSessionSaved(
 describe('README — Quick Start', () => {
   it('waits for the run to finish through a subscription it closes on the terminal action', async () => {
     const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: answerWithoutTools }),
-      },
-      // The README passes `provider: { provider: 'anthropic', model: 'claude-sonnet-4.5' }`.
+      agents: { summarizer: createAgent({ generate: answerWithoutTools }) },
       storage: { type: 'sqlite', path: databasePath },
     });
 
     const run = await bureau.createRun({
-      agentName: 'default',
+      agentName: 'summarizer',
       message: 'Summarize the Q3 report.',
     });
     expect(run.status).toBe('running');
@@ -91,9 +86,9 @@ describe('README — Quick Start', () => {
     });
 
     const detail = bureau.getRun(run.id);
-    // One of the README's `"stop-condition" | "maximum-steps" | …`: with no stop
-    // condition, the mock's answers run to the default step limit.
-    expect(detail?.finishReason).toBe('maximum-steps');
+    // One of the README's `"stop-condition" | "maximum-steps" | …`: the agent's default stop
+    // condition ends the run on the first answer that calls no tool.
+    expect(detail?.finishReason).toBe('stop-condition');
 
     await terminalSessionSaved(bureau, run);
     await bureau.dispose();

@@ -112,7 +112,6 @@ async function startLapsedCatalogRun(
           return new Promise<never>(() => {});
         },
       }),
-      default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
     },
     storage: { type: 'sqlite', path: storagePath },
     durableExecution: true,
@@ -146,7 +145,6 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
       createBureau<AgentDefinitions>({
         agents: {
           writer: writerAnswering('recovered'),
-          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
         },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
@@ -334,9 +332,7 @@ describe('a construction that fails while a run is parked for the resolver (COR-
     const building = track(
       hold,
       createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
-        },
+        agents: {},
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
         storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
@@ -460,7 +456,6 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       createBureau<AgentDefinitions>({
         agents: {
           writer: writerAnswering('never runs'),
-          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
         },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
@@ -525,7 +520,6 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     const second = await createBureau<AgentDefinitions>({
       agents: {
         writer: writerAnswering('recovered'),
-        default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: storagePath },
       durableExecution: true,
@@ -573,9 +567,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     fixtures.restoreOnDispose(() => toolsSpy.mockRestore());
 
     const outcome = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
-      },
+      agents: {},
       workflowDirectory: await fixtures.scratchDirectory('bureau-reclaim-workflows-'),
       storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
       durableExecution: true,

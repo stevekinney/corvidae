@@ -20,7 +20,6 @@ import {
   reviewOf,
 } from './schedule-fire-fixtures.test-support';
 import type { Bureau } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 

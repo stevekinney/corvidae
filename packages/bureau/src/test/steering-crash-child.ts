@@ -29,6 +29,7 @@ import { writeFileSync } from 'node:fs';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
 
+import { STEERABLE_MODELS } from '../testing/default-agent.test-support';
 import { createBureau } from '../create-bureau';
 import type { SteeringCommandRequest } from '../steering';
 import { createAgent } from '@lostgradient/operative';
@@ -74,6 +75,7 @@ if (
 const bureau = await createBureau<AgentDefinitions>({
   agents: {
     default: createAgent({
+      allowedCandidates: STEERABLE_MODELS,
       generate: () => new Promise<never>(() => {}),
       toolbox: createToolbox([]),
     }),

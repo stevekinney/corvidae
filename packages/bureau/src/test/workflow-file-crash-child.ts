@@ -17,7 +17,7 @@
  */
 import { writeFileSync } from 'node:fs';
 
-import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import { BunSQLiteStorage, type Storage } from '@lostgradient/weft';
 
 import { createBureau } from '../create-bureau';
@@ -75,7 +75,6 @@ const bureau = await createBureau<AgentDefinitions>({
         return { content: `answered: ${text.split('\n')[0]}`, toolCalls: [] };
       },
     }),
-    default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
   },
   workflowDirectory,
   storage: killingAfterStepClaim(new BunSQLiteStorage(storagePath)),

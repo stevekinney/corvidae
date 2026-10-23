@@ -36,7 +36,7 @@ import {
 } from './skill-policy-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
-import type { AgentDefinitions } from './agent-catalog';
+import { createAgentSkills } from './agent-skills';
 
 const harness = createScheduleFireHarness();
 
@@ -198,7 +198,7 @@ async function parkedFireWithSkill(catalog: SkillCatalogOnDisk) {
       default: createAgent({
         generate: lockedAfterCharging('wait'),
         stopWhen: stopWhen.noToolCalls(),
-        skills: { catalog: await catalog.discover() },
+        skills: createAgentSkills({ catalog: await catalog.discover() }),
         toolbox: chargeApprovalToolbox([]),
       }),
     },
@@ -228,7 +228,7 @@ async function restartFire(
       default: createAgent({
         generate: lockedAfterCharging('wait'),
         stopWhen: stopWhen.noToolCalls(),
-        skills: { catalog: await catalog.discover() },
+        skills: createAgentSkills({ catalog: await catalog.discover() }),
         toolbox: chargeApprovalToolbox(charges),
       }),
     },
@@ -313,13 +313,13 @@ describe('a restored fire approval whose snapshot names another fire', () => {
         default: createAgent({
           generate,
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox([]),
         }),
       },
     });
     const created = await first.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -366,7 +366,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
         default: createAgent({
           generate: () => Promise.resolve({ content: 'nothing to do', toolCalls: [] }),
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox(charges),
         }),
       },
@@ -422,15 +422,15 @@ async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
   const options = async () => ({
     generate: lockedAfterCharging('stop'),
     stopWhen: stopWhen.noToolCalls(),
-    skills: { catalog: await catalog.discover() },
+    skills: createAgentSkills({ catalog: await catalog.discover() }),
   });
   const first = await harness.open({
     ...(await options()),
     storage: { type: 'sqlite', path },
-    agents: { default: createAgent({ toolbox: chargeApprovalToolbox([]) }) },
+    toolbox: chargeApprovalToolbox([]),
   });
   const run = await first.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'charge, then lock',
     principal: OWNER.alice,
   });
@@ -457,7 +457,7 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
     const restarted = await harness.open({
       ...(await options()),
       storage: { type: 'sqlite', path },
-      agents: { default: createAgent({ toolbox: chargeApprovalToolbox(charges) }) },
+      toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -484,7 +484,7 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
     const restarted = await harness.open({
       ...(await options()),
       storage: { type: 'sqlite', path },
-      agents: { default: createAgent({ toolbox: chargeApprovalToolbox(charges) }) },
+      toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -535,12 +535,12 @@ describe('a restored approval of a run that never activated a skill', () => {
     const options = async () => ({
       generate: chargesOnce,
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-      skills: { catalog: await catalog.discover() },
+      skills: createAgentSkills({ catalog: await catalog.discover() }),
     });
     const first = await harness.open({
       ...(await options()),
       storage: { type: 'sqlite', path },
-      agents: { default: createAgent({ toolbox: chargeApprovalToolbox([]) }) },
+      toolbox: chargeApprovalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'no-skill-session');
     await reviewOf(first, fireId);
@@ -548,7 +548,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     const restarted = await harness.open({
       ...(await options()),
       storage: { type: 'sqlite', path },
-      agents: { default: createAgent({ toolbox: chargeApprovalToolbox(charges) }) },
+      toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
 
@@ -579,7 +579,7 @@ describe('a restored approval of a run that never activated a skill', () => {
       },
     });
     const created = await first.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -630,43 +630,6 @@ describe('a restored approval of a run that never activated a skill', () => {
 
     expect(charges).toEqual([4242]);
   });
-
-  it('runs as before for a session run with no toolbox of its own', async () => {
-    const path = harness.nextDatabasePath();
-    const options = {
-      generate: chargesOnce,
-      stopWhen: stopWhen.noToolCalls(),
-    };
-    const first = await harness.open({
-      ...options,
-      storage: { type: 'sqlite', path },
-      agents: { default: createAgent({ toolbox: chargeApprovalToolbox([]) }) },
-    });
-    const run = await first.createRun({
-      agentName: 'bureau',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
-    const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
-      'the session run’s approval',
-    );
-    const charges: number[] = [];
-    const restarted = await harness.open({
-      ...options,
-      storage: { type: 'sqlite', path },
-      agents: { default: createAgent({ toolbox: chargeApprovalToolbox(charges) }) },
-    });
-    await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
-      'the restored approval',
-    );
-    scheduledFireReviewStateOf(restarted).runToolboxesByRunId.delete(run.id);
-
-    await approve(restarted, review.id);
-
-    expect(charges).toEqual([4242]);
-  });
 });
 
 describe('a restored session-run approval is decided under the snapshot read at approve', () => {
@@ -677,13 +640,16 @@ describe('a restored session-run approval is decided under the snapshot read at 
     withSkills = true,
   ) {
     const parked = await parkedRunWithSkill(catalog);
+    const skills = withSkills
+      ? { skills: createAgentSkills({ catalog: await catalog.discover() }) }
+      : {};
     const restarted = await harness.open({
-      ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
       storage: await harness.sqliteStorage(parked.path, sessionBodyReads(reads)),
       agents: {
         default: createAgent({
           generate: lockedAfterCharging('stop'),
           stopWhen: stopWhen.noToolCalls(),
+          ...skills,
           toolbox: chargeApprovalToolbox(charges),
         }),
       },

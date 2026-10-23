@@ -71,6 +71,8 @@ async function harnessWithMemoryStorage(
 ): Promise<BureauTestHarness> {
   const storage = createMemoryStorageFixture();
   const harness = await createBureauTestHarness({
+    storage,
+    ...overrides,
     agents: {
       worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
       default: createAgent({
@@ -78,9 +80,8 @@ async function harnessWithMemoryStorage(
         stopWhen: stopWhen.noToolCalls(),
         toolbox: createToolbox([]),
       }),
+      ...overrides.agents,
     },
-    storage,
-    ...overrides,
   });
   disposals.push(async () => {
     await harness.bureau.dispose();
@@ -90,10 +91,10 @@ async function harnessWithMemoryStorage(
 }
 
 describe('createBureauTestHarness', () => {
-  it('resolves only after bureau.ready is true and boot recovery has completed', async () => {
+  it('resolves once the Bureau has finished boot recovery', async () => {
     const harness = await harnessWithMemoryStorage();
 
-    expect(harness.bureau.ready).toBe(true);
+    expect(harness.bureau.lifecycle).toBe('ready');
   });
 
   it('COR-84: durableRegistrations returns a fresh frozen snapshot that callers cannot use to mutate the harness bookkeeping', async () => {
@@ -204,7 +205,10 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.createRun', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({ agentName: 'bureau', message: 'hello session' });
+      const summary = await harness.startSession({
+        agentName: 'default',
+        message: 'hello session',
+      });
       await waitForRunState(harness.bureau, summary.id);
 
       expect(summary.sessionId).toBeDefined();
@@ -221,7 +225,7 @@ describe('createBureauTestHarness', () => {
         },
       });
 
-      const parent = await harness.startSession({ agentName: 'bureau', message: 'parent' });
+      const parent = await harness.startSession({ agentName: 'default', message: 'parent' });
       const child = harness.startChild(parent.id, 'helper', 'child input');
 
       expect(child.parentRunId).toBe(parent.id);
@@ -245,6 +249,7 @@ describe('createBureauTestHarness', () => {
       });
 
       const response = await harness.submitSchedulerTask({
+        agentName: 'default',
         message: 'scheduled task',
         priority: 'background',
       });
@@ -262,7 +267,7 @@ describe('createBureauTestHarness', () => {
       const harness = await harnessWithMemoryStorage();
 
       const summary = await harness.startSession({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'no durable engine here',
       });
       await waitForRunState(harness.bureau, summary.id);
@@ -276,7 +281,7 @@ describe('createBureauTestHarness', () => {
       const harness = await harnessWithMemoryStorage();
 
       const summary = await harness.startSession({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'no durable engine here',
       });
       await waitForRunState(harness.bureau, summary.id);
@@ -328,7 +333,7 @@ describe('createBureauTestHarness', () => {
       });
 
       const summary = await harness.startSession({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'trigger approval',
       });
       await waitForRunState(harness.bureau, summary.id);
@@ -373,6 +378,7 @@ describe('createBureauTestHarness', () => {
       });
 
       const { taskId } = await harness.submitSchedulerTask({
+        agentName: 'default',
         message: 'Harness task',
         priority: 'background',
       });
@@ -411,7 +417,7 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
       expect(schedule?.id).toBeDefined();
       expect(schedule?.status).toBe('active');
 
-      const summary = await harness.startSession({ agentName: 'bureau', message: 'durable run' });
+      const summary = await harness.startSession({ agentName: 'default', message: 'durable run' });
       await waitForRunState(harness.bureau, summary.id);
 
       const durableRun = await harness.reattachDurable(summary.id);
@@ -473,14 +479,14 @@ describe('two concurrent harnesses are fully isolated', () => {
         storageA = makeStorage();
         storageB = makeStorage();
 
-        harnessA = await createBureauTestHarness({
+        harnessA = await createBureauTestHarness<AgentDefinitions>({
           agents: {
             default: createAgent({ generate: mockGenerate('A'), toolbox: createToolbox([]) }),
           },
           runtime: runtimeA,
           storage: storageA,
         });
-        harnessB = await createBureauTestHarness({
+        harnessB = await createBureauTestHarness<AgentDefinitions>({
           agents: {
             default: createAgent({ generate: mockGenerate('B'), toolbox: createToolbox([]) }),
           },
@@ -497,8 +503,8 @@ describe('two concurrent harnesses are fully isolated', () => {
       // frame from firing later, during the event-isolation hook's
       // subscription window, and being mistaken for cross-harness leakage.
       beforeAll(async () => {
-        runA = await harnessA.startSession({ agentName: 'bureau', message: 'on A' });
-        runB = await harnessB.startSession({ agentName: 'bureau', message: 'on B' });
+        runA = await harnessA.startSession({ agentName: 'default', message: 'on A' });
+        runB = await harnessB.startSession({ agentName: 'default', message: 'on B' });
         await waitForTerminalSnapshot(harnessA.bureau, runA.id);
       });
 
@@ -523,7 +529,7 @@ describe('two concurrent harnesses are fully isolated', () => {
         // failure behind an unrelated dispose-time symptom.
         try {
           const runOnBOnly = await harnessB.startSession({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'B-only run',
           });
           await waitForTerminalSnapshot(harnessB.bureau, runOnBOnly.id);

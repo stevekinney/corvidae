@@ -68,7 +68,6 @@ async function openBureau(
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       agent: options.agent ?? twoStepAgent(),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     storage:
       options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
@@ -667,7 +666,6 @@ describe('a parent whose model a policy profile chose', () => {
             return { content: 'answer', toolCalls: [] };
           },
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
       modelPolicy: POLICY,
@@ -747,7 +745,6 @@ describe('a parent whose model a policy profile chose', () => {
           generate: async () => ({ content: 'answer', toolCalls: [] }),
           allowedCandidates: [OPUS_5_5, OPUS_5],
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
       modelPolicy: POLICY,

@@ -74,7 +74,6 @@ describe('a named agent’s structured output on a session run', () => {
       agents: {
         viaRun: structuredAgent(malformedThenValid(viaRun)),
         viaSession: structuredAgent(sessionGenerate),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       persistence: textValueStore(new MemoryStorage()),
     });
@@ -118,7 +117,6 @@ describe('a named agent’s structured output after a restart', () => {
           output: answerSchema,
           stopWhen: stopWhen.noToolCalls(),
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
@@ -146,7 +144,6 @@ describe('a named agent’s structured output after a restart', () => {
           }),
           { schemaRetries: 1, schemaRetryMessage: () => RETRY_MESSAGE },
         ),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,

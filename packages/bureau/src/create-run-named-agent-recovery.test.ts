@@ -90,7 +90,6 @@ async function bureauOver(
                     generationProfile: { ...scribe.generationProfile, revision: options.revision },
                   },
           }),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     ...(options.wide === undefined
       ? {}
@@ -214,7 +213,6 @@ describe('requestHumanInput on a named session run', () => {
           toolbox: createToolbox([]),
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
       durableExecution: true,

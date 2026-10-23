@@ -180,9 +180,11 @@ describe.each(failureShapes)(
         // is never released, so the stored workflow is left running with that failure memoized.
         bureauA = await createBureau<AgentDefinitions>({
           agents: {
-            default: createAgent({ toolbox: createToolbox<readonly Tool[]>([noopTool]) }),
+            default: createAgent({
+              ...options,
+              toolbox: createToolbox<readonly Tool[]>([noopTool]),
+            }),
           },
-          ...options,
           storage: crashed.storage,
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
@@ -204,10 +206,10 @@ describe.each(failureShapes)(
                 generateCallsAfterRestart += 1;
                 return options.generate(generateInput);
               },
+              ...(options.stopWhen === undefined ? {} : { stopWhen: options.stopWhen }),
               toolbox: createToolbox<readonly Tool[]>([noopTool]),
             }),
           },
-          ...options,
           storage: replayed.storage,
           durableExecution: true,
           durableOwnership: { ownership: 'none' },

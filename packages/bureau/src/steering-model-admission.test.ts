@@ -7,7 +7,6 @@ import {
   createAgent,
   createModelCatalog,
   createRoutingGenerate,
-  stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
@@ -68,7 +67,7 @@ async function openBureau(
           allowedCandidates: options.allowed,
         });
   const bureau = await createBureau<AgentDefinitions>({
-    agents: { picker, default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
+    agents: { picker },
     storage:
       options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
     ...(options.durable === false ? {} : { durableExecution: true }),
@@ -405,7 +404,7 @@ describe('a routed or opaque agent lists no models', () => {
 
   async function open(agent: ReturnType<typeof createAgent>, name: string, withPolicy = false) {
     const bureau = await createBureau<AgentDefinitions>({
-      agents: { [name]: agent, default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
+      agents: { [name]: agent },
       storage: { type: 'memory' },
       ...(withPolicy
         ? {

@@ -47,7 +47,10 @@ const REQUEST = {
   runCreationRequestId: 'request-1',
 } as const;
 
-type ExtraOptions = Pick<BureauOptions, 'flowControl' | 'maximumSteps' | 'systemPrompt'> & {
+type ExtraOptions = Pick<BureauOptions, 'flowControl'> & {
+  /** What the `default` catalog agent declares for itself. */
+  readonly systemPrompt?: string;
+  readonly maximumSteps?: number;
   /** What the `researcher` catalog agent declares for itself. */
   readonly researcher?: { readonly instructions?: string; readonly maximumSteps?: number };
 };
@@ -63,7 +66,7 @@ async function withDurableBureau(
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
   const held = heldGenerate();
-  const { researcher, ...bureauOptions } = extra;
+  const { researcher, systemPrompt, maximumSteps, ...bureauOptions } = extra;
   const bureau = await createBureau<AgentDefinitions>({
     ...bureauOptions,
     // `researcher` is the second agent the tests that name one dispatch to.
@@ -77,6 +80,8 @@ async function withDurableBureau(
         generate: held.generate,
         stopWhen: stopWhen.noToolCalls(),
         toolbox: createToolbox<readonly Tool[]>([]),
+        ...(systemPrompt === undefined ? {} : { instructions: systemPrompt }),
+        ...(maximumSteps === undefined ? {} : { maximumSteps }),
       }),
     },
     runtime,
@@ -250,6 +255,7 @@ describe('createRun with a run-creation request id', () => {
       expect(await durableRunIds(bureau)).toEqual([padded.id, exact.id].toSorted());
       const located = await bureau.locateRunCreationReceipt({
         principal: 'alice',
+        agentName: 'default',
         runCreationRequestId: 'request-1',
       });
       expect(located.status === 'recorded' && located.receipt.runId).toBe(exact.id);
@@ -440,13 +446,13 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
         agentName: 'researcher',
         sessionId: 'bound',
       });
-      // With neither, the request is looked up under the default agent, which it was not run as.
-      const byNeither = await bureau.locateRunCreationReceipt(key);
+      // With neither, there is no agent to look under (COR-323: no implicit default exists).
+      const byNeither = await rejectionOf(bureau.locateRunCreationReceipt(key));
 
       for (const located of [bySession, byAgent, byBoth]) {
         expect(located.status === 'recorded' && located.receipt.runId).toBe(omitted.id);
       }
-      expect(byNeither.status).toBe('not-found');
+      expect((byNeither as BureauError).code).toBe('BAD_REQUEST');
     });
   });
 

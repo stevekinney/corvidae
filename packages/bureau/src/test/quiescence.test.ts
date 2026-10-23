@@ -28,7 +28,6 @@ import {
   type BureauQuiescenceReport,
 } from './quiescence';
 import { createMemoryStorageFixture, createSqliteStorageFixture } from './storage-fixtures';
-import type { AgentDefinitions } from '../agent-catalog';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -354,7 +353,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       });
 
       const summary = await harness.startSession({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'durable run that never finishes',
       });
       // Waits for the DURABLE engine's own persisted state (not just
@@ -414,7 +413,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       });
 
       const summary = await harness.startSession({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'deliberately detached durable run',
       });
       await waitForCondition(async () => {
@@ -570,7 +569,11 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       await storage.dispose();
     });
 
-    await harness.submitSchedulerTask({ priority: 'background', message: 'never finishes' });
+    await harness.submitSchedulerTask({
+      agentName: 'default',
+      priority: 'background',
+      message: 'never finishes',
+    });
     await waitForCondition(
       () => harness.bureau.scheduler?.getState().activeTask !== undefined,
       'scheduler task never started running',
@@ -615,7 +618,11 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     // call never resolves and is never aborted under a 'drain' policy —
     // `scheduler.stop()` awaits it directly, so it is what makes the
     // 'scheduler' owner unresolved when the bounded wait elapses.
-    await harness.submitSchedulerTask({ priority: 'background', message: 'never finishes' });
+    await harness.submitSchedulerTask({
+      agentName: 'default',
+      priority: 'background',
+      message: 'never finishes',
+    });
     await waitForCondition(
       () => harness.bureau.scheduler?.getState().activeTask !== undefined,
       'scheduler task never started running',
@@ -669,7 +676,11 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       await storage.dispose();
     });
 
-    await harness.submitSchedulerTask({ priority: 'background', message: 'never finishes' });
+    await harness.submitSchedulerTask({
+      agentName: 'default',
+      priority: 'background',
+      message: 'never finishes',
+    });
     await waitForCondition(
       () => harness.bureau.scheduler?.getState().activeTask !== undefined,
       'scheduler task never started running',
@@ -755,7 +766,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       },
     });
 
-    const runSummary = await harness.bureau.createRun({ agentName: 'bureau', message: 'hello' });
+    const runSummary = await harness.bureau.createRun({ agentName: 'default', message: 'hello' });
     const runId = runSummary.id;
     await invoked;
     harness.bureau.abortRun(runId);
@@ -816,7 +827,11 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       await storage.dispose();
     });
 
-    await harness.submitSchedulerTask({ priority: 'background', message: 'blocked fire' });
+    await harness.submitSchedulerTask({
+      agentName: 'default',
+      priority: 'background',
+      message: 'blocked fire',
+    });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the schedule fire was never reached',
@@ -911,7 +926,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `createRun`/`createRunFromRequest` path does. `maximumSteps: 1`
     // forces `'run.completed'` on the very first step (`mockGenerate`'s
     // empty `toolCalls` never signals completion on its own).
-    await harness.startSession({ agentName: 'bureau', message: 'hello', maximumSteps: 1 });
+    await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the evaluation audit write was never reached',
@@ -987,7 +1002,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // the same distinction). The write is fire-and-forget from the run's
     // own perspective, so there is no need to wait for the session to
     // finish — only for the fault plan to have been reached.
-    await harness.startSession({ agentName: 'bureau', message: 'hello', maximumSteps: 1 });
+    await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the audit write was never reached',
@@ -1083,7 +1098,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // straight into the SAME `nth: 1` block this test means to trigger
     // deliberately, deadlocking the wait on itself.
     const summary = await harness.startSession({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'hello',
       maximumSteps: 1,
     });

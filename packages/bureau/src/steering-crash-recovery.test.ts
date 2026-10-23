@@ -23,6 +23,7 @@ import { createToolbox } from 'armorer';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
+import { STEERABLE_MODELS } from './testing/default-agent.test-support';
 import { createBureau } from './create-bureau';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import {
@@ -79,6 +80,7 @@ async function openBureau(directory: string) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
+        allowedCandidates: STEERABLE_MODELS,
         generate: () => new Promise<never>(() => {}),
         toolbox: createToolbox([]),
       }),
@@ -248,6 +250,7 @@ const outcomes = {
     const recovering = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: async () => {
             generateCalls += 1;
             return { content: 'done', toolCalls: [] };
@@ -319,6 +322,7 @@ const outcomes = {
       const recovering = await createBureau<AgentDefinitions>({
         agents: {
           default: createAgent({
+            allowedCandidates: STEERABLE_MODELS,
             generate: async () => {
               generateCalls += 1;
               return { content: 'done', toolCalls: [] };
@@ -365,6 +369,7 @@ const outcomes = {
       const recovering = await createBureau<AgentDefinitions>({
         agents: {
           default: createAgent({
+            allowedCandidates: STEERABLE_MODELS,
             generate: async () => {
               generateCalls += 1;
               return { content: 'done', toolCalls: [] };

@@ -66,12 +66,7 @@ import {
   TaskPreemptedEvent,
   type Toolbox,
 } from '@lostgradient/operative';
-import {
-  discoverSkills,
-  SkillActivatedEvent,
-  type SkillCatalogRevision,
-  SkillLoadedEvent,
-} from './skills';
+import { discoverSkills, type SkillCatalogRevision } from './skills';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import {
   createFleetEventFeed,
@@ -132,6 +127,8 @@ import type {
   CatalogRefreshRequest,
   ModelCatalogService,
 } from './model-catalog-refresh';
+import { createAgentSkills } from './agent-skills';
+import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { createModelCatalogService } from './model-catalog-refresh';
 import {
   createHumanWaitContext,
@@ -142,13 +139,7 @@ import {
 } from './runtime-composition';
 import { waitForCondition, waitForRunState } from './test';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
-import {
-  type Bureau,
-  type BureauDiagnostic,
-  type ConfigurationResponse,
-  type CreateRunRequest,
-  type ServerFrame,
-} from './types';
+import { type Bureau, type BureauDiagnostic, type ServerFrame } from './types';
 
 function createTextStoreProxy(
   backingStore: ConditionalTextValueStore,
@@ -196,8 +187,6 @@ function createNextTool() {
     execute: async () => 'ok',
   });
 }
-
-type HasApiKey<T> = 'apiKey' extends keyof T ? true : false;
 
 function createMockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -664,22 +653,6 @@ describe('createBureau', () => {
     ).toEqual({ 'approval:run-b:call-b': 'keep' });
   });
 
-  it('is not ready when no generate function is configured', async () => {
-    const bureau = await createBureau({
-      agents: {},
-    });
-    expect(bureau.ready).toBe(false);
-  });
-
-  it('is ready when a generate function is configured', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate() }),
-      },
-    });
-    expect(bureau.ready).toBe(true);
-  });
-
   it('rejects the factory (not just createRuntimeComposition) on an initialization failure', async () => {
     // AB-22: "initialization ... failures reject the factory." createBureau
     // awaits createRuntimeComposition(options) with no surrounding try/catch
@@ -759,7 +732,7 @@ describe('createBureau', () => {
     expect(bureau.signal.aborted).toBe(true);
   });
 
-  it('throws NOT_CONFIGURED when createRun is called without a generate function', async () => {
+  it('throws NOT_FOUND when createRun names an agent the catalog does not hold', async () => {
     const bureau = await createBureau({
       agents: {},
     });
@@ -770,7 +743,7 @@ describe('createBureau', () => {
     );
 
     expect(error).toMatchObject({
-      code: 'NOT_CONFIGURED',
+      code: 'NOT_FOUND',
     });
   });
 
@@ -1003,7 +976,6 @@ describe('createBureau', () => {
           toolbox: createToolbox([createNextTool()]),
           stopWhen: stopWhen.noToolCalls(),
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
     });
 
@@ -1032,12 +1004,9 @@ describe('createBureau', () => {
     }
   });
 
-  it('stamps tool.started events with the default bureau agent when agentName is omitted (regression PRRT_kwDORvupsc6MY2xf)', async () => {
-    // REGRESSION: a request WITHOUT agentName passed `agentName: request.agentName`
-    // (undefined → empty string in createActiveRun) into the run, while the session
-    // is stamped with the default 'bureau'. So tool.* events + durable input carried
-    // a blank agent while the session said 'bureau' — mismatched attribution. The
-    // fix falls back to BUREAU_AGENT_NAME ('bureau') when the request omits agentName.
+  it('stamps tool.started events with the run’s agent (regression PRRT_kwDORvupsc6MY2xf)', async () => {
+    // REGRESSION: a run's tool.* events carried a blank agent while its session named one —
+    // mismatched attribution. The events carry the run's agent name.
     const capturedStamps: Array<{ agentName: string; runId: string }> = [];
 
     const bureau = await createBureau<AgentDefinitions>({
@@ -1053,10 +1022,10 @@ describe('createBureau', () => {
       },
     });
 
-    // No agentName on the request — the common interactive path.
     const summary = await bureau.createRun({
-      message: 'Stamp test, no agent',
-    } as CreateRunRequest);
+      agentName: 'default',
+      message: 'Stamp test',
+    });
 
     const runState = bureau.store.getRun(summary.id);
     runState?.activeRun.addEventListener('tool.started', (event) => {
@@ -1066,9 +1035,9 @@ describe('createBureau', () => {
     await waitForRunCompletion(bureau, summary.id);
 
     expect(capturedStamps.length).toBeGreaterThan(0);
-    // Must stamp 'bureau' (the session default), NOT an empty string.
+    // Must stamp the run's agent, NOT an empty string.
     for (const stamp of capturedStamps) {
-      expect(stamp.agentName).toBe('bureau');
+      expect(stamp.agentName).toBe('default');
       expect(stamp.runId).toBe(summary.id);
     }
   });
@@ -1101,7 +1070,7 @@ describe('createBureau', () => {
     expect(session?.agentName).toBe('researcher');
   });
 
-  it('stamps the session with the default bureau agent when no agentName is dispatched', async () => {
+  it('stamps the session with the agent the run named', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
@@ -1109,11 +1078,11 @@ describe('createBureau', () => {
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ message: 'Unnamed dispatch' } as CreateRunRequest);
+    const run = await bureau.createRun({ agentName: 'default', message: 'Named dispatch' });
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);
-    expect(session?.agentName).toBe('bureau');
+    expect(session?.agentName).toBe('default');
   });
 
   it('persists and resumes sessions through the session store', async () => {
@@ -1858,7 +1827,9 @@ describe('createBureau', () => {
     // (opening storage, an engine round-trip) could never settle this fast
     // — so if this branch ever gained an awaited durable-write gate, it
     // would still be unsettled here.
-    for (let tick = 0; tick < 10; tick += 1) {
+    // (The catalog agent's resolution adds a few dozen more microtasks since COR-323; a durable
+    // write is a macrotask or more, so a hundred microtask turns still proves the point.)
+    for (let tick = 0; tick < 100; tick += 1) {
       await Promise.resolve();
     }
     expect(settled).toBe(true);
@@ -2673,7 +2644,7 @@ describe('createBureau', () => {
         await firstRuntime.sessionStore!.save(
           createAgentSession({
             id: sessionId,
-            agentName: 'researcher',
+            agentName: 'default',
             conversationHistory: conversation.current,
             metadata: { lastScheduledFireRunId: runId },
           }),
@@ -2690,7 +2661,7 @@ describe('createBureau', () => {
         };
         const handle = await firstRuntime.durable!.engine.start(
           'agentRun',
-          { agentName: 'researcher', input: scheduledPrompt, sessionId },
+          { agentName: 'default', input: scheduledPrompt, sessionId },
           { id: runId, services },
         );
         void handle.result().catch(() => {});
@@ -2836,13 +2807,18 @@ describe('createBureau', () => {
         replayedFrames += 1;
         if (!causing && replayedFrames === 1) {
           causing = true;
-          void bureau.submitSchedulerTask({ message: 'cause a frame', priority: 'background' });
+          void bureau.submitSchedulerTask({
+            agentName: 'default',
+            message: 'cause a frame',
+            priority: 'background',
+          });
           causing = false;
         }
       });
       await flushMicrotasks();
       expect(replayedFrames).toBeGreaterThan(1);
-      expect(schedulerFrames).toBeGreaterThan(0);
+      // The task resolves its agent before it is queued, so its frame lands a few turns later.
+      await waitForCondition(() => schedulerFrames > 0, 'the scheduler frame to be emitted');
       expect(reentrantFrames).toBe(0);
     } finally {
       await cleanup();
@@ -3174,7 +3150,7 @@ describe('createBureau', () => {
 
         const handle = await firstRuntime.durable!.engine.start(
           'agentRun',
-          { agentName: 'researcher', input: 'legacy scheduled prompt' },
+          { agentName: 'default', input: 'legacy scheduled prompt' },
           { id: runId, services },
         );
         void handle.result().catch(() => {});
@@ -3264,7 +3240,7 @@ describe('createBureau', () => {
 
         const handle = await firstRuntime.durable!.engine.start(
           'agentRun',
-          { agentName: 'researcher', input: 'object marker scheduled prompt' },
+          { agentName: 'default', input: 'object marker scheduled prompt' },
           { id: runId, services },
         );
         void handle.result().catch(() => {});
@@ -3890,9 +3866,7 @@ describe('createBureau', () => {
       // === Bureau B: same file, durable forced on, but NO generate and NO
       // provider — so reconstructing the run's deps throws on this process. ===
       const bureauB = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-        },
+        agents: {},
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
@@ -4225,26 +4199,6 @@ describe('createBureau', () => {
     expect(sessionSaveCount).toBe(2);
   });
 
-  it('fails runs when the model emits tool calls without a configured toolbox', async () => {
-    const generate: GenerateFunction = async () => ({
-      content: '',
-      toolCalls: [{ name: 'missing_tool', arguments: {} }],
-    });
-
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate }),
-      },
-    });
-
-    const run = await bureau.createRun({ agentName: 'default', message: 'Need a tool' });
-    await waitForRunCompletion(bureau, run.id);
-
-    const detail = bureau.getRun(run.id);
-    expect(detail?.status).toBe('error');
-    expect(detail?.error).toContain('No toolbox configured but tool calls were received');
-  });
-
   it('lists runs and filters them by status', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -4531,6 +4485,8 @@ describe('createBureau', () => {
     try {
       const { activeRun, emitter } = createParkedActiveRun();
       const runId = bureau.store.register(activeRun, 'run-abort-double-revoke');
+      // A run registered by hand has no composed toolbox; this one is the run's own.
+      scheduledFireReviewStateOf(bureau).runToolboxesByRunId.set(runId, toolbox);
       const approvalReviewId = `approval:${runId}:call-double-revoke`;
 
       emitter.dispatchEvent(
@@ -5170,33 +5126,6 @@ describe('createBureau', () => {
     expect(deleted).toBeUndefined();
   });
 
-  it('returns configuration data with provider and tool summaries', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      provider: {
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-        apiKey: 'secret-value',
-      },
-    });
-
-    const configuration = bureau.getConfiguration();
-    const configurationProviderHasNoApiKey: HasApiKey<
-      NonNullable<ConfigurationResponse['provider']>
-    > = false;
-    const routedConfigurationProviderHasNoApiKey: HasApiKey<
-      ConfigurationResponse['providers'][number]['provider']
-    > = false;
-
-    expect(configuration.maximumSteps).toBe(DEFAULT_MAXIMUM_STEPS);
-    expect(configuration.provider?.provider).toBe('anthropic');
-    expect(configuration.providers).toHaveLength(1);
-    expect(configuration.provider).not.toHaveProperty('apiKey');
-    expect(configuration.providers[0]?.provider).not.toHaveProperty('apiKey');
-    expect(configurationProviderHasNoApiKey).toBeFalse();
-    expect(routedConfigurationProviderHasNoApiKey).toBeFalse();
-  });
-
   it("stops a run with no explicit maximumSteps at operative's DEFAULT_MAXIMUM_STEPS (regression #251: bureau must not silently diverge from operative's step cap)", async () => {
     // REGRESSION: bureau exported its own DEFAULT_MAXIMUM_STEPS = 10 (dead code)
     // and runtime-composition hardcoded `?? 10`, while operative's loop actually
@@ -5245,33 +5174,6 @@ describe('createBureau', () => {
     }
   });
 
-  it('configures a scheduler for routed multi-provider runtimes', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox: createEmptyToolbox() }),
-      },
-      providers: [
-        {
-          name: 'fast',
-          provider: { provider: 'openai', model: 'gpt-4.1-mini' },
-        },
-        {
-          name: 'deep',
-          provider: { provider: 'anthropic', model: 'claude-sonnet-4-20250514' },
-        },
-      ],
-      routing: {
-        type: 'step-based',
-        first: 'fast',
-        middle: 'deep',
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-
-    expect(bureau.scheduler).toBeDefined();
-    bureau.dispose();
-  });
-
   it('does not configure a scheduler unless it is explicitly enabled', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -5309,6 +5211,7 @@ describe('createBureau', () => {
     });
 
     const response = await bureau.submitSchedulerTask({
+      agentName: 'default',
       message: 'Run a scheduled tool task',
       priority: 'background',
     });
@@ -5334,6 +5237,7 @@ describe('createBureau', () => {
     });
 
     const invalidRequest = {
+      agentName: 'default',
       message: 'Run a scheduled task',
       priority: 'urgent',
     } as unknown as Parameters<typeof bureau.submitSchedulerTask>[0];
@@ -5610,25 +5514,6 @@ describe('createBureau', () => {
     await bureau.dispose();
   });
 
-  it('continues disposal when toolbox shutdown rejects', async () => {
-    const toolbox = createEmptyToolbox();
-    const diagnostics: string[] = [];
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox }),
-      },
-      onDiagnostic: (event) => diagnostics.push(event.message),
-    });
-    toolbox.shutdown = async () => {
-      throw new Error('toolbox shutdown failed');
-    };
-
-    const disposal = bureau.dispose();
-    expect(bureau.dispose()).toBe(disposal);
-    await disposal;
-    expect(diagnostics).toContainEqual(expect.stringContaining('Error during toolbox shutdown'));
-  });
-
   it('disposes a sqlite-backed durable bureau cleanly more than once', async () => {
     // The idempotency guard: a persistent bureau owns an engine AND a raw SQLite
     // handle, both released on dispose. A second dispose must NOT re-close the
@@ -5827,31 +5712,6 @@ describe('createBureau', () => {
         overlap: 'allow',
       });
       expect(ok?.status).toBe('active');
-    } finally {
-      bureau.dispose();
-    }
-  });
-
-  it('createSchedule throws NOT_CONFIGURED on a durable bureau with no generate (codex Mn69W)', async () => {
-    // A durable bureau with no generate/provider would register a schedule whose
-    // every fire throws "No generate function configured" at runtime. Reject up
-    // front rather than hand back a healthy-looking summary for a broken schedule.
-    const bureau = await createBureau({
-      agents: {},
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-
-    try {
-      const error = await bureau
-        .createSchedule({ agentName: 'a', input: 'x', spec: '0 9 * * *' })
-        .then(
-          () => undefined,
-          (rejection: unknown) => rejection,
-        );
-      expect(error).toBeInstanceOf(BureauError);
-      expect((error as BureauError).code).toBe('NOT_CONFIGURED');
-      expect((error as BureauError).subject).toBe('generate');
     } finally {
       bureau.dispose();
     }
@@ -6366,7 +6226,7 @@ describe('createBureau effectful hook idempotency (#27)', () => {
         sessionId,
       });
       await waitForRunCompletion(bureau, run.id);
-      const persisted = await listConversation(memory, inspector, 'bureau');
+      const persisted = await listConversation(memory, inspector, 'default');
       expect(persisted.length).toBe(1);
       expect(persisted[0]!.metadata['sessionId']).toBe(sessionId);
       // The dedupeKey is the durable operation's identity — runId:step — NOT a
@@ -9554,7 +9414,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
     expect(persistedSession?.metadata['lastRequestAuthorities']).toMatchObject({
       [run.id]: expect.objectContaining({
-        agentId: 'bureau',
+        agentId: 'default',
         principalId: expect.any(String),
         tenantId: expect.any(String),
         ownerId: expect.any(String),
@@ -13350,7 +13210,11 @@ describe('createBureau flow control (AB-13)', () => {
 
     // A (background priority) is admitted and dispatched — the only task, so
     // the scheduler starts it immediately, occupying the concurrency slot.
-    const taskA = await bureau.submitSchedulerTask({ message: 'task A', priority: 'background' });
+    const taskA = await bureau.submitSchedulerTask({
+      agentName: 'default',
+      message: 'task A',
+      priority: 'background',
+    });
     await waitForCondition(
       () => bureau.scheduler?.getState().activeTask?.id === taskA.taskId,
       'task A was not dispatched',
@@ -13358,7 +13222,11 @@ describe('createBureau flow control (AB-13)', () => {
 
     // A SECOND submission is rejected outright — the cap is full.
     const rejectedWhileActive = await rejectionOfSchedulerSubmit(() =>
-      bureau.submitSchedulerTask({ message: 'rejected while A runs', priority: 'background' }),
+      bureau.submitSchedulerTask({
+        agentName: 'default',
+        message: 'rejected while A runs',
+        priority: 'background',
+      }),
     );
     expect(rejectedWhileActive).toBeInstanceOf(BureauError);
     expect((rejectedWhileActive as BureauError).code).toBe('RATE_LIMITED');
@@ -13388,12 +13256,17 @@ describe('createBureau flow control (AB-13)', () => {
 
     // AB-13 — task A's preemption (requeued) freed its concurrency slot: a
     // NEW scheduler-originated submission is now admitted.
-    const taskC = await bureau.submitSchedulerTask({ message: 'task C', priority: 'background' });
+    const taskC = await bureau.submitSchedulerTask({
+      agentName: 'default',
+      message: 'task C',
+      priority: 'background',
+    });
     expect(taskC.taskId).not.toBe(taskA.taskId);
 
     // The cap is full again with C holding the reclaimed slot.
     const rejectedWithCHoldingSlot = await rejectionOfSchedulerSubmit(() =>
       bureau.submitSchedulerTask({
+        agentName: 'default',
         message: 'rejected while C holds the slot',
         priority: 'background',
       }),
@@ -13431,7 +13304,11 @@ describe('createBureau flow control (AB-13)', () => {
     // C already cancelled/settled, a fresh submission is rejected again only
     // because A's resumed slot fills the cap.
     const rejectedAfterResume = await rejectionOfSchedulerSubmit(() =>
-      bureau.submitSchedulerTask({ message: 'rejected after A resumed', priority: 'background' }),
+      bureau.submitSchedulerTask({
+        agentName: 'default',
+        message: 'rejected after A resumed',
+        priority: 'background',
+      }),
     );
     expect(rejectedAfterResume).toBeInstanceOf(BureauError);
     expect((rejectedAfterResume as BureauError).code).toBe('RATE_LIMITED');
@@ -14474,12 +14351,11 @@ describe('Bureau.shutdown() (AB-207)', () => {
         textValueStore(verifyStorage, { disposeUnderlyingStorage: false }),
       );
       const session = await verifySessionStore.load(run.sessionId);
-      // No stop condition, as in the README, so the run steps to its limit,
-      // which Bureau records as an `error` status.
+      // The agent's default stop condition ends the run on its first reply.
       expect(session?.metadata).toMatchObject({
         lastRunId: run.id,
-        lastRunStatus: 'error',
-        lastFinishReason: 'maximum-steps',
+        lastRunStatus: 'completed',
+        lastFinishReason: 'stop-condition',
       });
       expect(await verifySessionStore.outbox.pending()).toEqual([]);
       verifyStorage[Symbol.dispose]();
@@ -18582,12 +18458,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
       try {
         const sharedOptions = {
-          agents: {},
-          toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite' as const, path: databasePath },
           durableOwnership: { ownership: 'workflow-lease' as const },
           durableBackgroundTasks: 'manual' as const,
-          stopWhen: stopWhen.noToolCalls(),
         };
         const runtimeA = createManualRuntimeServices();
         const bureauA = await createBureau<AgentDefinitions>({
@@ -18600,6 +18473,8 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
                 await releaseGenerate.promise;
                 return { content: 'Done.', toolCalls: [] };
               },
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
             }),
           },
         });
@@ -18609,6 +18484,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           agents: {
             default: createAgent({
               generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
               stopWhen: stopWhen.noToolCalls(),
             }),
           },
@@ -18822,16 +18698,22 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const databasePath = databasePathFor('delete-run');
       const runtimeA = createManualRuntimeServices();
       const sharedOptions = {
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite' as const, path: databasePath },
         durableBackgroundTasks: 'manual' as const,
-        stopWhen: stopWhen.noToolCalls(),
       };
       try {
-        const bureauA = await createBureau({ ...sharedOptions, runtime: runtimeA });
-        const bureauB = await createBureau({
+        const bureauA = await createBureau<AgentDefinitions>({
+          ...sharedOptions,
+          runtime: runtimeA,
+        });
+        const bureauB = await createBureau<AgentDefinitions>({
           ...sharedOptions,
           runtime: createManualRuntimeServices(),
         });
@@ -18878,12 +18760,13 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const databasePath = databasePathFor('review-decision');
       const runtimeA = createManualRuntimeServices();
       const sharedOptions = {
-        agents: {},
-        toolbox: createNeedsApprovalToolbox('cor-1380-review-secret', []),
         storage: { type: 'sqlite' as const, path: databasePath },
         durableBackgroundTasks: 'manual' as const,
-        stopWhen: stopWhen.toolOutcome('action_required'),
       };
+      const agentPolicy = () => ({
+        toolbox: createNeedsApprovalToolbox('cor-1380-review-secret', []),
+        stopWhen: stopWhen.toolOutcome('action_required'),
+      });
       try {
         const bureauA = await createBureau<AgentDefinitions>({
           ...sharedOptions,
@@ -18898,13 +18781,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
                   ],
                 },
               ]),
+              ...agentPolicy(),
             }),
           },
         });
         const bureauB = await createBureau<AgentDefinitions>({
           ...sharedOptions,
           runtime: createManualRuntimeServices(),
-          agents: { default: createAgent({ generate: createMockGenerate() }) },
+          agents: { default: createAgent({ generate: createMockGenerate(), ...agentPolicy() }) },
         });
         try {
           const run = await bureauA.createRun({
@@ -20459,6 +20343,8 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
             return { content: 'run 2 settled', toolCalls: [] };
           },
           toolbox: createEmptyToolbox(),
+          // No stop condition, so a released run goes on to its next step, where the abort lands.
+          stopWhen: [],
         }),
       },
       persistence: { store: { type: 'memory' } },
@@ -20673,141 +20559,6 @@ describe('AB-260: BureauOptions.runtime composition', () => {
       // is reserved for the day one is composed), so `'heartbeat-stop'` has
       // no call site to register and is deliberately absent here.
       expect(labels.has('heartbeat-stop')).toBe(false);
-    } finally {
-      await bureau.dispose();
-    }
-  });
-});
-
-describe('Bureau.issueGrant / revokeGrant / listGrants (AB-46, AB-346)', () => {
-  it('issueGrant delegates to the base toolbox and returns a signed grant', async () => {
-    const toolbox = createToolbox([], { approvalSecret: 'grant-secret' });
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox }),
-      },
-    });
-
-    try {
-      const grant = await bureau.issueGrant({
-        principalId: 'principal-1',
-        tenantId: 'tenant-1',
-        ownerId: 'owner-1',
-        agentId: 'agent-1',
-        toolName: 'read-file',
-        scope: 'session',
-        sessionId: 'session-1',
-        expiresAt: Number.MAX_SAFE_INTEGER,
-        maxUses: 3,
-        delegationBehavior: 'does-not-propagate',
-      });
-
-      expect(grant.id).toMatch(/^grant:/);
-      expect(grant.usesRemaining).toBe(3);
-      expect(await toolbox.listGrants()).toEqual([grant]);
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('revokeGrant delegates to the base toolbox and is idempotent', async () => {
-    const toolbox = createToolbox([], { approvalSecret: 'grant-secret' });
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox }),
-      },
-    });
-
-    try {
-      const grant = await bureau.issueGrant({
-        principalId: 'principal-1',
-        tenantId: 'tenant-1',
-        ownerId: 'owner-1',
-        agentId: 'agent-1',
-        toolName: 'read-file',
-        scope: 'session',
-        sessionId: 'session-1',
-        expiresAt: Number.MAX_SAFE_INTEGER,
-        maxUses: 1,
-        delegationBehavior: 'does-not-propagate',
-      });
-
-      await bureau.revokeGrant(grant.id);
-      await bureau.revokeGrant(grant.id);
-      await bureau.revokeGrant('unknown-grant-id');
-
-      const [stored] = await toolbox.listGrants();
-      expect(stored?.revoked).toBe(true);
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('listGrants delegates to the base toolbox with an optional filter', async () => {
-    const toolbox = createToolbox([], { approvalSecret: 'grant-secret' });
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox }),
-      },
-    });
-
-    try {
-      const matching = await bureau.issueGrant({
-        principalId: 'principal-a',
-        tenantId: 'tenant-1',
-        ownerId: 'owner-1',
-        agentId: 'agent-1',
-        toolName: 'read-file',
-        scope: 'session',
-        sessionId: 'session-1',
-        expiresAt: Number.MAX_SAFE_INTEGER,
-        maxUses: 1,
-        delegationBehavior: 'does-not-propagate',
-      });
-      await bureau.issueGrant({
-        principalId: 'principal-b',
-        tenantId: 'tenant-1',
-        ownerId: 'owner-1',
-        agentId: 'agent-1',
-        toolName: 'read-file',
-        scope: 'session',
-        sessionId: 'session-1',
-        expiresAt: Number.MAX_SAFE_INTEGER,
-        maxUses: 1,
-        delegationBehavior: 'does-not-propagate',
-      });
-
-      expect(await bureau.listGrants({ principalId: 'principal-a' })).toEqual([matching]);
-      expect(await bureau.listGrants()).toHaveLength(2);
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('propagates the toolbox error when no approvalSecret is configured', async () => {
-    const toolbox = createToolbox([]);
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox }),
-      },
-    });
-
-    try {
-      expect(
-        await throwingRejectionOf(
-          bureau.issueGrant({
-            principalId: 'principal-1',
-            tenantId: 'tenant-1',
-            ownerId: 'owner-1',
-            agentId: 'agent-1',
-            toolName: 'read-file',
-            scope: 'session',
-            expiresAt: Number.MAX_SAFE_INTEGER,
-            maxUses: 1,
-            delegationBehavior: 'does-not-propagate',
-          }),
-        ),
-      ).toThrow('approvalSecret is required');
     } finally {
       await bureau.dispose();
     }
@@ -21503,7 +21254,6 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     });
 
     try {
-      expect(bureau.ready).toBe(true);
       const run = await bureau.createRun({
         agentName: 'default',
         message: 'go',
@@ -21565,7 +21315,6 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     });
 
     try {
-      expect(bureau.ready).toBe(true);
       const run = await bureau.createRun({
         agentName: 'default',
         message: 'go',
@@ -24590,7 +24339,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
 
     try {
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'observed tick prompt',
         spec: '1m',
         overlap: 'skip',
@@ -24679,7 +24428,7 @@ describe('skill guardrail scanning (COR-1226)', () => {
             return { content: 'done', toolCalls: [] };
           },
           toolbox: createEmptyToolbox(),
-          skills: { catalog: await createGuardrailSkillCatalog(POISONED) },
+          skills: createAgentSkills({ catalog: await createGuardrailSkillCatalog(POISONED) }),
           guardrails: { input: { detectors: [sentinelDetector] } },
           stopWhen: stopWhen.noToolCalls(),
         }),
@@ -24723,7 +24472,9 @@ describe('skill guardrail scanning (COR-1226)', () => {
             return { content: 'done', toolCalls: [] };
           },
           toolbox: createEmptyToolbox(),
-          skills: { catalog: await createGuardrailSkillCatalog('Write good code.') },
+          skills: createAgentSkills({
+            catalog: await createGuardrailSkillCatalog('Write good code.'),
+          }),
           guardrails: { input: { detectors: [sentinelDetector] } },
           stopWhen: stopWhen.noToolCalls(),
         }),
@@ -24745,65 +24496,6 @@ describe('skill guardrail scanning (COR-1226)', () => {
       expect(admitted.instructions).toBe(
         `<skill_content name="poisoned" digest="${admitted.digest}">\nWrite good code.\n</skill_content>`,
       );
-    } finally {
-      await bureau.dispose();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// COR-767 — the skill lifecycle events must reach a consumer of the bureau's
-// own emitter. Emitting them somewhere nothing subscribes to is exactly the
-// failure COR-1226 fixed, so this closes the loop end to end.
-// ---------------------------------------------------------------------------
-describe('skill lifecycle events reach the bureau emitter (COR-767)', () => {
-  it('forwards loaded and activated with the run and session correlation', async () => {
-    const seen: Array<{ type: string; skillName: string; runId?: string; sessionId?: string }> = [];
-
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: async ({ toolbox }) => {
-            await toolbox.execute({ name: 'activate_skill', arguments: { name: 'coding' } });
-            return { content: 'done', toolCalls: [] };
-          },
-          toolbox: createEmptyToolbox(),
-          skills: {
-            catalog: await createMockSkillCatalog([
-              { name: 'coding', description: 'Write code', body: 'Write good code.' },
-            ]),
-          },
-          stopWhen: stopWhen.noToolCalls(),
-        }),
-      },
-    });
-
-    for (const type of [SkillLoadedEvent.type, SkillActivatedEvent.type] as const) {
-      bureau.addEventListener(type, (event) => {
-        seen.push({
-          type: event.type,
-          skillName: event.skillName,
-          ...(event.correlation.runId !== undefined ? { runId: event.correlation.runId } : {}),
-          ...(event.correlation.sessionId !== undefined
-            ? { sessionId: event.correlation.sessionId }
-            : {}),
-        });
-      });
-    }
-
-    try {
-      // COR-1325 — this run activates a skill, whose activation reads the bundle off disk,
-      // hashes it, and scans it (the same guardrail-scan cost COR-1319 already fixed for the
-      // COR-1226 tests), so it waits on the run's own completion event rather than the fixed
-      // 50-turn budget `waitForRunCompletion` uses. See `waitForRunSettled`.
-      const run = await bureau.createRun({ agentName: 'default', message: 'activate the skill' });
-      await waitForRunSettled(bureau, run.id);
-      expect(seen.length).toBeGreaterThanOrEqual(2);
-
-      expect(seen.map((entry) => entry.type)).toEqual(['skill.loaded', 'skill.activated']);
-      expect(seen.every((entry) => entry.skillName === 'coding')).toBe(true);
-      // Correlation survives the hop from the skills package onto this emitter.
-      expect(seen.every((entry) => typeof entry.sessionId === 'string')).toBe(true);
     } finally {
       await bureau.dispose();
     }
@@ -24866,7 +24558,7 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
             return { content: 'done', toolCalls: [] };
           },
           toolbox: makeToolbox(),
-          skills: { catalog: await createMockSkillCatalog([narrowingSkill]) },
+          skills: createAgentSkills({ catalog: await createMockSkillCatalog([narrowingSkill]) }),
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
@@ -24918,7 +24610,7 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
             return { content: 'done', toolCalls: [] };
           },
           toolbox: makeToolbox(),
-          skills: { catalog: widenCatalog },
+          skills: createAgentSkills({ catalog: widenCatalog }),
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
@@ -25079,6 +24771,7 @@ describe('COR-636: scheduler task locator', () => {
 
     try {
       const { taskId } = await bureau.submitSchedulerTask({
+        agentName: 'default',
         message: 'Locate me',
         priority: 'background',
       });
@@ -25109,6 +24802,7 @@ describe('COR-636: scheduler task locator', () => {
 
     try {
       const { taskId } = await bureau.submitSchedulerTask({
+        agentName: 'default',
         message: 'Expire me',
         priority: 'background',
       });
@@ -25144,6 +24838,7 @@ describe('COR-636: scheduler task locator', () => {
     try {
       const submittedAt = runtime.monotonic.now();
       const { taskId } = await bureau.submitSchedulerTask({
+        agentName: 'default',
         message: 'Expire me eventually',
         priority: 'background',
       });
@@ -25185,6 +24880,7 @@ describe('COR-636: scheduler task locator', () => {
 
     try {
       const { taskId } = await bureau.submitSchedulerTask({
+        agentName: 'default',
         message: 'Expire me sooner',
         priority: 'background',
       });
@@ -25290,7 +24986,7 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
     const shutdownPromise = bureau.shutdown();
 
     const rejection = await Promise.resolve()
-      .then(() => bureau.submitSchedulerTask({ message: 'too late' }))
+      .then(() => bureau.submitSchedulerTask({ agentName: 'default', message: 'too late' }))
       .then(
         () => undefined,
         (error: unknown) => error,

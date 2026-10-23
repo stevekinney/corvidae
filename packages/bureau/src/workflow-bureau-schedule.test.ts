@@ -17,7 +17,6 @@ import {
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
 import { createAgent } from '@lostgradient/operative';
-import type { AgentDefinitions } from './agent-catalog';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

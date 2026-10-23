@@ -5,7 +5,7 @@
  * agent, how publishing rewrites a file, and how long an identifier may be.
  */
 import { EventType } from '@ag-ui/core';
-import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { createAgent, createScriptedGenerate } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_IDENTIFIER_MAX_LENGTH, parseAgentFile } from '../../agent-file.ts';
@@ -27,7 +27,6 @@ import {
 import { rpc } from './management-fixtures.test-support.ts';
 import { readFile } from 'node:fs/promises';
 import { createMemoryAssetStorage } from '../../assets/storage';
-import type { AgentDefinitions } from '../../agent-catalog';
 
 afterEach(disposeServed);
 
@@ -166,14 +165,6 @@ describe('publication gates new runs only', () => {
             },
             { kind: 'respond', response: { content: 'Done.', toolCalls: [] } },
           ]),
-        agents: {
-          default: createAgent({
-            stopWhen: stopWhen.some(
-              stopWhen.toolCalled('requestHumanInput'),
-              stopWhen.noToolCalls(),
-            ),
-          }),
-        },
       },
     });
     await served.put('researcher.md', agentFileText({ model: KNOWN_MODEL }, 'Ask first.\n'));

@@ -16,7 +16,6 @@ import {
   createContextEpochSealer,
   type ContextEpochSealer,
   type GenerateFunction,
-  stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import type { ToolRequestContext } from 'armorer';
@@ -64,7 +63,6 @@ async function answerOnce(createContextEpoch?: () => ContextEpochSealer) {
         generate,
         ...(createContextEpoch === undefined ? {} : { createContextEpoch }),
       }),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     memory,
     requestAuthorityValidator: () => true,

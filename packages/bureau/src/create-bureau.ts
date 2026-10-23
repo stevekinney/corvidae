@@ -123,9 +123,6 @@ import {
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
 import {
-  type GrantListFilter,
-  type ReusableApprovalGrant,
-  type ReusableApprovalGrantInput,
   type SignedPendingToolApproval,
   type Tool,
   type ToolExecutionResult,
@@ -175,6 +172,7 @@ import {
   computeInitialAuditSequence,
   createAuditTrail,
 } from './audit-trail';
+import { agentSkillsRun } from './agent-skills';
 import { catalogRunGuardrailsContext, createCatalogDispatcher } from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
@@ -2529,7 +2527,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // used, so a recovered run resumes under the policy it started with.
       const resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, {
         ...(childContext === undefined ? context : { ...context, ...childContext }),
-        ...catalogRunGuardrailsContext(agent, undefined),
+        ...catalogRunGuardrailsContext(agent),
       });
       const resolution: CatalogAgentRunOptionsResolution = {
         status: 'resolved',
@@ -6655,10 +6653,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
     scheduledFire: boolean,
+    agentHasSkills = false,
   ): Promise<SkillSnapshot> {
     return scheduledFire
-      ? runtime.readCommittedScheduledSkillSnapshot(session, runId, true)
-      : Promise.resolve(runtime.readSessionSkillSnapshot(session, runId));
+      ? runtime.readCommittedScheduledSkillSnapshot(session, runId, true, agentHasSkills)
+      : Promise.resolve(runtime.readSessionSkillSnapshot(session, runId, agentHasSkills));
   }
 
   /**
@@ -6689,7 +6688,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let session: Awaited<ReturnType<NonNullable<typeof runtime.sessionStore>['load']>>;
     try {
       session = await runtime.sessionStore?.load(review.sessionId);
-      snapshot = await readRestoredSkillSnapshot(session, review.runId, scheduledFire);
+      snapshot = await readRestoredSkillSnapshot(
+        session,
+        review.runId,
+        scheduledFire,
+        agentSkillsRun(restored?.sessionAgent?.options.hooks) !== undefined,
+      );
     } catch (error) {
       return refuse(`its snapshot could not be read: ${serializeUnknownError(error)}`);
     }
@@ -6704,6 +6708,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (restored.recoveredCleanly && JSON.stringify(records) === restored.recordsKey) {
       return registered;
     }
+    // An agent's skill client carries the run's active set, so a policy read again is decided on
+    // a client of its own: reusing the restored one would add to the set it already holds.
+    let policyAgent = restored.sessionAgent;
+    if (agentSkillsRun(policyAgent?.options.hooks) !== undefined) {
+      const resolved = await resolveRecoveredSessionAgent(
+        restored.agentName,
+        review.runId,
+        session?.metadata ?? {},
+      );
+      if (resolved === 'unavailable') return refuse('its agent can no longer be resolved');
+      policyAgent = resolved;
+    }
     const policyRuntime = await runtime.createRunRuntime(
       {
         message:
@@ -6717,7 +6733,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
       {
         liveStreaming: false,
-        sessionAgent: restored.sessionAgent,
+        sessionAgent: policyAgent,
         initialActiveSkillRecords: records,
         memoryOwner: resolveRunMemoryOwner(session?.metadata ?? {}, review.runId),
       },
@@ -6730,8 +6746,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1577 — the catalog agent a recovered session run belongs to: `undefined` for the default
-   * agent, and `'unavailable'` when the agent cannot be resolved, which is reported rather than
+   * COR-1577 — the catalog agent a recovered session run belongs to, and `'unavailable'` when the agent cannot be resolved, which is reported rather than
    * thrown so one run's lost agent never stops the rest of recovery.
    */
   async function resolveRecoveredSessionAgent(
@@ -6739,7 +6754,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runId: string,
     metadata: Record<string, JSONValue>,
   ): Promise<SessionAgentRun | undefined | 'unavailable'> {
-    if (agentName === BUREAU_AGENT_NAME) return undefined;
+    if (agentName === BUREAU_AGENT_NAME) {
+      // COR-323 — the implicit Bureau-wide agent no longer exists: a run stored under it is
+      // reported, not resumed on something it never named.
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message:
+          `[bureau] Run "${runId}" belongs to the implicit "${BUREAU_AGENT_NAME}" agent, which ` +
+          'no longer exists; it is not resumed.',
+      });
+      return 'unavailable';
+    }
     // COR-1524: the definition THIS run started with. A session's metadata names only its latest
     // run's, and a session's runs may be of different agents, so the run's own reference decides
     // and the session's hash is what an older record without one falls back to.
@@ -6817,12 +6843,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     const recoveredAgentName = requestContext.agentId ?? session.agentName;
-    // COR-1577 — a named run's approvals resume against that agent's own tools. COR-1596: a
-    // schedule fire's do not: it ran on the Bureau-wide runtime, whatever its agent name says.
+    // COR-1577 — a named run's approvals resume against that agent's own tools. COR-323: so do a
+    // schedule fire's, which runs as its named catalog agent.
     const scheduledFire = isScheduledFireAuthority(session.metadata, runId);
-    const recoveredSessionAgent = scheduledFire
-      ? undefined
-      : await resolveRecoveredSessionAgent(recoveredAgentName, runId, session.metadata);
+    const recoveredSessionAgent = await resolveRecoveredSessionAgent(
+      recoveredAgentName,
+      runId,
+      session.metadata,
+    );
     if (recoveredSessionAgent === 'unavailable') {
       terminalReviewSessions.delete(runId);
       return;
@@ -6831,7 +6859,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // snapshot, as the run that raised it would decide it now. A fire's are the ones its
     // committed steps recorded; a session run's are the last snapshot of its session. COR-1620:
     // a snapshot that cannot be verified restores no skills, and each approve reads it again.
-    const skillSnapshot = await readRestoredSkillSnapshot(session, runId, scheduledFire);
+    const skillSnapshot = await readRestoredSkillSnapshot(
+      session,
+      runId,
+      scheduledFire,
+      agentSkillsRun(recoveredSessionAgent?.options.hooks) !== undefined,
+    );
     const initialActiveSkillRecords =
       skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
     const runRuntime = await runtime.createRunRuntime(
@@ -6994,25 +7027,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
-    let sessionAgent: SessionAgentRun | undefined;
-    if (agentName === BUREAU_AGENT_NAME) {
-      if (!runtime.ready) {
-        throw new BureauError('No generate function configured', 'NOT_CONFIGURED', 'generate');
-      }
-    } else {
-      const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
-      if (resolution.status === 'missing-agent') {
-        throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
-      }
-      if (resolution.status === 'not-durable-capable') {
-        throw new BureauError(
-          `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
-          'UNSUPPORTED_CAPABILITY',
-        );
-      }
-      if (resolution.status === 'resolver-failed') throw resolution.error;
-      sessionAgent = resolution.run;
+    // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
+    // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
+    // answers as any unknown agent does.
+    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
+    if (resolution.status === 'missing-agent') {
+      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
     }
+    if (resolution.status === 'not-durable-capable') {
+      throw new BureauError(
+        `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
+        'UNSUPPORTED_CAPABILITY',
+      );
+    }
+    if (resolution.status === 'resolver-failed') throw resolution.error;
+    const sessionAgent: SessionAgentRun = resolution.run;
     // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
     const effectiveSystemPrompt =
       request.systemPrompt ?? sessionAgent?.instructions ?? runtime.systemPrompt;
@@ -7959,6 +7988,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // another principal's, binds nothing, exactly as it would not have for the run.
     let agentName = request.agentName;
     const sessionId = request.sessionId?.trim();
+    // COR-323 — no run belongs to an implicit default agent any more, so a query that names
+    // neither the agent nor the session has no key to look under.
+    if ((sessionId === undefined || sessionId.length === 0) && agentName === undefined) {
+      toBadRequest('"agentName" or "sessionId" must say which agent the run was created as');
+    }
     if (sessionId !== undefined && sessionId.length > 0) {
       const { session } = await loadConversation(sessionId);
       const owner = ownerFromPrincipal(principal, toBadRequest);
@@ -9652,6 +9686,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     request: SubmitSchedulerTaskRequest,
   ): Promise<SubmitSchedulerTaskResponse> {
     validateSubmitSchedulerTaskRequest(request);
+    // Snapshot what the request carries before the first `await`: the caller owns the object.
+    const { message, maximumSteps, metadata, requeue, systemPrompt: requestSystemPrompt } = request;
 
     if (!runtime.scheduler) {
       throw new BureauError('Scheduler not configured', 'NOT_CONFIGURED', 'scheduler');
@@ -9691,8 +9727,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         runId: taskId,
         agentName,
         source: 'scheduler',
-        message: request.message,
-        ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+        message: message,
+        ...(metadata !== undefined ? { metadata: metadata } : {}),
       });
       if (!decision.allowed) {
         throw new BureauError(
@@ -9705,8 +9741,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const task: Parameters<NonNullable<typeof runtime.scheduler>['submit']>[0] = {
       id: taskId,
       priority,
-      metadata: request.metadata,
-      requeue: request.requeue,
+      metadata: metadata,
+      requeue: requeue,
       async createRun() {
         // COR-690: a task queued before `shutdown()` started must not be
         // dispatched into a new run once it has; the scheduler records the
@@ -9715,9 +9751,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         const runRuntime = await runtime.createRunRuntime(
           {
             agentName,
-            message: request.message,
-            maximumSteps: request.maximumSteps,
-            systemPrompt: request.systemPrompt,
+            message: message,
+            maximumSteps: maximumSteps,
+            systemPrompt: requestSystemPrompt,
             sessionId: taskId,
             // The task id is the run identity for the same reason it is the
             // flow-control identity above: it survives preemption. A requeued
@@ -9733,23 +9769,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
 
         const conversation = new Conversation(createConversationHistory({ id: taskId }));
-        const systemPrompt = request.systemPrompt ?? taskAgent.instructions;
+        const systemPrompt = requestSystemPrompt ?? taskAgent.instructions;
         if (systemPrompt) {
           conversation.appendSystemMessage(systemPrompt);
         }
-        conversation.appendUserMessage(request.message);
+        conversation.appendUserMessage(message);
 
         return {
           conversation,
+          ...copyAgentOwnedRunOptions(taskAgent.options),
+          ...sessionRunMediaOptions(taskAgent, {}),
           generate: runRuntime.generate,
           toolbox: runRuntime.toolbox,
-          maximumSteps: request.maximumSteps ?? taskAgent.options.maximumSteps ?? runtime.maximumSteps,
+          maximumSteps: maximumSteps ?? taskAgent.options.maximumSteps ?? runtime.maximumSteps,
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every scheduler task run it starts.
           runtime: runtimeServices,
           sessionId: taskId,
           // COR-1265 — the Bureau tier, snapshotted.
-          hooks: mergeHookRegistries(runRuntime.hooks),
+          // COR-323 — the task's agent keeps its own tier (guardrails, skills), as a session run's does.
+          hooks: mergeHookRegistries(runRuntime.hooks, taskAgent.options.hooks),
           stopWhen: taskAgent.options.stopWhen,
         };
       },
@@ -15957,26 +15996,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
-  // ── Reusable approval grants (AB-46, AB-346) ───────────────────────
-  //
-  // `issueGrant`/`revokeGrant`/`listGrants` delegate straight to the base
-  // toolbox's own methods — the same pattern `resolveReview`'s
-  // `tool-approval` branch already uses for `resumeApproval`/`revokeApproval`
-  // above. Grant matching itself lives entirely in armorer's `mergePolicies`
-  // (AB-346); the bureau owns no grant state of its own.
-
-  async function issueGrant(input: ReusableApprovalGrantInput): Promise<ReusableApprovalGrant> {
-    return runtime.baseToolbox.issueGrant(input);
-  }
-
-  async function revokeGrant(id: string): Promise<void> {
-    await runtime.baseToolbox.revokeGrant(id);
-  }
-
-  async function listGrants(filter?: GrantListFilter): Promise<ReusableApprovalGrant[]> {
-    return runtime.baseToolbox.listGrants(filter);
-  }
-
   /**
    * AB-391: builds the exact `AuditTrail.record()` payload a review
    * transition's durable write needs, WITHOUT writing it — used both to
@@ -16410,14 +16429,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
     if (!runtime.durable) return undefined;
-    // A schedule whose every fire would fail is worse than rejecting up front:
-    // without a configured generate/provider, each tick's `createRunRuntime` throws
-    // `No generate function configured`. Mirror `createRunFromRequest`'s readiness
-    // guard so we surface NOT_CONFIGURED here instead of registering a broken
-    // schedule that returns a healthy-looking summary (review: codex Mn69W).
-    if (!runtime.ready) {
-      throw new BureauError('No generate function configured', 'NOT_CONFIGURED', 'generate');
-    }
     // Register a native weft schedule that fires the `agentRun` workflow on each
     // tick. The fire path is wired through `resolveRunServices`' scheduled-fire
     // branch (see runtime-composition.ts): each tick builds fresh run deps from
@@ -18122,8 +18133,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     createBureauError: (message, code) => new BureauError(message, code),
     validateAgentRunInput,
     validateBureauRunOptions,
-    // COR-1367 — handed down to each catalog agent as its inherited policy.
-    guardrails: undefined,
     registerCatalogRun,
     // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
     // handle is returned (a write that fails is diagnosed, not thrown, because
@@ -18467,9 +18476,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
-    get ready() {
-      return runtime.ready;
-    },
     createRun: createRunFromRequest,
     locateRunCreationReceipt,
     submitSchedulerTask,
@@ -18516,9 +18522,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     resolveReview: resolveAnyReview,
     pendingHumanWaitsOfRun,
     sweepExpiredReviews,
-    issueGrant,
-    revokeGrant,
-    listGrants,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);

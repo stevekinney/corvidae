@@ -170,7 +170,9 @@ async function open(
     durableOwnership: OWNERSHIP,
     ...options,
     agents: {
+      ...options.agents,
       default: createAgent({
+        generate,
         toolbox: gatedToolbox(charges),
         stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
@@ -220,12 +222,14 @@ async function sessionParkedInA(
  * settled and restored it at boot.
  */
 async function settledApproval(charges: Charges) {
-  const setup = await openProcess(path, charging(), {
+  const generate = charging();
+  const setup = await openProcess(path, generate, {
     id: 'review-resolution-multi-instance',
     humanInput: true,
     durableOwnership: OWNERSHIP,
     agents: {
       default: createAgent({
+        generate,
         toolbox: gatedToolbox(charges),
         stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),

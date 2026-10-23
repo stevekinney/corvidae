@@ -873,7 +873,6 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
           toolbox: createToolbox([]) as unknown as Toolbox,
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
       durableExecution: true,

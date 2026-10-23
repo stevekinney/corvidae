@@ -53,7 +53,7 @@ const REQUEST: CreateRunRequest = {
 
 const IDENTITY: CommandLedgerIdentity = {
   callerId: 'alice',
-  target: 'bureau',
+  target: 'default',
   requestId: 'request-1',
   operationVersion: RUN_CREATION_OPERATION_VERSION,
 };

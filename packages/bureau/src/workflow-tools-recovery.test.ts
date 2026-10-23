@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
+import { type GenerateFunction } from '@lostgradient/operative';
 import { afterEach, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -40,9 +40,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
 
   async function open(generate: GenerateFunction): Promise<Bureau> {
     return createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-      },
+      agents: {},
       agentDirectory: agents,
       workflowDirectory: workflows,
       resolveAgentGenerate: () => generate,

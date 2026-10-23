@@ -403,7 +403,11 @@ describe('taskRetention', () => {
           principal: 'alice',
           runCreationRequestId: 'request-1',
         };
-        const locate = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+        const locate = {
+          principal: 'alice',
+          agentName: 'default',
+          runCreationRequestId: 'request-1',
+        } as const;
         const created = await bureau.createRun(request);
         expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
         // Records when the run settled, which starts the binding's window.

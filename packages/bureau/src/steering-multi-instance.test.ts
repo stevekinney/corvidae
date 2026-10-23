@@ -28,6 +28,7 @@ import { describe, expect, it, spyOn } from 'bun:test';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import { z } from 'zod';
 
+import { STEERABLE_MODELS } from './testing/default-agent.test-support';
 import { createBureau } from './create-bureau';
 import type { SteeringCommandRequest } from './steering';
 import type { BureauDiagnostic } from './types';
@@ -45,6 +46,7 @@ async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
+        allowedCandidates: STEERABLE_MODELS,
         generate: () => new Promise<never>(() => {}),
         toolbox: createToolbox([]),
       }),
@@ -263,6 +265,7 @@ describe('durable steering across two Bureau processes', () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: async ({ step }) => {
             generateCalls += 1;
             return step === 0
@@ -368,6 +371,7 @@ describe('durable steering across two Bureau processes', () => {
     const bureauA = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate,
           stopWhen: stopWhen.noToolCalls(),
           toolbox: createToolbox([
@@ -498,6 +502,7 @@ describe('durable steering across two Bureau processes', () => {
     const withPolicy = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: () => new Promise<never>(() => {}),
           toolbox: createToolbox([]),
         }),
@@ -516,6 +521,7 @@ describe('durable steering across two Bureau processes', () => {
     const withChangedPolicy = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: () => new Promise<never>(() => {}),
           toolbox: createToolbox([]),
         }),
@@ -1350,6 +1356,7 @@ describe('durable steering across two Bureau processes', () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: () => new Promise<never>(() => {}),
           toolbox: createToolbox([]),
         }),
@@ -1817,6 +1824,7 @@ describe('durable steering across two Bureau processes', () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: () => new Promise<never>(() => {}),
           toolbox: createToolbox([]),
         }),
@@ -1901,6 +1909,7 @@ describe('durable steering across two Bureau processes', () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
+          allowedCandidates: STEERABLE_MODELS,
           generate: () => new Promise<never>(() => {}),
           toolbox: createToolbox([]),
         }),

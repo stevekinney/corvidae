@@ -27,7 +27,6 @@ import {
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 

@@ -42,9 +42,9 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { fireReviewFollowerOf } from './fire-review-follower';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
+import type { DefaultAgentFields } from './testing/default-agent.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -129,14 +129,14 @@ async function holderAndPeer(
   toolboxes: { holder: Toolbox; peer: Toolbox },
   sessionId: string,
   wrapHolder: (storage: Storage) => Storage = (storage) => storage,
-  holderOptions: Partial<BureauOptions> = {},
+  holderOptions: Partial<BureauOptions> & DefaultAgentFields = {},
 ) {
   const path = harness.nextDatabasePath();
   const holder = await harness.open({
     ...peerOptions,
     ...holderOptions,
     storage: await harness.sqliteStorage(path, wrapHolder),
-    agents: { default: createAgent({ toolbox: toolboxes.holder }) },
+    toolbox: toolboxes.holder,
   });
   const { fireId } = await fireOnce(holder, OWNER.alice, sessionId);
   const review = (await reviewOf(holder, fireId)) as PendingToolApprovalReview;
@@ -144,7 +144,7 @@ async function holderAndPeer(
   const peer = await harness.open({
     ...peerOptions,
     storage: await harness.sqliteStorage(path),
-    agents: { default: createAgent({ toolbox: toolboxes.peer }) },
+    toolbox: toolboxes.peer,
   });
   await reviewOf(peer, fireId);
   return { holder, peer, fireId, review };
@@ -356,14 +356,14 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
     const holder = await harness.open({
       ...options,
       storage: await harness.sqliteStorage(path, (storage) => holdHolder.wrap(storage)),
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, 'peer-sync-cancel');
     const review = await reviewOf(holder, fireId);
     const peer = await harness.open({
       ...options,
       storage: await harness.sqliteStorage(path, (storage) => holdPeer.wrap(storage)),
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
     await reviewOf(peer, fireId);
     holdHolder.arm();
@@ -553,9 +553,7 @@ describe('a fire read again with one review that cannot be restored', () => {
       { holder: switchedToolbox([], { revision: 1 }), peer: switchedToolbox([], peerGate) },
       'peer-sync-partial-reread',
       (storage) => storage,
-      {
-        agents: { default: createAgent({ generate: twoCharges }) },
-      },
+      { generate: twoCharges },
     );
     await eventually(
       () => (reviewsOf(holder, fireId).length === 2 ? true : undefined),

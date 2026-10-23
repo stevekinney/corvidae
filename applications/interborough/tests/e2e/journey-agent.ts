@@ -6,7 +6,7 @@
  * runs through. The host resolves such an agent's `generate` from its model, so a resolver is the
  * seam. An opener that carries {@link JOURNEY_MARKER} gets a script: one call to the workflow tool
  * that writes {@link JOURNEY_WORKFLOW_ID}, then a fixed text once the call has a result. Counting
- * the calls already in the conversation, as `fire-question.ts` does, is what keeps the agent from
+ * the calls already in the conversation, is what keeps the agent from
  * writing the workflow again on its next step, so it cannot loop. Every other opener gets the
  * resolver it wraps, the provider stub the other specifications use.
  *

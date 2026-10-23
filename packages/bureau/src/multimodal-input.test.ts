@@ -7,6 +7,7 @@ import {
   createAgent,
   createModelCatalog,
   type GenerateContext,
+  type GuardrailsOptions,
   MediaAdmissionError,
   stopWhen,
   withBackendDescriptors,
@@ -60,13 +61,22 @@ async function admitImage(bureau: Bureau, owner: { readonly id: string } = alice
 }
 
 async function openBureau(
-  options: Partial<Parameters<typeof createBureau>[0]> & { seen: GenerateContext[] },
+  options: Partial<Parameters<typeof createBureau>[0]> & {
+    seen: GenerateContext[];
+    /** The `echo` agent's own guardrails. */
+    guardrails?: GuardrailsOptions;
+  },
 ) {
-  const { seen, ...rest } = options;
+  const { seen, guardrails, ...rest } = options;
   const fixture = createMemoryAssetStorageFixture({});
   cleanups.push(() => fixture.dispose());
   const bureau = await createBureau({
-    agents: { echo: createAgent({ generate: recordingGenerate(seen) }) },
+    agents: {
+      echo: createAgent({
+        generate: recordingGenerate(seen),
+        ...(guardrails === undefined ? {} : { guardrails }),
+      }),
+    },
     assets: { storage: fixture.storage },
     ...rest,
   });
@@ -120,11 +130,7 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const seen: GenerateContext[] = [];
     const bureau = await openBureau({
       seen,
-      agents: {
-        default: createAgent({
-          guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
-        }),
-      },
+      guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
     });
     const { source } = await admitImage(bureau);
 
@@ -146,11 +152,7 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const seen: GenerateContext[] = [];
     const bureau = await openBureau({
       seen,
-      agents: {
-        default: createAgent({
-          guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
-        }),
-      },
+      guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
     });
     const { source } = await admitImage(bureau);
 
@@ -333,8 +335,6 @@ describe('session input carrying a managed asset (COR-716)', () => {
           generate: agentGenerate,
           toolbox: createToolbox([nextTool()]),
           stopWhen: stopWhen.noToolCalls(),
-        }),
-        default: createAgent({
           guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
         }),
       },

@@ -43,7 +43,7 @@ import type { AgentDefinitions } from './agent-catalog';
  */
 const BUREAU_ID = 'bureau';
 const LOCAL_OWNER = 'anonymous:local';
-const DEFAULT_AGENT = 'bureau';
+const DEFAULT_AGENT = 'default';
 
 let databasePath = '';
 
@@ -115,7 +115,7 @@ async function preemptAfterFirstAnswer(
   let preempting: Promise<SubmitSchedulerTaskResponse> | undefined;
   const { memory } = governedMemory(async (notification) => {
     if (notification.type !== 'memory.write.admitted' || preempting !== undefined) return;
-    preempting = bureau.submitSchedulerTask({ message: 'Preempt it.' });
+    preempting = bureau.submitSchedulerTask({ agentName: 'default', message: 'Preempt it.' });
     // A durable preemption suspends the run without waiting for the step, so
     // hold the step until the run is suspended. An in-memory preemption aborts
     // the run and waits for the step, so the step cannot be held.
@@ -143,6 +143,7 @@ async function preemptAfterFirstAnswer(
   });
   try {
     const { taskId } = await bureau.submitSchedulerTask({
+      agentName: 'default',
       message: 'Remember this.',
       priority: 'background',
     });
@@ -219,7 +220,7 @@ describe('packages/bureau/README.md — Governed memory', () => {
       policyRevision: 'authorization:7',
       projection: 'audit',
     });
-    const [stored] = await bureau.memory!.list(auditor, { collection: 'bureau' }); // the agent's name
+    const [stored] = await bureau.memory!.list(auditor, { collection: 'default' }); // the agent's name
     expect(stored?.content).toBe('Booked seat 14C for Alice.'); // 'Booked seat 14C for Alice.'
     expect(stored?.source).toBe('conversation'); // 'conversation'
     expect(stored?.trust).toBe('untrusted'); // 'untrusted'
@@ -320,7 +321,10 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const { taskId } = await bureau.submitSchedulerTask({ message: 'Remember this.' });
+      const { taskId } = await bureau.submitSchedulerTask({
+        agentName: 'default',
+        message: 'Remember this.',
+      });
       await waitForCondition(
         () => bureau.scheduler?.getState().completedCount === 1,
         'scheduled task did not complete',

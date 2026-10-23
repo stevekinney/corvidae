@@ -69,7 +69,6 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { inspect } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -425,24 +424,22 @@ describe.each([
     const seen: GenerateContext[] = [];
     const bureau = await openBureau(
       environment,
-      { viewer: viewer(parked.promise, seen) },
       {
+        viewer: viewer(parked.promise, seen),
         // The parent never answers, but stops when it is aborted, as a provider call does.
-        ...extra,
-        agents: {
-          default: createAgent({
-            generate: ({ signal }) =>
-              new Promise<never>((_resolve, reject) => {
-                signal?.addEventListener('abort', () => reject(new Error('aborted')), {
-                  once: true,
-                });
-              }),
-          }),
-        },
+        default: createAgent({
+          generate: ({ signal }) =>
+            new Promise<never>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+                once: true,
+              });
+            }),
+        }),
       },
+      extra,
     );
     const parent = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'plan the work',
       principal: alice.id,
     });

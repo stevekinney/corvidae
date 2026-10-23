@@ -658,14 +658,17 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       toolCalls: [{ id, name: 'requestHumanInput', arguments: { signalName: 'human-response' } }],
     });
     const options = (generate: () => Promise<ReturnType<typeof park>>) => ({
-      agents: {},
-      generate,
-      toolbox: createToolbox([createNextTool()]),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'sqlite' as const, path: databasePath },
       durableExecution: true as const,
       durableOwnership: { ownership: 'none' as const },
       humanInput: true as const,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     const bureauA = await createBureau(options(async () => park('call-a')));
@@ -1061,11 +1064,12 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
       },
     };
 
+    const toolbox = createGrantMatchableToolbox(approvalSecret, charges, observedGrantStateStore);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
           generate: createChargeGenerate(),
-          toolbox: createGrantMatchableToolbox(approvalSecret, charges, observedGrantStateStore),
+          toolbox,
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
@@ -1076,11 +1080,11 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
 
     try {
       const principal = 'humaninput-grant-principal';
-      const grant = await bureau.issueGrant({
+      const grant = await toolbox.issueGrant({
         principalId: principal,
         tenantId: 'bureau',
-        ownerId: 'bureau',
-        agentId: 'bureau',
+        ownerId: 'default',
+        agentId: 'default',
         toolName: 'charge-card',
         scope: 'principal',
         expiresAt: Number.MAX_SAFE_INTEGER,

@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, type GenerateContext, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateContext } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
@@ -78,7 +78,6 @@ export async function startWorkflowBureau(
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       ...scriptedAgents(options.agentNames ?? ['writer', 'editor'], options.replies ?? {}, calls),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     workflowDirectory: directory,
     storage: { type: 'memory' },

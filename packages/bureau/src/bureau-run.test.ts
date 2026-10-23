@@ -22,7 +22,7 @@ import {
   type RunnableAgent,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -44,10 +44,6 @@ function waitOneTimerTurn(): Promise<void> {
 
 function mockGenerate(content = 'ok') {
   return async () => ({ content, toolCalls: [] });
-}
-
-function createEmptyToolbox(): Toolbox {
-  return createToolbox([]) as unknown as Toolbox;
 }
 
 describe('bureau.run', () => {
@@ -705,11 +701,9 @@ describe('bureau.run', () => {
     });
   });
 
-  it('accepts an empty agents catalog for a bureau that only uses createRun', async () => {
+  it('accepts an empty agents catalog', async () => {
     const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ toolbox: createEmptyToolbox() }),
-      },
+      agents: {},
     });
     try {
       expect(bureau.agents.names()).toEqual([]);
@@ -928,16 +922,15 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
             generateCalls += 1;
             return { content: 'ok', toolCalls: [] };
           },
+          guardrails: alwaysTrip,
         }),
-        default: createAgent({ guardrails: alwaysTrip }),
       },
       storage: { type: 'memory' },
     });
 
     try {
       const result = await bureau.run('echo', 'hi').result();
-      // The bureau's guardrails, inherited by the agent (COR-1367) and
-      // registered as `agent:guardrails-prepare-step`, run before generate and
+      // The agent's own guardrails, registered as `agent:guardrails-prepare-step`, run before generate and
       // hard-halt, so the provider is never reached.
       expect(result.finishReason).toBe('tripwire');
       expect(generateCalls).toBe(0);

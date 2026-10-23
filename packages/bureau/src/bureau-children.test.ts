@@ -180,7 +180,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
       expect(dispatched.child).toMatchObject({
         parentRunId: parent.id,
-        parentAgentName: 'bureau',
+        parentAgentName: 'default',
         childAgentName: 'worker',
         status: 'running',
         workflow: { kind: 'process-local' },

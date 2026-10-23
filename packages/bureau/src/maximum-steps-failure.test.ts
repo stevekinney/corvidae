@@ -1,4 +1,9 @@
-import { stopWhen, waitForCondition, createAgent } from '@lostgradient/operative';
+import {
+  stopWhen,
+  waitForCondition,
+  createAgent,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, type BatchOperation } from '@lostgradient/weft';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createTool, createToolbox } from 'armorer';
@@ -175,17 +180,13 @@ class SettlementCountingStorage extends MemoryStorage {
 }
 
 /** The runs whose second step fails or never ends: a step limit, and a plain error. */
-const FAILURES: readonly (readonly [string, Partial<BureauOptions>])[] = [
+const FAILURES: readonly (readonly [string, { readonly generate?: GenerateFunction }])[] = [
   ['a step limit', {}],
   [
     'a plain error',
     {
-      agents: {
-        default: createAgent({
-          generate: async () => {
-            throw new Error('The model refused.');
-          },
-        }),
+      generate: async () => {
+        throw new Error('The model refused.');
       },
     },
   ],

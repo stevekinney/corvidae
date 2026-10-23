@@ -11,7 +11,6 @@ import {
   type BackendDescriptor,
   createAgent,
   type GenerateFunction,
-  stopWhen,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
@@ -98,7 +97,6 @@ export async function startWorkflowToolsBureau(
         name: 'anchor',
         generate: async () => ({ content: 'a', toolCalls: [] }),
       }),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     agentDirectory,
     workflowDirectory,

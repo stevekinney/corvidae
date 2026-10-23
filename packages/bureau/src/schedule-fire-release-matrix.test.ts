@@ -27,7 +27,6 @@ import {
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -108,7 +107,7 @@ async function expectNothingRemains(
   const restartedCharges: number[] = [];
   const restarted = await harness.open({
     ...options,
-    agents: { default: createAgent({ toolbox: approvalToolbox(restartedCharges) }) },
+    toolbox: approvalToolbox(restartedCharges),
   });
   for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
   expect(reviewsOf(restarted, fireId)).toEqual([]);
@@ -370,7 +369,7 @@ async function fireForCrash() {
   const first = await harness.open({
     ...options,
     storage: holdingStorage,
-    agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+    toolbox: approvalToolbox([]),
   });
   const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
   await reviewOf(first, fireId);
@@ -414,7 +413,7 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
       const restarted = await harness.open({
         ...crash.options,
         storage: crash.raw,
-        agents: { default: createAgent({ toolbox: approvalToolbox(charges) }) },
+        toolbox: approvalToolbox(charges),
       });
       for (let turn = 0; turn < 50; turn += 1) {
         await new Promise((resolve) => setTimeout(resolve, 2));
@@ -459,14 +458,14 @@ describe('a cancel by a peer, with the holder alive', () => {
     };
     const holder = await harness.open({
       ...options,
-      agents: { default: createAgent({ toolbox: approvalToolbox(holderCharges) }) },
+      toolbox: approvalToolbox(holderCharges),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, SESSION);
     const review = await reviewOf(holder, fireId);
     await new Promise((resolve) => setTimeout(resolve, 150));
     const peer = await harness.open({
       ...options,
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
 
     const outcome = await peer.cancelDurableRun(fireId);
@@ -498,7 +497,7 @@ describe('a restart keeps what the engine did not cancel', () => {
     const charges: number[] = [];
     const restarted = await harness.open({
       ...context.options,
-      agents: { default: createAgent({ toolbox: approvalToolbox(charges) }) },
+      toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, context.fireId);
     await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
@@ -527,7 +526,7 @@ describe('a restart keeps what the engine did not cancel', () => {
     };
     const bureau = await harness.open({
       ...options,
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
     await reviewOf(bureau, fireId);
@@ -541,7 +540,7 @@ describe('a restart keeps what the engine did not cancel', () => {
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      agents: { default: createAgent({ toolbox: approvalToolbox(charges) }) },
+      toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
     await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
@@ -567,7 +566,7 @@ describe('a boot that cannot read the engine’s status', () => {
     const first = await harness.open({
       ...options,
       storage: raw,
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
     const review = await reviewOf(first, fireId);
@@ -595,7 +594,7 @@ describe('a boot that cannot read the engine’s status', () => {
       ...options,
       storage: faultyStorage,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
@@ -607,7 +606,7 @@ describe('a boot that cannot read the engine’s status', () => {
     const later = await harness.open({
       ...options,
       storage: raw,
-      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
+      toolbox: approvalToolbox([]),
     });
     const restored = await reviewOf(later, fireId);
     expect(restored.id).toBe(review.id);

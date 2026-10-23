@@ -15,7 +15,7 @@ import {
   type GovernedMemory,
   type MemoryAuthority,
 } from '@lostgradient/memory';
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -82,7 +82,7 @@ async function start(
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
-    agents: { ...agents, default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
+    agents: { ...agents },
     memory,
     persistence: textValueStore(new MemoryStorage()),
   });

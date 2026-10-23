@@ -12,8 +12,6 @@
  */
 import { writeFileSync } from 'node:fs';
 
-import { stopWhen, createAgent } from '@lostgradient/operative';
-
 import { createBureau } from '../create-bureau';
 import { lookupTool } from '../testing/agent-file-fixtures.test-support';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
@@ -31,9 +29,7 @@ const RUNS_EXPECTED = 4;
 let parked = 0;
 
 const bureau = await createBureau<AgentDefinitions>({
-  agents: {
-    default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-  },
+  agents: {},
   agentDirectory,
   agentTools: { 'lookup-order': lookupTool },
   resolveAgentGenerate:

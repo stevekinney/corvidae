@@ -12,7 +12,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen, createAgent } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
@@ -96,9 +95,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     const calls: Call[] = [];
     bureau = await scope.phase('boot', () =>
       createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-        },
+        agents: {},
         agentDirectory: agents,
         // The tool catalog is the deployment's, so it is the same after the restart.
         agentTools: { 'lookup-order': lookupTool },
@@ -204,9 +201,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         origin: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString(),
       });
       bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-        },
+        agents: {},
         agentDirectory: agents,
         agentTools: { 'lookup-order': lookupTool },
         resolveAgentGenerate: () => async () => ({ content: 'unused', toolCalls: [] }),

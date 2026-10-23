@@ -34,7 +34,6 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 const { open } = harness;
@@ -635,7 +634,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       },
     });
     const created = await bureau.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -726,7 +725,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       },
     });
     const created = await bureau.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,

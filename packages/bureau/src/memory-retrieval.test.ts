@@ -12,7 +12,6 @@ import {
   createAgent,
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
-  stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import type { InputDetector, ToolRequestContext } from 'armorer';
@@ -133,7 +132,6 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
       id: 'tenant-a',
       agents: {
         scout: createAgent({ generate }),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       memory,
       requestAuthorityValidator: () => true,

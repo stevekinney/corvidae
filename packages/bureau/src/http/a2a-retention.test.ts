@@ -4,7 +4,6 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
-import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from '../assets/storage';
@@ -28,7 +27,6 @@ describe('the A2A record’s lifetime', () => {
           name: 'asker',
           generate: async () => ({ content: 'done', toolCalls: [] }),
         }),
-        default: createAgent({ toolbox: createToolbox<readonly Tool[]>([]) }),
       },
       runtime,
       storage: fixture.configuration,

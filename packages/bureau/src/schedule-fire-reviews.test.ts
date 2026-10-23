@@ -27,7 +27,6 @@ import {
   pollUntil,
   reviewOf,
 } from './schedule-fire-fixtures.test-support';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 const { open, nextDatabasePath } = harness;

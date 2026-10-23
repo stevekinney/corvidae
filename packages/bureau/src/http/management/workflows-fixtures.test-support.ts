@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import {
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
@@ -60,7 +60,6 @@ export async function serveWorkflows(
     id: 'workflows-bureau',
     agents: {
       ...(options.agents ?? agents),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     workflowDirectory: directory,
     storage: { type: 'memory' },

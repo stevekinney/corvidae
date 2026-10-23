@@ -202,7 +202,7 @@ export async function createAssetHarness(
   runtime: ManualRuntimeServices = createManualRuntimeServices(),
   storage: BureauStorageFixture = createMemoryStorageFixture(),
 ): Promise<AssetHarness> {
-  const harness = await createBureauTestHarness({
+  const harness = await createBureauTestHarness<AgentDefinitions>({
     agents: {
       default: createAgent({ generate }),
     },

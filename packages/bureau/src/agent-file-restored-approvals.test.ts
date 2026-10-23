@@ -11,8 +11,6 @@ import {
   createAgentSession,
   createModelCatalog,
   createSessionStore,
-  stopWhen,
-  createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { createConversationHistory } from 'conversationalist';
@@ -105,9 +103,7 @@ describe('a pending approval restored after a restart', () => {
     );
 
     const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-      },
+      agents: {},
       agentDirectory: directory,
       resolveAgentGenerate: () => async () => ({ content: 'ok', toolCalls: [] }),
       storage,

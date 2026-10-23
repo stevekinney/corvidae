@@ -395,7 +395,7 @@ describe('createBureau with governed memory (COR-41)', () => {
       // run's tool authority is exactly what its request carried.
       expect(observedCapabilities).toEqual([['tools:execute']]);
       // The default agent's collection holds both chats' memories, each naming its chat.
-      const stored = await memory.list(inspector, { collection: 'bureau' });
+      const stored = await memory.list(inspector, { collection: 'default' });
       expect(stored.map((record) => record.governance?.attribution.principal.kind)).toEqual([
         'run',
         'run',

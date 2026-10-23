@@ -13,12 +13,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import {
-  createAgentSession,
-  createSessionStore,
-  stopWhen,
-  createAgent,
-} from '@lostgradient/operative';
+import { createAgentSession, createSessionStore } from '@lostgradient/operative';
 import * as operative from '@lostgradient/operative';
 import {
   createTemporaryDirectory,
@@ -143,9 +138,7 @@ describe('a pending approval restored after a restart', () => {
     const built = spyOn(operative, 'createAgent');
     cleanups.push(() => built.mockRestore());
     const bureau: Bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
-      },
+      agents: {},
       agentDirectory: directory,
       resolveAgentGenerate: () => async () => ({ content: 'ok', toolCalls: [] }),
       storage,

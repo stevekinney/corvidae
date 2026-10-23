@@ -29,7 +29,6 @@ import {
   storedText,
 } from './schedule-fire-fixtures.test-support';
 import type { Bureau, PendingReview, PendingToolApprovalReview } from './types';
-import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -282,7 +281,7 @@ function reportedDiagnostics() {
  */
 async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
   const created = await bureau.createSchedule({
-    agentName: 'researcher',
+    agentName: 'default',
     input: 'check in',
     spec: '1m',
     principal: OWNER.alice,

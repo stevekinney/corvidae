@@ -11,7 +11,6 @@ import {
   createAgent,
   type BackendDescriptor,
   type GenerateFunction,
-  stopWhen,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
@@ -81,7 +80,6 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
           name: 'alpha',
         }),
       }),
-      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     agentDirectory: directory,
     agentTools: { 'lookup-order': lookupTool },

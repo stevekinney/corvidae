@@ -91,7 +91,7 @@ async function start(
   options: Partial<BureauOptions<AgentDefinitions>> = {},
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
-    agents: { ...agents, default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
+    agents: { ...agents },
     storage: { type: 'memory' },
     durableExecution: true,
     humanInput: true,
@@ -433,7 +433,6 @@ describe('requestHumanInput on a catalog run', () => {
     const memoryOnly = await createBureau<AgentDefinitions>({
       agents: {
         asker: askingAgent(nonDurable),
-        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       humanInput: true,
     });

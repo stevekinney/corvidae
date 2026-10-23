@@ -34,7 +34,7 @@ import {
 } from './skill-policy-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
-import type { AgentDefinitions } from './agent-catalog';
+import { createAgentSkills } from './agent-skills';
 
 const harness = createScheduleFireHarness();
 
@@ -158,13 +158,13 @@ describe('a run’s approval after a later run starts in its session', () => {
         default: createAgent({
           generate: lockedAfterCharging('stop'),
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox([]),
         }),
       },
     });
     const run = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge, then lock',
       principal: OWNER.alice,
     });
@@ -184,7 +184,7 @@ describe('a run’s approval after a later run starts in its session', () => {
         default: createAgent({
           generate: hanging,
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox(charges),
         }),
       },
@@ -205,7 +205,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     // The next run starts in the session and has not finished its first step: the session's
     // snapshot is cleared, which is not a record that the earlier run had no skills.
     await restarted.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'the next run',
       sessionId: run.sessionId,
       principal: OWNER.alice,
@@ -226,7 +226,7 @@ describe('a run’s approval after a later run starts in its session', () => {
         default: createAgent({
           generate: lockedAfterCharging('wait'),
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox([]),
         }),
       },
@@ -245,7 +245,7 @@ describe('a run’s approval after a later run starts in its session', () => {
         default: createAgent({
           generate: hanging,
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox(charges),
         }),
       },
@@ -285,7 +285,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       },
     });
     const run = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'charge',
       principal: OWNER.alice,
     });
@@ -309,7 +309,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       'the restored approval',
     );
     await restarted.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'the next run',
       sessionId: run.sessionId,
       principal: OWNER.alice,
@@ -331,7 +331,7 @@ describe('a fire replayed after its process died in a step', () => {
         default: createAgent({
           generate: dyingInStepOne(life),
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox([]),
         }),
       },
@@ -355,14 +355,17 @@ describe('a fire replayed after its process died in a step', () => {
     withSkills = true,
   ) {
     life.current = 'second';
+    const skills = withSkills
+      ? { skills: createAgentSkills({ catalog: await catalog.discover() }) }
+      : {};
     return harness.open({
-      ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
       storage:
         wrap === undefined ? { type: 'sqlite', path } : await harness.sqliteStorage(path, wrap),
       agents: {
         default: createAgent({
           generate: dyingInStepOne(life, offered),
           stopWhen: stopWhen.noToolCalls(),
+          ...skills,
           toolbox: chargeApprovalToolbox(charges),
         }),
       },
@@ -480,13 +483,13 @@ describe('a session run reattached after its process died in a step', () => {
         default: createAgent({
           generate: dyingInStepOne(life),
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox([]),
         }),
       },
     });
     const run = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'lock, then charge',
       principal: OWNER.alice,
     });
@@ -514,7 +517,7 @@ describe('a session run reattached after its process died in a step', () => {
         default: createAgent({
           generate: dyingInStepOne(life, offered),
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox(charges),
         }),
       },
@@ -615,7 +618,7 @@ describe('a fire replayed after its process died before committing the step that
         default: createAgent({
           generate,
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox([]),
         }),
       },
@@ -636,7 +639,7 @@ describe('a fire replayed after its process died before committing the step that
         default: createAgent({
           generate,
           stopWhen: stopWhen.noToolCalls(),
-          skills: { catalog: await catalog.discover() },
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
           toolbox: chargeApprovalToolbox(charges),
         }),
       },

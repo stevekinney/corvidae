@@ -41,7 +41,11 @@ const REQUEST: CreateRunRequest = {
   runCreationRequestId: 'request-1',
 };
 
-const LOCATE = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+const LOCATE = {
+  principal: 'alice',
+  agentName: 'default',
+  runCreationRequestId: 'request-1',
+} as const;
 
 type FixtureFactory = (runtime: RuntimeServices) => BureauStorageFixture;
 
