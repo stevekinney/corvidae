@@ -30,6 +30,15 @@ export interface RouteState {
   readonly search: URLSearchParams;
 }
 
+/** A path segment decoded, or `null` when it is not valid percent-encoding (`%E0`). */
+function decodeSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+}
+
 function matchPattern(pattern: string, pathname: string): Record<string, string> | null {
   const patternSegments = pattern.split('/').filter((segment) => segment.length > 0);
   const pathSegments = pathname.split('/').filter((segment) => segment.length > 0);
@@ -42,7 +51,11 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
     if (pathSegment === undefined) return null;
 
     if (patternSegment.startsWith(':')) {
-      params[patternSegment.slice(1)] = decodeURIComponent(pathSegment);
+      // An address that cannot be decoded names no resource, so no route owns it: the outlet
+      // shows the not-found view instead of the matcher throwing out of the router.
+      const decoded = decodeSegment(pathSegment);
+      if (decoded === null) return null;
+      params[patternSegment.slice(1)] = decoded;
       continue;
     }
 

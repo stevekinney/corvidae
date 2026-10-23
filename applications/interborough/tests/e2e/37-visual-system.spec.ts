@@ -114,7 +114,10 @@ test.describe('each view declares how dense and how wide it is', () => {
     expect(column?.width).toBeLessThanOrEqual(760);
     expect(column?.width).toBeGreaterThanOrEqual(740);
     await page.goto('/runs');
-    const runs = await page.locator('[data-view="runs"]').locator('> *').first().boundingBox();
+    const runsPage = page.locator('[data-view="runs"]').locator('> *').first();
+    // `boundingBox()` is null for an element that is not visible yet; wait for the page to paint.
+    await expect(runsPage).toBeVisible();
+    const runs = await runsPage.boundingBox();
     expect(runs?.width).toBeGreaterThan(900);
   });
 

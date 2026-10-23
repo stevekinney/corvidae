@@ -14,7 +14,7 @@ import {
   releaseBarrier,
   runToEnd,
 } from './chat-support.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const BARRIER = 'barrier';
 const BARRIER_SHORT = 'barrier-short';
@@ -408,7 +408,14 @@ for (const width of [375, 1280] as const) {
       test(`is ${outcome} when the Bureau answers that way, and passes axe`, async ({
         page,
         checkA11y,
+        pageErrors,
       }) => {
+        if (outcome !== 'loading') {
+          pageErrors.expect({
+            pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /bureau\/jsonrpc/),
+            reason: `the test answers the session probe with a ${outcome === 'error' ? 500 : 403}`,
+          });
+        }
         await answerSessionProbe(page, outcome);
         await page.goto('/chat/any-session');
         const frame = page.locator('[data-view="chat"]');
