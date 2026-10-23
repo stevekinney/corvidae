@@ -272,10 +272,15 @@ export function createOutboxPushNotificationSender(
       admission.status === 'enqueued' &&
       (await pushStore.get(taskId, configId, context)) === undefined
     ) {
-      await outbox.requestCancellation({
-        deliveryId: admission.receipt.deliveryId,
-        reason: 'The push notification configuration was deleted.',
-      });
+      // The delete already purged this destination, so this late record is stopped and purged
+      // here: left settled, it would carry the payload and a spent key for a gone configuration.
+      await stopPushDeliveries(
+        outbox,
+        adapter,
+        locator,
+        'The push notification configuration was deleted.',
+      );
+      await outbox.purge({ destinationRef: locator });
     }
     return null;
   }

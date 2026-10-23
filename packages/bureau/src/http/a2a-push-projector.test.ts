@@ -836,4 +836,24 @@ describe('the push projector sweep', () => {
     await clock.fire();
     expect(clock.pending.size).toBe(0);
   });
+
+  it('clears its timer when the runtime hands back no handle', async () => {
+    const fixture = harness([started]);
+    const cleared: unknown[] = [];
+    const timers: RuntimeTimers = {
+      setTimeout: () => undefined,
+      clearTimeout: (handle) => {
+        cleared.push(handle);
+      },
+      setInterval: () => undefined,
+      clearInterval: () => undefined,
+    };
+    const projector = fixture.projectorOver(undefined, { timers });
+
+    await projector.recoverUntilReady();
+    projector.stop();
+    projector.stop();
+
+    expect(cleared).toEqual([undefined]);
+  });
 });

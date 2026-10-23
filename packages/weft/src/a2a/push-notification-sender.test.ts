@@ -277,7 +277,7 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     );
   });
 
-  test('a configuration deleted between loading and enqueueing has its delivery cancelled', async () => {
+  test('a configuration deleted between loading and enqueueing has its delivery cancelled and purged', async () => {
     const fixture = await createPushFixture();
     await createConfiguration(fixture);
     const stale = await fixture.pushStore.load('task-1', alice());
@@ -289,8 +289,8 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
 
     await sender.send(statusEvent(1), alice());
 
-    const [receipt] = await fixture.outbox.list();
-    expect(receipt?.state).toBe('cancelled');
+    // Cancelled, then purged: no settled record of the gone configuration remains.
+    expect(await fixture.outbox.list()).toEqual([]);
     expect(await fixture.outbox.deliverNext()).toMatchObject({ status: 'empty' });
     expect(fixture.receiver.requests).toHaveLength(0);
   });

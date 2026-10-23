@@ -625,7 +625,8 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     }
   }
 
-  let sweepTimer: RuntimeTimeoutHandle = undefined;
+  let sweepTimer: RuntimeTimeoutHandle;
+  let sweepArmed = false;
   let sweeping = true;
 
   /**
@@ -642,18 +643,19 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
   function armSweep(): void {
     if (!sweeping || stopped()) return;
     const handle = timers.setTimeout(() => {
-      sweepTimer = undefined;
+      sweepArmed = false;
       if (!sweeping || stopped()) return;
       void singleFlight('sweep', sweep).catch(report).finally(armSweep);
     }, sweepMs);
     (handle as { unref?: () => void } | undefined)?.unref?.();
     sweepTimer = handle;
+    sweepArmed = true;
   }
 
   function stopSweeping(): void {
     sweeping = false;
-    if (sweepTimer !== undefined) timers.clearTimeout(sweepTimer);
-    sweepTimer = undefined;
+    if (sweepArmed) timers.clearTimeout(sweepTimer);
+    sweepArmed = false;
   }
 
   return {
