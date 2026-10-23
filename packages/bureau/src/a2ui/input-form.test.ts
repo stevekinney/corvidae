@@ -281,7 +281,7 @@ describe('inputFormMessages', () => {
       'a range': { type: 'object', properties: { age: { type: 'number', minimum: 0 } } },
       'a default': { type: 'object', properties: { name: { type: 'string', default: 'x' } } },
       'a combinator': { oneOf: [{ type: 'object' }, { type: 'string' }] },
-      'a non-object root': { type: 'string' },
+      'a non-object root': { type: 'array', items: { type: 'string' } },
       'an unsupported format': {
         type: 'object',
         properties: { mail: { type: 'string', format: 'email' } },
@@ -533,7 +533,7 @@ describe('checkFormSubmission', () => {
       const either: HumanInputSchema = { type: ['string', 'array'], minItems: 1 };
       expect(checkFormSubmission(either, { response: '["a"]' })).toEqual({
         ok: true,
-        value: '["a"]',
+        value: ['a'],
       });
     });
 
