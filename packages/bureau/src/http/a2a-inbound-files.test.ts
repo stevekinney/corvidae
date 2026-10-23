@@ -145,7 +145,7 @@ describe('the Agent Card’s input modes', () => {
           new Request(`${PUBLIC_URL}/a2a/seer/.well-known/agent-card.json`),
         );
         const card: Json = await response.json();
-        expect(card.defaultInputModes).toEqual(['text/plain', 'application/json', 'image/*']);
+        expect(card.defaultInputModes).toEqual(['text/plain', 'application/json', 'image/png']);
       },
       { assetPolicy: { allowedMediaTypes: ['image/png'] } },
     );
@@ -791,7 +791,7 @@ describe('the card under a policy spelled loosely', () => {
           new Request(`${PUBLIC_URL}/a2a/seer/.well-known/agent-card.json`),
         );
         const card: Json = await response.json();
-        expect(card.defaultInputModes).toContain('image/*');
+        expect(card.defaultInputModes).toContain('image/png');
         const sent = await send(
           opened,
           'seer',
@@ -837,5 +837,122 @@ describe('a retry of a URL-only input', () => {
       const task = retried.result.task ?? retried.result;
       expect(task.history.at(-1).parts[1].url).toBe(routeOf(assetId));
     });
+  });
+});
+
+describe('a recorded projection replayed to another credential', () => {
+  it('is refused to a same-subject key without the asset scope, and delivers nothing', async () => {
+    const seen: Seen = { calls: 0, rows: [] };
+    await withAgents({ seer: seeing(seen) }, async (opened) => {
+      const assetId = await admit(opened, png(96));
+      const real = opened.bureau.createRun.bind(opened.bureau);
+      let failures = 1;
+      opened.bureau.createRun = async (request: Parameters<typeof real>[0]) => {
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error('the store was unavailable');
+        }
+        return real(request);
+      };
+      const message = messageWith([
+        { text: 'x' },
+        { url: routeOf(assetId), mediaType: 'image/png' },
+      ]);
+
+      const lost = await send(opened, 'seer', message, 'alice-assets-key');
+      expect(lost.error).toBeDefined();
+      const unscoped = await send(opened, 'seer', message, 'alice-key');
+
+      expect(unscoped.error?.code).toBe(-32602);
+      expect(unscoped.error.message).toBe(`Asset '${assetId}' was not found.`);
+      expect(seen.calls).toBe(0);
+      const listed = await call(opened, 'seer', 'ListTasks', {});
+      expect(listed.result.tasks ?? []).toEqual([]);
+    });
+  });
+});
+
+describe('a deadline that inline admission overtakes', () => {
+  it('discards the newly admitted asset and answers the expired receipt', async () => {
+    const seen: Seen = { calls: 0, rows: [] };
+    await withAgents(
+      { seer: seeing(seen) },
+      async (opened) => {
+        const deadline = new Date(Date.now() + 250).toISOString();
+        const response = await opened.handler(
+          new Request(`${PUBLIC_URL}/a2a/seer`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'A2A-Version': '1.0',
+              'X-API-Key': 'alice-assets-key',
+              'A2A-Extensions': COMMAND_RECEIPTS_EXTENSION_URI,
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'SendMessage',
+              params: {
+                message: {
+                  ...messageWith([
+                    { text: 'x' },
+                    { raw: base64Of(png(97)), mediaType: 'image/png' },
+                  ]),
+                  metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline } },
+                },
+                configuration: { returnImmediately: true },
+              },
+            }),
+          }),
+        );
+        const body: Json = await response.json();
+
+        expect(body.error).toBeUndefined();
+        const task = body.result.task ?? body.result;
+        expect(task.metadata[COMMAND_RECEIPTS_EXTENSION_URI]).toMatchObject({
+          receipt: { state: 'expired', reason: 'deadline-exceeded' },
+        });
+        expect(seen.calls).toBe(0);
+        const records = await opened.bureau.assets!.auditRecords();
+        const started = records.find((record) => record.type === 'asset.admission.started');
+        const descriptor = await opened.bureau.assets!.inspect(started!.assetId!, { id: ALICE });
+        expect(descriptor.state).toBe('deleted');
+      },
+      {
+        assetPorts: {
+          safetyGates: [
+            {
+              name: 'slow',
+              inspect: async () => {
+                await new Promise((resolve) => setTimeout(resolve, 600));
+                return { verdict: 'clean' as const };
+              },
+            },
+          ],
+        },
+      },
+    );
+  });
+});
+
+describe('the card under an exact allowlist entry', () => {
+  it('advertises the exact allowed type, not the descriptor’s whole family', async () => {
+    await withAgents(
+      { seer: seeing({ calls: 0, rows: [] }) },
+      async (opened) => {
+        const response = await opened.handler(
+          new Request(`${PUBLIC_URL}/a2a/seer/.well-known/agent-card.json`),
+        );
+        const card: Json = await response.json();
+        expect(card.defaultInputModes).toEqual(['text/plain', 'application/json', 'image/png']);
+        const jpeg = await send(
+          opened,
+          'seer',
+          messageWith([{ text: 'x' }, { raw: base64Of(png(98)), mediaType: 'image/jpeg' }]),
+        );
+        expect(jpeg.error?.code).toBe(-32005);
+      },
+      { assetPolicy: { allowedMediaTypes: ['image/png'] } },
+    );
   });
 });

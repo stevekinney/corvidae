@@ -624,6 +624,27 @@ function parseContinuation(
   return { path, input: input.data };
 }
 
+/**
+ * Refuses the replay of a recorded projection to a credential without the scopes the first
+ * attempt needed: `bureau.assets:read` for any asset it names (answered as a missing asset, so
+ * the scope's absence is not told apart), and `bureau.assets:write` where bytes were admitted.
+ */
+function refuseWithoutScopes(
+  projection: InboundProjection,
+  admittedAssets: readonly AdmittedAsset[] | undefined,
+  context: InboundContext,
+): void {
+  const named = projection.content.flatMap((part) =>
+    'source' in part && part.source.kind === 'managed-asset' ? [part.source.assetId] : [],
+  );
+  if (named.length > 0 && !context.mayReadAssets) {
+    throw invalid(`Asset '${named[0]}' was not found.`);
+  }
+  if ((admittedAssets?.length ?? 0) > 0 && !context.mayWriteAssets) {
+    throw invalid('Sending file bytes requires bureau.assets:write.');
+  }
+}
+
 /** Whether an error is the handler's own refusal of a send: raised before anything took effect. */
 function isRefusal(error: unknown): boolean {
   return (
@@ -1294,7 +1315,21 @@ export function createBureauA2ARequestHandler(
     // The install this send owes is decided here, once, and recorded in the claim: a retry of a
     // claim left pending reads it back, so it installs the same configuration at the same cursor
     // whatever the task has become since.
-    const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
+    const passed = () => request.deadline !== undefined && runtime.clock.now() >= request.deadline;
+    // Inline bytes are admitted as the caller's assets before the claim, and the claim records
+    // them: a retry of a claim left pending reads them back instead of admitting the bytes again.
+    // An expired command applies nothing, so it admits nothing; and admission can outlast the
+    // deadline (a scan, an extraction), so the deadline is read again after it, and a command it
+    // overtook discards what it admitted and takes the expired path.
+    let mine: readonly AdmittedAsset[] =
+      plan === undefined || plan.inlineCount === 0 || pending?.assets !== undefined || passed()
+        ? []
+        : await admitInline(plan, inboundContextOfCaller);
+    if (mine.length > 0 && passed()) {
+      await discardAssets(assets, owner, mine);
+      mine = [];
+    }
+    const expired = passed();
     const owed = owedInstallOf({
       hasInline: inlinePush !== undefined,
       continuing: continued !== undefined,
@@ -1305,13 +1340,6 @@ export function createBureauA2ARequestHandler(
           ? undefined
           : await push?.projector.tailOf(continued.id),
     });
-    // Inline bytes are admitted as the caller's assets before the claim, and the claim records
-    // them: a retry of a claim left pending reads them back instead of admitting the bytes again.
-    // An expired command applies nothing, so it admits nothing.
-    const mine: readonly AdmittedAsset[] =
-      plan === undefined || plan.inlineCount === 0 || pending?.assets !== undefined || expired
-        ? []
-        : await admitInline(plan, inboundContextOfCaller);
     const discardMine = () => discardAssets(assets, owner, mine);
     // What this send delivers is decided once, here, and the claim records it.
     const projection =
@@ -1363,6 +1391,9 @@ export function createBureauA2ARequestHandler(
       // Everything from here may throw with the claim held, so it is inside the try that releases
       // it. An expired command applies nothing and admitted nothing: it reads no assets.
       if (recorded !== undefined) {
+        // A projection is replayed without reading its assets again, but never to a credential
+        // that may not use them: the scopes are this request's own.
+        refuseWithoutScopes(recorded, claimedAssets, inboundContextOfCaller);
         inbound = inboundOf(message, recorded);
       } else if (!expired && plan?.hasMedia === true) {
         throw invalid(

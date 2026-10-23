@@ -91,11 +91,15 @@ export function mediaInputModesOf(
     for (const [modality, support] of Object.entries(descriptor.modalities)) {
       if (!support.input) continue;
       for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) {
-        if (
-          allowedMediaTypes === undefined ||
-          allowedMediaTypes.some((allowed) => overlaps(type, normalizeMediaType(allowed)))
-        ) {
+        if (allowedMediaTypes === undefined) {
           input.add(type);
+          continue;
+        }
+        // Admission matches an allowlist entry exactly, so a family the descriptor takes is
+        // advertised as the exact types the policy allows within it, never as the whole family.
+        for (const allowed of allowedMediaTypes) {
+          const exact = normalizeMediaType(allowed);
+          if (overlaps(type, exact)) input.add(exact);
         }
       }
     }
