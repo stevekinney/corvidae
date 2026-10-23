@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   A2A_TCK_COMMIT,
+  A2A_TCK_EXCLUSIONS,
   type CommandRunner,
   listeningUrl,
   parseArguments,
@@ -229,6 +230,22 @@ describe('run-a2a-tck helpers', () => {
     expect(parseArguments(['--sut-host=http://h'])).toEqual({ sutHost: 'http://h' });
     expect(() => parseArguments(['--sut-host'])).toThrow('--sut-host needs a URL.');
     expect(() => parseArguments(['--verbose'])).toThrow('Unknown argument: --verbose');
+  });
+
+  test('collects each --deselect and passes it after the recorded exclusions', () => {
+    expect(
+      parseArguments(['--sut-host', 'http://h', '--deselect', 'a::b', '--deselect', 'c::d']),
+    ).toEqual({
+      sutHost: 'http://h',
+      deselect: ['a::b', 'c::d'],
+    });
+    expect(() => parseArguments(['--deselect'])).toThrow('--deselect needs a test.');
+    expect(() => parseArguments(['--sut-host'])).toThrow('--sut-host needs a URL.');
+    const command = tckCommand('http://h', 'must', ['a::b']);
+    expect(command.slice(-2)).toEqual(['--deselect', 'a::b']);
+    expect(command.filter((argument) => argument === '--deselect')).toHaveLength(
+      A2A_TCK_EXCLUSIONS.length + 1,
+    );
   });
 
   test('counts a JUnit report’s cases and outcomes, xfails among the skipped', () => {

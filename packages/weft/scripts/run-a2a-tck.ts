@@ -67,26 +67,51 @@ export type RunA2ATckDependencies = {
   readonly log: (line: string) => void;
 };
 
-/** Read `--sut-host <url>` (or `--sut-host=<url>`) from the arguments. */
-export function parseArguments(argv: readonly string[]): { readonly sutHost?: string } {
+/** What the command line chose. */
+export type A2ATckArguments = {
+  /** An already-running agent to test, which starts nothing. */
+  readonly sutHost?: string;
+  /**
+   * Further pytest node identifiers to deselect, beside {@link A2A_TCK_EXCLUSIONS}: a system
+   * under test with its own recorded rulings passes them as `--deselect <node>`, once each.
+   */
+  readonly deselect?: readonly string[];
+};
+
+/** Read `--sut-host <url>` (or `--sut-host=<url>`) and each `--deselect <node>` from the arguments. */
+export function parseArguments(argv: readonly string[]): A2ATckArguments {
+  let sutHost: string | undefined;
+  const deselect: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] as string;
-    if (argument === '--sut-host') {
+    if (argument === '--sut-host' || argument === '--deselect') {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith('--')) {
-        throw new Error('--sut-host needs a URL.');
+        throw new Error(
+          argument === '--sut-host' ? '--sut-host needs a URL.' : '--deselect needs a test.',
+        );
       }
-      return { sutHost: value };
+      if (argument === '--sut-host') sutHost = value;
+      else deselect.push(value);
+      index += 1;
+    } else if (argument.startsWith('--sut-host=')) {
+      sutHost = argument.slice('--sut-host='.length);
+    } else {
+      throw new Error(`Unknown argument: ${argument}`);
     }
-    if (argument.startsWith('--sut-host='))
-      return { sutHost: argument.slice('--sut-host='.length) };
-    throw new Error(`Unknown argument: ${argument}`);
   }
-  return {};
+  return {
+    ...(sutHost === undefined ? {} : { sutHost }),
+    ...(deselect.length === 0 ? {} : { deselect }),
+  };
 }
 
-/** The TCK command for one level, deselecting {@link A2A_TCK_EXCLUSIONS}. */
-export function tckCommand(sutHost: string, level: A2ATckLevel): string[] {
+/** The TCK command for one level, deselecting {@link A2A_TCK_EXCLUSIONS} and `deselect`. */
+export function tckCommand(
+  sutHost: string,
+  level: A2ATckLevel,
+  deselect: readonly string[] = [],
+): string[] {
   return [
     'uv',
     'run',
@@ -99,7 +124,7 @@ export function tckCommand(sutHost: string, level: A2ATckLevel): string[] {
     level,
     // `run_tck.py` hands everything after `--` to pytest.
     '--',
-    ...A2A_TCK_EXCLUSIONS.flatMap((test) => ['--deselect', test]),
+    ...[...A2A_TCK_EXCLUSIONS, ...deselect].flatMap((test) => ['--deselect', test]),
   ];
 }
 
@@ -139,7 +164,7 @@ export async function runA2ATck(
   dependencies: RunA2ATckDependencies,
 ): Promise<number> {
   const { runCommand, checkout, log } = dependencies;
-  const { sutHost } = parseArguments(argv);
+  const { sutHost, deselect } = parseArguments(argv);
   await dependencies.ensureCheckout(checkout);
   const reports = join(checkout, 'reports');
   const started = sutHost === undefined ? await dependencies.startExample() : undefined;
@@ -156,7 +181,7 @@ export async function runA2ATck(
       // Every level writes `junitreport.xml`; keep each one as `junit-<level>.xml`.
       await rm(join(reports, 'junitreport.xml'), { force: true });
       log(`A2A TCK ${A2A_TCK_COMMIT}: --level ${level} against ${url}`);
-      const exitCode = await runCommand(tckCommand(url, level), checkout);
+      const exitCode = await runCommand(tckCommand(url, level, deselect), checkout);
       const xml = await readReport(join(reports, 'junitreport.xml'));
       if (xml === undefined) {
         log(`  ${level}: no JUnit report (run_tck.py exited ${exitCode})`);

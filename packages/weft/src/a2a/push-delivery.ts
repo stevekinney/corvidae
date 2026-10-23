@@ -96,8 +96,12 @@ export async function startPushDelivery(options: StartPushDeliveryOptions): Prom
   }
 }
 
-/** Every delivery to `destinationRef` that is not yet terminal. */
-async function openDeliveries(outbox: Outbox, destinationRef: string): Promise<string[]> {
+/**
+ * Every delivery to `destinationRef` that is not yet terminal, as delivery identifiers.
+ * The scan reads every delivery record the outbox retains, so unlike `Outbox.list` it
+ * cannot miss one behind a page of other destinations' deliveries.
+ */
+export async function openDeliveries(outbox: Outbox, destinationRef: string): Promise<string[]> {
   const { deliveryPrefix } = createOutboxKeys(outbox.namespace, outbox.ownerId);
   const deliveryIds: string[] = [];
   for await (const [key, bytes] of outbox.storage.scan(deliveryPrefix)) {

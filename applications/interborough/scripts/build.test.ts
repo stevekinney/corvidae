@@ -5,15 +5,24 @@
  * `build.slow.test.ts`.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
 import {
   assertCleanBuild,
+  assertSafeOutputDirectory,
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   buildApplication,
@@ -21,10 +30,15 @@ import {
   curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
+  exitWhenStandardInputCloses,
+  PACKAGE_DIRECTORY,
+  parseBuildArguments,
   replaceDirectory,
+  REPOSITORY_ROOT,
   RETAINED_ASSETS_FILE,
   retainPreviousAssets,
   runBuildCommand,
+  runBuildMain,
   wasmPlugin,
 } from './build.ts';
 
@@ -419,5 +433,169 @@ describe('runBuildCommand', () => {
 
     expect(result).toBe(build as unknown as typeof result);
     expect(lines).toEqual([`Built Interborough into ${DEFAULT_BUILD_DIRECTORY} (1 files)`]);
+  });
+
+  it('passes the parsed command-line arguments to the build', async () => {
+    const received: unknown[] = [];
+    await runBuildCommand(
+      () => {},
+      async (options) => {
+        received.push(options);
+        return { directory: 'x', files: [], metafile: {} } as unknown as Awaited<
+          ReturnType<typeof buildApplication>
+        >;
+      },
+      ['--development'],
+    );
+    expect(received).toEqual([{ development: true }]);
+  });
+});
+
+describe('parseBuildArguments', () => {
+  it('builds for production into the default directory when given nothing', () => {
+    expect(parseBuildArguments([])).toEqual({ development: false, exitWithParent: false });
+  });
+
+  it('reads --development and --outdir', () => {
+    expect(parseBuildArguments(['--development', '--outdir', '/tmp/somewhere'])).toEqual({
+      development: true,
+      exitWithParent: false,
+      outdir: '/tmp/somewhere',
+    });
+  });
+
+  it('reads --exit-with-parent, which the build itself never sees', async () => {
+    expect(parseBuildArguments(['--exit-with-parent']).exitWithParent).toBe(true);
+    const received: unknown[] = [];
+    await runBuildCommand(
+      () => {},
+      async (options) => {
+        received.push(options);
+        return { directory: 'x', files: [], metafile: {} } as unknown as Awaited<
+          ReturnType<typeof buildApplication>
+        >;
+      },
+      ['--exit-with-parent'],
+    );
+    expect(received).toEqual([{ development: false }]);
+  });
+
+  it('refuses an unknown argument and an --outdir without a directory', () => {
+    expect(() => parseBuildArguments(['--watch'])).toThrow('Unknown build argument: --watch');
+    expect(() => parseBuildArguments(['--outdir'])).toThrow('--outdir needs a directory');
+  });
+});
+
+describe('the output directory guard', () => {
+  it('rejects a blank or whitespace-only --outdir before anything resolves it', () => {
+    expect(() => parseBuildArguments(['--outdir', ''])).toThrow('--outdir needs a directory');
+    expect(() => parseBuildArguments(['--outdir', '  \t'])).toThrow('--outdir needs a directory');
+    expect(() => assertSafeOutputDirectory('')).toThrow('must not be blank');
+    expect(() => assertSafeOutputDirectory('   ')).toThrow('must not be blank');
+  });
+
+  it('refuses the working directory, however it is spelled', () => {
+    const working = mkdtempSync(join(scratch, 'working-'));
+    expect(() => assertSafeOutputDirectory(working, working)).toThrow('Refusing to build into');
+    expect(() => assertSafeOutputDirectory(join(working, '.'), working)).toThrow('Refusing');
+    expect(() => assertSafeOutputDirectory(dirname(working), working)).toThrow('Refusing');
+  });
+
+  it('refuses the repository root, the application, their parents, and any source directory', () => {
+    for (const refused of [
+      REPOSITORY_ROOT,
+      dirname(REPOSITORY_ROOT),
+      PACKAGE_DIRECTORY,
+      join(PACKAGE_DIRECTORY, 'src'),
+      join(PACKAGE_DIRECTORY, 'scripts'),
+      join(REPOSITORY_ROOT, 'packages'),
+      join(REPOSITORY_ROOT, 'packages', 'weft', 'src'),
+      '/',
+    ]) {
+      expect(() => assertSafeOutputDirectory(refused, scratch)).toThrow('Refusing to build into');
+    }
+  });
+
+  it('refuses a symbolic link that points at the application', () => {
+    const link = join(mkdtempSync(join(scratch, 'link-')), 'build');
+    symlinkSync(PACKAGE_DIRECTORY, link);
+    expect(() => assertSafeOutputDirectory(link, scratch)).toThrow('Refusing to build into');
+  });
+
+  it('allows a directory outside the repository and the default build directory', () => {
+    const outside = join(mkdtempSync(join(scratch, 'outside-')), 'build');
+    expect(assertSafeOutputDirectory(outside, scratch)).toBe(outside);
+    expect(assertSafeOutputDirectory(DEFAULT_BUILD_DIRECTORY, scratch)).toBe(
+      DEFAULT_BUILD_DIRECTORY,
+    );
+  });
+
+  it('builds nothing and creates nothing when buildApplication is given a blank or unsafe directory', async () => {
+    let bundled = false;
+    const bundle = async (): Promise<Bun.BuildOutput> => {
+      bundled = true;
+      throw new Error('The bundler must not run.');
+    };
+    for (const outdir of ['', ' ', PACKAGE_DIRECTORY, join(PACKAGE_DIRECTORY, 'src')]) {
+      const rejection = await buildApplication({ outdir, bundle }).catch((error: unknown) => error);
+      expect(rejection).toBeInstanceOf(Error);
+    }
+    expect(bundled).toBe(false);
+    expect(existsSync(join(PACKAGE_DIRECTORY, 'src', 'host', 'host.ts'))).toBe(true);
+  });
+});
+
+describe('the build process entry', () => {
+  const fakeBuild: typeof buildApplication = async () =>
+    ({ directory: 'x', files: [], metafile: {} }) as unknown as Awaited<
+      ReturnType<typeof buildApplication>
+    >;
+
+  it('builds and does not exit by itself when the parent is not watched', async () => {
+    const exits: number[] = [];
+    const lines: string[] = [];
+    await runBuildMain(
+      [],
+      (code) => void exits.push(code),
+      (line) => void lines.push(line),
+      fakeBuild,
+    );
+    expect(exits).toEqual([]);
+    expect(lines).toHaveLength(1);
+  });
+
+  it('exits 0 after a build that was asked to follow its parent, and 1 once standard input closes', async () => {
+    const exits: number[] = [];
+    let closeInput: () => void = () => {};
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeInput = () => controller.close();
+      },
+    });
+    await runBuildMain(
+      ['--exit-with-parent'],
+      (code) => void exits.push(code),
+      () => {},
+      fakeBuild,
+      input,
+    );
+    expect(exits).toEqual([0]);
+
+    closeInput();
+    await Bun.sleep(10);
+    expect(exits).toEqual([0, 1]);
+  });
+
+  it('removes nothing and exits 1 when standard input closes with no build running', async () => {
+    const exits: number[] = [];
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.close();
+      },
+    });
+    exitWhenStandardInputCloses(input, (code) => void exits.push(code));
+    await Bun.sleep(10);
+    expect(exits).toEqual([1]);
   });
 });
