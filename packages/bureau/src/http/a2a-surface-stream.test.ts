@@ -421,10 +421,21 @@ describe('SubscribeToTask with a surface', () => {
       // The task record's settlement, which triggers the surface store's own freeze, arrives late:
       // held here until the stream has ended.
       const settled = Promise.withResolvers<void>();
+      let released = false;
       const tasks = kit.opened.bureau.tasks;
       const onSettled = tasks.onSettled.bind(tasks);
+      const get = tasks.get.bind(tasks);
       tasks.onSettled = (id, listener) =>
         onSettled(id, (...args) => settled.promise.then(() => listener(...args)));
+      // The record also reads as not yet terminal, so no reader finds the task settled.
+      tasks.get = async (id) => {
+        const view = await get(id);
+        return view !== undefined &&
+          !released &&
+          (view.status === 'completed' || view.status === 'failed' || view.status === 'canceled')
+          ? { ...view, status: 'working' }
+          : view;
+      };
       try {
         const stream = serverSentEvents(await kit.subscribe(taskId));
         await stream.next();
@@ -440,8 +451,10 @@ describe('SubscribeToTask with a surface', () => {
         // revision reached the client first.
         expect(rest.filter(isSurfaceFrame).flatMap(revisionsOf)).toEqual(['panel@2']);
       } finally {
+        released = true;
         settled.resolve();
         tasks.onSettled = onSettled;
+        tasks.get = get;
       }
     });
   });
