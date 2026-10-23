@@ -124,7 +124,7 @@ const SCOPE_DESCRIPTIONS: Readonly<Record<AuthorizationScope, ScopeCatalogEntry>
   'system:admin': {
     scope: 'system:admin',
     description: 'Trigger recovery of stalled workflows and view lease health.',
-    unlocks: 'The recover-all action on Health & lease',
+    unlocks: 'The recover-all action on Health',
   },
 };
 

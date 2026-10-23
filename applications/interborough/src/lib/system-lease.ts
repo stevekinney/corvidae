@@ -1,6 +1,6 @@
 /**
  * Engine ownership-lease health from `weft.system.lease` (`system:read`),
- * read by the System route's Health & lease tab (COR-124). This is the
+ * read by the System route's Health tab (COR-124). This is the
  * serving engine process's last-known lease state: `disabled` when lease
  * ownership is off, `no-lease` before it is held, `healthy` while held, and
  * `contested` once ownership is lost (with the confirmed `deposed` or

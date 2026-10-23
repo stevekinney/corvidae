@@ -151,7 +151,8 @@ describe('DynamicSourcePanel', () => {
     await fireEvent.click(getByRole('button', { name: 'Preload' }));
 
     expect(await findByText(/is installed in the workflow catalog/)).not.toBeNull();
-    expect(await findByText(/describe the responding engine process/)).not.toBeNull();
+    // The panel's notes are behind the help button beside its title, not in the page.
+    expect(getByRole('button', { name: 'About workflow sources' })).not.toBeNull();
     // The diagnostics key is invalidated on every settled outcome, so the
     // operation is called again after the mutation resolves.
     await waitFor(() => {
