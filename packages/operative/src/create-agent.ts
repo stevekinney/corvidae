@@ -48,11 +48,6 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Fields shared by every `CreateAgentOptions` tool-configuration variant.
- * Split out from `CreateAgentOptions` so the exclusive tool-configuration
- * union below can be intersected with it.
- */
-/**
  * How many example prompts an agent may suggest, and how long each may be. One definition for every
  * place that checks them: `createAgent`, an agent file's `examples` frontmatter, and the Bureau's
  * `bureau.agents.list` output. A prompt is a button label on a new chat, so a long one is a
@@ -60,6 +55,11 @@ import type {
  */
 export const AGENT_EXAMPLE_LIMITS = Object.freeze({ maxPrompts: 3, maxLength: 200 });
 
+/**
+ * Fields shared by every `CreateAgentOptions` tool-configuration variant.
+ * Split out from `CreateAgentOptions` so the exclusive tool-configuration
+ * union below can be intersected with it.
+ */
 export interface CreateAgentOptionsBase {
   /**
    * The LLM provider function. REQUIRED — no bureau to inherit from.
