@@ -83,7 +83,8 @@
 }
 
 /* An agent's name is its identifier when it has no other: kebab-case is monospace. */
-[data-identifier] {
+.ib-agent-name[data-identifier],
+.ib-agent__heading h1[data-identifier] {
   font-family: var(--cinder-font-mono);
 }
 
