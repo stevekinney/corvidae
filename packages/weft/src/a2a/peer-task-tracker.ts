@@ -5,7 +5,7 @@
  * @module a2a/peer-task-tracker
  */
 
-import { type Message, type StreamResponse, type Task, TaskState } from '@a2a-js/sdk';
+import { TaskState, type Message, type StreamResponse, type Task } from '@a2a-js/sdk';
 
 import type {
   A2APeerArtifact,
@@ -16,13 +16,14 @@ import type {
   A2APeerTaskState,
 } from './peer-client-types.ts';
 import {
-  foldArtifactUpdate,
-  isStopState,
-  mapArtifact,
-  MAX_PEER_ARTIFACTS,
-  peerStateOf,
-  textOfMessage,
-} from './peer-parts.ts';
+  ingestArtifactUpdate,
+  ingestIdentity,
+  ingestMessageText,
+  ingestStatus,
+  ingestTask,
+  type IngestedStatus,
+} from './peer-ingest.ts';
+import { isStopState } from './peer-parts.ts';
 
 /** One event on a task stream or subscription. */
 export type PeerStreamEvent = StreamResponse;
@@ -41,13 +42,6 @@ function emptyTask(id: string, contextId: string): Task {
     artifacts: [],
     history: [],
     metadata: undefined,
-  };
-}
-
-function bareTask(message: Message): Task {
-  return {
-    ...emptyTask(message.taskId, message.contextId),
-    status: { state: TaskState.TASK_STATE_COMPLETED, message, timestamp: undefined },
   };
 }
 
@@ -143,12 +137,11 @@ export class PeerTaskTracker {
 
   /** Applies a whole task, from `GetTask`, `CancelTask`, or a bare response. */
   applyTask(task: Task): void {
-    // The snapshot keeps identity and status only; content is mapped and bounded as it arrives.
-    this.snapshot = { ...task, artifacts: [], history: [] };
-    this.artifacts = task.artifacts
-      .slice(0, MAX_PEER_ARTIFACTS)
-      .map((artifact) => mapArtifact(artifact, this.artifactLimit));
-    this.setStatus(task.status);
+    const ingested = ingestTask(task, this.artifactLimit);
+    // The snapshot keeps identity only; status, content, and history are bounded on the way in.
+    this.snapshot = emptyTask(ingested.taskId, ingested.contextId);
+    this.artifacts = ingested.artifacts;
+    this.setStatus(ingested.status);
   }
 
   /** Applies one stream event. */
@@ -165,13 +158,12 @@ export class PeerTaskTracker {
       case 'message':
         this.applyMessage(payload.value);
         return;
-      case 'statusUpdate':
-        this.snapshot = {
-          ...(this.snapshot ?? emptyTask(payload.value.taskId, payload.value.contextId)),
-          status: payload.value.status,
-        };
-        this.setStatus(payload.value.status);
+      case 'statusUpdate': {
+        const identity = ingestIdentity(payload.value.taskId, payload.value.contextId);
+        this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
+        this.setStatus(ingestStatus(payload.value.status, this.artifactLimit));
         return;
+      }
       case 'artifactUpdate':
         this.applyArtifact(payload.value);
         return;
@@ -200,9 +192,10 @@ export class PeerTaskTracker {
   }
 
   private applyMessage(message: Message): void {
-    this.lastMessage = textOfMessage(message);
+    this.lastMessage = ingestMessageText(message, this.artifactLimit);
     if (this.snapshot !== undefined) return;
-    this.snapshot = bareTask(message);
+    const identity = ingestIdentity(message.taskId, message.contextId);
+    this.snapshot = emptyTask(identity.taskId, identity.contextId);
     this.current = 'completed';
     this.emit();
   }
@@ -214,8 +207,9 @@ export class PeerTaskTracker {
     append: boolean;
   }): void {
     if (update.artifact === undefined) return;
-    this.snapshot ??= emptyTask(update.taskId, update.contextId);
-    this.artifacts = foldArtifactUpdate(
+    const identity = ingestIdentity(update.taskId, update.contextId);
+    this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
+    this.artifacts = ingestArtifactUpdate(
       this.artifacts,
       update.artifact,
       update.append,
@@ -223,11 +217,11 @@ export class PeerTaskTracker {
     );
   }
 
-  private setStatus(status: Task['status']): void {
-    this.current = peerStateOf(status?.state);
-    this.stamp = stampOf(this.current, status);
+  private setStatus(status: IngestedStatus): void {
+    this.current = status.state;
+    this.stamp = status.stamp;
     if (this.headSeen && this.stamp !== this.headStamp) this.fresh = true;
-    if (status?.message !== undefined) this.lastMessage = textOfMessage(status.message);
+    if (status.text !== undefined) this.lastMessage = status.text;
     this.emit();
   }
 
@@ -239,10 +233,6 @@ export class PeerTaskTracker {
       message: this.lastMessage,
     });
   }
-}
-
-function stampOf(state: A2APeerTaskState, status: Task['status']): string {
-  return `${state}|${status?.timestamp ?? ''}|${status?.message?.messageId ?? ''}`;
 }
 
 function stopStateOf(state: A2APeerTaskState): A2APeerStopState {

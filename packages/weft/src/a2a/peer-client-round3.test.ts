@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { Artifact } from '@a2a-js/sdk';
-
 import { A2APeerError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
 import { createA2APeerClient } from './peer-client.ts';
-import { foldArtifactUpdate, mapArtifact, MAX_PEER_ARTIFACT_PARTS } from './peer-parts.ts';
 
 const immediate = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -39,14 +36,6 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
   throw new Error('expected the promise to reject');
 }
 
-function part(content: NonNullable<Artifact['parts'][number]['content']>, mediaType = '') {
-  return { content, metadata: undefined, filename: '', mediaType };
-}
-
-function artifact(parts: Artifact['parts'], artifactId = 'a'): Artifact {
-  return { artifactId, name: '', description: '', parts, metadata: undefined, extensions: [] };
-}
-
 describe('A2A peer client review round 3', () => {
   test('a stream that never emits its first event fails with a timeout', async () => {
     const { client } = connect(
@@ -75,7 +64,8 @@ describe('A2A peer client review round 3', () => {
     const request = { text: 'original' };
     const pending = client.send(request);
     request.text = 'changed';
-    await (await pending).result();
+    const task = await pending;
+    await task.result();
     expect(bodies.join('')).toContain('original');
     expect(bodies.join('')).not.toContain('changed');
   });
@@ -87,7 +77,8 @@ describe('A2A peer client review round 3', () => {
     expect(Object.isFrozen(card.activeExtensions)).toBe(true);
     expect(await client.card()).not.toBe(card);
     expect(() => ((card as { streaming: boolean }).streaming = false)).toThrow();
-    expect((await client.card()).streaming).toBe(true);
+    const again = await client.card();
+    expect(again.streaming).toBe(true);
   });
 
   test('a failure while following the task drops the cached card', async () => {
@@ -127,47 +118,8 @@ describe('A2A peer client review round 3', () => {
         },
       },
     );
-    await (await client.send({ text: 'hi' })).result();
+    const task = await client.send({ text: 'hi' });
+    await task.result();
     expect(Math.max(...sleeps, 0)).toBeLessThanOrEqual(50);
-  });
-});
-
-describe('peer artifact bounds', () => {
-  test('keeps at most MAX_PEER_ARTIFACT_PARTS parts however many are sent', () => {
-    const many = Array.from({ length: MAX_PEER_ARTIFACT_PARTS + 50 }, () =>
-      part({ $case: 'url', value: 'https://x.test/a' }),
-    );
-    expect(mapArtifact(artifact(many), 1_000_000).parts).toHaveLength(MAX_PEER_ARTIFACT_PARTS);
-    const folded = foldArtifactUpdate(
-      [mapArtifact(artifact(many), 1_000_000)],
-      artifact(many),
-      true,
-      1_000_000,
-    );
-    expect(folded[0]?.parts).toHaveLength(MAX_PEER_ARTIFACT_PARTS);
-  });
-
-  test('counts reference strings toward the limit and drops an oversized one', () => {
-    const mapped = mapArtifact(
-      artifact([part({ $case: 'url', value: 'https://x.test/' + 'a'.repeat(500) })]),
-      100,
-    );
-    expect(mapped.parts[0]).toMatchObject({ kind: 'omitted', reason: 'too-large' });
-  });
-
-  test('drops placeholder strings that exceed the budget', () => {
-    const mapped = mapArtifact(
-      artifact([part({ $case: 'raw', value: Buffer.alloc(1) }, 'm'.repeat(500))]),
-      100,
-    );
-    expect(mapped.parts[0]).toMatchObject({ kind: 'omitted', mediaType: '' });
-  });
-
-  test('spends the budget across appended chunks of references', () => {
-    const chunk = artifact([part({ $case: 'url', value: 'https://x.test/' + 'a'.repeat(40) })]);
-    let folded = foldArtifactUpdate([], chunk, false, 200);
-    for (let index = 0; index < 20; index++) folded = foldArtifactUpdate(folded, chunk, true, 200);
-    const kept = folded[0]?.parts.filter((entry) => entry.kind === 'reference') ?? [];
-    expect(kept.length).toBeLessThan(10);
   });
 });

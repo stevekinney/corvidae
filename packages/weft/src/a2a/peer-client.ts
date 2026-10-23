@@ -25,7 +25,7 @@ import {
 } from './peer-client-types.ts';
 import { classifyPeerError } from './peer-errors.ts';
 import { checkEgress, createPeerFetch, type PeerAuthenticate } from './peer-fetch.ts';
-import { DEFAULT_PEER_ARTIFACT_LIMIT } from './peer-parts.ts';
+import { DEFAULT_PEER_ARTIFACT_LIMIT, ingestCard } from './peer-ingest.ts';
 import { retryRequest, type PeerRetryPolicy } from './peer-retry.ts';
 import { startPeerTask } from './peer-task.ts';
 import { requireTimerDelayMs } from './timer-delay.ts';
@@ -178,7 +178,7 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
 
   async function loadCard(): Promise<Loaded> {
     const resolver = new DefaultAgentCardResolver({ fetchImpl: peerFetch, path: CARD_PATH });
-    const raw = await readCard(resolver);
+    const raw = ingestCard(await readCard(resolver));
     const { selected, streaming, activeExtensions } = validatePeerCard(
       raw,
       supported,

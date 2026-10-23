@@ -9,6 +9,7 @@
 import { type Artifact, type Message, type Part, TaskState } from '@a2a-js/sdk';
 
 import type { A2APeerArtifact, A2APeerPart, A2APeerTaskState } from './peer-client-types.ts';
+import { A2APeerError } from './peer-client-types.ts';
 
 /** The largest artifact content, in UTF-16 code units, the client keeps per artifact. */
 export const DEFAULT_PEER_ARTIFACT_LIMIT = 1_048_576;
@@ -51,6 +52,9 @@ function sizeOf(value: unknown): number {
     return Number.POSITIVE_INFINITY;
   }
 }
+
+/** The longest artifact identifier accepted. */
+const MAX_ARTIFACT_ID_LENGTH = 1024;
 
 /** The most parts one artifact keeps, whatever their size. */
 export const MAX_PEER_ARTIFACT_PARTS = 256;
@@ -133,7 +137,23 @@ export function mapArtifact(
   existingParts = 0,
   chargeHeader = true,
 ): A2APeerArtifact {
-  let remaining = Math.max(0, limit - used - (chargeHeader ? headerSize(artifact) : 0));
+  if (artifact.artifactId.length > MAX_ARTIFACT_ID_LENGTH) {
+    throw new A2APeerError(
+      'protocol',
+      `The peer sent an artifact id longer than ${MAX_ARTIFACT_ID_LENGTH} characters.`,
+    );
+  }
+  let remaining = Math.max(0, limit - used);
+  // The header strings are retained, so they spend the budget first; a long name is cut.
+  let name = artifact.name;
+  let description = artifact.description;
+  if (chargeHeader) {
+    remaining = Math.max(0, remaining - artifact.artifactId.length);
+    name = name.slice(0, remaining);
+    remaining -= name.length;
+    description = description.slice(0, remaining);
+    remaining -= description.length;
+  }
   const room = Math.max(0, MAX_PEER_ARTIFACT_PARTS - existingParts);
   const parts: A2APeerPart[] = [];
   for (const part of artifact.parts.slice(0, room)) {
@@ -141,16 +161,8 @@ export function mapArtifact(
     remaining -= mapped.size;
     parts.push(mapped.part);
   }
-  return {
-    artifactId: artifact.artifactId,
-    name: artifact.name,
-    description: artifact.description,
-    parts,
-  };
+  return { artifactId: artifact.artifactId, name, description, parts };
 }
-
-/** The most artifacts one task keeps. */
-export const MAX_PEER_ARTIFACTS = 256;
 
 /**
  * Folds an artifact update into the mapped `artifacts`, mapping it first so the content kept
@@ -162,11 +174,12 @@ export function foldArtifactUpdate(
   update: Artifact,
   append: boolean,
   limit: number,
+  maxArtifacts: number,
 ): A2APeerArtifact[] {
   const index = artifacts.findIndex((entry) => entry.artifactId === update.artifactId);
   const existing = index === -1 ? undefined : artifacts[index];
   if (existing === undefined) {
-    if (artifacts.length >= MAX_PEER_ARTIFACTS) return [...artifacts];
+    if (artifacts.length >= maxArtifacts) return [...artifacts];
     return [...artifacts, mapArtifact(update, limit)];
   }
   const next = [...artifacts];
