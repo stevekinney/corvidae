@@ -22,7 +22,7 @@ test('operator bulk-retries every failed workflow with type-to-confirm', async (
   page,
   checkA11y,
 }) => {
-  await page.goto('/runs');
+  await page.goto('/workflows/payment-failing/runs');
 
   await page
     .getByRole('group', { name: 'Filter by status' })
