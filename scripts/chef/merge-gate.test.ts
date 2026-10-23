@@ -99,6 +99,8 @@ interface World {
   mergeCommit?: string | null;
   diffCode?: number;
   fetchCodes?: number[];
+  /** The stderr of a failed fetch; a generic network error unless a test says otherwise. */
+  fetchStderr?: string;
   /** `git merge-tree --write-tree` exit code; 1 (a conflict) unless a test says otherwise. */
   mergeTreeCode?: number;
   /** Files changed from the merge base to HEAD, and from the merge base to origin/main. */
@@ -131,7 +133,11 @@ function fake(world: World = {}) {
       if (rest[0] === 'fetch') {
         const code = world.fetchCodes?.[Math.min(fetchCall, world.fetchCodes.length - 1)] ?? 0;
         fetchCall += 1;
-        return { code, stdout: '', stderr: code === 0 ? '' : 'fatal: unable to access' };
+        return {
+          code,
+          stdout: '',
+          stderr: code === 0 ? '' : (world.fetchStderr ?? 'fatal: unable to access'),
+        };
       }
       if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
         return { code: 0, stdout: `${world.mergedTree ?? MERGE_TREE}\n`, stderr: '' };
@@ -494,6 +500,35 @@ describe('mergeGate', () => {
     expect(mergeGate(options, { runner: fake({ fetchCodes: [0, 128] }).runner }).failedStep).toBe(
       'refetch',
     );
+  });
+
+  test('a fetch that loses a ref-lock race is retried, and any other failure is not', () => {
+    const lockStderr = "fatal: cannot lock ref 'refs/remotes/origin/main': is at a but expected b";
+    const fetches = (calls: string[][]) => calls.filter((call) => call[1] === 'fetch').length;
+    const sleeps: number[] = [];
+    const retried = fake({ fetchCodes: [128, 128, 0], fetchStderr: lockStderr });
+    const recovered = mergeGate(options, {
+      runner: retried.runner,
+      sleep: (milliseconds) => sleeps.push(milliseconds),
+    });
+    expect(recovered.failedStep).not.toBe('fetch');
+    expect(sleeps).toHaveLength(2);
+    for (const milliseconds of sleeps) {
+      expect(milliseconds).toBeGreaterThanOrEqual(1_000);
+      expect(milliseconds).toBeLessThan(2_000);
+    }
+    const stuck = fake({ fetchCodes: [128], fetchStderr: lockStderr });
+    expect(mergeGate(options, { runner: stuck.runner, sleep: () => undefined }).failedStep).toBe(
+      'fetch',
+    );
+    expect(fetches(stuck.calls)).toBe(3);
+    const refused = fake({ fetchCodes: [128] });
+    const noSleep: number[] = [];
+    expect(
+      mergeGate(options, { runner: refused.runner, sleep: (ms) => noSleep.push(ms) }).failedStep,
+    ).toBe('fetch');
+    expect(fetches(refused.calls)).toBe(1);
+    expect(noSleep).toEqual([]);
   });
 
   test('a failed comment or merge is named and nothing later runs', () => {
