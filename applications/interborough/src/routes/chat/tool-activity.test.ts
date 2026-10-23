@@ -1,0 +1,81 @@
+import type { ConversationHistory } from '@lostgradient/chat';
+import { describe, expect, test } from 'bun:test';
+
+import { groupSummary, toolGroups, type ToolCallEntry } from './tool-activity.ts';
+
+type Row = ConversationHistory['messages'][string];
+
+const row = (value: Record<string, unknown>): Row =>
+  ({ role: 'assistant', content: '', createdAt: '2026-10-23T00:00:00.000Z', ...value }) as Row;
+
+function conversation(...rows: Row[]): ConversationHistory {
+  return {
+    schemaVersion: 4,
+    id: 't',
+    status: 'active',
+    metadata: {},
+    ids: rows.map((entry) => entry.id),
+    messages: Object.fromEntries(rows.map((entry) => [entry.id, entry])),
+    createdAt: '2026-10-23T00:00:00.000Z',
+    updatedAt: '2026-10-23T00:00:00.000Z',
+  } as ConversationHistory;
+}
+
+const call = (id: string, callId: string, name: string, args: unknown = {}) =>
+  row({ id, role: 'tool-call', toolCall: { id: callId, name, arguments: args } });
+const result = (id: string, callId: string, outcome: string, content: unknown = null) =>
+  row({ id, role: 'tool-result', toolResult: { callId, outcome, content } });
+
+describe('toolGroups', () => {
+  const history = conversation(
+    row({ id: 'u1', role: 'user', content: 'Refund it' }),
+    call('s0', 'c1', 'lookup-order', { orderId: 'o1' }),
+    result('s0:r', 'c1', 'success', { status: 'delivered' }),
+    call('s1', 'c2', 'issue-refund', { orderId: 'o1' }),
+    result('s1:r', 'c2', 'action_required'),
+    row({ id: 'a1', content: 'Done.' }),
+  );
+
+  test('folds back-to-back tool rows into the group of the first, which renders it alone', () => {
+    const { groups, absorbed } = toolGroups(history);
+    expect([...groups.keys()]).toEqual(['s0']);
+    expect(groups.get('s0')?.messageIds).toEqual(['s0', 's1']);
+    expect([...absorbed]).toEqual(['s1']);
+  });
+
+  test('reads where each call stands from its result', () => {
+    const entries = toolGroups(history).groups.get('s0')?.entries ?? [];
+    expect(entries.map((entry) => [entry.name, entry.state])).toEqual([
+      ['lookup-order', 'done'],
+      ['issue-refund', 'needs-you'],
+    ]);
+    expect(entries[0]?.summary).toBe('status delivered');
+  });
+
+  test('a message between two tool rows ends the group', () => {
+    const { groups } = toolGroups(
+      conversation(call('s0', 'c1', 'a'), row({ id: 'a1', content: 'Hm.' }), call('s1', 'c2', 'b')),
+    );
+    expect([...groups.keys()]).toEqual(['s0', 's1']);
+  });
+});
+
+describe('groupSummary', () => {
+  const entry = (state: ToolCallEntry['state']): ToolCallEntry => ({
+    callId: state,
+    name: 't',
+    arguments: {},
+    state,
+    summary: '',
+    result: undefined,
+  });
+
+  test('counts the tools, and says how many need a decision or failed', () => {
+    expect(groupSummary([entry('done'), entry('done')])).toBe('Used 2 tools');
+    expect(groupSummary([entry('done'), entry('needs-you')])).toBe('Used 2 tools · 1 needs you');
+    expect(groupSummary([entry('failed'), entry('done'), entry('done')])).toBe(
+      'Used 3 tools · 1 failed',
+    );
+    expect(groupSummary([entry('done')])).toBe('Used 1 tool');
+  });
+});

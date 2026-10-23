@@ -632,9 +632,8 @@
 }
 
 .ib-reviews__count {
-  margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
+  display: inline-flex;
+  margin-inline-start: var(--cinder-space-2);
 }
 
 .ib-reviews__list {
@@ -651,11 +650,19 @@
   flex-direction: column;
   gap: var(--cinder-space-1);
   min-width: 0;
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  border-radius: var(--cinder-radius-md);
+  background: var(--cinder-status-warning-background);
+}
+
+/* The item is the tinted band, so the decision inside it adds none of its own. */
+.ib-review .ib-decision {
+  padding: 0;
+  background: transparent;
 }
 
 .ib-review__origin {
   margin: 0;
-  padding-inline: var(--cinder-space-3);
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
 }
@@ -673,5 +680,5 @@
 }
 
 .ib-review__details {
-  padding-inline: var(--cinder-space-3);
+  margin: 0;
 }

@@ -187,7 +187,7 @@
           {#snippet leading()}
             <Avatar size="sm" name={row.agentName ?? '?'} />
           {/snippet}
-          {#snippet title()}{row.agentName ?? TASK_COPY.unknownAgent}{/snippet}
+          {#snippet title()}{#if row.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier">{row.agentName}</code>{/if}{/snippet}
           {#snippet description()}
             {#if row.origin.kind === 'chat'}
               <a

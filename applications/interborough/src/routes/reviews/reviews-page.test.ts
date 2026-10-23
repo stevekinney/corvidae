@@ -64,10 +64,7 @@ const APPROVAL = toolApprovalFixture({ requestedAt: Date.now() - 120_000 });
 const QUESTION = humanWaitFixture({ sessionId: 'session-2', requestedAt: Date.now() - 90_000 });
 
 function countOf(container: HTMLElement): string | undefined {
-  return container
-    .querySelector('.ib-reviews__count')
-    ?.textContent?.replace(/\s+/g, ' ')
-    .trim();
+  return container.querySelector('.ib-reviews__count')?.getAttribute('aria-label') ?? undefined;
 }
 
 function rows(container: HTMLElement): HTMLElement[] {

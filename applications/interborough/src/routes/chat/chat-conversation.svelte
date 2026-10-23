@@ -317,7 +317,7 @@
       <a
         class="weft-chat-header__agent"
         href={router.href(agentPath(agent))}
-        onclick={(event) => openAgent(event, agent)}>{agent}</a
+        onclick={(event) => openAgent(event, agent)}><code class="ib-identifier">{agent}</code></a
       >
       {#if context.data?.parentContextId}
         <BranchOrigin parentId={context.data.parentContextId} />

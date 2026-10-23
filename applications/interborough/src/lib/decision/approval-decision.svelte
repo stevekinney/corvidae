@@ -8,6 +8,7 @@
   import { Button, Input } from '@lostgradient/cinder';
 
   import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import IdentifierText from '../identifier-text.svelte';
 
   interface ApprovalDecisionProps {
     /** What is being asked, ending in a question mark. */
@@ -25,7 +26,7 @@
 </script>
 
 <div class="ib-decision" data-kind="approval">
-  <p class="ib-decision__question" id={`${id}-question`}>{question}</p>
+  <p class="ib-decision__question" id={`${id}-question`}><IdentifierText text={question} /></p>
   {#if withNote}
     <div class="ib-decision__note">
       <Input

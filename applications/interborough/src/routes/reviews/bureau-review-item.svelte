@@ -116,7 +116,7 @@
     </div>
   {/if}
   <p class="ib-review__origin">
-    <span>{agent}</span>
+    <code class="ib-identifier">{agent}</code>
     {#if review.sessionId !== undefined && chat.data}
       · <span>{chat.data.title ?? REVIEWS_COPY.untitledChat}</span>
     {/if}

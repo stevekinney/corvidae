@@ -866,7 +866,7 @@ export const TASK_COPY = {
   statusMessageFact: 'Status message',
   createdFact: 'Started',
   updatedFact: 'Updated',
-  openChat: 'Open the chat',
+  openChat: 'Open chat',
   /** The link on a run's page to the task the run is, when it is one. */
   viewTask: 'View the task',
   answerHeading: 'Answer',

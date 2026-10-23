@@ -76,10 +76,7 @@ function navigationLabel(container: HTMLElement): string {
 }
 
 function countOf(container: HTMLElement): string | undefined {
-  return container
-    .querySelector('.ib-reviews__count')
-    ?.textContent?.replace(/\s+/g, ' ')
-    .trim();
+  return container.querySelector('.ib-reviews__count')?.getAttribute('aria-label') ?? undefined;
 }
 
 const approval = (id: string) => toolApprovalFixture({ id, runId: `run-${id}` });

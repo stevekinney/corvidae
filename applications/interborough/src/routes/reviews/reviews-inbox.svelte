@@ -42,6 +42,8 @@
       reason: string | undefined,
     ) => void;
     readonly onAnswer: (review: BureauHumanWait, answer: string) => void;
+    /** How many things wait on the person, for the heading's badge. */
+    waiting?: number;
   }
 
   let {
@@ -54,6 +56,7 @@
     outcome,
     onResolve,
     onAnswer,
+    waiting = $bindable(0),
   }: ReviewsInboxProps = $props();
 
   const principalStore = getPrincipalStore();
@@ -75,7 +78,9 @@
   const engineEntries = $derived(
     weftEnabled ? partitionPendingReviews(pendingEntriesOnly(pendingQuery.data ?? []), now).pending : [],
   );
-  const waiting = $derived(bureauItems.length + engineEntries.length);
+  $effect(() => {
+    waiting = bureauItems.length + engineEntries.length;
+  });
 
   /** A query that failed shows the fault banner, and one source failing does not hide the other's reviews. */
   const faults = $derived<readonly { error: unknown; retry: () => void }[]>(
@@ -100,7 +105,6 @@
       <EmptyState title={REVIEWS_COPY.allCaughtUp} description={REVIEWS_COPY.nothingWaiting} />
     {/if}
     {#if bureauItems.length > 0}
-      <p class="ib-reviews__count" role="status">{REVIEWS_COPY.waiting(waiting)}</p>
       <ul class="ib-reviews__list" aria-label={REVIEWS_COPY.heading}>
         {#each bureauItems as review (review.id)}
           <BureauReviewItem

@@ -165,7 +165,9 @@
     {@const presentation = taskStatePresentation(current.status)}
     <header class="ib-run__header">
       <div class="ib-run__heading">
-        <h1 id="ib-run-title" class="ib-run__title">{current.agentName ?? TASK_COPY.unknownAgent}</h1>
+        <h1 id="ib-run-title" class="ib-run__title">
+          {#if current.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier">{current.agentName}</code>{/if}
+        </h1>
         <Badge variant={presentation.variant}>{presentation.label}</Badge>
       </div>
       <div class="ib-run__actions">
@@ -218,7 +220,7 @@
     )}
     <header class="ib-run__header">
       <div class="ib-run__heading">
-        <h1 id="ib-run-title" class="ib-run__title">{attempt.goal.agentName}</h1>
+        <h1 id="ib-run-title" class="ib-run__title"><code class="ib-identifier">{attempt.goal.agentName}</code></h1>
         <Badge variant={presentation.variant}>{presentation.label}</Badge>
       </div>
       <p class="ib-run__origin">

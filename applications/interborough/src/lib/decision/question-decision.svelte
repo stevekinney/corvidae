@@ -6,6 +6,7 @@
   import { Alert, Button, Input } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
+  import IdentifierText from '../identifier-text.svelte';
 
   interface QuestionDecisionProps {
     id: string;
@@ -27,7 +28,7 @@
 </script>
 
 <form class="ib-decision" data-kind="question" onsubmit={submit}>
-  <p class="ib-decision__question" id={`${id}-question`}>{question}</p>
+  <p class="ib-decision__question" id={`${id}-question`}><IdentifierText text={question} /></p>
   <div class="ib-decision__answer">
     <Input
       id={`${id}-answer`}

@@ -48,7 +48,7 @@ test.describe('a tool approval', () => {
     await expect(page.getByText(/requires approval/)).toHaveCount(0);
     await expect(page.getByText('Decided', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Timed out', { exact: true })).toHaveCount(0);
-    await expect(page.getByLabel('Live')).toHaveCount(0);
+    await expect(page.locator('main').getByLabel('Live', { exact: true })).toHaveCount(0);
     await checkA11y('a tool approval in the inbox');
     await row.getByRole('button', { name: 'Approve' }).click();
 
@@ -118,7 +118,7 @@ test.describe('a tool approval', () => {
     await page.getByRole('button', { name: 'Show' }).click();
     await expect(page.getByText('issue-refund').first()).toBeVisible();
     await page.getByRole('button', { name: 'Details' }).last().click();
-    await expect(page.getByText('refundedCents')).toBeVisible();
+    await expect(page.locator('dt', { hasText: 'Result: refundedCents' })).toBeVisible();
   });
 
   test('decided in the inbox updates a chat that is already open, with no reload', async ({

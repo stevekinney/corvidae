@@ -534,7 +534,7 @@ describe('a run that waits on a tool approval', () => {
     await sendMessage(container, 'Refund it');
     // The approval is one flat row with the question it asks, which is the approval's own message
     // here. No run identifier and no policy string reaches the page.
-    expect(await findByText('Refund order-1001?')).not.toBeNull();
+    await waitFor(() => expect(container.querySelector('.ib-decision__question')?.textContent).toBe('Refund order-1001?'));
     expect(container.textContent).not.toContain('requires approval');
     expect(container.textContent).not.toMatch(/run-\d/);
 

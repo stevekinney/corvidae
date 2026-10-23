@@ -7,7 +7,7 @@
    * `reviews:read`, which is also what decides whether they count; `reviews:write` is what its
    * decision form needs, and the form disables its own submit without it.
    */
-  import { Alert } from '@lostgradient/cinder';
+  import { Alert, Badge } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
   import type { BureauHumanWait, BureauReview, ReviewDecision } from '../../lib/bureau-reviews.ts';
@@ -60,6 +60,9 @@
       },
     });
   }
+
+  /** How many things wait on the person, which the inbox reports for the heading's badge. */
+  let waiting = $state(0);
 
   /** What became of the last decision or answer on a Bureau review, when it did not simply take effect. */
   let outcome = $state<ReviewOutcome | undefined>(undefined);
@@ -131,6 +134,11 @@
 <div class="weft-reviews-route">
   <div class="weft-reviews-route__header">
     <h1 class="weft-reviews-route__title">{REVIEWS_COPY.heading}</h1>
+    {#if waiting > 0}
+      <span class="ib-reviews__count" role="status" aria-label={REVIEWS_COPY.waiting(waiting)}>
+        <Badge variant="warning">{waiting}</Badge>
+      </span>
+    {/if}
   </div>
 
   {#if notWritten}
@@ -141,6 +149,7 @@
   {/if}
 
   <ReviewsInbox
+    bind:waiting
     {bureauQuery}
     {pendingQuery}
     {weftEnabled}
