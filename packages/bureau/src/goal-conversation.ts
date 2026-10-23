@@ -70,6 +70,7 @@ import {
   reconcileTerminalRunRef,
   type RunRef,
   type SessionStore,
+  SESSION_ORIGIN_METADATA_KEY,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
@@ -186,6 +187,8 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
 export function goalSessionMetadata(record: GoalState): Record<string, JSONValue> {
   return {
     goalRunId: record.goalRunId,
+    // COR-1645: a goal's session is not a chat a person started, so a chat list leaves it out.
+    [SESSION_ORIGIN_METADATA_KEY]: 'goal',
     [SESSION_OWNER_METADATA_KEY]: ownerOrLocal(record.principal),
     ...(record.principal === undefined
       ? {}

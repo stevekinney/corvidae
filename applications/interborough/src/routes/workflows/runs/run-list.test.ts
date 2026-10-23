@@ -15,6 +15,7 @@ import {
   goalFixture,
   taskFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
+import { SCHEDULER_ACTOR, type TaskView } from '../../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -31,12 +32,13 @@ afterEach(() => {
   stub = undefined;
 });
 
-function open(path: string) {
+function open(path: string, extraTasks: readonly TaskView[] = []) {
   stub = installBureauWorld(
     emptyBureauWorld({
       tasks: [
         taskFixture({ id: 'run-1', contextId: 'chat-1', agentName: 'echo', status: 'completed' }),
         taskFixture({ id: 'run-2', contextId: 'handle-2', agentName: 'echo', status: 'failed' }),
+        ...extraTasks,
       ],
     }),
   );
@@ -128,5 +130,36 @@ describe('opening from a row', () => {
     const goal = await again.findByRole('link', { name: `goal-1 (${TASK_COPY.goal})` });
     await fireEvent.click(goal, { button: 0 });
     expect(router.pathname).toBe('/goals');
+  });
+
+  test('a schedule’s fire opens its session in place, whether or not the caller lists that session', async () => {
+    const view = open('/runs', [
+      taskFixture({
+        id: 'run-fire',
+        contextId: 'chat-1',
+        agentName: 'echo',
+        actor: SCHEDULER_ACTOR,
+      }),
+      taskFixture({
+        id: 'run-other',
+        contextId: 'other-owner-fire',
+        agentName: 'echo',
+        actor: SCHEDULER_ACTOR,
+      }),
+    ]);
+
+    await waitFor(() => expect(rowIds(view.container)).toContain('run-other'));
+    const scheduled = (id: string) =>
+      view.container.querySelector<HTMLAnchorElement>(`[data-run="${id}"] .ib-run-row__what a`);
+    // A fire in a chat session keeps that session's title, and is the schedule's, not a chat's.
+    expect(scheduled('run-fire')?.textContent).toBe('Plan the week');
+    expect(
+      view.container.querySelector(`[data-run="run-fire"] .ib-run-row__what`)?.textContent,
+    ).toContain(`(${TASK_COPY.schedule})`);
+    const other = scheduled('run-other');
+    if (other === null) throw new Error('The fire’s link did not render.');
+    expect(other.textContent).toBe(TASK_COPY.untitledChat);
+    expect(await fireEvent.click(other, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('other-owner-fire');
   });
 });

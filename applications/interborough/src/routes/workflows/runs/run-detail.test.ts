@@ -11,12 +11,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
+  contextDetailFixture,
   goalAttemptFixture,
   goalFixture,
   taskFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
-import type { TaskView } from '../../../lib/bureau-tasks.ts';
+import { SCHEDULER_ACTOR, type TaskView } from '../../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -95,6 +96,89 @@ describe('where a run came from', () => {
     expect(await fireEvent.click(link, { button: 0, shiftKey: true })).toBe(true);
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('session-1');
+  });
+
+  test('a run a schedule’s fire started is said so, and opens the session rather than a chat', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          contextId: 'fire-1',
+          agentName: 'echo',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
+    });
+    stub?.on('bureau.contexts.get', () => ({
+      ...contextDetailFixture('fire-1', { title: 'Daily summary' }),
+      origin: 'schedule',
+    }));
+
+    const sessionLink = await view.findByRole('link', { name: TASK_COPY.openSession });
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
+    );
+    expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
+    expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('fire-1');
+  });
+
+  test('a fire that continued a chat session is still said to be a schedule’s', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          contextId: 'chat-1',
+          agentName: 'echo',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
+    });
+    stub?.on('bureau.contexts.get', () => ({
+      ...contextDetailFixture('chat-1', { title: 'Refund order 1234' }),
+      origin: 'chat',
+    }));
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
+    );
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedFromChat);
+  });
+
+  test('a run a person started in a session a schedule created is said to be from a chat', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', contextId: 'fire-1', agentName: 'echo' })],
+    });
+    stub?.on('bureau.contexts.get', () => ({
+      ...contextDetailFixture('fire-1', { title: 'Daily summary' }),
+      origin: 'schedule',
+    }));
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromChat),
+    );
+  });
+
+  test('a fire whose session the caller cannot read is still said to be a schedule’s', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          contextId: 'other-owner-fire',
+          agentName: 'echo',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
+    });
+    stub?.on('bureau.contexts.get', () => {
+      throw new Error('No such chat');
+    });
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
+    );
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedFromChat);
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedDirectly);
   });
 
   test('a run no chat has is said to have started directly, and an unnamed agent is “An agent”', async () => {
@@ -211,6 +295,34 @@ describe('a goal’s attempt', () => {
       TASK_COPY.states[state],
     );
     expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
+  });
+
+  test('opens the session the attempt ran in, which Chat does not list', async () => {
+    const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
+    stub?.on('bureau.contexts.get', (params) => ({
+      ...contextDetailFixture(String(params['contextId'])),
+      origin: 'goal',
+    }));
+
+    const link = (await view.findByRole('link', {
+      name: TASK_COPY.openSession,
+    })) as HTMLAnchorElement;
+    expect(stub?.callsTo('bureau.contexts.get')[0]?.params).toEqual({
+      contextId: 'goal-session-goal-1-a0',
+    });
+    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('goal-session-goal-1-a0');
+  });
+
+  test('offers no session when the Bureau no longer has it', async () => {
+    const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
+    stub?.on('bureau.contexts.get', () => {
+      throw new Error('No such session');
+    });
+
+    await view.findByRole('heading', { level: 1, name: 'planner' });
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
+    expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });
 
   test('names the goal, which opens in place', async () => {

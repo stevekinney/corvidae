@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/chat`: the caller's sessions across agents, newest update first, with load-more paging. The
+   * `/chat`: the sessions the caller started, across agents, newest update first, with load-more paging. The
    * rows are `ChatConversationList`'s, and opening one is `/chat/:sessionId`. The view frame has
    * already settled whether there is anything to list (`app/view-probes.ts`), so an empty list
    * never reaches this page, and New chat is here for the list that is not empty.
@@ -23,7 +23,7 @@
     () => ({
       queryKey: queryKeys.contexts.list(null),
       queryFn: ({ pageParam, signal }) =>
-        listContexts({ limit: PAGE_SIZE, offset: pageParam }, { signal }),
+        listContexts({ origin: 'chat', limit: PAGE_SIZE, offset: pageParam }, { signal }),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
       retry: false,
