@@ -77,7 +77,7 @@ import {
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
-import { mediaOutputModesOf } from './a2a-agent-card.ts';
+import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
@@ -828,10 +828,16 @@ function createA2AMount(
       const agent = bureau.agents.find(agentName) as
         { readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined } | undefined;
       if (described === undefined || agent === undefined) return undefined;
+      const descriptors = readGenerationProfile(
+        agent as Parameters<typeof readGenerationProfile>[0],
+      ).descriptors;
       return {
-        outputModes: mediaOutputModesOf(
-          readGenerationProfile(agent as Parameters<typeof readGenerationProfile>[0]).descriptors,
-        ),
+        outputModes: mediaOutputModesOf(descriptors),
+        // A file part is a managed asset: without the asset service none can be read.
+        inputModes:
+          bureau.assets === undefined
+            ? undefined
+            : mediaInputModesOf(descriptors, bureau.assets.policy.allowedMediaTypes),
         catalogName: agentName,
         displayName: described.displayName,
         description: described.description ?? undefined,

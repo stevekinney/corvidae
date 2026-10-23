@@ -65,6 +65,7 @@ import {
   STATE_HEADERS_KEY,
   type User,
 } from '@a2a-js/sdk/server';
+import type { SessionInputAdmissionRequest } from '@lostgradient/operative';
 import {
   createDefaultRuntimeServices,
   type RuntimeServices,
@@ -86,7 +87,20 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
+import { A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
+import {
+  type AdmittedAsset,
+  admitInline,
+  contentOf,
+  discardAssets,
+  historyMessageOf,
+  holdsFileParts,
+  holdsMedia,
+  type InboundContext,
+  type InboundPlan,
+  modeAccepted,
+  planInbound,
+} from './a2a-inbound-parts.ts';
 import { type A2ATaskRecord, type A2ATaskRecords, type A2AWireMessage } from './a2a-task-record.ts';
 import {
   bureauStateOf,
@@ -153,6 +167,12 @@ export type A2ASendClaim = {
   readonly pushOwed?: boolean | undefined;
   /** For a send that embeds a push configuration: the cursor its checkpoint starts at. */
   readonly pushCursor?: string | undefined;
+  /**
+   * For a send whose inline file bytes were admitted as assets: those assets, in part order.
+   * Admission happens before the claim, so a retry of a claim left pending reads them back
+   * instead of admitting the bytes a second time.
+   */
+  readonly assets?: readonly AdmittedAsset[] | undefined;
 };
 
 /** Which path a send took: a new task, an answer to a wait, or input to a working task. */
@@ -175,6 +195,16 @@ type Admitted = {
   readonly deadline: number | undefined;
 };
 
+/**
+ * A message's file parts once admitted: the native content the run receives (`undefined` for a
+ * message of text alone), and the message as the task's A2A history keeps it, which names an
+ * asset by its route and never holds bytes.
+ */
+type Inbound = {
+  readonly content: ReturnType<typeof contentOf> | undefined;
+  readonly history: Message;
+};
+
 /** What a completed send's ledger entry holds: the task, and the receipt the command earned. */
 export type A2ASendResult = {
   readonly taskId: string;
@@ -182,6 +212,8 @@ export type A2ASendResult = {
   readonly path?: SendPath | undefined;
   readonly state?: SendReceiptState | undefined;
   readonly reason?: string | undefined;
+  /** The assets the send's inline bytes were admitted as, so a replay delivers the same input. */
+  readonly assets?: readonly AdmittedAsset[] | undefined;
 };
 
 /** The ledger A2A sends record their bindings in. */
@@ -326,17 +358,6 @@ function activate(
   return activated;
 }
 
-/** Whether a media type `requested` is one of the `offered` ones, a `type/*` family included. */
-function modeAccepted(offered: readonly string[], requested: string): boolean {
-  const wanted = requested.split(';', 1)[0]!.trim().toLowerCase();
-  return offered.some((mode) => {
-    if (mode === wanted) return true;
-    const family = (value: string) => (value.endsWith('/*') ? value.slice(0, -1) : undefined);
-    const prefix = family(mode) ?? family(wanted);
-    return prefix !== undefined && mode.startsWith(prefix) && wanted.startsWith(prefix);
-  });
-}
-
 /** A message's text parts, joined with a newline. */
 function textOf(message: Message): string {
   return message.parts
@@ -352,7 +373,7 @@ function dataOf(message: Message): unknown {
   return undefined;
 }
 
-function requireMessage(params: SendMessageRequest): Message {
+function requireMessage(params: SendMessageRequest, inputModes: readonly string[]): Message {
   const message = params.message;
   if (message === undefined || message.messageId === '') {
     throw invalid('message.messageId is required.');
@@ -361,15 +382,15 @@ function requireMessage(params: SendMessageRequest): Message {
   if (message.role !== Role.ROLE_USER)
     throw invalid('An inbound message must have role ROLE_USER.');
   for (const part of message.parts) {
-    if (part.mediaType !== '' && !A2A_INPUT_MODES.includes(part.mediaType)) {
+    if (part.mediaType !== '' && !modeAccepted(inputModes, part.mediaType)) {
       throw new ContentTypeNotSupportedError(
-        `Media type '${part.mediaType}' is not supported; this agent accepts ${A2A_INPUT_MODES.join(', ')}.`,
+        `Media type '${part.mediaType}' is not supported; this agent accepts ${inputModes.join(', ')}.`,
       );
     }
     const kind = part.content?.$case;
-    if (kind !== 'text' && kind !== 'data') {
+    if (kind !== 'text' && kind !== 'data' && kind !== 'url' && kind !== 'raw') {
       throw new ContentTypeNotSupportedError(
-        `A ${kind ?? 'empty'} part is not supported; this agent reads text and data parts.`,
+        `An empty part is not supported; this agent accepts ${inputModes.join(', ')}.`,
       );
     }
   }
@@ -530,6 +551,7 @@ function parseContinuation(
   path: 'answer' | 'input',
   view: TaskView,
   forms: readonly WaitForm[],
+  inputModes: readonly string[],
 ): ContinuationCommand {
   const taskId = view.id;
   const text = textOf(message);
@@ -538,8 +560,16 @@ function parseContinuation(
     if (mode !== 'queue' && mode !== 'steer') {
       throw invalid('metadata.deliveryMode must be "queue" or "steer".');
     }
-    if (text === '') throw invalid('A message to a working task needs a text part.');
+    if (text === '' && !holdsMedia(message, inputModes)) {
+      throw invalid('A message to a working task needs a text part.');
+    }
     return { path, mode, text };
+  }
+  // An answer is text, a decision, or a form's values: a file has no place in it.
+  if (holdsFileParts(message)) {
+    throw new ContentTypeNotSupportedError(
+      `A file part is not read as an answer; this agent accepts ${inputModes.join(', ')}.`,
+    );
   }
   const form = formSubmissionOf(message, view, forms);
   if (form !== undefined) {
@@ -597,6 +627,21 @@ export function createBureauA2ARequestHandler(
   const timers = options.timers ?? createDefaultRuntimeServices().timers;
   const runtime = options.runtime ?? createDefaultRuntimeServices();
   const declared = declaredExtensionsOf(options.card());
+  const inputModes = options.card().defaultInputModes;
+  const assets = bureau.assets;
+
+  /** What reading a caller's file parts needs: their scopes, owner, and the card's input modes. */
+  function inboundContext(principal: Principal, owner: Owner): InboundContext {
+    const authenticated = principal.method !== 'unauthenticated';
+    return {
+      publicUrl: options.publicUrl,
+      assets,
+      owner,
+      mayReadAssets: authenticated && principal.hasScope('bureau.assets:read'),
+      mayWriteAssets: authenticated && principal.hasScope('bureau.assets:write'),
+      inputModes,
+    };
+  }
   /** Sends being admitted in this process, by binding: an identical send waits for the first. */
   const inFlight = new Map<string, Promise<Admitted>>();
 
@@ -797,7 +842,9 @@ export function createBureauA2ARequestHandler(
       }
     }
     const text = textOf(message);
-    if (text === '') throw invalid('A message that starts a task must hold a text part.');
+    if (text === '' && !holdsMedia(message, inputModes)) {
+      throw invalid('A message that starts a task must hold a text part.');
+    }
     return text;
   }
 
@@ -806,6 +853,7 @@ export function createBureauA2ARequestHandler(
     owner: Owner,
     version: string,
     onEffect: () => void,
+    inbound: Inbound,
   ): Promise<string> {
     const text = await checkNewTask(message, owner);
     let run;
@@ -813,7 +861,23 @@ export function createBureauA2ARequestHandler(
       run = await bureau.createRun({
         agentName,
         principal: owner,
-        message: text,
+        // A message of text alone starts the run as a string; one with files starts it as a row
+        // whose id follows from the `messageId`, so an exact retry appends the same row.
+        ...(inbound.content === undefined
+          ? { message: text }
+          : {
+              appendMessages: [
+                {
+                  id: message.messageId,
+                  role: 'user' as const,
+                  content: inbound.content,
+                  position: 0,
+                  createdAt: new Date(runtime.clock.now()).toISOString(),
+                  metadata: {},
+                  hidden: false,
+                },
+              ],
+            }),
         ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
         runCreationRequestId: `a2a:${version}:${message.messageId}`,
       });
@@ -828,6 +892,9 @@ export function createBureauA2ARequestHandler(
       }
       if (error instanceof BureauError && error.code === 'BAD_REQUEST')
         throw invalid(error.message);
+      // A failure that is not a refusal may have come after the run took its row: the assets
+      // that row names must outlive it, so the claim keeps them for the retry to deliver.
+      if (inbound.content !== undefined) onEffect();
       throw error;
     }
     onEffect();
@@ -835,7 +902,7 @@ export function createBureauA2ARequestHandler(
       recordVersion: 1,
       taskId: run.id,
       contextId: run.sessionId,
-      history: [historyEntryOf(message, run.id, run.sessionId)],
+      history: [historyEntryOf(inbound.history, run.id, run.sessionId)],
       replyRecorded: false,
     });
     recordReplyWhenSettled(run.id);
@@ -947,12 +1014,13 @@ export function createBureauA2ARequestHandler(
     owner: Owner,
     deadline: number | undefined,
     command: Extract<ContinuationCommand, { path: 'input' }>,
+    inbound: Inbound,
   ) {
     const outcome = await bureau.submitSessionInput(view.contextId, {
       id: message.messageId,
       principal: owner,
       deliveryMode: command.mode,
-      payload: command.text,
+      payload: (inbound.content ?? command.text) as SessionInputAdmissionRequest['payload'],
       ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
     });
     if (outcome.outcome === 'not-found') throw taskNotFound(view.id);
@@ -970,6 +1038,18 @@ export function createBureauA2ARequestHandler(
     return outcome;
   }
 
+  /** The message's content for the run and its form in the task's history, given its assets. */
+  function inboundOf(
+    message: Message,
+    plan: InboundPlan,
+    admitted: readonly AdmittedAsset[],
+  ): Inbound {
+    return {
+      content: plan.hasMedia ? contentOf(plan, admitted) : undefined,
+      history: historyMessageOf(message, admitted, options.publicUrl),
+    };
+  }
+
   /**
    * A retried input's receipt as the mailbox holds it now (queued, promoted, superseded,
    * expired): the ledger kept only the state at admission. Whatever cannot be read again keeps
@@ -978,15 +1058,19 @@ export function createBureauA2ARequestHandler(
   async function currentInputResult(
     message: Message,
     owner: Owner,
+    principal: Principal,
     deadline: number | undefined,
     stored: A2ASendResult,
   ): Promise<A2ASendResult> {
     if (stored.path !== 'input' || stored.reason !== undefined) return stored;
     try {
       const view = await ownTask(stored.taskId, owner);
-      const command = parseContinuation(message, 'input', view, []);
+      const command = parseContinuation(message, 'input', view, [], inputModes);
       if (command.path !== 'input') return stored;
-      const outcome = await submitInput(message, view, owner, deadline, command);
+      // The replay delivers the input it delivered: the assets the first attempt admitted.
+      const plan = await planInbound(message, inboundContext(principal, owner));
+      const inbound = inboundOf(message, plan, stored.assets ?? []);
+      const outcome = await submitInput(message, view, owner, deadline, command, inbound);
       return { ...stored, state: inputReceiptState(outcome.receipt.state) };
     } catch {
       return stored;
@@ -1001,6 +1085,7 @@ export function createBureauA2ARequestHandler(
     deadline: number | undefined,
     command: ContinuationCommand,
     onEffect: () => void,
+    inbound: Inbound,
   ): Promise<{ readonly path: SendPath; readonly state: SendReceiptState }> {
     let answered: { readonly path: SendPath; readonly state: SendReceiptState };
     if (command.path === 'answer') {
@@ -1020,12 +1105,12 @@ export function createBureauA2ARequestHandler(
         );
       }
     } else {
-      const outcome = await submitInput(message, view, owner, deadline, command);
+      const outcome = await submitInput(message, view, owner, deadline, command, inbound);
       onEffect();
       answered = { path: 'input', state: inputReceiptState(outcome.receipt.state) };
     }
     await records.update(view.id, (current) => {
-      const entry = historyEntryOf(message, view.id, view.contextId);
+      const entry = historyEntryOf(inbound.history, view.id, view.contextId);
       const already = current.history.some((held) => held['messageId'] === message.messageId);
       return already ? undefined : { ...current, history: [...current.history, entry] };
     });
@@ -1060,7 +1145,7 @@ export function createBureauA2ARequestHandler(
   ): Promise<Admitted> {
     const user = userOf(context);
     const owner = ownerOf(context);
-    const message = requireMessage(params);
+    const message = requireMessage(params, inputModes);
     // Snapshotted before the first await: the request object is the caller's.
     const embedded = params.configuration?.taskPushNotificationConfig;
     const inlinePush = embedded === undefined ? undefined : structuredClone(embedded);
@@ -1111,7 +1196,13 @@ export function createBureauA2ARequestHandler(
     if (located.state === 'retained' && located.entry.state === 'completed') {
       if (located.entry.payloadDigest !== digest) throw conflict(located.entry.result);
       return admitted(
-        await currentInputResult(message, owner, request.deadline, located.entry.result),
+        await currentInputResult(
+          message,
+          owner,
+          user.principal,
+          request.deadline,
+          located.entry.result,
+        ),
       );
     }
     // A claim an earlier attempt left pending already took effect, or may have: it is finished
@@ -1161,7 +1252,14 @@ export function createBureauA2ARequestHandler(
     const command =
       continued === undefined || path === undefined
         ? undefined
-        : parseContinuation(message, path, continued, await formsOf(bureau, continued));
+        : parseContinuation(message, path, continued, await formsOf(bureau, continued), inputModes);
+    // The message's parts, read and authorized before anything is admitted. An answer to a wait
+    // reads no file, so only a new task and input to a working task plan any.
+    const inboundContextOfCaller = inboundContext(user.principal, owner);
+    const plan: InboundPlan | undefined =
+      continued === undefined || command?.path === 'input'
+        ? await planInbound(message, inboundContextOfCaller)
+        : undefined;
     // A pending claim's effect may already have moved the revision it was checked against.
     if (
       pending === undefined &&
@@ -1197,13 +1295,23 @@ export function createBureauA2ARequestHandler(
           ? undefined
           : await push?.projector.tailOf(continued.id),
     });
+    // Inline bytes are admitted as the caller's assets before the claim, and the claim records
+    // them: a retry of a claim left pending reads them back instead of admitting the bytes again.
+    // An expired command applies nothing, so it admits nothing.
+    const mine: readonly AdmittedAsset[] =
+      plan === undefined || plan.inlineCount === 0 || pending?.assets !== undefined || expired
+        ? []
+        : await admitInline(plan, inboundContextOfCaller);
+    const discardMine = () => discardAssets(assets, owner, mine);
     let claimed;
     try {
       claimed = await ledger.claim(identity, digest, {
         ...(path === undefined ? {} : { path }),
         ...(owed === undefined ? {} : owed),
+        ...(mine.length === 0 ? {} : { assets: mine }),
       });
     } catch (error) {
+      await discardMine();
       if (error instanceof BureauLedgerConflictError) {
         const original = await ledger.locate(identity);
         throw conflict(
@@ -1214,11 +1322,28 @@ export function createBureauA2ARequestHandler(
       }
       throw error;
     }
+    // The assets this send delivers are the claim's: another attempt's claim wins over this one's.
+    const claimedAssets = claimed.entry.claim.assets;
+    if (claimed.outcome === 'existing') await discardMine();
     if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
       return admitted(
-        await currentInputResult(message, owner, request.deadline, claimed.entry.result),
+        await currentInputResult(
+          message,
+          owner,
+          user.principal,
+          request.deadline,
+          claimed.entry.result,
+        ),
       );
     }
+    const delivered: readonly AdmittedAsset[] = claimedAssets ?? [];
+    if (!expired && plan !== undefined && delivered.length !== plan.inlineCount) {
+      throw invalid(`messageId '${message.messageId}' was already used with a different payload.`);
+    }
+    const inbound: Inbound =
+      plan === undefined
+        ? { content: undefined, history: message }
+        : inboundOf(message, plan, delivered);
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     let result: A2ASendResult;
     // Whether the command may have taken effect: a run created, a wait answered, an input
@@ -1239,7 +1364,7 @@ export function createBureauA2ARequestHandler(
               reason: 'deadline-exceeded',
             }
           : {
-              taskId: await createTask(message, owner, version, markEffected),
+              taskId: await createTask(message, owner, version, markEffected, inbound),
               path: 'create',
               state: 'applied',
             };
@@ -1260,6 +1385,7 @@ export function createBureauA2ARequestHandler(
           request.deadline,
           command as ContinuationCommand,
           markEffected,
+          inbound,
         );
         result = { taskId: continued.id, ...answered };
       }
@@ -1273,11 +1399,16 @@ export function createBureauA2ARequestHandler(
       // Refused before anything was admitted: a retry may claim the binding afresh.
       if (claimed.outcome === 'claimed' && !effected) {
         await ledger.release(entry).catch(() => undefined);
+        // The assets this attempt admitted belonged to a send that took no effect: no row
+        // names them, so they are deleted rather than left to the retention floor.
+        await discardMine();
       }
       throw error;
     }
-    await completeSend(ledger, entry, result, owed, installed);
-    return admitted(result);
+    const completed: A2ASendResult =
+      delivered.length === 0 ? result : { ...result, assets: delivered };
+    await completeSend(ledger, entry, completed, owed, installed);
+    return admitted(completed);
   }
 
   /** Follows an admitted or existing task as a stream, starting from its current snapshot. */
