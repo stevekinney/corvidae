@@ -73,6 +73,7 @@ import {
 import type { Principal } from '@lostgradient/weft';
 import { A2APushConfigurationConflictError, requestSignalOf } from '@lostgradient/weft/a2a';
 
+import { completeSend, owedInstallOf } from './a2a-push-install-claim.ts';
 import {
   BureauLedgerConflictError,
   type CommandLedger,
@@ -150,7 +151,9 @@ const SETTLE_POLL_MS = 1_000;
  */
 export type A2ASendClaim = {
   readonly path?: 'answer' | 'input' | undefined;
-  /** For a continuation that embeds a push configuration: the cursor its checkpoint starts at. */
+  /** For a send that embeds a push configuration: whether it owes an install before it completes. */
+  readonly pushOwed?: boolean | undefined;
+  /** For a send that embeds a push configuration: the cursor its checkpoint starts at. */
   readonly pushCursor?: string | undefined;
 };
 
@@ -1082,19 +1085,25 @@ export function createBureauA2ARequestHandler(
       }
     }
 
-    // A configuration sent with a continuation starts after the events the task holds now; one
-    // sent with a new task starts before its first. The cursor is part of the claim, so a retry
-    // of a send that crashed after its effect installs the configuration at the same place.
-    const pushCursor =
-      inlinePush === undefined || continued === undefined
-        ? '-1'
-        : (pending?.pushCursor ?? (await push?.projector.tailOf(continued.id)) ?? '-1');
+    // The install this send owes is decided here, once, and recorded in the claim: a retry of a
+    // claim left pending reads it back, so it installs the same configuration at the same cursor
+    // whatever the task has become since.
+    const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
+    const owed = owedInstallOf({
+      hasInline: inlinePush !== undefined,
+      continuing: continued !== undefined,
+      expired,
+      pending,
+      tail:
+        inlinePush === undefined || continued === undefined || pending?.pushOwed !== undefined
+          ? undefined
+          : await push?.projector.tailOf(continued.id),
+    });
     let claimed;
     try {
       claimed = await ledger.claim(identity, digest, {
         ...(path === undefined ? {} : { path }),
-        // The sentinel is kept too: a replay must install at the cursor originally admitted.
-        ...(inlinePush === undefined || continued === undefined ? {} : { pushCursor }),
+        ...(owed === undefined ? {} : owed),
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
@@ -1113,12 +1122,12 @@ export function createBureauA2ARequestHandler(
       );
     }
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
-    const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
     let result: A2ASendResult;
     // Whether the command may have taken effect: a run created, a wait answered, an input
     // admitted. From then on the claim is kept, so a retry finishes it by the same path rather
     // than claiming afresh against the task's later state.
     let effected = false;
+    let installed = false;
     const markEffected = () => {
       effected = true;
     };
@@ -1158,11 +1167,9 @@ export function createBureauA2ARequestHandler(
       }
       // Installed before the binding completes, so an exact retry of a send that crashed here
       // runs this again and finds the one configuration.
-      if (
-        inlinePush !== undefined &&
-        !(expired && continued !== undefined && pending === undefined)
-      ) {
-        await installPush(result.taskId, inlinePush, context, pushCursor);
+      if (owed?.pushOwed === true && inlinePush !== undefined) {
+        await installPush(result.taskId, inlinePush, context, owed.pushCursor);
+        installed = true;
       }
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
@@ -1171,7 +1178,7 @@ export function createBureauA2ARequestHandler(
       }
       throw error;
     }
-    await ledger.complete(entry, result);
+    await completeSend(ledger, entry, result, owed, installed);
     return admitted(result);
   }
 
