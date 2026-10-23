@@ -54,7 +54,12 @@ const PAGES = [
 
 test.describe('the outlet pads a page and nothing else does', () => {
   for (const path of PAGES) {
-    test(`${path} has no padding of its own at the top of the page`, async ({ page }) => {
+    test(`${path} has no padding of its own at the top of the page`, async ({ page, request }) => {
+      // A host with no chat a person started opens /chat on its welcome, which the view frame
+      // draws (COR-1645). The page under test is the list, so there is a chat to list.
+      if (path === '/chat') {
+        await runToEnd(request, 'echo', newThreadId('visual-system-list'), 'Hello echo');
+      }
       await page.setViewportSize(DESKTOP);
       await page.goto(path);
       await expect(page.locator('[data-view]').first()).not.toHaveAttribute(
