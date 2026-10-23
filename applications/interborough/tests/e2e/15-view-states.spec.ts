@@ -120,6 +120,7 @@ async function drive(
     pageErrors.expect({
       pattern: loggedFailedResponse(status, probe.url),
       reason: `the test answers the ${view} probe with a ${status}`,
+      count: 2,
     });
   }
   await page.route('**/*', async (route: Route) => {
@@ -286,6 +287,15 @@ for (const width of WIDTHS) {
     await expect(navigation.getByRole('link', { name: VIEW_COPY.agents.label })).toBeVisible();
   });
 }
+
+test('an address that is not valid percent-encoding shows the not-found page', async ({ page }) => {
+  // `%E0` cannot be decoded; the router used to throw while matching `/workflows/:type/runs`.
+  const response = await page.goto('/workflows/%E0/nope');
+  expect(response?.status()).toBe(200);
+  const frame = page.locator('[data-view="not-found"]');
+  await expect(frame).toHaveAttribute('data-state', 'not-found');
+  await expect(frame.getByRole('heading', { level: 1 })).toHaveText(NOT_FOUND_ROUTE_COPY.title);
+});
 
 test('a miss on an asset, the Bureau, or the host is still a 404, not the shell', async ({
   request,

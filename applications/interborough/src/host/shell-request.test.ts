@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { isShellNavigation } from './shell-request.ts';
+import { acceptsHtml, isShellNavigation } from './shell-request.ts';
 
 const HTML = { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
 
@@ -47,5 +47,38 @@ describe('isShellNavigation', () => {
     expect(isShellNavigation(request('/nonsense', { method: 'DELETE', headers: HTML }))).toBe(
       false,
     );
+  });
+
+  test('leaves a request that rules HTML out with a zero quality a 404', () => {
+    for (const accept of [
+      'application/json, text/html;q=0',
+      'application/json, text/html; q=0.0',
+      'text/html;q=0, */*',
+      'text/html;Q=0',
+      'text/html;q=nonsense',
+    ]) {
+      expect(isShellNavigation(request('/nonsense', { headers: { accept } })), accept).toBe(false);
+    }
+  });
+
+  test('takes a request that ranks HTML above zero', () => {
+    for (const accept of [
+      'application/json, text/html;q=0.1',
+      'TEXT/HTML',
+      'text/html ; q=1',
+      'application/json;q=0, text/html',
+    ]) {
+      expect(isShellNavigation(request('/nonsense', { headers: { accept } })), accept).toBe(true);
+    }
+  });
+});
+
+describe('acceptsHtml', () => {
+  test('needs text/html named with a positive quality, and nothing else counts', () => {
+    expect(acceptsHtml('text/html')).toBe(true);
+    expect(acceptsHtml('text/html;q=0')).toBe(false);
+    expect(acceptsHtml('text/htmlx')).toBe(false);
+    expect(acceptsHtml('application/xhtml+xml, text/*, */*')).toBe(false);
+    expect(acceptsHtml('')).toBe(false);
   });
 });

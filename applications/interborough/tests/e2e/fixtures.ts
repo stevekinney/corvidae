@@ -2,10 +2,11 @@
  * Playwright fixtures shared by every persona-flow spec (plan §11.4). The host serves one local
  * caller and asks for no sign-in, so the page needs no credential. There are two fixtures: the axe
  * gate, `checkA11y`, and an automatic one that fails a test whose page logged a console error,
- * threw, or had a request fail, unless `ALLOWED_PAGE_ERRORS` names it.
+ * threw, or had a request fail, on any page of its context, unless `ALLOWED_PAGE_ERRORS` names it
+ * or the test declared it.
  */
 import PlaywrightAxeBuilder from '@axe-core/playwright';
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * Polls every button/input's `background-color`/`color` across consecutive
@@ -135,6 +136,13 @@ export type PageErrorAllowance = {
   readonly pattern: RegExp;
   /** Why this report is expected: the cause outside Interborough, or the failure the test caused. */
   readonly reason: string;
+  /**
+   * How many matching reports the declaration covers. A declaration made through
+   * `pageErrors.expect(...)` covers one by default and fails the test if it covers fewer or more,
+   * so a second failure the test did not mean to cause is not hidden by the first one's allowance.
+   * Suite-wide entries cover every match.
+   */
+  readonly count?: number;
 };
 
 export const ALLOWED_PAGE_ERRORS: readonly PageErrorAllowance[] = [];
@@ -168,12 +176,28 @@ export function loggedFailedResponse(status: number, urlPattern: RegExp): RegExp
   );
 }
 
-/** What a page reported during one test, and which of it the test expects. */
+/** A declaration the test made through `pageErrors.expect(...)`. */
+type DeclaredAllowance = { readonly allowance: PageErrorAllowance };
+
+/**
+ * What every page of one browser context reported during one test, and which of it the test
+ * expects. The context is the unit, not the default `page`: a test that opens a second tab
+ * (`context.newPage()`) or a popup is held to the same bar.
+ */
 export class PageErrorLog {
   readonly #reports: string[] = [];
-  readonly #allowed: PageErrorAllowance[] = [...ALLOWED_PAGE_ERRORS];
+  readonly #standing: PageErrorAllowance[] = [...ALLOWED_PAGE_ERRORS];
+  readonly #declared: DeclaredAllowance[] = [];
+  readonly #watched = new WeakSet<Page>();
 
-  constructor(page: Page) {
+  constructor(context: BrowserContext) {
+    for (const page of context.pages()) this.#watch(page);
+    context.on('page', (page) => this.#watch(page));
+  }
+
+  #watch(page: Page): void {
+    if (this.#watched.has(page)) return;
+    this.#watched.add(page);
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       const { url, lineNumber } = message.location();
@@ -200,14 +224,48 @@ export class PageErrorLog {
     });
   }
 
-  /** Declares a report this test causes on purpose, such as a request it answers with a 500. */
+  /**
+   * Declares a report this test causes on purpose, such as a request it answers with a 500. It
+   * covers one matching report, or `allowance.count` of them.
+   */
   expect(allowance: PageErrorAllowance): void {
-    this.#allowed.push(allowance);
+    this.#declared.push({ allowance });
   }
 
-  /** What the page reported that nothing allows. */
+  /** Hands each report to the first declaration with room for it; what no one covers is left over. */
+  #settle(): { unexpected: string[]; matched: number[] } {
+    const matched = this.#declared.map(() => 0);
+    const unexpected: string[] = [];
+    for (const line of this.#reports) {
+      if (this.#standing.some((entry) => entry.pattern.test(line))) continue;
+      const index = this.#declared.findIndex(
+        (entry, position) =>
+          (matched[position] ?? 0) < (entry.allowance.count ?? 1) &&
+          entry.allowance.pattern.test(line),
+      );
+      if (index < 0) unexpected.push(line);
+      else matched[index] = (matched[index] ?? 0) + 1;
+    }
+    return { unexpected, matched };
+  }
+
+  /** What the pages reported that no standing entry and no declaration with room covers. */
   unexpected(): string[] {
-    return this.#reports.filter((line) => !this.#allowed.some((entry) => entry.pattern.test(line)));
+    return this.#settle().unexpected;
+  }
+
+  /** The declarations that covered fewer reports than they said they would. */
+  unused(): string[] {
+    const { matched } = this.#settle();
+    return this.#declared.flatMap((entry, position) => {
+      const wanted = entry.allowance.count ?? 1;
+      const seen = matched[position] ?? 0;
+      return seen < wanted
+        ? [
+            `${entry.allowance.pattern} (${entry.allowance.reason}): expected ${wanted}, saw ${seen}`,
+          ]
+        : [];
+    });
   }
 }
 
@@ -220,10 +278,13 @@ export const test = base.extend<{
   },
   // Every test fails when its page reported an error: the suite used to pass over them.
   pageErrors: [
+    // Built from the page's context, so the first page exists before the log listens and every
+    // page the test opens later is watched too.
     async ({ page }, use) => {
-      const log = new PageErrorLog(page);
+      const log = new PageErrorLog(page.context());
       await use(log);
-      expect(log.unexpected(), 'the page reported errors the test did not expect').toEqual([]);
+      expect(log.unexpected(), 'a page reported errors the test did not expect').toEqual([]);
+      expect(log.unused(), 'the test declared reports its pages never made').toEqual([]);
     },
     { auto: true },
   ],
