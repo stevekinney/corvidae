@@ -15,6 +15,7 @@ import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { AgentMediaCapabilities } from '../../agent-catalog.ts';
+import { agentExamplesSchema } from '../../agent-examples.ts';
 import { mayDiscloseUnpublishedAgents } from '../agent-access.ts';
 import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
@@ -47,6 +48,12 @@ export type PublishedAgent = {
    * when the agent does not say, which is not the same as having none (`[]`).
    */
   readonly tools?: readonly string[];
+  /**
+   * Prompts that show what a person might ask the agent, which a new chat offers as buttons: a
+   * code-defined agent's `examples`, a file agent's `examples` frontmatter. Absent when the agent
+   * has none.
+   */
+  readonly examples?: readonly string[];
 };
 
 /**
@@ -166,6 +173,7 @@ const agentsListOutput = z.object({
         })
         .nullable(),
       tools: z.array(z.string()).optional(),
+      examples: agentExamplesSchema.optional(),
     }),
   ),
 });
@@ -179,7 +187,7 @@ export const agentsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `publishState`, and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`). A code-defined agent is `published` when the `publish` allowlist names it, and any authenticated principal sees it then. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the code-defined agents the allowlist does not name, as `unpublished`; to anyone else those agents do not exist. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
+    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `publishState`, and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes), and `tools` (the names of the tools the agent has, which a code-defined agent states and a persisted agent names in its file; omitted when the agent does not say, which differs from `[]`), and `examples` (prompts that show what a person might ask the agent, which a code-defined agent states and a persisted agent lists in its file; omitted when the agent has none). A code-defined agent is `published` when the `publish` allowlist names it, and any authenticated principal sees it then. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the code-defined agents the allowlist does not name, as `unpublished`; to anyone else those agents do not exist. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -206,6 +214,7 @@ export const agentsListOperation = defineOperation<
         publishState: agent.publishState,
         media: agent.media,
         ...(agent.tools === undefined ? {} : { tools: [...agent.tools] }),
+        ...(agent.examples === undefined ? {} : { examples: [...agent.examples] }),
       })),
   }),
 });

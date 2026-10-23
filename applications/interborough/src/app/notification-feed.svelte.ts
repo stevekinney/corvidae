@@ -10,15 +10,12 @@
  */
 import { createQuery } from '@tanstack/svelte-query';
 
-import { listTasks } from '../lib/bureau-tasks.ts';
+import { recentTasksQuery } from '../lib/recent-tasks.ts';
 import { router } from '../lib/router.svelte.ts';
 import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
 import { buildNotificationEntries } from './notification-items.ts';
 import { isScheduledFailure, loadChats, loadScheduleNames } from './notification-sources.ts';
 import type { NotificationStore } from './notifications.svelte.ts';
-
-/** How many of the Bureau's most recently changed tasks the bell looks at. */
-const RECENT_TASK_LIMIT = 50;
 
 /** The chat the person has open, or `undefined` on any other page (and on a chat not yet started). */
 function openChatSessionId(): string | undefined {
@@ -29,8 +26,7 @@ function openChatSessionId(): string | undefined {
 export function connectNotificationFeed(store: NotificationStore): void {
   const reviews = bureauReviewsQuery();
   const tasks = createQuery(() => ({
-    queryKey: ['bureau-tasks', 'recent'] as const,
-    queryFn: ({ signal }) => listTasks({ limit: RECENT_TASK_LIMIT }, { signal }),
+    ...recentTasksQuery(),
     refetchInterval: REVIEW_POLL_MILLISECONDS,
     retry: false,
   }));

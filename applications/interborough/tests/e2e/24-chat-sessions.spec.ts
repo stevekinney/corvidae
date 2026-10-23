@@ -100,6 +100,17 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
         VIEW_COPY.chat.empty?.title ?? '',
       );
       await expect(page.getByRole('link', { name: 'New chat' })).toBeVisible();
+      // The welcome names the agents a chat can start with, each identifier in monospace.
+      const agents = page.getByTestId('welcome-agents');
+      await expect(agents).toContainText('Agents:');
+      await expect(agents.locator('code.ib-identifier')).toHaveText([
+        'assistant',
+        'tool-runner',
+        'request-human-input',
+        'echo',
+        'model-switcher',
+      ]);
+      await expect(agents.locator('code.ib-identifier').first()).toHaveCSS('font-family', /mono/i);
       await checkA11y(`chat — the welcome at ${width}px`);
     });
   }
@@ -235,6 +246,59 @@ test.describe('the home screen', () => {
   });
 });
 
+test.describe('the list of sessions, grouped', () => {
+  const AWAITING_QUESTION = 'Which environment should the release go to?';
+
+  for (const width of WIDTHS) {
+    test(`lists a chat that waits on you under Needs you, above the rest, with its question and a chip, and a finished chat with its latest reply and no chip, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      const finished = newThreadId('finished');
+      const waiting = newThreadId('waiting');
+      const finishedTitle = `A finished chat ${crypto.randomUUID().slice(0, 8)}`;
+      const waitingTitle = `A waiting chat ${crypto.randomUUID().slice(0, 8)}`;
+      await runToEnd(request, 'request-human-input', waiting, waitingTitle);
+      await runToEnd(request, 'assistant', finished, finishedTitle);
+      await page.setViewportSize({ width, height: 900 });
+
+      await page.goto('/chat');
+
+      const list = page.getByRole('navigation', { name: 'Chats' });
+      // Needs you is the first group, and it holds the waiting chat and not the finished one.
+      await expect(list.locator('.ib-chat-group').first()).toHaveAttribute(
+        'data-group',
+        'needs-you',
+      );
+      await expect(list.locator('.ib-chat-group').first().getByRole('heading')).toHaveText(
+        'Needs you',
+      );
+      const waitingRow = list.locator(`[data-group="needs-you"] [data-session="${waiting}"]`);
+      await expect(waitingRow).toHaveCount(1);
+      await expect(waitingRow).toContainText(waitingTitle);
+      await expect(waitingRow).toContainText(AWAITING_QUESTION);
+      await expect(waitingRow.locator('.cinder-badge')).toHaveText('Needs you');
+      await expect(waitingRow.getByRole('time')).toHaveText(/now|ago/);
+      // The finished chat is under Today, shows what the agent said last and not the title again,
+      // and has no chip.
+      const finishedRow = list.locator(`[data-group="today"] [data-session="${finished}"]`);
+      await expect(finishedRow).toHaveCount(1);
+      await expect(finishedRow).toContainText(finishedTitle);
+      await expect(finishedRow).toContainText('Hello from the assistant.');
+      await expect(finishedRow.locator('.cinder-badge')).toHaveCount(0);
+      await expect(list.locator(`[data-session="${finished}"]`)).toHaveCount(1);
+      await expect(list.getByText('End of list')).toHaveCount(0);
+      await expect(list.getByText('Agent:')).toHaveCount(0);
+      // No view scrolls sideways.
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      await checkA11y(`the list of chats, grouped, at ${width}px`);
+    });
+  }
+});
+
 test.describe('the list of sessions', () => {
   test('is newest first, labelled with the agent, and pages with Load more', async ({
     page,
@@ -254,12 +318,14 @@ test.describe('the list of sessions', () => {
 
     const list = page.getByRole('navigation', { name: 'Chats' });
     const rows = list.getByRole('listitem');
-    // The newest is first, and the row names the agent.
-    await expect(rows.first()).toContainText(`${label} chat 22`);
-    await expect(rows.first()).toContainText('assistant');
+    // A chat waiting on someone is listed above the rest, so the newest is first in Today, and the
+    // row names the agent.
+    const today = list.locator('[data-group="today"]').getByRole('listitem');
+    await expect(today.first()).toContainText(`${label} chat 22`);
+    await expect(today.first()).toContainText('assistant');
     // A page is twenty rows. The list loads the next page as the end comes into view, or when
     // Load more is pressed, so keep asking for it until the oldest of these chats is there.
-    const oldest = list.getByRole('button', { name: new RegExp(`${label} chat 01`) });
+    const oldest = list.getByRole('link', { name: new RegExp(`${label} chat 01`) });
     await expect(async () => {
       const more = list.getByRole('button', { name: 'Load more' });
       if (await more.isVisible()) await more.click();
@@ -275,7 +341,7 @@ test.describe('the list of sessions', () => {
 
     await page
       .getByRole('navigation', { name: 'Chats' })
-      .getByRole('button', { name: /Open me from the list/ })
+      .getByRole('link', { name: /Open me from the list/ })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chat/${threadId}$`));
@@ -393,7 +459,7 @@ test.describe('returning to a session', () => {
     await page.goto('/chat');
     await page
       .getByRole('navigation', { name: 'Chats' })
-      .getByRole('button', { name: new RegExp(`${label} first topic`) })
+      .getByRole('link', { name: new RegExp(`${label} first topic`) })
       .click();
 
     expect(sessionOf(page)).toBe(first);
@@ -458,7 +524,7 @@ test.describe('returning to a session', () => {
     await page.getByRole('link', { name: 'Agents', exact: true }).click();
     await expect(page).toHaveURL(/\/agents$/);
     await page.getByRole('link', { name: 'Chat', exact: true }).first().click();
-    await page.getByRole('button', { name: new RegExp(first) }).click();
+    await page.getByRole('link', { name: new RegExp(first) }).click();
     await expect(page).toHaveURL(address);
     await expectWholeTranscript(page, first);
   });
