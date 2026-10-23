@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@ag-ui/client": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",

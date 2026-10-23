@@ -247,7 +247,7 @@ export const contextsListOperation = defineOperation<
   BureauContextsOperationHost
 >({
   name: 'bureau.contexts.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List contexts',
   description:
     'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. `agentName` filters by agent. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
@@ -302,7 +302,7 @@ export const contextsGetOperation = defineOperation<
   BureauContextsOperationHost
 >({
   name: 'bureau.contexts.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one context',
   description:
     'Returns the summary of one of the caller’s own contexts, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',

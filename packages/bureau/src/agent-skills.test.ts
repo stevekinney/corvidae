@@ -2,12 +2,19 @@
  * COR-1367 — `createAgentSkills`, the `createAgent` skills seam implemented
  * over a real catalog.
  */
-import { createAgent, type GenerateFunction, type InputDetector } from '@lostgradient/operative';
+import {
+  createAgent,
+  type GenerateFunction,
+  type InputDetector,
+  type Toolbox,
+} from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 import { createAgentSkills } from './agent-skills';
 
@@ -139,6 +146,15 @@ describe('createAgentSkills', () => {
     ]);
     const toolsByStep: string[][] = [];
     const agent = createAgent({
+      toolbox: createToolbox([
+        createTool({
+          name: 'search',
+          version: '1.0.0',
+          description: 'Searches',
+          input: z.object({}),
+          execute: async () => 'found',
+        }),
+      ]) as unknown as Toolbox,
       generate: async ({ step, toolbox }) => {
         toolsByStep.push(toolbox.tools().map((tool) => tool.name));
         if (step === 0) {
@@ -154,6 +170,8 @@ describe('createAgentSkills', () => {
     });
     await agent.run('go').result();
     expect(toolsByStep[0]).toContain('activate_skill');
-    expect(toolsByStep[1]).toEqual(['deactivate_skill']);
+    expect(toolsByStep[0]).toContain('search');
+    // COR-1633 — the skill lifecycle tools are exempt from the narrowing; the host tool is not.
+    expect(toolsByStep[1]).toEqual(['activate_skill', 'load_skill_resource', 'deactivate_skill']);
   });
 });

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { evaluateAccess } from '../authorization.ts';
 import { isPlainObject } from '../json-schema-utilities.ts';
-import type { OperationFault } from '../operation-fault.ts';
+import type { OperationFault, TransportKind } from '../operation-fault.ts';
 import {
   SUPPORTED_TRANSPORTS,
   UNSAFE_PROTOTYPE_KEYS,
@@ -38,11 +38,18 @@ export function checkTransport<Input, SchemaOutput, Host>(
   operation: OperationMetadata<Input, SchemaOutput, Host>,
   context: DispatchContext<Host>,
 ): DispatchResult<never> | null {
-  if (operation.transports[transportToAvailabilityKey(context.transport)]) return null;
+  // An MCP tool call reaches exactly the operations the catalog marks `mcpExposable`.
+  const available =
+    context.transport === 'mcp'
+      ? operation.mcpExposable
+      : operation.transports[transportToAvailabilityKey(context.transport)];
+  if (available) return null;
 
-  const supported = SUPPORTED_TRANSPORTS.filter(
-    (transport) => operation.transports[transportToAvailabilityKey(transport)],
+  const supported: TransportKind[] = SUPPORTED_TRANSPORTS.filter(
+    (transport) =>
+      transport !== 'mcp' && operation.transports[transportToAvailabilityKey(transport)],
   );
+  if (operation.mcpExposable) supported.push('mcp');
   return failure({
     code: 'UnsupportedTransport',
     message: `operation "${operation.name}" does not support transport "${context.transport}"`,

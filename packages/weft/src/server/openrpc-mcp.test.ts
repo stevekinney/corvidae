@@ -234,7 +234,7 @@ describe('generateOpenRpcDocument — MCP metadata', () => {
     ).toThrow(/live MCP tools\/list/);
   });
 
-  it('rejects MCP-exposable operations missing workflow tool metadata', () => {
+  it('omits engine MCP metadata for an operation served by dispatch (no mcpTool)', () => {
     const registry = createRegistryDouble([
       makeOp({
         name: 'weft.workflows.unmapped.start',
@@ -245,13 +245,11 @@ describe('generateOpenRpcDocument — MCP metadata', () => {
       }),
     ]);
 
-    expect(() =>
-      generateOpenRpcDocument({
-        registry,
-        transports: ['http'],
-        mcpTools: [],
-      }),
-    ).toThrow(/lacks mcpTool\.workflowType metadata/);
+    const document = generateOpenRpcDocument({ registry, transports: ['http'], mcpTools: [] });
+    const methods = records(document['methods'], 'document methods');
+    const method = methods.find((entry) => entry['name'] === 'weft.workflows.unmapped.start');
+    expect(method).toBeDefined();
+    expect(method?.['x-weft-mcp']).toBeUndefined();
   });
 
   it('rejects MCP-exposable operations when live MCP tool metadata is absent', () => {

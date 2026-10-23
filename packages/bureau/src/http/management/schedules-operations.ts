@@ -246,7 +246,7 @@ export const schedulesListOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List schedules',
   description:
     'Lists the caller’s own schedules, oldest first; a caller holding `bureau.schedules:read` lists every owner’s, including the native schedule of a workflow file, which belongs to the deployment’s owner. `status` narrows to one status. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A view carries the schedule’s `revision` and never its input.',
@@ -297,7 +297,7 @@ export const schedulesGetOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one schedule',
   description:
     'Returns one of the caller’s own schedules; a caller holding `bureau.schedules:read` reads any owner’s. Another owner’s schedule answers as a missing one does. The view carries the schedule’s `revision`, to pass back as `expectedRevision`, and never its input.',
