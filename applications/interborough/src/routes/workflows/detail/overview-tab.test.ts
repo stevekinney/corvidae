@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import type { PaginatedResult, WorkflowState, WorkflowSummary } from '@lostgradient/weft';
@@ -236,7 +236,69 @@ describe('OverviewTab', () => {
     await fireEvent.keyDown(input, { key: 'Enter' });
     await fireEvent.click(getByRole('button', { name: 'Remove one' }));
 
-    expect(writes).toEqual(['add one', 'add two', 'remove one']);
+    await waitFor(() => expect(writes).toEqual(['add one', 'add two', 'remove one']));
+  });
+
+  test('a tag removed before its add has settled stays removed: the writes reach the engine one at a time, in edit order', async () => {
+    // The engine applies a write when its request lands. The add is slow and the remove is quick, so
+    // sent independently the remove would land first, do nothing, and the add would then restore the tag.
+    const stored = new Set<string>();
+    let releaseAdd!: () => void;
+    const addLanded = new Promise<void>((resolve) => {
+      releaseAdd = resolve;
+    });
+    const calls: string[] = [];
+    const client = {
+      ...baseClient(),
+      addTags: async (_id: string, tag: string) => {
+        calls.push(`add ${tag}`);
+        await addLanded;
+        stored.add(tag);
+      },
+      removeTags: async (_id: string, tag: string) => {
+        calls.push(`remove ${tag}`);
+        stored.delete(tag);
+      },
+    };
+    const { getByPlaceholderText, getByRole } = render(OverviewTabHarness, {
+      props: { client, workflow: workflow() },
+    });
+
+    const input = getByPlaceholderText('Add tag');
+    await fireEvent.input(input, { target: { value: 'one' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await fireEvent.click(getByRole('button', { name: 'Remove one' }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The remove waits for the add; it has not been sent.
+    expect(calls).toEqual(['add one']);
+
+    releaseAdd();
+    await waitFor(() => expect(calls).toEqual(['add one', 'remove one']));
+    await waitFor(() => expect([...stored]).toEqual([]));
+  });
+
+  test('a failed tag write does not hold back the writes behind it', async () => {
+    const stored = new Set<string>(['old']);
+    const client = {
+      ...baseClient(),
+      addTags: async () => {
+        throw new Error('refused');
+      },
+      removeTags: async (_id: string, tag: string) => {
+        stored.delete(tag);
+      },
+    };
+    const { getByPlaceholderText, getByRole } = render(OverviewTabHarness, {
+      props: { client, workflow: workflow({ tags: ['old'] }) },
+    });
+
+    const input = getByPlaceholderText('Add tag');
+    await fireEvent.input(input, { target: { value: 'new' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await fireEvent.click(getByRole('button', { name: 'Remove old' }));
+
+    await waitFor(() => expect([...stored]).toEqual([]));
   });
 
   test('timed-out workflow shows a neutral no-result message', async () => {

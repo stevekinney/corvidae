@@ -28,6 +28,7 @@
   import { untrack } from 'svelte';
 
   import { queryKeys } from '../../../lib/query.ts';
+  import { createSerialQueue } from '../../../lib/serial-queue.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import AttributesPanel from './attributes/attributes-panel.svelte';
   import type { AttributesClient } from './attributes/attributes-data.ts';
@@ -105,15 +106,29 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(workflow.id) });
   }
 
-  // Each change the editor reports is one write per tag, and whatever the engine answers, the page reads
-  // the tags again, so a write that failed puts the field back to what the engine holds.
+  // Each change the editor reports is one write per tag. The writes go through one queue, in the order
+  // they were made, and each starts once the one before it has settled: an add and a remove of the same
+  // tag sent independently can land in either order, and a late add then durably restores a tag the
+  // person removed. The page reads the tags again once the queue is empty, whatever the engine
+  // answered, so a write that failed puts the field back to what the engine holds; reading between
+  // two queued writes would show the engine's half-way state.
+  const tagWrites = createSerialQueue();
+  function invalidateWhenWritesHaveSettled(): void {
+    if (tagWrites.pending === 0) invalidateDetail();
+  }
   const addTagMutation = createMutation(() => ({
-    mutationFn: (tag: string) => client.addTags(workflow.id, tag),
-    onSettled: invalidateDetail,
+    mutationFn: (tag: string) => {
+      const id = workflow.id;
+      return tagWrites.run(() => client.addTags(id, tag));
+    },
+    onSettled: invalidateWhenWritesHaveSettled,
   }));
   const removeTagMutation = createMutation(() => ({
-    mutationFn: (tag: string) => client.removeTags(workflow.id, tag),
-    onSettled: invalidateDetail,
+    mutationFn: (tag: string) => {
+      const id = workflow.id;
+      return tagWrites.run(() => client.removeTags(id, tag));
+    },
+    onSettled: invalidateWhenWritesHaveSettled,
   }));
 
   // `requested` is the list the engine was last asked for, so a change is the difference from it and
