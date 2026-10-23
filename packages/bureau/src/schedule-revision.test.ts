@@ -29,7 +29,7 @@ async function withBureau<T>(body: (harness: WorkflowBureauHarness) => Promise<T
 
 async function created(harness: WorkflowBureauHarness, overrides: object = {}) {
   const summary = await harness.bureau.createSchedule({
-    agentName: 'writer',
+    agentName: 'default',
     input: 'tick',
     spec: '1h',
     ...overrides,

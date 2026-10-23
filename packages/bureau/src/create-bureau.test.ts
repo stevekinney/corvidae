@@ -101,6 +101,7 @@ import * as auditTrailModule from './audit-trail';
 import {
   ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
   BureauError,
+  UnknownScheduleAgentError,
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
@@ -5590,7 +5591,7 @@ describe('createBureau', () => {
 
     try {
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'Summarize overnight activity',
         spec: '0 9 * * *',
         sessionId: 'daily-digest',
@@ -5652,19 +5653,55 @@ describe('createBureau', () => {
     });
 
     try {
-      const hourly = await bureau.createSchedule({ agentName: 'a', input: 'x', spec: '6h' });
+      const hourly = await bureau.createSchedule({ agentName: 'default', input: 'x', spec: '6h' });
       expect(hourly?.intervalMs).toBe(6 * 60 * 60 * 1000);
       expect(hourly?.cronExpression).toBeUndefined();
 
       // Multi-word weft durations are intervals too (the prior single-token regex
       // wrongly routed these to cron).
       const everyFive = await bureau.createSchedule({
-        agentName: 'a',
+        agentName: 'default',
         input: 'x',
         spec: '5 minutes',
       });
       expect(everyFive?.intervalMs).toBe(5 * 60 * 1000);
       expect(everyFive?.cronExpression).toBeUndefined();
+    } finally {
+      bureau.dispose();
+    }
+  });
+
+  it('createSchedule refuses an agent the catalog does not resolve, naming it, and registers a known one (COR-1667)', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      const refusal = await bureau
+        .createSchedule({ agentName: 'nobody', input: 'x', spec: '0 9 * * *' })
+        .then(
+          () => undefined,
+          (rejection: unknown) => rejection,
+        );
+      expect(refusal).toBeInstanceOf(UnknownScheduleAgentError);
+      expect(refusal).toBeInstanceOf(BureauError);
+      expect((refusal as UnknownScheduleAgentError).agentName).toBe('nobody');
+      expect((refusal as BureauError).code).toBe('NOT_FOUND');
+      expect((refusal as Error).message).toContain('"nobody"');
+      // Nothing was registered by the refused call.
+      const afterRefusal = await bureau.listSchedules();
+      expect(afterRefusal?.items ?? []).toHaveLength(0);
+
+      const known = await bureau.createSchedule({
+        agentName: 'default',
+        input: 'x',
+        spec: '0 9 * * *',
+      });
+      expect(known?.status).toBe('active');
     } finally {
       bureau.dispose();
     }
@@ -5681,7 +5718,7 @@ describe('createBureau', () => {
 
     try {
       const blank = await bureau
-        .createSchedule({ agentName: 'a', input: 'x', spec: '0 9 * * *', sessionId: '   ' })
+        .createSchedule({ agentName: 'default', input: 'x', spec: '0 9 * * *', sessionId: '   ' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -5691,7 +5728,7 @@ describe('createBureau', () => {
 
       const overlapping = await bureau
         .createSchedule({
-          agentName: 'a',
+          agentName: 'default',
           input: 'x',
           spec: '0 9 * * *',
           sessionId: 'digest',
@@ -5706,7 +5743,7 @@ describe('createBureau', () => {
 
       // overlap:'allow' WITHOUT a session is fine (stateless fires may run concurrently).
       const ok = await bureau.createSchedule({
-        agentName: 'a',
+        agentName: 'default',
         input: 'x',
         spec: '0 9 * * *',
         overlap: 'allow',
@@ -5767,7 +5804,7 @@ describe('createBureau', () => {
       let caught: unknown;
       try {
         await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'Summarize overnight activity',
           spec: '0 9 * * *',
         });
@@ -20742,7 +20779,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
 
     try {
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input: 'paused forever',
         spec: '1h',
       });
