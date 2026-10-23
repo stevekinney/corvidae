@@ -304,6 +304,28 @@ export function createA2uiAdapter(options: {
       const issues = checkMessage(a2uiCatalogOf(A2UI_BASIC_CATALOG_ID)!, first, 0);
       if (issues.length > 0)
         return reject('invalid', 'The deleteSurface message is invalid.', issues);
+      // Only an A2UI surface may be deleted this way. The kind survives a close, so an exact
+      // retry of a delete that already committed still reaches the store and replays.
+      const target = await surfaces.snapshot(
+        {
+          type: 'surface.snapshot',
+          contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
+          taskId,
+          surfaceId,
+        },
+        authorization,
+      );
+      if (target.outcome === 'rejected') {
+        return reject(
+          target.reason,
+          target.detail ?? 'The surface could not be read.',
+          [],
+          target.currentRevision,
+        );
+      }
+      if (target.surface.kind !== 'a2ui') {
+        return reject('invalid', `Surface "${surfaceId}" is not an A2UI surface.`);
+      }
       const receipt = await surfaces.close(
         {
           type: 'surface.close',

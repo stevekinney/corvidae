@@ -591,6 +591,33 @@ describe('exact retries', () => {
   });
 });
 
+describe('deleting a surface that is not A2UI', () => {
+  it('refuses deleteSurface on an input-form surface and leaves it intact', async () => {
+    const h = a2uiHarness();
+    await h.surfaces.create({
+      type: 'surface.create',
+      contractVersion: version,
+      commandId: 'f',
+      taskId: TASK,
+      surfaceId: 'form',
+      summary: 'A form',
+      representation: {
+        kind: 'input-form',
+        schema: { type: 'object', properties: { a: { type: 'string' } } },
+      },
+      actions: [],
+    });
+    const receipt = await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'del-form',
+      baseRevision: 1,
+      messages: [{ version: 'v0.9.1', deleteSurface: { surfaceId: 'form' } }],
+    });
+    expect(receipt).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    expect(await h.snapshot('form')).toMatchObject({ state: 'open', liveness: 'live' });
+  });
+});
+
 describe('what an update cannot change', () => {
   it('refuses audience and classification on an update instead of dropping them', async () => {
     const h = a2uiHarness();
