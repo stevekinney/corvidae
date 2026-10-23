@@ -48,6 +48,12 @@ export interface A2APushCheckpoint {
    * generation, may remove it, so an install that lost a race never deletes the winner's.
    */
   readonly installId?: string;
+  /**
+   * The terminal status already enqueued for this configuration, from whichever source fired
+   * first (the durable history's event or the registry's settled state). A configuration gets one
+   * terminal delivery, across restarts.
+   */
+  readonly terminalSent?: string;
 }
 
 /** A stored checkpoint whose `recordVersion` this Bureau does not know: it is never misread. */
@@ -83,6 +89,12 @@ export interface A2APushCheckpoints {
   advance(taskId: string, configId: string, cursor: string): Promise<A2APushCheckpoint | undefined>;
   /** Clears a checkpoint's `pending` mark. Resolves the stored checkpoint, or `undefined`. */
   confirm(taskId: string, configId: string): Promise<A2APushCheckpoint | undefined>;
+  /** Records that a terminal status was enqueued. Resolves the stored checkpoint, or `undefined`. */
+  markTerminal(
+    taskId: string,
+    configId: string,
+    status: string,
+  ): Promise<A2APushCheckpoint | undefined>;
   /** Every checkpoint of a task. */
   listForTask(taskId: string): Promise<A2APushCheckpoint[]>;
   /** The task identifier of every checkpoint, each once. */
@@ -176,6 +188,23 @@ export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APush
         if (written) return next;
       }
       throw new Error(`The push checkpoint of configuration "${configId}" could not be confirmed.`);
+    },
+
+    async markTerminal(taskId, configId, status) {
+      const key = keyOf(taskId, configId);
+      for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+        const raw = await kv.get(key);
+        if (raw === null) return undefined;
+        const current = parse(taskId, configId, raw);
+        if (current.terminalSent !== undefined) return current;
+        const next = { ...current, terminalSent: status };
+        const written = await kv.conditionalBatch(
+          [{ key, expectedValue: raw }],
+          [{ type: 'set', key, value: JSON.stringify(next) }],
+        );
+        if (written) return next;
+      }
+      throw new Error(`The push checkpoint of configuration "${configId}" could not be marked.`);
     },
 
     async listForTask(taskId) {

@@ -242,6 +242,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     }
     const floor = sequenceOf(checkpoint.cursor);
     let view: TaskView | undefined;
+    let terminalSent = checkpoint.terminalSent !== undefined;
     for (const event of retained.events) {
       const element = projector.project(event);
       if (sequenceOf(event.cursor) <= floor) continue;
@@ -249,9 +250,15 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       if (element?.kind === 'task.status') {
         view ??= (await bureau.tasks.get(taskId)) ?? initial;
         const reply = element.status === 'completed' ? await reader.replyOf(view) : undefined;
-        const responses = eventsOf(view, element, reply);
+        // One terminal delivery per configuration, whichever source fired first.
+        const duplicateTerminal = isTerminal(element.status) && terminalSent;
+        const responses = duplicateTerminal ? [] : eventsOf(view, element, reply);
         for (const [index, response] of responses.entries()) {
           if (!(await send(response, `${event.cursor}:${index}`))) return true;
+        }
+        if (isTerminal(element.status) && !terminalSent) {
+          terminalSent = true;
+          await checkpoints.markTerminal(taskId, configId, element.status);
         }
       }
       await checkpoints.advance(taskId, configId, event.cursor);
@@ -261,7 +268,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     // A task can settle without a durable event (a failure the history never recorded): its
     // registry state is then the only record, so the settled status is sent from it. The key
     // names the status, so a repeat of this pump deduplicates.
-    if (!projector.ended && isTerminal(initial.status)) {
+    if (!projector.ended && !terminalSent && isTerminal(initial.status)) {
       const settledElement: Extract<TaskEvent, { kind: 'task.status' }> = {
         kind: 'task.status',
         taskId,
@@ -276,6 +283,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       for (const [index, response] of eventsOf(initial, settledElement, reply).entries()) {
         if (!(await send(response, `settled:${initial.status}:${index}`))) return true;
       }
+      await checkpoints.markTerminal(taskId, configId, initial.status);
       return true;
     }
     return projector.ended;
@@ -311,6 +319,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       return true;
     }
     await checkpoints.advance(taskId, configId, cursor);
+    if (isTerminal(view.status)) await checkpoints.markTerminal(taskId, configId, view.status);
     return projector.ended || isTerminal(view.status);
   }
 
@@ -378,6 +387,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       pending = pending
         .then(async () => {
           queued = false;
+          if (controller.signal.aborted) return undefined;
           const ended = await pumpTask(taskId);
           failures = 0;
           if (ended) stop();

@@ -523,6 +523,29 @@ describe('the push projector', () => {
     await eventually(() => fixture.receiver.kinds().includes('status:TASK_STATE_FAILED'));
   });
 
+  it('delivers one terminal status when the registry settles before the history records it', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+    fixture.projector.watch('task-1');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    fixture.setView({ ...VIEW, status: 'completed', finishReason: 'stop' });
+    fixture.notifyChanged();
+    await eventually(() => fixture.receiver.kinds().includes('status:TASK_STATE_COMPLETED'));
+
+    // The durable event arrives after, and so does a restart that replays it.
+    fixture.append(completed(1));
+    await fixture.projectorOver().pump('task-1', 'config-1');
+    await fixture.projector.pump('task-1', 'config-1');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const terminals = fixture.receiver
+      .kinds()
+      .filter((kind) => kind === 'status:TASK_STATE_COMPLETED');
+    expect(terminals).toHaveLength(1);
+  });
+
   it('retries a task-level pump that throws, with no later event to wake it', async () => {
     const fixture = harness([started, requested(1)]);
     await fixture.configure('0');
