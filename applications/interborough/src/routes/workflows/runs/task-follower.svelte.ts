@@ -159,7 +159,11 @@ export class TaskFollower {
   }
 
   #keep(element: TaskEvent): void {
-    if (element.kind === 'task.snapshot' || element.kind === 'task.status') {
+    if (
+      element.kind === 'task.snapshot' ||
+      element.kind === 'task.status' ||
+      element.kind === 'task.resynced'
+    ) {
       this.lastStatus = element.status;
       if (element.artifact !== undefined && element.artifact !== null) {
         this.artifact = element.artifact;
