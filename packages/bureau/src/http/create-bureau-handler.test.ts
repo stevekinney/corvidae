@@ -29,7 +29,13 @@ const allScopes = {
 };
 
 async function buildBureau(
-  options: { id?: string; agents?: string[]; persist?: boolean; assets?: boolean } = {},
+  options: {
+    id?: string;
+    agents?: string[];
+    persist?: boolean;
+    assets?: boolean;
+    durable?: boolean;
+  } = {},
 ) {
   const agents = Object.fromEntries(
     (options.agents ?? []).map((name) => [
@@ -41,7 +47,10 @@ async function buildBureau(
     ...(options.id === undefined ? {} : { id: options.id }),
     agents,
     generate,
-    ...(options.persist === true ? { storage: { type: 'memory' as const } } : {}),
+    ...(options.persist === true || options.durable === true
+      ? { storage: { type: 'memory' as const } }
+      : {}),
+    ...(options.durable === true ? { durableExecution: true } : {}),
     // The handler serves the asset operations, so it needs the service behind them.
     ...(options.assets === false ? {} : { assets: { storage: createMemoryAssetStorage() } }),
   });
@@ -93,7 +102,7 @@ describe('createBureauHandler options', () => {
     });
   });
 
-  it.each(['publicUrl', 'discoveryUrl', 'signing', 'cors', 'rateLimitKey', 'limits'])(
+  it.each(['cors', 'rateLimitKey', 'limits'])(
     'does not accept the deferred option %s',
     async (name) => {
       await withBureau({}, (bureau) => {
@@ -103,6 +112,35 @@ describe('createBureauHandler options', () => {
       });
     },
   );
+
+  it('refuses A2A options that are malformed, or that need publicUrl without it (COR-903)', async () => {
+    await withBureau({ id: 'a2a-bureau', durable: true }, (bureau) => {
+      const build = (options: Record<string, unknown>) => () =>
+        createBureauHandler(bureau, { unauthenticatedAccess: 'allow', ...options } as never);
+      expect(build({ publicUrl: 'not a url' })).toThrow(/publicUrl must be an absolute http/);
+      expect(build({ publicUrl: 'https://example.test/?x=1' })).toThrow(/no query or fragment/);
+      expect(build({ publicUrl: 'ftp://example.test' })).toThrow(/http or https/);
+      expect(build({ discoveryUrl: 'https://example.test' })).toThrow(
+        /discoveryUrl needs publicUrl/,
+      );
+      expect(build({ signing: {} })).toThrow(/signing needs publicUrl/);
+      expect(build({ publicUrl: 'https://example.test', discoveryUrl: 'nope' })).toThrow(
+        /discoveryUrl must be an absolute http/,
+      );
+      expect(build({ publicUrl: 'https://example.test' })).not.toThrow();
+    });
+  });
+
+  it('refuses publicUrl over a Bureau with no durable engine, whose sends could create no task (COR-903)', async () => {
+    await withBureau({}, (bureau) => {
+      expect(() =>
+        createBureauHandler(bureau, {
+          unauthenticatedAccess: 'allow',
+          publicUrl: 'https://example.test',
+        }),
+      ).toThrow(/publicUrl needs a Bureau with a durable engine/);
+    });
+  });
 
   it('rejects an unauthenticatedAccess value that is neither reject nor allow', async () => {
     await withBureau({}, (bureau) => {
