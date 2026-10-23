@@ -234,7 +234,8 @@ describe('followTask', () => {
       eventHistory: async () => ({ outcome: 'unsupported-capability' }) as never,
     });
     const stream = follow(bureau, undefined, {}, false);
-    expect((await stream.next()).value?.payload?.$case).toBe('task');
+    const snapshot = await stream.next();
+    expect(snapshot.value?.payload?.$case).toBe('task');
     // The change lands between the snapshot and the next read.
     change({
       ...VIEW,
@@ -242,7 +243,8 @@ describe('followTask', () => {
       updatedAt: '2026-10-22T00:00:01.000Z',
       openWaits: [{ kind: 'human-wait', reviewId: 'review-1', signalName: 'human-response' }],
     });
-    const next = (await stream.next()).value?.payload as any;
+    const read = await stream.next();
+    const next = read.value?.payload;
     expect(next.value.status.state).toBe(6); // TASK_STATE_INPUT_REQUIRED
     expect(next.value.status.message.metadata.signalNames).toEqual(['human-response']);
     await stream.return(undefined);

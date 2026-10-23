@@ -219,7 +219,8 @@ describe('the command-receipts extension', () => {
         const first = await send(opened, { message: late });
         const second = await send(opened, { message: late }, ACTIVE, 'other');
         expect(second.result.task.id).not.toBe(first.result.task.id);
-        expect((await opened.bureau.tasks.get(second.result.task.id))?.agentName).toBe('other');
+        const stored = await opened.bureau.tasks.get(second.result.task.id);
+        expect(stored?.agentName).toBe('other');
       },
       { second: true },
     );
