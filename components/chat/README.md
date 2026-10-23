@@ -227,33 +227,37 @@ const onInputSubmit: ChatProps['onInputSubmit'] = async (toolCallId, value) => {
 
 `A2uiSurface` renders one surface from its components and data model, using Cinder components, two-way data binding, the catalog's client functions, and actions delivered to the host (COR-1486). It renders data a host already holds; it opens no connection and folds no messages. The host folds A2UI's `createSurface`, `updateComponents`, and `updateDataModel` messages into `components` and `dataModel` itself (Bureau's example does it for the messages of an AG-UI `ACTIVITY_SNAPSHOT`), and passes the result in.
 
-```svelte
-<script lang="ts">
-  import { A2uiSurface, type A2uiAction, type A2uiDiagnostic } from '@lostgradient/chat';
+```ts
+import type { A2uiAction, A2uiDiagnostic, A2uiSurfaceProps } from '@lostgradient/chat';
 
-  let { surface, send, fetchAsset } = $props();
+// What a client holds after folding a surface's snapshots: the shape of Bureau's `HeldSurface`.
+declare const surface: {
+  readonly surfaceId: string;
+  readonly surfaceRevision: number;
+  readonly components: readonly { readonly id: string; readonly component: string }[];
+  readonly dataModel: A2uiSurfaceProps['dataModel'];
+};
+declare function send(action: A2uiAction): void;
+declare function fetchAsset(url: string): Promise<string>;
 
-  function onAction(action: A2uiAction): void {
-    // surfaceId, sourceComponentId, name, timestamp, a context resolved against the data model,
-    // and the surfaceRevision the user acted on.
-    send(action);
-  }
-
-  function onDiagnostic(diagnostic: A2uiDiagnostic): void {
+// `surfaceRevision` is Bureau's `surfaceRevision` under the same name; the renderer echoes it on
+// every action, and a server refuses an action whose revision is stale.
+export const props: A2uiSurfaceProps = {
+  surfaceId: surface.surfaceId,
+  surfaceRevision: surface.surfaceRevision,
+  components: surface.components,
+  dataModel: surface.dataModel,
+  // surfaceId, sourceComponentId, name, timestamp, a context resolved against the data model,
+  // and the surfaceRevision the user acted on.
+  onAction: (action) => send(action),
+  onDiagnostic: (diagnostic: A2uiDiagnostic) => {
     console.warn(diagnostic.code, diagnostic.componentId, diagnostic.message);
-  }
-</script>
-
-<A2uiSurface
-  surfaceId={surface.surfaceId}
-  surfaceRevision={surface.revision}
-  components={surface.components}
-  dataModel={surface.dataModel}
-  {onAction}
-  {onDiagnostic}
-  resolveAssetUrl={fetchAsset}
-/>
+  },
+  resolveAssetUrl: fetchAsset,
+};
 ```
+
+Render it with `<A2uiSurface {...props} />`.
 
 | Prop | Meaning |
 | --- | --- |
@@ -270,6 +274,6 @@ const onInputSubmit: ChatProps['onInputSubmit'] = async (toolCallId, value) => {
 
 A diagnostic has a `code` and, when the problem is on a component, its `componentId`. The codes are `unsupported-component` (a type outside the basic catalog), `unsupported-value` (an enumerated value the mapping does not list; it renders the default), `unknown-icon`, `missing-component` (a reference to an id the surface lacks), `component-cycle`, `function-error` (a function the catalog does not define, or one that failed), and `asset-error`. The renderer keeps rendering what it can and renders the failing component as nothing. Diagnostics report; they do not fail the surface.
 
-**What it supports.** The 18 basic-catalog components (`A2UI_COMPONENT_TARGETS` lists which Cinder component each maps to) and the basic catalog's client functions, including `openUrl`, which opens only `http:` and `https:` URLs and only from a user-activated action. `TextField`'s `validationRegexp` runs under RE2, so a pattern needing backreferences or lookaround is reported and not enforced.
+**What it supports.** The 18 basic-catalog components (`A2UI_COMPONENT_TARGETS` in `src/lib/a2ui/catalog-mapping.ts` lists which Cinder component each maps to; it is not exported from the package) and the basic catalog's client functions, including `openUrl`, which opens only `http:` and `https:` URLs and only from a user-activated action. `TextField`'s `validationRegexp` runs under RE2, so a pattern needing backreferences or lookaround is reported and not enforced.
 
 **What it does not.** It does not take a `catalogId` and renders no other catalog: a component from Cinder's A2UI catalog (`Meter`, `Rating`, and the rest) is an `unsupported-component` diagnostic and renders nothing. A Bureau offers its Cinder catalog only to a client that lists it in `supportedCatalogIds`, so a host using `A2uiSurface` lists the basic catalog alone. It does not fold messages, apply `deleteSurface`, or honor a surface's `theme`. It does not apply `sendDataModel`; the host decides whether to send the data model back. It never contacts a server, so authorization is the host's: render only a surface the stream delivered to your authenticated connection.

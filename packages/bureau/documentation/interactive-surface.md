@@ -246,20 +246,30 @@ The primary consumer workflow: a frontend loses its connection, attaches to the 
 The fold below is the client half of steps 2 and 3. It is also the executable copy in `src/interactive-surface-guide.test.ts`, where a guard compares it with this block, so the two cannot drift. The test drives it with a real run: it reads a surface from a live stream, reconnects with a second attach, and checks that both clients hold the same surface, that a stranger's attach holds none, and that a closed surface is dropped.
 
 ```ts
+/** A JSON value, as an A2UI data model holds one. */
+export type HeldJson = string | number | boolean | null | HeldJson[] | { [key: string]: HeldJson };
+
+/** A component as `A2uiSurface` takes it: an `id` and a `component`, and its properties. */
+export type HeldComponent = {
+  readonly id: string;
+  readonly component: string;
+  readonly [property: string]: unknown;
+};
+
 /** What a client holds of one surface after folding its snapshots. */
 export type HeldSurface = {
   readonly surfaceId: string;
   /** Keep this for the user's action: it is `a2uiSurfaceRevision` on the way back. */
   readonly surfaceRevision: number;
   readonly catalogId: string;
-  readonly components: readonly Record<string, unknown>[];
-  readonly dataModel: unknown;
+  readonly components: readonly HeldComponent[];
+  readonly dataModel: HeldJson;
 };
 
 type SurfaceMessage = {
   createSurface?: { catalogId: string };
-  updateComponents?: { components: Record<string, unknown>[] };
-  updateDataModel?: { value?: unknown };
+  updateComponents?: { components: HeldComponent[] };
+  updateDataModel?: { value?: HeldJson };
   deleteSurface?: unknown;
 };
 
@@ -290,7 +300,7 @@ export function foldSurfaceEvent(
       next = { ...next, components: message.updateComponents.components };
     } else if (next !== undefined && message.updateDataModel !== undefined) {
       // A snapshot always sets the whole model, at the root path.
-      next = { ...next, dataModel: message.updateDataModel.value };
+      next = { ...next, dataModel: message.updateDataModel.value ?? {} };
     }
   }
   if (next !== undefined) held.set(surfaceId, next);

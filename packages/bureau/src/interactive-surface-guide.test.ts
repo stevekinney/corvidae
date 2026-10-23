@@ -34,20 +34,30 @@ import { bureauMetadata, FrameReader, readAgUiStream } from './http/ag-ui-stream
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './interactive-surface/types.ts';
 
 // Start of the document's example.
+/** A JSON value, as an A2UI data model holds one. */
+export type HeldJson = string | number | boolean | null | HeldJson[] | { [key: string]: HeldJson };
+
+/** A component as `A2uiSurface` takes it: an `id` and a `component`, and its properties. */
+export type HeldComponent = {
+  readonly id: string;
+  readonly component: string;
+  readonly [property: string]: unknown;
+};
+
 /** What a client holds of one surface after folding its snapshots. */
 export type HeldSurface = {
   readonly surfaceId: string;
   /** Keep this for the user's action: it is `a2uiSurfaceRevision` on the way back. */
   readonly surfaceRevision: number;
   readonly catalogId: string;
-  readonly components: readonly Record<string, unknown>[];
-  readonly dataModel: unknown;
+  readonly components: readonly HeldComponent[];
+  readonly dataModel: HeldJson;
 };
 
 type SurfaceMessage = {
   createSurface?: { catalogId: string };
-  updateComponents?: { components: Record<string, unknown>[] };
-  updateDataModel?: { value?: unknown };
+  updateComponents?: { components: HeldComponent[] };
+  updateDataModel?: { value?: HeldJson };
   deleteSurface?: unknown;
 };
 
@@ -78,7 +88,7 @@ export function foldSurfaceEvent(
       next = { ...next, components: message.updateComponents.components };
     } else if (next !== undefined && message.updateDataModel !== undefined) {
       // A snapshot always sets the whole model, at the root path.
-      next = { ...next, dataModel: message.updateDataModel.value };
+      next = { ...next, dataModel: message.updateDataModel.value ?? {} };
     }
   }
   if (next !== undefined) held.set(surfaceId, next);
@@ -158,7 +168,7 @@ async function propose(
 /** Folds a reader's frames, up to and including the next surface snapshot, into `held`. */
 async function foldNext(reader: FrameReader, held: Map<string, HeldSurface>): Promise<void> {
   for (const frame of await reader.until(EventType.ACTIVITY_SNAPSHOT)) {
-    foldSurfaceEvent(held, frame.event as Parameters<typeof foldSurfaceEvent>[1]);
+    foldSurfaceEvent(held, frame.event);
   }
 }
 
@@ -208,7 +218,7 @@ describe('reconnecting to a run and reconstructing its surface', () => {
       expect(stranger[0]!.event).toMatchObject({ code: 'RUN_NOT_FOUND' });
       const none = new Map<string, HeldSurface>();
       for (const frame of stranger) {
-        foldSurfaceEvent(none, frame.event as Parameters<typeof foldSurfaceEvent>[1]);
+        foldSurfaceEvent(none, frame.event);
       }
       expect(none.size).toBe(0);
 
