@@ -78,7 +78,7 @@ describe('the route outlet', () => {
     restore = installFetchImplementation(async () => Response.json({}));
     landAt('/nowhere');
     const { findByText, container } = mount();
-    await findByText('Page not found');
+    await findByText(NOT_FOUND_ROUTE_COPY.title);
     const outlet = container.querySelector('main.weft-shell-outlet');
     expect(outlet?.getAttribute('data-density')).toBe('comfortable');
     expect(outlet?.getAttribute('data-width')).toBe('reading');
