@@ -21,7 +21,7 @@ import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau, BureauOptions, CreateRunRequest } from './types';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -361,8 +361,9 @@ describe('createRun with a run-creation request id', () => {
 });
 
 describe('createRun on a session bound to an agent (COR-1577)', () => {
+  // Deliberately names no agent: the session's own agent is inherited, which the type no longer
+  // lets a caller write.
   const SESSION_REQUEST = {
-    agentName: 'bureau',
     message: 'Carry on.',
     principal: 'alice',
     sessionId: 'bound',
@@ -396,7 +397,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
     await withDurableBureau(async (bureau, release) => {
       const creatorId = await bindSession(bureau, release);
 
-      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
       const spelled = await bureau.createRun({ ...SESSION_REQUEST, agentName: 'researcher' });
 
       expect(spelled.id).toBe(omitted.id);
@@ -410,7 +411,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
       const creatorId = await bindSession(bureau, release);
 
       const spelled = await bureau.createRun({ ...SESSION_REQUEST, agentName: 'researcher' });
-      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
 
       expect(omitted.id).toBe(spelled.id);
       expect(omitted.receipt).toEqual(spelled.receipt);
@@ -421,7 +422,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
   it('locates the one receipt by the session, by the spelled agent, or by both', async () => {
     await withDurableBureau(async (bureau, release) => {
       await bindSession(bureau, release);
-      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
       const key = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
 
       const bySession = await bureau.locateRunCreationReceipt({ ...key, sessionId: 'bound' });
@@ -444,7 +445,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
   it('locates a session that does not exist under the agent the request stated, and refuses a contradiction', async () => {
     await withDurableBureau(async (bureau, release) => {
       await bindSession(bureau, release);
-      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
       const key = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
 
       // No such session: the stated agent alone keys the request, as it does for a new session.
