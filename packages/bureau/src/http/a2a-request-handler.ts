@@ -838,7 +838,25 @@ export function createBureauA2ARequestHandler(
       history: [historyEntryOf(message, run.id, run.sessionId)],
       replyRecorded: false,
     });
+    recordReplyWhenSettled(run.id);
     return run.id;
+  }
+
+  /**
+   * Records a task's reply (its generated media included) in its A2A record when the task
+   * settles, on the instance that ran it: a restart before anyone reads the task then loses
+   * nothing. A failure leaves the lazy fold of a later read to do it.
+   */
+  function recordReplyWhenSettled(taskId: string): void {
+    const record = (view: TaskView): void => {
+      void reader.recordSettled(view).catch(() => undefined);
+    };
+    bureau.tasks.onSettled(taskId, record);
+    // A task that settled before the listener was added is not announced.
+    void (async () => {
+      const view = await bureau.tasks.get(taskId);
+      if (view !== undefined && isTerminal(view.status)) record(view);
+    })().catch(() => undefined);
   }
 
   /**

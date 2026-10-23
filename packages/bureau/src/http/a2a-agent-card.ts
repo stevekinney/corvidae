@@ -9,7 +9,7 @@
  * - `description` is the agent's, else a sentence naming it.
  * - Input modes are `text/plain` and `application/json` (an approval's decision travels as a
  *   data part) and output is `text/plain`, plus the media types of every modality the agent's
- *   backend descriptors take in or put out (COR-788); see {@link mediaModesOf}.
+ *   backend descriptors put out (COR-788); see {@link mediaOutputModesOf}.
  * - `skills` are the agent's skill descriptors, or one skill standing for the agent itself.
  * - `capabilities.streaming` is `true`; `pushNotifications` is `true` only where the Bureau composes both an outbox and the durable
  *   event history (COR-1543),
@@ -48,31 +48,26 @@ const MODALITY_MEDIA_TYPES: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * The media types an agent's models take in and put out, from the backend descriptors behind its
- * `generate` (`BackendDescriptor.modalities`): the text modes every agent has, then each
- * modality some descriptor accepts (or produces) as its media types. An agent whose `generate`
- * carries no descriptor is text-only. Generated JSON is a document, so a document or file output
- * also advertises `application/json`.
+ * The media types an agent answers with: the text mode every agent has, then each modality some
+ * backend descriptor behind its `generate` puts out (`BackendDescriptor.modalities`). An agent
+ * whose `generate` carries no descriptor is text-only. Generated JSON is a document, so a document
+ * or file output also advertises `application/json`. Input modes stay {@link A2A_INPUT_MODES}: a
+ * message's file parts are not read yet (COR-788, part 2).
  */
-export function mediaModesOf(
+export function mediaOutputModesOf(
   descriptors: readonly {
-    readonly modalities: Readonly<Record<string, { input: boolean; output: boolean }>>;
+    readonly modalities: Readonly<Record<string, { output: boolean }>>;
   }[],
-): { readonly input: readonly string[]; readonly output: readonly string[] } {
-  const input = new Set(A2A_INPUT_MODES);
+): readonly string[] {
   const output = new Set(A2A_OUTPUT_MODES);
   for (const descriptor of descriptors) {
     for (const [modality, support] of Object.entries(descriptor.modalities)) {
-      for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) {
-        if (support.input) input.add(type);
-        if (support.output) output.add(type);
-      }
-      if (support.output && (modality === 'document' || modality === 'file')) {
-        output.add('application/json');
-      }
+      if (!support.output) continue;
+      for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) output.add(type);
+      if (modality === 'document' || modality === 'file') output.add('application/json');
     }
   }
-  return { input: [...input], output: [...output] };
+  return [...output];
 }
 
 /** What the card of one agent is built from. */
@@ -84,9 +79,7 @@ export type A2AAgentCardSource = {
   /** The agent definition's revision, published as `version`. */
   readonly definitionRevision: number;
   readonly skillDescriptors: readonly AgentSkillDescriptor[] | undefined;
-  /** The media types the agent reads, from its backend descriptors; text-only when it has none. */
-  readonly inputModes?: readonly string[] | undefined;
-  /** The media types the agent answers with. */
+  /** The media types the agent answers with, from its backend descriptors; text-only when it has none. */
   readonly outputModes?: readonly string[] | undefined;
   /** The credentials the handler enforces; `undefined` when every request is the local caller. */
   readonly security: A2ASecurityDeclaration | undefined;
@@ -191,7 +184,7 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
     },
     securitySchemes: { ...source.security?.securitySchemes },
     securityRequirements: [...(source.security?.securityRequirements ?? [])],
-    defaultInputModes: [...(source.inputModes ?? A2A_INPUT_MODES)],
+    defaultInputModes: [...A2A_INPUT_MODES],
     defaultOutputModes: [...(source.outputModes ?? A2A_OUTPUT_MODES)],
     skills,
     iconUrl: undefined,

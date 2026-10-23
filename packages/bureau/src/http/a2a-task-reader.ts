@@ -26,6 +26,7 @@ import {
   type ReplyParts,
   textPart,
 } from './a2a-task-projection.ts';
+import type { MultiModalContent } from 'conversationalist';
 import { replyPartsOf } from './a2a-reply-parts.ts';
 
 /** The part of a Bureau the reader needs. */
@@ -48,6 +49,8 @@ export type A2ATaskReader = {
   replyOf(view: TaskView): Promise<ReplyParts | undefined>;
   /** The task as one response shows it, folding a completed task's reply into its history once. */
   read(view: TaskView, shape: ProjectionShape): Promise<A2ATaskReading>;
+  /** Records a settled task's reply in its A2A record, so a restart before any read loses nothing. */
+  recordSettled(view: TaskView): Promise<void>;
 };
 
 /** Creates the reader of the tasks recorded in `records`. */
@@ -72,24 +75,32 @@ export function createTaskReader(options: {
     return held === undefined ? undefined : Message.fromJSON(held).parts;
   }
 
-  async function replyOf(view: TaskView): Promise<ReplyParts | undefined> {
+  /** A reply, and whether it came from the one source that holds only a task's text. */
+  type Reply = { readonly parts: ReplyParts; readonly textOnlyFallback: boolean };
+
+  async function resolveReply(view: TaskView): Promise<Reply | undefined> {
     if (view.status !== 'completed') return undefined;
+    const context = { publicUrl: options.publicUrl, assets: bureau.assets, owner: view.owner };
     const run = bureau.getRun(view.id);
     const final = run?.stepDetails.findLast((step) => step.final);
     if (final !== undefined) {
-      const projected = await replyPartsOf(final.parts, {
-        publicUrl: options.publicUrl,
-        assets: bureau.assets,
-        owner: view.owner,
-      });
-      return projected.length > 0 ? projected : textOf(final.content);
+      const projected = await replyPartsOf(final.parts, context);
+      return {
+        parts: projected.length > 0 ? projected : textOf(final.content),
+        textOnlyFallback: false,
+      };
     }
+    // Once the reply is folded into the task's record, that message is the reply, whatever the run
+    // has since forgotten (a restart).
     const recorded = await recordedReplyOf(view);
-    if (recorded !== undefined && recorded.length > 0) return recorded;
-    const record = await bureau.tasks.record(view.id);
-    if (record?.settled?.answer !== undefined) return textOf(record.settled.answer.text);
+    if (recorded !== undefined && recorded.length > 0) {
+      return { parts: recorded, textOnlyFallback: false };
+    }
+    // Otherwise the run's durable `run.completed` event: its parts hold generated media as managed
+    // assets, so a task completed before a restart, or by another process, keeps its media.
     let since: string | undefined;
     let content: string | undefined;
+    let held: readonly unknown[] = [];
     for (;;) {
       const page = await bureau.eventHistory(
         { kind: 'run', id: view.id },
@@ -98,14 +109,70 @@ export function createTaskReader(options: {
       if (!('events' in page)) break;
       for (const event of page.events) {
         if (event.kind !== 'run.completed') continue;
-        const payload = event.payload as { content?: unknown } | undefined;
+        const payload = event.payload as { content?: unknown; parts?: unknown } | undefined;
         if (typeof payload?.content === 'string') content = payload.content;
+        if (Array.isArray(payload?.parts)) held = payload.parts as unknown[];
       }
       if (!page.hasMore) break;
       since = page.nextCursor ?? page.events.at(-1)?.cursor;
       if (since === undefined) break;
     }
-    return content === undefined ? undefined : textOf(content);
+    const projected = await replyPartsOf(held as MultiModalContent[], context);
+    if (projected.length > 0) return { parts: projected, textOnlyFallback: false };
+    if (content !== undefined && content !== '') {
+      return { parts: textOf(content), textOnlyFallback: false };
+    }
+    // The registry's bounded answer text is a last resort: it cannot say whether the run produced
+    // media, so a reply read from it is shown but never recorded as the task's reply.
+    const stored = await bureau.tasks.record(view.id);
+    if (stored?.settled?.answer !== undefined) {
+      return { parts: textOf(stored.settled.answer.text), textOnlyFallback: true };
+    }
+    return content === undefined ? undefined : { parts: [], textOnlyFallback: false };
+  }
+
+  async function replyOf(view: TaskView): Promise<ReplyParts | undefined> {
+    const reply = await resolveReply(view);
+    return reply?.parts;
+  }
+
+  /**
+   * Folds a terminal task's reply into its record once it can be read: a completed task whose
+   * reply is not yet visible here (its history event has not reached this instance) is folded on
+   * a later read, and a reply read from the text-only fallback is not recorded.
+   */
+  async function foldReply(
+    view: TaskView,
+    record: A2ATaskRecord | undefined,
+    reply: Reply | undefined,
+  ): Promise<A2ATaskRecord | undefined> {
+    if (record === undefined || !isTerminal(view.status) || record.replyRecorded) return record;
+    const parts = reply?.parts ?? [];
+    if (view.status === 'completed' && (parts.length === 0 || reply?.textOnlyFallback === true)) {
+      return record;
+    }
+    return records.update(view.id, (current) =>
+      current.replyRecorded
+        ? undefined
+        : {
+            ...current,
+            replyRecorded: true,
+            history:
+              parts.length === 0
+                ? current.history
+                : [
+                    ...current.history,
+                    Message.toJSON(
+                      agentMessage(view, replyMessageId(view.id), parts),
+                    ) as A2AWireMessage,
+                  ],
+          },
+    );
+  }
+
+  /** Records a task's reply when it settles, on the instance that ran it. */
+  async function recordSettled(view: TaskView): Promise<void> {
+    await foldReply(view, await records.read(view.id), await resolveReply(view));
   }
 
   async function read(view: TaskView, shape: ProjectionShape): Promise<A2ATaskReading> {
@@ -122,34 +189,13 @@ export function createTaskReader(options: {
         );
       }
     }
-    const reply = await replyOf(view);
-    // The reply is folded in once it can be read: a completed task whose reply is not yet visible
-    // here (its history event has not reached this instance) is folded on a later read.
-    const replyReady = view.status !== 'completed' || (reply !== undefined && reply.length > 0);
-    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded && replyReady) {
-      record = await records.update(view.id, (current) =>
-        current.replyRecorded
-          ? undefined
-          : {
-              ...current,
-              replyRecorded: true,
-              history:
-                reply === undefined || reply.length === 0
-                  ? current.history
-                  : [
-                      ...current.history,
-                      Message.toJSON(
-                        agentMessage(view, replyMessageId(view.id), reply),
-                      ) as A2AWireMessage,
-                    ],
-            },
-      );
-    }
+    const reply = await resolveReply(view);
+    record = await foldReply(view, record, reply);
     const task = projectTask(
       {
         view,
         record,
-        reply,
+        reply: reply?.parts,
         acknowledgement: stored?.cleanupAcknowledgement,
         forms: await formsOf(bureau, view),
       },
@@ -158,5 +204,5 @@ export function createTaskReader(options: {
     return { task, record };
   }
 
-  return { replyOf, read };
+  return { replyOf, read, recordSettled };
 }

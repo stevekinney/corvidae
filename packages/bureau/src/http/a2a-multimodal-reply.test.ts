@@ -14,6 +14,7 @@ import {
 import { describe, expect, it } from 'bun:test';
 
 import { base64Of, pngBytes } from '../testing/asset-fixtures.test-support.ts';
+import { waitForCondition } from '../test';
 import { MAXIMUM_DATA_PART_BYTES } from './a2a-reply-parts.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
 
@@ -139,12 +140,9 @@ describe('the Agent Card’s media types', () => {
         }
         expect(cards['plain'].defaultInputModes).toEqual(['text/plain', 'application/json']);
         expect(cards['plain'].defaultOutputModes).toEqual(['text/plain']);
-        expect(cards['painter'].defaultInputModes).toEqual([
-          'text/plain',
-          'application/json',
-          'image/*',
-          'application/pdf',
-        ]);
+        // The vision model reads images, but a message's file parts are not read yet: input stays
+        // text and data.
+        expect(cards['painter'].defaultInputModes).toEqual(['text/plain', 'application/json']);
         expect(cards['painter'].defaultOutputModes).toEqual([
           'text/plain',
           'image/*',
@@ -341,5 +339,92 @@ describe('a reply with text and an image', () => {
         expect(JSON.stringify(task)).not.toContain(base64Of(pngBytes(4, 3)));
       },
     );
+  });
+});
+
+describe('a media task nobody read before a restart', () => {
+  /** Sends without waiting, and returns the task's id once the task has settled. */
+  async function settledWithoutRead(opened: OpenedBureau, agent: string): Promise<string> {
+    counter += 1;
+    const response = await call(opened, agent, 'SendMessage', {
+      message: { messageId: `multimodal-${counter}`, role: 'ROLE_USER', parts: [{ text: 'go' }] },
+      configuration: { returnImmediately: true },
+    });
+    const body: Json = await response.json();
+    const id = (body.result?.task ?? body.result).id as string;
+    let status: string | undefined;
+    await waitForCondition(() => {
+      void opened.bureau.tasks.get(id).then((view) => {
+        status = view?.status;
+      });
+      return status === 'completed';
+    }, 'settled');
+    await opened.bureau.tasks.idle();
+    return id;
+  }
+
+  /** The Bureau as a restarted process sees it: no live run, and (optionally) no event history. */
+  function restarted(opened: OpenedBureau, options: { history: boolean }): void {
+    const bureau = opened.bureau as unknown as Record<string, unknown>;
+    bureau['getRun'] = () => undefined;
+    if (!options.history) {
+      bureau['eventHistory'] = async () => ({ outcome: 'unsupported-capability' });
+    }
+  }
+
+  it('answers from the record folded when the task settled, with no run and no history left', async () => {
+    await withAgents(
+      {
+        writer: replying([
+          { type: 'text', text: 'Done.' },
+          textFile('output.txt', 'Generated text'),
+          jsonDocument({ key: 'value' }),
+        ]),
+      },
+      async (opened) => {
+        const id = await settledWithoutRead(opened, 'writer');
+        restarted(opened, { history: false });
+
+        const read = await getTask(opened, 'writer', id);
+
+        expect(read.artifacts[0].parts[0]).toEqual({ text: 'Done.' });
+        expect(read.artifacts[0].parts[1]).toMatchObject({
+          filename: 'output.txt',
+          mediaType: 'text/plain',
+        });
+        expect(read.artifacts[0].parts[1].url).toMatch(/\/assets\/[^/]+\/content$/);
+        expect(read.artifacts[0].parts[2].data).toEqual({ key: 'value' });
+        expect(read.history.at(-1).parts).toEqual(read.artifacts[0].parts);
+      },
+    );
+  });
+
+  it('rebuilds the parts from the run’s durable completion when the record holds no reply', async () => {
+    const opened = await openBureau({
+      agents: {
+        writer: createAgent({
+          name: 'writer',
+          generate: replying([textFile('output.txt', 'Generated text')]),
+        }),
+      },
+      publish: ['writer'],
+      durableHistory: true,
+      handlerOptions: { publicUrl: PUBLIC_URL },
+    });
+    try {
+      // This process never records the reply when the task settles; a later read must find it.
+      (opened.bureau.tasks as unknown as { onSettled: () => () => void }).onSettled = () => () =>
+        undefined;
+      const id = await settledWithoutRead(opened, 'writer');
+      restarted(opened, { history: true });
+
+      const read = await getTask(opened, 'writer', id);
+
+      expect(read.artifacts[0].parts[0]).toMatchObject({ filename: 'output.txt' });
+      expect(read.artifacts[0].parts[0].url).toMatch(/\/assets\/[^/]+\/content$/);
+      expect(read.status.message.parts).toEqual(read.artifacts[0].parts);
+    } finally {
+      await opened.dispose();
+    }
   });
 });
