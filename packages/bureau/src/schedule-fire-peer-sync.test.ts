@@ -601,16 +601,20 @@ describe('a fire read again with one review that cannot be restored', () => {
 
 describe('the grace a review is given to reach durable state', () => {
   it('keeps a young review the session no longer records, and drops it once it is thirty seconds old', async () => {
-    const skew = { milliseconds: 0 };
+    // The clock runs in real time until `frozenAt` is set, then stands still. A clock that keeps
+    // running (a fixed skew over the wall clock) lets host load age the review past its grace
+    // before the first read, which then drops it at once (COR-1639).
+    const clockState: { frozenAt: number | undefined } = { frozenAt: undefined };
     const base = createDefaultRuntimeServices();
+    const currentTime = () => clockState.frozenAt ?? base.clock.now();
     const runtime = {
       ...base,
       clock: {
-        now: () => base.clock.now() + skew.milliseconds,
-        nowISO: () => new Date(base.clock.now() + skew.milliseconds).toISOString(),
+        now: currentTime,
+        nowISO: () => new Date(currentTime()).toISOString(),
       },
     };
-    const { holder, peer, fireId } = await holderAndPeer(
+    const { holder, peer, fireId, review } = await holderAndPeer(
       { holder: approvalToolbox([]), peer: approvalToolbox([]) },
       'peer-sync-grace',
       (storage) => storage,
@@ -626,11 +630,11 @@ describe('the grace a review is given to reach durable state', () => {
     await fireReviewFollowerOf(holder).reread(fireId);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
-    skew.milliseconds = 29_000;
+    clockState.frozenAt = review.requestedAt + 29_000;
     await fireReviewFollowerOf(holder).reread(fireId);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
-    skew.milliseconds = 31_000;
+    clockState.frozenAt = review.requestedAt + 30_000;
     await fireReviewFollowerOf(holder).reread(fireId);
     expect(reviewsOf(holder, fireId)).toHaveLength(0);
   });
@@ -653,13 +657,17 @@ describe('a fire read again when its events cannot be trusted', () => {
   });
 
   it('reads the fire again when the grace of a review it could not verify ends, with no event', async () => {
-    const skew = { milliseconds: 0 };
+    // The clock runs in real time until `frozenAt` is set, then stands still. A clock that keeps
+    // running (a fixed skew over the wall clock) lets host load age the review past its grace
+    // before the first read, which then drops it at once (COR-1639).
+    const clockState: { frozenAt: number | undefined } = { frozenAt: undefined };
     const base = createDefaultRuntimeServices();
+    const currentTime = () => clockState.frozenAt ?? base.clock.now();
     const runtime = {
       ...base,
       clock: {
-        now: () => base.clock.now() + skew.milliseconds,
-        nowISO: () => new Date(base.clock.now() + skew.milliseconds).toISOString(),
+        now: currentTime,
+        nowISO: () => new Date(currentTime()).toISOString(),
       },
     };
     // The holder's reads of the history are held, so the peer's closing never reaches it: the
@@ -669,7 +677,7 @@ describe('a fire read again when its events cannot be trusted', () => {
       hold.release = resolve;
     });
     harness.onDispose(() => hold.release?.());
-    const { holder, peer, fireId } = await holderAndPeer(
+    const { holder, peer, fireId, review } = await holderAndPeer(
       { holder: approvalToolbox([]), peer: approvalToolbox([]) },
       'peer-sync-grace-wait',
       (storage) =>
@@ -699,11 +707,16 @@ describe('a fire read again when its events cannot be trusted', () => {
     hold.armed = true;
     // The peer closes the approval just after it was announced.
     expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
-    skew.milliseconds = 29_900;
+    // 100 ms short of the 30 s grace, and standing still: the review is too young however long
+    // the host takes to get to the read below.
+    clockState.frozenAt = review.requestedAt + 29_900;
 
     // Too young to tell from a record that has not landed: kept, and read again when the grace ends.
     await fireReviewFollowerOf(holder).reread(fireId);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
+
+    // The grace ends: the wait the read armed (or the one it re-armed) reads the fire again.
+    clockState.frozenAt = review.requestedAt + 30_000;
 
     await eventually(
       () => (reviewsOf(holder, fireId).length === 0 ? true : undefined),
