@@ -2,7 +2,9 @@ import { expect } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readGateLog, run, runControl, runGate, UsageError } from './gate-run.ts';
+import { rejectionOf } from '../promise-outcome.test-support.ts';
+import { fakeSignals } from './gate-child.test-support.ts';
+import { readGateLog, run, runCommand, runControl, runGate, UsageError } from './gate-run.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
 
@@ -66,10 +68,10 @@ function repositoryHead(): string {
 scenarios.describe('runGate', () => {
   scenarios.scenario(
     "writes head and load first, the output, and GATE_RC, and returns the gate's code",
-    () => {
+    async () => {
       writeConfig({ gateCommand: 'echo gate-output; echo to-stderr >&2; exit 3' });
       const log = join(sandbox, 'logs', 'gate.log');
-      const result = runGate({ configPath, worktree: repository, log }, { load: () => 2.5 });
+      const result = await runGate({ configPath, worktree: repository, log }, { load: () => 2.5 });
       expect(result.code).toBe(3);
       expect(result.head).toBe(repositoryHead());
       const lines = readFileSync(log, 'utf8').split('\n');
@@ -83,7 +85,7 @@ scenarios.describe('runGate', () => {
 
   scenarios.scenario(
     'records a clean tree at both ends, ignoring a log under an ignored directory',
-    () => {
+    async () => {
       writeFileSync(join(repository, '.gitignore'), 'tmp/\n');
       defaultRunner(['git', 'add', '.'], { cwd: repository });
       defaultRunner(['git', 'commit', '-q', '-m', 'ignore tmp'], {
@@ -91,7 +93,7 @@ scenarios.describe('runGate', () => {
         env: gitEnvironment,
       });
       const log = join(repository, 'tmp', 'gate.log');
-      const result = runGate({
+      const result = await runGate({
         configPath,
         worktree: repository,
         log,
@@ -108,16 +110,20 @@ scenarios.describe('runGate', () => {
 
   scenarios.scenario(
     'records a dirty start, a gate that dirties the tree, and a gate that moves HEAD',
-    () => {
+    async () => {
       writeFileSync(join(repository, 'untracked.txt'), 'dirt');
-      const dirtyStart = runGate({ configPath, worktree: repository, log: join(sandbox, 'a.log') });
+      const dirtyStart = await runGate({
+        configPath,
+        worktree: repository,
+        log: join(sandbox, 'a.log'),
+      });
       expect(dirtyStart.startClean).toBe(false);
       expect(readGateLog(readFileSync(join(sandbox, 'a.log'), 'utf8')).treeStart?.clean).toBe(
         false,
       );
       rmSync(join(repository, 'untracked.txt'));
 
-      const dirtied = runGate({
+      const dirtied = await runGate({
         configPath,
         worktree: repository,
         log: join(sandbox, 'b.log'),
@@ -128,7 +134,7 @@ scenarios.describe('runGate', () => {
       defaultRunner(['git', 'checkout', '--', 'file.txt'], { cwd: repository });
 
       const before = repositoryHead();
-      const moved = runGate({
+      const moved = await runGate({
         configPath,
         worktree: repository,
         log: join(sandbox, 'c.log'),
@@ -143,24 +149,27 @@ scenarios.describe('runGate', () => {
     },
   );
 
-  scenarios.scenario('--command overrides the configured gate, and the wrapper prefixes it', () => {
-    writeConfig({ gateWrapper: 'env CHEF_WRAPPED=yes' });
-    const log = join(sandbox, 'gate.log');
-    const result = runGate({
-      configPath,
-      worktree: repository,
-      log,
-      command: 'echo "wrapped=$CHEF_WRAPPED"',
-    });
-    expect(result.code).toBe(0);
-    expect(readFileSync(log, 'utf8')).toContain('wrapped=yes');
-  });
+  scenarios.scenario(
+    '--command overrides the configured gate, and the wrapper prefixes it',
+    async () => {
+      writeConfig({ gateWrapper: 'env CHEF_WRAPPED=yes' });
+      const log = join(sandbox, 'gate.log');
+      const result = await runGate({
+        configPath,
+        worktree: repository,
+        log,
+        command: 'echo "wrapped=$CHEF_WRAPPED"',
+      });
+      expect(result.code).toBe(0);
+      expect(readFileSync(log, 'utf8')).toContain('wrapped=yes');
+    },
+  );
 
   scenarios.scenario(
     "puts GATE_RC on its own line when the gate's output has no trailing newline",
-    () => {
+    async () => {
       const log = join(sandbox, 'gate.log');
-      runGate({ configPath, worktree: repository, log, command: 'printf partial' });
+      await runGate({ configPath, worktree: repository, log, command: 'printf partial' });
       expect(readFileSync(log, 'utf8')).toMatch(
         /partial\nTREE_END clean=true head=[0-9a-f]{40}\nGATE_RC=0\n$/,
       );
@@ -169,7 +178,7 @@ scenarios.describe('runGate', () => {
 
   scenarios.scenario(
     'waits while the lock pattern matches, logging each wait to the log and none to stdout',
-    () => {
+    async () => {
       writeConfig({ lockPattern: '^held' });
       const log = join(sandbox, 'gate.log');
       let pgrepCalls = 0;
@@ -183,9 +192,9 @@ scenarios.describe('runGate', () => {
         }
         return defaultRunner(command, options);
       };
-      const result = runGate(
+      const result = await runGate(
         { configPath, worktree: repository, log },
-        { runner, sleep: (milliseconds) => sleeps.push(milliseconds) },
+        { runner, sleep: (milliseconds) => void sleeps.push(milliseconds) },
       );
       expect(result.waits).toBe(2);
       expect(sleeps).toEqual([15_000, 15_000]);
@@ -196,15 +205,55 @@ scenarios.describe('runGate', () => {
     },
   );
 
-  scenarios.scenario('rejects a directory that is not a worktree', () => {
+  scenarios.scenario(
+    'a signal stops the whole real process group, and the log records a non-zero exit',
+    async () => {
+      const pidFile = join(sandbox, 'worker.pid');
+      const log = join(sandbox, 'gate.log');
+      const signals = fakeSignals();
+      const running = runGate(
+        {
+          configPath,
+          worktree: repository,
+          log,
+          command: `sleep 300 & echo $! > ${pidFile}; wait`,
+        },
+        { signals, graceMilliseconds: 2_000 },
+      );
+      const deadline = Date.now() + 10_000;
+      while (!existsSync(pidFile) || readFileSync(pidFile, 'utf8').trim() === '') {
+        if (Date.now() > deadline) throw new Error('the gate never started its worker');
+        await Bun.sleep(20);
+      }
+      const worker = Number(readFileSync(pidFile, 'utf8').trim());
+      expect(() => process.kill(worker, 0)).not.toThrow();
+      signals.emit('SIGTERM');
+      const result = await running;
+      expect(result.code).toBe(143);
+      expect(result.interrupted).toBe('SIGTERM');
+      for (let waited = 0; waited < 50; waited += 1) {
+        try {
+          process.kill(worker, 0);
+        } catch {
+          break;
+        }
+        await Bun.sleep(20);
+      }
+      expect(() => process.kill(worker, 0)).toThrow();
+      expect(readGateLog(readFileSync(log, 'utf8')).exitCode).toBe(143);
+    },
+  );
+
+  scenarios.scenario('rejects a directory that is not a worktree', async () => {
     const plain = join(sandbox, 'plain');
     mkdirSync(plain);
-    expect(() => runGate({ configPath, worktree: plain, log: join(sandbox, 'gate.log') })).toThrow(
-      UsageError,
-    );
-    expect(() =>
+    expect(
+      await rejectionOf(runGate({ configPath, worktree: plain, log: join(sandbox, 'gate.log') })),
+    ).toBeInstanceOf(UsageError);
+    const missing = await rejectionOf(
       runGate({ configPath, worktree: join(sandbox, 'missing'), log: join(sandbox, 'gate.log') }),
-    ).toThrow('No such worktree');
+    );
+    expect(String(missing)).toContain('No such worktree');
   });
 });
 
@@ -298,9 +347,9 @@ scenarios.describe('runControl', () => {
 });
 
 scenarios.describe('run', () => {
-  scenarios.scenario("run exits with the gate's code and prints a short line", () => {
+  scenarios.scenario("run exits with the gate's code and prints a short line", async () => {
     const log = join(sandbox, 'gate.log');
-    const result = run([
+    const result = await runCommand([
       'run',
       '--config',
       configPath,

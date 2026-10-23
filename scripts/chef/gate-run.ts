@@ -39,10 +39,17 @@
 // (pre-existing or flaky)`; a task whose package is not a workspace is reported and not mapped,
 // and a commit with no `(#123)` suffix is named by its short hash.
 //
+// The gate runs as an asynchronous child in its own process group, so a signal to `run` (or to
+// `deliver.ts` and `batch-validate.ts`, which call it) is handled instead of orphaning the gate's
+// turbo and test workers. On SIGTERM, SIGINT or SIGHUP it sends SIGTERM to the whole group, then
+// SIGKILL after a short grace (or at once on a second signal), writes `GATE_INTERRUPTED <signal>`,
+// and records `GATE_RC=128+signal`, never 0. An interrupted batch validate is not recorded as main's
+// health, because a run someone stopped says nothing about `main`.
+//
 // `control` runs a command alternately in a candidate and a base tree and compares how often each
 // fails, which tells a shared or pre-existing failure from one the candidate introduced.
 //
-// Exit codes: `run` the gate's own code; `read` 0 only when the log holds exit code 0; `triage` 1
+// Exit codes: `run` the gate's own code, or 128 plus the signal number when it was interrupted; `read` 0 only when the log holds exit code 0; `triage` 1
 // when any failed task maps to a commit since the base (so to a pull request), else 0; `control`
 // 0 when the base fails at least as often as the candidate, else 1; 2 invalid CLI usage.
 
@@ -58,7 +65,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { loadavg } from 'node:os';
+import { loadavg, constants as signalConstants } from 'node:os';
 import { dirname, join } from 'node:path';
 import { workspaceParentDirectories } from '../workspace-directories.ts';
 import { findLockProcesses } from './leftovers.ts';
@@ -218,24 +225,140 @@ export function renderGateSummary(summary: GateLogSummary): string {
   return lines.join('\n');
 }
 
+/** The signals that stop a gate: the group is killed and the run records an interrupted exit. */
+export const gateSignals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
+export type GateSignal = (typeof gateSignals)[number];
+
+/** How long the gate's group has to exit after SIGTERM before it is sent SIGKILL. */
+export const gateGraceMilliseconds = 10_000;
+
+/** A started gate: its process id (the process group's id) and its eventual exit code. */
+export interface GateChild {
+  /** `undefined` when the process could not start; there is then no group to signal. */
+  pid: number | undefined;
+  /** The exit code, which is `128 + signal` for a child a signal killed. */
+  exited: Promise<number>;
+}
+
+/** Where signals come from: `process` in production, a fake in tests. */
+export interface SignalSource {
+  on: (signal: GateSignal, handler: () => void) => unknown;
+  off: (signal: GateSignal, handler: () => void) => unknown;
+}
+
 export interface GateDependencies {
   runner: Runner;
-  /** Block for `milliseconds`. */
-  sleep: (milliseconds: number) => void;
+  /** Wait for `milliseconds` between lock checks. */
+  sleep: (milliseconds: number) => void | Promise<void>;
   /** The one-minute load average. */
   load: () => number;
   now: () => Date;
   pollMilliseconds: number;
+  /** Starts the gate's shell script in `cwd` as the leader of its own process group. */
+  spawnGate: (script: string, cwd: string) => GateChild;
+  /** Sends `signal` to the whole process group led by `pid`. */
+  killGroup: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
+  signals: SignalSource;
+  /** Runs `callback` after `milliseconds` and returns a function that cancels it. */
+  schedule: (callback: () => void, milliseconds: number) => () => void;
+  graceMilliseconds: number;
 }
+
+function signalExitCode(signal: string | null | undefined): number {
+  const number = (signalConstants.signals as Record<string, number | undefined>)[signal ?? ''];
+  return 128 + (number ?? 0);
+}
+
+/** Start `script` with `sh -c` in its own process group, with its output left to the script. */
+export const spawnGateProcess: GateDependencies['spawnGate'] = (script, cwd) => {
+  try {
+    const child = Bun.spawn(['sh', '-c', script], {
+      cwd,
+      detached: true,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    });
+    return {
+      pid: child.pid,
+      exited: child.exited.then(() => child.exitCode ?? signalExitCode(child.signalCode)),
+    };
+  } catch {
+    return { pid: undefined, exited: Promise.resolve(127) };
+  }
+};
+
+/** Signal a whole process group; a group that has already gone is not an error. */
+export const killProcessGroup: GateDependencies['killGroup'] = (pid, signal) => {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // ESRCH: every process in the group has already exited.
+  }
+};
 
 function resolveDependencies(partial: Partial<GateDependencies>): GateDependencies {
   return {
     runner: partial.runner ?? defaultRunner,
-    sleep: partial.sleep ?? ((milliseconds) => Bun.sleepSync(milliseconds)),
+    sleep: partial.sleep ?? ((milliseconds) => Bun.sleep(milliseconds)),
     load: partial.load ?? (() => loadavg()[0] ?? 0),
     now: partial.now ?? (() => new Date()),
     pollMilliseconds: partial.pollMilliseconds ?? lockPollMilliseconds,
+    spawnGate: partial.spawnGate ?? spawnGateProcess,
+    killGroup: partial.killGroup ?? killProcessGroup,
+    signals: partial.signals ?? process,
+    schedule:
+      partial.schedule ??
+      ((callback, milliseconds) => {
+        const timer = setTimeout(callback, milliseconds);
+        return () => clearTimeout(timer);
+      }),
+    graceMilliseconds: partial.graceMilliseconds ?? gateGraceMilliseconds,
   };
+}
+
+/**
+ * Run the gate child and wait for it, killing its whole process group on SIGTERM, SIGINT or SIGHUP.
+ * The first signal sends SIGTERM and arms a SIGKILL after the grace period; a second signal sends
+ * SIGKILL at once. An interrupted gate never reports 0.
+ */
+async function runGateChild(
+  script: string,
+  cwd: string,
+  dependencies: GateDependencies,
+): Promise<{ code: number; interrupted: GateSignal | undefined }> {
+  const child = dependencies.spawnGate(script, cwd);
+  let interrupted: GateSignal | undefined;
+  let cancelKill: (() => void) | undefined;
+  const handlers = gateSignals.map((signal) => {
+    const handler = () => {
+      if (child.pid === undefined) return;
+      if (interrupted === undefined) {
+        interrupted = signal;
+        dependencies.killGroup(child.pid, 'SIGTERM');
+        const pid = child.pid;
+        cancelKill = dependencies.schedule(
+          () => dependencies.killGroup(pid, 'SIGKILL'),
+          dependencies.graceMilliseconds,
+        );
+      } else {
+        dependencies.killGroup(child.pid, 'SIGKILL');
+      }
+    };
+    dependencies.signals.on(signal, handler);
+    return { signal, handler };
+  });
+  try {
+    const code = await child.exited;
+    // The leader can exit while a worker of its group survives; the group is stopped either way.
+    return {
+      code: interrupted !== undefined && code === 0 ? signalExitCode(interrupted) : code,
+      interrupted,
+    };
+  } finally {
+    cancelKill?.();
+    for (const { signal, handler } of handlers) dependencies.signals.off(signal, handler);
+  }
 }
 
 function endsWithNewline(path: string): boolean {
@@ -270,6 +393,8 @@ export interface GateRunResult {
   endClean: boolean | undefined;
   /** HEAD after the gate; it differs from `head` when the gate moved it. */
   endHead: string;
+  /** The signal that stopped the gate, when one did; `code` is then never 0. */
+  interrupted?: GateSignal | undefined;
 }
 
 /** `git status --porcelain` emptiness and HEAD; an unreadable status is `undefined`, never clean. */
@@ -290,10 +415,10 @@ function treeLine(which: 'START' | 'END', tree: { clean: boolean | undefined; he
 }
 
 /** Wait out the lock, record the head and load, run the gate into the log, append its exit code. */
-export function runGate(
+export async function runGate(
   options: GateRunOptions,
   partial: Partial<GateDependencies> = {},
-): GateRunResult {
+): Promise<GateRunResult> {
   const dependencies = resolveDependencies(partial);
   const { runner } = dependencies;
   const config = loadRepositoryConfig(options.configPath);
@@ -313,7 +438,7 @@ export function runGate(
         options.log,
         `WAIT ${dependencies.now().toISOString()} lock held by ${holders.map((item) => item.pid).join(',')}\n`,
       );
-      dependencies.sleep(dependencies.pollMilliseconds);
+      await dependencies.sleep(dependencies.pollMilliseconds);
     }
   }
   const headResult = runner(['git', 'rev-parse', 'HEAD'], { cwd: options.worktree });
@@ -329,15 +454,23 @@ export function runGate(
   );
   const gate = `sh -c ${shellQuote(command)}`;
   const wrapped = config.gateWrapper === undefined ? gate : `${config.gateWrapper} ${gate}`;
-  const result = runner(['sh', '-c', `${wrapped} >> ${shellQuote(options.log)} 2>&1`], {
-    cwd: options.worktree,
-  });
+  const result = await runGateChild(
+    `${wrapped} >> ${shellQuote(options.log)} 2>&1`,
+    options.worktree,
+    dependencies,
+  );
   if (!endsWithNewline(options.log)) appendFileSync(options.log, '\n');
+  if (result.interrupted !== undefined)
+    appendFileSync(options.log, `GATE_INTERRUPTED ${result.interrupted}\n`);
   const end = snapshotTree(runner, options.worktree);
   appendFileSync(options.log, `${treeLine('END', end)}GATE_RC=${result.code}\n`);
   // The batch validate's result is main's health; a branch's own run of it is not, so it is
   // recorded under its head and `merge-gate.ts` counts it only when that head is on main.
-  if (config.batchCommand !== undefined && command === config.batchCommand) {
+  if (
+    config.batchCommand !== undefined &&
+    command === config.batchCommand &&
+    result.interrupted === undefined
+  ) {
     const healthFile = options.healthFile ?? resolveHealthFile(runner, options.worktree);
     if (healthFile !== undefined)
       recordBatchRun(healthFile, {
@@ -354,6 +487,7 @@ export function runGate(
     startClean: start.clean,
     endClean: end.clean,
     endHead: end.head,
+    ...(result.interrupted === undefined ? {} : { interrupted: result.interrupted }),
   };
 }
 
@@ -560,30 +694,13 @@ export function renderControl(result: ControlResult): string {
   ].join('\n');
 }
 
+/** The commands that only read files and finish at once: `read`, `triage` and `control`. */
 export function run(
   argv: string[],
   dependencies: Partial<GateDependencies> = {},
 ): { code: number; output: string } {
   const [command, ...rest] = argv;
-  if (command === 'run') {
-    const parsed = parseOptions(rest, {
-      values: ['config', 'worktree', 'log', 'command', 'health-file'],
-    });
-    if (parsed.positionals.length > 0)
-      throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-    const options: GateRunOptions = {
-      configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
-      worktree: requireOption(parsed, 'worktree'),
-      log: requireOption(parsed, 'log'),
-      command: parsed.values['command'],
-      healthFile: parsed.values['health-file'],
-    };
-    const result = runGate(options, dependencies);
-    return {
-      code: result.code,
-      output: `Gate ${result.code === 0 ? 'passed' : 'failed'} (exit ${result.code}) at ${result.head}; log ${options.log}.`,
-    };
-  }
+  if (command === 'run') throw new UsageError('`run` is asynchronous; call runCommand.');
   if (command === 'read') {
     const parsed = parseOptions(rest, { flags: ['json'] });
     const [path, ...extra] = parsed.positionals;
@@ -642,9 +759,39 @@ export function run(
   throw new UsageError('Usage: gate-run.ts run|read|triage|control ...');
 }
 
+/** Every command; `run` waits for the gate, so this one is asynchronous. */
+export async function runCommand(
+  argv: string[],
+  dependencies: Partial<GateDependencies> = {},
+): Promise<{ code: number; output: string }> {
+  const [command, ...rest] = argv;
+  if (command !== 'run') return run(argv, dependencies);
+  const parsed = parseOptions(rest, {
+    values: ['config', 'worktree', 'log', 'command', 'health-file'],
+  });
+  if (parsed.positionals.length > 0)
+    throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
+  const options: GateRunOptions = {
+    configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
+    worktree: requireOption(parsed, 'worktree'),
+    log: requireOption(parsed, 'log'),
+    command: parsed.values['command'],
+    healthFile: parsed.values['health-file'],
+  };
+  const result = await runGate(options, dependencies);
+  const outcome =
+    result.interrupted === undefined
+      ? `${result.code === 0 ? 'passed' : 'failed'} (exit ${result.code})`
+      : `was interrupted by ${result.interrupted} (exit ${result.code})`;
+  return {
+    code: result.code,
+    output: `Gate ${outcome} at ${result.head}; log ${options.log}.`,
+  };
+}
+
 if (import.meta.main) {
   try {
-    const { code, output } = run(Bun.argv.slice(2));
+    const { code, output } = await runCommand(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
