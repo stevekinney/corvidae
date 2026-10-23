@@ -68,9 +68,9 @@ These per-role efforts replace the table's effort column on Claude Code. Set `mo
 
 ## Keep contexts small
 
-- **Enforced ceiling:** a `PreToolUse` hook (`scripts/chef/context-ceiling.ts`, registered in `.claude/settings.json`) warns every session above 250K tokens, warns urgently above 325K, and, above 400K, blocks every call except the handoff (the brief file under `tmp/chef/`, the session-start tools and the `ToolSearch` `select:` that loads them, `SendMessage` to another session's `local_` id, and `git` status, commit, and push). Heed the warning: write the brief and hand off; do not argue with the block.
-- **Load the handoff tool at run start:** on Claude Code, load `mcp__ccd_session__start_session` with `ToolSearch` before the first dispatch, since it is deferred. A context handoff is a fresh `start_session` (`context: "fresh"`) with the brief, never `hand_off_to_session`, which forks the whole context and is blocked on its first call. The handoff brief exists under `tmp/chef/` by 300K. On Codex, start the fresh session from the same brief.
-- **Coordinator ceiling:** at about 400K tokens, update the note's state section, then compact or hand off to a fresh coordinator that resumes from the note. Never run past about 600K. Read the size from the provider or `transcript-usage.ts` (`lastCtx`).
+- **Context warnings:** a `PreToolUse` hook (`scripts/chef/context-ceiling.ts`, registered in `.claude/settings.json`) warns every session above 250K tokens and urgently above 325K. It never blocks: hand off at a natural boundary (between pull requests, never mid-merge or mid-gate), and treat Claude Code's automatic compaction as the backstop, not the plan.
+- **Hand off fresh, never fork:** on Claude Code, load `mcp__ccd_session__start_session` with `ToolSearch` at run start, since it is deferred. A context handoff is a fresh `start_session` (`context: "fresh"`) with the brief, never `hand_off_to_session`, which forks the whole context. Keep the run note current so the handoff brief exists by 300K. On Codex, start the fresh session from the same brief.
+- **Coordinator ceiling:** by about 325K tokens, update the note's state section and hand off to a fresh coordinator that resumes from the note. Never run past about 600K. Read the size from the provider or `transcript-usage.ts` (`lastCtx`).
 - **Resume or brief fresh:** resume an agent under about 250K tokens; above that, dispatch a fresh one with the charter, the latest findings, the diff or commit range, and evidence paths.
 - **Long waits:** a cache expires after minutes idle, so a large context that sits through a gate pays to rewrite itself. Run one consolidated gate per stage, and run repository-wide gates as background commands, which spend no tokens while they run.
 - **Output discipline:** every gate writes its full output to a log and prints only its exit code and a short summary. Read failures with a targeted search; never stream a suite into a context.
@@ -97,7 +97,7 @@ Each lives in `scripts/chef/`, prints a few lines (or one JSON object with `--js
 | `packet.ts` | `new <area>` writes a repository-packet skeleton to `tmp/chef/packets/<area>.md`; `status <area>` prints its age and the commits on `origin/main` that touched its paths since it was written, exiting 1 when it is stale. |
 | `main-health.ts` | Reports whether `main`'s last batch validate failed. `gate-run.ts run` writes the record for the batch command; `merge-gate.ts` reads it and refuses to merge into a red `main` unless the pull request is the fix, declared `--fixes-main`. |
 | `batch-validate.ts` | Runs the batch validate on `origin/main` in a dedicated worktree when five merges or two hours have passed since the last one and the load is under 8. Schedule it as [program runs](references/program-runs.md) "Batch validate on a timer" describes. |
-| `context-ceiling.ts` | The `PreToolUse` hook behind the context ceiling; not run by hand. |
+| `context-ceiling.ts` | The `PreToolUse` hook behind the context warnings; not run by hand. |
 | `transcript-usage.ts` | Token use, context size, and full-context cache rewrites per transcript, for Claude Code and Codex. |
 | `credentials.ts` | `resolve` names a credential's source, never its value; `exec` runs a command with it set. |
 | `jev.ts` | `decide` asks Jev a yes/no, choice, or scale question against a threshold. |
