@@ -1,86 +1,51 @@
 <script lang="ts">
   /**
-   * Notification bell + dropdown (design `Weft New Surfaces.dc.html` §C,
-   * `design/README.md` "Notification center"): grouped Critical/Warning/
-   * Info, unread heavier / read at 0.65 opacity, "Mark all read", footer
-   * live pill + "Open alerts view →". The critical strip below the header
-   * is a sibling component (`./critical-alert-strip.svelte`) fed by the
-   * same store — not rendered here.
+   * Notification bell + dropdown: what needs the person (a tool waiting for approval, a question,
+   * a failed run) and what finished in a chat they are not looking at. One flat row per item, the
+   * sentence first and the chat or schedule it is about after it, never a run. The badge counts
+   * what needs the person; an answer is listed but does not count. The critical strip below the
+   * header is a sibling component (`./critical-alert-strip.svelte`) fed by the same store.
    *
-   * Built on Cinder's `Dropdown` (compound-component doc: "Building a
-   * custom dropdown layout") using the legacy `trigger`/`children` snippet
-   * API so this component owns the full trigger-button and panel markup
-   * (matching the design reference's plain-element structure) while
-   * `Dropdown` supplies focus/Escape/click-outside/positioning behavior —
-   * an app-local composition over the primitive, not a fork (PROJECT-BRIEF).
+   * Built on Cinder's `Popover`, the component for a non-menu panel anchored to a button: it
+   * supplies the trigger's `aria-expanded`, focus, Escape, click-outside and positioning. A
+   * `Dropdown` would set `role="menu"`, which forbids the links and the button a panel of
+   * notifications holds. Cinder has no one-line notification row (`StackedListItem` is a two-line
+   * row), so the row is a plain anchor over the store's items.
    */
-  import { Badge, Button, ConnectionIndicator, Dropdown } from '@lostgradient/cinder';
+  import { Button, Popover, VisuallyHidden } from '@lostgradient/cinder';
   import type { LucideIcon } from '@lucide/svelte';
   import {
-    Ban,
     Bell,
-    CalendarClock,
-    CalendarX,
-    CheckCheck,
-    CircleCheck,
     CircleX,
-    ClockAlert,
-    Database,
-    FileCheck,
-    HardDrive,
-    Pause,
-    Pencil,
-    Play,
-    Plug,
+    MessageCircleCheck,
+    MessageCircleQuestionMark,
     PlugZap,
-    Radio,
-    ShieldAlert,
-    Siren,
-    Tag,
-    Trash,
+    ShieldQuestionMark,
     TriangleAlert,
-    UserCheck,
   } from '@lucide/svelte';
 
   import { formatRelativeTime } from '../../lib/format/index.ts';
-  import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
+  import IdentifierText from '../../lib/identifier-text.svelte';
   import { router } from '../../lib/router.svelte.ts';
+  import { NOTIFICATION_COPY } from '../copy.ts';
   import type { NotificationItem, NotificationStore } from '../notifications.svelte.ts';
 
   interface NotificationBellProps {
     store: NotificationStore;
-    /** The shared fleet feed's own connection status — the footer's "Live" pill (design: "footer live pill") reflects where the notifications above it actually come from, rather than a static label. */
-    liveStatus: LiveSourceStatus;
   }
 
-  let { store, liveStatus }: NotificationBellProps = $props();
+  let { store }: NotificationBellProps = $props();
 
   let open = $state(false);
 
-  /** Icon per `classifyFleetEvent` icon name. `@lucide/svelte` icons are Svelte 5 components typed `LucideIcon`. */
+  /** Icon per `NotificationEntry` icon name. `@lucide/svelte` icons are Svelte 5 components typed `LucideIcon`. */
   const ICONS: Readonly<Record<string, LucideIcon>> = {
-    siren: Siren,
+    'shield-question-mark': ShieldQuestionMark,
+    'message-circle-question-mark': MessageCircleQuestionMark,
+    'message-circle-check': MessageCircleCheck,
     'circle-x': CircleX,
-    'calendar-x': CalendarX,
-    'shield-alert': ShieldAlert,
-    database: Database,
-    'user-check': UserCheck,
-    'check-check': CheckCheck,
-    plug: Plug,
     'plug-zap': PlugZap,
-    play: Play,
-    'circle-check': CircleCheck,
-    ban: Ban,
-    'clock-alert': ClockAlert,
-    pause: Pause,
-    'trash-2': Trash,
-    radio: Radio,
-    tag: Tag,
-    pencil: Pencil,
-    'file-check': FileCheck,
-    'calendar-clock': CalendarClock,
     'triangle-alert': TriangleAlert,
-    'hard-drive': HardDrive,
   };
 
   function iconFor(name: string): LucideIcon {
@@ -92,89 +57,69 @@
     router.navigate(item.href);
     open = false;
   }
-
-  function openAlertsView(): void {
-    router.navigate('/system');
-    open = false;
-  }
-
-  const GROUPS: readonly { readonly label: string; readonly items: () => NotificationItem[] }[] = [
-    { label: 'Critical', items: () => store.critical },
-    { label: 'Warning', items: () => store.warning },
-    { label: 'Info', items: () => store.info },
-  ];
 </script>
 
-<Dropdown bind:open placement="bottom-end">
+<Popover
+  bind:open
+  placement="bottom-end"
+  label={NOTIFICATION_COPY.panelTitle}
+  class="weft-notification-popover"
+>
   {#snippet trigger()}
-    <Button variant="ghost" iconOnly aria-label={`Notifications, ${store.unreadCount} unread`}>
+    <Button
+      variant="ghost"
+      iconOnly
+      aria-label={NOTIFICATION_COPY.bellLabel(store.unreadCount)}
+      onclick={() => (open = !open)}
+    >
       <span class="weft-notification-bell__icon">
         <Bell aria-hidden="true" size={16} />
         {#if store.unreadCount > 0}
-          <span class="weft-notification-bell__count">{store.unreadCount}</span>
+          <span class="weft-notification-bell__count" aria-hidden="true">{store.unreadCount}</span>
         {/if}
       </span>
     </Button>
   {/snippet}
-  {#snippet children()}
-    <div class="weft-notification-panel">
-      <div class="weft-notification-panel__header">
-        <span class="weft-notification-panel__title">Notifications</span>
-        <Badge variant="danger" size="sm">{store.unreadCount} unread</Badge>
-        <button
-          type="button"
-          class="weft-notification-panel__mark-read"
-          onclick={() => store.markAllRead()}
-        >
-          Mark all read
-        </button>
-      </div>
 
-      <div class="weft-notification-panel__list">
-        {#each GROUPS as group (group.label)}
-          {@const items = group.items()}
-          {#if items.length > 0}
-            <div class="weft-notification-panel__group-label" data-tier={group.label.toLowerCase()}>
-              {group.label}
-            </div>
-            {#each items as item (item.id)}
-              {@const Icon = iconFor(item.icon)}
-              <a
-                href={router.href(item.href)}
-                class="weft-notification-panel__item"
-                data-tier={item.tier}
-                data-read={item.read}
-                onclick={(event) => {
-                  event.preventDefault();
-                  goTo(item);
-                }}
-              >
-                <Icon aria-hidden="true" size={14} class="weft-notification-panel__item-icon" />
-                <span class="weft-notification-panel__item-body">
-                  <span class="weft-notification-panel__item-title">{item.title}</span>
-                  <span class="weft-notification-panel__item-detail">{item.body}</span>
-                </span>
-                <span class="weft-notification-panel__item-time">
-                  {formatRelativeTime(item.emittedAtMs)}
-                </span>
-              </a>
-            {/each}
-          {/if}
-        {/each}
-
-        {#if store.items.length === 0}
-          <p class="weft-notification-panel__empty">No notifications yet.</p>
-        {/if}
-      </div>
-
-      <div class="weft-notification-panel__footer">
-        <span class="weft-notification-panel__live">
-          <ConnectionIndicator status={liveStatus} />
-        </span>
-        <button type="button" class="weft-notification-panel__alerts-link" onclick={openAlertsView}>
-          Open alerts view →
-        </button>
-      </div>
+  <div class="weft-notification-panel">
+    <div class="weft-notification-panel__header">
+      <span class="weft-notification-panel__title">{NOTIFICATION_COPY.panelTitle}</span>
+      <Button variant="ghost" size="sm" onclick={() => store.markAllRead()}>
+        {NOTIFICATION_COPY.markAllRead}
+      </Button>
     </div>
-  {/snippet}
-</Dropdown>
+
+    <div class="weft-notification-panel__list">
+      {#each store.items as item (item.id)}
+        {@const Icon = iconFor(item.icon)}
+        <a
+          href={router.href(item.href)}
+          class="weft-notification-panel__item"
+          data-tier={item.tier}
+          data-kind={item.kind}
+          data-read={item.read}
+          onclick={(event) => {
+            event.preventDefault();
+            goTo(item);
+          }}
+        >
+          <Icon aria-hidden="true" size={14} class="weft-notification-panel__item-icon" />
+          <span class="weft-notification-panel__item-text">
+            <span class="weft-notification-panel__item-title"
+              ><IdentifierText text={item.title} identifiers={item.identifiers} /></span
+            >
+            <VisuallyHidden>{item.joiner}</VisuallyHidden>
+            <span class="weft-notification-panel__item-detail">{item.detail}</span>
+          </span>
+          <span class="weft-notification-panel__item-time">
+            {formatRelativeTime(item.emittedAtMs)}
+          </span>
+        </a>
+      {/each}
+
+      {#if store.items.length === 0}
+        <p class="weft-notification-panel__empty">{NOTIFICATION_COPY.empty}</p>
+      {/if}
+    </div>
+  </div>
+</Popover>

@@ -25,6 +25,9 @@ export const A2UI_BASIC_CATALOG_ID =
 export const A2UI_CINDER_CATALOG_ID =
   'https://cinder.website/a2ui/v0_9_1/catalogs/cinder/v1/catalog.json';
 
+/** The A2UI A2A extension of the pinned A2UI release (`v0.9.1`). */
+export const A2UI_EXTENSION_URI = 'https://a2ui.org/a2a-extension/a2ui/v0.9.1';
+
 /** The A2UI release Bureau's support is pinned to. */
 export const A2UI_SPECIFICATION_VERSION = 'v0.9.1';
 

@@ -17,7 +17,7 @@ export function numberField(payload: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-/** Truncates an identifier for readable inline notification copy. */
+/** Truncates an identifier for readable inline activity copy. */
 export function truncateId(id: string): string {
   if (id.length <= 14) return id;
   return `${id.slice(0, 8)}…${id.slice(-4)}`;

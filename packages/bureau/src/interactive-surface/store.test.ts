@@ -1599,3 +1599,17 @@ describe('review fixes', () => {
     expect(rotated).toMatchObject({ outcome: 'accepted' });
   });
 });
+
+describe('listing a task’s surfaces', () => {
+  it('returns every surface the caller may see, oldest first, and none for a stranger or an unknown task', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand({ commandId: 'c1', surfaceId: 'first' }));
+    await surfaces.create(createCommand({ commandId: 'c2', surfaceId: 'second' }));
+
+    const own = await surfaces.list(TASK, { principal: OWNER });
+    expect(own.map((surface) => surface.surfaceId).toSorted()).toEqual(['first', 'second']);
+    expect(own.every((surface) => surface.eventCursor !== undefined)).toBe(true);
+    expect(await surfaces.list(TASK, { principal: 'api-key:mallory' })).toEqual([]);
+    expect(await surfaces.list('no-such-task')).toEqual([]);
+  });
+});

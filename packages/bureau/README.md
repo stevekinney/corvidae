@@ -615,7 +615,7 @@ The handler has no run-starting operation of its own, so the host starts the run
 **Not available.** Do not promise these to your own users:
 
 - `GetExtendedAgentCard`, and any binding other than JSON-RPC (HTTP+JSON and gRPC).
-- `task.resynced`, the repair of a failed durable append for push notifications (COR-1669 part 2b-3, still open).
+- Delivery of `task.resynced` over push notifications and A2A streams. The Bureau appends the event to repair a failed durable append and `bureau.tasks.events` serves it, but push and the A2A stream do not yet deliver it (COR-1669 part 2b-3c).
 - Authentication other than an API key, and the `bureau.deliveries.*` management operations.
 - Wiring a human-input form from an agent file or the catalog (COR-1674). An author can configure `inputSchemas` on Operative's `requestHumanInput` tool today, and the form is projected to the A2UI data part the extension row describes.
 
@@ -799,7 +799,7 @@ export const askSummarizer = createPeerCallTool({
 
 ### Interactive surfaces (COR-1631)
 
-`bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
+`bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, `list` reads every surface of a task, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
 
 ### MCP adapter (COR-839, COR-910)
 

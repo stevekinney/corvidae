@@ -225,6 +225,7 @@
       );
       return {
         toolCallId: result.callId,
+        toolName: call?.name,
         question: approvalQuestion({
           toolName: call?.name ?? 'a tool',
           arguments: call?.arguments,
@@ -234,7 +235,7 @@
     }),
   );
   const approvalsByCall = $derived(
-    new Map(approvals.map((entry) => [entry.toolCallId, entry.question] as const)),
+    new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
   const activity = $derived(toolGroups(session.conversation));
 
@@ -437,11 +438,12 @@
         {#if group !== undefined}
           <ToolCalls id={`tools-${message.id}`} entries={group.entries}>
             {#snippet decision(entry)}
-              {@const question = approvalsByCall.get(entry.callId)}
-              {#if question !== undefined}
+              {@const asked = approvalsByCall.get(entry.callId)}
+              {#if asked !== undefined}
                 <ApprovalDecision
                   id={`tools-${message.id}-${entry.callId}`}
-                  {question}
+                  question={asked.question}
+                  identifiers={asked.toolName === undefined ? [] : [asked.toolName]}
                   deciding={deciding || session.streaming}
                   onDecide={(choice) => void decide(entry.callId, choice)}
                 />

@@ -1,14 +1,13 @@
 /**
- * Component tests for `<CriticalAlertStrip>` (design `Weft New Surfaces.dc.html`
- * §C: "Critical strip below header, dismissible").
+ * Component tests for `<CriticalAlertStrip>`: the dismissible strip below the header. The one
+ * critical item the bell holds is the host's own problem, an engine that does not answer.
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { NotificationStore } from '../notifications.svelte.ts';
+import { memoryStore } from '../notification-store.test-support.ts';
 import CriticalAlertStrip from './critical-alert-strip.svelte';
 
 /** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */
@@ -18,32 +17,31 @@ function landAt(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-function fleetFrame(kind: string, overrides: Partial<FleetEventFrame> = {}): FleetEventFrame {
-  return { kind, sequence: 1, cursor: 'c1', emittedAtMs: 1, payload: {}, ...overrides };
-}
-
 describe('CriticalAlertStrip', () => {
   test('renders nothing when there are no unread critical items', async () => {
-    const store = new NotificationStore();
+    const store = memoryStore();
     const { container } = render(CriticalAlertStrip, { props: { store } });
 
     expect(container.querySelector('.weft-critical-strip')).toBeNull();
   });
 
-  test('renders one row per unread critical item, ignoring warning/info tiers', async () => {
-    const store = new NotificationStore();
-    store.ingest(fleetFrame('alert:fired', { cursor: 'c1', payload: { name: 'dlq' } }));
-    store.ingest(fleetFrame('task:dead-lettered', { cursor: 'c2' }));
-    store.ingest(fleetFrame('workflow:failed', { cursor: 'c3' })); // warning, not critical
+  test('names an unreachable engine, and not one that is only stale', async () => {
+    const store = memoryStore();
+    store.reportEngineStatus('stale', 1);
+    const stale = render(CriticalAlertStrip, { props: { store } });
+    expect(stale.container.querySelector('.weft-critical-strip')).toBeNull();
+    stale.unmount();
 
+    store.reportEngineStatus('closed', 2);
     const { container } = render(CriticalAlertStrip, { props: { store } });
 
-    expect(container.querySelectorAll('.weft-critical-strip__row')).toHaveLength(2);
+    expect(container.querySelectorAll('.weft-critical-strip__row')).toHaveLength(1);
+    expect(container.textContent).toContain('Engine unreachable');
   });
 
   test('dismissing a row calls dismissCritical and removes it from the strip', async () => {
-    const store = new NotificationStore();
-    store.ingest(fleetFrame('alert:fired', { cursor: 'c1', payload: { name: 'dlq' } }));
+    const store = memoryStore();
+    store.reportEngineStatus('closed', 1);
 
     const { container, getByRole } = render(CriticalAlertStrip, { props: { store } });
     expect(container.querySelectorAll('.weft-critical-strip__row')).toHaveLength(1);
@@ -56,8 +54,8 @@ describe('CriticalAlertStrip', () => {
 
   test('following a row’s link dismisses it and routes to its target in place', async () => {
     landAt('/');
-    const store = new NotificationStore();
-    store.ingest(fleetFrame('alert:fired', { cursor: 'c1', payload: { name: 'dlq' } }));
+    const store = memoryStore();
+    store.reportEngineStatus('closed', 1);
 
     const { container } = render(CriticalAlertStrip, { props: { store } });
     const link = container.querySelector('.weft-critical-strip__row a');

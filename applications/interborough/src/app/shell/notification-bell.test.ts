@@ -1,14 +1,14 @@
 /**
- * Component tests for `<NotificationBell>` (design `Weft New Surfaces.dc.html`
- * §C: bell + dropdown, grouped Critical/Warning/Info, "Mark all read").
+ * Component tests for `<NotificationBell>`: the badge counts what needs the person, each row is
+ * one sentence and the chat it is about, and opening a row reads it.
  */
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { NotificationStore } from '../notifications.svelte.ts';
+import type { NotificationEntry } from '../notification-items.ts';
+import { memoryStore } from '../notification-store.test-support.ts';
 import NotificationBell from './notification-bell.svelte';
 
 /** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */
@@ -18,118 +18,195 @@ function landAt(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-function fleetFrame(kind: string, overrides: Partial<FleetEventFrame> = {}): FleetEventFrame {
-  return { kind, sequence: 1, cursor: 'c1', emittedAtMs: 1, payload: {}, ...overrides };
+function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
+  return {
+    id: 'review:one',
+    kind: 'approval',
+    tier: 'warning',
+    icon: 'shield-question-mark',
+    title: 'tool-runner needs your approval',
+    identifiers: ['tool-runner'],
+    detail: 'Refund order 1234',
+    joiner: ' in ',
+    sessionId: 'session-refund',
+    href: '/chat/session-refund',
+    emittedAtMs: Date.now() - 120_000,
+    ...overrides,
+  };
 }
 
-describe('NotificationBell', () => {
-  test('shows no unread count badge when there are no notifications', async () => {
-    const store = new NotificationStore();
-    const { getByRole, container } = render(NotificationBell, {
-      props: { store, liveStatus: 'live' },
-    });
+const ANSWERED = entry({
+  id: 'task:echo',
+  kind: 'answered',
+  tier: 'info',
+  icon: 'message-circle-check',
+  title: 'echo answered',
+  identifiers: ['echo'],
+  detail: 'Hello echo, say this back',
+  sessionId: 'session-echo',
+  href: '/chat/session-echo',
+});
 
-    expect(getByRole('button', { name: 'Notifications, 0 unread' })).not.toBeNull();
+describe('NotificationBell', () => {
+  test('shows no badge when nothing needs the person', () => {
+    const store = memoryStore();
+    const { getByRole, container } = render(NotificationBell, { props: { store } });
+
+    expect(getByRole('button', { name: 'Notifications' })).not.toBeNull();
     expect(container.querySelector('.weft-notification-bell__count')).toBeNull();
   });
 
-  test('shows the unread count badge and grouped items after opening', async () => {
-    const store = new NotificationStore();
-    store.ingest(fleetFrame('alert:fired', { cursor: 'c1', payload: { name: 'dlq' } }));
-    store.ingest(fleetFrame('schedule:missed-fire', { cursor: 'c2' }));
-    store.ingest(fleetFrame('worker:connected', { cursor: 'c3', payload: { id: 'w-1' } }));
+  test('the badge counts what needs the person, and an answer does not count', async () => {
+    const store = memoryStore();
+    store.setActivity([
+      entry({ id: 'review:a' }),
+      entry({ id: 'review:b', kind: 'question', title: 'request-human-input asked a question' }),
+      ANSWERED,
+    ]);
 
-    const { getByRole, getByText, container } = render(NotificationBell, {
-      props: { store, liveStatus: 'live' },
-    });
+    const { getByRole, container } = render(NotificationBell, { props: { store } });
 
-    expect(container.querySelector('.weft-notification-bell__count')?.textContent).toBe('3');
-
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 3 unread' }));
-
-    expect(getByText('Critical')).not.toBeNull();
-    expect(getByText('Warning')).not.toBeNull();
-    expect(getByText('Info')).not.toBeNull();
-    expect(getByText('Alert fired')).not.toBeNull();
+    expect(container.querySelector('.weft-notification-bell__count')?.textContent).toBe('2');
+    expect(getByRole('button', { name: 'Notifications, 2 need you' })).not.toBeNull();
   });
 
-  test('empty state renders when there are no items yet', async () => {
-    const store = new NotificationStore();
-    const { getByRole, getByText } = render(NotificationBell, {
-      props: { store, liveStatus: 'live' },
-    });
+  test('the button says "needs" for one item', () => {
+    const store = memoryStore();
+    store.setActivity([entry()]);
 
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 0 unread' }));
+    const { getByRole } = render(NotificationBell, { props: { store } });
 
-    expect(getByText('No notifications yet.')).not.toBeNull();
+    expect(getByRole('button', { name: 'Notifications, 1 needs you' })).not.toBeNull();
   });
 
-  test('"Mark all read" clears the unread count', async () => {
-    const store = new NotificationStore();
-    store.ingest(fleetFrame('workflow:started', { cursor: 'c1', workflowId: 'wf-1' }));
-    store.ingest(fleetFrame('workflow:completed', { cursor: 'c2', workflowId: 'wf-2' }));
+  test('each row is the sentence, the chat it is about, and how long ago, in one flat list', async () => {
+    const store = memoryStore();
+    store.setActivity([entry(), ANSWERED]);
+    const { getByRole } = render(NotificationBell, { props: { store } });
 
-    const { getByRole } = render(NotificationBell, { props: { store, liveStatus: 'live' } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 2 unread' }));
-    await fireEvent.click(getByRole('button', { name: 'Mark all read' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
 
+    const rows = Array.from(document.body.querySelectorAll('.weft-notification-panel__item'));
+    expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+      'tool-runner needs your approval in Refund order 1234 2m ago',
+      'echo answered in Hello echo, say this back 2m ago',
+    ]);
+    expect(document.body.querySelector('.weft-notification-panel__group-label')).toBeNull();
+  });
+
+  test('an agent’s name in a sentence is set in monospace', async () => {
+    const store = memoryStore();
+    store.setActivity([entry()]);
+    const { getByRole } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+
+    expect(
+      document.body.querySelector('.weft-notification-panel__item-title code')?.textContent,
+    ).toBe('tool-runner');
+  });
+
+  test('a one-word agent name is set in monospace too', async () => {
+    const store = memoryStore();
+    store.setActivity([ANSWERED]);
+    const { getByRole } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications' }));
+
+    expect(
+      document.body.querySelector('.weft-notification-panel__item-title code')?.textContent,
+    ).toBe('echo');
+  });
+
+  test('has no footer, no alerts link, and no unread badge in the header', async () => {
+    const store = memoryStore();
+    store.setActivity([entry()]);
+    const { getByRole } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+
+    expect(document.body.querySelector('.weft-notification-panel__footer')).toBeNull();
+    expect(document.body.textContent).not.toContain('Open alerts view');
+    expect(document.body.textContent).not.toContain('unread');
+  });
+
+  test('says nothing needs the person when the list is empty', async () => {
+    const store = memoryStore();
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications' }));
+
+    expect(getByText('Nothing needs you right now.')).not.toBeNull();
+  });
+
+  test('"Mark all read" clears the badge and keeps the rows', async () => {
+    const store = memoryStore();
+    store.setActivity([entry({ id: 'review:a' }), entry({ id: 'review:b' }), ANSWERED]);
+
+    const { getByRole, getByText, container } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 2 need you' }));
+    await fireEvent.click(getByText('Mark all read'));
+
+    expect(store.unreadCount).toBe(0);
+    expect(container.querySelector('.weft-notification-bell__count')).toBeNull();
+    expect(document.body.querySelectorAll('.weft-notification-panel__item')).toHaveLength(3);
+  });
+
+  test('opening a row marks it read, goes to its chat, and closes the panel', async () => {
+    landAt('/agents');
+    const store = memoryStore();
+    store.setActivity([entry()]);
+
+    const { getByRole, getByText, queryByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+    await fireEvent.click(getByText('Refund order 1234'));
+
+    expect(store.items[0]?.read).toBe(true);
+    expect(router.pathname).toBe('/chat/session-refund');
+    expect(queryByText('Mark all read')).toBeNull();
+  });
+
+  test('a long list scrolls inside its own wrapper, with the header outside it', async () => {
+    // The panel once had `overflow: hidden` with no `max-height`, so a large list rendered as one
+    // unbounded panel. Only the list scrolls.
+    const store = memoryStore();
+    store.setActivity(Array.from({ length: 30 }, (_, index) => entry({ id: `review:${index}` })));
+
+    const { getByRole } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 30 need you' }));
+
+    const list = document.body.querySelector('.weft-notification-panel__list');
+    const header = document.body.querySelector('.weft-notification-panel__header');
+    expect(list?.querySelectorAll('.weft-notification-panel__item').length).toBe(30);
+    expect(header?.contains(list ?? null)).toBe(false);
+  });
+
+  test('the host’s own problem is a row that links to the engine', async () => {
+    landAt('/agents');
+    const store = memoryStore();
+    store.reportEngineStatus('closed', Date.now());
+    store.reportEngineStatus('stale', Date.now());
+
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+    await fireEvent.click(getByText('Engine status stale'));
+
+    expect(router.pathname).toBe('/engine');
     expect(store.unreadCount).toBe(0);
   });
 
-  test('clicking a notification marks it read and navigates', async () => {
-    const store = new NotificationStore();
-    store.ingest(fleetFrame('workflow:started', { cursor: 'c1', workflowId: 'wf-1' }));
+  test('Escape closes the panel', async () => {
+    const store = memoryStore();
+    store.setActivity([entry()]);
 
-    const { getByRole, getByText } = render(NotificationBell, {
-      props: { store, liveStatus: 'live' },
-    });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
-    await fireEvent.click(getByText('Workflow started'));
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+    expect(getByText('Mark all read')).not.toBeNull();
 
-    expect(store.items[0]?.read).toBe(true);
-  });
+    await fireEvent.keyDown(document.body, { key: 'Escape' });
 
-  test('"Open alerts view" navigates to the System route and closes the panel', async () => {
-    landAt('/runs');
-    const store = new NotificationStore();
-    const { getByRole, queryByText } = render(NotificationBell, {
-      props: { store, liveStatus: 'live' },
-    });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 0 unread' }));
-    await fireEvent.click(getByRole('button', { name: 'Open alerts view →' }));
-
-    expect(router.pathname).toBe('/system');
-    expect(queryByText('No notifications yet.')).toBeNull();
-  });
-
-  test('regression: item groups render inside a bounded scroll wrapper, header/footer stay outside it', async () => {
-    // Guards the WFC-11 design-fidelity fix: the panel previously had
-    // `overflow: hidden` with no `max-height`, so a large feed rendered as
-    // one unbounded panel with the footer pushed off-screen. The list must
-    // live in its own `.weft-notification-panel__list` wrapper, separate
-    // from the header/footer, so only the list scrolls.
-    const store = new NotificationStore();
-    for (let index = 0; index < 30; index += 1) {
-      store.ingest(
-        fleetFrame('worker:connected', { cursor: `c${index}`, payload: { id: `w-${index}` } }),
-      );
-    }
-
-    const { getByRole, container } = render(NotificationBell, {
-      props: { store, liveStatus: 'live' },
-    });
-    await fireEvent.click(
-      getByRole('button', { name: `Notifications, ${store.unreadCount} unread` }),
+    await waitFor(() =>
+      expect(document.body.querySelectorAll('.weft-notification-panel')).toHaveLength(0),
     );
-
-    const list = container.querySelector('.weft-notification-panel__list');
-    const header = container.querySelector('.weft-notification-panel__header');
-    const footer = container.querySelector('.weft-notification-panel__footer');
-
-    expect(list).not.toBeNull();
-    expect(list?.querySelectorAll('.weft-notification-panel__item').length).toBe(30);
-    expect(header?.contains(list)).toBe(false);
-    expect(footer?.contains(list)).toBe(false);
-    expect(list?.contains(footer)).toBe(false);
   });
 });
