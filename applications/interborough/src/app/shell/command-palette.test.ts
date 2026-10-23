@@ -171,6 +171,39 @@ describe('the chats, agents, and commands', () => {
   });
 });
 
+describe('choosing with the keyboard', () => {
+  test('Enter opens the first result, the chat', async () => {
+    stubEngine();
+    landAt('/chat');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+    const input = await view.findByRole('combobox');
+    await fireEvent.input(input, { target: { value: 'ech' } });
+    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(router.pathname).toBe('/chat/echo-chat'));
+  });
+});
+
+describe('the engine pages and the empty states', () => {
+  test('an engine page opens by name', async () => {
+    await choose('go to storage', /^Storage$/);
+    await waitFor(() => expect(router.pathname).toBe('/storage'));
+  });
+
+  test('says what to type before anything is typed, and when nothing matches', async () => {
+    stubEngine();
+    landAt('/chat');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+    expect(await view.findByText('Search the console')).not.toBeNull();
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'zzzqqq' } });
+    expect(await view.findByText('No matches')).not.toBeNull();
+  });
+});
+
 describe('the palette shortcut', () => {
   test('Cmd+K and Ctrl+K open the palette, and other keys leave it closed', async () => {
     stubEngine();
