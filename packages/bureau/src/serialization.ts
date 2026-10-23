@@ -1,5 +1,5 @@
 import type { LivenessSnapshot, RunState } from '@lostgradient/operative';
-import { AgentRunError } from '@lostgradient/operative';
+import { AgentRunError, finishReasonOfError } from '@lostgradient/operative';
 import { Conversation, currentConversationFromSnapshot } from 'conversationalist';
 
 import { safeStringify, serializeAgentRunErrorForBureau, toJsonSafe } from './serialization-json';
@@ -153,11 +153,20 @@ export function serializeActionDetail(eventType: string, detail: unknown): unkno
     return toJsonSafe(projectRunCompletionRecord(record));
   }
 
-  if (
-    eventType === 'run.error' ||
-    eventType === 'generate.error' ||
-    eventType === 'generate.retry'
-  ) {
+  if (eventType === 'run.error') {
+    // COR-1627: the finish reason the failure ends the run with, carried on the event so a
+    // reader that ends on `run.error` (a task's event stream) reports the real reason, and not
+    // the `null` of a run that has not yet said how it finished. An error with no class to read
+    // it from is a plain `error`, as `makeErrorResult` classifies it.
+    const serialized = serializeError(record);
+    return toJsonSafe(
+      'error' in record && record.error !== undefined
+        ? { ...serialized, finishReason: finishReasonOfError(record.error) }
+        : serialized,
+    );
+  }
+
+  if (eventType === 'generate.error' || eventType === 'generate.retry') {
     return toJsonSafe(serializeError(record));
   }
 

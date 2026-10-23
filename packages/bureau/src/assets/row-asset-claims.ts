@@ -153,3 +153,49 @@ export async function releaseRowAssetClaims(
     }
   }
 }
+
+/**
+ * Releases the claims a run's rows actually hold (COR-1630), and nothing else. A run claims only
+ * the rows its own walker reached (the rows it committed and the last row it was seeded with), so
+ * an earlier seeded row's assets were never claimed under its holder, and `release` would still
+ * emit `asset.released` for them: the asset service reports a release even when the holder held
+ * nothing. Each candidate is therefore read first, as the principal with the privileged capability
+ * (`references` exists only on the privileged projection), and released, as the plain principal,
+ * only where `holderOf(row.id)` is among its references. That makes the pass the same for a run
+ * recovered after a restart as for one that never left, with no record of what was claimed, and
+ * idempotent: a second pass finds nothing held.
+ *
+ * A candidate the principal cannot inspect or release (not found, access denied, unavailable) is
+ * not this run's to release and is skipped quietly. Any other failure goes to `onFailure` with the
+ * asset and the row it was found in, and the remaining candidates are still released. Another
+ * holder's claim on the same asset (a session that holds the same row, another run) is untouched.
+ */
+export async function releaseHeldRowAssetClaims(
+  assets: AssetService,
+  principalId: string,
+  holderOf: (rowId: string) => string,
+  rows: Iterable<ClaimableRow>,
+  onFailure: (assetId: string, error: unknown, rowId: string) => void,
+): Promise<void> {
+  for (const row of rows) {
+    const holderId = holderOf(row.id);
+    for (const assetId of managedAssetIdsOf(row)) {
+      try {
+        const descriptor = await assets.inspect(
+          assetId,
+          { id: principalId, privileged: true },
+          { projection: 'privileged' },
+        );
+        if (
+          descriptor.projection !== 'privileged' ||
+          !descriptor.retention.references.some((reference) => reference.holderId === holderId)
+        ) {
+          continue;
+        }
+        await assets.release(assetId, { id: principalId }, holderId);
+      } catch (error) {
+        if (!isNotOurs(error)) onFailure(assetId, error, row.id);
+      }
+    }
+  }
+}

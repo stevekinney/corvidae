@@ -79,7 +79,8 @@ export function instrumentRun(
   const controller = new AbortController();
   const signal = controller.signal;
 
-  function endAllOpenSpans(): void {
+  /** Ends the step, generate, and tool spans a run still holds open, and not the run span. */
+  function endOpenChildSpans(): void {
     for (const span of generateSpans.values()) {
       if (span.isRecording()) span.end();
     }
@@ -95,7 +96,10 @@ export function instrumentRun(
     }
     stepSpans.clear();
     stepContexts.clear();
+  }
 
+  function endAllOpenSpans(): void {
+    endOpenChildSpans();
     if (runSpan?.isRecording()) runSpan.end();
   }
 
@@ -307,7 +311,10 @@ export function instrumentRun(
           runSpan.recordException({ name: telemetryError.name });
         }
       }
-      endAllOpenSpans();
+      // The run is not over: every failure fires `run.completed` after `run.error`, and that
+      // handler records the finish reason and usage on the run span before it ends it. A write
+      // after `end` is dropped, so the run span stays open for it. The spans under it end now.
+      endOpenChildSpans();
     },
     { signal },
   );

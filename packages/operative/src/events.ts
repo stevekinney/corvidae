@@ -1536,7 +1536,7 @@ export class ScheduleCancelledEvent extends Event {
 /**
  * Emitted when a scheduled fire's AgentRun terminates in a failure outcome —
  * a thrown/unhandled workflow error, or a `RunResult` whose `finishReason`
- * `isRunFailureFinishReason` classifies as a failure (`error`, `tripwire`,
+ * `isFailureFinishReason` classifies as a failure (`error`, `tripwire`,
  * `maximum-steps`, `elicitation-denied`, `budget-exceeded`). Distinct from the
  * fired run's own `run.error`; correlates to it via `runId`. Dispatched from
  * `runtime-composition.ts`'s fire-terminal path (a Weft engine

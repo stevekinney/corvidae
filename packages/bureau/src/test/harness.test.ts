@@ -74,6 +74,7 @@ async function harnessWithMemoryStorage(
       worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
     },
     generate: mockGenerate(),
+    stopWhen: stopWhen.noToolCalls(),
     toolbox: createToolbox([]),
     storage,
     ...overrides,

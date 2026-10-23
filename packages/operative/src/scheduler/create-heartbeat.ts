@@ -1,6 +1,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
+import { isFailureFinishReason } from '../finish-reason';
 import type { RunResult } from '../types';
 import type { Scheduler } from './create-scheduler';
 import { sleep } from './sleep';
@@ -160,9 +161,10 @@ export function createHeartbeat(options: CreateHeartbeatOptions): Heartbeat {
         return null;
       }
 
-      if (result.finishReason === 'error' || result.finishReason === 'tripwire') {
-        // The run completed with an error (or was halted by a guardrail
-        // tripwire) — treat as a failure
+      if (isFailureFinishReason(result.finishReason)) {
+        // The run ended in a failure (an error, a guardrail tripwire, a spent budget, a denied
+        // elicitation, or its step limit — COR-1627). An abort is the heartbeat's own
+        // cancellation and stays out of the failure count.
         failures++;
         if (failures >= maxConsecutiveFailures) {
           // Fire-and-forget: awaiting our own stop() here would deadlock, since

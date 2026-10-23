@@ -355,6 +355,7 @@ describe('durable steering across two Bureau processes', () => {
     const bureauA = await createBureau({
       agents: {},
       generate,
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createToolbox([
         createTool({
           name: 'next',

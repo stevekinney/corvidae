@@ -4,6 +4,7 @@ import type { Toolbox } from 'armorer';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import { noToolCalls } from '../conditions';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
@@ -38,6 +39,7 @@ function createTestRunOptions(generate: GenerateFunction = createInstantGenerate
     generate,
     toolbox: createToolbox([]) as unknown as Toolbox,
     maximumSteps: 1,
+    stopWhen: noToolCalls(),
   };
 }
 

@@ -302,7 +302,7 @@ describe('text deltas that arrive while a stream is still opening', () => {
 });
 
 describe('the answer an onMaximumSteps handler leaves', () => {
-  it('reaches a stream before its RUN_FINISHED, from the completion the run records', async () => {
+  it('reaches a stream before its RUN_ERROR, from the completion the run records', async () => {
     await withHarness(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
@@ -335,6 +335,11 @@ describe('the answer an onMaximumSteps handler leaves', () => {
             finishReason: 'maximum-steps',
             content: 'Out of steps.',
             steps: [{ step: 0, content: '' }],
+            error: JSON.stringify({
+              message: 'Agent run exceeded maximumSteps (1).',
+              kind: 'policy',
+              code: 'MAXIMUM_STEPS',
+            }),
           },
         } as never);
         const tail = await stream.rest();
@@ -344,11 +349,16 @@ describe('the answer an onMaximumSteps handler leaves', () => {
           EventType.TEXT_MESSAGE_START,
           EventType.TEXT_MESSAGE_CONTENT,
           EventType.TEXT_MESSAGE_END,
-          EventType.RUN_FINISHED,
+          EventType.RUN_ERROR,
         ]);
         expect(tail.at(-3)!.event).toMatchObject({
           messageId: `${nativeRunId}:step:1`,
           delta: 'Out of steps.',
+        });
+        // COR-1627: the run stopped at its step limit, which is a failure.
+        expect(tail.at(-1)!.event).toMatchObject({
+          code: 'MAXIMUM_STEPS',
+          message: 'Agent run exceeded maximumSteps (1).',
         });
       },
     );
@@ -406,6 +416,11 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
             finishReason: 'maximum-steps',
             content: 'Out of steps.',
             steps: [{ step: 0, content: '' }],
+            error: JSON.stringify({
+              message: 'Agent run exceeded maximumSteps (1).',
+              kind: 'policy',
+              code: 'MAXIMUM_STEPS',
+            }),
           },
         } as never);
         const tail = await attached.rest();
@@ -417,7 +432,10 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
         expect(
           attached.received.filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_START),
         ).toEqual([]);
-        expect(tail.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
+        expect(tail.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'MAXIMUM_STEPS',
+        });
         await starter.rest();
       },
     );

@@ -5,9 +5,10 @@ import { Conversation } from 'conversationalist';
 import type { GeneratedMediaAdmission } from '../generated-media';
 
 import { AgentRunError, toAgentRunError } from '../errors';
-import type { OperativeEventEmitter } from '../events';
+import { type OperativeEventEmitter, RunErrorEvent } from '../events';
 import { UnsupportedRunResultVersionError } from '../run-envelope';
 import { makeErrorResult, startRunLifecycle } from '../run-lifecycle';
+import type { EventDispatcher } from '../run-step';
 import { type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
 import {
@@ -388,6 +389,29 @@ export async function driveDurableRun(
     conversation: durableConversation,
   } = await reconstructRunResult(context, runId, summary, runtime);
 
+  // COR-1627: a run that stopped at its step limit announces it with `run.error` before
+  // `run.completed`, like every other failure. The workflow body does not dispatch it (it would
+  // fire again on replay), so it fires here on the host, after `handle.result()` settled and
+  // outside anything replay re-runs. A process that dies before this line never fires it; its
+  // recovered run goes through the reattach driver, which announces the marked one instead. A
+  // live `run.error` already seen is not repeated. One window announces twice, and it is the one
+  // every reason recovery announces shares: a process that dies after this `run.error` reached
+  // the durable history but before the `run.completed` and the session save that follow leaves
+  // the session `running`, and the reattach driver, which has no process-local
+  // `terminalErrorFromEvent`, announces the marked one again on the next boot.
+  // `reconstructRunResult` always gives a step-limit result its `MaximumStepsExceededError`.
+  const terminalError =
+    terminalErrorFromEvent ?? (result.error instanceof AgentRunError ? result.error : undefined);
+  if (
+    terminalErrorFromEvent === undefined &&
+    result.finishReason === 'maximum-steps' &&
+    terminalError !== undefined
+  ) {
+    // The loose dispatcher the run lifecycle's own terminal helpers take.
+    const dispatcher: EventDispatcher = emitter;
+    dispatcher.dispatch(new RunErrorEvent(runState.steps.length, terminalError, 'policy'));
+  }
+
   // Fire the completion lifecycle from the SAME functions the loop uses, keyed
   // on the durable run's finishReason. These run in-process on the launching
   // engine (inline mode) and are intentionally not checkpointed. The terminal
@@ -408,8 +432,7 @@ export async function driveDurableRun(
     output: summary.output,
     tripwire: summary.tripwire,
     costEstimation: options.costEstimation,
-    terminalError:
-      terminalErrorFromEvent ?? (result.error instanceof AgentRunError ? result.error : undefined),
+    terminalError,
     hookTracker,
   });
 }

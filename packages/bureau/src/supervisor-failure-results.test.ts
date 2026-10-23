@@ -19,6 +19,8 @@ describe('createSupervisor', () => {
       'budget-exceeded',
       'elicitation-denied',
       'tripwire',
+      // COR-1627: a delegation that stops at its step limit is a failure like the rest.
+      'maximum-steps',
     ];
 
     for (const reason of FAILURE_REASONS) {
@@ -74,24 +76,6 @@ describe('createSupervisor', () => {
     it('does not short-circuit for stop-condition (success)', async () => {
       const worker = makeAgent('worker', () =>
         Promise.resolve(makeRunResult('all done', 'stop-condition')),
-      );
-      const catalog = createAgentCatalog({ worker: worker.fixture });
-      const supervisor = createSupervisor({ agents: catalog, routing: () => 'worker' });
-
-      const completedEvents: TaskCompletedEvent[] = [];
-      const failedEvents: TaskFailedEvent[] = [];
-      supervisor.addEventListener(TaskCompletedEvent.type, (e) => completedEvents.push(e));
-      supervisor.addEventListener(TaskFailedEvent.type, (e) => failedEvents.push(e));
-
-      const result = await supervisor.delegate('do something');
-      expect(completedEvents).toHaveLength(1);
-      expect(failedEvents).toHaveLength(0);
-      expect(result.agentResults[0]?.error).toBeUndefined();
-    });
-
-    it('does not treat maximum-steps as a failure', async () => {
-      const worker = makeAgent('worker', () =>
-        Promise.resolve(makeRunResult('partial output', 'maximum-steps')),
       );
       const catalog = createAgentCatalog({ worker: worker.fixture });
       const supervisor = createSupervisor({ agents: catalog, routing: () => 'worker' });

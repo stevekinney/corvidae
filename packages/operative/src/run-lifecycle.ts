@@ -7,8 +7,6 @@ import {
   AbortAgentRunError,
   type AgentRunError,
   type AgentRunErrorKind,
-  BudgetExceededError,
-  ElicitationDeniedError,
   GuardrailTripwireError,
   MaximumStepsExceededError,
   toAgentRunError,
@@ -20,6 +18,7 @@ import {
   RunStartedEvent,
   RunTripwireEvent,
 } from './events';
+import { finishReasonOfError } from './finish-reason';
 import { observeHookPlan } from './hook-plan-events';
 import { runWideParts } from './response-parts';
 import {
@@ -185,7 +184,7 @@ export function makeAbortResult(
 /**
  * Build the errored {@link RunResult}: fire `onRunError`, then emit
  * `RunCompletedEvent` with the finish reason classified from the error
- * (`elicitation-denied` / `budget-exceeded` / `tripwire` / `error`). Mirrors
+ * (`elicitation-denied` / `budget-exceeded` / `tripwire` / `maximum-steps` / `error`). Mirrors
  * `executeLoop`'s `makeErrorResult` exactly.
  *
  * When `error` is a {@link GuardrailTripwireError}, this ALSO dispatches a
@@ -212,14 +211,7 @@ export function makeErrorResult(
   });
   hookTracker?.(onRunErrorHookPromise);
 
-  const finishReason: FinishReason =
-    runError instanceof ElicitationDeniedError
-      ? 'elicitation-denied'
-      : runError instanceof BudgetExceededError
-        ? 'budget-exceeded'
-        : runError instanceof GuardrailTripwireError
-          ? 'tripwire'
-          : 'error';
+  const finishReason: FinishReason = finishReasonOfError(runError);
 
   const costEstimate = computeCostEstimate(runState.totalUsage, costEstimation, runState.cost);
   const result: RunResult = {

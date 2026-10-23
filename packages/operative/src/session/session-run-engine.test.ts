@@ -2,6 +2,7 @@ import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgr
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { noToolCalls } from '../conditions';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
@@ -47,6 +48,7 @@ describe('session.run() — durable engine and terminal authority', () => {
         generate: blockingGenerate,
         toolbox: createToolbox([]),
         maximumSteps: 1,
+        stopWhen: noToolCalls(),
       },
     });
 
@@ -121,7 +123,7 @@ describe('session.run() — durable engine and terminal authority', () => {
     expect(eventTypes).toContain('run.started');
     expect(eventTypes).toContain('run.completed');
     const result = await agentRun.result();
-    expect(result).toMatchObject({ finishReason: 'maximum-steps' });
+    expect(result).toMatchObject({ finishReason: 'stop-condition' });
   });
 
   it('aborts a running session run through the AgentRun handle', async () => {
