@@ -11,6 +11,7 @@ const chat = {
   lastMessagePreview: 'Refund order 1234',
   parentContextId: null,
   forkedFromMessageId: null,
+  origin: 'chat',
   messageCount: 2,
   createdAt: '2026-10-23T00:00:00.000Z',
   updatedAt: '2026-10-23T00:00:00.000Z',
@@ -25,6 +26,7 @@ const goal = {
       attemptId: 'a',
       attemptIndex: 0,
       runId: 'goal-seeded-goal-a0',
+      sessionId: 'goal-seeded-goal-s0',
       status: 'passed',
       startedAt: '2026-10-23T00:00:00.000Z',
       completedAt: '2026-10-23T00:00:01.000Z',
@@ -66,6 +68,61 @@ describe('buildRunRows', () => {
       status: 'completed',
       origin: { kind: 'goal', name: 'seeded-goal', href: '/goals' },
       durationMs: 1000,
+    });
+  });
+});
+
+describe('the session a run ran in', () => {
+  const fire = { ...chat, id: 'fire-1', title: 'Check in', origin: 'schedule' } as const;
+  const goalSession = {
+    ...chat,
+    id: 'goal-seeded-goal-s0',
+    title: 'Say hello.',
+    origin: 'goal',
+  } as const;
+
+  test('is linked from a goal’s row while the Bureau still has it, which Chat does not list', () => {
+    const [row] = buildRunRows({ tasks: [], goals: [goal], chats: [goalSession] });
+
+    expect(row?.origin).toEqual({
+      kind: 'goal',
+      name: 'seeded-goal',
+      href: '/goals',
+      session: { title: 'Say hello.', href: '/chat/goal-seeded-goal-s0' },
+    });
+  });
+
+  test('is left out of a goal’s row when the session is gone, rather than linked to nothing', () => {
+    const [row] = buildRunRows({ tasks: [], goals: [goal], chats: [] });
+
+    expect(row?.origin).toMatchObject({ kind: 'goal', session: null });
+  });
+
+  test('is linked from a schedule fire’s row, which a chat did not start', () => {
+    const [row] = buildRunRows({
+      tasks: [taskFixture({ id: 'run-fire', contextId: 'fire-1', agentName: 'assistant' })],
+      goals: [],
+      chats: [fire],
+    });
+
+    expect(row?.origin).toEqual({ kind: 'schedule', title: 'Check in', href: '/chat/fire-1' });
+  });
+
+  test('lets the list be narrowed to the runs a schedule started', () => {
+    const rows = buildRunRows({
+      tasks: [
+        taskFixture({ id: 'run-fire', contextId: 'fire-1' }),
+        taskFixture({ id: 'run-chat', contextId: 'chat-1' }),
+      ],
+      goals: [goal],
+      chats: [fire, chat],
+    });
+
+    expect(
+      filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id),
+    ).toEqual(['run-fire']);
+    expect(parseRunFilter(new URLSearchParams('startedBy=schedule'))).toEqual({
+      startedBy: 'schedule',
     });
   });
 });

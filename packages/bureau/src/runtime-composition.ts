@@ -87,6 +87,7 @@ import {
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
+  SESSION_ORIGIN_METADATA_KEY,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
@@ -4247,7 +4248,11 @@ async function buildRuntimeComposition(
                 : {}),
               [runId]: owner,
             },
-            ...(existing === undefined ? { [SESSION_OWNER_METADATA_KEY]: owner } : {}),
+            // COR-1645 — and its origin, written once with the owner: a session a fire creates is
+            // not a chat a person started, while one a fire continues keeps the origin it has.
+            ...(existing === undefined
+              ? { [SESSION_OWNER_METADATA_KEY]: owner, [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }
+              : {}),
             ...(sessionOwnedByAnotherRunningRun || skillPolicyUnverified()
               ? {}
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),

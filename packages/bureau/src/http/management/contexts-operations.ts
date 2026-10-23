@@ -13,7 +13,9 @@
 
 import {
   type AgentSession,
+  SESSION_ORIGINS,
   type SessionSummary,
+  sessionOriginOf,
   sessionOwnerOf,
   summarizeSession,
 } from '@lostgradient/operative';
@@ -168,6 +170,14 @@ export const contextsDeleteOperation = defineOperation<
 const contextActivitySchema = z.enum(['running', 'awaiting-input', 'idle']);
 
 /**
+ * What started a context (COR-1645): a person's `chat`, a `goal`, or a `schedule`'s fire. It is
+ * read from the context's reserved origin metadata key, which a goal and a fire write when they
+ * create the context and a chat never writes, so a context with no origin, as every one made before
+ * origins existed, is a `chat`. Nothing outside these three is accepted or shown.
+ */
+export const contextOriginSchema = z.enum(SESSION_ORIGINS);
+
+/**
  * One context, as the management plane shows it. It is built field by field from a
  * session summary, so Bureau-internal `metadata` (request authorities, skill
  * snapshots) never reaches a client, and it holds no transcript: the only message
@@ -183,6 +193,8 @@ export const contextSummarySchema = z.object({
   parentContextId: z.string().nullable(),
   /** The message of the parent this one was branched at, or `null`. */
   forkedFromMessageId: z.string().nullable(),
+  /** What started the context; a context that records none is a `chat`. */
+  origin: contextOriginSchema,
   messageCount: z.number().int().nonnegative(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -213,6 +225,7 @@ function projectContext(
     lastMessagePreview: summary.lastMessagePreview,
     parentContextId: summary.parentContextId,
     forkedFromMessageId: summary.forkedFromMessageId,
+    origin: sessionOriginOf(summary.metadata),
     messageCount: summary.messageCount,
     createdAt: summary.createdAt,
     updatedAt: summary.updatedAt,
@@ -230,6 +243,8 @@ function noSessions(): OperationFault {
 
 const contextsListInput = z.object({
   agentName: z.string().min(1).optional(),
+  /** Only the contexts with this origin; `chat` includes every context that records none. */
+  origin: contextOriginSchema.optional(),
   /** List every owner’s contexts; requires `bureau.contexts:read`. */
   allOwners: z.boolean().optional(),
   sortBy: z.enum(['updatedAt', 'createdAt']).optional(),
@@ -250,7 +265,7 @@ export const contextsListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List contexts',
   description:
-    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. `agentName` filters by agent. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
+    'Lists the caller’s own contexts (chat sessions) with a title, a last-message preview, a message count, times and `activity` (`running`, `awaiting-input` or `idle`), newest update first by default. Each carries its `origin`: `chat` for a context a person started (and for every context that records no origin), `goal` for a goal’s session, `schedule` for a session a schedule’s fire created. `agentName` filters by agent and `origin` by origin, before the page is cut, so a page of chats holds chats. `allOwners: true` lists every owner’s and requires `bureau.contexts:read`; without it the call is a `Forbidden` fault. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. No transcript and no internal metadata is returned.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsListInput,
@@ -279,6 +294,7 @@ export const contextsListOperation = defineOperation<
     const rows = await host.contexts.listSessions({
       ...(owner === undefined ? {} : { owner }),
       ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
+      ...(input.origin === undefined ? {} : { origin: input.origin }),
       ...(input.sortBy === undefined ? {} : { sortBy: input.sortBy }),
       ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
       limit: limit + 1,
@@ -305,7 +321,7 @@ export const contextsGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one context',
   description:
-    'Returns the summary of one of the caller’s own contexts, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
+    'Returns the summary of one of the caller’s own contexts, with its `origin`, and what its steering has settled on; a caller holding `bureau.contexts:read` reads any owner’s. `model` is the latest admitted model override (`{ provider, model }`, with a `null` provider when the override named none), or `null` before any, which means the agent’s default; `configVersion` is the version `bureau.contexts.steer`’s `expectedRevision` is compared against. Another owner’s context answers as a missing one does. The response carries no transcript: its only message text is the title and the last-message preview.',
   destructive: false,
   tags: ['Contexts'],
   inputSchema: contextsGetInput,

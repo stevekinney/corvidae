@@ -26,6 +26,12 @@ export const chatContextSchema = z.object({
   parentContextId: z.string().nullable(),
   /** The message of the parent this one was branched at, or `null`. */
   forkedFromMessageId: z.string().nullable(),
+  /**
+   * What started the session: a person's `chat`, a `goal`, or a `schedule`'s fire. The Bureau
+   * records it when a goal or a fire creates the session, and a session that records none is a chat,
+   * which is also how an answer that names none reads here.
+   */
+  origin: z.enum(['chat', 'goal', 'schedule']).default('chat'),
   messageCount: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -205,9 +211,18 @@ const contextPageSchema = z.object({
 
 export type ContextPage = z.infer<typeof contextPageSchema>;
 
-/** One page of the caller's sessions, newest update first (`bureau.contexts.list`). */
+/**
+ * One page of the caller's sessions, newest update first (`bureau.contexts.list`). `origin` keeps
+ * only the sessions that were started that way, before the page is cut, so `chat` lists the
+ * sessions a person started and none a goal or a schedule's fire did.
+ */
 export async function listContexts(
-  input: { readonly agentName?: string; readonly limit?: number; readonly offset?: number } = {},
+  input: {
+    readonly agentName?: string;
+    readonly origin?: ChatContext['origin'];
+    readonly limit?: number;
+    readonly offset?: number;
+  } = {},
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextPage> {
   return contextPageSchema.parse(await callBureau('bureau.contexts.list', input, options));

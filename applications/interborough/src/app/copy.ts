@@ -871,6 +871,7 @@ export const TASK_COPY = {
   unknownAgent: 'An agent',
   untitledChat: 'Untitled chat',
   goal: 'goal',
+  schedule: 'schedule',
   startedDirectly: 'Started directly',
   sessionLabel: 'Session',
   anyStatus: 'Any status',
@@ -913,6 +914,8 @@ export const TASK_COPY = {
   createdFact: 'Started',
   updatedFact: 'Updated',
   openChat: 'Open chat',
+  /** The link to the session of a run a goal or a schedule's fire started, which is no chat. */
+  openSession: 'Open the session',
   /** The link on a run's page to the task the run is, when it is one. */
   viewTask: 'View the task',
   answerHeading: 'Answer',
@@ -925,6 +928,7 @@ export const TASK_COPY = {
     description: 'The Bureau did not answer. Check that the host is running, then try again.',
   },
   startedFromChat: 'Started from the chat',
+  startedFromSchedule: 'Started by a schedule, in the session',
   startedFromGoal: 'Started by the goal',
   runTitle: 'Run',
   tabsLabel: 'Run sections',
@@ -1063,8 +1067,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'Checking that the Bureau is ready to take messages.',
     },
     empty: {
-      title: 'No conversations yet',
-      description: 'Start one with an agent, and it will be listed here.',
+      title: 'Start a chat',
+      description:
+        'Pick an agent and say what you need. Your chats are kept here, and anything an agent needs from you shows in Reviews.',
       action: { label: 'New chat', href: '/chat/new' },
     },
     error: {

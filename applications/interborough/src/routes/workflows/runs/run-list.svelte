@@ -243,12 +243,29 @@
                 onclick={(event) => open(event, row.origin.kind === 'chat' ? row.origin.href : '')}
                 >{row.origin.title === '' ? TASK_COPY.untitledChat : row.origin.title}</a
               >
+            {:else if row.origin.kind === 'schedule'}
+              <a
+                href={router.href(row.origin.href)}
+                onclick={(event) =>
+                  open(event, row.origin.kind === 'schedule' ? row.origin.href : '')}
+                >{row.origin.title === '' ? TASK_COPY.untitledChat : row.origin.title}</a
+              >
+              ({TASK_COPY.schedule})
             {:else if row.origin.kind === 'goal'}
               <a
                 href={router.href(row.origin.href)}
                 onclick={(event) => open(event, row.origin.kind === 'goal' ? row.origin.href : '')}
                 ><code class="ib-identifier">{row.origin.name}</code> ({TASK_COPY.goal})</a
               >
+              {#if row.origin.session}
+                {@const session = row.origin.session}
+                ·
+                <a
+                  href={router.href(session.href)}
+                  onclick={(event) => open(event, session.href)}
+                  >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
+                >
+              {/if}
             {:else}
               {TASK_COPY.startedDirectly}
             {/if}

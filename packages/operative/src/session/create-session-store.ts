@@ -9,6 +9,7 @@ import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
 import { SessionOutboxAppendedEvent } from '../events';
 import { sessionLineageOf } from './session-lineage';
+import { sessionOriginOf } from './session-origin';
 import { sessionOwnerOf } from './session-owner';
 import type {
   SessionCleanupOptions,
@@ -1238,12 +1239,14 @@ export function createSessionStore(
         }
 
         // Filter by agentName when requested
-        // The owner filter is applied here, to the index, before `offset` and `limit`,
-        // so every page is full of the owner's own sessions.
+        // The owner and origin filters are applied here, to the index, before `offset` and
+        // `limit`, so every page is full of the owner's own sessions. The index keeps each
+        // session's metadata, so the origin needs no summary field of its own.
         const filtered = [...summaries.values()].filter(
           (s) =>
             (!listOptions?.agentName || s.agentName === listOptions.agentName) &&
-            (listOptions?.owner === undefined || s.owner === listOptions.owner),
+            (listOptions?.owner === undefined || s.owner === listOptions.owner) &&
+            (listOptions?.origin === undefined || sessionOriginOf(s.metadata) === listOptions.origin),
         );
 
         // Sort
