@@ -7,7 +7,11 @@
  * injected manual clock, which these tests move with `setTime`.
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
-import type { DurableEventEnvelope, GenerateFunction } from '@lostgradient/operative';
+import {
+  type DurableEventEnvelope,
+  type GenerateFunction,
+  stopWhen,
+} from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
@@ -59,6 +63,7 @@ async function withBureau(
   const bureau = await createBureau({
     agents: {},
     generate: finishes,
+    stopWhen: stopWhen.noToolCalls(),
     toolbox: createToolbox<readonly Tool[]>([]),
     runtime,
     storage: fixture.configuration,
@@ -438,6 +443,7 @@ describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
     const bureau = await createBureau({
       agents: {},
       generate: finishes,
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createToolbox<readonly Tool[]>([]),
       runtime,
       taskRetention: { olderThan: DAY_MS },

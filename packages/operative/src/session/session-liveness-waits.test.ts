@@ -4,6 +4,7 @@ import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { z } from 'zod';
 
+import { noToolCalls } from '../conditions';
 import { HumanWaitParkedEvent } from '../events';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';
@@ -136,6 +137,7 @@ describe('SessionHandle liveness — declared waits', () => {
         },
         toolbox: createToolbox([parkingTool]),
         maximumSteps: 2,
+        stopWhen: noToolCalls(),
       },
       setTimeoutFunction: (callback) => {
         scheduled.push(callback);

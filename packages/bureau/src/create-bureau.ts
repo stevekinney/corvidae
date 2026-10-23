@@ -97,6 +97,8 @@ import {
   SKILL_TOOL_DENIED_CODE,
   admitToolResultMedia,
   createStepGeneratedMediaAdmitter,
+  isFailureFinishReason,
+  readDurableRunResult,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -258,7 +260,6 @@ import {
   createRuntimeComposition,
   createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
-  isRunFailureFinishReason,
   isScheduledFireAuthority,
   recordRecoveredSkillPolicy,
   recoveredSkillPolicyOf,
@@ -281,6 +282,10 @@ import {
   serializeUnknownError,
 } from './serialization';
 import { createCatalogTaskSettler } from './catalog-task-settlement';
+import {
+  createCatalogRunAssetReleaser,
+  createRecoveredRunReleaseListener,
+} from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
   type CatalogRunSettlement,
@@ -1595,7 +1600,7 @@ export async function monitorRecoveredScheduledFire(
       typeof result === 'object' &&
       result !== null &&
       'finishReason' in result &&
-      isRunFailureFinishReason(result.finishReason)
+      isFailureFinishReason(result.finishReason)
     ) {
       const errorMessage =
         'errorMessage' in result && typeof result.errorMessage === 'string'
@@ -1639,7 +1644,7 @@ export async function monitorRecoveredCatalogRun(
       typeof result === 'object' &&
       result !== null &&
       'finishReason' in result &&
-      isRunFailureFinishReason(result.finishReason)
+      isFailureFinishReason(result.finishReason)
     ) {
       const errorMessage =
         'errorMessage' in result && typeof result.errorMessage === 'string'
@@ -4368,6 +4373,48 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return ends[state.status] ?? 'in-flight';
   };
   /**
+   * COR-1630 — lets go of the `run-row` claims a catalog run holds on managed assets when the run
+   * ends (`catalog-run-asset-release.ts`). A fresh dispatch is released by the catalog dispatcher
+   * (`onCatalogRunEnded`), a recovered run by the settlement hook below, and a goal attempt by the
+   * goal forwarder, after the goal's session holds its rows.
+   */
+  let catalogAssetReleasesClosed = false;
+  const pendingCatalogAssetReleases = new Set<Promise<void>>();
+  /** Follows a release so `shutdown()` can wait for the ones under way before the asset service closes. */
+  const trackCatalogAssetRelease = (pending: Promise<void>): Promise<void> => {
+    pendingCatalogAssetReleases.add(pending);
+    const forget = (): void => void pendingCatalogAssetReleases.delete(pending);
+    void pending.then(forget, forget);
+    return pending;
+  };
+  const catalogRunAssets = createCatalogRunAssetReleaser({
+    assets: () => assetServiceHolder.current,
+    durableEnd: catalogDurableEnd,
+    readEnded: async (runId) => {
+      const durable = runtime.durable;
+      if (durable === undefined) return { status: 'missing' };
+      const reading = await readDurableRunResult(durable, runId, { runtime: runtimeServices });
+      if (reading.status === 'completed' || reading.status === 'ended') {
+        return { status: 'ended', conversation: reading.result.conversation };
+      }
+      return { status: reading.status === 'missing' ? 'missing' : 'running' };
+    },
+    isClosed: () => catalogAssetReleasesClosed,
+    diagnose,
+  });
+  catalogRunSettlements.subscribe(
+    createRecoveredRunReleaseListener({
+      releaser: {
+        releaseAfterRecovery: (run) =>
+          trackCatalogAssetRelease(catalogRunAssets.releaseAfterRecovery(run)),
+      },
+      loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+      goalIsOver: (goalRunId) => goalsComposition.goalIsOver(goalRunId),
+      ownerOf: ownerOrLocal,
+      diagnose,
+    }),
+  );
+  /**
    * Whether a run is a child run rather than a task: the child topology holds it, or, failing
    * that, its identifier is not a catalog run's.
    */
@@ -4406,11 +4453,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     readonly detail: unknown;
     readonly timestamp: number;
   }): void {
-    if (
-      action.type !== 'run.completed' &&
-      action.type !== 'run.error' &&
-      action.type !== 'run.aborted'
-    ) {
+    // `run.error` is not a settlement of its own: Operative announces it before the
+    // `run.completed` (or `run.aborted`) that ends the run and carries its finish reason, so
+    // the one write comes from that. A `run.error` with no such end is another process's, which
+    // `isCommittedElsewhere` keeps from reaching here.
+    if (action.type !== 'run.completed' && action.type !== 'run.aborted') {
       return;
     }
     const detail =
@@ -4420,11 +4467,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const finishReason =
       typeof detail['finishReason'] === 'string' ? detail['finishReason'] : undefined;
     const status =
-      action.type === 'run.completed'
-        ? settledTaskState('completed', finishReason)
-        : action.type === 'run.error'
-          ? 'failed'
-          : 'canceled';
+      action.type === 'run.completed' ? settledTaskState('completed', finishReason) : 'canceled';
     const failure = detail['error'];
     // Every cancellation terminal, a shutdown's abort included, follows its run's cleanup the
     // way an API cancellation does, so the task reports what the cleanup actually did.
@@ -7601,7 +7644,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
 
         const finishReason = event.finishReason;
-        const lastRunStatus = isRunFailureFinishReason(finishReason) ? 'error' : 'completed';
+        const lastRunStatus = isFailureFinishReason(finishReason) ? 'error' : 'completed';
 
         const report = buildTerminalReportFromCompletedEvent(runId, event);
         runReports.set(runId, report);
@@ -7621,7 +7664,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 lastRunId: runId,
                 lastRunStatus,
                 lastFinishReason: event.finishReason,
-                ...(isRunFailureFinishReason(event.finishReason)
+                ...(isFailureFinishReason(event.finishReason)
                   ? { lastError: serializeUnknownError(event.error) }
                   : {}),
               },
@@ -8270,8 +8313,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       void runTerminalCheckpointCleanup(runId);
       const completedConversation = event.conversation;
       const finishReason = event.finishReason;
-      const lastRunStatus = isRunFailureFinishReason(finishReason) ? 'error' : 'completed';
-      const lastError = isRunFailureFinishReason(finishReason) ? event.error : undefined;
+      const lastRunStatus = isFailureFinishReason(finishReason) ? 'error' : 'completed';
+      const lastError = isFailureFinishReason(finishReason) ? event.error : undefined;
 
       const report = buildTerminalReportFromCompletedEvent(runId, event);
       runReports.set(runId, report);
@@ -8287,7 +8330,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             lastRunId: runId,
             lastRunStatus,
             lastFinishReason: finishReason,
-            ...(isRunFailureFinishReason(finishReason)
+            ...(isFailureFinishReason(finishReason)
               ? { lastError: serializeUnknownError(lastError) }
               : {}),
           }),
@@ -16824,6 +16867,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // Terminal events of the runs 'abort' aborts. Awaited, under a bound,
       // before the session-persistence drain below — see that await.
       const abortedRunTerminals: Array<Promise<void>> = [];
+      // COR-1630 — the results of the catalog runs 'abort' aborts: each handle settling is what
+      // starts that run's asset release, so the release is known only after it.
+      const abortedCatalogRunResults: Array<Promise<void>> = [];
       if (policy === 'abort') {
         // Deliberately NOT awaited here (or anywhere gating the
         // unconditional engine/storage teardown below): a caller-owned
@@ -16869,6 +16915,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // call would return the same rejection forever instead of ever
         // completing cleanup (review round 2, Codex).
         const currentCatalogRuns = [...catalogRuns];
+        for (const catalogRun of currentCatalogRuns) {
+          try {
+            abortedCatalogRunResults.push(
+              Promise.allSettled([catalogRun.result()]).then(() => undefined),
+            );
+          } catch {
+            // A custom handle whose result() throws has no result to wait for; its abort() below
+            // is still called, and its release, if any, is not waited for.
+          }
+        }
         for (const catalogRun of currentCatalogRuns) {
           try {
             catalogRun.abort('Bureau disposed');
@@ -16984,6 +17040,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await childTopology.drain();
       await sessionPersistence.drain();
       await drainSessionInputSettlements();
+      // COR-1630 — a catalog run that ended releases its asset claims, shutdown or not. The
+      // aborted runs settle first, which starts their releases, then those releases are awaited,
+      // each under the same grace as the waits above, and only then are releases closed so none
+      // runs against the asset service that shuts down below. A run whose durable record still
+      // reads in flight is lost, not ended, and releases nothing (`catalog-run-asset-release.ts`).
+      await awaitAbortedRunTerminals(abortedCatalogRunResults);
+      if (pendingCatalogAssetReleases.size > 0) {
+        await awaitAbortedRunTerminals([
+          Promise.allSettled(pendingCatalogAssetReleases).then(() => undefined),
+        ]);
+      }
+      catalogAssetReleasesClosed = true;
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;
@@ -18064,6 +18132,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }),
       );
     },
+    // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
+    onCatalogRunEnded: ({ runId, principal, settled }) =>
+      catalogSettlements.follow(
+        trackCatalogAssetRelease(
+          catalogRunAssets.releaseAfterHandle({
+            runId,
+            principalId: ownerOrLocal(principal),
+            settled,
+          }),
+        ),
+      ),
     fileAgents,
     // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
     humanInput: options.humanInput === true && runtime.durable !== undefined,
@@ -18271,6 +18350,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     fenceClaim: (runId, owner, tombstonedAt) =>
       runtime.fenceGoalAttemptRecoveryRecord(runId, owner, tombstonedAt),
     fenceHost: goalAttemptFenceHost,
+    // COR-1630 — an attempt's run lets go of its asset claims once the goal's session holds them.
+    claimSessionAssets,
+    releaseAssets: catalogRunAssets,
+    releasesClosed: () => catalogAssetReleasesClosed,
     // Not the memoized, audited step runs get: that records a run's cleanup
     // under a run id, and a goal's controller is not a run. An attempt's run is
     // one, but a goal prunes it at close, once its terminal checkpoint has been

@@ -6,7 +6,7 @@
 import { EventType } from '@ag-ui/core';
 import { describe, expect, it } from 'bun:test';
 
-import { RECORDED, RunProjector } from './ag-ui-projection.ts';
+import { errorOf, RECORDED, RunProjector } from './ag-ui-projection.ts';
 
 const RUN = 'run-1';
 
@@ -160,7 +160,8 @@ describe('the answer an onMaximumSteps handler leaves', () => {
       { type: EventType.TEXT_MESSAGE_CONTENT, messageId: 'run-1:step:2', delta: 'Out of steps.' },
       { type: EventType.TEXT_MESSAGE_END, messageId: 'run-1:step:2' },
     ]);
-    expect(ended.terminal).toMatchObject({ outcome: 'completed' });
+    // COR-1627: a step-limit run is a failure, so the AG-UI run ends in the error this record carries.
+    expect(ended.terminal).toMatchObject({ outcome: 'error', recordedAs: RECORDED.runCompleted });
   });
 
   it('is not announced to a client whose snapshot already holds the row', () => {
@@ -194,6 +195,116 @@ describe('the answer an onMaximumSteps handler leaves', () => {
     expect(projector().handleRecorded(RECORDED.runCompleted, completed(overrides)).events).toEqual(
       [],
     );
+  });
+});
+
+describe('a run that stopped at its step limit (COR-1627)', () => {
+  /** What Bureau records for the `run.error` a step-limit run announces: the error, serialized. */
+  const stepLimitError = {
+    step: 2,
+    error: JSON.stringify({
+      name: 'MaximumStepsExceededError',
+      message: 'Agent run exceeded maximumSteps (2).',
+      kind: 'policy',
+      code: 'MAXIMUM_STEPS',
+    }),
+  };
+
+  it('does not end on the run.error, which projects nothing', () => {
+    expect(
+      projector().handleRecorded(RECORDED.runError, {
+        ...stepLimitError,
+        finishReason: 'maximum-steps',
+      }),
+    ).toEqual({ events: [] });
+  });
+
+  it('ends in the error on the run.completed that follows, after the handler’s row', () => {
+    const run = projector();
+    run.handleRecorded(RECORDED.runError, { ...stepLimitError, finishReason: 'maximum-steps' });
+
+    const ended = run.handleRecorded(RECORDED.runCompleted, {
+      finishReason: 'maximum-steps',
+      content: 'Out of steps.',
+      steps: [{ step: 0, content: '' }],
+      error: stepLimitError.error,
+    });
+
+    expect(types(ended.events)).toEqual([
+      EventType.TEXT_MESSAGE_START,
+      EventType.TEXT_MESSAGE_CONTENT,
+      EventType.TEXT_MESSAGE_END,
+    ]);
+    expect(ended.terminal).toMatchObject({ outcome: 'error', recordedAs: RECORDED.runCompleted });
+    expect(errorOf(ended.terminal?.detail)).toEqual({
+      code: 'MAXIMUM_STEPS',
+      message: 'Agent run exceeded maximumSteps (2).',
+    });
+  });
+
+  it('ends on a run.error that carries the step-limit code but no finish reason', () => {
+    // A record from before the payload carried a finish reason: `main` never recorded a
+    // `run.error` for a run that ran out of steps, so such a record is a thrown error, which
+    // `main` ended the stream on, and the `run.completed` that follows it says `error` too.
+    const ended = projector().handleRecorded(RECORDED.runError, stepLimitError);
+
+    expect(ended.terminal).toMatchObject({ outcome: 'error' });
+    expect(errorOf(ended.terminal?.detail)).toMatchObject({ code: 'MAXIMUM_STEPS' });
+  });
+
+  it('ends on a run.error that carries the step-limit code but finished as a plain error', () => {
+    // A thrown `AgentRunError` with the code `MAXIMUM_STEPS` is not a step limit: the run
+    // classifies it as `error`, and no `run.completed` of `maximum-steps` follows to end it.
+    const ended = projector().handleRecorded(RECORDED.runError, {
+      ...stepLimitError,
+      finishReason: 'error',
+    });
+
+    expect(ended.terminal).toMatchObject({ outcome: 'error' });
+    expect(errorOf(ended.terminal?.detail)).toMatchObject({ code: 'MAXIMUM_STEPS' });
+  });
+
+  it('still ends on any other run.error', () => {
+    const ended = projector().handleRecorded(RECORDED.runError, {
+      error: JSON.stringify({ message: 'boom', code: 'UNKNOWN' }),
+    });
+
+    expect(ended.terminal).toMatchObject({ outcome: 'error' });
+    expect(ended.terminal?.recordedAs).toBeUndefined();
+  });
+});
+
+describe('the run.completed of a run that failed (COR-1627)', () => {
+  // Every failure records `run.error` and then the `run.completed` that carries its finish
+  // reason. A replay that reads to the last terminal, or a history read that keeps the last one,
+  // must still end in the error: the completion of a failed run is not a success.
+  it.each(['error', 'tripwire', 'elicitation-denied', 'budget-exceeded', 'maximum-steps'])(
+    'ends in the error for finishReason %s',
+    (finishReason) => {
+      const ended = projector().handleRecorded(RECORDED.runCompleted, {
+        finishReason,
+        content: '',
+        steps: [],
+        error: JSON.stringify({ message: 'it failed', code: 'UNKNOWN' }),
+      });
+
+      expect(ended.terminal).toMatchObject({
+        outcome: 'error',
+        recordedAs: RECORDED.runCompleted,
+      });
+      expect(errorOf(ended.terminal?.detail)).toEqual({ code: 'UNKNOWN', message: 'it failed' });
+    },
+  );
+
+  it('ends in a success for a stop condition', () => {
+    const ended = projector().handleRecorded(RECORDED.runCompleted, {
+      finishReason: 'stop-condition',
+      content: 'Done.',
+      steps: [],
+    });
+
+    expect(ended.terminal).toMatchObject({ outcome: 'completed' });
+    expect(ended.terminal?.recordedAs).toBeUndefined();
   });
 });
 

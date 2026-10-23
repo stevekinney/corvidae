@@ -1,7 +1,8 @@
 import type { MultiModalContent } from 'conversationalist';
 
 import type { AgentRunErrorCode, AgentRunErrorKind } from '../errors';
-import { BudgetExceededError, ElicitationDeniedError, GuardrailTripwireError } from '../errors';
+import { GuardrailTripwireError } from '../errors';
+import { finishReasonOfError } from '../finish-reason';
 import {
   InvalidRunResultError,
   UnsupportedRunResultLegacyFieldError,
@@ -26,7 +27,8 @@ export interface AgentRunWorkflowResult {
   finishReason: FinishReason;
   /**
    * Serialized message of the error that ended the run, when `finishReason` is
-   * `error` / `elicitation-denied` / `budget-exceeded`. The live error object is
+   * `error` / `elicitation-denied` / `budget-exceeded` / `tripwire`, or `maximum-steps` for a
+   * step-limit error a step, tool, or hook threw (absent when the loop ran out of steps). The live error object is
    * not cloneable across a checkpoint, so only its message survives; the adapter
    * rebuilds an `Error` from it so consumers (e.g. gateway's `lastError`) see the
    * real cause rather than a synthetic placeholder.
@@ -208,10 +210,7 @@ export function serializeError(error: unknown): string {
  * `budget-exceeded` from a plain `error` exactly as the in-memory loop does.
  */
 export function classifyErrorFinishReason(error: unknown): FinishReason {
-  if (error instanceof ElicitationDeniedError) return 'elicitation-denied';
-  if (error instanceof BudgetExceededError) return 'budget-exceeded';
-  if (error instanceof GuardrailTripwireError) return 'tripwire';
-  return 'error';
+  return finishReasonOfError(error);
 }
 
 /**

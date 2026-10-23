@@ -8,6 +8,7 @@ import {
   createFaultEngine,
   type FaultPlan,
   type GenerateFunction,
+  stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
@@ -1045,6 +1046,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
       },
       generate: mockGenerate(),
+      stopWhen: stopWhen.noToolCalls(),
       storage,
       runtime,
     });

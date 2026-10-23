@@ -38,7 +38,7 @@ describe('session.run() — persistence and history', () => {
     expect(session!.runs[0]!.sequence).toBe(0);
     expect(session!.runs[0]!.runId).toBe(`${handle.id}:0`);
     expect(session!.runs[0]!.status).toBe('completed');
-    expect(result.finishReason).toBe('maximum-steps');
+    expect(result.finishReason).toBe('stop-condition');
   });
 
   it('persists the exact user message id and safe terminal outcome on the run reference', async () => {

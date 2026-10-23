@@ -1,6 +1,7 @@
 import type { WorkflowServicesResolution, WorkflowServicesResolverInfo } from '@lostgradient/weft';
 import { workflow } from '@lostgradient/weft';
 
+import { isFailureFinishReason } from '../finish-reason';
 import type { Scheduler } from '../scheduler/create-scheduler';
 import type { SchedulerPriority, SchedulerRunOptions, SchedulerTask } from '../scheduler/types';
 import type { RunResult } from '../types';
@@ -190,7 +191,7 @@ export function createDurableHeartbeatTickWorkflow() {
               return { workflowId, scheduleId: input.scheduleId, status: 'preempted' };
             }
 
-            if (result.finishReason === 'error' || result.finishReason === 'tripwire') {
+            if (isFailureFinishReason(result.finishReason)) {
               await notifyFailure(
                 services,
                 result.error ?? new Error('durable heartbeat tick failed'),

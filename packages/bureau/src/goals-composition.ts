@@ -10,6 +10,7 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type AgentSession,
   type CleanupAcknowledgement,
   createSessionStore,
   type DurableActiveRunContext,
@@ -20,6 +21,7 @@ import {
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
+import type { CatalogRunAssetReleaser } from './catalog-run-asset-release';
 import type { DurableEventHistory } from './durable-event-history';
 import { createGoalAttemptFence, type GoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalConversations } from './goal-conversation';
@@ -35,7 +37,12 @@ import {
 } from './goal-ownership';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
 import { recoverGoalsAtBoot } from './goal-recovery';
-import { goalAttemptRunId, type GoalState, goalWorkflowId } from './goal-state';
+import {
+  goalAttemptRunId,
+  type GoalState,
+  goalWorkflowId,
+  isTerminalGoalStatus,
+} from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { BureauGoalRecoveryReport, BureauGoals, GoalEngine } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
@@ -69,6 +76,19 @@ export interface GoalsCompositionDependencies {
   ) => Promise<GoalAttemptClaimFence>;
   /** Where the self-fence the attempts' runs are registered with is bound, once the store and the reader exist. */
   readonly fenceHost: GoalAttemptFenceHost;
+  /**
+   * COR-1630 — takes the `session-row` claims of a goal session's rows; see
+   * `AttemptForwarderDependencies.claimSessionAssets`. Absent when the bureau has no asset service.
+   */
+  readonly claimSessionAssets?: ((session: AgentSession) => Promise<void>) | undefined;
+  /** COR-1630 — releases an ended attempt run's `run-row` claims; absent when the bureau has no asset service. */
+  readonly releaseAssets?:
+    Pick<CatalogRunAssetReleaser, 'releaseConversation' | 'releaseEndedRun'> | undefined;
+  /**
+   * COR-1630 — whether releases are closed: shutdown is about to shut the asset service, so an
+   * attempt takes no claim and releases none. See `AttemptForwarderDependencies.releasesClosed`.
+   */
+  readonly releasesClosed?: (() => boolean) | undefined;
   /** Applies checkpoint retention to a terminal controller or attempt workflow; see `BureauGoalsDependencies`. */
   readonly cleanupWorkflow: (workflowId: string) => Promise<CleanupAcknowledgement>;
   readonly isClosing: () => boolean;
@@ -81,6 +101,11 @@ export interface GoalsComposition {
   readonly goals: BureauGoals;
   /** Whether `workflowId` is the controller of a goal this bureau stores. */
   ownsWorkflow(workflowId: string): Promise<boolean>;
+  /**
+   * COR-1630 — whether a goal is over for its attempts: terminal, canceled, or not stored. A
+   * recovered attempt of such a goal has no forwarder, so its asset claims are released elsewhere.
+   */
+  goalIsOver(goalRunId: string): Promise<boolean>;
   /** The boot sweep. Never rejects. */
   recoverAtBoot(): Promise<BureauGoalRecoveryReport>;
   /**
@@ -201,6 +226,9 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     getDurable,
     resolveCostEstimation,
     conversations,
+    claimSessionAssets: dependencies.claimSessionAssets,
+    releaseAssets: dependencies.releaseAssets,
+    releasesClosed: dependencies.releasesClosed,
     isClosing: dependencies.isClosing,
     diagnose,
   });
@@ -255,6 +283,14 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       if (!workflowId.startsWith('goal:')) return false;
       const record = await store.get(workflowId.slice('goal:'.length));
       return record !== undefined && goalWorkflowId(record.goalRunId) === workflowId;
+    },
+    async goalIsOver(goalRunId) {
+      const record = await store.get(goalRunId);
+      return (
+        record === undefined ||
+        isTerminalGoalStatus(record.status) ||
+        record.cancellation !== undefined
+      );
     },
     async recoverAtBoot() {
       // Replay every record's audit log into the event history. Each commit

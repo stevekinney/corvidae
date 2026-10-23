@@ -309,7 +309,7 @@ describe('regression: monitor() surfaces failed tick finish reasons (PRRT_kwDORv
   });
 
   it('still evaluates the predicate normally on a successful tick', async () => {
-    // Sanity: a healthy run (finishReason 'maximum-steps') is NOT treated as a
+    // Sanity: a healthy run (finishReason 'stop-condition') is NOT treated as a
     // failure — the predicate runs as before.
     const { handle } = createSessionHandleFixture();
     let predicateCalls = 0;

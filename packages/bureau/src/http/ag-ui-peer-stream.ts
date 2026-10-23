@@ -31,7 +31,7 @@
  */
 
 import type { RuntimeServices, RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
-import type { AgentSession } from '@lostgradient/operative';
+import { type AgentSession, isFailureFinishReason } from '@lostgradient/operative';
 import type { WorkflowState } from '@lostgradient/weft';
 import { type Event, EventType, type Interrupt } from '@ag-ui/core';
 
@@ -46,7 +46,13 @@ import type {
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
-import { errorOf, type NativeTerminal, RECORDED, usageOf } from './ag-ui-projection.ts';
+import {
+  errorOf,
+  MAXIMUM_STEPS_CODE,
+  type NativeTerminal,
+  RECORDED,
+  usageOf,
+} from './ag-ui-projection.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
@@ -128,9 +134,8 @@ export function settledOutcomeOf(state: WorkflowState): NativeTerminal['outcome'
     typeof result === 'object' && result !== null
       ? (result as { finishReason?: unknown }).finishReason
       : undefined;
-  if (finishReason === 'error') return 'error';
   if (finishReason === 'aborted') return 'aborted';
-  return 'completed';
+  return isFailureFinishReason(finishReason) ? 'error' : 'completed';
 }
 
 const HISTORY_TERMINAL: Readonly<Record<string, NativeTerminal['outcome']>> = {
@@ -143,15 +148,25 @@ const HISTORY_TERMINAL: Readonly<Record<string, NativeTerminal['outcome']>> = {
 function terminalOfStatus(runId: string, state: WorkflowState): PeerTerminal | undefined {
   const outcome = settledOutcomeOf(state);
   if (outcome === undefined) return undefined;
+  // COR-1627: a run that stopped at its step limit completes its workflow with that finish
+  // reason, and is reported with the code its `run.error` carries.
+  const result: unknown = state.result;
+  const steppedOut =
+    outcome === 'error' &&
+    typeof result === 'object' &&
+    result !== null &&
+    (result as { finishReason?: unknown }).finishReason === 'maximum-steps';
   return {
     outcome,
     detail:
       outcome === 'error'
         ? {
-            error: {
-              code: 'RUN_FAILED',
-              message: `Run "${runId}" ended with status ${state.status}`,
-            },
+            error: steppedOut
+              ? { code: MAXIMUM_STEPS_CODE, message: `Run "${runId}" stopped at its step limit` }
+              : {
+                  code: 'RUN_FAILED',
+                  message: `Run "${runId}" ended with status ${state.status}`,
+                },
           }
         : undefined,
     tripwire: false,
