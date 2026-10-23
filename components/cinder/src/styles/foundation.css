@@ -358,3 +358,22 @@
  * via :where(), but it was overridden by the higher-specificity (and
  * later-layer) base label rules in components.css. Field-component label and
  * description disabled colors stay component-local for now. */
+
+/* ----------------------------------------------------------------------------
+ * Compact density
+ *
+ * The density tokens (`--cinder-density-*`) default to the comfortable values
+ * in `tokens-base.css`. A page that is a table of operator rows rather than a
+ * page of reading declares `data-density="compact"` on an ancestor, and
+ * everything inside reads the tighter values through the same names. Rows drop
+ * from 56px to 40px, and row and card padding take the next step down the
+ * spacing scale. Nothing branches on the attribute but this rule.
+ *
+ * `:where()` keeps specificity at 0 so a consumer can retune one density.
+ * ---------------------------------------------------------------------------- */
+:where([data-density='compact']) {
+  --cinder-density-row-height: 2.5rem;
+  --cinder-density-pad-block: var(--cinder-space-2);
+  --cinder-density-pad-inline: var(--cinder-space-3);
+  --cinder-density-pad-card: var(--cinder-space-3);
+}

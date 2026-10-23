@@ -439,10 +439,7 @@
   .weft-schedule-list {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-4, 1rem);
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 18px 24px 60px;
+    gap: var(--cinder-space-4);
   }
 
   .weft-schedule-list__header {
@@ -476,7 +473,7 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 6px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);

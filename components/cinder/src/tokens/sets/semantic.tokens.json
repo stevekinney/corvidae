@@ -1087,6 +1087,137 @@
           "cssRecipe": null
         }
       }
+    },
+    "page": {
+      "$value": "{space.6}",
+      "$description": "Page side gutter: the inline padding a shell puts around a page of content.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-pad-page",
+          "public": true,
+          "category": "spacing",
+          "cssRecipe": null
+        }
+      }
+    }
+  },
+  "density": {
+    "$type": "dimension",
+    "$description": "Intent layer for density: how tall a list row is and how much padding a row or a card takes. The values here are the comfortable density. A `data-density=\"compact\"` ancestor remaps them (foundation.css), so one page declares its density once and every row and card inside it follows.",
+    "row-height": {
+      "$value": {
+        "value": 3.5,
+        "unit": "rem"
+      },
+      "$description": "Row height: 56px comfortable, 40px compact.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-density-row-height",
+          "public": true,
+          "category": "size",
+          "cssRecipe": null
+        }
+      }
+    },
+    "pad-block": {
+      "$value": "{space.3}",
+      "$description": "Block padding of a row: 12px comfortable, 8px compact.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-density-pad-block",
+          "public": true,
+          "category": "spacing",
+          "cssRecipe": null
+        }
+      }
+    },
+    "pad-inline": {
+      "$value": "{space.4}",
+      "$description": "Inline padding of a row: 16px comfortable, 12px compact.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-density-pad-inline",
+          "public": true,
+          "category": "spacing",
+          "cssRecipe": null
+        }
+      }
+    },
+    "pad-card": {
+      "$value": "{space.4}",
+      "$description": "Padding of a card or panel: 16px comfortable, 12px compact.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-density-pad-card",
+          "public": true,
+          "category": "spacing",
+          "cssRecipe": null
+        }
+      }
+    }
+  },
+  "type-role": {
+    "$type": "dimension",
+    "$description": "Intent layer over the raw type scale: the five sizes a page uses. A page title is 20px at weight 600, a section title 16px at 600, body 14px at 400, secondary text 13px at 400 in the muted color, and code 13px in the mono stack.",
+    "page-title": {
+      "$value": "{font.size.2xl}",
+      "$description": "Page title size (20px); set it at semibold.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-page-title",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "section-title": {
+      "$value": "{font.size.lg}",
+      "$description": "Section title size (16px); set it at semibold.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-section-title",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "body": {
+      "$value": "{font.size.base}",
+      "$description": "Body text size (14px).",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-body",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "secondary": {
+      "$value": "{font.size.sm}",
+      "$description": "Secondary text size (13px); set it in the muted text color.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-secondary",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "code": {
+      "$value": "{font.size.sm}",
+      "$description": "Code size (13px), in the mono font stack.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-code",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
     }
   },
   "radius": {

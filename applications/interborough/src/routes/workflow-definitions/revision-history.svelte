@@ -95,7 +95,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 4px 16px;
-    padding: 8px 12px;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-sm);

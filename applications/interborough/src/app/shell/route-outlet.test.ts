@@ -13,6 +13,7 @@ import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Placeholder from '../../routes/placeholder/index.svelte';
 import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
 import { routes } from '../routes.ts';
+import { VIEWS } from '../views.ts';
 import { CHUNK_RELOAD_KEY } from './chunk-reload.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
@@ -60,6 +61,27 @@ describe('the route outlet', () => {
     const frame = container.querySelector('.weft-view');
     expect(frame?.getAttribute('data-view')).toBe('audit');
     expect(frame?.getAttribute('data-state')).toBe('empty');
+  });
+
+  test('carries the density and the width its view declares, so a page chooses neither', async () => {
+    restore = installFetchImplementation(emptyTrail());
+    landAt('/audit');
+    const { findByRole, container } = mount();
+    await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
+    const outlet = container.querySelector('main.weft-shell-outlet');
+    expect(outlet?.getAttribute('data-density')).toBe(VIEWS.audit.density);
+    expect(outlet?.getAttribute('data-width')).toBe(VIEWS.audit.width);
+    expect(VIEWS.audit.density).toBe('compact');
+  });
+
+  test('reads like a reading page where no view owns the path', async () => {
+    restore = installFetchImplementation(async () => Response.json({}));
+    landAt('/nowhere');
+    const { findByText, container } = mount();
+    await findByText('Page not found');
+    const outlet = container.querySelector('main.weft-shell-outlet');
+    expect(outlet?.getAttribute('data-density')).toBe('comfortable');
+    expect(outlet?.getAttribute('data-width')).toBe('reading');
   });
 
   test('says when no route owns the path', async () => {

@@ -34,18 +34,33 @@
   overflow: hidden;
 }
 
+/* The outlet is the one place a page is padded: a route adds none of its own, so padding never
+ * doubles. `data-density` and `data-width` come from the view's declaration in `views.ts`
+ * (`route-outlet.svelte`); Cinder's density tokens follow the first, and the
+ * second centres a reading page in Cinder's reading column. The column is built from padding
+ * rather than a max width on the children, so a page root keeps its own layout (the chat is
+ * a column with a definite height) and a dialog or popover inside is never constrained.
+ * `--weft-outlet-gutter` is the side gutter: Cinder's page gutter at desktop widths, narrower
+ * on a phone. */
 .weft-shell-outlet {
+  --weft-outlet-gutter: var(--cinder-pad-page);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: var(--cinder-space-4) var(--weft-outlet-gutter) var(--cinder-space-6);
+}
+
+.weft-shell-outlet[data-width='reading'] {
+  padding-inline: max(
+    var(--weft-outlet-gutter),
+    calc((100% - var(--cinder-content-width-reading)) / 2)
+  );
 }
 
 .weft-shell-outlet__skeleton {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-3, 0.75rem);
-  max-width: 60rem;
+  gap: var(--cinder-space-3);
 }
 
 /* Sidebar (design: 232px, surface-inset background — Cinder's Sidebar
@@ -85,6 +100,30 @@
   width: 232px;
 }
 
+/* A file path is the longest unbroken thing on a page. Cinder's code location never wraps it, so
+ * on a phone a long path pushed its page wider than the outlet and the outlet scrolled sideways.
+ * It stays inside its parent and breaks where it has to. */
+.cinder-code-location {
+  max-inline-size: 100%;
+}
+
+.cinder-code-location code {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* In the mobile drawer the navigation is the drawer's whole body. Cinder's drawer pads its body
+ * and the sidebar paints the inset surface, so together they box the navigation in a gutter
+ * inside the drawer; the drawer's own surface is the background here, and the body has no
+ * padding of its own. */
+.weft-shell-sidebar--mobile {
+  background: transparent;
+}
+
+.cinder-drawer__body:has(> .weft-shell-sidebar--mobile) {
+  padding: 0;
+}
+
 .weft-shell-nav-item {
   display: flex;
   align-items: center;
@@ -110,7 +149,7 @@
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 9px 11px;
+  padding: var(--cinder-space-2) var(--cinder-space-3);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface);
   border: 1px solid var(--cinder-border);
@@ -138,7 +177,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 0 18px;
+  padding: 0 var(--cinder-space-4);
   border-bottom: 1px solid var(--cinder-border);
   background: var(--cinder-surface);
 }
@@ -157,7 +196,7 @@
   gap: 10px;
   min-width: 300px;
   flex: 0 1 auto;
-  padding: 7px 11px;
+  padding: var(--cinder-space-2) var(--cinder-space-3);
   border: 1px solid var(--cinder-border-control);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-inset);
@@ -189,8 +228,8 @@
 
 .weft-shell-search-trigger__kbd kbd {
   font-family: var(--cinder-font-mono);
-  font-size: 10px;
-  padding: 2px 5px;
+  font-size: var(--cinder-text-2xs);
+  padding: var(--cinder-space-0-5) var(--cinder-space-1);
   border: 1px solid var(--cinder-border);
   border-radius: 4px;
   background: var(--cinder-surface);
@@ -201,7 +240,7 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 5px 9px;
+  padding: var(--cinder-space-1) var(--cinder-space-2);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
   color: var(--cinder-text-muted);
@@ -215,7 +254,7 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 5px 9px;
+  padding: var(--cinder-space-1) var(--cinder-space-2);
   border: 1px solid var(--cinder-status-warning-border);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-status-warning-background);
@@ -267,7 +306,7 @@
 
   .weft-shell-topbar {
     gap: 8px;
-    padding: 0 10px;
+    padding: 0 var(--cinder-space-2);
   }
 
   .weft-shell-topbar__domain {
@@ -311,7 +350,8 @@
   }
 
   .weft-shell-outlet {
-    padding: 14px 14px 40px;
+    --weft-outlet-gutter: var(--cinder-space-4);
+    padding-block-start: var(--cinder-space-3);
   }
 }
 
@@ -323,13 +363,13 @@
   right: 5px;
   min-width: 15px;
   height: 15px;
-  padding: 0 3px;
+  padding: 0 var(--cinder-space-1);
   display: grid;
   place-items: center;
   border-radius: 9999px;
   background: var(--cinder-status-danger-solid);
   color: var(--cinder-status-danger-contrast);
-  font-size: 9px;
+  font-size: var(--cinder-text-2xs);
   font-weight: 700;
 }
 
@@ -345,7 +385,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 14px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
 }
 
@@ -382,7 +422,7 @@
 }
 
 .weft-notification-panel__group-label {
-  padding: 7px 14px 3px;
+  padding: var(--cinder-space-2) var(--cinder-density-pad-inline) var(--cinder-space-1);
   font-size: var(--cinder-text-2xs);
   font-weight: 700;
   text-transform: uppercase;
@@ -407,7 +447,7 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 9px 14px;
+  padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
   text-decoration: none;
   color: var(--cinder-text-default);
   border-inline-start: 2px solid transparent;
@@ -490,7 +530,7 @@
 }
 
 .weft-notification-panel__empty {
-  padding: 20px 14px;
+  padding: var(--cinder-space-6) var(--cinder-density-pad-inline);
   margin: 0;
   text-align: center;
   font-size: var(--cinder-text-sm);
@@ -501,7 +541,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-top: 1px solid var(--cinder-border-muted);
 }
 
@@ -522,14 +562,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 18px;
+  padding: var(--cinder-space-2) var(--cinder-space-4);
 }
 
 .weft-critical-strip__row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 14px;
+  padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
   background: var(--cinder-status-danger-background);
   border: 1px solid var(--cinder-status-danger-border);
   border-radius: var(--cinder-radius-md);
@@ -572,7 +612,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 18px;
+  padding: var(--cinder-space-2) var(--cinder-space-4);
   background: var(--cinder-status-warning-background);
   border-bottom: 1px solid var(--cinder-status-warning-border);
   color: var(--cinder-status-warning-text);
@@ -599,7 +639,7 @@
 
 .weft-command-group__label {
   display: block;
-  padding: 7px 14px 3px;
+  padding: var(--cinder-space-2) var(--cinder-density-pad-inline) var(--cinder-space-1);
   font-size: var(--cinder-text-2xs);
   font-weight: 700;
   text-transform: uppercase;
@@ -616,7 +656,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-2, 0.5rem);
-  padding: 11px 14px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-raised);

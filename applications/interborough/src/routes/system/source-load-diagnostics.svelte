@@ -220,7 +220,7 @@
     align-items: flex-start;
     gap: 8px;
     margin: 0;
-    padding: 8px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-status-warning-background);
     border: 1px solid var(--cinder-status-warning-border);

@@ -19,7 +19,6 @@
 
 .weft-workflow-detail__header {
   flex: none;
-  padding: 16px 22px 0;
   border-bottom: 1px solid var(--cinder-border);
 }
 
@@ -113,7 +112,7 @@
   flex-direction: column;
   gap: 10px;
   max-width: 420px;
-  padding: 12px 14px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   margin-bottom: 14px;
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
@@ -140,18 +139,13 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 22px 60px;
+  padding-block-start: var(--cinder-space-4);
 }
 
 .weft-workflow-detail__loading {
-  padding: 20px 22px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.weft-workflow-detail__not-found {
-  padding: 20px 22px;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -163,7 +157,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-2, 0.5rem);
-  padding: 11px 14px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   margin: 20px 22px;
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
@@ -220,7 +214,7 @@
 }
 
 .weft-overview-tab__panel-header {
-  padding: 11px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 600;
@@ -234,7 +228,7 @@
 }
 
 .weft-overview-tab__tags {
-  padding: 11px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-top: 1px solid var(--cinder-border-muted);
 }
 
@@ -255,7 +249,7 @@
   background: var(--cinder-status-danger-background);
   border: 1px solid var(--cinder-status-danger-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 13px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-overview-tab__failure-title {
@@ -277,7 +271,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px;
+  padding: var(--cinder-density-pad-card);
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
@@ -301,14 +295,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 600;
 }
 
 .weft-lineage-panel__body {
-  padding: 14px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -318,7 +312,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 11px;
+  padding: var(--cinder-space-2) var(--cinder-space-3);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
   font-size: var(--cinder-text-xs);
@@ -343,7 +337,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 7px 8px;
+  padding: var(--cinder-space-2) var(--cinder-space-2);
   border-radius: var(--cinder-radius-sm);
   font-size: var(--cinder-text-xs);
 }
@@ -403,7 +397,7 @@
 }
 
 .weft-send-tab__history-header {
-  padding: 11px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 600;
@@ -413,7 +407,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
 }
 
@@ -439,7 +433,7 @@
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 15px;
+  padding: var(--cinder-density-pad-card);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -458,7 +452,7 @@
 
 .weft-send-tab__result {
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--cinder-density-pad-block) var(--cinder-space-3);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-inset);
   font-family: var(--cinder-font-mono);
@@ -489,7 +483,7 @@
   grid-template-columns: 120px 1fr 110px 90px;
   gap: 10px;
   align-items: center;
-  padding: 11px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   min-width: 480px;
 }

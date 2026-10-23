@@ -344,7 +344,7 @@
     display: flex;
     align-items: flex-start;
     gap: 9px;
-    padding: 10px 12px;
+    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
     background: var(--cinder-status-warning-background);
     border: 1px solid var(--cinder-status-warning-border);
     border-radius: var(--cinder-radius-md);

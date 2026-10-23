@@ -991,6 +991,19 @@
     },
     "$type": "dimension"
   },
+  "content.width.reading": {
+    "$value": { "value": 47.5, "unit": "rem" },
+    "$description": "Reading column width (760px). The width of a page of text, forms, and lists: wide enough for a row of controls, narrow enough to read.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-content-width-reading",
+        "public": true,
+        "category": "size",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
   "content.width.wide": {
     "$value": { "value": 90, "unit": "rem" },
     "$description": "Roomier centered column width.",
@@ -2105,6 +2118,136 @@
         "cssProperty": "--cinder-pad-card",
         "public": true,
         "category": "spacing",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "pad.page": {
+    "$value": { "value": 1.5, "unit": "rem" },
+    "$description": "Page side gutter: the inline padding a shell puts around a page of content.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-pad-page",
+        "public": true,
+        "category": "spacing",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "density.row-height": {
+    "$value": { "value": 3.5, "unit": "rem" },
+    "$description": "Row height: 56px comfortable, 40px compact.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-density-row-height",
+        "public": true,
+        "category": "size",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "density.pad-block": {
+    "$value": { "value": 0.75, "unit": "rem" },
+    "$description": "Block padding of a row: 12px comfortable, 8px compact.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-density-pad-block",
+        "public": true,
+        "category": "spacing",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "density.pad-inline": {
+    "$value": { "value": 1, "unit": "rem" },
+    "$description": "Inline padding of a row: 16px comfortable, 12px compact.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-density-pad-inline",
+        "public": true,
+        "category": "spacing",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "density.pad-card": {
+    "$value": { "value": 1, "unit": "rem" },
+    "$description": "Padding of a card or panel: 16px comfortable, 12px compact.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-density-pad-card",
+        "public": true,
+        "category": "spacing",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.page-title": {
+    "$value": { "value": 1.25, "unit": "rem" },
+    "$description": "Page title size (20px); set it at semibold.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-page-title",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.section-title": {
+    "$value": { "value": 1, "unit": "rem" },
+    "$description": "Section title size (16px); set it at semibold.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-section-title",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.body": {
+    "$value": { "value": 0.875, "unit": "rem" },
+    "$description": "Body text size (14px).",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-body",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.secondary": {
+    "$value": { "value": 0.8125, "unit": "rem" },
+    "$description": "Secondary text size (13px); set it in the muted text color.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-secondary",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.code": {
+    "$value": { "value": 0.8125, "unit": "rem" },
+    "$description": "Code size (13px), in the mono font stack.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-code",
+        "public": true,
+        "category": "typography",
         "cssRecipe": null
       }
     },
