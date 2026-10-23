@@ -55,12 +55,14 @@ export async function serveWorkflows(
   options: ServeOptions = {},
 ): Promise<Served> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-workflow-operations-'));
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
     id: 'workflows-bureau',
-    agents: options.agents ?? agents,
+    agents: {
+      ...(options.agents ?? agents),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+    },
     workflowDirectory: directory,
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

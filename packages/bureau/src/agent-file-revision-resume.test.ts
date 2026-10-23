@@ -13,7 +13,12 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createAgentSession, createSessionStore, stopWhen } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  createSessionStore,
+  stopWhen,
+  createAgent,
+} from '@lostgradient/operative';
 import * as operative from '@lostgradient/operative';
 import {
   createTemporaryDirectory,
@@ -29,6 +34,7 @@ import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -136,11 +142,12 @@ describe('a pending approval restored after a restart', () => {
     );
     const built = spyOn(operative, 'createAgent');
     cleanups.push(() => built.mockRestore());
-    const bureau: Bureau = await createBureau({
-      agents: {},
+    const bureau: Bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+      },
       agentDirectory: directory,
       resolveAgentGenerate: () => async () => ({ content: 'ok', toolCalls: [] }),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
       durableExecution: true,
       onDiagnostic: () => undefined,

@@ -51,10 +51,9 @@ function openBureau(storagePath: string, workflows: string, messages: string[]):
       },
     }),
   };
-  return createBureau({
-    agents,
+  return createBureau<AgentDefinitions>({
+    agents: { ...agents, default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
     workflowDirectory: workflows,
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'sqlite', path: storagePath },
     durableExecution: true,
     durableOwnership: {

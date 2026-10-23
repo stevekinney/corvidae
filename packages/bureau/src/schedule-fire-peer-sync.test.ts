@@ -7,7 +7,12 @@
  * Every test runs two Bureaus on one SQLite store under `workflow-lease` ownership, so each holds
  * the fires it started and sees the other's only through durable state.
  */
-import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  stopWhen,
+  type Toolbox,
+  createAgent,
+} from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -39,6 +44,7 @@ import { fireReviewFollowerOf } from './fire-review-follower';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -129,16 +135,16 @@ async function holderAndPeer(
   const holder = await harness.open({
     ...peerOptions,
     ...holderOptions,
-    toolbox: toolboxes.holder,
     storage: await harness.sqliteStorage(path, wrapHolder),
+    agents: { default: createAgent({ toolbox: toolboxes.holder }) },
   });
   const { fireId } = await fireOnce(holder, OWNER.alice, sessionId);
   const review = (await reviewOf(holder, fireId)) as PendingToolApprovalReview;
   await settleAtApproval(holder, fireId);
   const peer = await harness.open({
     ...peerOptions,
-    toolbox: toolboxes.peer,
     storage: await harness.sqliteStorage(path),
+    agents: { default: createAgent({ toolbox: toolboxes.peer }) },
   });
   await reviewOf(peer, fireId);
   return { holder, peer, fireId, review };
@@ -349,15 +355,15 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
     };
     const holder = await harness.open({
       ...options,
-      toolbox: approvalToolbox([]),
       storage: await harness.sqliteStorage(path, (storage) => holdHolder.wrap(storage)),
+      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, 'peer-sync-cancel');
     const review = await reviewOf(holder, fireId);
     const peer = await harness.open({
       ...options,
-      toolbox: approvalToolbox([]),
       storage: await harness.sqliteStorage(path, (storage) => holdPeer.wrap(storage)),
+      agents: { default: createAgent({ toolbox: approvalToolbox([]) }) },
     });
     await reviewOf(peer, fireId);
     holdHolder.arm();
@@ -408,10 +414,14 @@ describe('a canceled review an earlier build recorded without the deduplication 
     };
     const bureau = await harness.open({
       ...peerOptions,
-      generate: continuing,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: approvalToolbox([]),
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
+      agents: {
+        default: createAgent({
+          generate: continuing,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: approvalToolbox([]),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'peer-sync-unkeyed');
     const review = (await reviewOf(bureau, fireId)) as PendingToolApprovalReview;
@@ -543,7 +553,9 @@ describe('a fire read again with one review that cannot be restored', () => {
       { holder: switchedToolbox([], { revision: 1 }), peer: switchedToolbox([], peerGate) },
       'peer-sync-partial-reread',
       (storage) => storage,
-      { generate: twoCharges },
+      {
+        agents: { default: createAgent({ generate: twoCharges }) },
+      },
     );
     await eventually(
       () => (reviewsOf(holder, fireId).length === 2 ? true : undefined),

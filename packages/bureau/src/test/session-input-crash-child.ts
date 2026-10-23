@@ -21,13 +21,14 @@
 import { writeFileSync } from 'node:fs';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
 import { admitsSessionInput, savesSessionAs, seamStorage } from './session-input-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const [backend, storagePath, markerPath, mode = 'running'] = process.argv.slice(2);
 if (
@@ -83,20 +84,28 @@ async function submit(
 
 if (mode === 'running') {
   let stepOneStarted = false;
-  const bureau = await createBureau({
-    agents: {},
-    generate: async ({ step }) => {
-      if (step === 0) return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-      stepOneStarted = true;
-      return new Promise<never>(() => {});
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => {
+          if (step === 0)
+            return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+          stepOneStarted = true;
+          return new Promise<never>(() => {});
+        },
+        toolbox: createToolbox([nextTool]),
+      }),
     },
-    toolbox: createToolbox([nextTool]),
     storage: { type: backend, path: storagePath },
     durableExecution: true,
     durableOwnership,
   });
 
-  const run = await bureau.createRun({ agentName: 'bureau', message: 'Start', principal: 'alice' });
+  const run = await bureau.createRun({
+    agentName: 'default',
+    message: 'Start',
+    principal: 'alice',
+  });
   for (let attempt = 0; attempt < 400 && !stepOneStarted; attempt += 1) {
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
   }
@@ -124,19 +133,22 @@ if (mode === 'running') {
 // still reads as running; the input is admitted into that window; the process
 // dies as soon as the admission is durable.
 const seam = seamStorage(await resolveStorage({ type: backend, path: storagePath }));
-const bureau = await createBureau({
-  agents: {},
-  generate: async () => ({ content: 'done', toolCalls: [] }),
-  toolbox: createToolbox([nextTool]),
+const bureau = await createBureau<AgentDefinitions>({
+  agents: {
+    default: createAgent({
+      generate: async () => ({ content: 'done', toolCalls: [] }),
+      toolbox: createToolbox([nextTool]),
+      stopWhen: stopWhen.noToolCalls(),
+    }),
+  },
   storage: seam.storage,
   durableExecution: true,
   durableOwnership,
   // Ends the run on its first reply, as `completed`.
-  stopWhen: stopWhen.noToolCalls(),
 });
 const heldTerminalSave = seam.holdWrite(savesSessionAs('completed'));
 const run = await bureau.createRun({
-  agentName: 'bureau',
+  agentName: 'default',
   message: 'Start',
   principal: 'alice',
   maximumSteps: 1,

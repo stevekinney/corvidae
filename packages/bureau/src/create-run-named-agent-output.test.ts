@@ -74,9 +74,9 @@ describe('a named agent’s structured output on a session run', () => {
       agents: {
         viaRun: structuredAgent(malformedThenValid(viaRun)),
         viaSession: structuredAgent(sessionGenerate),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(bureau);
 
@@ -118,11 +118,11 @@ describe('a named agent’s structured output after a restart', () => {
           output: answerSchema,
           stopWhen: stopWhen.noToolCalls(),
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(crashed);
     const run = await crashed.createRun({ message: 'go', agentName: 'scribe' });
@@ -146,11 +146,11 @@ describe('a named agent’s structured output after a restart', () => {
           }),
           { schemaRetries: 1, schemaRetryMessage: () => RETRY_MESSAGE },
         ),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(restarted);
     await pollUntil(async () => {

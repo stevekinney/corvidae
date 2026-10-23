@@ -27,10 +27,12 @@ const parks: GenerateFunction = ({ signal }) =>
 function open(path: ReturnType<typeof createSqliteStorageFixture>['configuration']) {
   return createBureau<AgentDefinitions>({
     id: 'surface-bureau',
-    agents: { worker: createAgent({ generate: parks }) },
+    agents: {
+      worker: createAgent({ generate: parks }),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+    },
     storage: path,
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 

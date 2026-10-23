@@ -27,6 +27,7 @@ import {
 import { rpc } from './management-fixtures.test-support.ts';
 import { readFile } from 'node:fs/promises';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import type { AgentDefinitions } from '../../agent-catalog';
 
 afterEach(disposeServed);
 
@@ -148,7 +149,6 @@ describe('publication gates new runs only', () => {
     const served = await serve({
       overrides: {
         humanInput: true,
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         resolveAgentGenerate: () =>
           createScriptedGenerate([
             {
@@ -166,6 +166,14 @@ describe('publication gates new runs only', () => {
             },
             { kind: 'respond', response: { content: 'Done.', toolCalls: [] } },
           ]),
+        agents: {
+          default: createAgent({
+            stopWhen: stopWhen.some(
+              stopWhen.toolCalled('requestHumanInput'),
+              stopWhen.noToolCalls(),
+            ),
+          }),
+        },
       },
     });
     await served.put('researcher.md', agentFileText({ model: KNOWN_MODEL }, 'Ask first.\n'));

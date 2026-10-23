@@ -6,6 +6,7 @@ import {
   type GenerateFunction,
   stopWhen,
   SESSION_OWNER_METADATA_KEY,
+  createAgent,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -20,6 +21,7 @@ import {
   workerAgent,
 } from './testing/goal-fixtures.test-support';
 import { waitForCondition } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 const ALICE = 'api-key:alice';
 
@@ -43,17 +45,21 @@ function parkingGenerate(): GenerateFunction {
 }
 
 async function openBureau(path: string) {
-  return createBureau({
+  return createBureau<AgentDefinitions>({
     id: 'owner-restart',
-    agents: { worker: workerAgent(answering('done')) },
+    agents: {
+      worker: workerAgent(answering('done')),
+      default: createAgent({
+        generate: parkingGenerate(),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      }),
+    },
     validators: [createCheckValidator()],
-    generate: parkingGenerate(),
-    toolbox: createToolbox([]),
     storage: { type: 'sqlite', path },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
     humanInput: true,
-    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   });
 }
 
@@ -64,7 +70,11 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
     const first = await openBureau(path);
     let reopened: Awaited<ReturnType<typeof openBureau>> | undefined;
     try {
-      const run = await first.createRun({ agentName: 'bureau', message: 'park', principal: ALICE });
+      const run = await first.createRun({
+        agentName: 'default',
+        message: 'park',
+        principal: ALICE,
+      });
       await waitForCondition(
         () => first.listPendingReviews().some((review) => review.runId === run.id),
         'the run never parked on a human wait',

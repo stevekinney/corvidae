@@ -12,6 +12,7 @@ import { createBureau } from '../create-bureau';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { A2A_TASK_RECORD_KEY_PREFIX } from './a2a-task-record.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const ORIGIN = '2026-10-22T00:00:00.000Z';
 const DAY_MS = 86_400_000;
@@ -20,15 +21,15 @@ describe('the A2A record’s lifetime', () => {
   it('is deleted when task retention removes its task', async () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'retention-bureau',
       agents: {
         asker: createAgent({
           name: 'asker',
           generate: async () => ({ content: 'done', toolCalls: [] }),
         }),
+        default: createAgent({ toolbox: createToolbox<readonly Tool[]>([]) }),
       },
-      toolbox: createToolbox<readonly Tool[]>([]),
       runtime,
       storage: fixture.configuration,
       durableExecution: true,

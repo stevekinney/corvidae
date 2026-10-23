@@ -20,6 +20,8 @@ import type {
 import type { AssetService } from '../assets/types';
 import { type BureauTestHarness, createBureauTestHarness } from '../test/harness';
 import { type BureauStorageFixture, createMemoryStorageFixture } from '../test/storage-fixtures';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const encoder = new TextEncoder();
 
@@ -201,8 +203,9 @@ export async function createAssetHarness(
   storage: BureauStorageFixture = createMemoryStorageFixture(),
 ): Promise<AssetHarness> {
   const harness = await createBureauTestHarness({
-    agents: {},
-    generate,
+    agents: {
+      default: createAgent({ generate }),
+    },
     runtime,
     storage,
     assets,

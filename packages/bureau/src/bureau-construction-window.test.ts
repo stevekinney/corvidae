@@ -10,7 +10,7 @@
 import { join } from 'node:path';
 
 import { createManualRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
-import { createStore, stopWhen } from '@lostgradient/operative';
+import { createStore, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, type ConditionalTextValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
@@ -24,6 +24,7 @@ import {
 } from './testing/construction-window.test-support';
 import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 const fixtures = createConstructionWindowFixtures();
@@ -53,22 +54,26 @@ describe('a session commit while the agent files are being scanned (COR-1585)', 
     // The owner reaches step 1 and then stops: its claim is never renewed, so it lapses, and its
     // session is left `running`.
     const reachedStepOne = Promise.withResolvers<void>();
-    const owner = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        reachedStepOne.resolve();
-        return new Promise<never>(() => {});
+    const owner = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0)
+              return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            reachedStepOne.resolve();
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([nextTool]),
       storage: { type: 'sqlite', path: storagePath },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableBackgroundTasks: 'manual',
       durableOwnership: leaseOptions,
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await owner.createRun({ agentName: 'default', message: 'go' });
     await reachedStepOne.promise;
 
     // The successor has no `generate`, so it cannot rebuild the run's session and reconciles the
@@ -76,14 +81,17 @@ describe('a session commit while the agent files are being scanned (COR-1585)', 
     // engine's reclaim while the Bureau is parked in the agent file scan.
     const hold = fixtures.holdAgentFileScan();
     const diagnostics: BureauDiagnostic[] = [];
-    const successor = createBureau({
-      agents: {},
+    const successor = createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       agentDirectory: await fixtures.agentDirectoryWithOneFile(),
       resolveAgentGenerate,
-      toolbox: createToolbox([nextTool]),
       storage: { type: 'sqlite', path: storagePath },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableOwnership: leaseOptions,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
@@ -284,16 +292,19 @@ describe('every listener and timer registered before a top-level await (COR-1585
     const runtime = createManualRuntimeServices({ origin: '2026-10-19T00:00:00.000Z' });
     const store = createStore({ runtime });
     const diagnostics: BureauDiagnostic[] = [];
-    const building = createBureau({
-      agents: {},
+    const building = createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       agentDirectory: await fixtures.agentDirectoryWithOneFile(),
       resolveAgentGenerate,
-      toolbox: createToolbox([nextTool]),
       persistence,
       auditRetention: { olderThan: 86_400_000 },
       store,
       runtime,
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
 

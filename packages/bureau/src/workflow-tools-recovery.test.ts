@@ -7,13 +7,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import type { Bureau } from './types';
 import { WORKFLOW_TOOL_NAMES } from './workflow-tools';
+import type { AgentDefinitions } from './agent-catalog';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -38,12 +39,13 @@ it('writes the file as the agent after a restart, for a session run that was in 
   const results: unknown[] = [];
 
   async function open(generate: GenerateFunction): Promise<Bureau> {
-    return createBureau({
-      agents: {},
+    return createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+      },
       agentDirectory: agents,
       workflowDirectory: workflows,
       resolveAgentGenerate: () => generate,
-      stopWhen: stopWhen.noToolCalls(),
       storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },

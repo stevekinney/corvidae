@@ -18,6 +18,7 @@ import { createBureau } from '../create-bureau.ts';
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { FrameReader } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const WRITES = new Set(['put', 'delete', 'batch', 'conditionalBatch']);
 
@@ -110,7 +111,7 @@ export async function openBureau(options: {
   readonly maximumHistoryEvents?: number;
   readonly runtime?: ReturnType<typeof createManualRuntimeServices>;
 }) {
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
     id: 'engine-failure',
     agents: {
@@ -119,8 +120,8 @@ export async function openBureau(options: {
         name: 'assistant',
         stopWhen: stopWhen.noToolCalls(),
       }),
+      default: createAgent({ generate: options.generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    generate: options.generate,
     ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     storage: options.storage,
@@ -129,7 +130,6 @@ export async function openBureau(options: {
       ? {}
       : { durableGuardrails: { history: { maxEvents: options.maximumHistoryEvents } } }),
     sessionPersistenceRetryDelayMilliseconds: 0,
-    stopWhen: stopWhen.noToolCalls(),
     onDiagnostic: () => undefined,
   });
   const handler = createBureauHandler(bureau, {

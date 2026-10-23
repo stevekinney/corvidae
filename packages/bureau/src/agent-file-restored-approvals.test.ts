@@ -12,6 +12,7 @@ import {
   createModelCatalog,
   createSessionStore,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { createConversationHistory } from 'conversationalist';
@@ -21,6 +22,7 @@ import { createBureau } from './create-bureau';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const directories: string[] = [];
 const bureaus: Bureau[] = [];
@@ -102,11 +104,12 @@ describe('a pending approval restored after a restart', () => {
       }),
     );
 
-    const bureau = await createBureau({
-      agents: {},
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+      },
       agentDirectory: directory,
       resolveAgentGenerate: () => async () => ({ content: 'ok', toolCalls: [] }),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
       durableExecution: true,
     });

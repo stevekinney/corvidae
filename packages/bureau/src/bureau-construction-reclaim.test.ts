@@ -112,11 +112,10 @@ async function startLapsedCatalogRun(
           return new Promise<never>(() => {});
         },
       }),
+      default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
     },
-    toolbox: createToolbox([]),
     storage: { type: 'sqlite', path: storagePath },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     durableBackgroundTasks: 'manual',
     durableOwnership: leaseOptions,
   });
@@ -145,13 +144,14 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     const successor = track(
       hold,
       createBureau<AgentDefinitions>({
-        agents: { writer: writerAnswering('recovered') },
+        agents: {
+          writer: writerAnswering('recovered'),
+          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
+        },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
-        toolbox: createToolbox([]),
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
         durableOwnership: leaseOptions,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       }),
@@ -197,12 +197,14 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
           toolbox: createToolbox([next]),
           stopWhen: stopWhen.noToolCalls(),
         }),
+        default: createAgent({
+          generate: async () => ({ content: 'wide never answers', toolCalls: [] }),
+          toolbox: createToolbox([next]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      generate: async () => ({ content: 'wide never answers', toolCalls: [] }),
-      toolbox: createToolbox([next]),
       storage: { type: 'sqlite', path: storagePath },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableBackgroundTasks: 'manual',
       durableOwnership: leaseOptions,
     });
@@ -225,17 +227,19 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
             toolbox: createToolbox([next]),
             stopWhen: stopWhen.noToolCalls(),
           }),
+          default: createAgent({
+            generate: async ({ step }) => {
+              wideSteps.push(step);
+              return { content: 'wide answered', toolCalls: [] };
+            },
+            toolbox: wideToolbox,
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        generate: async ({ step }) => {
-          wideSteps.push(step);
-          return { content: 'wide answered', toolCalls: [] };
-        },
-        toolbox: wideToolbox,
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
         durableOwnership: leaseOptions,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       }),
@@ -330,15 +334,15 @@ describe('a construction that fails while a run is parked for the resolver (COR-
     const building = track(
       hold,
       createBureau<AgentDefinitions>({
-        agents: {},
+        agents: {
+          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
+        },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
-        toolbox: createToolbox([]),
         storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
         durableExecution: true,
         durableBackgroundTasks: 'manual',
         observability: true,
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         assets: { storage: assetStorage.storage, garbageCollectionIntervalMilliseconds: 1_000 },
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -454,13 +458,14 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     const failing = track(
       hold,
       createBureau<AgentDefinitions>({
-        agents: { writer: writerAnswering('never runs') },
+        agents: {
+          writer: writerAnswering('never runs'),
+          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
+        },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
         resolveAgentGenerate,
-        toolbox: createToolbox([]),
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
         durableOwnership: leaseOptions,
         observability: true,
         assets: { storage: assetStorage.storage, garbageCollectionIntervalMilliseconds: 1_000 },
@@ -518,11 +523,12 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     // A correctly configured boot over the same storage resumes the run under its own agent.
     catalogSpy.mockRestore();
     const second = await createBureau<AgentDefinitions>({
-      agents: { writer: writerAnswering('recovered') },
-      toolbox: createToolbox([]),
+      agents: {
+        writer: writerAnswering('recovered'),
+        default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: { type: 'sqlite', path: storagePath },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableOwnership: leaseOptions,
     });
     try {
@@ -567,13 +573,13 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     fixtures.restoreOnDispose(() => toolsSpy.mockRestore());
 
     const outcome = await createBureau<AgentDefinitions>({
-      agents: {},
+      agents: {
+        default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
+      },
       workflowDirectory: await fixtures.scratchDirectory('bureau-reclaim-workflows-'),
-      toolbox: createToolbox([]),
       storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
       durableExecution: true,
       durableBackgroundTasks: 'manual',
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     }).then(
       () => 'built' as const,

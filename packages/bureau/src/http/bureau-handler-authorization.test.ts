@@ -277,21 +277,23 @@ async function openBureau(id = 'authorization-bureau') {
       support: createAgent({ name: 'support', generate: parkingGenerate() }),
       // The agent of bob's goal. It never answers, so it parks no review of its own.
       worker: createAgent({ name: 'worker', generate: hangUntilAborted }),
+      default: createAgent({
+        generate: parkingGenerate(),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      }),
     },
     validators: [createCheckValidator()],
-    generate: parkingGenerate(),
-    toolbox: createToolbox([]),
     storage: { type: 'memory' },
     durableExecution: true,
     humanInput: true,
-    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   });
 }
 
 /** A parked run, and the id of the review it is waiting on. */
 async function parkRun(bureau: Bureau, principal: string | undefined, message = 'park me') {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message,
     ...(principal === undefined ? {} : { principal }),
   });

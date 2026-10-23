@@ -2641,7 +2641,26 @@ export function scheduledFireApprovalMetadata(
   };
 }
 
-export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
+/**
+ * The Bureau-wide run configuration a composition itself can carry. `createBureau` supplies none of
+ * it (COR-323: every run belongs to a catalog agent, which owns its own `generate`, tools, stop
+ * condition, and instructions), so a Bureau-composed `RuntimeComposition` is never `ready`; a
+ * caller composing the runtime directly, as the composition's own tests do, may still set it.
+ */
+export interface CompositionRunOptions {
+  generate?: GenerateFunction;
+  provider?: ProviderConfiguration;
+  providers?: ProviderRouteConfiguration[];
+  routing?: RoutingConfiguration;
+  toolbox?: AnyToolbox;
+  guardrails?: GuardrailsOptions | false;
+  skills?: SkillRuntimeConfiguration;
+  stopWhen?: StopCondition | StopCondition[];
+  maximumSteps?: number;
+  systemPrompt?: string;
+}
+
+export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'> & CompositionRunOptions;
 
 export async function createRuntimeComposition(
   options: RuntimeCompositionOptions,
@@ -4816,6 +4835,25 @@ async function buildRuntimeComposition(
       message: payloadText(scheduledInput.input),
     });
 
+    // COR-323 — a fire runs as a named catalog agent: its own `generate`, tools, stop condition,
+    // and instructions. The implicit Bureau-wide agent no longer exists, so a schedule stored under
+    // it (or under an agent that has left the catalog) fails its fire with a diagnostic instead of
+    // running on something it never named.
+    const agentResolution =
+      agentName === defaultBureauAgentName
+        ? undefined
+        : await resolveSessionAgentRun(agentName, runId, owner);
+    if (agentResolution?.status !== 'resolved') {
+      return {
+        status: 'unavailable',
+        reason:
+          agentResolution === undefined
+            ? `scheduled fire ${info.workflowId} names the implicit agent "${agentName}", which no longer runs: schedule it under a catalog agent`
+            : `scheduled fire ${info.workflowId} cannot run agent "${agentName}": ${agentResolution.status}`,
+      };
+    }
+    const fireAgent = agentResolution.run;
+
     // COR-851: a goal's sessions are the goal's alone. A schedule can name any
     // session (an agent registers one itself through `scheduleSelf`, and one
     // persisted before the reservation existed is still live), and the fire
@@ -4877,8 +4915,9 @@ async function buildRuntimeComposition(
       );
     } else {
       conversation = new Conversation(createConversationHistory({ id: sessionId }));
-      if (systemPrompt) {
-        conversation.appendSystemMessage(systemPrompt);
+      const firePrompt = fireAgent.instructions ?? systemPrompt;
+      if (firePrompt) {
+        conversation.appendSystemMessage(firePrompt);
       }
     }
     const baseConversationHistory = conversation.current;
@@ -4906,6 +4945,7 @@ async function buildRuntimeComposition(
         initialActiveSkillRecords,
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         memoryOwner: owner,
+        sessionAgent: fireAgent,
       },
     );
     const skillRecovery = await runRuntime.skillsRecovered;
@@ -4946,7 +4986,7 @@ async function buildRuntimeComposition(
       recordRecoveredSkillPolicy(fireToolbox, {
         scheduledFire: true,
         agentName,
-        sessionAgent: undefined,
+        sessionAgent: fireAgent,
         recordsKey: JSON.stringify(initialActiveSkillRecords ?? []),
         recoveredCleanly: skillSnapshot.status === 'verified' && skillRecovery.refused.length === 0,
       });
@@ -4967,8 +5007,8 @@ async function buildRuntimeComposition(
         toolbox: fireToolbox,
         conversation,
         ...mediaOptionsFor(owner, 'session'),
-        maximumSteps,
-        stopWhen: options.stopWhen,
+        maximumSteps: fireAgent.options.maximumSteps ?? maximumSteps,
+        stopWhen: fireAgent.options.stopWhen,
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a scheduled fire.
         runtime: runtimeServices,

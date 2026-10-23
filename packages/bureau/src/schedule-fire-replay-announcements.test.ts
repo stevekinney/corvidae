@@ -6,7 +6,7 @@
  * are tested. A repeated id is announced once; a new id leaves the first attempt's request, which
  * the dead process announced, to be closed with `review.superseded` when the fire settles.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -20,6 +20,7 @@ import {
   reviewOf,
 } from './schedule-fire-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -67,10 +68,10 @@ async function crashThenRecover(callIds: (attempt: number) => string) {
     };
   };
   const first = await harness.open({
-    generate,
-    toolbox: approvalToolbox([]),
-    stopWhen: stopAtApproval,
     storage: await harness.sqliteStorage(path, (storage) => crash.wrap(storage)),
+    agents: {
+      default: createAgent({ generate, toolbox: approvalToolbox([]), stopWhen: stopAtApproval }),
+    },
   });
   const { fireId } = await fireOnce(first, OWNER.alice, 'replay-session');
   await reviewOf(first, fireId);
@@ -83,10 +84,10 @@ async function crashThenRecover(callIds: (attempt: number) => string) {
   }, 'the first attempt’s request to reach the history');
 
   const recovered = await harness.open({
-    generate,
-    toolbox: approvalToolbox([]),
-    stopWhen: stopAtApproval,
     storage: await harness.sqliteStorage(path),
+    agents: {
+      default: createAgent({ generate, toolbox: approvalToolbox([]), stopWhen: stopAtApproval }),
+    },
   });
   await pollUntil(
     async () => ((await durableStatus(recovered, fireId)) === 'completed' ? true : undefined),

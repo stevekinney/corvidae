@@ -82,10 +82,9 @@ async function start(
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
-    agents,
+    agents: { ...agents, default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
     memory,
     persistence: textValueStore(new MemoryStorage()),
-    stopWhen: stopWhen.noToolCalls(),
   });
   bureaus.push(bureau);
   return bureau;

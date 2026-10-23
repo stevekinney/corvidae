@@ -170,9 +170,11 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
     }));
     const bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, createContextEpoch }) },
+      agents: {
+        scout: createAgent({ generate, createContextEpoch }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
@@ -196,8 +198,10 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
 
     const plain = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, createContextEpoch }) },
-      stopWhen: stopWhen.noToolCalls(),
+      agents: {
+        scout: createAgent({ generate, createContextEpoch }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+      },
     });
     bureaus.push(plain);
     const unmemoried = await plain.createRun({
@@ -221,9 +225,9 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       id: 'tenant-a',
       agents: {
         scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([probe]) }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
@@ -257,9 +261,11 @@ describe('a session’s next run (COR-771)', () => {
     }));
     const bureau = await createBureau<AgentDefinitions>({
       id: 'tenant-a',
-      agents: { scout: createAgent({ generate, createContextEpoch }) },
+      agents: {
+        scout: createAgent({ generate, createContextEpoch }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
@@ -416,12 +422,17 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
         id: 'tenant-a',
         agents: {
           scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([]) }),
+          default: createAgent({
+            stopWhen: stopWhen.some(
+              stopWhen.toolCalled('requestHumanInput'),
+              stopWhen.noToolCalls(),
+            ),
+          }),
         },
         memory,
         storage: fixture.configuration,
         durableExecution: true,
         humanInput: true,
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         durableOwnership: { ownership: 'none' },
         requestAuthorityValidator: () => true,
       });

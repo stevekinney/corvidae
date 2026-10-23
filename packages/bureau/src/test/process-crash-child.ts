@@ -20,7 +20,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { createCheckpointStore, stopWhen } from '@lostgradient/operative';
+import { createCheckpointStore, stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -44,6 +44,7 @@ import {
   SECOND_HUMAN_WAIT_SIGNAL,
   SESSION_ID,
 } from './process-crash-work-integrity-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const POLL_ATTEMPTS = 2000;
 /** Durable statuses a run never leaves. */
@@ -108,20 +109,23 @@ function createNextTool() {
  */
 async function parkAfterStepZero(): Promise<void> {
   let reachedStepOne = false;
-  const bureau = await createBureau({
-    agents: {},
-    generate: async ({ step }) => {
-      if (step === 0) {
-        return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-      }
-      // Step 0's cursor has committed once step 1 is requested.
-      reachedStepOne = true;
-      return new Promise<never>(() => {});
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => {
+          if (step === 0) {
+            return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+          }
+          // Step 0's cursor has committed once step 1 is requested.
+          reachedStepOne = true;
+          return new Promise<never>(() => {});
+        },
+        toolbox: createToolbox([createNextTool()]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
     },
-    toolbox: createToolbox([createNextTool()]),
     storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,
@@ -136,7 +140,7 @@ async function parkAfterStepZero(): Promise<void> {
   }
 
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'crash harness run',
     principal: 'alice',
   });
@@ -214,7 +218,7 @@ async function chargeThenCrash(): Promise<void> {
     toolbox,
   });
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'crash harness charge',
     principal: 'alice',
     sessionId: SESSION_ID,
@@ -257,7 +261,7 @@ async function memoryWriteThenCrash(): Promise<void> {
     memory,
   });
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'crash harness memory',
     principal: 'alice',
     sessionId: SESSION_ID,
@@ -283,12 +287,12 @@ async function twoParkedRuns(): Promise<void> {
     toolbox: createToolbox([createNextTool()]),
   });
   const x = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'crash harness run X',
     principal: 'alice',
   });
   const y = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'crash harness run Y',
     principal: 'alice',
   });
@@ -328,7 +332,7 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     humanInput: true,
   });
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'crash harness park',
     principal: 'alice',
   });
@@ -368,17 +372,20 @@ async function relaunchRecover(): Promise<void> {
   const { runId } = JSON.parse(readFileSync(markerPath as string, 'utf8')) as { runId: string };
   let stepZeroCalls = 0;
   let laterStepCalls = 0;
-  const bureau = await createBureau({
-    agents: {},
-    generate: async ({ step }) => {
-      if (step === 0) stepZeroCalls += 1;
-      else laterStepCalls += 1;
-      return { content: `relaunched step ${step}`, toolCalls: [] };
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => {
+          if (step === 0) stepZeroCalls += 1;
+          else laterStepCalls += 1;
+          return { content: `relaunched step ${step}`, toolCalls: [] };
+        },
+        toolbox: createToolbox([createNextTool()]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
     },
-    toolbox: createToolbox([createNextTool()]),
     storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

@@ -1336,6 +1336,9 @@ function validateBureauRunOptions(
 
 function validateSubmitSchedulerTaskRequest(request: SubmitSchedulerTaskRequest): void {
   validateMessageRequest(request);
+  if (typeof request.agentName !== 'string' || request.agentName.trim().length === 0) {
+    toBadRequest('"agentName" must be a non-empty string');
+  }
 
   if (request.metadata !== undefined) {
     if (
@@ -2526,7 +2529,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // used, so a recovered run resumes under the policy it started with.
       const resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, {
         ...(childContext === undefined ? context : { ...context, ...childContext }),
-        ...catalogRunGuardrailsContext(agent, options.guardrails),
+        ...catalogRunGuardrailsContext(agent, undefined),
       });
       const resolution: CatalogAgentRunOptionsResolution = {
         status: 'resolved',
@@ -7461,7 +7464,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             maximumSteps: effectiveMaximumSteps,
             maximumTokens: effectiveMaximumTokens,
             // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
-            stopWhen: sessionAgent?.options.stopWhen ?? options.stopWhen,
+            stopWhen: sessionAgent?.options.stopWhen,
             // AB-260: the bureau's single composed RuntimeServices instance,
             // snapshotted into every run it starts.
             runtime: runtimeServices,
@@ -9645,7 +9648,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
-  function submitSchedulerTask(
+  async function submitSchedulerTask(
     request: SubmitSchedulerTaskRequest,
   ): Promise<SubmitSchedulerTaskResponse> {
     validateSubmitSchedulerTaskRequest(request);
@@ -9657,17 +9660,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     const taskId = runtimeServices.identifiers.next('scheduler-task');
     const priority = request.priority ?? 'scheduled';
-    const metadataAgentName = request.metadata?.['agentName'];
-    const agentName = typeof metadataAgentName === 'string' ? metadataAgentName : BUREAU_AGENT_NAME;
+    // COR-323 — a task runs as a named catalog agent, with that agent's own `generate`, tools,
+    // stop condition, and instructions. An unknown name is refused before anything is queued.
+    const agentName = request.agentName.trim();
+    const resolution = await runtime.resolveSessionAgentRun(
+      agentName,
+      taskId,
+      ownerOrLocal(undefined),
+    );
+    if (resolution.status === 'missing-agent') {
+      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
+    }
+    if (resolution.status === 'not-durable-capable') {
+      throw new BureauError(
+        `Agent "${agentName}" cannot run a scheduler task: it exposes no definition resolver.`,
+        'UNSUPPORTED_CAPABILITY',
+      );
+    }
+    if (resolution.status === 'resolver-failed') throw resolution.error;
+    const taskAgent = resolution.run;
 
     // AB-13 — same admission gate as `createRun`, applied to the
     // scheduler-originated surface. `taskId` doubles as the flow-control run
     // identity: it is stable for the task's whole lifecycle (queued →
     // dispatched → completed, including any preempt/requeue cycles), which is
     // exactly the identity `markParked`/`markResumed`/`settle` need. There is
-    // no per-task `agentName` field on `SubmitSchedulerTaskRequest`, so the
-    // grouping key falls back to `metadata.agentName` (when the caller set
-    // one) and otherwise the house default — matching `createRun`'s default.
+    // per-task `agentName` on `SubmitSchedulerTaskRequest` is the grouping key.
     if (flowController) {
       const decision = flowController.admit({
         runId: taskId,
@@ -9696,6 +9714,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assertRunAdmissionOpen('scheduler task');
         const runRuntime = await runtime.createRunRuntime(
           {
+            agentName,
             message: request.message,
             maximumSteps: request.maximumSteps,
             systemPrompt: request.systemPrompt,
@@ -9710,11 +9729,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           },
           // A scheduler task has no principal, so its memory is `anonymous:local`'s (COR-1546), not
           // the request authority's owner, which for a task is the agent's name.
-          { liveStreaming: false, memoryOwner: ownerOrLocal(undefined) },
+          { liveStreaming: false, memoryOwner: ownerOrLocal(undefined), sessionAgent: taskAgent },
         );
 
         const conversation = new Conversation(createConversationHistory({ id: taskId }));
-        const systemPrompt = request.systemPrompt ?? runtime.systemPrompt;
+        const systemPrompt = request.systemPrompt ?? taskAgent.instructions;
         if (systemPrompt) {
           conversation.appendSystemMessage(systemPrompt);
         }
@@ -9724,14 +9743,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           conversation,
           generate: runRuntime.generate,
           toolbox: runRuntime.toolbox,
-          maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
+          maximumSteps: request.maximumSteps ?? taskAgent.options.maximumSteps ?? runtime.maximumSteps,
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every scheduler task run it starts.
           runtime: runtimeServices,
           sessionId: taskId,
           // COR-1265 — the Bureau tier, snapshotted.
           hooks: mergeHookRegistries(runRuntime.hooks),
-          stopWhen: options.stopWhen,
+          stopWhen: taskAgent.options.stopWhen,
         };
       },
     };
@@ -18104,7 +18123,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     validateAgentRunInput,
     validateBureauRunOptions,
     // COR-1367 — handed down to each catalog agent as its inherited policy.
-    guardrails: options.guardrails,
+    guardrails: undefined,
     registerCatalogRun,
     // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
     // handle is returned (a write that fails is diagnosed, not thrown, because

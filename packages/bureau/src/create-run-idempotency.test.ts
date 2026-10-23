@@ -41,7 +41,7 @@ function heldGenerate(): { generate: GenerateFunction; release(): void } {
 }
 
 const REQUEST = {
-  agentName: 'bureau',
+  agentName: 'default',
   message: 'Summarize the quarter.',
   principal: 'alice',
   runCreationRequestId: 'request-1',
@@ -73,10 +73,12 @@ async function withDurableBureau(
         toolbox: createToolbox<readonly Tool[]>([]),
         ...researcher,
       }),
+      default: createAgent({
+        generate: held.generate,
+        stopWhen: stopWhen.noToolCalls(),
+        toolbox: createToolbox<readonly Tool[]>([]),
+      }),
     },
-    generate: held.generate,
-    stopWhen: stopWhen.noToolCalls(),
-    toolbox: createToolbox<readonly Tool[]>([]),
     runtime,
     storage: fixture.configuration,
     durableExecution: true,
@@ -135,7 +137,7 @@ describe('createRun with a run-creation request id', () => {
         const first = await bureau.createRun(REQUEST);
         const retry = await bureau.createRun({
           ...REQUEST,
-          agentName: 'bureau',
+          agentName: 'default',
           systemPrompt: 'You keep the books.',
           maximumSteps: 7,
         });
@@ -257,9 +259,9 @@ describe('createRun with a run-creation request id', () => {
   it('requires an authenticated principal to own the request id', async () => {
     await withDurableBureau(async (bureau) => {
       for (const request of [
-        { agentName: 'bureau', message: 'hi', runCreationRequestId: 'request-1' },
-        { agentName: 'bureau', message: 'hi', principal: ' ', runCreationRequestId: 'request-1' },
-        { agentName: 'bureau', message: 'hi', principal: 'alice', runCreationRequestId: ' ' },
+        { agentName: 'default', message: 'hi', runCreationRequestId: 'request-1' },
+        { agentName: 'default', message: 'hi', principal: ' ', runCreationRequestId: 'request-1' },
+        { agentName: 'default', message: 'hi', principal: 'alice', runCreationRequestId: ' ' },
       ]) {
         const rejection = await rejectionOf(bureau.createRun(request));
         expect(rejection).toBeInstanceOf(BureauError);
@@ -270,10 +272,13 @@ describe('createRun with a run-creation request id', () => {
   });
 
   it('offers no receipts without a durable engine', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'done', toolCalls: [] }),
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'done', toolCalls: [] }),
+          toolbox: createToolbox<readonly Tool[]>([]),
+        }),
+      },
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
     });
     try {
@@ -288,20 +293,23 @@ describe('createRun with a run-creation request id', () => {
 
   it('leaves a request without a request id unledgered', async () => {
     const held = heldGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate: held.generate,
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: held.generate,
+          toolbox: createToolbox<readonly Tool[]>([]),
+        }),
+      },
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
     });
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hi',
         principal: 'alice',
       });
       const second = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hi',
         principal: 'alice',
       });
@@ -331,7 +339,7 @@ describe('createRun with a run-creation request id', () => {
     await withDurableBureau(
       async (bureau, release) => {
         const occupying = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'first',
           principal: 'alice',
         });
@@ -456,7 +464,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
       });
       // A session bound to `researcher` cannot be asked about as `bureau`, as a run cannot name it.
       const contradiction = await rejectionOf(
-        bureau.locateRunCreationReceipt({ ...key, agentName: 'bureau', sessionId: 'bound' }),
+        bureau.locateRunCreationReceipt({ ...key, agentName: 'default', sessionId: 'bound' }),
       );
 
       expect(unknownSession.status === 'recorded' && unknownSession.receipt.runId).toBe(omitted.id);

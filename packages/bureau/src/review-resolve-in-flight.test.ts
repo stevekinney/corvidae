@@ -4,7 +4,7 @@
  * resolve of the same id is refused as one already being resolved, not as one that does not exist.
  * The automatic sweep is the only reader that skips a review being resolved.
  */
-import { stopWhen, type Toolbox } from '@lostgradient/operative';
+import { stopWhen, type Toolbox, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -13,6 +13,7 @@ import type { BureauError } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { createScheduleFireHarness, pollUntil } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 afterEach(async () => {
@@ -52,16 +53,20 @@ describe('a session-run approval whose approve is in flight', () => {
       },
     ) as unknown as Toolbox;
     const bureau = await harness.open({
-      generate: async (context) =>
-        context.step === 0
-          ? {
-              content: '',
-              toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 7 } }],
-            }
-          : { content: 'done', toolCalls: [] },
-      toolbox,
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
+      agents: {
+        default: createAgent({
+          generate: async (context) =>
+            context.step === 0
+              ? {
+                  content: '',
+                  toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 7 } }],
+                }
+              : { content: 'done', toolCalls: [] },
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const run = await bureau.createRun({
       agentName: 'bureau',

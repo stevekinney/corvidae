@@ -16,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { type Bureau, createBureau, type RunSummary } from './index';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from './agent-catalog';
 
 let databasePath = '';
 
@@ -61,15 +63,16 @@ async function terminalSessionSaved(
 
 describe('README — Quick Start', () => {
   it('waits for the run to finish through a subscription it closes on the terminal action', async () => {
-    const bureau = await createBureau({
-      agents: {},
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: answerWithoutTools }),
+      },
       // The README passes `provider: { provider: 'anthropic', model: 'claude-sonnet-4.5' }`.
-      generate: answerWithoutTools,
       storage: { type: 'sqlite', path: databasePath },
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Summarize the Q3 report.',
     });
     expect(run.status).toBe('running');
@@ -97,9 +100,10 @@ describe('README — Quick Start', () => {
   });
 
   it('cannot wait with `once`, because `once` detaches after the first action of any type', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: answerWithoutTools,
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: answerWithoutTools }),
+      },
       storage: { type: 'sqlite', path: databasePath },
     });
     const everyAction: string[] = [];
@@ -112,7 +116,7 @@ describe('README — Quick Start', () => {
     bureau.once('action', ({ action }) => heardByOnce.push(action.type));
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Summarize the Q3 report.',
     });
     await settled.promise;

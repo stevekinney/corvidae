@@ -24,6 +24,7 @@ import {
   type ReproductionArtifact,
 } from './reproduction-artifact';
 import { createMemoryStorageFixture } from './storage-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -75,9 +76,8 @@ async function runScriptedCase(
   const harness = await createBureauTestHarness({
     agents: {
       worker: createAgent({ name: 'worker', generate: mockGenerate('worker done'), runtime }),
+      default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
     },
-    generate: mockGenerate(),
-    toolbox: createToolbox([]),
     provider: { provider: 'anthropic', model: 'claude-test' },
     storage,
     ...overrides,
@@ -126,9 +126,9 @@ async function assembleDeterministicCase(
 ): Promise<ReproductionArtifact> {
   const storage = createMemoryStorageFixture();
   const harness = await createBureauTestHarness({
-    agents: {},
-    generate: mockGenerate(),
-    toolbox: createToolbox([]),
+    agents: {
+      default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+    },
     provider: { provider: 'anthropic', model: 'claude-test' },
     storage,
     // A fixed identifierSeed, not the generated (process-unique) default —
@@ -183,9 +183,9 @@ describe('assembleReproductionArtifact', () => {
   it('redacts a privileged value out of terminalResult so it never appears in JSON.stringify(artifact)', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       provider: { provider: 'anthropic', model: 'claude-test' },
       storage,
     });
@@ -278,9 +278,9 @@ describe('assembleReproductionArtifact', () => {
   it('throws rather than inventing a provider/model when the harness has no configured provider', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       storage,
     });
     disposals.push(async () => {
@@ -326,9 +326,9 @@ describe('assembleReproductionArtifact', () => {
   it('bypasses sourceRevision/packageVersions discovery when an explicit environment is supplied (AB-264)', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       provider: { provider: 'anthropic', model: 'claude-test' },
       storage,
     });

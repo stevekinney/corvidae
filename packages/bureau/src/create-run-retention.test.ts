@@ -11,7 +11,7 @@ import {
   type ManualRuntimeServices,
   type RuntimeServices,
 } from '@lostgradient/lifecycle';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -28,13 +28,14 @@ import {
 } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, CreateRunRequest } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
 const DAY_MS = 86_400_000;
 
 const REQUEST: CreateRunRequest = {
-  agentName: 'bureau',
+  agentName: 'default',
   message: 'Summarize the quarter.',
   principal: 'alice',
   runCreationRequestId: 'request-1',
@@ -73,11 +74,14 @@ async function withBureau(
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = factory(runtime);
-  const bureau = await createBureau({
-    agents: {},
-    generate: finishes,
-    stopWhen: stopWhen.noToolCalls(),
-    toolbox: createToolbox<readonly Tool[]>([]),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: finishes,
+        stopWhen: stopWhen.noToolCalls(),
+        toolbox: createToolbox<readonly Tool[]>([]),
+      }),
+    },
     runtime,
     storage: fixture.configuration,
     durableExecution: true,
@@ -223,7 +227,9 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         const fresh = await bureau.createRun(REQUEST);
         expect(fresh.id).not.toBe(created.id);
       },
-      { generate: finishesAfter(gate.promise) },
+      {
+        agents: { default: createAgent({ generate: finishesAfter(gate.promise) }) },
+      },
     );
   });
 
@@ -272,7 +278,7 @@ describe('locateRunCreationReceipt', () => {
         await bureau.locateRunCreationReceipt({ ...LOCATE, agentName: 'other-agent' }),
       ).toMatchObject({ status: 'not-found' });
       expect(
-        await bureau.locateRunCreationReceipt({ ...LOCATE, agentName: 'bureau' }),
+        await bureau.locateRunCreationReceipt({ ...LOCATE, agentName: 'default' }),
       ).toMatchObject({ status: 'recorded' });
     });
   });
@@ -291,10 +297,10 @@ describe('locateRunCreationReceipt', () => {
   });
 
   it('offers no receipts without a durable engine', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: finishes,
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: finishes, toolbox: createToolbox<readonly Tool[]>([]) }),
+      },
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
     });
     try {
@@ -310,10 +316,10 @@ describe('locateRunCreationReceipt', () => {
 describe('runCreationTerminalRetentionMs', () => {
   it.each([0, -1, 1.5])('rejects %p at construction', async (runCreationTerminalRetentionMs) => {
     const failure = await rejectionOf(
-      createBureau({
-        agents: {},
-        generate: finishes,
-        toolbox: createToolbox<readonly Tool[]>([]),
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: finishes, toolbox: createToolbox<readonly Tool[]>([]) }),
+        },
         runtime: createManualRuntimeServices({ origin: ORIGIN }),
         runCreationTerminalRetentionMs,
       }),

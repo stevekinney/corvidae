@@ -64,9 +64,9 @@ async function answerOnce(createContextEpoch?: () => ContextEpochSealer) {
         generate,
         ...(createContextEpoch === undefined ? {} : { createContextEpoch }),
       }),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     memory,
-    stopWhen: stopWhen.noToolCalls(),
     requestAuthorityValidator: () => true,
   });
   bureaus.push(bureau);

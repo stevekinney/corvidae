@@ -11,19 +11,23 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import { readSteeringLogHead } from './steering-log';
+import type { AgentDefinitions } from './agent-catalog';
 
 async function openBureau(path: string) {
-  return createBureau({
-    agents: {},
-    generate: () => new Promise<never>(() => {}),
-    toolbox: createToolbox([]),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: () => new Promise<never>(() => {}),
+        toolbox: createToolbox([]),
+      }),
+    },
     storage: { type: 'sqlite', path },
     durableExecution: true,
   });
@@ -38,33 +42,36 @@ describe('durable steering across two Bureau processes', () => {
       releaseTool = resolve;
     });
     let generateCalls = 0;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        generateCalls += 1;
-        return step === 0
-          ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'done', toolCalls: [] };
-      },
-      toolbox: createToolbox([
-        createTool({
-          name: 'next',
-          description: 'waits for the test',
-          input: z.object({}),
-          execute: async () => {
-            await toolGate;
-            return 'ok';
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            generateCalls += 1;
+            return step === 0
+              ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
+              : { content: 'done', toolCalls: [] };
           },
+          toolbox: createToolbox([
+            createTool({
+              name: 'next',
+              description: 'waits for the test',
+              input: z.object({}),
+              execute: async () => {
+                await toolGate;
+                return 'ok';
+              },
+            }),
+          ]),
+          stopWhen: stopWhen.noToolCalls(),
         }),
-      ]),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     const bureauB = await openBureau(path);
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -102,28 +109,31 @@ describe('durable steering across two Bureau processes', () => {
         ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
         : { content: 'done', toolCalls: [] };
     };
-    const bureauA = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([
-        createTool({
-          name: 'next',
-          description: 'waits for the test',
-          input: z.object({}),
-          execute: async () => {
-            await toolGate;
-            return 'ok';
-          },
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([
+            createTool({
+              name: 'next',
+              description: 'waits for the test',
+              input: z.object({}),
+              execute: async () => {
+                await toolGate;
+                return 'ok';
+              },
+            }),
+          ]),
+          stopWhen: stopWhen.noToolCalls(),
         }),
-      ]),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     const bureauB = await openBureau(path);
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -199,29 +209,32 @@ describe('durable steering across two Bureau processes', () => {
         ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
         : { content: 'done', toolCalls: [] };
     };
-    const bureauA = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([
-        createTool({
-          name: 'next',
-          description: 'waits for the test',
-          input: z.object({}),
-          execute: async () => {
-            toolCalls += 1;
-            await (toolCalls === 1 ? toolGate : secondToolGate);
-            return 'ok';
-          },
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([
+            createTool({
+              name: 'next',
+              description: 'waits for the test',
+              input: z.object({}),
+              execute: async () => {
+                toolCalls += 1;
+                await (toolCalls === 1 ? toolGate : secondToolGate);
+                return 'ok';
+              },
+            }),
+          ]),
+          stopWhen: stopWhen.noToolCalls(),
         }),
-      ]),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     const bureauB = await openBureau(path);
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -255,7 +268,7 @@ describe('durable steering across two Bureau processes', () => {
       const cleared = spyOn(globalThis, 'clearInterval');
       try {
         const second = await bureauA.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'again',
           principal: 'alice',
         });

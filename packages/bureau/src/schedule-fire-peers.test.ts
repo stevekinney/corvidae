@@ -6,7 +6,7 @@
  * Two Bureaus open one SQLite database under `workflow-lease` ownership, so each holds the fires
  * it started and the other sees them only through durable state.
  */
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -26,6 +26,7 @@ import {
   reviewOf,
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -104,8 +105,8 @@ describe('a peer closing a fire’s last review ends the stream another instance
     const holderCharges: number[] = [];
     const holder = await harness.open({
       ...peerOptions,
-      toolbox: approvalToolbox(holderCharges),
       storage: await harness.sqliteStorage(path),
+      agents: { default: createAgent({ toolbox: approvalToolbox(holderCharges) }) },
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, 'peer-stream-session');
     const review = await reviewOf(holder, fireId);
@@ -116,8 +117,8 @@ describe('a peer closing a fire’s last review ends the stream another instance
     const peerCharges: number[] = [];
     const peer = await harness.open({
       ...peerOptions,
-      toolbox: approvalToolbox(peerCharges),
       storage: await harness.sqliteStorage(path),
+      agents: { default: createAgent({ toolbox: approvalToolbox(peerCharges) }) },
     });
     await reviewOf(peer, fireId);
     return { holder, peer, fireId, review, holderCharges, peerCharges };

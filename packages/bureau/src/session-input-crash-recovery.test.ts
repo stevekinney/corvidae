@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createSessionInputDeliveryStore, stopWhen } from '@lostgradient/operative';
+import { createSessionInputDeliveryStore, stopWhen, createAgent } from '@lostgradient/operative';
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
@@ -26,6 +26,7 @@ import {
   SESSION_INPUT_DELIVERY_RETENTION_MS,
 } from './session-input-durability';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 
@@ -91,23 +92,26 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
       await Bun.sleep(CLAIM_TTL_MS * 10);
 
       const prompts: { step: number; texts: string[] }[] = [];
-      const recovering = await createBureau({
-        agents: {},
-        generate: async ({ step, conversation }) => {
-          prompts.push({
-            step,
-            texts: conversation
-              .getMessages()
-              .filter((message) => message.role === 'user')
-              .map((message) => (typeof message.content === 'string' ? message.content : '')),
-          });
-          return { content: 'done', toolCalls: [] };
+      const recovering = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step, conversation }) => {
+              prompts.push({
+                step,
+                texts: conversation
+                  .getMessages()
+                  .filter((message) => message.role === 'user')
+                  .map((message) => (typeof message.content === 'string' ? message.content : '')),
+              });
+              return { content: 'done', toolCalls: [] };
+            },
+            toolbox: createToolbox([nextTool]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([nextTool]),
         storage: { type: backend, path: storagePath },
         durableExecution: true,
         durableOwnership: CLAIM_OPTIONS,
-        stopWhen: stopWhen.noToolCalls(),
       });
       try {
         await recovering.waitForRecovery?.();
@@ -171,17 +175,20 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
         'ended',
       );
       let generations = 0;
-      const recovering = await createBureau({
-        agents: {},
-        generate: async () => {
-          generations += 1;
-          return { content: 'done', toolCalls: [] };
+      const recovering = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              generations += 1;
+              return { content: 'done', toolCalls: [] };
+            },
+            toolbox: createToolbox([nextTool]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([nextTool]),
         storage: { type: backend, path: storagePath },
         durableExecution: true,
         durableOwnership: CLAIM_OPTIONS,
-        stopWhen: stopWhen.noToolCalls(),
       });
       try {
         await recovering.waitForRecovery?.();

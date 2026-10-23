@@ -21,6 +21,7 @@ import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
@@ -123,17 +124,16 @@ async function openBureau(options: {
 }) {
   const generate = createScriptedGenerate(options.script);
   const storage = behaving(options.behavior ?? {});
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
     id: 'terminal-snapshot',
     agents: {
       assistant: createAgent({ generate, name: 'assistant', stopWhen: stopWhen.noToolCalls() }),
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    generate,
     storage: storage.storage,
     durableExecution: true,
     sessionPersistenceRetryDelayMilliseconds: options.retryDelayMilliseconds ?? 0,
-    stopWhen: stopWhen.noToolCalls(),
     ...(options.diagnostics === undefined
       ? {}
       : {

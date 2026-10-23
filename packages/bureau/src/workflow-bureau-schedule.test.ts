@@ -16,6 +16,8 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from './agent-catalog';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -75,7 +77,11 @@ describe('bureau.schedules on a workflow’s schedule', () => {
 
   it('still lets an agent schedule be paused, resumed, and cancelled', async () => {
     const harness = await start({
-      overrides: { generate: async () => ({ content: 'tick', toolCalls: [] }) },
+      overrides: {
+        agents: {
+          default: createAgent({ generate: async () => ({ content: 'tick', toolCalls: [] }) }),
+        },
+      },
     });
     const summary = await harness.bureau.createSchedule({
       agentName: 'writer',

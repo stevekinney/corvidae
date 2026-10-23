@@ -672,9 +672,10 @@ describe('createBureau', () => {
   });
 
   it('is ready when a generate function is configured', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
     });
     expect(bureau.ready).toBe(true);
   });
@@ -689,9 +690,10 @@ describe('createBureau', () => {
     // createRuntimeComposition called directly.
     expect(
       await throwingRejectionOf(
-        createBureau({
-          agents: {},
-          generate: createMockGenerate(),
+        createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({ generate: createMockGenerate() }),
+          },
           durableExecution: true,
           persistence: textValueStore(new MemoryStorage()),
         }),
@@ -715,14 +717,15 @@ describe('createBureau', () => {
     // operative's own real-clock default.
     const runtime = createManualRuntimeServices();
     const pinnedTime = runtime.clock.now();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
       runtime,
     });
 
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'stamp check' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'stamp check' });
       const runState = bureau.store.getRun(summary.id);
       expect(runState?.actions.length).toBeGreaterThan(0);
       for (const action of runState?.actions ?? []) {
@@ -761,7 +764,7 @@ describe('createBureau', () => {
       agents: {},
     });
 
-    const error = await bureau.createRun({ agentName: 'bureau', message: 'Hello' }).then(
+    const error = await bureau.createRun({ agentName: 'default', message: 'Hello' }).then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -772,12 +775,13 @@ describe('createBureau', () => {
   });
 
   it('throws BAD_REQUEST when createRun is called with an empty message', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
     });
 
-    const error = await bureau.createRun({ agentName: 'bureau', message: '' }).then(
+    const error = await bureau.createRun({ agentName: 'default', message: '' }).then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -788,13 +792,14 @@ describe('createBureau', () => {
   });
 
   it('throws BAD_REQUEST when createRun is called with a blank session identifier', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate() }),
+      },
     });
 
     const error = await bureau
-      .createRun({ agentName: 'bureau', message: 'Hello', sessionId: '   ' })
+      .createRun({ agentName: 'default', message: 'Hello', sessionId: '   ' })
       .then(
         () => undefined,
         (rejection) => rejection,
@@ -806,13 +811,13 @@ describe('createBureau', () => {
   });
 
   it('creates runs with a session identifier and registers them in the store', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const summary = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
 
     expect(summary.id).toBeString();
     expect(summary.sessionId).toBeString();
@@ -830,7 +835,7 @@ describe('createBureau', () => {
     await sessionStore.save(
       createAgentSession({
         id: sessionId,
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: sessionId }),
         metadata: {
           sessionOwner: 'alice',
@@ -840,15 +845,18 @@ describe('createBureau', () => {
       }),
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage,
     });
     try {
       const summary = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'merge',
         sessionId,
         principal: 'alice',
@@ -865,13 +873,13 @@ describe('createBureau', () => {
   });
 
   it('AB-88/AB-214: getRun(id).liveness is a JSON-safe plain-data snapshot', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const summary = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     const detail = bureau.getRun(summary.id);
 
     expect(detail?.liveness).toBeDefined();
@@ -884,14 +892,17 @@ describe('createBureau', () => {
   });
 
   it('getRun(id).transcript is the current conversation, not the snapshot history tree', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('All done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('All done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
     });
 
     try {
-      const summary = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+      const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await waitForRunCompletion(bureau, summary.id);
       const detail = bureau.getRun(summary.id);
       const transcript = detail?.transcript;
@@ -911,14 +922,14 @@ describe('createBureau', () => {
   });
 
   it('AB-88/AB-214 review (PRRT_kwDORvupsc6esZTF): getRun(id).liveness.owner carries the authenticated principal that started the run', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const summary = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Hello',
       principal: 'user-42',
     });
@@ -928,26 +939,26 @@ describe('createBureau', () => {
   });
 
   it('AB-88/AB-214: getRun(id).liveness.owner is anonymous:local when the run has no authenticated principal (COR-718)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const summary = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     const detail = bureau.getRun(summary.id);
 
     expect(detail?.liveness.owner).toBe('anonymous:local');
   });
 
   it('AB-88/AB-214: subscribeRunSnapshot delivers the current snapshot synchronously, then live updates', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const summary = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
 
     const received: string[] = [];
     const subscription = bureau.subscribeRunSnapshot(summary.id, (snapshot) => {
@@ -959,10 +970,10 @@ describe('createBureau', () => {
   });
 
   it('AB-88/AB-214: subscribeRunSnapshot throws NOT_FOUND for an unknown run id', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     expect(() => bureau.subscribeRunSnapshot('does-not-exist', () => {})).toThrow(
@@ -992,8 +1003,8 @@ describe('createBureau', () => {
           toolbox: createToolbox([createNextTool()]),
           stopWhen: stopWhen.noToolCalls(),
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     const summary = await bureau.createRun({
@@ -1029,14 +1040,17 @@ describe('createBureau', () => {
     // fix falls back to BUREAU_AGENT_NAME ('bureau') when the request omits agentName.
     const capturedStamps: Array<{ agentName: string; runId: string }> = [];
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ step }) =>
-        step === 0
-          ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'done', toolCalls: [] },
-      toolbox: createToolbox([createNextTool()]),
-      stopWhen: stopWhen.noToolCalls(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) =>
+            step === 0
+              ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
+              : { content: 'done', toolCalls: [] },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
 
     // No agentName on the request — the common interactive path.
@@ -1071,11 +1085,13 @@ describe('createBureau', () => {
           toolbox: createEmptyToolbox(),
           stopWhen: stopWhen.noToolCalls(),
         }),
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     const run = await bureau.createRun({ message: 'Named dispatch', agentName: 'researcher' });
@@ -1086,10 +1102,10 @@ describe('createBureau', () => {
   });
 
   it('stamps the session with the default bureau agent when no agentName is dispatched', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
@@ -1101,18 +1117,18 @@ describe('createBureau', () => {
   });
 
   it('persists and resumes sessions through the session store', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const firstRun = await bureau.createRun({ agentName: 'bureau', message: 'First message' });
+    const firstRun = await bureau.createRun({ agentName: 'default', message: 'First message' });
     await waitForRunCompletion(bureau, firstRun.id);
 
     const secondRun = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Second message',
       sessionId: firstRun.sessionId,
     });
@@ -1126,22 +1142,22 @@ describe('createBureau', () => {
   });
 
   it('preserves both turns from concurrent createRun writers on one session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     const sessionId = 'concurrent-bureau-session';
 
     const [firstRun, secondRun] = await Promise.all([
       bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First concurrent bureau message',
         sessionId,
       }),
       bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second concurrent bureau message',
         sessionId,
       }),
@@ -1168,7 +1184,7 @@ describe('createBureau', () => {
     baseConversation.appendUserMessage('sensitive bureau original');
     await sessionStore.save({
       id: sessionId,
-      agentName: 'bureau',
+      agentName: 'default',
       conversationHistory: baseConversation.current,
       incarnation: '',
       runs: [],
@@ -1178,30 +1194,33 @@ describe('createBureau', () => {
       updatedAt: '2030-01-01T00:00:00.000Z',
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context) => {
-        if (
-          context.conversation
-            .getMessages()
-            .some((message) => message.content === 'Redact concurrent bureau message')
-        ) {
-          context.conversation.redactMessageAtPosition(0, 'redacted bureau original');
-        }
-        return { content: 'Done.', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context) => {
+            if (
+              context.conversation
+                .getMessages()
+                .some((message) => message.content === 'Redact concurrent bureau message')
+            ) {
+              context.conversation.redactMessageAtPosition(0, 'redacted bureau original');
+            }
+            return { content: 'Done.', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       persistence,
     });
 
     const [redactingRun, appendingRun] = await Promise.all([
       bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Redact concurrent bureau message',
         sessionId,
       }),
       bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Append concurrent bureau message',
         sessionId,
       }),
@@ -1222,16 +1241,16 @@ describe('createBureau', () => {
   });
 
   it('aligns a new session history identifier with the requested session identifier', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     const sessionId = 'session-aligned';
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'First message',
       sessionId,
     });
@@ -1243,15 +1262,18 @@ describe('createBureau', () => {
   });
 
   it('persists completed session metadata for fast runs', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Fast completion' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Fast completion' });
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);
@@ -1263,15 +1285,15 @@ describe('createBureau', () => {
   // maximumTokens to session metadata, so recovery (buildRunDepsFromSession) could
   // not restore it and recovered generate calls silently received undefined.
   it('persists maximumTokens as lastMaximumTokens in session metadata when a run is created with a token cap', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Capped run',
       maximumTokens: 128,
     });
@@ -1284,14 +1306,14 @@ describe('createBureau', () => {
   it('writes null for lastMaximumTokens in session metadata when maximumTokens is absent (clears any stale cap)', async () => {
     // The field is always written — null when absent — so a reused session never
     // inherits a previous run's cap (PRRT_kwDORvupsc6MZ1Mb).
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Uncapped run' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);
@@ -1304,15 +1326,15 @@ describe('createBureau', () => {
     // exceed the caller's step limit. saveSession now writes lastMaximumSteps,
     // and buildRunDepsFromSession reads it back during recovery (mirroring the
     // lastMaximumTokens recovery fix).
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Capped run',
       maximumSteps: 3,
     });
@@ -1325,14 +1347,14 @@ describe('createBureau', () => {
   it('writes null for lastMaximumSteps in session metadata when maximumSteps is absent (clears any stale cap)', async () => {
     // The field is always written — null when absent — so a reused session never
     // inherits a previous run's step cap (PRRT_kwDORvupsc6MZ1Mb).
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Uncapped run' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);
@@ -1347,16 +1369,16 @@ describe('createBureau', () => {
   // the previous run's limit to the new run.
   it('clears stale cap metadata when a follow-up run omits maximumTokens (regression PRRT_kwDORvupsc6MZ1Mb)', async () => {
     const persistence = textValueStore(new MemoryStorage());
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence,
     });
 
     // Run 1: explicitly capped
     const run1 = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Capped run',
       maximumTokens: 512,
     });
@@ -1367,7 +1389,7 @@ describe('createBureau', () => {
 
     // Run 2: on the same session, no cap — previous cap must NOT be inherited
     const run2 = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Follow-up, no cap',
       sessionId: run1.sessionId,
     });
@@ -1380,16 +1402,16 @@ describe('createBureau', () => {
 
   it('clears stale step cap metadata when a follow-up run omits maximumSteps (regression PRRT_kwDORvupsc6MZ1Mb)', async () => {
     const persistence = textValueStore(new MemoryStorage());
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence,
     });
 
     // Run 1: explicitly capped at 3 steps
     const run1 = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Capped run',
       maximumSteps: 3,
     });
@@ -1400,7 +1422,7 @@ describe('createBureau', () => {
 
     // Run 2: on the same session, no step cap — previous cap must NOT be inherited
     const run2 = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Follow-up, no cap',
       sessionId: run1.sessionId,
     });
@@ -1436,15 +1458,15 @@ describe('createBureau', () => {
       throw new Error('provider crashed before first step');
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: failOnSecondRun,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: failOnSecondRun, toolbox: createEmptyToolbox() }),
+      },
       persistence,
     });
 
     // Run 1: creates the session.
-    const run1 = await bureau.createRun({ agentName: 'bureau', message: 'First run' });
+    const run1 = await bureau.createRun({ agentName: 'default', message: 'First run' });
     await waitForRunCompletion(bureau, run1.id);
 
     // Simulate a prior run having recorded an active-skill snapshot: write a
@@ -1462,7 +1484,7 @@ describe('createBureau', () => {
     // crash-before-first-snapshot recovery starts with NO active skills, exactly
     // as a fresh run would.
     const run2 = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Follow-up run',
       sessionId: run1.sessionId,
     });
@@ -1494,16 +1516,19 @@ describe('createBureau', () => {
       },
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: flakyStore,
       sessionPersistenceSleep: async () => {},
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Retry completion' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Retry completion' });
     await waitForRunCompletion(bureau, run.id);
     await waitForCondition(async () => {
       const session = await bureau.getSession(run.sessionId);
@@ -1536,24 +1561,27 @@ describe('createBureau', () => {
       // exactly there, with no timing guess. (The earlier toolbox-action anchor
       // raced: that event fires INSIDE step 0's memo, before any checkpoint yield.)
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true; // step 0's saveCursor has committed
-          // Hang forever — the "process" dies here.
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true; // step 0's saveCursor has committed
+              // Hang forever — the "process" dies here.
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover me' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
       // Crash once step 1's generate is entered — i.e. step 0 is durably
       // checkpointed (see the anchor rationale above).
       await pollUntil(() => bureauAReachedStep1);
@@ -1579,17 +1607,20 @@ describe('createBureau', () => {
       // === Bureau B: same SQLite file, a generate that settles. On boot it
       // reconstructs deps from config + the persisted session and resumes. ===
       const bSteps: number[] = [];
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          bSteps.push(step);
-          return { content: `B recovered step ${step}`, toolCalls: [] };
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              bSteps.push(step);
+              return { content: `B recovered step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -1725,19 +1756,22 @@ describe('createBureau', () => {
         },
       });
 
-      bureauA = await createBureau({
-        agents: {},
+      bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: () => new Promise<never>(() => {}),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         // Never resolves — proves this run's very first step never even
         // begins before the assertions below run; the durable write this
         // test is about happens entirely BEFORE any step executes.
-        generate: () => new Promise<never>(() => {}),
-        toolbox: createEmptyToolbox(),
         storage: gatedStorage,
         durableExecution: true,
       });
 
       const runPromise = bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'AB-361 durable write honesty',
       });
       let createRunSettled = false;
@@ -1768,10 +1802,13 @@ describe('createBureau', () => {
       // (the in-process reopen pattern this issue's acceptance criterion
       // names), with no shared in-process state — bureau A's engine is a
       // different instance entirely.
-      bureauB = await createBureau({
-        agents: {},
-        generate: () => new Promise<never>(() => {}),
-        toolbox: createEmptyToolbox(),
+      bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: () => new Promise<never>(() => {}),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
       });
@@ -1798,14 +1835,17 @@ describe('createBureau', () => {
     // `durablyStarted` promise to await (see `ActiveRun.durablyStarted`'s
     // own doc comment), and `createRunFromRequest`'s new await is gated on
     // `runtime.durable`, which is absent here.
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
     });
 
     const runPromise = bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'in-memory, never durable',
     });
     let settled = false;
@@ -1869,10 +1909,13 @@ describe('createBureau', () => {
       },
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: gatedStorage,
       durableExecution: true,
     });
@@ -1881,7 +1924,7 @@ describe('createBureau', () => {
       const sessionId = 'ab-361-review-start-rejects';
       const error = await bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'AB-361 review: engine.start rejects',
           sessionId,
         })
@@ -1966,10 +2009,13 @@ describe('createBureau', () => {
       },
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: gatedStorage,
       durableExecution: true,
     });
@@ -1979,7 +2025,7 @@ describe('createBureau', () => {
       let runId: string | undefined;
       const error = await bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'AB-361 review: engine.start rejects, principal must survive',
           sessionId,
           principal: 'the-real-owner',
@@ -2484,51 +2530,56 @@ describe('createBureau', () => {
     const databasePath = createTemporaryPath('bureau-recovery-boot-frames', '.sqlite');
     let bureauAReachedStep1 = false;
     let recoveredRunStepping = false;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) {
-          return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        bureauAReachedStep1 = true;
-        return new Promise<never>(() => {});
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            bureauAReachedStep1 = true;
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     const runs: { id: string }[] = [];
     for (let index = 0; index < runCount; index += 1) {
-      runs.push(await bureauA.createRun({ agentName: 'bureau', message: `Recover me ${index}` }));
+      runs.push(await bureauA.createRun({ agentName: 'default', message: `Recover me ${index}` }));
     }
     await pollUntil(() => bureauAReachedStep1);
     // Bureau A stays undisposed so its workflows are still recoverable, as in
     // the AB-15 test below; it is released by `cleanup`.
     const delayed = await createTailDelayedStorage(databasePath);
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         echo: createAgent({
           generate: async () => ({ content: 'echo', toolCalls: [] }),
           toolbox: createToolbox([]),
           stopWhen: stopWhen.noToolCalls(),
         }),
+        default: createAgent({
+          generate: async ({ step }) => {
+            recoveredRunStepping = true;
+            delayed.releaseTail();
+            return {
+              content: `B recovered step ${step}`,
+              toolCalls: step <= recoveredToolSteps ? [{ name: 'next', arguments: {} }] : [],
+            };
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
       scheduler: { enabled: true },
-      generate: async ({ step }) => {
-        recoveredRunStepping = true;
-        delayed.releaseTail();
-        return {
-          content: `B recovered step ${step}`,
-          toolCalls: step <= recoveredToolSteps ? [{ name: 'next', arguments: {} }] : [],
-        };
-      },
-      toolbox: createToolbox([createNextTool()]),
       storage: delayed.storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
       ...(onEvent ? { onEvent } : {}),
     });
     // The scenario these tests exist for: the recovered run stepped, and the
@@ -2658,18 +2709,21 @@ describe('createBureau', () => {
       let recoveredFireStepped = false;
       const events: { type: string; runId?: string; verdict?: string }[] = [];
       const delayed = await createTailDelayedStorage(databasePath);
-      bureau = await createBureau({
-        agents: {},
-        generate: async () => {
-          recoveredFireStepped = true;
-          delayed.releaseTail();
-          return { content: 'recovered scheduled fire', toolCalls: [] };
+      bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              recoveredFireStepped = true;
+              delayed.releaseTail();
+              return { content: 'recovered scheduled fire', toolCalls: [] };
+            },
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createEmptyToolbox(),
         storage: delayed.storage,
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
         onEvent: (event) => {
           events.push(event);
         },
@@ -2706,7 +2760,7 @@ describe('createBureau', () => {
       // The handle was usable during the replay, so the replay stopped after
       // the first frame and the listener never joined the live set.
       expect(delivered).toBe(1);
-      await bureau.createRun({ agentName: 'bureau', message: 'after unsubscribe' });
+      await bureau.createRun({ agentName: 'default', message: 'after unsubscribe' });
       expect(delivered).toBe(1);
     } finally {
       await cleanup();
@@ -2715,10 +2769,10 @@ describe('createBureau', () => {
 
   it('reports a rejected async onEvent listener through onDiagnostic (COR-1421)', async () => {
     const diagnostics: { scope: string; message: string }[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       onEvent: async () => {
         throw new Error('async listener failed');
       },
@@ -2727,7 +2781,7 @@ describe('createBureau', () => {
       },
     });
     try {
-      await bureau.createRun({ agentName: 'bureau', message: 'trigger an event' });
+      await bureau.createRun({ agentName: 'default', message: 'trigger an event' });
       expect(
         await pollUntil(() => diagnostics.some((diagnostic) => diagnostic.scope === 'events')),
       ).toBe(true);
@@ -2739,10 +2793,10 @@ describe('createBureau', () => {
   it('records an event in the bureau feed before the onEvent callback runs (COR-1421)', async () => {
     let recordedWhenCallbackRan: Promise<string[]> | undefined;
     let bureauReference: Awaited<ReturnType<typeof createBureau>> | undefined;
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       onEvent: (event) => {
         if (event.type !== 'run.registered' || recordedWhenCallbackRan || !bureauReference) return;
         // Snapshot the feed at the moment the callback runs.
@@ -2756,7 +2810,7 @@ describe('createBureau', () => {
     });
     bureauReference = bureau;
     try {
-      await bureau.createRun({ agentName: 'bureau', message: 'trigger run.registered' });
+      await bureau.createRun({ agentName: 'default', message: 'trigger run.registered' });
       expect(recordedWhenCallbackRan).toBeDefined();
       expect(await recordedWhenCallbackRan).toContain('run.registered');
     } finally {
@@ -2835,20 +2889,23 @@ describe('createBureau', () => {
     try {
       let bureauAReachedStep1 = false;
       const runSeqsFromA: number[] = [];
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const unsubscribeA = bureauA.subscribeLiveFrames((frame) => {
@@ -2857,7 +2914,7 @@ describe('createBureau', () => {
         }
       });
 
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover me' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
       // Bureau A's own generation stays small (single-digit run-scoped
@@ -2880,17 +2937,20 @@ describe('createBureau', () => {
 
       const bSteps: number[] = [];
       const runSeqsFromB: number[] = [];
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          bSteps.push(step);
-          return { content: `B recovered step ${step}`, toolCalls: [] };
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              bSteps.push(step);
+              return { content: `B recovered step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const unsubscribeB = bureauB.subscribeLiveFrames((frame) => {
@@ -2933,25 +2993,28 @@ describe('createBureau', () => {
 
     try {
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
         workflowVersion: 'v1',
       });
 
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Recover me under a new version',
       });
       await pollUntil(() => bureauAReachedStep1);
@@ -2969,17 +3032,20 @@ describe('createBureau', () => {
 
       const warnSpy = spyOn(console, 'warn');
       const bSteps: number[] = [];
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          bSteps.push(step);
-          return { content: `B recovered step ${step}`, toolCalls: [] };
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              bSteps.push(step);
+              return { content: `B recovered step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
         // Different version than bureau A stamped — simulates a deploy that
         // shipped while this run was in flight.
         workflowVersion: 'v2',
@@ -3058,10 +3124,10 @@ describe('createBureau', () => {
     const cancelSpy = spyOn(enginePrototype, 'cancel').mockResolvedValue(undefined);
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -3124,14 +3190,20 @@ describe('createBureau', () => {
         firstRuntime.disposeStorage?.();
       }
 
-      const bureau = await createBureau({
-        agents: {},
-        generate: async () => ({ content: 'legacy scheduled recovery completed', toolCalls: [] }),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => ({
+              content: 'legacy scheduled recovery completed',
+              toolCalls: [],
+            }),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -3215,14 +3287,17 @@ describe('createBureau', () => {
         firstRuntime.disposeStorage?.();
       }
 
-      const bureau = await createBureau({
-        agents: {},
-        generate: async () => ({ content: 'object marker recovery completed', toolCalls: [] }),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => ({ content: 'object marker recovery completed', toolCalls: [] }),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -3262,24 +3337,27 @@ describe('createBureau', () => {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash),
       // leaving a non-terminal durable workflow for recoverAll to pick up.
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Recover into the audit trail',
       });
       await pollUntil(() => bureauAReachedStep1);
@@ -3324,14 +3402,20 @@ describe('createBureau', () => {
       try {
         // Bureau B: a wholly separate bureau over the same SQLite file. On boot it
         // recovers the run, which resumes at step 1 and settles.
-        bureauB = await createBureau({
-          agents: {},
-          generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
-          toolbox: createToolbox([createNextTool()]),
+        bureauB = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async ({ step }) => ({
+                content: `B recovered step ${step}`,
+                toolCalls: [],
+              }),
+              toolbox: createToolbox([createNextTool()]),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         });
       } finally {
         auditTrailSpy.mockRestore();
@@ -3381,22 +3465,25 @@ describe('createBureau', () => {
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
       let reachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          reachedStep1 = true;
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              reachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover with a tool' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'Recover with a tool' });
       await pollUntil(() => reachedStep1);
       // AB-207: deliberately NOT disposing bureauA here. `dispose()`
       // now fully awaits `activeRun.abort()`'s durable-engine `cancel()`
@@ -3412,19 +3499,22 @@ describe('createBureau', () => {
       // Bureau B: resumes at step 1, which calls the `next` tool again before
       // settling — so a toolbox action fires on the RECOVERED run's surface.
       const actions: string[] = [];
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 1) {
-            return { content: 'B resume step 1', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          return { content: `B step ${step}`, toolCalls: [] };
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 1) {
+                return { content: 'B resume step 1', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              return { content: `B step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
       bureauB.addEventListener('action', (event) => {
         actions.push(event.action.type);
@@ -3467,24 +3557,27 @@ describe('createBureau', () => {
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Recover with envelope frames',
       });
       await pollUntil(() => bureauAReachedStep1);
@@ -3502,19 +3595,22 @@ describe('createBureau', () => {
       // Bureau B: resumes at step 1, which calls the `next` tool again before
       // settling — so step/tool-pre/tool-post frames should surface on the
       // recovered run's run-envelope stream, not just the terminal one.
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 1) {
-            return { content: 'B resume step 1', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          return { content: `B step ${step}`, toolCalls: [] };
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 1) {
+                return { content: 'B resume step 1', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              return { content: `B step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const envelopeFrameTypes: string[] = [];
@@ -3558,7 +3654,7 @@ describe('createBureau', () => {
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
+      const bureauA = await createBureau<AgentDefinitions>({
         agents: {
           'recovery-agent': createAgent({
             generate: async ({ step }) => {
@@ -3571,13 +3667,15 @@ describe('createBureau', () => {
             toolbox: createToolbox([createNextTool()]),
             stopWhen: stopWhen.noToolCalls(),
           }),
+          default: createAgent({
+            generate: async () => ({ content: 'unused', toolCalls: [] }),
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        generate: async () => ({ content: 'unused', toolCalls: [] }),
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const run = await bureauA.createRun({
@@ -3600,7 +3698,7 @@ describe('createBureau', () => {
       // the resolver now wires the C3 block so the tool.started event emitted
       // during resume carries {agentName:'recovery-agent', runId}.
       const capturedStamps: Array<{ agentName: string; runId: string }> = [];
-      const bureauB = await createBureau({
+      const bureauB = await createBureau<AgentDefinitions>({
         agents: {
           'recovery-agent': createAgent({
             generate: async ({ step }) => {
@@ -3612,13 +3710,15 @@ describe('createBureau', () => {
             toolbox: createToolbox([createNextTool()]),
             stopWhen: stopWhen.noToolCalls(),
           }),
+          default: createAgent({
+            generate: async () => ({ content: 'unused', toolCalls: [] }),
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        generate: async () => ({ content: 'unused', toolCalls: [] }),
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       // Subscribe to tool.started on the reattached ActiveRun BEFORE recovery
@@ -3660,29 +3760,32 @@ describe('createBureau', () => {
 
     try {
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step, signal }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<GenerateResponse>((resolve) => {
-            signal?.addEventListener(
-              'abort',
-              () => resolve({ content: 'aborted before crash', toolCalls: [] }),
-              { once: true },
-            );
-          });
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step, signal }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<GenerateResponse>((resolve) => {
+                signal?.addEventListener(
+                  'abort',
+                  () => resolve({ content: 'aborted before crash', toolCalls: [] }),
+                  { once: true },
+                );
+              });
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover then abort' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'Recover then abort' });
       await pollUntil(() => bureauAReachedStep1);
       // AB-207: deliberately NOT disposing bureauA here. `dispose()`
       // now fully awaits `activeRun.abort()`'s durable-engine `cancel()`
@@ -3695,21 +3798,24 @@ describe('createBureau', () => {
       // parked at step 1's hung `generate()` call until disposed at the
       // end of this test, well after bureauB's recovery.
 
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ signal }) =>
-          new Promise<GenerateResponse>((resolve) => {
-            signal?.addEventListener(
-              'abort',
-              () => resolve({ content: 'aborted after recovery', toolCalls: [] }),
-              { once: true },
-            );
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ signal }) =>
+              new Promise<GenerateResponse>((resolve) => {
+                signal?.addEventListener(
+                  'abort',
+                  () => resolve({ content: 'aborted after recovery', toolCalls: [] }),
+                  { once: true },
+                );
+              }),
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
           }),
-        toolbox: createToolbox([createNextTool()]),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -3748,23 +3854,26 @@ describe('createBureau', () => {
 
     try {
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {}); // hang — the "process" dies here
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {}); // hang — the "process" dies here
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover me' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
       // AB-207: deliberately NOT disposing bureauA here. `dispose()`
@@ -3780,12 +3889,13 @@ describe('createBureau', () => {
 
       // === Bureau B: same file, durable forced on, but NO generate and NO
       // provider — so reconstructing the run's deps throws on this process. ===
-      const bureauB = await createBureau({
-        agents: {},
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -3830,16 +3940,19 @@ describe('createBureau', () => {
     // composition now throws on that contradiction). `storage: memory` +
     // `durableExecution: true` is what actually builds the in-memory durable
     // engine, so this test genuinely exercises the durable path.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Durable hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Durable hello' });
     // Wait deterministically for the deferred-microtask start + durable workflow
     // to drive the registered run to a terminal state (no fixed-wall-clock sleep).
     await waitForRunCompletion(bureau, run.id);
@@ -3867,18 +3980,21 @@ describe('createBureau', () => {
     // about the flip.
     const databasePath = createTemporaryPath('default-on-parity', '.sqlite');
     try {
-      const bureau = await createBureau({
-        agents: {},
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) =>
+              step === 0
+                ? { content: 'calling tool', toolCalls: [{ name: 'next', arguments: {} }] }
+                : { content: 'done', toolCalls: [] },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         // Step 0 commits a tool call (so toolbox events must fire on the durable
         // path); step 1 has no tool call, so `noToolCalls()` stops the run.
-        generate: async ({ step }) =>
-          step === 0
-            ? { content: 'calling tool', toolCalls: [{ name: 'next', arguments: {} }] }
-            : { content: 'done', toolCalls: [] },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         // NOTE: no `durableExecution` — relying on the default-on flip.
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const actions: string[] = [];
@@ -3887,7 +4003,7 @@ describe('createBureau', () => {
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Drive the durable default',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -3940,19 +4056,22 @@ describe('createBureau', () => {
     console.error = errorSpy;
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate(),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         persistence: flakyStore,
         sessionPersistenceSleep: async () => {
           retrySleepCount += 1;
           throw new Error('retry sleep aborted');
         },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Retry sleep failure' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Retry sleep failure' });
       await waitForRunCompletion(bureau, run.id);
       await waitForCondition(
         () => errorSpy.mock.calls.length === 1,
@@ -3986,14 +4105,14 @@ describe('createBureau', () => {
       },
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: failingStore,
     });
 
-    const error = await bureau.createRun({ agentName: 'bureau', message: 'Ghost run?' }).then(
+    const error = await bureau.createRun({ agentName: 'default', message: 'Ghost run?' }).then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -4008,14 +4127,14 @@ describe('createBureau', () => {
       throw new Error('Explode');
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Explode' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Explode' });
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);
@@ -4041,25 +4160,28 @@ describe('createBureau', () => {
     // was persisted to session metadata as an ordinary successful completion.
     const generate: GenerateFunction = async () => ({ content: 'ok', toolCalls: [] });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
-      persistence: textValueStore(new MemoryStorage()),
-      guardrails: {
-        mode: 'tripwire',
-        input: {
-          detectors: [
-            {
-              name: 'always-trip',
-              detect: async () => ({ triggered: true, confidence: 1, category: 'test' }),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          guardrails: {
+            mode: 'tripwire',
+            input: {
+              detectors: [
+                {
+                  name: 'always-trip',
+                  detect: async () => ({ triggered: true, confidence: 1, category: 'test' }),
+                },
+              ],
             },
-          ],
-        },
+          },
+        }),
       },
+      persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'trip me' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'trip me' });
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);
@@ -4090,14 +4212,14 @@ describe('createBureau', () => {
       throw new Error('Explode once');
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       persistence: trackingStore,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Explode once' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Explode once' });
     await waitForRunCompletion(bureau, run.id);
 
     expect(sessionSaveCount).toBe(2);
@@ -4109,12 +4231,13 @@ describe('createBureau', () => {
       toolCalls: [{ name: 'missing_tool', arguments: {} }],
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Need a tool' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Need a tool' });
     await waitForRunCompletion(bureau, run.id);
 
     const detail = bureau.getRun(run.id);
@@ -4123,13 +4246,13 @@ describe('createBureau', () => {
   });
 
   it('lists runs and filters them by status', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
     const allRuns = bureau.listRuns();
@@ -4140,13 +4263,13 @@ describe('createBureau', () => {
   });
 
   it('retains session identifiers for completed run summaries and details', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
     const summary = bureau.listRuns().find((entry) => entry.id === run.id);
@@ -4157,13 +4280,16 @@ describe('createBureau', () => {
   });
 
   it('returns a run detail payload with events and step details', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Detailed response'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Detailed response'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
     const detail = bureau.getRun(run.id);
@@ -4180,13 +4306,13 @@ describe('createBureau', () => {
     // `'aborting'` status instead, cleared to the real terminal status only
     // once the run's own terminal event settles.
     const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
 
     const aborted = bureau.abortRun(run.id);
     expect(aborted.status).toBe('aborting');
@@ -4208,14 +4334,14 @@ describe('createBureau', () => {
   it('listAbortingRuns names a run whose abort was requested but whose cleanup never settles (AB-369)', async () => {
     const runtime = createManualRuntimeServices();
     const { generate, invoked } = createTrulyHungGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       runtime,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await invoked;
 
     expect(bureau.listAbortingRuns()).toEqual([]);
@@ -4254,13 +4380,13 @@ describe('createBureau', () => {
     // genuinely settled yet, exactly the invisible leak this issue exists to
     // close. Only the `closed()` continuation may clear the entry.
     const { generate } = createBlockingGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     bureau.abortRun(run.id);
 
     let caughtWindow = false;
@@ -4293,13 +4419,13 @@ describe('createBureau', () => {
 
   it('abortRun clears abortingRunIds once the closed() continuation genuinely settles, with no repeat call (AB-369)', async () => {
     const { generate } = createBlockingGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     bureau.abortRun(run.id);
     expect(bureau.listAbortingRuns().map((entry) => entry.runId)).toContain(run.id);
 
@@ -4311,13 +4437,13 @@ describe('createBureau', () => {
 
   it('abortRun is idempotent: a second call on the same still-running run does not throw and reports aborting or later (AB-205)', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
 
     const first = bureau.abortRun(run.id);
     const second = bureau.abortRun(run.id);
@@ -4331,14 +4457,17 @@ describe('createBureau', () => {
   });
 
   it('abortRun is idempotent against a terminal run: returns the current summary instead of throwing CONFLICT (AB-205)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await pollUntil(() => bureau.getRun(run.id)?.status !== 'running');
 
     expect(bureau.getRun(run.id)?.status).toBe('completed');
@@ -4353,13 +4482,13 @@ describe('createBureau', () => {
 
   it('abortRun is idempotent for a run that was already aborted: a second call after teardown returns the aborted summary (AB-205)', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     bureau.abortRun(run.id);
     await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted');
 
@@ -4392,10 +4521,10 @@ describe('createBureau', () => {
       await Promise.resolve();
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox,
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox }),
+      },
       storage: { type: 'memory' },
     });
 
@@ -4501,10 +4630,10 @@ describe('createBureau', () => {
 
   describe('cancelDurableRun (AB-205)', () => {
     it('resolves unsupported-capability when no durable engine is composed', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
       });
 
       const outcome = await bureau.cancelDurableRun('anything');
@@ -4514,10 +4643,10 @@ describe('createBureau', () => {
     });
 
     it('resolves not-found against an unknown runId', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -4529,15 +4658,15 @@ describe('createBureau', () => {
     });
 
     it('resolves already-terminal against an already-completed durable workflow', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await pollUntil(async () => {
         const state = await bureau.getDurableRun(run.id);
         return state?.status === 'completed';
@@ -4551,15 +4680,15 @@ describe('createBureau', () => {
 
     it('resolves requested against a running durable workflow only after the post-cancel re-read observes cancelled', async () => {
       const generate: GenerateFunction = () => new Promise(() => {});
-      const bureau = await createBureau({
-        agents: {},
-        generate,
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await pollUntil(async () => {
         const state = await bureau.getDurableRun(run.id);
         return state?.status === 'running';
@@ -4714,14 +4843,14 @@ describe('createBureau', () => {
     // the same session cannot linger. Boot recovery relies on this too — a
     // recovered run that aborts settles through this same listener.
     const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     bureau.abortRun(run.id);
 
     // The session write happens after the run.aborted event settles; poll until
@@ -4750,30 +4879,36 @@ describe('createBureau', () => {
     // event), not the launch-time seed; otherwise the session history is clobbered
     // back to just the seed message and the checkpointed steps are lost.
     let reachedStep1 = false;
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) {
-          // Step 0 commits a tool call so the workflow checkpoints it before
-          // looping into step 1 (saveConversation/recordStep/saveCursor).
-          return { content: 'checkpointed step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        // Entering step 1's generate proves step 0 is durably checkpointed (its
-        // saveCursor yield resolved). Hang here, ignoring the abort signal, so the
-        // ONLY way to terminate is engine.cancel() winning the abort race — the
-        // post-checkpoint durable abort the regression is about.
-        reachedStep1 = true;
-        return new Promise<never>(() => {});
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              // Step 0 commits a tool call so the workflow checkpoints it before
+              // looping into step 1 (saveConversation/recordStep/saveCursor).
+              return {
+                content: 'checkpointed step 0',
+                toolCalls: [{ name: 'next', arguments: {} }],
+              };
+            }
+            // Entering step 1's generate proves step 0 is durably checkpointed (its
+            // saveCursor yield resolved). Hang here, ignoring the abort signal, so the
+            // ONLY way to terminate is engine.cancel() winning the abort race — the
+            // post-checkpoint durable abort the regression is about.
+            reachedStep1 = true;
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Abort me after a checkpoint',
       });
       await pollUntil(() => reachedStep1);
@@ -4806,13 +4941,13 @@ describe('createBureau', () => {
 
   it('throws CONFLICT when deleting a running run', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     expect(bureau.getRun(run.id)?.status).toBe('running');
 
     let deletionError: unknown;
@@ -4851,45 +4986,48 @@ describe('createBureau', () => {
         return baseApprovalStore.revoke(binding);
       },
     };
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'delete-run-approval', name: 'delete-run-tool', arguments: {} }],
-        },
-      ]),
-      toolbox: createToolbox(
-        [
-          createTool({
-            name: 'delete-run-tool',
-            version: '1.0.0',
-            description: 'Must be revoked when its run is deleted',
-            input: z.object({}),
-            async execute() {
-              return 'unexpected';
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'delete-run-approval', name: 'delete-run-tool', arguments: {} }],
             },
-          }),
-        ],
-        {
-          approvalSecret: 'delete-run-secret',
-          approvalStateStore,
-          policy: {
-            beforeExecute: () => ({
-              allow: false,
-              status: 'needs_approval',
-              reason: 'Operator approval required',
-              action: { message: 'Approve deletion test' },
-            }),
-          },
-        },
-      ),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+          ]),
+          toolbox: createToolbox(
+            [
+              createTool({
+                name: 'delete-run-tool',
+                version: '1.0.0',
+                description: 'Must be revoked when its run is deleted',
+                input: z.object({}),
+                async execute() {
+                  return 'unexpected';
+                },
+              }),
+            ],
+            {
+              approvalSecret: 'delete-run-secret',
+              approvalStateStore,
+              policy: {
+                beforeExecute: () => ({
+                  allow: false,
+                  status: 'needs_approval',
+                  reason: 'Operator approval required',
+                  action: { message: 'Approve deletion test' },
+                }),
+              },
+            },
+          ),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       sessionPersistenceSleep: async () => {},
     });
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Request approval then delete the run',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -4939,46 +5077,49 @@ describe('createBureau', () => {
         return baseApprovalStore.revoke(binding);
       },
     };
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'delete-session-approval', name: 'delete-session-tool', arguments: {} },
-          ],
-        },
-      ]),
-      toolbox: createToolbox(
-        [
-          createTool({
-            name: 'delete-session-tool',
-            version: '1.0.0',
-            description: 'Must be revoked when its session is deleted',
-            input: z.object({}),
-            async execute() {
-              return 'unexpected';
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'delete-session-approval', name: 'delete-session-tool', arguments: {} },
+              ],
             },
-          }),
-        ],
-        {
-          approvalSecret: 'delete-session-secret',
-          approvalStateStore,
-          policy: {
-            beforeExecute: () => ({
-              allow: false,
-              status: 'needs_approval',
-              reason: 'Operator approval required',
-              action: { message: 'Approve deletion test' },
-            }),
-          },
-        },
-      ),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+          ]),
+          toolbox: createToolbox(
+            [
+              createTool({
+                name: 'delete-session-tool',
+                version: '1.0.0',
+                description: 'Must be revoked when its session is deleted',
+                input: z.object({}),
+                async execute() {
+                  return 'unexpected';
+                },
+              }),
+            ],
+            {
+              approvalSecret: 'delete-session-secret',
+              approvalStateStore,
+              policy: {
+                beforeExecute: () => ({
+                  allow: false,
+                  status: 'needs_approval',
+                  reason: 'Operator approval required',
+                  action: { message: 'Approve deletion test' },
+                }),
+              },
+            },
+          ),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Request approval then delete the session',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -5005,14 +5146,14 @@ describe('createBureau', () => {
   });
 
   it('lists, loads, and deletes sessions from the canonical session store', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
     const sessions = await bureau.listSessions();
@@ -5063,20 +5204,23 @@ describe('createBureau', () => {
     // steps instead of the 25 the same agent would get through operative directly.
     // This test drives a REAL run — not just getConfiguration() — past the
     // boundary so any future re-divergence between the two entry points fails here.
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({
-        content: 'calling',
-        toolCalls: [{ name: 'next', arguments: {} }],
-      }),
-      toolbox: createToolbox([createNextTool()]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({
+            content: 'calling',
+            toolCalls: [{ name: 'next', arguments: {} }],
+          }),
+          toolbox: createToolbox([createNextTool()]),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
       // No maximumSteps and no stopWhen — the run stops solely on the bureau's
       // default step cap, exercising the exact seam that diverged.
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Never settles' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Never settles' });
       await waitForRunCompletion(bureau, run.id);
 
       const detail = bureau.getRun(run.id);
@@ -5102,8 +5246,10 @@ describe('createBureau', () => {
   });
 
   it('configures a scheduler for routed multi-provider runtimes', async () => {
-    const bureau = await createBureau({
-      agents: {},
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ toolbox: createEmptyToolbox() }),
+      },
       providers: [
         {
           name: 'fast',
@@ -5120,7 +5266,6 @@ describe('createBureau', () => {
         middle: 'deep',
       },
       scheduler: { enabled: true, idleDelay: 1 },
-      toolbox: createEmptyToolbox(),
     });
 
     expect(bureau.scheduler).toBeDefined();
@@ -5128,10 +5273,10 @@ describe('createBureau', () => {
   });
 
   it('does not configure a scheduler unless it is explicitly enabled', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     expect(bureau.scheduler).toBeUndefined();
@@ -5144,20 +5289,23 @@ describe('createBureau', () => {
       impl: () => 'echoed',
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ name: 'echo', arguments: {} }],
-        },
-        {
-          content: 'done',
-          toolCalls: [],
-        },
-      ]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ name: 'echo', arguments: {} }],
+            },
+            {
+              content: 'done',
+              toolCalls: [],
+            },
+          ]),
+          toolbox: createTestToolbox([echoTool]),
+        }),
+      },
       scheduler: { enabled: true, idleDelay: 1 },
-      toolbox: createTestToolbox([echoTool]),
     });
 
     const response = await bureau.submitSchedulerTask({
@@ -5178,11 +5326,11 @@ describe('createBureau', () => {
   });
 
   it('throws BAD_REQUEST when submitSchedulerTask receives invalid scheduler-specific fields', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       scheduler: { enabled: true, idleDelay: 1 },
-      toolbox: createEmptyToolbox(),
     });
 
     const invalidRequest = {
@@ -5208,20 +5356,20 @@ describe('createBureau', () => {
   });
 
   it('returns tool summaries', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     expect(bureau.getTools()).toEqual([]);
   });
 
   it('returns run reports for unknown, active, and completed runs', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     expect(bureau.getRunReport('missing-report-run')).toBeUndefined();
@@ -5232,7 +5380,7 @@ describe('createBureau', () => {
       runId: 'active-report-run',
     });
 
-    const completed = await bureau.createRun({ agentName: 'bureau', message: 'Completed report' });
+    const completed = await bureau.createRun({ agentName: 'default', message: 'Completed report' });
     await waitForRunCompletion(bureau, completed.id);
     expect(bureau.getRunReport(completed.id)?.runId).toBe(completed.id);
 
@@ -5246,10 +5394,10 @@ describe('createBureau', () => {
     // used to propagate out of `createRun`, leaving the session persisted as
     // `running` and the ActiveRun launched but never registered — `getRun`
     // would return `undefined` forever for a run that is actually executing.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const goodFrameTypes: string[] = [];
@@ -5263,7 +5411,7 @@ describe('createBureau', () => {
     try {
       // createRun must not throw even though the first listener always throws.
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Survive a throwing subscriber',
       });
 
@@ -5287,10 +5435,10 @@ describe('createBureau', () => {
       const received: Array<{ level: string; scope: string; message: string; cause?: unknown }> =
         [];
 
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         onDiagnostic: (diagnostic) => received.push(diagnostic),
       });
 
@@ -5299,7 +5447,10 @@ describe('createBureau', () => {
       });
 
       try {
-        await bureau.createRun({ agentName: 'bureau', message: 'Route the throw to onDiagnostic' });
+        await bureau.createRun({
+          agentName: 'default',
+          message: 'Route the throw to onDiagnostic',
+        });
 
         expect(received.length).toBeGreaterThan(0);
         for (const diagnostic of received) {
@@ -5314,10 +5465,10 @@ describe('createBureau', () => {
     it('with no sink configured, a throwing subscribeLiveFrames listener still logs to the console', async () => {
       const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
       });
 
       bureau.subscribeLiveFrames(() => {
@@ -5326,7 +5477,7 @@ describe('createBureau', () => {
 
       try {
         await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Fall back to console with no sink',
         });
 
@@ -5339,10 +5490,10 @@ describe('createBureau', () => {
     it('falls back to the console for a diagnostic whose configured sink throws, without crashing the run', async () => {
       const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         onDiagnostic: () => {
           throw new Error('a misbehaving diagnostic sink');
         },
@@ -5354,7 +5505,7 @@ describe('createBureau', () => {
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Survive a throwing sink',
         });
 
@@ -5373,10 +5524,10 @@ describe('createBureau', () => {
       { type: 'scheduler.state' | 'scheduler.task.preempted' }
     >[] = [];
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       scheduler: { enabled: true, idleDelay: 1 },
     });
 
@@ -5434,10 +5585,10 @@ describe('createBureau', () => {
   });
 
   it('emits action events from live runs', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const actions: string[] = [];
@@ -5445,7 +5596,7 @@ describe('createBureau', () => {
       actions.push(event.action.type);
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
     expect(actions.length).toBeGreaterThan(0);
@@ -5462,9 +5613,10 @@ describe('createBureau', () => {
   it('continues disposal when toolbox shutdown rejects', async () => {
     const toolbox = createEmptyToolbox();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      toolbox,
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ toolbox }),
+      },
       onDiagnostic: (event) => diagnostics.push(event.message),
     });
     toolbox.shutdown = async () => {
@@ -5483,12 +5635,15 @@ describe('createBureau', () => {
     // already-closed SQLite connection (runtime-dependent whether that throws).
     const databasePath = createTemporaryPath('dispose-twice', '.sqlite');
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate(),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
       });
       await bureau.dispose();
       // Second dispose is a no-op (guard short-circuits before re-closing).
@@ -5508,12 +5663,15 @@ describe('createBureau', () => {
     // the SQLite handle, exactly like the already-best-effort scheduler/memory steps.
     const databasePath = createTemporaryPath('dispose-throwing-subscriber', '.sqlite');
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate(),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
       });
       // A public-API subscriber that throws on the disposed event. With no guard
       // in dispose(), this would propagate out of `emitter.dispatch(...)` and
@@ -5533,13 +5691,16 @@ describe('createBureau', () => {
   });
 
   it('createSchedule registers a native schedule and returns its summary on a durable bureau (#109)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -5568,10 +5729,10 @@ describe('createBureau', () => {
   });
 
   it('exposes optional service getters and the completable event surface', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     expect(bureau.auditTrail).toBeUndefined();
@@ -5593,13 +5754,16 @@ describe('createBureau', () => {
     // A weft duration grammar string (e.g. '6h', '5 minutes') is a fixed interval,
     // not cron — toScheduleSpec wraps it as { every } so weft parses it as an
     // interval. ISO-8601 (`PT6H`) is NOT weft duration grammar and stays cron.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -5622,10 +5786,10 @@ describe('createBureau', () => {
   });
 
   it('createSchedule rejects a blank recurring sessionId and overlap:allow with a session (codex)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -5697,10 +5861,10 @@ describe('createBureau', () => {
     // Without a durable engine there is nothing to schedule; the method short-
     // circuits to undefined before any registration, matching the other
     // durable-only accessors.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     try {
@@ -5727,13 +5891,16 @@ describe('createBureau', () => {
       describeFailure,
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -5853,10 +6020,10 @@ describe('createBureau durable inspection surface', () => {
   it('getDurableRun and listDurableRuns return undefined when no durable engine is composed', async () => {
     // A memory-backed bureau with no durableExecution flag has no engine, so the
     // durable read accessors report "no durable surface" via undefined.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     expect(await bureau.getDurableRun('any-run')).toBeUndefined();
@@ -5879,10 +6046,10 @@ describe('createBureau durable inspection surface', () => {
     const maintenanceSpy = spyOn(enginePrototype, 'runMaintenance').mockResolvedValue(undefined);
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
         durableBackgroundTasks: 'manual',
@@ -5901,17 +6068,17 @@ describe('createBureau durable inspection surface', () => {
   it('getDurableRun returns null for an unknown run and state for a completed run', async () => {
     // durableExecution:true on a memory backend builds an engine, so the
     // accessors pass through to engine.get / engine.list.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
 
     expect(await bureau.getDurableRun('nonexistent-run')).toBeNull();
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'durable inspection' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'durable inspection' });
     await waitForRunCompletion(bureau, run.id);
 
     const state = await bureau.getDurableRun(run.id);
@@ -5931,10 +6098,10 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
   // return 501 even when the operation succeeded.
 
   it('pauseSchedule / resumeSchedule / cancelSchedule return undefined when no durable engine is composed', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       // No storage / durableExecution — no engine
     });
 
@@ -5968,10 +6135,10 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
     const cancelSpy = spyOn(engineProtoTyped, 'cancelSchedule').mockResolvedValue(undefined);
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -6082,10 +6249,10 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
       // === "Process 2": a fresh bureau over the same SQLite file. recoverDurableRuns
       // runs the suspended-scheduler sweep at boot. The dangling suspended run must
       // be cancelled. ===
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
       });
@@ -6179,19 +6346,22 @@ describe('createBureau effectful hook idempotency (#27)', () => {
     await memory.init();
 
     const sessionId = 'memory-idempotency-session';
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'memory-idempotency-bureau',
-      agents: {},
-      generate: async () => ({ content: 'the stable remembered fact', toolCalls: [] }),
-      toolbox: createEmptyToolbox(),
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'the stable remembered fact', toolCalls: [] }),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'remember this',
         sessionId,
       });
@@ -6779,10 +6949,10 @@ describe('createBureau session signal/update/query without durable engine', () =
   // causing the gateway route to respond 501 even on successful signal delivery.
 
   it('signalSession throws NOT_CONFIGURED when no durable engine is composed', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const error = await bureau
@@ -6796,10 +6966,10 @@ describe('createBureau session signal/update/query without durable engine', () =
   });
 
   it('updateSession throws NOT_CONFIGURED when no durable engine is composed', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const error = await bureau
@@ -6813,10 +6983,10 @@ describe('createBureau session signal/update/query without durable engine', () =
   });
 
   it('querySession throws NOT_CONFIGURED when no durable engine is composed', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const error = await bureau
@@ -6838,15 +7008,18 @@ describe('createBureau session update/query capability unavailability (AB-192)',
   // and the session has an active run — never reaching engine.update/query.
 
   it('updateSession throws UNSUPPORTED_CAPABILITY when a durable engine is configured', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Wait for a signal' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Wait for a signal' });
       await pollUntil(async () => {
         const session = await bureau.getSession(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
@@ -6865,15 +7038,18 @@ describe('createBureau session update/query capability unavailability (AB-192)',
   });
 
   it('querySession throws UNSUPPORTED_CAPABILITY when a durable engine is configured', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Wait for a signal' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Wait for a signal' });
       await pollUntil(async () => {
         const session = await bureau.getSession(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
@@ -6892,10 +7068,10 @@ describe('createBureau session update/query capability unavailability (AB-192)',
   });
 
   it('exposes sessionVerbCapabilities reporting update and query as unsupported', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
     try {
       expect(bureau.sessionVerbCapabilities).toEqual({ signal: true, update: false, query: false });
@@ -6920,10 +7096,10 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
   // mailbox-composed bureau and now assert the real outcome instead.
 
   it('returns not-found for an unknown sessionId', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -6945,10 +7121,10 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     // querySession which throw BureauError('NOT_CONFIGURED') in that case.
     // Every sessionId is necessarily unknown without a session store, so the
     // correct outcome per this method's own contract is not-found.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
     try {
       const outcome = await bureau.submitSessionInput('any-session', {
@@ -6963,16 +7139,19 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
   });
 
   it('returns not-found for an unauthorized caller, indistinguishable from an unknown session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait for a signal',
         principal: 'alice',
       });
@@ -6993,17 +7172,20 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
   });
 
   it('returns session-terminal for an authorized caller naming an already-terminal session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Complete me',
         principal: 'alice',
       });
@@ -7031,17 +7213,20 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     // caller here must NOT be misread as hitting an "open" session (which
     // would incorrectly authorize them and leak session-terminal instead of
     // the required indistinguishable not-found).
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Complete me',
         principal: 'alice',
       });
@@ -7077,16 +7262,19 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     // purpose — proving that an authorized, non-terminal request clears
     // the pre-admission checks — while asserting the outcome COR-435 made
     // real.
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait for a signal',
         principal: 'alice',
       });
@@ -7130,10 +7318,10 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       }),
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage,
       durableExecution: true,
     });
@@ -7168,29 +7356,32 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     releaseRunB: PromiseWithResolvers<void>;
   }> {
     const releaseRunB = Promise.withResolvers<void>();
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context) => {
-        const isRunB = context.conversation
-          .getMessages()
-          .some((message) => message.content === 'go B');
-        if (!isRunB) return new Promise<never>(() => {});
-        await releaseRunB.promise;
-        return { content: 'B done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context) => {
+            const isRunB = context.conversation
+              .getMessages()
+              .some((message) => message.content === 'go B');
+            if (!isRunB) return new Promise<never>(() => {});
+            await releaseRunB.promise;
+            return { content: 'B done', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const runA = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go A',
         principal: 'alice',
       });
       const runB = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go B',
         principal: 'alice',
         sessionId: runA.sessionId,
@@ -7274,24 +7465,30 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     // backend-wide read knows A is still the session's sole live run.
     const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-two-'));
     const path = join(directory, 'bureau.sqlite');
-    const bureauA = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
     });
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'B done', toolCalls: [] }),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'B done', toolCalls: [] }),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const runA = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go A',
         principal: 'alice',
       });
@@ -7302,7 +7499,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }, 200),
       ).toBe(true);
       const runB = await bureauB.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go B',
         principal: 'alice',
         sessionId: runA.sessionId,
@@ -7358,10 +7555,10 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   // trigger names ("a pause that fails to gate runStep").
 
   it('returns not-found for an unknown sessionId', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -7376,15 +7573,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('returns not-found for an unauthorized caller, indistinguishable from an unknown session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7404,16 +7604,19 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('returns session-terminal for an authorized caller naming an already-terminal session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Complete me',
         principal: 'alice',
       });
@@ -7439,10 +7642,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       name: 'steered',
       allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -7501,10 +7708,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       name: 'steered',
       allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -7551,10 +7762,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       modelPolicy: {
         policyRevision: 1,
@@ -7593,10 +7808,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       modelPolicy: {
         policyRevision: 1,
@@ -7648,10 +7867,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       modelPolicy: {
         policyRevision: 1,
@@ -7690,10 +7913,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -7729,10 +7956,14 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       name: 'steered',
       allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
-    const bureau = await createBureau({
-      agents: { steered },
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        steered,
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -7769,15 +8000,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     // "must be a key of Bureau<D>'s agents map". The rollback trigger this
     // guards is an unknown name being silently accepted and only failing
     // later, at the next run's step 0, with no admission-time signal.
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7804,15 +8038,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     // resolve. Validating an unresolved reference against the agents map
     // would reject every legitimate policy name, so it stays unsupported
     // rather than being guessed at.
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7840,16 +8077,19 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     // Durable steering now persists each admitted command into the
     // session's mailbox before it enters desired state, so a crash
     // between the two loses nothing and a restart replays it.
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7877,10 +8117,13 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     // could recover. Not reachable through normal composition, which is
     // why it is a guard rather than a path — asserted through the
     // internal seam rather than by faking a composition.
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -7889,7 +8132,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       // positive case above is the reachable one. This asserts the
       // negative branch's contract is still expressed, not deleted.
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7908,15 +8151,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('accepts a pause, is idempotent against a second distinct pause, and replays an exact retry', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7958,15 +8204,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('returns a typed target-mismatch conflict for a same-id reuse across pause and resume', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -7995,15 +8244,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('a resume against a session that is not currently paused is accepted as a no-op', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'alice',
       });
@@ -8041,16 +8293,19 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       { content: 'done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -8121,16 +8376,19 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       { content: 'done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -8172,16 +8430,19 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       { content: 'done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -8233,16 +8494,19 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       { content: 'done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -8293,12 +8557,15 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       { content: 'run 2 done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run1Events: Array<{ event: string; runId: string }> = [];
@@ -8307,7 +8574,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
 
       const run1 = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -8346,7 +8613,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         if (frame.type === 'event') events.push({ event: frame.event, runId: frame.runId });
       });
       const run2 = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go again',
         principal: 'alice',
         sessionId: run1.sessionId,
@@ -8362,22 +8629,25 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('two concurrent runs on the same session: an unscoped pause is run-ambiguous, an explicitly-scoped pause blocks only its own run (PR #430 review, Codex P2 — genuine live-run enumeration)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const runA = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go A',
         principal: 'alice',
       });
       // A second run reusing runA's sessionId, so both are simultaneously
       // 'running' — genuine concurrency, not a scheduling artifact.
       const runB = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go B',
         principal: 'alice',
         sessionId: runA.sessionId,
@@ -8411,27 +8681,30 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it("end-to-end: a pause explicitly targeting still-live run A is authorized after concurrent run B completes and prunes its own authority entry (PR #430 review, Codex P2, second wave — 'Authorize against the targeted live run')", async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context) => {
-        const isRunB = context.conversation
-          .getMessages()
-          .some((message) => message.content === 'go B');
-        if (isRunB) return { content: 'B done', toolCalls: [] };
-        return new Promise<never>(() => {});
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context) => {
+            const isRunB = context.conversation
+              .getMessages()
+              .some((message) => message.content === 'go B');
+            if (isRunB) return { content: 'B done', toolCalls: [] };
+            return new Promise<never>(() => {});
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const runA = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go A',
         principal: 'alice',
       });
       const runB = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go B',
         principal: 'alice',
         sessionId: runA.sessionId,
@@ -8456,10 +8729,10 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
 
 describe('createBureau sessionInput backlog-limit validation (AB-194)', () => {
   it('accepts a positive integer sessionBacklogLimit and principalBacklogLimit', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       sessionInput: { sessionBacklogLimit: 5, principalBacklogLimit: 10 },
     });
     await bureau.dispose();
@@ -8469,10 +8742,10 @@ describe('createBureau sessionInput backlog-limit validation (AB-194)', () => {
     // The defaults themselves are not load-bearing beyond being enforced
     // once the mailbox-backed admission path lands — this verifies
     // construction succeeds with no sessionInput option at all.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
     await bureau.dispose();
   });
@@ -8485,10 +8758,10 @@ describe('createBureau sessionInput backlog-limit validation (AB-194)', () => {
     ['principalBacklogLimit', -1],
     ['principalBacklogLimit', 1.5],
   ])('rejects a non-positive-integer %s (%p) at construction time', async (key, value) => {
-    const error = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const error = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       sessionInput: { [key]: value },
     }).then(
       () => undefined,
@@ -8515,17 +8788,20 @@ describe('createBureau session signal/update/query with terminal sessions', () =
     // `storage: { type: 'memory' }` with `durableExecution: true` gives us both a
     // durable engine AND a built-in session store (created from the same Memory
     // storage backend) — the combination required to hit requireSessionRunId.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     // Complete a run — the session listener writes lastRunStatus: 'completed'.
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Complete me' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Complete me' });
     await waitForRunCompletion(bureau, run.id);
 
     // Verify the session is persisted as completed (the guard condition).
@@ -8545,15 +8821,15 @@ describe('createBureau session signal/update/query with terminal sessions', () =
   });
 
   it('updateSession throws NOT_FOUND when lastRunStatus is completed (not running)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Complete me' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Complete me' });
     await waitForRunCompletion(bureau, run.id);
 
     const error = await bureau.updateSession(run.sessionId, 'any-update').then(
@@ -8567,15 +8843,15 @@ describe('createBureau session signal/update/query with terminal sessions', () =
   });
 
   it('querySession throws NOT_FOUND when lastRunStatus is completed (not running)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Complete me' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Complete me' });
     await waitForRunCompletion(bureau, run.id);
 
     const error = await bureau.querySession(run.sessionId, 'any-query').then(
@@ -8590,15 +8866,15 @@ describe('createBureau session signal/update/query with terminal sessions', () =
 
   it('signalSession throws NOT_FOUND when lastRunStatus is aborted (not running)', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Abort me' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Abort me' });
     bureau.abortRun(run.id);
 
     // Wait for the abort to propagate and the session status to update.
@@ -8620,16 +8896,16 @@ describe('createBureau session signal/update/query with terminal sessions', () =
 
 describe('createBureau session signal authority revalidation', () => {
   it('fails closed for transport-issued authority without a validator on live runs', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
     });
     try {
       const error = await bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Do not admit unvalidated authority',
           requestContext: {
             authority: {
@@ -8656,10 +8932,10 @@ describe('createBureau session signal authority revalidation', () => {
 
   it('rejects stale transport authority before flow-control admission or session persistence', async () => {
     let flowControlCalls = 0;
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       requestAuthorityValidator: () => false,
       flowControl: {
@@ -8675,7 +8951,7 @@ describe('createBureau session signal authority revalidation', () => {
     try {
       const error = await bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Do not admit stale authority',
           sessionId: 'stale-authority-session',
           requestContext: {
@@ -8706,16 +8982,19 @@ describe('createBureau session signal authority revalidation', () => {
 
   it('revalidates captured authority before delivering a direct session signal', async () => {
     let authorityCurrent = true;
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       requestAuthorityValidator: () => authorityCurrent,
     });
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Wait for a signal',
       requestContext: {
         authority: {
@@ -8998,15 +9277,14 @@ describe('createBureau review queue (AB-20)', () => {
       }),
     );
 
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         'terminal-agent': createAgent({
           generate: createMockGenerate(),
           toolbox: createEmptyToolbox(),
         }),
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
     });
@@ -9081,7 +9359,7 @@ describe('createBureau review queue (AB-20)', () => {
       }),
     );
 
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         'terminal-agent': createAgent({
           generate: createMockGenerate(),
@@ -9095,9 +9373,8 @@ describe('createBureau review queue (AB-20)', () => {
           generate: createMockGenerate(),
           toolbox: createEmptyToolbox(),
         }),
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
     });
@@ -9169,10 +9446,10 @@ describe('createBureau review queue (AB-20)', () => {
       }),
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage,
       durableExecution: true,
     });
@@ -9189,34 +9466,40 @@ describe('createBureau review queue (AB-20)', () => {
   it('restores terminal approval authority, toolbox, and binding state across restart', async () => {
     const storage = await resolveStorage({ type: 'memory' });
     const charges: number[] = [];
-    const bureauA = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'restart-call', name: 'charge-card', arguments: { cents: 375 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('restart-approval-secret', charges),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'restart-call', name: 'charge-card', arguments: { cents: 375 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('restart-approval-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       storage,
       durableExecution: true,
-      stopWhen: stopWhen.toolOutcome('action_required'),
     });
     const run = await bureauA.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Persist approval for restart',
     });
     await waitForRunCompletion(bureauA, run.id);
     expect(bureauA.listPendingReviews()).toHaveLength(1);
     await bureauA.dispose();
 
-    const bureauB = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createNeedsApprovalToolbox('restart-approval-secret', charges),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createNeedsApprovalToolbox('restart-approval-secret', charges),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const [review] = bureauB.listPendingReviews();
@@ -9236,20 +9519,23 @@ describe('createBureau review queue (AB-20)', () => {
   it('listPendingReviews surfaces a tool call parked on needs_approval', async () => {
     const charges: number[] = [];
     const persistence = textValueStore(new MemoryStorage());
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('test-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('test-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
     const reviews = bureau.listPendingReviews();
@@ -9281,10 +9567,10 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('listPendingReviews surfaces a run parked on a human-wait signal', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const { activeRun, emitter } = createParkedActiveRun();
@@ -9316,10 +9602,10 @@ describe('createBureau review queue (AB-20)', () => {
     // change away from `'running'` (the run resuming to completion) should
     // exclude it. See `listPendingReviews omits a human-wait run whose park
     // has resolved and the run completed` below for that side of the check.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const { activeRun, emitter } = createParkedActiveRun();
@@ -9352,10 +9638,10 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('listPendingReviews omits a human-wait run whose park has resolved and the run completed', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const { activeRun, emitter } = createParkedActiveRun();
@@ -9375,18 +9661,21 @@ describe('createBureau review queue (AB-20)', () => {
 
   it('listPendingReviews gives a re-park on the same signal a distinct id after the first resolves', async () => {
     const generate = createRepeatedHumanWaitGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'park-twice' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'park-twice' });
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
         'expected the first park',
@@ -9429,19 +9718,22 @@ describe('createBureau review queue (AB-20)', () => {
 
   it('listPendingReviews gives a re-park a distinct id under a frozen clock', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createRepeatedHumanWaitGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRepeatedHumanWaitGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       runtime,
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'park-twice-frozen' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'park-twice-frozen' });
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
         'expected the first park',
@@ -9476,23 +9768,26 @@ describe('createBureau review queue (AB-20)', () => {
   it('resolveReview approve resumes a tool-approval and executes the tool for real', async () => {
     const charges: number[] = [];
     let validatorCalls = 0;
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-2', name: 'charge-card', arguments: { cents: 750 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('test-secret-2', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-2', name: 'charge-card', arguments: { cents: 750 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('test-secret-2', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       requestAuthorityValidator: () => {
         validatorCalls += 1;
         return false;
       },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
     const [review] = bureau.listPendingReviews();
@@ -9521,22 +9816,25 @@ describe('createBureau review queue (AB-20)', () => {
   it('revalidates captured request authority before approving a delayed tool call', async () => {
     const charges: number[] = [];
     let authorityCurrent = true;
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'stale-authority-call', name: 'charge-card', arguments: { cents: 500 } },
-          ],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('stale-authority-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'stale-authority-call', name: 'charge-card', arguments: { cents: 500 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('stale-authority-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
     });
     bureau.setRequestAuthorityValidator(() => authorityCurrent);
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Charge with authority that will be revoked',
       requestContext: {
         authority: {
@@ -9595,7 +9893,7 @@ describe('createBureau review queue (AB-20)', () => {
     await sessionStore.save(
       createAgentSession({
         id: 'deferred-lease-release',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'deferred-lease-release' }),
         metadata: {
           lastRunId: 'run-deferred-lease-release',
@@ -9658,10 +9956,10 @@ describe('createBureau review queue (AB-20)', () => {
     const observed: RecoveryEvent[] = [];
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage,
         durableExecution: true,
       });
@@ -9712,7 +10010,7 @@ describe('createBureau review queue (AB-20)', () => {
     await sessionStore.save(
       createAgentSession({
         id: 'deferred-no-lease-release',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'deferred-no-lease-release' }),
         metadata: {
           lastRunId: 'run-deferred-no-lease-release',
@@ -9758,10 +10056,10 @@ describe('createBureau review queue (AB-20)', () => {
     let attemptedCount = 0;
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage,
         durableExecution: true,
       });
@@ -9796,7 +10094,7 @@ describe('createBureau review queue (AB-20)', () => {
     await sessionStore.save(
       createAgentSession({
         id: 'deferred-authority-recovery',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'deferred-authority-recovery' }),
         metadata: {
           lastRunId: 'run-deferred-authority',
@@ -9830,10 +10128,10 @@ describe('createBureau review queue (AB-20)', () => {
     const diagnostics: string[] = [];
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage,
         durableExecution: true,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -9873,7 +10171,7 @@ describe('createBureau review queue (AB-20)', () => {
       await sessionStore.save(
         createAgentSession({
           id: `session-page-${index}`,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: `session-page-${index}` }),
           metadata: { lastRunStatus: 'completed' },
         }),
@@ -9882,7 +10180,7 @@ describe('createBureau review queue (AB-20)', () => {
     await sessionStore.save(
       createAgentSession({
         id: 'session-page-100',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'session-page-100' }),
         metadata: {
           lastRunId: 'run-page-100',
@@ -9912,10 +10210,10 @@ describe('createBureau review queue (AB-20)', () => {
     probe.disposeStorage?.();
     const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockResolvedValue([]);
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage,
         durableExecution: true,
       });
@@ -9938,7 +10236,7 @@ describe('createBureau review queue (AB-20)', () => {
     await sessionStore.save(
       createAgentSession({
         id: 'inspection-failure-session',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'inspection-failure-session' }),
         metadata: { lastRunStatus: 'completed' },
       }),
@@ -9953,10 +10251,10 @@ describe('createBureau review queue (AB-20)', () => {
       return originalGet(key);
     };
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage,
       durableExecution: true,
       requestAuthorityValidator: () => true,
@@ -9991,10 +10289,10 @@ describe('createBureau review queue (AB-20)', () => {
     const diagnostics: string[] = [];
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -10016,10 +10314,10 @@ describe('createBureau review queue (AB-20)', () => {
 
   describe('waitForRecovery() resolves a typed BureauRecoveryReport (AB-349)', () => {
     it('resolves outcome: "clean" with an empty perRunFailures on a clean boot', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -10040,22 +10338,25 @@ describe('createBureau review queue (AB-20)', () => {
         // test above), so this test proves the corrupted sibling does not
         // disturb the sibling that legitimately recovers.
         let bureauAReachedStep1 = false;
-        const bureauA = await createBureau({
-          agents: {},
-          generate: async ({ step }) => {
-            if (step === 0) {
-              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-            }
-            bureauAReachedStep1 = true;
-            return new Promise<never>(() => {});
+        const bureauA = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async ({ step }) => {
+                if (step === 0) {
+                  return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+                }
+                bureauAReachedStep1 = true;
+                return new Promise<never>(() => {});
+              },
+              toolbox: createToolbox([createNextTool()]),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
           },
-          toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         });
-        const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover me' });
+        const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
         await pollUntil(() => bureauAReachedStep1);
         expect(bureauAReachedStep1).toBe(true);
         // bureauA is deliberately left un-disposed to simulate a crash — see
@@ -10090,17 +10391,20 @@ describe('createBureau review queue (AB-20)', () => {
         );
 
         const bSteps: number[] = [];
-        const bureauB = await createBureau({
-          agents: {},
-          generate: async ({ step }) => {
-            bSteps.push(step);
-            return { content: `B recovered step ${step}`, toolCalls: [] };
+        const bureauB = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async ({ step }) => {
+                bSteps.push(step);
+                return { content: `B recovered step ${step}`, toolCalls: [] };
+              },
+              toolbox: createToolbox([createNextTool()]),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
           },
-          toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         });
 
         try {
@@ -10145,10 +10449,10 @@ describe('createBureau review queue (AB-20)', () => {
       try {
         // createBureau() itself resolving (never rejecting) even though the
         // whole recovery BATCH failed is exactly what this test proves.
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate(),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+          },
           storage: { type: 'memory' },
           durableExecution: true,
         });
@@ -10187,10 +10491,10 @@ describe('createBureau review queue (AB-20)', () => {
       );
 
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate(),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+          },
           storage: { type: 'memory' },
           durableExecution: true,
         });
@@ -10216,22 +10520,25 @@ describe('createBureau review queue (AB-20)', () => {
       const databasePath = createTemporaryPath('bureau-recovery-sweep-failure', '.sqlite');
       try {
         let bureauAReachedStep1 = false;
-        const bureauA = await createBureau({
-          agents: {},
-          generate: async ({ step }) => {
-            if (step === 0) {
-              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-            }
-            bureauAReachedStep1 = true;
-            return new Promise<never>(() => {});
+        const bureauA = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async ({ step }) => {
+                if (step === 0) {
+                  return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+                }
+                bureauAReachedStep1 = true;
+                return new Promise<never>(() => {});
+              },
+              toolbox: createToolbox([createNextTool()]),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
           },
-          toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         });
-        const run = await bureauA.createRun({ agentName: 'bureau', message: 'Recover me' });
+        const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
         await pollUntil(() => bureauAReachedStep1);
         expect(bureauAReachedStep1).toBe(true);
 
@@ -10256,17 +10563,20 @@ describe('createBureau review queue (AB-20)', () => {
         );
 
         const bSteps: number[] = [];
-        const bureauB = await createBureau({
-          agents: {},
-          generate: async ({ step }) => {
-            bSteps.push(step);
-            return { content: `B recovered step ${step}`, toolCalls: [] };
+        const bureauB = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async ({ step }) => {
+                bSteps.push(step);
+                return { content: `B recovered step ${step}`, toolCalls: [] };
+              },
+              toolbox: createToolbox([createNextTool()]),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
           },
-          toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         });
 
         try {
@@ -10313,7 +10623,7 @@ describe('createBureau review queue (AB-20)', () => {
       const duplicateInput = {
         runId: 'dup-run',
         sessionId: 'missing-session',
-        agentName: 'bureau',
+        agentName: 'default',
       };
       const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockImplementation(
         async ({ onRecoveredWorkflow }) => {
@@ -10323,10 +10633,10 @@ describe('createBureau review queue (AB-20)', () => {
       );
 
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate(),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+          },
           storage: { type: 'memory' },
           durableExecution: true,
         });
@@ -10369,10 +10679,10 @@ describe('createBureau review queue (AB-20)', () => {
       const recoverAllSpy = spyOn(enginePrototype, 'recoverAll').mockResolvedValue([]);
 
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate(),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+          },
           storage: { type: 'memory' },
           durableExecution: true,
         });
@@ -10427,29 +10737,32 @@ describe('createBureau review queue (AB-20)', () => {
     const charges: number[] = [];
     try {
       let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return {
-              content: '',
-              toolCalls: [
-                { id: 'expired-recovery-call', name: 'charge-card', arguments: { cents: 875 } },
-              ],
-            };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return {
+                  content: '',
+                  toolCalls: [
+                    { id: 'expired-recovery-call', name: 'charge-card', arguments: { cents: 875 } },
+                  ],
+                };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createNeedsApprovalToolbox(approvalSecret, charges),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createNeedsApprovalToolbox(approvalSecret, charges),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Persist an approval that will expire',
       });
       await pollUntil(() => bureauAReachedStep1);
@@ -10474,52 +10787,55 @@ describe('createBureau review queue (AB-20)', () => {
       // end of this test, well after bureauB's recovery.
 
       const diagnostics: string[] = [];
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async () => ({
-          content: 'Recovered after stale approval pruning',
-          toolCalls: [],
-        }),
-        toolbox: createToolbox(
-          [
-            createTool({
-              name: 'charge-card',
-              version: '1.0.0',
-              description: 'Charge a payment card',
-              input: z.object({ cents: z.number() }),
-              async execute({ cents }) {
-                charges.push(cents);
-                return { charged: cents };
-              },
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => ({
+              content: 'Recovered after stale approval pruning',
+              toolCalls: [],
             }),
-          ],
-          {
-            approvalSecret,
-            // bureauA signed its approval binding at the REAL clock's
-            // current time (default runtime, unconverted); bureauB's
-            // validation must land past that binding's expiry to exercise
-            // the "permanently invalid" recovery path this test asserts. A
-            // fixed literal comfortably past any real wall-clock "now" for
-            // the foreseeable future reproduces that skew deterministically
-            // — unlike `Date.now() + 10 * 60_000`, it never depends on
-            // reading the real clock at all.
-            approvalNow: () => Date.parse('2099-01-01T00:00:00.000Z'),
-            policy: {
-              beforeExecute() {
-                return {
-                  allow: false,
-                  status: 'needs_approval',
-                  reason: 'Operator approval required',
-                  action: { message: 'Approve charge' },
-                };
+            toolbox: createToolbox(
+              [
+                createTool({
+                  name: 'charge-card',
+                  version: '1.0.0',
+                  description: 'Charge a payment card',
+                  input: z.object({ cents: z.number() }),
+                  async execute({ cents }) {
+                    charges.push(cents);
+                    return { charged: cents };
+                  },
+                }),
+              ],
+              {
+                approvalSecret,
+                // bureauA signed its approval binding at the REAL clock's
+                // current time (default runtime, unconverted); bureauB's
+                // validation must land past that binding's expiry to exercise
+                // the "permanently invalid" recovery path this test asserts. A
+                // fixed literal comfortably past any real wall-clock "now" for
+                // the foreseeable future reproduces that skew deterministically
+                // — unlike `Date.now() + 10 * 60_000`, it never depends on
+                // reading the real clock at all.
+                approvalNow: () => Date.parse('2099-01-01T00:00:00.000Z'),
+                policy: {
+                  beforeExecute() {
+                    return {
+                      allow: false,
+                      status: 'needs_approval',
+                      reason: 'Operator approval required',
+                      action: { message: 'Approve charge' },
+                    };
+                  },
+                },
               },
-            },
-          },
-        ),
+            ),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
@@ -10566,22 +10882,25 @@ describe('createBureau review queue (AB-20)', () => {
     });
     const diagnostics: string[] = [];
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Charge despite cleanup storage failure',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -10612,10 +10931,13 @@ describe('createBureau review queue (AB-20)', () => {
     expect(diagnostics).toEqual([]);
     await bureau.dispose();
 
-    const restartedBureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+    const restartedBureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+        }),
+      },
       persistence,
     });
     try {
@@ -10655,22 +10977,25 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       onDiagnostic: () => undefined,
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Charge despite cleanup storage failure',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -10714,23 +11039,26 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       sessionPersistenceRetryDelayMilliseconds: 0,
       onDiagnostic: () => undefined,
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Charge despite cleanup storage failure',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -10791,23 +11119,26 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'persist-call', name: 'charge-card', arguments: { cents: 725 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('persist-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'persist-call', name: 'charge-card', arguments: { cents: 725 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('persist-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       sessionPersistenceSleep: async () => {},
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Keep the live approval after persistence fails',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -10830,20 +11161,23 @@ describe('createBureau review queue (AB-20)', () => {
     // from the queue: the tool never ran, so there is still a genuine
     // approval decision pending.
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-3', name: 'charge-card', arguments: { cents: 900 } }],
-        },
-      ]),
-      toolbox: createRegatingApprovalToolbox('test-secret-3', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-3', name: 'charge-card', arguments: { cents: 900 } }],
+            },
+          ]),
+          toolbox: createRegatingApprovalToolbox('test-secret-3', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       storage: { type: 'memory' },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
     const [review] = bureau.listPendingReviews();
@@ -10876,20 +11210,23 @@ describe('createBureau review queue (AB-20)', () => {
 
   it('keeps a review pending when approval resume fails before execution admission', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'denied-call', name: 'charge-card', arguments: { cents: 900 } }],
-        },
-      ]),
-      toolbox: createDenyingResumeApprovalToolbox('denied-resume-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'denied-call', name: 'charge-card', arguments: { cents: 900 } }],
+            },
+          ]),
+          toolbox: createDenyingResumeApprovalToolbox('denied-resume-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       storage: { type: 'memory' },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
     const [review] = bureau.listPendingReviews();
     expect(review).toBeDefined();
@@ -10946,24 +11283,27 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'replacement-retry-call', name: 'charge-card', arguments: { cents: 910 } },
-          ],
-        },
-      ]),
-      toolbox: createRegatingApprovalToolbox('replacement-retry-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'replacement-retry-call', name: 'charge-card', arguments: { cents: 910 } },
+              ],
+            },
+          ]),
+          toolbox: createRegatingApprovalToolbox('replacement-retry-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       sessionPersistenceSleep: async () => {},
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Charge the customer after retry',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -11027,24 +11367,31 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'replacement-exhaustion-call', name: 'charge-card', arguments: { cents: 920 } },
-          ],
-        },
-      ]),
-      toolbox: createRegatingApprovalToolbox('replacement-exhaustion-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                {
+                  id: 'replacement-exhaustion-call',
+                  name: 'charge-card',
+                  arguments: { cents: 920 },
+                },
+              ],
+            },
+          ]),
+          toolbox: createRegatingApprovalToolbox('replacement-exhaustion-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       sessionPersistenceSleep: async () => {},
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Charge the customer after exhaustion',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -11108,10 +11455,10 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('resolveReview approve on a human-wait review signals the parked session', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -11152,20 +11499,23 @@ describe('createBureau review queue (AB-20)', () => {
 
   it('resolveReview deny records the decision without resuming, attributed to the principal', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-3', name: 'charge-card', arguments: { cents: 999 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('test-secret-3', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-3', name: 'charge-card', arguments: { cents: 999 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('test-secret-3', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
     const [review] = bureau.listPendingReviews();
@@ -11213,10 +11563,10 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('resolveReview throws NOT_FOUND for an unknown or already-resolved review id', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const error = await bureau
@@ -11240,10 +11590,10 @@ describe('createBureau review queue (AB-20)', () => {
     // are unique), but it is the only externally observable way to prove
     // the internal set was actually pruned rather than merely believed to
     // be pruned.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       durableExecution: true,
     });
     // AB-46: `resolveReview` deny on a `human-wait` review now delivers
@@ -11300,23 +11650,26 @@ describe('createBureau review queue (AB-20)', () => {
     // without the other leaves stale decision/principal/reason data behind
     // forever for a deleted run on a long-lived session.
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'call-prune-decisions', name: 'charge-card', arguments: { cents: 500 } },
-          ],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('prune-decisions-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'call-prune-decisions', name: 'charge-card', arguments: { cents: 500 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('prune-decisions-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -11373,19 +11726,22 @@ describe('createBureau review lifecycle (AB-46)', () => {
       { content: 'refund denied, closing the ticket', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Please refund this order',
       });
       await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
@@ -11413,20 +11769,23 @@ describe('createBureau review lifecycle (AB-46)', () => {
   });
 
   it('resolveReview reject throws BAD_REQUEST before any state change when the reason is missing or empty', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-reject-1', name: 'charge-card', arguments: { cents: 500 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('reject-validation-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-reject-1', name: 'charge-card', arguments: { cents: 500 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('reject-validation-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -11464,10 +11823,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
   });
 
   it('resolveReview reject on a human-wait review requires a reason too, and rejects before delivering a signal', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     try {
@@ -11496,21 +11855,24 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
   it('resolveReview reject with a reason on a tool-approval review revokes the binding and echoes the reason as feedback', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-reject-2', name: 'charge-card', arguments: { cents: 750 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('reject-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-reject-2', name: 'charge-card', arguments: { cents: 750 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('reject-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -11541,10 +11903,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
   });
 
   it('resolveReview reject with a reason on a human-wait review delivers __abRejected on the signal channel', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     try {
@@ -11576,21 +11938,29 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
   describe('getReview', () => {
     it('returns the live pending review for a still-pending id', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createSequentialGenerate([
-          {
-            content: '',
-            toolCalls: [{ id: 'call-getreview-1', name: 'charge-card', arguments: { cents: 300 } }],
-          },
-        ]),
-        toolbox: createNeedsApprovalToolbox('getreview-secret', []),
-        stopWhen: stopWhen.toolOutcome('action_required'),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createSequentialGenerate([
+              {
+                content: '',
+                toolCalls: [
+                  { id: 'call-getreview-1', name: 'charge-card', arguments: { cents: 300 } },
+                ],
+              },
+            ]),
+            toolbox: createNeedsApprovalToolbox('getreview-secret', []),
+            stopWhen: stopWhen.toolOutcome('action_required'),
+          }),
+        },
         persistence: textValueStore(new MemoryStorage()),
       });
 
       try {
-        const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+        const run = await bureau.createRun({
+          agentName: 'default',
+          message: 'Charge the customer',
+        });
         await waitForRunCompletion(bureau, run.id);
         const [review] = bureau.listPendingReviews();
         expect(review).toBeDefined();
@@ -11608,21 +11978,29 @@ describe('createBureau review lifecycle (AB-46)', () => {
     });
 
     it('reconstructs a resolved review from the audit trail with its terminal status', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createSequentialGenerate([
-          {
-            content: '',
-            toolCalls: [{ id: 'call-getreview-2', name: 'charge-card', arguments: { cents: 400 } }],
-          },
-        ]),
-        toolbox: createNeedsApprovalToolbox('getreview-secret-2', []),
-        stopWhen: stopWhen.toolOutcome('action_required'),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createSequentialGenerate([
+              {
+                content: '',
+                toolCalls: [
+                  { id: 'call-getreview-2', name: 'charge-card', arguments: { cents: 400 } },
+                ],
+              },
+            ]),
+            toolbox: createNeedsApprovalToolbox('getreview-secret-2', []),
+            stopWhen: stopWhen.toolOutcome('action_required'),
+          }),
+        },
         persistence: textValueStore(new MemoryStorage()),
       });
 
       try {
-        const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+        const run = await bureau.createRun({
+          agentName: 'default',
+          message: 'Charge the customer',
+        });
         await waitForRunCompletion(bureau, run.id);
         const [review] = bureau.listPendingReviews();
         expect(review).toBeDefined();
@@ -11646,20 +12024,28 @@ describe('createBureau review lifecycle (AB-46)', () => {
     });
 
     it('returns undefined for a resolved id when no audit trail is configured (ephemeral bureau)', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createSequentialGenerate([
-          {
-            content: '',
-            toolCalls: [{ id: 'call-getreview-3', name: 'charge-card', arguments: { cents: 200 } }],
-          },
-        ]),
-        toolbox: createNeedsApprovalToolbox('getreview-secret-3', []),
-        stopWhen: stopWhen.toolOutcome('action_required'),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createSequentialGenerate([
+              {
+                content: '',
+                toolCalls: [
+                  { id: 'call-getreview-3', name: 'charge-card', arguments: { cents: 200 } },
+                ],
+              },
+            ]),
+            toolbox: createNeedsApprovalToolbox('getreview-secret-3', []),
+            stopWhen: stopWhen.toolOutcome('action_required'),
+          }),
+        },
       });
 
       try {
-        const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+        const run = await bureau.createRun({
+          agentName: 'default',
+          message: 'Charge the customer',
+        });
         await waitForRunCompletion(bureau, run.id);
         const [review] = bureau.listPendingReviews();
         expect(review).toBeDefined();
@@ -11674,10 +12060,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
     });
 
     it('reads a resolved approval recorded before reviews had a round as round 0', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         persistence: textValueStore(new MemoryStorage()),
       });
 
@@ -11712,10 +12098,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
     });
 
     it('returns undefined for an id it has never seen', async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         persistence: textValueStore(new MemoryStorage()),
       });
 
@@ -11734,10 +12120,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
       // seam `recordReviewStatusTransition` uses, to prove `getReview`
       // decodes it correctly rather than silently falling through to
       // `'denied'` when that write lands.
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         persistence: textValueStore(new MemoryStorage()),
       });
 
@@ -11753,7 +12139,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
               id: reviewId,
               runId,
               sessionId: 'session-superseded',
-              agentName: 'bureau',
+              agentName: 'default',
               approval: {
                 callId: 'call-superseded',
                 toolName: 'charge-card',
@@ -11780,50 +12166,53 @@ describe('createBureau review lifecycle (AB-46)', () => {
   it('listPendingReviews excludes a tool-approval review past its binding expiresAt, and sweepExpiredReviews transitions it to expired', async () => {
     const runtime = createManualRuntimeServices();
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-expiry-1', name: 'charge-card', arguments: { cents: 900 } }],
-        },
-      ]),
-      toolbox: createToolbox(
-        [
-          createTool({
-            name: 'charge-card',
-            version: '1.0.0',
-            description: 'Charge a payment card',
-            input: z.object({ cents: z.number() }),
-            async execute({ cents }) {
-              charges.push(cents);
-              return { charged: cents };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-expiry-1', name: 'charge-card', arguments: { cents: 900 } }],
             },
-          }),
-        ],
-        {
-          approvalSecret: 'expiry-secret',
-          approvalBindingTtlMs: 1000,
-          runtime,
-          policy: {
-            beforeExecute() {
-              return {
-                allow: false,
-                status: 'needs_approval',
-                reason: 'Operator approval required',
-                action: { message: 'Approve charge' },
-              };
+          ]),
+          toolbox: createToolbox(
+            [
+              createTool({
+                name: 'charge-card',
+                version: '1.0.0',
+                description: 'Charge a payment card',
+                input: z.object({ cents: z.number() }),
+                async execute({ cents }) {
+                  charges.push(cents);
+                  return { charged: cents };
+                },
+              }),
+            ],
+            {
+              approvalSecret: 'expiry-secret',
+              approvalBindingTtlMs: 1000,
+              runtime,
+              policy: {
+                beforeExecute() {
+                  return {
+                    allow: false,
+                    status: 'needs_approval',
+                    reason: 'Operator approval required',
+                    action: { message: 'Approve charge' },
+                  };
+                },
+              },
             },
-          },
-        },
-      ),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+          ),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
       runtime,
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -11917,15 +12306,14 @@ describe('createBureau review lifecycle (AB-46)', () => {
       }),
     );
 
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         'terminal-agent': createAgent({
           generate: createMockGenerate(),
           toolbox: createEmptyToolbox(),
         }),
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
     });
@@ -11938,10 +12326,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
   });
 
   it('abortRun transitions every still-pending review (both kinds) for the run to canceled', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
     });
 
@@ -12060,18 +12448,21 @@ describe('createBureau review lifecycle (AB-46)', () => {
         ],
       },
     ]);
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.toolCalled('requestHumanInput'),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.toolCalled('requestHumanInput'),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'park-for-cancel' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'park-for-cancel' });
       await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
 
       const [review] = bureau.listPendingReviews();
@@ -12131,16 +12522,21 @@ function reviewEventSnapshot(event: {
 describe('createBureau review lifecycle event family (AB-224)', () => {
   it('recordReviewDecision dispatches review.approved live, alongside the durable write, with only id/runId/principal/kind', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-approved-1', name: 'charge-card', arguments: { cents: 200 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('event-approved-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'call-approved-1', name: 'charge-card', arguments: { cents: 200 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('event-approved-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
@@ -12150,7 +12546,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         observed.push(reviewEventSnapshot(event)),
       );
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12182,16 +12578,19 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
   it('recordReviewDecision dispatches review.denied for deny and review.rejected for reject — never the other one', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-denied-1', name: 'charge-card', arguments: { cents: 300 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('event-denied-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-denied-1', name: 'charge-card', arguments: { cents: 300 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('event-denied-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
     });
     try {
       const denied: unknown[] = [];
@@ -12199,7 +12598,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       bureau.addEventListener('review.denied', (event) => denied.push(event.reviewId));
       bureau.addEventListener('review.rejected', (event) => rejected.push(event.reviewId));
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12215,16 +12614,21 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
   it('recordReviewDecision dispatches review.rejected for reject — never review.denied', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-rejected-1', name: 'charge-card', arguments: { cents: 300 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('event-rejected-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'call-rejected-1', name: 'charge-card', arguments: { cents: 300 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('event-rejected-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
     });
     try {
       const denied: unknown[] = [];
@@ -12232,7 +12636,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       bureau.addEventListener('review.denied', (event) => denied.push(event.reviewId));
       bureau.addEventListener('review.rejected', (event) => rejected.push(event.reviewId));
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12252,10 +12656,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
   });
 
   it('human-wait approve/deny/reject dispatch the matching live event', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
     try {
       spyOn(bureau, 'signalSession').mockImplementation(async () => {});
@@ -12312,46 +12716,49 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
   it('sweepExpiredReviews dispatches review.expired live, attributed to system:expiry', async () => {
     const runtime = createManualRuntimeServices();
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'call-expired-event-1', name: 'charge-card', arguments: { cents: 900 } },
-          ],
-        },
-      ]),
-      toolbox: createToolbox(
-        [
-          createTool({
-            name: 'charge-card',
-            version: '1.0.0',
-            description: 'Charge a payment card',
-            input: z.object({ cents: z.number() }),
-            async execute({ cents }) {
-              charges.push(cents);
-              return { charged: cents };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'call-expired-event-1', name: 'charge-card', arguments: { cents: 900 } },
+              ],
             },
-          }),
-        ],
-        {
-          approvalSecret: 'expiry-event-secret',
-          approvalBindingTtlMs: 1000,
-          runtime,
-          policy: {
-            beforeExecute() {
-              return {
-                allow: false,
-                status: 'needs_approval',
-                reason: 'Operator approval required',
-                action: { message: 'Approve charge' },
-              };
+          ]),
+          toolbox: createToolbox(
+            [
+              createTool({
+                name: 'charge-card',
+                version: '1.0.0',
+                description: 'Charge a payment card',
+                input: z.object({ cents: z.number() }),
+                async execute({ cents }) {
+                  charges.push(cents);
+                  return { charged: cents };
+                },
+              }),
+            ],
+            {
+              approvalSecret: 'expiry-event-secret',
+              approvalBindingTtlMs: 1000,
+              runtime,
+              policy: {
+                beforeExecute() {
+                  return {
+                    allow: false,
+                    status: 'needs_approval',
+                    reason: 'Operator approval required',
+                    action: { message: 'Approve charge' },
+                  };
+                },
+              },
             },
-          },
-        },
-      ),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+          ),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
       runtime,
     });
@@ -12363,7 +12770,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       );
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Charge the customer',
         principal: 'api-key:alice',
       });
@@ -12398,16 +12805,19 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
   it('deleteRun dispatches review.revoked attributed to system:run-deletion — never review.canceled', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-revoked-1', name: 'charge-card', arguments: { cents: 400 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('event-revoked-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-revoked-1', name: 'charge-card', arguments: { cents: 400 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('event-revoked-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
@@ -12418,7 +12828,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       );
       bureau.addEventListener('review.canceled', (event) => canceled.push(event.reviewId));
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12455,16 +12865,19 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
   it('deleteSession dispatches review.revoked attributed to system:session-deletion', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-revoked-2', name: 'charge-card', arguments: { cents: 450 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('event-revoked-session-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-revoked-2', name: 'charge-card', arguments: { cents: 450 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('event-revoked-session-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
@@ -12473,7 +12886,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         revoked.push(reviewEventSnapshot(event)),
       );
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12496,10 +12909,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
   });
 
   it('abortRun dispatches review.canceled attributed to system:run-abort for both kinds — never review.revoked', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -12586,16 +12999,21 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
   it("resolveReview approve's resumeApproval re-gate dispatches review.superseded, attributed to system:supersession, and writes the durable record", async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-superseded-1', name: 'charge-card', arguments: { cents: 900 } }],
-        },
-      ]),
-      toolbox: createRegatingApprovalToolbox('event-superseded-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'call-superseded-1', name: 'charge-card', arguments: { cents: 900 } },
+              ],
+            },
+          ]),
+          toolbox: createRegatingApprovalToolbox('event-superseded-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       storage: { type: 'memory' },
     });
     try {
@@ -12604,7 +13022,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         superseded.push(reviewEventSnapshot(event)),
       );
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12680,16 +13098,19 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       },
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-dup-1', name: 'charge-card', arguments: { cents: 400 } }],
-        },
-      ]),
-      toolbox,
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-dup-1', name: 'charge-card', arguments: { cents: 400 } }],
+            },
+          ]),
+          toolbox,
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
       runtime,
     });
@@ -12702,7 +13123,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       bureau.addEventListener('review.revoked', (event) => revoked.push(event.reviewId));
       bureau.addEventListener('review.expired', (event) => expired.push(event.reviewId));
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -12768,17 +13189,19 @@ async function rejectionOfSchedulerSubmit(
 describe('createBureau flow control (AB-13)', () => {
   it('enforces a concurrency cap, rejecting admission until a slot frees', async () => {
     const { generate } = createBlockingGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       flowControl: { concurrency: { limit: 2 } },
     });
 
-    const first = await bureau.createRun({ agentName: 'bureau', message: 'one' });
-    const second = await bureau.createRun({ agentName: 'bureau', message: 'two' });
+    const first = await bureau.createRun({ agentName: 'default', message: 'one' });
+    const second = await bureau.createRun({ agentName: 'default', message: 'two' });
 
-    const rejected = await rejectionOf(bureau.createRun({ agentName: 'bureau', message: 'three' }));
+    const rejected = await rejectionOf(
+      bureau.createRun({ agentName: 'default', message: 'three' }),
+    );
     expect(rejected).toBeInstanceOf(BureauError);
     expect((rejected as BureauError).code).toBe('RATE_LIMITED');
     expect((rejected as BureauError).message).toContain('concurrency');
@@ -12787,7 +13210,7 @@ describe('createBureau flow control (AB-13)', () => {
     bureau.abortRun(first.id);
     await waitForRunState(bureau, first.id);
 
-    const third = await bureau.createRun({ agentName: 'bureau', message: 'three-retry' });
+    const third = await bureau.createRun({ agentName: 'default', message: 'three-retry' });
     expect(third.id).not.toBe(first.id);
 
     bureau.abortRun(second.id);
@@ -12800,13 +13223,12 @@ describe('createBureau flow control (AB-13)', () => {
 
   it('isolates the concurrency cap per agent by default', async () => {
     const { generate } = createBlockingGenerate();
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         'agent-a': createAgent({ generate, toolbox: createEmptyToolbox() }),
         'agent-b': createAgent({ generate, toolbox: createEmptyToolbox() }),
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
-      generate,
-      toolbox: createEmptyToolbox(),
       flowControl: { concurrency: { limit: 1 } },
     });
 
@@ -12831,10 +13253,10 @@ describe('createBureau flow control (AB-13)', () => {
   });
 
   it('isolates rate limits per an arbitrary key function', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       flowControl: {
         rateLimit: {
           limit: 1,
@@ -12845,21 +13267,21 @@ describe('createBureau flow control (AB-13)', () => {
     });
 
     const alice = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'hi',
       principal: 'alice',
     });
     await waitForRunCompletion(bureau, alice.id);
 
     const aliceAgain = await rejectionOf(
-      bureau.createRun({ agentName: 'bureau', message: 'hi again', principal: 'alice' }),
+      bureau.createRun({ agentName: 'default', message: 'hi again', principal: 'alice' }),
     );
     expect(aliceAgain).toBeInstanceOf(BureauError);
     expect((aliceAgain as BureauError).code).toBe('RATE_LIMITED');
     expect((aliceAgain as BureauError).message).toContain('rate-limit');
 
     // A different principal has its own, unconsumed limit.
-    const bob = await bureau.createRun({ agentName: 'bureau', message: 'hi', principal: 'bob' });
+    const bob = await bureau.createRun({ agentName: 'default', message: 'hi', principal: 'bob' });
     await waitForRunCompletion(bureau, bob.id);
 
     bureau.dispose();
@@ -12867,21 +13289,21 @@ describe('createBureau flow control (AB-13)', () => {
 
   it('dedupes a concurrent identical trigger via singleton, and admits again once it settles', async () => {
     const { generate } = createBlockingGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       flowControl: { singleton: { key: (trigger) => trigger.sessionId ?? 'none' } },
     });
 
     const first = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'first',
       sessionId: 'shared-session',
     });
 
     const duplicate = await rejectionOf(
-      bureau.createRun({ agentName: 'bureau', message: 'duplicate', sessionId: 'shared-session' }),
+      bureau.createRun({ agentName: 'default', message: 'duplicate', sessionId: 'shared-session' }),
     );
     expect(duplicate).toBeInstanceOf(BureauError);
     expect((duplicate as BureauError).code).toBe('RATE_LIMITED');
@@ -12889,7 +13311,7 @@ describe('createBureau flow control (AB-13)', () => {
 
     // A different key is unaffected.
     const independent = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'independent',
       sessionId: 'other-session',
     });
@@ -12900,7 +13322,7 @@ describe('createBureau flow control (AB-13)', () => {
 
     // Once the original settles, a fresh trigger with the same key is admitted.
     const afterSettle = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'retry',
       sessionId: 'shared-session',
     });
@@ -12918,10 +13340,10 @@ describe('createBureau flow control (AB-13)', () => {
     // Task A's generate blocks until aborted, so A never settles on its own: it
     // is only ever preempted (aborted) or cancelled at the end of the test.
     const { generate } = createBlockingGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       scheduler: { enabled: true, idleDelay: 1 },
       flowControl: { concurrency: { limit: 1 } },
     });
@@ -13054,10 +13476,14 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       return index === 0 ? parkingGenerate(context) : blockingGenerate(context);
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
@@ -13066,12 +13492,11 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       // post-loop park check sees `pendingHumanWait` set); `noToolCalls` stops
       // run2's loop on its first (tool-free) resolved step, once the test
       // releases `resolveBlocking`.
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
 
     try {
       // 1. Admit the run that will park — occupies the only slot.
-      const run1 = await bureau.createRun({ agentName: 'bureau', message: 'park-me' });
+      const run1 = await bureau.createRun({ agentName: 'default', message: 'park-me' });
 
       // 2. Wait for the REAL requestHumanInput tool call to fire
       // HumanWaitParkedEvent and free the slot (AB-13 markParked).
@@ -13083,13 +13508,13 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
 
       // 3. The slot is free: a second run is admitted (would have been
       // rejected before the park freed it).
-      const run2 = await bureau.createRun({ agentName: 'bureau', message: 'hold the slot' });
+      const run2 = await bureau.createRun({ agentName: 'default', message: 'hold the slot' });
       expect(run2.id).not.toBe(run1.id);
 
       // 4. With run2 (blocked, never settling) holding the only slot, a third
       // admission is rejected — proves the slot is genuinely occupied at 1/1.
       const rejectedWhileRun2Holds = await rejectionOf(
-        bureau.createRun({ agentName: 'bureau', message: 'rejected while run2 holds the slot' }),
+        bureau.createRun({ agentName: 'default', message: 'rejected while run2 holds the slot' }),
       );
       expect(rejectedWhileRun2Holds).toBeInstanceOf(BureauError);
       expect((rejectedWhileRun2Holds as BureauError).code).toBe('RATE_LIMITED');
@@ -13107,7 +13532,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       // actually re-occupied the cap rather than leaving it permanently freed.
       const rejectedAfterResume = await rejectionOf(
         bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'rejected after run1 reclaimed its slot',
         }),
       );
@@ -13143,10 +13568,14 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       { content: 'refund approved and processed', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
@@ -13154,12 +13583,11 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       // park request; `noToolCalls()` stops the CONTINUATION step (AB-44 —
       // the resumed run's next generation step, which never itself calls
       // requestHumanInput again here) once it settles on plain content.
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Please refund this order',
       });
 
@@ -13200,31 +13628,34 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
 
   it('revalidates captured request authority before approving a human wait', async () => {
     let authorityCurrent = true;
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
             {
-              id: 'human-wait-authority-call',
-              name: 'requestHumanInput',
-              arguments: { signalName: 'human-response', prompt: 'Approve this refund?' },
+              content: '',
+              toolCalls: [
+                {
+                  id: 'human-wait-authority-call',
+                  name: 'requestHumanInput',
+                  arguments: { signalName: 'human-response', prompt: 'Approve this refund?' },
+                },
+              ],
             },
-          ],
-        },
-      ]),
-      toolbox: createEmptyToolbox(),
+          ]),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.toolCalled('requestHumanInput'),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.toolCalled('requestHumanInput'),
     });
     try {
       const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
       bureau.setRequestAuthorityValidator(() => authorityCurrent);
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Please refund this order',
         requestContext: {
           authority: {
@@ -13284,17 +13715,20 @@ describe('createBureau requestHumanInput availability across durability configur
       return { content: 'no park here', toolCalls: [] };
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'no durable engine attached',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -13320,19 +13754,22 @@ describe('createBureau requestHumanInput availability across durability configur
       return generate(context);
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: wrappedGenerate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: wrappedGenerate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.toolCalled('requestHumanInput'),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.toolCalled('requestHumanInput'),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park over ephemeral memory storage',
       });
       await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
@@ -13370,19 +13807,22 @@ describe('createBureau requestHumanInput availability across durability configur
         return generate(context);
       };
 
-      const bureau = await createBureau({
-        agents: {},
-        generate: wrappedGenerate,
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: wrappedGenerate,
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.toolCalled('requestHumanInput'),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         humanInput: true,
-        stopWhen: stopWhen.toolCalled('requestHumanInput'),
       });
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'park over persistent sqlite storage',
         });
         await pollUntil(() =>
@@ -13491,17 +13931,20 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       return { content: 'no park here', toolCalls: [] };
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       wakeup: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'no durable engine attached',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -13528,20 +13971,23 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       return generate(context);
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: wrappedGenerate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: wrappedGenerate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('scheduleWakeup'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       wakeup: true,
       durableBackgroundTasks: 'manual',
-      stopWhen: stopWhen.some(stopWhen.toolCalled('scheduleWakeup'), stopWhen.noToolCalls()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park over ephemeral memory storage',
       });
       await pollUntil(() => generate.callCount >= 1);
@@ -13594,20 +14040,23 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         },
       ]);
 
-      const bureauA = await createBureau({
-        agents: {},
-        generate: generateA,
-        toolbox: createEmptyToolbox(),
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: generateA,
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.toolCalled('scheduleWakeup'),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         wakeup: true,
         durableBackgroundTasks: 'manual',
-        stopWhen: stopWhen.toolCalled('scheduleWakeup'),
       });
 
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park over persistent sqlite storage',
       });
       await pollUntil(() => generateA.callCount >= 1);
@@ -13644,16 +14093,19 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         { content: 'resumed after restart and explicit tick', toolCalls: [] },
       ]);
 
-      const bureauB = await createBureau({
-        agents: {},
-        generate: generateB,
-        toolbox: createEmptyToolbox(),
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: generateB,
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         wakeup: true,
         durableBackgroundTasks: 'manual',
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -13848,10 +14300,10 @@ describe('Bureau.modelCatalog (AB-246)', () => {
 
 describe('Bureau.shutdown() (AB-207)', () => {
   it('reports an empty owners array for a bureau composing no owners', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
     const report = await bureau.shutdown();
     expect(report).toMatchObject({
@@ -13867,10 +14319,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it('reports audit-trail and durable-engine owners for a persistent bureau, and no webhook-notifier when none is configured', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -13889,10 +14341,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
     // execution forced on) — proves `eventHistory`'s persistence gate
     // checks the storage backend's own `capabilities().persistence`, not
     // merely whether `runtime.durable` exists (AB-310).
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -13908,10 +14360,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it('returns unsupported-capability from eventHistory for a fully ephemeral bureau (no storage at all)', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const outcome = await bureau.eventHistory({ kind: 'session', id: 'session-1' });
@@ -13926,10 +14378,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
@@ -13991,15 +14443,16 @@ describe('Bureau.shutdown() (AB-207)', () => {
     const diagnostics: string[] = [];
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate() }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Dispose the moment this finishes',
       });
       await new Promise<void>((resolve) => {
@@ -14036,10 +14489,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it('reports a webhook-notifier owner, awaited to completion, for a bureau configured with a webhook target', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       webhooks: {
         targets: [{ url: 'https://example.test/webhook' }],
         fetch: (async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
@@ -14092,10 +14545,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
       },
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       onlineEvals: {
@@ -14116,7 +14569,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Trigger a sampled evaluation',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -14153,18 +14606,21 @@ describe('Bureau.shutdown() (AB-207)', () => {
     const generateGate = new Promise<void>((resolve) => {
       releaseGenerate = resolve;
     });
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        await generateGate;
-        return { content: 'Drained to completion', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            await generateGate;
+            return { content: 'Drained to completion', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
       },
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Still running during drain',
     });
     await waitForCondition(
@@ -14207,20 +14663,23 @@ describe('Bureau.shutdown() (AB-207)', () => {
     });
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: async () => {
-          await generateGate;
-          return { content: 'Drained to completion', toolCalls: [] };
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              await generateGate;
+              return { content: 'Drained to completion', toolCalls: [] };
+            },
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Save me while draining',
       });
       await waitForCondition(
@@ -14265,25 +14724,31 @@ describe('Bureau.shutdown() (AB-207)', () => {
       });
 
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: (context) => {
-            resolveEntered();
-            return new Promise<GenerateResponse>((resolve) => {
-              context.signal?.addEventListener(
-                'abort',
-                () => resolve({ content: 'aborted', toolCalls: [] }),
-                { once: true },
-              );
-            });
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: (context) => {
+                resolveEntered();
+                return new Promise<GenerateResponse>((resolve) => {
+                  context.signal?.addEventListener(
+                    'abort',
+                    () => resolve({ content: 'aborted', toolCalls: [] }),
+                    { once: true },
+                  );
+                });
+              },
+              toolbox: createEmptyToolbox(),
+            }),
           },
-          toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution,
           onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
         });
 
-        const run = await bureau.createRun({ agentName: 'bureau', message: 'Abort me on dispose' });
+        const run = await bureau.createRun({
+          agentName: 'default',
+          message: 'Abort me on dispose',
+        });
         await generateEntered;
         await bureau.dispose();
 
@@ -14312,14 +14777,14 @@ describe('Bureau.shutdown() (AB-207)', () => {
     // bound and nothing more.
     const runtime = createManualRuntimeServices();
     const { generate, invoked } = createTrulyHungGenerate();
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       runtime,
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Ignore the abort' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'Ignore the abort' });
     await invoked;
 
     let disposed = false;
@@ -14388,10 +14853,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
       },
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       shutdownTimeoutSleep: sleep,
@@ -14450,10 +14915,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
       });
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       shutdownTimeoutSleep: sleep,
     });
 
@@ -14462,10 +14927,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it('shutdown() (and dispose()) called a second time returns the SAME promise, regardless of the policy the second call requests', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     const first = bureau.shutdown({ policy: 'abort' });
@@ -14478,10 +14943,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
     const sleep = (_milliseconds: number, _signal: AbortSignal) =>
       Promise.reject(new Error('injected shutdownTimeoutSleep failure'));
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       shutdownTimeoutSleep: sleep,
     });
 
@@ -14494,10 +14959,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it('uses the real default shutdownTimeoutSleep (a real setTimeout, cleared on abort) when no shutdownTimeoutSleep option is supplied', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     // No `shutdownTimeoutSleep` option — this exercises
@@ -14537,10 +15002,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
     });
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -14561,16 +15026,19 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Complete once' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Complete once' });
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
@@ -14599,10 +15067,13 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
@@ -14620,7 +15091,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       // site of either shape today, so this remains the only way to exercise
       // this producer's handling of those three.
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Carry a session action',
       });
       bureau.store.recordAction(run.id, 'session.created', { sessionId: 'sess-A', agentName: 'x' });
@@ -14660,16 +15131,19 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'A session created for real',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -14716,17 +15190,20 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const diagnostics: BureauDiagnostic[] = [];
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Carry a malformed session action',
       });
       bureau.store.recordAction(run.id, 'session.created', { agentName: 'x' }); // no sessionId
@@ -14757,17 +15234,20 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Observed via subscribeEventHistory',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -14797,17 +15277,20 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Alice only',
         principal: 'alice',
       });
@@ -14844,10 +15327,13 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
   });
 
   it('never subscribes or records anything for an ephemeral bureau — eventHistory stays unsupported, subscribeEventHistory returns an already-closed subscription', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
     });
 
     let delivered = false;
@@ -14857,7 +15343,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     expect(subscription.closed).toBe(true);
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'No durable storage at all',
     });
     await waitForRunCompletion(bureau, run.id);
@@ -14880,16 +15366,19 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Shut down cleanly' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Shut down cleanly' });
       await waitForRunCompletion(bureau, run.id);
 
       const report = await bureau.shutdown();
@@ -14912,17 +15401,20 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Attribute me to alice',
         principal: 'alice',
       });
@@ -14979,17 +15471,20 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'No principal attribution',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -15135,16 +15630,19 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Delete me then try to read',
         principal: 'alice',
       });
@@ -15187,16 +15685,19 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: () => new Promise<never>(() => {}),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: () => new Promise<never>(() => {}),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait for a signal',
         principal: 'alice',
       });
@@ -15228,17 +15729,20 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Delete me after completion',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -15275,17 +15779,20 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Carry a session-deleted action',
       });
       bureau.store.recordAction(run.id, 'session.deleted', { sessionId: 'sess-deleted' });
@@ -15334,17 +15841,20 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Delete me after a longer history',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -15413,17 +15923,20 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
     const sessionId = 'sess-out-of-window';
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Carry a session lifecycle',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -15491,17 +16004,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'A session about to be really deleted',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -15542,17 +16058,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'A session deleted concurrently',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -15588,17 +16107,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const originalRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the first incarnation',
       });
       const sessionId = originalRun.sessionId;
@@ -15617,7 +16139,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // Recreate the SAME id and complete a run against it.
       const recreatedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the second incarnation',
         sessionId,
       });
@@ -15655,17 +16177,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const originalRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the first incarnation',
       });
       const sessionId = originalRun.sessionId;
@@ -15677,7 +16202,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // Recreate the SAME id, this time owned by a specific principal.
       const recreatedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the second incarnation',
         sessionId,
         principal: 'alice',
@@ -15725,17 +16250,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const originalRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the first incarnation',
       });
       const sessionId = originalRun.sessionId;
@@ -15748,7 +16276,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       // Recreate the SAME id under a principal `mallory` is not authorized
       // for.
       const recreatedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the second incarnation',
         sessionId,
         principal: 'alice',
@@ -15797,17 +16325,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const originalRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the first incarnation',
       });
       const sessionId = originalRun.sessionId;
@@ -15829,7 +16360,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       if (markerCursor === undefined) throw new Error('expected a session.deleted cursor');
 
       const recreatedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the second incarnation',
         sessionId,
         principal: 'alice',
@@ -15870,17 +16401,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'alice owns this',
         principal: 'alice',
       });
@@ -15951,17 +16485,20 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'alice owns this',
         principal: 'alice',
       });
@@ -16033,24 +16570,30 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
     // the call that genuinely removed the live record dispatches.
     const databasePath = createTemporaryPath('bureau-ab371-two-process-delete-race', '.sqlite');
 
-    const bureauA = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
     });
-    const bureauB = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
     });
 
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'A session deleted by two processes',
       });
       await waitForRunCompletion(bureauA, run.id);
@@ -16131,25 +16674,28 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     const databasePath = createTemporaryPath('bureau-event-history-owner-recovery', '.sqlite');
 
     let bureauAReachedStep1 = false;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) {
-          return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        bureauAReachedStep1 = true; // step 0's saveCursor has committed
-        return new Promise<never>(() => {}); // the "process" dies here
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            bureauAReachedStep1 = true; // step 0's saveCursor has committed
+            return new Promise<never>(() => {}); // the "process" dies here
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Attribute me to alice across a restart',
         principal: 'alice',
       });
@@ -16158,14 +16704,17 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       // AB-207: deliberately not disposing bureauA — see the sibling
       // recovery test's own comment for why this simulates a real crash.
 
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
-        toolbox: createToolbox([createNextTool()]),
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -16219,10 +16768,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     );
 
     try {
-      const bureauA = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         // COR-1332: without an explicit stop condition, a mock `generate`
         // that never returns a tool call still runs to the default 25-step
@@ -16232,11 +16785,10 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         // tool calls (the same condition the sibling recovery tests in this
         // describe block already use) cuts that to the one step this test
         // actually needs, without changing what it proves.
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Complete me, THEN restart',
         principal: 'alice',
       });
@@ -16247,11 +16799,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       // `reattachRecoveredRun` never runs for it.
       await bureauA.dispose();
 
-      const bureauB = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
       });
 
@@ -16288,39 +16843,45 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     const databasePath = createTemporaryPath('bureau-event-history-owner-recovery-open', '.sqlite');
 
     let bureauAReachedStep1 = false;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) {
-          return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        bureauAReachedStep1 = true;
-        return new Promise<never>(() => {});
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            bureauAReachedStep1 = true;
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       // No `principal` — matches AB-313's "genuinely unattributed" case.
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'No principal, then restart',
       });
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
 
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
-        toolbox: createToolbox([createNextTool()]),
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -16400,22 +16961,25 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     // the other one. This test's own assertion below proves the map gets
     // BOTH entries in the first place; that unit test proves a reader
     // resolves the right one out of it.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
       // COR-1332: same cause as the sibling fixes in this describe block —
       // without this, a mock `generate` with no tool calls still runs to
       // the default 25-step budget instead of stopping after its one real
       // turn.
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const sessionId = 'shared-session';
       const runOne = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First, as alice',
         sessionId,
         principal: 'alice',
@@ -16423,7 +16987,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       await waitForRunCompletion(bureau, runOne.id);
 
       const runTwo = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second, as alice again',
         sessionId,
         principal: 'alice',
@@ -16467,10 +17031,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     );
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         // COR-1332: measured attribution (see the issue) found this test's
         // dominant cost was not the real SQLite session-persistence write
@@ -16484,12 +17052,11 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         // of 2. `stopWhen.noToolCalls()` (already used by the recovery
         // tests in this same block) cuts each run to its one real step
         // without changing what this test proves.
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const runOne = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'First, as alice',
           sessionId: 'alice-session-auth',
           principal: 'alice',
@@ -16497,7 +17064,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         await waitForRunState(bureau, runOne.id);
 
         const runTwo = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Second, as bob',
           sessionId: 'bob-session-auth',
           principal: 'bob',
@@ -16559,23 +17126,26 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     const databasePath = createTemporaryPath('bureau-session-history-co-owners', '.sqlite');
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const runA = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go A',
           principal: 'alice',
         });
         await waitForRunState(bureau, runA.id);
         const runB = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go B',
           sessionId: runA.sessionId,
           principal: 'alice',
@@ -16586,7 +17156,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         expect(
           await rejectionOf(
             bureau.createRun({
-              agentName: 'bureau',
+              agentName: 'default',
               message: 'go C',
               sessionId: runA.sessionId,
               principal: 'bob',
@@ -16611,23 +17181,26 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     );
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const runA = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go A',
           principal: 'alice',
         });
         await waitForRunState(bureau, runA.id);
         const runB = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go B',
           sessionId: runA.sessionId,
           principal: 'alice',
@@ -16673,29 +17246,32 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     const releaseRunA = Promise.withResolvers<void>();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: async (context) => {
-          const isRunB = context.conversation
-            .getMessages()
-            .some((message) => message.content === 'go B');
-          if (isRunB) return { content: 'B done', toolCalls: [] };
-          await releaseRunA.promise;
-          return { content: 'A done', toolCalls: [] };
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async (context) => {
+              const isRunB = context.conversation
+                .getMessages()
+                .some((message) => message.content === 'go B');
+              if (isRunB) return { content: 'B done', toolCalls: [] };
+              await releaseRunA.promise;
+              return { content: 'A done', toolCalls: [] };
+            },
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const runA = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go A',
           principal: 'alice',
         });
         const runB = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'go B',
           sessionId: runA.sessionId,
           principal: 'alice',
@@ -16757,10 +17333,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         // COR-1332: same cause as the AB-359 tests fixed for this issue —
@@ -16773,12 +17353,11 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // sibling test in this same describe block, "never prunes a
         // still-running run's ownership entry…") cuts each run to its
         // one real step without changing what this test proves.
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const runA = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -16807,7 +17386,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // the retention floor computed below from run A's own history can
         // then advance past all of run A without touching any of run B's.
         const runB = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'B',
           principal: 'bob',
         });
@@ -16890,33 +17469,36 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
     let parkedRunReachedStep1 = false;
     let generateCalls = 0;
-    const bureau = await createBureau({
-      agents: {},
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              generateCalls += 1;
+              if (generateCalls === 1) return { content: 'Completed', toolCalls: [] };
+              return { content: 'parked step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            parkedRunReachedStep1 = true;
+            return new Promise<never>(() => {}); // parks forever — never a real sleep
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       // The FIRST dispatched run (`completedRun` below) completes in one
       // step (no tool calls, so `stopWhen.noToolCalls()` stops it there).
       // Every run dispatched after that (`parkedRun`) takes a tool call on
       // step 0 to keep going, then parks forever on step 1 — the same
       // "reaches step 1, then a never-resolving promise" pattern the
       // AB-359 crash-simulation tests use, never a real sleep.
-      generate: async ({ step }) => {
-        if (step === 0) {
-          generateCalls += 1;
-          if (generateCalls === 1) return { content: 'Completed', toolCalls: [] };
-          return { content: 'parked step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        parkedRunReachedStep1 = true;
-        return new Promise<never>(() => {}); // parks forever — never a real sleep
-      },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       // A completed run whose durable event(s) will be retired, to give
       // `retainedRunOwnerIds()` a floor above 0.
       const completedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Completed',
         principal: 'alice',
       });
@@ -16931,7 +17513,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       // A run still in flight — its ownership entry is written at
       // dispatch time, but it has produced no durable event yet.
       const parkedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Still running',
         principal: 'carol',
       });
@@ -16975,22 +17557,25 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
   });
 
   it('is a no-op over ephemeral storage, where no durable event history store is composed at all', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       // COR-1332: same cause as the sibling fixes in this describe block —
       // without this, a mock `generate` with no tool calls still runs to
       // the default 25-step budget instead of stopping after its one real
       // turn.
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Ephemeral',
         principal: 'alice',
       });
@@ -17014,22 +17599,25 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         // COR-1332: same cause as the sibling fixes in this describe block —
         // without this, a mock `generate` with no tool calls still runs to
         // the default 25-step budget instead of stopping after its one
         // real turn, doing real disk-backed writes it does not need.
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const completedRun = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Completed',
           principal: 'alice',
         });
@@ -17117,17 +17705,20 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     );
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
       });
 
       try {
         const completedRun = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Completed',
           principal: 'alice',
         });
@@ -17183,17 +17774,20 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const databasePath = createTemporaryPath('bureau-run-ownership-prune-revalidate', '.sqlite');
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
       });
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17260,16 +17854,19 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     );
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
       });
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17330,16 +17927,19 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     );
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
       });
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17402,18 +18002,21 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17491,11 +18094,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         // `durableBackgroundTasks` deliberately omitted — the default
@@ -17505,7 +18111,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17581,11 +18187,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const diagnostics: string[] = [];
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -17593,7 +18202,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17633,7 +18242,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // and completes normally, proving the failed pass was isolated
         // rather than having crashed anything shared.
         const laterRun = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'B',
           principal: 'bob',
         });
@@ -17654,18 +18263,21 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
       });
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17758,16 +18370,23 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     );
     const runtime = createManualRuntimeServices();
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'A', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'A',
+        principal: 'alice',
+      });
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
@@ -17862,11 +18481,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        stopWhen: stopWhen.noToolCalls(),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         durableBackgroundTasks: 'manual',
@@ -17874,7 +18496,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -17968,25 +18590,33 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           stopWhen: stopWhen.noToolCalls(),
         };
         const runtimeA = createManualRuntimeServices();
-        const bureauA = await createBureau({
+        const bureauA = await createBureau<AgentDefinitions>({
           ...sharedOptions,
-          generate: async () => {
-            generateStarted.resolve();
-            await releaseGenerate.promise;
-            return { content: 'Done.', toolCalls: [] };
-          },
           runtime: runtimeA,
+          agents: {
+            default: createAgent({
+              generate: async () => {
+                generateStarted.resolve();
+                await releaseGenerate.promise;
+                return { content: 'Done.', toolCalls: [] };
+              },
+            }),
+          },
         });
-        const bureauB = await createBureau({
+        const bureauB = await createBureau<AgentDefinitions>({
           ...sharedOptions,
-          generate: createMockGenerate('Done.'),
-          stopWhen: stopWhen.noToolCalls(),
           runtime: createManualRuntimeServices(),
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
         });
 
         try {
           const run = await bureauA.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'A',
             principal: 'alice',
           });
@@ -18056,22 +18686,25 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const runtime = createManualRuntimeServices();
       const diagnostics: string[] = [];
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate('Done.'),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableOwnership,
           durableBackgroundTasks: 'manual',
-          stopWhen: stopWhen.noToolCalls(),
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
           },
         });
         try {
           const run = await bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'A',
             principal: 'alice',
           });
@@ -18204,7 +18837,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         try {
           const run = await bureauA.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'A',
             principal: 'alice',
           });
@@ -18252,24 +18885,30 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         stopWhen: stopWhen.toolOutcome('action_required'),
       };
       try {
-        const bureauA = await createBureau({
+        const bureauA = await createBureau<AgentDefinitions>({
           ...sharedOptions,
-          generate: createSequentialGenerate([
-            {
-              content: '',
-              toolCalls: [{ id: 'restore-call', name: 'charge-card', arguments: { cents: 125 } }],
-            },
-          ]),
           runtime: runtimeA,
+          agents: {
+            default: createAgent({
+              generate: createSequentialGenerate([
+                {
+                  content: '',
+                  toolCalls: [
+                    { id: 'restore-call', name: 'charge-card', arguments: { cents: 125 } },
+                  ],
+                },
+              ]),
+            }),
+          },
         });
-        const bureauB = await createBureau({
+        const bureauB = await createBureau<AgentDefinitions>({
           ...sharedOptions,
-          generate: createMockGenerate(),
           runtime: createManualRuntimeServices(),
+          agents: { default: createAgent({ generate: createMockGenerate() }) },
         });
         try {
           const run = await bureauA.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'Charge it',
             principal: 'alice',
           });
@@ -18367,14 +19006,17 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const runtime = createManualRuntimeServices();
       const diagnostics: string[] = [];
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate('Done.'),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableBackgroundTasks: 'manual',
-          stopWhen: stopWhen.noToolCalls(),
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
           },
@@ -18383,7 +19025,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           const runs: { id: string; sessionId: string }[] = [];
           for (let index = 0; index < runCount; index++) {
             const run = await bureau.createRun({
-              agentName: 'bureau',
+              agentName: 'default',
               message: `run ${index}`,
               principal: 'alice',
             });
@@ -18461,50 +19103,55 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const databasePath = databasePathFor('sweep');
       const runtime = createManualRuntimeServices();
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createSequentialGenerate([
-            {
-              content: '',
-              toolCalls: [{ id: 'expiring-call', name: 'charge-card', arguments: { cents: 50 } }],
-            },
-          ]),
-          toolbox: createToolbox(
-            [
-              createTool({
-                name: 'charge-card',
-                version: '1.0.0',
-                description: 'Charge a payment card',
-                input: z.object({ cents: z.number() }),
-                async execute({ cents }) {
-                  return { charged: cents };
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createSequentialGenerate([
+                {
+                  content: '',
+                  toolCalls: [
+                    { id: 'expiring-call', name: 'charge-card', arguments: { cents: 50 } },
+                  ],
                 },
-              }),
-            ],
-            {
-              approvalSecret: 'cor-1380-expiry-secret',
-              approvalBindingTtlMs: 1000,
-              runtime,
-              policy: {
-                beforeExecute() {
-                  return {
-                    allow: false,
-                    status: 'needs_approval',
-                    reason: 'Operator approval required',
-                    action: { message: 'Approve charge' },
-                  };
+              ]),
+              toolbox: createToolbox(
+                [
+                  createTool({
+                    name: 'charge-card',
+                    version: '1.0.0',
+                    description: 'Charge a payment card',
+                    input: z.object({ cents: z.number() }),
+                    async execute({ cents }) {
+                      return { charged: cents };
+                    },
+                  }),
+                ],
+                {
+                  approvalSecret: 'cor-1380-expiry-secret',
+                  approvalBindingTtlMs: 1000,
+                  runtime,
+                  policy: {
+                    beforeExecute() {
+                      return {
+                        allow: false,
+                        status: 'needs_approval',
+                        reason: 'Operator approval required',
+                        action: { message: 'Approve charge' },
+                      };
+                    },
+                  },
                 },
-              },
-            },
-          ),
+              ),
+              stopWhen: stopWhen.toolOutcome('action_required'),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableBackgroundTasks: 'manual',
-          stopWhen: stopWhen.toolOutcome('action_required'),
         });
         try {
           const run = await bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'Charge it',
             principal: 'alice',
           });
@@ -18534,17 +19181,20 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const databasePath = databasePathFor('no-principal');
       const runtime = createManualRuntimeServices();
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate('Done.'),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableBackgroundTasks: 'manual',
-          stopWhen: stopWhen.noToolCalls(),
         });
         try {
-          const run = await bureau.createRun({ agentName: 'bureau', message: 'A' });
+          const run = await bureau.createRun({ agentName: 'default', message: 'A' });
           await waitForRunCompletion(bureau, run.id);
           await bureau.deleteRun(run.id);
           await runtime.deferred.drain();
@@ -18580,18 +19230,21 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const databasePath = databasePathFor('writer-incarnation');
       const runtime = createManualRuntimeServices();
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate('Done.'),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableBackgroundTasks: 'manual',
-          stopWhen: stopWhen.noToolCalls(),
         });
         try {
           const run = await bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'A',
             principal: 'alice',
           });
@@ -18665,21 +19318,24 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const runtime = createManualRuntimeServices();
       const diagnostics: string[] = [];
       try {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate('Done.'),
-          toolbox: createEmptyToolbox(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableBackgroundTasks: 'manual',
-          stopWhen: stopWhen.noToolCalls(),
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
           },
         });
         try {
           const run = await bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'A',
             principal: 'alice',
           });
@@ -18766,16 +19422,19 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       async function countDeleteRunUpdates(
         options: Partial<Parameters<typeof createBureau>[0]>,
       ): Promise<number> {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createMockGenerate('Done.'),
-          toolbox: createEmptyToolbox(),
-          stopWhen: stopWhen.noToolCalls(),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createMockGenerate('Done.'),
+              toolbox: createEmptyToolbox(),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           ...options,
         });
         try {
           const run = await bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'A',
             principal: 'alice',
           });
@@ -18822,21 +19481,24 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       });
 
       it('resolveReview deny on a bureau with no durable engine', async () => {
-        const bureau = await createBureau({
-          agents: {},
-          generate: createSequentialGenerate([
-            {
-              content: '',
-              toolCalls: [{ id: 'count-call', name: 'charge-card', arguments: { cents: 10 } }],
-            },
-          ]),
-          toolbox: createNeedsApprovalToolbox('cor-1380-count-secret', []),
+        const bureau = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: createSequentialGenerate([
+                {
+                  content: '',
+                  toolCalls: [{ id: 'count-call', name: 'charge-card', arguments: { cents: 10 } }],
+                },
+              ]),
+              toolbox: createNeedsApprovalToolbox('cor-1380-count-secret', []),
+              stopWhen: stopWhen.toolOutcome('action_required'),
+            }),
+          },
           persistence: textValueStore(new MemoryStorage()),
-          stopWhen: stopWhen.toolOutcome('action_required'),
         });
         try {
           const run = await bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'Charge it',
             principal: 'alice',
           });
@@ -18868,12 +19530,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         durableBackgroundTasks: 'manual',
         // `auditRetention` deliberately omitted — this test proves the
@@ -18882,7 +19547,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -18915,12 +19580,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 500_000 },
@@ -18931,7 +19599,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // feed below, advancing the retention floor PAST them — this run
         // exists only to give the floor something below it to retire.
         const seedRun = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'seed',
           principal: 'alice',
         });
@@ -18950,7 +19618,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // answer, so its audit records are protected at exactly this
         // timestamp.
         const runA = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'bob',
         });
@@ -18986,7 +19654,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await runtime.advance(1_000_000);
 
         const runB = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'B',
           principal: 'carol',
         });
@@ -19026,12 +19694,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 2_500_000 },
@@ -19058,7 +19729,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await runtime.advance(1_000_000);
 
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -19102,12 +19773,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 500_000 },
@@ -19120,7 +19794,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // (seeding `pruneAuditTrail`'s `protectRunId`) would not protect
         // it, exactly the precondition AB-393's race needs.
         const runA = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -19141,7 +19815,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // `protectRunId`).
         await runtime.advance(100_000);
         const runFence = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'fence',
           principal: 'bob',
         });
@@ -19229,12 +19903,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         auditRetention: { olderThan: 500_000 },
         // `durableBackgroundTasks` deliberately omitted — the default
@@ -19244,7 +19921,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -19320,12 +19997,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtimeA = createManualRuntimeServices();
 
     try {
-      const bureauA = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime: runtimeA,
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 500_000 },
@@ -19334,7 +20014,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       let highestPrunedSequence = -1;
       try {
         const run = await bureauA.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -19395,19 +20075,22 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
       // A fresh bureau instance over the SAME sqlite file — a clean
       // process restart, not a crash.
-      const bureauB = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 500_000 },
       });
 
       try {
         const runAfterRestart = await bureauB.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'B',
           principal: 'bob',
         });
@@ -19430,23 +20113,30 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
   it('prunes the audit trail for a KV-backed bureau with NO durable engine composed, via an explicit runDurableMaintenance() call (Codex review, PR #597, "Run audit retention for KV-backed non-durable bureaus")', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       // A KV-only `persistence` value (ConditionalTextValueStore) — this
       // gives `runtime.kv` a value (so `auditTrailInstance` is built) but
       // NEVER gives `runtime.durable` a durable engine
       // (`runtime-composition.ts`'s `hasKvOnlyPersistence`).
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
       durableBackgroundTasks: 'manual',
       auditRetention: { olderThan: 500_000 },
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'A', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'A',
+        principal: 'alice',
+      });
       await waitForRunCompletion(bureau, run.id);
       const before = await bureau.auditTrail?.query({ runId: run.id });
       if (!before || before.length === 0) {
@@ -19475,12 +20165,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
   it('prunes the audit trail for a KV-backed bureau with NO durable engine composed, on its own automatic maintenance timer', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
       auditRetention: { olderThan: 500_000 },
       // `durableBackgroundTasks` deliberately omitted — before this fix,
@@ -19489,7 +20182,11 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'A', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'A',
+        principal: 'alice',
+      });
       await waitForRunCompletion(bureau, run.id);
       const before = await bureau.auditTrail?.query({ runId: run.id });
       if (!before || before.length === 0) {
@@ -19529,12 +20226,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
   it('does not start the automatic maintenance timer for a KV-only bureau with the default (\'forever\') auditRetention (Codex review, PR #597, "Start the KV-only timer only for active retention")', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
       // `auditRetention` deliberately omitted (defaults to 'forever') and
       // `durableBackgroundTasks` deliberately omitted (default
@@ -19555,12 +20255,15 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
   it('still starts the automatic maintenance timer for a KV-only bureau once auditRetention is active', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
       auditRetention: { olderThan: 500_000 },
     });
@@ -19590,10 +20293,13 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
     try {
       const runtime = createManualRuntimeServices();
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
         durableBackgroundTasks: 'manual',
@@ -19603,7 +20309,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
 
       try {
         const run = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'A',
           principal: 'alice',
         });
@@ -19638,18 +20344,25 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 500_000 },
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'A', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'A',
+        principal: 'alice',
+      });
       await waitForRunCompletion(bureau, run.id);
       await runtime.advance(1_000_000);
 
@@ -19674,18 +20387,25 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     const runtime = createManualRuntimeServices();
 
     try {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createMockGenerate('Done.'),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createMockGenerate('Done.'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
-        stopWhen: stopWhen.noToolCalls(),
         runtime,
         durableBackgroundTasks: 'manual',
         auditRetention: { olderThan: 500_000 },
       });
 
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'A', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'A',
+        principal: 'alice',
+      });
       await waitForRunCompletion(bureau, run.id);
 
       // Once shutdown() has fully closed maintenance admission (the flag
@@ -19726,28 +20446,31 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
     });
     let generateCalls = 0;
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        generateCalls += 1;
-        if (generateCalls === 1) {
-          await firstRunGate;
-          return { content: 'run 1 settled', toolCalls: [] };
-        }
-        await secondRunGate;
-        return { content: 'run 2 settled', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            generateCalls += 1;
+            if (generateCalls === 1) {
+              await firstRunGate;
+              return { content: 'run 1 settled', toolCalls: [] };
+            }
+            await secondRunGate;
+            return { content: 'run 2 settled', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       persistence: { store: { type: 'memory' } },
     });
 
-    const firstRun = await bureau.createRun({ agentName: 'bureau', message: 'First session run' });
+    const firstRun = await bureau.createRun({ agentName: 'default', message: 'First session run' });
     await waitForCondition(
       () => bureau.getRun(firstRun.id)?.status === 'running',
       'first run never reached running before deleteSession() was called',
     );
     const secondRun = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Second session run',
       sessionId: firstRun.sessionId,
     });
@@ -19792,10 +20515,10 @@ describe('AB-260: BureauOptions.runtime composition', () => {
   it('produces a run envelope whose timestamps are derived from a manual clock pinned to a fixed origin', async () => {
     const origin = '2024-03-01T00:00:00.000Z';
     const runtime = createManualRuntimeServices({ origin });
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       runtime,
     });
 
@@ -19808,7 +20531,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
       });
 
       const summary = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Hello, origin-derived clock',
       });
       await waitForRunCompletion(bureau, summary.id);
@@ -19829,17 +20552,17 @@ describe('AB-260: BureauOptions.runtime composition', () => {
     const runtimeA = createManualRuntimeServices({ origin: '2024-01-01T00:00:00.000Z' });
     const runtimeB = createManualRuntimeServices({ origin: '2025-06-15T00:00:00.000Z' });
 
-    const bureauA = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       runtime: runtimeA,
       scheduler: { enabled: true },
     });
-    const bureauB = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       runtime: runtimeB,
       scheduler: { enabled: true },
     });
@@ -19853,8 +20576,8 @@ describe('AB-260: BureauOptions.runtime composition', () => {
       // one on each Bureau both produce the SAME first-of-kind counter
       // value (`${identifierPrefix}-run-1`) rather than a shared,
       // monotonically-advancing sequence.
-      const runA = await bureauA.createRun({ agentName: 'bureau', message: 'On bureau A' });
-      const runB = await bureauB.createRun({ agentName: 'bureau', message: 'On bureau B' });
+      const runA = await bureauA.createRun({ agentName: 'default', message: 'On bureau A' });
+      const runB = await bureauB.createRun({ agentName: 'default', message: 'On bureau B' });
       // Each Bureau's `identifiers.next('run')` counter starts at 1
       // independently — a shared sequence would produce two counter values
       // under the SAME prefix instead of each restarting at 1 under its
@@ -19896,10 +20619,10 @@ describe('AB-260: BureauOptions.runtime composition', () => {
   it('registers scheduler-stop, audit-write, webhook-delivery, and background-evaluation with the composed deferred ledger', async () => {
     const runtime = createManualRuntimeServices();
     let deliveredCount = 0;
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       runtime,
       persistence: { type: 'memory' },
       scheduler: { enabled: true },
@@ -19926,7 +20649,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
 
     try {
       const summary = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Trigger every deferred label',
       });
       await waitForRunCompletion(bureau, summary.id);
@@ -19959,7 +20682,11 @@ describe('AB-260: BureauOptions.runtime composition', () => {
 describe('Bureau.issueGrant / revokeGrant / listGrants (AB-46, AB-346)', () => {
   it('issueGrant delegates to the base toolbox and returns a signed grant', async () => {
     const toolbox = createToolbox([], { approvalSecret: 'grant-secret' });
-    const bureau = await createBureau({ agents: {}, toolbox });
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ toolbox }),
+      },
+    });
 
     try {
       const grant = await bureau.issueGrant({
@@ -19985,7 +20712,11 @@ describe('Bureau.issueGrant / revokeGrant / listGrants (AB-46, AB-346)', () => {
 
   it('revokeGrant delegates to the base toolbox and is idempotent', async () => {
     const toolbox = createToolbox([], { approvalSecret: 'grant-secret' });
-    const bureau = await createBureau({ agents: {}, toolbox });
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ toolbox }),
+      },
+    });
 
     try {
       const grant = await bureau.issueGrant({
@@ -20014,7 +20745,11 @@ describe('Bureau.issueGrant / revokeGrant / listGrants (AB-46, AB-346)', () => {
 
   it('listGrants delegates to the base toolbox with an optional filter', async () => {
     const toolbox = createToolbox([], { approvalSecret: 'grant-secret' });
-    const bureau = await createBureau({ agents: {}, toolbox });
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ toolbox }),
+      },
+    });
 
     try {
       const matching = await bureau.issueGrant({
@@ -20051,7 +20786,11 @@ describe('Bureau.issueGrant / revokeGrant / listGrants (AB-46, AB-346)', () => {
 
   it('propagates the toolbox error when no approvalSecret is configured', async () => {
     const toolbox = createToolbox([]);
-    const bureau = await createBureau({ agents: {}, toolbox });
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ toolbox }),
+      },
+    });
 
     try {
       expect(
@@ -20096,24 +20835,27 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     });
 
     const LOOPING_STEPS = 6;
-    const bureau = await createBureau({
-      agents: {},
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }: { step: number }) =>
+            step < LOOPING_STEPS
+              ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
+              : { content: 'Done.', toolCalls: [] },
+          toolbox,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       // Step-counting, not a canned response list (matches the pattern this
       // file already uses for tool-driving generate functions) — calls the
       // same no-argument `next` tool repeatedly, tripping the loop detector's
       // warning threshold (2) and then its block threshold (4), before
       // finishing with a plain text response.
-      generate: async ({ step }: { step: number }) =>
-        step < LOOPING_STEPS
-          ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'Done.', toolCalls: [] },
-      toolbox,
-      stopWhen: stopWhen.noToolCalls(),
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Loop the tool' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Loop the tool' });
       await waitForRunCompletion(bureau, run.id);
 
       const warningRecords = await bureau.auditTrail!.query({
@@ -20184,27 +20926,30 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     });
     const toolbox = createToolbox([weatherTool], { budget: { maxCalls: 1 } });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'call-budget-1', name: 'weather', arguments: { city: 'Denver' } }],
-        },
-        {
-          content: '',
-          toolCalls: [{ id: 'call-budget-2', name: 'weather', arguments: { city: 'Boulder' } }],
-        },
-        { content: 'Done.', toolCalls: [] },
-      ]),
-      toolbox,
-      stopWhen: stopWhen.noToolCalls(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'call-budget-1', name: 'weather', arguments: { city: 'Denver' } }],
+            },
+            {
+              content: '',
+              toolCalls: [{ id: 'call-budget-2', name: 'weather', arguments: { city: 'Boulder' } }],
+            },
+            { content: 'Done.', toolCalls: [] },
+          ]),
+          toolbox,
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Check the weather twice',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -20233,10 +20978,13 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     // `createSchedule`/`pauseSchedule`/`resumeSchedule`/`cancelSchedule`
     // calls) — proving the durable audit write and the live event this
     // suite already covers come from the identical production call sites.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -20288,16 +21036,19 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     // real production call site (`Bureau.deleteSession`) reaches
     // `bureau.auditTrail.query()`, not just that string sitting in
     // `AUDIT_EVENT_TYPES`.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'A session about to be deleted',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -20340,16 +21091,19 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     // signal — so an unguarded dispatch would fire twice for one real
     // deletion. `deleteSession` coalesces concurrent calls for the same id
     // onto a single in-flight `performDeleteSession` run.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'A session deleted concurrently',
       });
       await waitForRunCompletion(bureau, run.id);
@@ -20402,17 +21156,20 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       { content: 'done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const originalRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -20435,7 +21192,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // A NEW session, reusing the SAME id, created and completed WHILE
       // `originalDeletion` is still pending.
       const recreatedRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'a fresh session reusing the same id',
         sessionId,
       });
@@ -20511,18 +21268,21 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     // this SAME `runtime` when no `store` option is supplied, so passing
     // `runtime` alone is now enough for `Action.timestamp` to read from
     // it — no separate pre-built `store` needed here.
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -20628,18 +21388,21 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     // `runtime` option alone is what makes the run's own action timestamps
     // deterministic and pinned alongside the audit trail's out-of-band
     // writes below — no pre-built `store` needed.
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([nextTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -20728,10 +21491,13 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       },
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: flakyKv,
       runtime,
     });
@@ -20739,7 +21505,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     try {
       expect(bureau.ready).toBe(true);
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -20785,11 +21551,14 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       },
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: failingKv,
       runtime,
       onDiagnostic: (diagnostic) => received.push(diagnostic),
@@ -20798,7 +21567,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     try {
       expect(bureau.ready).toBe(true);
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -20860,17 +21629,20 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       { content: 'done', toolCalls: [] },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([stuckTool]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([stuckTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -20945,10 +21717,13 @@ describe('AB-389 — session commit outbox', () => {
     // for the first time against a durable backend a PRIOR process wrote
     // to). Boot recovery (`recoverDurableRuns`) drains the outbox before
     // `waitForRecovery()` resolves.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage,
       runtime,
     });
@@ -21032,10 +21807,13 @@ describe('AB-389 — session commit outbox', () => {
     const storage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const runtime = createManualRuntimeServices();
 
-    const bureauA = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage,
       runtime,
     });
@@ -21083,10 +21861,13 @@ describe('AB-389 — session commit outbox', () => {
     const storage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const runtime = createManualRuntimeServices();
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage,
       runtime,
     });
@@ -21129,10 +21910,13 @@ describe('AB-389 — session commit outbox', () => {
       },
     });
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -21167,10 +21951,13 @@ describe('AB-389 — session commit outbox', () => {
     const databasePath = createTemporaryPath('bureau-ab-389-automatic-drain-failure', '.sqlite');
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('Done.'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -21238,10 +22025,13 @@ describe('AB-389 — session commit outbox', () => {
     });
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: gatedStorage,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -21315,10 +22105,13 @@ describe('AB-389 — session commit outbox', () => {
     });
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -21408,13 +22201,16 @@ describe('AB-389 — session commit outbox', () => {
     // names. bureauA is deliberately never disposed, simulating a crash
     // with that run still "in flight".
     const databasePath = createTemporaryPath('bureau-ab-389-drain-before-defer', '.sqlite');
-    const bureauA = await createBureau({
-      agents: {},
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       // Hangs forever from step 0 — the run never reaches a terminal
       // state, so its session's `lastRunStatus` stays 'running' when
       // bureauA is (deliberately) never disposed below.
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       // bureauA itself validates the transport-issued authority so the run
@@ -21423,7 +22219,7 @@ describe('AB-389 — session commit outbox', () => {
       requestAuthorityValidator: () => true,
     });
     const run = await bureauA.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Persist a gateway authority that requires a validator',
       requestContext: {
         authority: {
@@ -21471,10 +22267,13 @@ describe('AB-389 — session commit outbox', () => {
 
     // "Restart": a fresh bureau over the SAME storage with no
     // `requestAuthorityValidator` attached at construction time.
-    const bureauB = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
     });
@@ -21550,10 +22349,13 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // "Restart": a fresh Bureau over the SAME storage. Boot recovery drains
     // the outbox — including the attachment — before `waitForRecovery()`
     // resolves.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage,
       runtime,
     });
@@ -21586,21 +22388,26 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
   });
 
   it('resolveReview appends the decision audit record atomically with the review-resolution commit and getReview reconstructs it immediately, with no bureau restart', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'ab-391-live-call', name: 'charge-card', arguments: { cents: 500 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('ab-391-live-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'ab-391-live-call', name: 'charge-card', arguments: { cents: 500 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('ab-391-live-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -21641,10 +22448,13 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // ordinal first — the earlier Copilot-review fix's "skip and keep
     // going" behavior itself reordered past a still-pending fact, which is
     // exactly what this test now guards against.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
@@ -21695,10 +22505,13 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
   });
 
   it('acknowledges a session.attachment entry under the recognized namespace whose payload is malformed, without replaying it', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
@@ -21746,10 +22559,13 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // through `AuditTrail.record`'s atomic `dedupeKey`, which does not
     // query existing history at all. This test keeps the original
     // volume scenario as a regression guard for that superseded bug.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
@@ -21823,21 +22639,26 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // report `false`, and `recordReviewDecision` must fall back to its
     // own direct write — otherwise a successfully returned review
     // decision would have no durable audit record at all.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'ab-391-vanish-call', name: 'charge-card', arguments: { cents: 500 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('ab-391-vanish-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'ab-391-vanish-call', name: 'charge-card', arguments: { cents: 500 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('ab-391-vanish-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -21882,24 +22703,27 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       },
     });
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'ab-391-drain-fail-call', name: 'charge-card', arguments: { cents: 700 } },
-          ],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('ab-391-drain-fail-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'ab-391-drain-fail-call', name: 'charge-card', arguments: { cents: 700 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('ab-391-drain-fail-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -21965,23 +22789,26 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       },
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'ab-391-ambiguous-call', name: 'charge-card', arguments: { cents: 500 } },
-          ],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('ab-391-ambiguous-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'ab-391-ambiguous-call', name: 'charge-card', arguments: { cents: 500 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('ab-391-ambiguous-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence,
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -22019,23 +22846,26 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // through `bureau.resolveReview()`), mirroring the standalone-store
     // pattern the AB-390/AB-391 crash-recovery tests above use to commit
     // "from outside" this bureau's own request path.
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [
-            { id: 'ab-391-conflict-call', name: 'charge-card', arguments: { cents: 900 } },
-          ],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('ab-391-conflict-secret', []),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'ab-391-conflict-call', name: 'charge-card', arguments: { cents: 900 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('ab-391-conflict-secret', []),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -22135,21 +22965,26 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // shared array the toolbox's `execute` pushes into; an empty array
     // after the CONFLICT proves the tool call was never admitted.
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([
-        {
-          content: '',
-          toolCalls: [{ id: 'ab-391-fence-call', name: 'charge-card', arguments: { cents: 750 } }],
-        },
-      ]),
-      toolbox: createNeedsApprovalToolbox('ab-391-fence-secret', charges),
-      stopWhen: stopWhen.toolOutcome('action_required'),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [
+                { id: 'ab-391-fence-call', name: 'charge-card', arguments: { cents: 750 } },
+              ],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('ab-391-fence-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
       const [review] = bureau.listPendingReviews();
@@ -22255,19 +23090,25 @@ describe('AB-390 — outbox claim lease', () => {
     const databasePath = createTemporaryPath('bureau-ab-390-two-instance-claim', '.sqlite');
     const runtime = createManualRuntimeServices();
 
-    const bureauA = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
     });
-    const bureauB = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
     });
@@ -22341,10 +23182,13 @@ describe('AB-390 — outbox claim lease', () => {
     // claimed this and is gone".
     const databasePath = createTemporaryPath('bureau-ab-390-crashed-drainer-reclaim', '.sqlite');
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
     });
@@ -22449,10 +23293,13 @@ describe('AB-390 — outbox claim lease', () => {
       },
     });
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence,
       runtime,
     });
@@ -22568,10 +23415,13 @@ describe('AB-390 — outbox claim lease', () => {
     });
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -22632,10 +23482,13 @@ describe('AB-390 — outbox claim lease', () => {
     });
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       persistence,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -22701,10 +23554,13 @@ describe('AB-390 — outbox claim lease', () => {
   it('arms a retry timer at a live peer\'s own claim expiry, rather than depending on an unrelated future trigger, when a claim is refused (Codex P1 review finding, PR #599, "Schedule a retry when a live claim blocks recovery")', async () => {
     const databasePath = createTemporaryPath('bureau-ab-390-scheduled-retry', '.sqlite');
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
     });
@@ -22786,17 +23642,23 @@ describe('AB-390 — outbox claim lease', () => {
       runtimeB.identifiers.next('session-outbox-drainer'),
     );
 
-    const bureauA = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime: runtimeA,
     });
-    const bureauB = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime: runtimeB,
     });
@@ -22867,10 +23729,13 @@ describe('AB-390 — outbox claim lease', () => {
     );
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -22965,10 +23830,13 @@ describe('AB-390 — outbox claim lease', () => {
         },
       },
     };
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime: instrumentedRuntime,
     });
@@ -23063,10 +23931,13 @@ describe('AB-390 — outbox claim lease', () => {
         },
       },
     };
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate('unused'),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate('unused'),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       runtime: instrumentedRuntime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -23171,19 +24042,22 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
    */
   async function createRetentionBureau(overrides: RetentionOverrides = {}) {
     let step = 0;
-    return createBureau({
-      agents: {},
-      generate: async () => {
-        step += 1;
-        return step < 3
-          ? { content: `step ${step}`, toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'done', toolCalls: [] };
+    return createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            step += 1;
+            return step < 3
+              ? { content: `step ${step}`, toolCalls: [{ name: 'next', arguments: {} }] }
+              : { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'memory' },
       durableExecution: true,
       durableGuardrails: { checkpointHistory: 20 },
-      stopWhen: stopWhen.noToolCalls(),
       ...overrides,
     });
   }
@@ -23273,7 +24147,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
     const bureau = await createRetentionBureau();
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'keep-all' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'keep-all' });
       await waitForRunState(bureau.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
@@ -23293,7 +24167,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
     const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'prune me' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'prune me' });
       await waitForRunState(bureau.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
@@ -23321,7 +24195,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockRejectedValue(rejection);
     const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'store rejects' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'store rejects' });
       await waitForRunState(bureau.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
@@ -23354,7 +24228,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const getSpy = spyOn(prototype, 'get').mockResolvedValue({ status: 'running' });
     const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'not terminal yet' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'not terminal yet' });
       await waitForRunState(bureau.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
@@ -23415,7 +24289,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'slow prune' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'slow prune' });
       await waitForRunState(bureau.store, run.id);
       await waitForCondition(
         () => observedSignal !== undefined,
@@ -23447,11 +24321,11 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
     const { generate, resolve } = createBlockingGenerate();
     const bureau = await createRetentionBureau({
-      generate,
       checkpointRetention: { keepLast: 1 },
+      agents: { default: createAgent({ generate }) },
     });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'cancel then settle' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'cancel then settle' });
       await waitForCondition(
         () => bureau.store.getRun(run.id)?.status === 'running',
         'the run never started',
@@ -23508,7 +24382,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
 
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'the bound itself fails',
       });
       await waitForRunState(bureau.store, run.id);
@@ -23555,7 +24429,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     await sessionStore.save(
       createAgentSession({
         id: sessionId,
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: sessionId }),
         metadata: { lastRunId: runId, lastRunStatus: 'running' },
       }),
@@ -23576,7 +24450,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     probe.durable!.engine[Symbol.dispose]?.();
     probe.disposeStorage?.();
 
-    const input = { runId, sessionId, agentName: 'bureau' };
+    const input = { runId, sessionId, agentName: 'default' };
     const handle = {
       id: runId,
       getLaunchMetadata: async () => ({ input }),
@@ -23618,11 +24492,14 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       },
     );
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createMockGenerate(),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       storage,
       durableExecution: true,
       checkpointRetention: { keepLast: 1 },
@@ -23655,7 +24532,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockRejectedValue(deposed);
     const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'deposed' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'deposed' });
       await waitForRunState(bureau.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
@@ -23694,15 +24571,18 @@ describe('createBureau schedule tick observation (COR-660)', () => {
     const attempted: ScheduleAttemptedEvent[] = [];
     const skipped: ScheduleSkippedEvent[] = [];
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       runtime,
       durableExecution: true,
       durableBackgroundTasks: 'manual',
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     bureau.addEventListener(ScheduleAttemptedEvent.type, (event) => attempted.push(event));
@@ -23787,20 +24667,23 @@ describe('skill guardrail scanning (COR-1226)', () => {
   it('blocks a skill whose body trips the configured guardrail and never returns the body to the model', async () => {
     let activateResult: unknown;
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ toolbox }) => {
-        const result = (await toolbox.execute({
-          name: 'activate_skill',
-          arguments: { name: 'poisoned' },
-        })) as { result: unknown };
-        activateResult = result.result;
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ toolbox }) => {
+            const result = (await toolbox.execute({
+              name: 'activate_skill',
+              arguments: { name: 'poisoned' },
+            })) as { result: unknown };
+            activateResult = result.result;
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          skills: { catalog: await createGuardrailSkillCatalog(POISONED) },
+          guardrails: { input: { detectors: [sentinelDetector] } },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
-      skills: { catalog: await createGuardrailSkillCatalog(POISONED) },
-      guardrails: { input: { detectors: [sentinelDetector] } },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -23808,7 +24691,7 @@ describe('skill guardrail scanning (COR-1226)', () => {
       // activation now reads the bundle off disk, hashes it and scans it, which is genuinely more
       // event-loop turns than the in-memory provider took, and a fixed turn budget measures the
       // wrong thing (COR-1319).
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'activate the skill' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'activate the skill' });
       await waitForRunSettled(bureau, run.id);
       expect(activateResult).toBeDefined();
 
@@ -23828,27 +24711,30 @@ describe('skill guardrail scanning (COR-1226)', () => {
   it('leaves an unblocked skill byte-identical to the pre-adoption inline implementation', async () => {
     let activateResult: unknown;
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ toolbox }) => {
-        const result = (await toolbox.execute({
-          name: 'activate_skill',
-          arguments: { name: 'poisoned' },
-        })) as { result: unknown };
-        activateResult = result.result;
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ toolbox }) => {
+            const result = (await toolbox.execute({
+              name: 'activate_skill',
+              arguments: { name: 'poisoned' },
+            })) as { result: unknown };
+            activateResult = result.result;
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          skills: { catalog: await createGuardrailSkillCatalog('Write good code.') },
+          guardrails: { input: { detectors: [sentinelDetector] } },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
-      skills: { catalog: await createGuardrailSkillCatalog('Write good code.') },
-      guardrails: { input: { detectors: [sentinelDetector] } },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       // Same race as the sibling "blocks a skill" test above: this skill's activation also
       // reads the bundle off disk, hashes it and scans it, so it waits on the run's own
       // completion event rather than a fixed tick budget. See `waitForRunSettled`.
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'activate the skill' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'activate the skill' });
       await waitForRunSettled(bureau, run.id);
       expect(activateResult).toBeDefined();
 
@@ -23874,19 +24760,22 @@ describe('skill lifecycle events reach the bureau emitter (COR-767)', () => {
   it('forwards loaded and activated with the run and session correlation', async () => {
     const seen: Array<{ type: string; skillName: string; runId?: string; sessionId?: string }> = [];
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ toolbox }) => {
-        await toolbox.execute({ name: 'activate_skill', arguments: { name: 'coding' } });
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ toolbox }) => {
+            await toolbox.execute({ name: 'activate_skill', arguments: { name: 'coding' } });
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          skills: {
+            catalog: await createMockSkillCatalog([
+              { name: 'coding', description: 'Write code', body: 'Write good code.' },
+            ]),
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
-      skills: {
-        catalog: await createMockSkillCatalog([
-          { name: 'coding', description: 'Write code', body: 'Write good code.' },
-        ]),
-      },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     for (const type of [SkillLoadedEvent.type, SkillActivatedEvent.type] as const) {
@@ -23907,7 +24796,7 @@ describe('skill lifecycle events reach the bureau emitter (COR-767)', () => {
       // hashes it, and scans it (the same guardrail-scan cost COR-1319 already fixed for the
       // COR-1226 tests), so it waits on the run's own completion event rather than the fixed
       // 50-turn budget `waitForRunCompletion` uses. See `waitForRunSettled`.
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'activate the skill' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'activate the skill' });
       await waitForRunSettled(bureau, run.id);
       expect(seen.length).toBeGreaterThanOrEqual(2);
 
@@ -23962,22 +24851,25 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
     let whileActive: string[] = [];
     let afterDeactivate: string[] = [];
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ toolbox }) => {
-        before = toolbox.tools().map((tool) => tool.name);
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ toolbox }) => {
+            before = toolbox.tools().map((tool) => tool.name);
 
-        await toolbox.execute({ name: 'activate_skill', arguments: { name: 'reader' } });
-        whileActive = toolbox.tools().map((tool) => tool.name);
+            await toolbox.execute({ name: 'activate_skill', arguments: { name: 'reader' } });
+            whileActive = toolbox.tools().map((tool) => tool.name);
 
-        await toolbox.execute({ name: 'deactivate_skill', arguments: { name: 'reader' } });
-        afterDeactivate = toolbox.tools().map((tool) => tool.name);
+            await toolbox.execute({ name: 'deactivate_skill', arguments: { name: 'reader' } });
+            afterDeactivate = toolbox.tools().map((tool) => tool.name);
 
-        return { content: 'done', toolCalls: [] };
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: makeToolbox(),
+          skills: { catalog: await createMockSkillCatalog([narrowingSkill]) },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: makeToolbox(),
-      skills: { catalog: await createMockSkillCatalog([narrowingSkill]) },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -23985,7 +24877,7 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
       // through the guardrail scan, which is genuinely more event-loop turns than
       // `waitForRunCompletion`'s fixed 50-turn budget accounts for (the same race COR-1319 fixed
       // for the COR-1226 guardrail tests). Wait on the run's own completion event instead.
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'narrow me' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'narrow me' });
       await waitForRunSettled(bureau, run.id);
 
       // Nothing active: both domain tools visible.
@@ -24017,23 +24909,26 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
       },
     ]);
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ toolbox }) => {
-        await toolbox.execute({ name: 'activate_skill', arguments: { name: 'reader' } });
-        visible = toolbox.tools().map((tool) => tool.name);
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ toolbox }) => {
+            await toolbox.execute({ name: 'activate_skill', arguments: { name: 'reader' } });
+            visible = toolbox.tools().map((tool) => tool.name);
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: makeToolbox(),
+          skills: { catalog: widenCatalog },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: makeToolbox(),
-      skills: { catalog: widenCatalog },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       // COR-1325 — same race as the sibling "hides a tool" test above: activating `reader`
       // performs the disk read, hash, and guardrail scan that outruns `waitForRunCompletion`'s
       // fixed 50-turn budget. Wait on the run's own completion event instead.
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'try to widen' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'try to widen' });
       await waitForRunSettled(bureau, run.id);
 
       // An allow list only ever narrows. A tool the owner never granted stays
@@ -24172,11 +25067,14 @@ describe('bureau:pending-approval-persist idempotency under crash replay (COR-12
 
 describe('COR-636: scheduler task locator', () => {
   it('resolves a settled task from its receipt taskId alone', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([{ content: 'located', toolCalls: [] }]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([{ content: 'located', toolCalls: [] }]),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       scheduler: { enabled: true, idleDelay: 1 },
-      toolbox: createEmptyToolbox(),
     });
 
     try {
@@ -24198,11 +25096,14 @@ describe('COR-636: scheduler task locator', () => {
 
   it('reports expired and then not-found on a manual runtime with a finite retention window', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([{ content: 'expiring', toolCalls: [] }]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([{ content: 'expiring', toolCalls: [] }]),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       scheduler: { enabled: true, retentionWindowMs: 50 },
-      toolbox: createEmptyToolbox(),
       runtime,
     });
 
@@ -24229,11 +25130,14 @@ describe('COR-636: scheduler task locator', () => {
 
   it('expires an unconfigured scheduler task outcome after the default retention window', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([{ content: 'default window', toolCalls: [] }]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([{ content: 'default window', toolCalls: [] }]),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       scheduler: { enabled: true },
-      toolbox: createEmptyToolbox(),
       runtime,
     });
 
@@ -24268,11 +25172,14 @@ describe('COR-636: scheduler task locator', () => {
 
   it('lets an explicit retentionWindowMs override the default retention window', async () => {
     const runtime = createManualRuntimeServices();
-    const bureau = await createBureau({
-      agents: {},
-      generate: createSequentialGenerate([{ content: 'explicit window', toolCalls: [] }]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createSequentialGenerate([{ content: 'explicit window', toolCalls: [] }]),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       scheduler: { enabled: true, retentionWindowMs: 1_000 },
-      toolbox: createEmptyToolbox(),
       runtime,
     });
 
@@ -24293,11 +25200,11 @@ describe('COR-636: scheduler task locator', () => {
   });
 
   it('reports not-found for an unknown id and rejects awaitSchedulerTask with a lookup error', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       scheduler: { enabled: true },
-      toolbox: createEmptyToolbox(),
     });
 
     try {
@@ -24313,10 +25220,10 @@ describe('COR-636: scheduler task locator', () => {
   });
 
   it('throws NOT_CONFIGURED synchronously when the scheduler is not enabled', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
 
     try {
@@ -24338,11 +25245,11 @@ describe('COR-636: scheduler task locator', () => {
   });
 
   it('rejects an invalid retentionWindowMs from createBureau, naming the option', async () => {
-    const rejection = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
+    const rejection = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       scheduler: { enabled: true, retentionWindowMs: 0 },
-      toolbox: createEmptyToolbox(),
     }).catch((error: unknown) => error);
 
     expect(rejection).toBeInstanceOf(Error);
@@ -24355,14 +25262,14 @@ describe('COR-636: scheduler task locator', () => {
 // until its own execution lifecycle is idle.
 describe('Bureau shutdown quiescence (COR-690)', () => {
   it('rejects an API run submitted after shutdown() has started', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
     });
     const shutdownPromise = bureau.shutdown();
 
-    const rejection = await bureau.createRun({ agentName: 'bureau', message: 'too late' }).then(
+    const rejection = await bureau.createRun({ agentName: 'default', message: 'too late' }).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -24374,10 +25281,10 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
   });
 
   it('rejects a scheduler task submitted after shutdown() has started', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: createMockGenerate(),
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
       scheduler: { enabled: true, idleDelay: 1 },
     });
     const shutdownPromise = bureau.shutdown();
@@ -24415,17 +25322,20 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
         return value;
       },
     });
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ step }) =>
-        step === 0
-          ? { content: 'calling', toolCalls: [{ name: 'stubborn', arguments: {} }] }
-          : { content: 'done', toolCalls: [] },
-      toolbox: createToolbox([stubbornTool]),
-      stopWhen: stopWhen.noToolCalls(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) =>
+            step === 0
+              ? { content: 'calling', toolCalls: [{ name: 'stubborn', arguments: {} }] }
+              : { content: 'done', toolCalls: [] },
+          toolbox: createToolbox([stubbornTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'abort me mid-tool' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'abort me mid-tool' });
     await toolStarted;
     bureau.abortRun(run.id);
     expect(await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted')).toBe(true);

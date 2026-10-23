@@ -17,6 +17,7 @@ import {
   type GenerateFunction,
   stopWhen,
   type JSONValue,
+  createAgent,
 } from '@lostgradient/operative';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createConversationHistory } from 'conversationalist';
@@ -38,12 +39,16 @@ import {
   readSteeringLogHead,
   steeringSessionRunTag,
 } from './steering-log';
+import type { AgentDefinitions } from './agent-catalog';
 
 async function openBureau(path: string) {
-  return createBureau({
-    agents: {},
-    generate: () => new Promise<never>(() => {}),
-    toolbox: createToolbox([]),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: () => new Promise<never>(() => {}),
+        toolbox: createToolbox([]),
+      }),
+    },
     storage: { type: 'sqlite', path },
     durableExecution: true,
   });
@@ -70,7 +75,7 @@ async function durableEnginePrototype() {
 
 async function startRunningSession(bureau: TestBureau, sessionId?: string): Promise<string> {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'Wait forever',
     principal: 'alice',
     ...(sessionId !== undefined ? { sessionId } : {}),
@@ -255,28 +260,31 @@ describe('durable steering across two Bureau processes', () => {
       releaseTool = resolve;
     });
     let generateCalls = 0;
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        generateCalls += 1;
-        return step === 0
-          ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'done', toolCalls: [] };
-      },
-      toolbox: createToolbox([
-        createTool({
-          name: 'next',
-          description: 'waits for the test',
-          input: z.object({}),
-          execute: async () => {
-            await toolGate;
-            return 'ok';
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            generateCalls += 1;
+            return step === 0
+              ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
+              : { content: 'done', toolCalls: [] };
           },
+          toolbox: createToolbox([
+            createTool({
+              name: 'next',
+              description: 'waits for the test',
+              input: z.object({}),
+              execute: async () => {
+                await toolGate;
+                return 'ok';
+              },
+            }),
+          ]),
+          stopWhen: stopWhen.noToolCalls(),
         }),
-      ]),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       runtime,
     });
     try {
@@ -285,7 +293,7 @@ describe('durable steering across two Bureau processes', () => {
       const pollTimers = () => runtime.pendingTimers().filter((timer) => timer.dueAt === 2_000);
       const before = pollTimers().length;
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -357,24 +365,27 @@ describe('durable steering across two Bureau processes', () => {
         ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
         : { content: 'done', toolCalls: [] };
     };
-    const bureauA = await createBureau({
-      agents: {},
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createToolbox([
-        createTool({
-          name: 'next',
-          description: 'waits for the test',
-          input: z.object({}),
-          execute: async () => {
-            toolCalls += 1;
-            // The first run waits for the test; the second stays live so the
-            // session is not terminal while the test inspects it.
-            await (toolCalls === 1 ? toolGate : secondToolGate);
-            return 'ok';
-          },
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createToolbox([
+            createTool({
+              name: 'next',
+              description: 'waits for the test',
+              input: z.object({}),
+              execute: async () => {
+                toolCalls += 1;
+                // The first run waits for the test; the second stays live so the
+                // session is not terminal while the test inspects it.
+                await (toolCalls === 1 ? toolGate : secondToolGate);
+                return 'ok';
+              },
+            }),
+          ]),
         }),
-      ]),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
     });
@@ -382,7 +393,7 @@ describe('durable steering across two Bureau processes', () => {
 
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'go',
         principal: 'alice',
       });
@@ -410,7 +421,7 @@ describe('durable steering across two Bureau processes', () => {
       // A second run keeps the session live (a terminal session answers
       // `session-terminal` before any idempotency check).
       await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'again',
         principal: 'alice',
         sessionId: run.sessionId,
@@ -484,10 +495,13 @@ describe('durable steering across two Bureau processes', () => {
   it('replays a policy-resolved command for an exact retry, even where the policy is gone', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-policy-'));
     const path = join(directory, 'bureau.sqlite');
-    const withPolicy = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createToolbox([]),
+    const withPolicy = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createToolbox([]),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
       modelPolicy: {
@@ -499,10 +513,13 @@ describe('durable steering across two Bureau processes', () => {
       },
     });
     const withoutPolicy = await openBureau(path);
-    const withChangedPolicy = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createToolbox([]),
+    const withChangedPolicy = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createToolbox([]),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
       modelPolicy: {
@@ -625,7 +642,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(
         await throwingRejectionOf(
           bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'again',
             principal: 'alice',
             sessionId,
@@ -775,7 +792,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: sessionId,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: sessionId }),
           metadata: {
             lastRunId: 'older',
@@ -850,7 +867,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: appearingSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: appearingSession }),
           metadata: { sessionOwner: 'alice', lastRunId: 'older', lastRunStatus: 'completed' },
         }),
@@ -884,7 +901,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: foreignSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: foreignSession }),
           metadata: { sessionOwner: 'alice', lastRunId: 'older', lastRunStatus: 'completed' },
         }),
@@ -917,7 +934,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: outageSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: outageSession }),
           metadata: { sessionOwner: 'alice', lastRunId: 'named-run', lastRunStatus: 'running' },
         }),
@@ -950,7 +967,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: revokedSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: revokedSession }),
           metadata: {
             lastRunId: 'older',
@@ -1205,7 +1222,7 @@ describe('durable steering across two Bureau processes', () => {
       const mineRun = await lastRunIdOf(mine);
       if (typeof mineRun !== 'string') throw new Error('expected a run');
       const bobsRun = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Wait forever',
         principal: 'bob',
       });
@@ -1330,10 +1347,13 @@ describe('durable steering across two Bureau processes', () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ended-elsewhere-'));
     const path = join(directory, 'bureau.sqlite');
     const diagnostics: BureauDiagnostic[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createToolbox([]),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -1518,7 +1538,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: gapSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: gapSession }),
           metadata: {
             sessionOwner: 'alice',
@@ -1543,7 +1563,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: visibleSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: visibleSession }),
           metadata: {
             sessionOwner: 'alice',
@@ -1579,7 +1599,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: concurrentSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: concurrentSession }),
           metadata: {
             sessionOwner: 'alice',
@@ -1612,7 +1632,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: changingSession,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: changingSession }),
           metadata: {
             sessionOwner: 'bob',
@@ -1660,7 +1680,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: twoStarts,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: twoStarts }),
           metadata: {
             sessionOwner: 'alice',
@@ -1690,7 +1710,7 @@ describe('durable steering across two Bureau processes', () => {
       await store.save(
         createAgentSession({
           id: lagging,
-          agentName: 'bureau',
+          agentName: 'default',
           conversationHistory: createConversationHistory({ id: lagging }),
           metadata: { sessionOwner: 'alice', lastRunId: 'ended-run', lastRunStatus: 'running' },
         }),
@@ -1794,10 +1814,13 @@ describe('durable steering across two Bureau processes', () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-delete-cleanup-'));
     const path = join(directory, 'bureau.sqlite');
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createToolbox([]),
+        }),
+      },
       storage: { type: 'sqlite', path },
       durableExecution: true,
       onDiagnostic: (diagnostic) => {
@@ -1875,10 +1898,13 @@ describe('durable steering across two Bureau processes', () => {
 
   it('records starting entries only where durable steering runs', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-non-durable-start-'));
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: () => new Promise<never>(() => {}),
+          toolbox: createToolbox([]),
+        }),
+      },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
       durableExecution: false,
     });

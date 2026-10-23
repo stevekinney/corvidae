@@ -450,43 +450,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * AB-64's decision record, `## AB-15 and AB-22 boundaries (AC9)`.
    */
   modelPolicy?: BureauModelPolicyOptions;
-  /**
-   * @deprecated Agent-owned. Configure `generate` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  generate?: GenerateFunction;
-  /**
-   * @deprecated Agent-owned. Resolve the provider into a `GenerateFunction`
-   * and pass it as `generate` on the agent passed to `createAgent` instead,
-   * then dispatch it through {@link Bureau.run}. Not yet removed — see
-   * AB-242's decision record and the removal issue it names (AB-352).
-   */
-  provider?: ProviderConfiguration;
-  /**
-   * @deprecated Agent-owned. Resolve the provider fallback into a
-   * `GenerateFunction` and pass it as `generate` on the agent passed to
-   * `createAgent` instead, then dispatch it through {@link Bureau.run}. Not
-   * yet removed — see AB-242's decision record and the removal issue it
-   * names (AB-352).
-   */
-  providers?: ProviderRouteConfiguration[];
-  /**
-   * @deprecated Agent-owned. Resolve the routing strategy into a
-   * `GenerateFunction` and pass it as `generate` on the agent passed to
-   * `createAgent` instead, then dispatch it through {@link Bureau.run}. Not
-   * yet removed — see AB-242's decision record and the removal issue it
-   * names (AB-352).
-   */
-  routing?: RoutingConfiguration;
-  /**
-   * @deprecated Agent-owned. Configure `toolbox` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  toolbox?: AnyToolbox;
   store?: Store;
   /**
    * Persistence for this bureau. Accepts three forms:
@@ -664,35 +627,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   memoryAuthority?: BureauMemoryAuthorityOptions;
   cache?: CacheConfiguration;
-  /**
-   * AB-40 — guardrail tripwires. When omitted (the default), bureau wires an
-   * enabled-by-default preset: a prompt-injection input detector + an output
-   * PII validator, both running in `mode: 'tripwire'` (a trip hard-halts the
-   * run with `finishReason: 'tripwire'` rather than substituting a response).
-   * Pass a `GuardrailsOptions` to override the preset entirely (input/output
-   * detectors, taint, `mode`), or `false` to opt out of guardrails altogether.
-   *
-   * @deprecated Agent-owned. Use `createAgent`'s `guardrails` (COR-1367),
-   * dispatched through {@link Bureau.run}. During the transition a catalog
-   * agent that declares no `guardrails` of its own inherits this value
-   * through `AgentRunContext.inheritedGuardrails` (a configuration replaces
-   * the preset for it, `false` opts it out); an agent's own declaration
-   * always wins. Removing this field leaves an undeclared agent on the
-   * AB-40 preset, so the removal is not a behavior change.
-   */
-  guardrails?: GuardrailsOptions | false;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
-  /**
-   * Skills for the runs this bureau composes itself (`createRun`). Never
-   * applied to a catalog agent dispatched through {@link Bureau.run}.
-   *
-   * @deprecated Agent-owned. Use `createAgent`'s `skills` (COR-1367); a
-   * catalog agent offers only the catalog it declares, and inherits nothing
-   * from this field.
-   */
-  skills?: SkillRuntimeConfiguration;
   streaming?: StreamingConfiguration;
   scheduler?: SchedulerConfiguration;
   /**
@@ -742,13 +679,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * this option.
    */
   wakeup?: boolean;
-  /**
-   * @deprecated Agent-owned. Configure `stopWhen` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  stopWhen?: StopCondition | StopCondition[];
   sessionPersistenceRetryDelayMilliseconds?: number;
   sessionPersistenceSleep?: (milliseconds: number) => Promise<void>;
   /**
@@ -764,20 +694,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `signal` so it does not itself leak a pending timer/interval.
    */
   shutdownTimeoutSleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
-  /**
-   * @deprecated Agent-owned. Configure `maximumSteps` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  maximumSteps?: number;
-  /**
-   * @deprecated Agent-owned. Configure `instructions` on the agent passed to
-   * `createAgent` instead and dispatch it through {@link Bureau.run}. Not yet
-   * removed — see AB-242's decision record and the removal issue it names
-   * (AB-352).
-   */
-  systemPrompt?: string;
   /**
    * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
    * default interceptor; pass an {@link ObservabilityOptions} (minus `eventTarget`,
@@ -2659,6 +2575,11 @@ export interface LocateRunCreationReceiptRequest {
 }
 
 export interface SubmitSchedulerTaskRequest {
+  /**
+   * The catalog agent the task runs as: its own `generate`, tools, stop condition, and
+   * instructions. An agent that is not in the catalog is refused with `NOT_FOUND`.
+   */
+  agentName: string;
   message: string;
   maximumSteps?: number;
   metadata?: Record<string, unknown>;

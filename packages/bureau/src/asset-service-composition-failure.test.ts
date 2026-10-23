@@ -5,6 +5,8 @@ import { describe, expect, it } from 'bun:test';
 import { shutdownThenRethrow } from './composition-failure';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from './agent-catalog';
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
   try {
@@ -25,9 +27,10 @@ describe('composition failure after the asset service started', () => {
     const runtime = createManualRuntimeServices();
     const fixture = createMemoryAssetStorageFixture({});
     const thrown = await rejectionOf(
-      createBureau({
-        agents: {},
-        generate: async () => ({ content: 'ok', toolCalls: [] }),
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: async () => ({ content: 'ok', toolCalls: [] }) }),
+        },
         durableExecution: true,
         persistence: textValueStore(new MemoryStorage()),
         runtime,

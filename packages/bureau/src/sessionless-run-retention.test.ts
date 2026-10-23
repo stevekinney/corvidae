@@ -34,6 +34,7 @@ import {
   pngBytes,
 } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -342,10 +343,14 @@ describe('a child run', () => {
   ) {
     const bureau = await openBureau(environment, agents, {
       // The parent never answers, but stops when it is aborted, as a provider call does.
-      generate: ({ signal }) =>
-        new Promise<never>((_resolve, reject) => {
-          signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      agents: {
+        default: createAgent({
+          generate: ({ signal }) =>
+            new Promise<never>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+            }),
         }),
+      },
     });
     const parent = await bureau.createRun({
       agentName: 'bureau',

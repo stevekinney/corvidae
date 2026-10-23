@@ -34,6 +34,7 @@ import { createToolbox } from 'armorer';
 import { createBureau } from '../../create-bureau';
 import type { BureauDiagnostic, BureauShutdownReport } from '../../types';
 import { emit, parseInvocationArguments, pollUntil, readClock, WAKEUP_MS } from './protocol';
+import type { AgentDefinitions } from '../../agent-catalog';
 
 const { directory, command, label } = parseInvocationArguments('bureau-invocation');
 const now = readClock(directory);
@@ -54,22 +55,24 @@ const parentGenerate: GenerateFunction = async ({ step }) => {
   return { content: `parent woke in ${label}`, toolCalls: [] };
 };
 
-const bureau = await createBureau({
+const bureau = await createBureau<AgentDefinitions>({
   agents: {
     worker: createAgent({
       name: 'worker',
       generate: async () => ({ content: `child done in ${label}`, toolCalls: [] }),
       stopWhen: stopWhen.noToolCalls(),
     }),
+    default: createAgent({
+      generate: parentGenerate,
+      toolbox: createToolbox([]),
+      stopWhen: stopWhen.some(stopWhen.toolCalled('scheduleWakeup'), stopWhen.noToolCalls()),
+    }),
   },
-  generate: parentGenerate,
-  toolbox: createToolbox([]),
   storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
   durableExecution: true,
   durableBackgroundTasks: 'manual',
   durableOwnership: { ownership: 'none' },
   wakeup: true,
-  stopWhen: stopWhen.some(stopWhen.toolCalled('scheduleWakeup'), stopWhen.noToolCalls()),
   onDiagnostic: (diagnostic: BureauDiagnostic) => {
     diagnostics.push(`${diagnostic.level} ${diagnostic.scope}: ${diagnostic.message}`);
   },
@@ -83,7 +86,7 @@ async function parentRunId(): Promise<string | undefined> {
 /** Starts the parent and its child, and returns once the child is done and the parent is parked. */
 async function startParentWithChild(): Promise<void> {
   const parent = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'plan the work',
     principal: PRINCIPAL,
   });

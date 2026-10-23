@@ -34,6 +34,7 @@ import {
   type GenerateFunction,
   HumanWaitParkedEvent,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import {
   createProcessLocalGrantStateStore,
@@ -47,6 +48,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -94,10 +96,14 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       };
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
@@ -107,11 +113,10 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       // durable park itself forces the break. `noToolCalls()` never matches
       // this generate function (it always calls a tool), so the ONLY thing
       // that can end this run's step loop is the `pendingHumanWait` break.
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'park-me' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
 
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
@@ -177,10 +182,14 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       return { content: 'approved and processed', toolCalls: [] };
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createEmptyToolbox(),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
@@ -188,11 +197,10 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       // post-loop park check sees `pendingHumanWait`); `noToolCalls` stops
       // the CONTINUATION step once it settles on plain content — matching
       // this test's own `generate`, which never calls a tool after step 1.
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'park-me' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
 
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
@@ -244,30 +252,33 @@ describe('requestHumanInput park survives a process restart while still parked (
     const databasePath = createTemporaryPath('ab336-human-wait-recovery', '.sqlite');
 
     let aCalls = 0;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async () => {
-        aCalls++;
-        return {
-          content: '',
-          toolCalls: [
-            {
-              id: `call-${aCalls}`,
-              name: 'requestHumanInput',
-              arguments: { signalName: 'human-response' },
-            },
-          ],
-        };
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            aCalls++;
+            return {
+              content: '',
+              toolCalls: [
+                {
+                  id: `call-${aCalls}`,
+                  name: 'requestHumanInput',
+                  arguments: { signalName: 'human-response' },
+                },
+              ],
+            };
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-me' });
+    const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
     await waitForCondition(
       () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
       'expected bureau A to park on requestHumanInput before the simulated crash',
@@ -278,18 +289,21 @@ describe('requestHumanInput park survives a process restart while still parked (
     // in its own in-memory action log, are both abandoned.
 
     let bCalls = 0;
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => {
-        bCalls++;
-        return { content: 'resumed after recovery', toolCalls: [] };
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            bCalls++;
+            return { content: 'resumed after recovery', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -348,31 +362,34 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     const databasePath = createTemporaryPath('cor106-human-wait-resolved', '.sqlite');
 
     let aCalls = 0;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async () => {
-        aCalls++;
-        if (aCalls > 1) return new Promise<never>(() => {}); // the crash
-        return {
-          content: '',
-          toolCalls: [
-            {
-              id: 'call-1',
-              name: 'requestHumanInput',
-              arguments: { signalName: 'human-response' },
-            },
-          ],
-        };
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            aCalls++;
+            if (aCalls > 1) return new Promise<never>(() => {}); // the crash
+            return {
+              content: '',
+              toolCalls: [
+                {
+                  id: 'call-1',
+                  name: 'requestHumanInput',
+                  arguments: { signalName: 'human-response' },
+                },
+              ],
+            };
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-me' });
+    const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
     await waitForCondition(
       () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
       'expected bureau A to park on requestHumanInput before the simulated crash',
@@ -388,15 +405,18 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     }));
     // Not disposing bureauA: this is the crash.
 
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'resumed', toolCalls: [] }),
-      toolbox: createEmptyToolbox(),
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'resumed', toolCalls: [] }),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -427,34 +447,37 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     const databasePath = createTemporaryPath('cor106-human-wait-multi-park', '.sqlite');
 
     let aCalls = 0;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async () => {
-        aCalls++;
-        if (aCalls <= 2) {
-          return {
-            content: '',
-            toolCalls: [
-              {
-                id: `call-${aCalls}`,
-                name: 'requestHumanInput',
-                arguments: { signalName: 'human-response' },
-              },
-            ],
-          };
-        }
-        if (aCalls === 3) return { content: '', toolCalls: [{ name: 'next', arguments: {} }] };
-        return new Promise<never>(() => {}); // the crash
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            aCalls++;
+            if (aCalls <= 2) {
+              return {
+                content: '',
+                toolCalls: [
+                  {
+                    id: `call-${aCalls}`,
+                    name: 'requestHumanInput',
+                    arguments: { signalName: 'human-response' },
+                  },
+                ],
+              };
+            }
+            if (aCalls === 3) return { content: '', toolCalls: [{ name: 'next', arguments: {} }] };
+            return new Promise<never>(() => {}); // the crash
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-twice-then-crash' });
+    const run = await bureauA.createRun({ agentName: 'default', message: 'park-twice-then-crash' });
     const resolvedIds: string[] = [];
     for (let ordinal = 0; ordinal < 2; ordinal++) {
       await waitForCondition(
@@ -475,30 +498,33 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     // Not disposing bureauA: this is the crash.
 
     let bCalls = 0;
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => {
-        bCalls++;
-        if (bCalls === 1) {
-          return {
-            content: '',
-            toolCalls: [
-              {
-                id: 'call-b',
-                name: 'requestHumanInput',
-                arguments: { signalName: 'human-response' },
-              },
-            ],
-          };
-        }
-        return { content: 'done', toolCalls: [] };
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            bCalls++;
+            if (bCalls === 1) {
+              return {
+                content: '',
+                toolCalls: [
+                  {
+                    id: 'call-b',
+                    name: 'requestHumanInput',
+                    arguments: { signalName: 'human-response' },
+                  },
+                ],
+              };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -530,33 +556,36 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
     const databasePath = createTemporaryPath('cor106-human-wait-resume-crash', '.sqlite');
 
     let aCalls = 0;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async () => {
-        aCalls++;
-        if (aCalls === 1) {
-          return {
-            content: '',
-            toolCalls: [
-              {
-                id: 'call-1',
-                name: 'requestHumanInput',
-                arguments: { signalName: 'human-response' },
-              },
-            ],
-          };
-        }
-        return new Promise<never>(() => {}); // the crash, before the next step commits
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            aCalls++;
+            if (aCalls === 1) {
+              return {
+                content: '',
+                toolCalls: [
+                  {
+                    id: 'call-1',
+                    name: 'requestHumanInput',
+                    arguments: { signalName: 'human-response' },
+                  },
+                ],
+              };
+            }
+            return new Promise<never>(() => {}); // the crash, before the next step commits
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-resume-crash' });
+    const run = await bureauA.createRun({ agentName: 'default', message: 'park-resume-crash' });
     await waitForCondition(
       () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
       'expected bureau A to park',
@@ -568,30 +597,33 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
     // Not disposing bureauA: this is the crash.
 
     let bCalls = 0;
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => {
-        bCalls++;
-        if (bCalls === 1) {
-          return {
-            content: '',
-            toolCalls: [
-              {
-                id: 'call-b',
-                name: 'requestHumanInput',
-                arguments: { signalName: 'human-response' },
-              },
-            ],
-          };
-        }
-        return { content: 'done', toolCalls: [] };
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            bCalls++;
+            if (bCalls === 1) {
+              return {
+                content: '',
+                toolCalls: [
+                  {
+                    id: 'call-b',
+                    name: 'requestHumanInput',
+                    arguments: { signalName: 'human-response' },
+                  },
+                ],
+              };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -638,7 +670,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
 
     const bureauA = await createBureau(options(async () => park('call-a')));
     const run = await bureauA.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'park-crash-repark-resolve',
     });
     await waitForCondition(
@@ -707,22 +739,25 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       arguments: { signalName: 'human-response' },
     });
     let aCalls = 0;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async () => {
-        aCalls++;
-        if (aCalls === 1) return { content: '', toolCalls: [call('a1'), call('a2')] };
-        if (aCalls === 2) return { content: '', toolCalls: [call('a3')] };
-        return new Promise<never>(() => {}); // step 3 hangs: the crash
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            aCalls++;
+            if (aCalls === 1) return { content: '', toolCalls: [call('a1'), call('a2')] };
+            if (aCalls === 2) return { content: '', toolCalls: [call('a3')] };
+            return new Promise<never>(() => {}); // step 3 hangs: the crash
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'parallel-park-crash' });
+    const run = await bureauA.createRun({ agentName: 'default', message: 'parallel-park-crash' });
     const pendingA = (): string[] =>
       bureauA
         .listPendingReviews()
@@ -747,19 +782,22 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
     const nextStepGate = new Promise<void>((resolve) => {
       releaseNextStep = resolve;
     });
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => {
-        bCalls++;
-        await nextStepGate;
-        return { content: 'done', toolCalls: [] };
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            bCalls++;
+            await nextStepGate;
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       await waitForCondition(() => bCalls >= 1, 'expected the recovered run to reach step 3');
@@ -796,26 +834,32 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     const databasePath = createTemporaryPath('ab336-toolbox-recovery', '.sqlite');
 
     let bureauAReachedStep1 = false;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) {
-          return { content: '', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        bureauAReachedStep1 = true; // step 0's checkpoint has committed
-        // Hang forever — the "process" dies here, before step 1's own
-        // generate call (the requestHumanInput call) ever resolves.
-        return new Promise<never>(() => {});
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              return { content: '', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            bureauAReachedStep1 = true; // step 0's checkpoint has committed
+            // Hang forever — the "process" dies here, before step 1's own
+            // generate call (the requestHumanInput call) ever resolves.
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
-    const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-me-after-recovery' });
+    const run = await bureauA.createRun({
+      agentName: 'default',
+      message: 'park-me-after-recovery',
+    });
     await waitForCondition(
       () => bureauAReachedStep1,
       'expected bureau A to reach step 1 before the simulated crash',
@@ -825,30 +869,33 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     // generate call, for bureau B's recoverAll() to pick up.
 
     let bCalls = 0;
-    const bureauB = await createBureau({
-      agents: {},
-      generate: async () => {
-        bCalls++;
-        if (bCalls === 1) {
-          return {
-            content: '',
-            toolCalls: [
-              {
-                id: 'call-1',
-                name: 'requestHumanInput',
-                arguments: { signalName: 'human-response' },
-              },
-            ],
-          };
-        }
-        return { content: 'resumed after recovery', toolCalls: [] };
+    const bureauB = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            bCalls++;
+            if (bCalls === 1) {
+              return {
+                content: '',
+                toolCalls: [
+                  {
+                    id: 'call-1',
+                    name: 'requestHumanInput',
+                    arguments: { signalName: 'human-response' },
+                  },
+                ],
+              };
+            }
+            return { content: 'resumed after recovery', toolCalls: [] };
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -958,18 +1005,21 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
 
   it('a needs_approval tool call on a humanInput run produces a pending review and does not execute', async () => {
     const charges: number[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: createChargeGenerate(),
-      toolbox: createGrantMatchableToolbox('humaninput-no-grant-secret', charges),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createChargeGenerate(),
+          toolbox: createGrantMatchableToolbox('humaninput-no-grant-secret', charges),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.toolOutcome('action_required'),
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
 
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === run.id),
@@ -1011,14 +1061,17 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
       },
     };
 
-    const bureau = await createBureau({
-      agents: {},
-      generate: createChargeGenerate(),
-      toolbox: createGrantMatchableToolbox(approvalSecret, charges, observedGrantStateStore),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createChargeGenerate(),
+          toolbox: createGrantMatchableToolbox(approvalSecret, charges, observedGrantStateStore),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.toolOutcome('action_required'),
     });
 
     try {
@@ -1036,7 +1089,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
       });
 
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Charge the customer',
         principal,
       });
@@ -1099,30 +1152,33 @@ describe('the first park request in a step is honored and the rest are refused (
   async function startStep(calls: ParkCall[], followUp?: ParkCall) {
     const requests: Map<string, Outcome>[] = [];
     let generateCalls = 0;
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context) => {
-        generateCalls++;
-        if (generateCalls === 1) return { content: '', toolCalls: calls };
-        requests.push(outcomesFrom(context));
-        if (generateCalls === 2 && followUp !== undefined) {
-          return { content: '', toolCalls: [followUp] };
-        }
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context) => {
+            generateCalls++;
+            if (generateCalls === 1) return { content: '', toolCalls: calls };
+            requests.push(outcomesFrom(context));
+            if (generateCalls === 2 && followUp !== undefined) {
+              return { content: '', toolCalls: [followUp] };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.some(
+            stopWhen.toolCalled('requestHumanInput'),
+            stopWhen.toolCalled('scheduleWakeup'),
+            stopWhen.noToolCalls(),
+          ),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
       durableBackgroundTasks: 'manual',
       humanInput: true,
       wakeup: true,
-      stopWhen: stopWhen.some(
-        stopWhen.toolCalled('requestHumanInput'),
-        stopWhen.toolCalled('scheduleWakeup'),
-        stopWhen.noToolCalls(),
-      ),
     });
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'park-twice' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'park-twice' });
     const reviews = () =>
       bureau
         .listPendingReviews()

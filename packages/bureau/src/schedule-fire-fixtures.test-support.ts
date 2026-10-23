@@ -9,6 +9,7 @@ import {
   type GenerateFunction,
   stopWhen,
   type Toolbox,
+  createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage, type Storage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
@@ -20,6 +21,7 @@ import { createBureau } from './create-bureau';
 import { createBureauHandler } from './http/create-bureau-handler.ts';
 import { authentication, OWNER } from './http/management/management-fixtures.test-support.ts';
 import type { Bureau, BureauOptions, PendingReview } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 export async function pollUntil<T>(
   check: () => T | undefined | Promise<T | undefined>,
@@ -72,15 +74,15 @@ export function createScheduleFireHarness() {
       return wrap(raw);
     },
     async open(options: Partial<BureauOptions> = {}): Promise<Bureau> {
-      const bureau = await createBureau({
+      const bureau = await createBureau<AgentDefinitions>({
         id: 'schedule-fire-reviews-bureau',
-        agents: {},
+        agents: {
+          default: createAgent({ toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
         durableBackgroundTasks: 'manual',
         durableOwnership: { ownership: 'none' },
-        toolbox: createToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         // `createBureauHandler` serves the asset operations, so it needs a Bureau with assets.
         assets: { storage: createMemoryAssetStorage() },
         ...options,

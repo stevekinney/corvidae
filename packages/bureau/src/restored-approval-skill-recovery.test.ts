@@ -7,7 +7,7 @@
  * The first process stays open across each "restart", as in the other restart tests: two Bureaus
  * share one SQLite file, and the first, held in a step, stands for the process that died there.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { type Storage } from '@lostgradient/weft';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
@@ -34,6 +34,7 @@ import {
 } from './skill-policy-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -152,11 +153,15 @@ describe('a run’s approval after a later run starts in its session', () => {
   async function restoredRunWithSkill(catalog: SkillCatalogOnDisk) {
     const path = harness.nextDatabasePath();
     const first = await harness.open({
-      generate: lockedAfterCharging('stop'),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: lockedAfterCharging('stop'),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const run = await first.createRun({
       agentName: 'bureau',
@@ -174,11 +179,15 @@ describe('a run’s approval after a later run starts in its session', () => {
     await letStepsCommit();
     const charges: number[] = [];
     const restarted = await harness.open({
-      generate: hanging,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: hanging,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -212,11 +221,15 @@ describe('a run’s approval after a later run starts in its session', () => {
     const catalog = await skillCatalogOnDisk();
     const path = harness.nextDatabasePath();
     const first = await harness.open({
-      generate: lockedAfterCharging('wait'),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: lockedAfterCharging('wait'),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
     await reviewOf(first, fireId);
@@ -227,11 +240,15 @@ describe('a run’s approval after a later run starts in its session', () => {
     await letStepsCommit();
     const charges: number[] = [];
     const restarted = await harness.open({
-      generate: hanging,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: hanging,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     const restored = await reviewOf(restarted, fireId);
     // The start of a run in the fire's session clears its snapshot: a run cannot be started in a
@@ -258,10 +275,14 @@ describe('a run’s approval after a later run starts in its session', () => {
           }
         : { content: 'done', toolCalls: [] };
     const first = await harness.open({
-      generate: chargesOnce,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const run = await first.createRun({
       agentName: 'bureau',
@@ -274,10 +295,14 @@ describe('a run’s approval after a later run starts in its session', () => {
     );
     const charges: number[] = [];
     const restarted = await harness.open({
-      generate: hanging,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: hanging,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -301,11 +326,15 @@ describe('a fire replayed after its process died in a step', () => {
     const path = harness.nextDatabasePath();
     const life = { current: 'first' as 'first' | 'second' };
     const first = await harness.open({
-      generate: dyingInStepOne(life),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: dyingInStepOne(life),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
     await pollForTime(
@@ -327,12 +356,16 @@ describe('a fire replayed after its process died in a step', () => {
   ) {
     life.current = 'second';
     return harness.open({
-      generate: dyingInStepOne(life, offered),
-      stopWhen: stopWhen.noToolCalls(),
       ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
-      toolbox: chargeApprovalToolbox(charges),
       storage:
         wrap === undefined ? { type: 'sqlite', path } : await harness.sqliteStorage(path, wrap),
+      agents: {
+        default: createAgent({
+          generate: dyingInStepOne(life, offered),
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
   }
 
@@ -442,11 +475,15 @@ describe('a session run reattached after its process died in a step', () => {
     const path = harness.nextDatabasePath();
     const life = { current: 'first' as 'first' | 'second' };
     const first = await harness.open({
-      generate: dyingInStepOne(life),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: dyingInStepOne(life),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const run = await first.createRun({
       agentName: 'bureau',
@@ -472,11 +509,15 @@ describe('a session run reattached after its process died in a step', () => {
     life.current = 'second';
     return harness.open({
       ...(onLog === undefined ? {} : { onLog }),
-      generate: dyingInStepOne(life, offered),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: dyingInStepOne(life, offered),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
   }
 
@@ -569,11 +610,15 @@ describe('a fire replayed after its process died before committing the step that
       return { content: '', toolCalls };
     };
     const first = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox([]),
       storage: await harness.sqliteStorage(path, crash.wrap),
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
     await Promise.race([crash.reached, new Promise((resolve) => setTimeout(resolve, 3000))]);
@@ -586,11 +631,15 @@ describe('a fire replayed after its process died before committing the step that
     life.current = 'second';
     const charges: number[] = [];
     const restarted = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     const listed = await reviewOf(restarted, fireId);
 

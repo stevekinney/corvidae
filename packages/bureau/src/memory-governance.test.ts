@@ -9,7 +9,7 @@ import {
   type GovernedMemory,
   type MemoryAuthority,
 } from '@lostgradient/memory';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -25,6 +25,7 @@ import {
   type RunMemoryIdentity,
 } from './runtime-composition';
 import { waitForRunState } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 function governedMemoryFixture() {
   const runtime = createManualRuntimeServices({ identifierSeed: 'bureau-memory-governance' });
@@ -353,21 +354,24 @@ describe('createBureau with governed memory (COR-41)', () => {
         toolCalls: [],
       };
     };
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       // COR-1546: a run's memory is partitioned by the Bureau's identifier and the run's owner of
       // record, into its agent's collection, so the second chat below recalls the first's.
       id: 'tenant-a',
-      agents: {},
-      generate,
-      toolbox: createToolbox([probe]),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([probe]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       memory,
-      stopWhen: stopWhen.noToolCalls(),
       requestAuthorityValidator: () => true,
     });
     try {
       expect(bureau.memory).toBe(memory);
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Summarize deployment approvals.',
         sessionId: 'session-9',
         principal: 'owner-a',
@@ -375,7 +379,7 @@ describe('createBureau with governed memory (COR-41)', () => {
       });
       await waitForRunState(bureau, first.id);
       const second = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Are deployments approved?',
         sessionId: 'session-10',
         principal: 'owner-a',

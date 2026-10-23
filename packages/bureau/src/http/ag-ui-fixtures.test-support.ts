@@ -44,6 +44,7 @@ import {
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource } from './owner-predicate.ts';
+import type { AgentDefinitions } from '../agent-catalog';
 
 export const AGENT = 'assistant';
 
@@ -170,32 +171,38 @@ async function build(
     seam = seamStorage(real);
   }
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: 'ag-ui-fixture',
-    agents: Object.fromEntries(
-      [AGENT, ...(options.otherAgents ?? [])].map((name) => [
-        name,
-        // A run in a session takes its stop condition and its toolbox from the agent that
-        // owns it (COR-1577), not from the Bureau, so the agent carries the ones the test chose.
-        createAgent({
-          generate,
+    agents: {
+      ...Object.fromEntries(
+        [AGENT, ...(options.otherAgents ?? [])].map((name) => [
           name,
-          ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
-          ...(options.guardrails === undefined ? {} : { guardrails: options.guardrails }),
-          ...(options.mediaCostEstimator === undefined
-            ? {}
-            : { mediaCostEstimator: options.mediaCostEstimator }),
-          stopWhen:
-            options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-          ...(options.maximumSteps === undefined ? {} : { maximumSteps: options.maximumSteps }),
-          ...(options.onMaximumSteps === undefined
-            ? {}
-            : { onMaximumSteps: options.onMaximumSteps }),
-        }),
-      ]),
-    ),
-    generate,
-    toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
+          // A run in a session takes its stop condition and its toolbox from the agent that
+          // owns it (COR-1577), not from the Bureau, so the agent carries the ones the test chose.
+          createAgent({
+            generate,
+            name,
+            ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
+            ...(options.guardrails === undefined ? {} : { guardrails: options.guardrails }),
+            ...(options.mediaCostEstimator === undefined
+              ? {}
+              : { mediaCostEstimator: options.mediaCostEstimator }),
+            stopWhen:
+              options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+            ...(options.maximumSteps === undefined ? {} : { maximumSteps: options.maximumSteps }),
+            ...(options.onMaximumSteps === undefined
+              ? {}
+              : { onMaximumSteps: options.onMaximumSteps }),
+          }),
+        ]),
+      ),
+      default: createAgent({
+        generate,
+        toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
+        stopWhen:
+          options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      }),
+    },
     storage: seam?.storage ?? fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
     // The handler serves the asset operations and the content route, so it needs the service.
@@ -212,7 +219,6 @@ async function build(
     ...(options.durableOwnership === undefined
       ? {}
       : { durableOwnership: options.durableOwnership }),
-    stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
   });
   const mount = (agUi: AgUiOptions | undefined): Handler =>
     createBureauHandler(bureau, {

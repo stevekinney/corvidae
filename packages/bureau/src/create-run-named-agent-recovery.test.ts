@@ -78,8 +78,8 @@ async function bureauOver(
           stopWhen: stopWhen.noToolCalls(),
         });
   const bureau = await createBureau<AgentDefinitions>({
-    agents:
-      scribe === undefined
+    agents: {
+      ...(scribe === undefined
         ? {}
         : {
             scribe:
@@ -89,7 +89,9 @@ async function bureauOver(
                     ...scribe,
                     generationProfile: { ...scribe.generationProfile, revision: options.revision },
                   },
-          },
+          }),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+    },
     ...(options.wide === undefined
       ? {}
       : { generate: options.wide, toolbox: createToolbox([next]) }),
@@ -103,7 +105,6 @@ async function bureauOver(
     storage: { type: 'sqlite', path: databasePath },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    stopWhen: stopWhen.noToolCalls(),
   });
   bureaus.push(bureau);
   return bureau;
@@ -213,11 +214,11 @@ describe('requestHumanInput on a named session run', () => {
           toolbox: createToolbox([]),
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(bureau);
 

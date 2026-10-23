@@ -28,6 +28,7 @@ import {
   type BureauQuiescenceReport,
 } from './quiescence';
 import { createMemoryStorageFixture, createSqliteStorageFixture } from './storage-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -153,8 +154,8 @@ async function harnessWithMemoryStorage(
   const harness = await createBureauTestHarness({
     agents: {
       worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
+      default: createAgent({ generate: mockGenerate() }),
     },
-    generate: mockGenerate(),
     ...overrides,
     storage,
   });
@@ -346,9 +347,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     it('names a durable owner with no live process-local owner and no recorded detachment (kind "durable-owner", discovered via public-snapshot)', async () => {
       const { generate, toolbox } = hangingDurableFixture();
       const harness = await harnessWithMemoryStorage({
-        agents: {},
-        generate,
-        toolbox,
+        agents: {
+          default: createAgent({ generate, toolbox }),
+        },
         durableExecution: true,
       });
 
@@ -404,9 +405,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       const { generate, toolbox } = hangingDurableFixture();
       const storage1 = createSqliteStorageFixture({ runtime: runtime1, path });
       const harness = await createBureauTestHarness({
-        agents: {},
-        generate,
-        toolbox,
+        agents: {
+          default: createAgent({ generate, toolbox }),
+        },
         runtime: runtime1,
         storage: storage1,
         durableExecution: true,
@@ -431,9 +432,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       const runtime2 = createManualRuntimeServices();
       const storage2 = createSqliteStorageFixture({ runtime: runtime2, path });
       const secondHarness = await createBureauTestHarness({
-        agents: {},
-        generate: mockGenerate(),
-        toolbox: createToolbox([]),
+        agents: {
+          default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+        },
         runtime: runtime2,
         storage: storage2,
         durableExecution: true,
@@ -505,9 +506,10 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       const generate = blockingGenerate();
       const storage = createSqliteStorageFixture({ runtime, path });
       const harness = await createBureauTestHarness({
-        agents: { worker: createAgent({ name: 'worker', generate }) },
-        generate,
-        toolbox: createToolbox([]),
+        agents: {
+          worker: createAgent({ name: 'worker', generate }),
+          default: createAgent({ generate, toolbox: createToolbox([]) }),
+        },
         runtime,
         storage,
         durableExecution: true,
@@ -556,8 +558,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: hungGenerate(),
+      agents: {
+        default: createAgent({ generate: hungGenerate() }),
+      },
       storage,
       scheduler: { enabled: true, idleDelay: 1 },
       shutdownTimeoutSleep: sleep,
@@ -597,8 +600,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     // default sleep's timer never fired.
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: hungGenerate(),
+      agents: {
+        default: createAgent({ generate: hungGenerate() }),
+      },
       storage,
       scheduler: { enabled: true, idleDelay: 1 },
     });
@@ -654,8 +658,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     // fired exactly as expected (review finding, PR #533).
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: hungGenerate(),
+      agents: {
+        default: createAgent({ generate: hungGenerate() }),
+      },
       storage,
       scheduler: { enabled: true, idleDelay: 1 },
     });
@@ -740,9 +745,13 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       resolveInvoked = resolve;
     });
     const harness = await harnessWithMemoryStorage({
-      generate: () => {
-        resolveInvoked?.();
-        return new Promise<never>(() => {});
+      agents: {
+        default: createAgent({
+          generate: () => {
+            resolveInvoked?.();
+            return new Promise<never>(() => {});
+          },
+        }),
       },
     });
 
@@ -794,8 +803,9 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
 
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: engine.wrapGenerate(mockGenerate()),
+      agents: {
+        default: createAgent({ generate: engine.wrapGenerate(mockGenerate()) }),
+      },
       storage,
       runtime,
       scheduler: { enabled: true, idleDelay: 1 },
@@ -869,8 +879,8 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
+        default: createAgent({ generate: mockGenerate() }),
       },
-      generate: mockGenerate(),
       persistence: wrappedKv,
       storage,
       runtime,
@@ -958,8 +968,8 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
+        default: createAgent({ generate: mockGenerate() }),
       },
-      generate: mockGenerate(),
       persistence: wrappedKv,
       storage,
       runtime,
@@ -1050,9 +1060,8 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
+        default: createAgent({ generate: mockGenerate(), stopWhen: stopWhen.noToolCalls() }),
       },
-      generate: mockGenerate(),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
       runtime,
     });

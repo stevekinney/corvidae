@@ -120,7 +120,11 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const seen: GenerateContext[] = [];
     const bureau = await openBureau({
       seen,
-      guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
+      agents: {
+        default: createAgent({
+          guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
+        }),
+      },
     });
     const { source } = await admitImage(bureau);
 
@@ -142,7 +146,11 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const seen: GenerateContext[] = [];
     const bureau = await openBureau({
       seen,
-      guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
+      agents: {
+        default: createAgent({
+          guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
+        }),
+      },
     });
     const { source } = await admitImage(bureau);
 
@@ -240,22 +248,25 @@ describe('session input carrying a managed asset (COR-716)', () => {
     const releaseStepZero = deferred();
     const fixture = createMemoryAssetStorageFixture({});
     cleanups.push(() => fixture.dispose());
-    const bureau = await createBureau({
-      agents: {},
-      generate: withBackendDescriptors(async (context: GenerateContext) => {
-        seen.push(context);
-        if (context.step === 0) {
-          stepZeroStarted.resolve();
-          await releaseStepZero.promise;
-          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        return { content: 'done', toolCalls: [] };
-      }, anthropicDescriptors),
-      toolbox: createToolbox([nextTool()]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: withBackendDescriptors(async (context: GenerateContext) => {
+            seen.push(context);
+            if (context.step === 0) {
+              stepZeroStarted.resolve();
+              await releaseStepZero.promise;
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            return { content: 'done', toolCalls: [] };
+          }, anthropicDescriptors),
+          toolbox: createToolbox([nextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       assets: { storage: fixture.storage },
-      stopWhen: stopWhen.noToolCalls(),
     });
     cleanups.push(async () => {
       releaseStepZero.resolve();
@@ -263,7 +274,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     });
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Start',
       principal: alice.id,
     });
@@ -323,11 +334,13 @@ describe('session input carrying a managed asset (COR-716)', () => {
           toolbox: createToolbox([nextTool()]),
           stopWhen: stopWhen.noToolCalls(),
         }),
+        default: createAgent({
+          guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
+        }),
       },
       storage: { type: 'memory' },
       durableExecution: true,
       assets: { storage: fixture.storage },
-      guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
     });
     cleanups.push(async () => {
       releaseStepZero.resolve();
@@ -370,28 +383,31 @@ describe('session input carrying a managed asset (COR-716)', () => {
     const seen: GenerateContext[] = [];
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
-    const bureau = await createBureau({
-      agents: {},
-      generate: withBackendDescriptors(async (context: GenerateContext) => {
-        seen.push(context);
-        if (context.step === 0) {
-          stepZeroStarted.resolve();
-          await releaseStepZero.promise;
-          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        return { content: 'done', toolCalls: [] };
-      }, anthropicDescriptors),
-      toolbox: createToolbox([nextTool()]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: withBackendDescriptors(async (context: GenerateContext) => {
+            seen.push(context);
+            if (context.step === 0) {
+              stepZeroStarted.resolve();
+              await releaseStepZero.promise;
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            return { content: 'done', toolCalls: [] };
+          }, anthropicDescriptors),
+          toolbox: createToolbox([nextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     cleanups.push(async () => {
       releaseStepZero.resolve();
       await bureau.dispose();
     });
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Start',
       principal: alice.id,
     });
@@ -423,9 +439,10 @@ describe('session input carrying a managed asset (COR-716)', () => {
   it('refuses a malformed payload at the door instead of storing input no run could read', async () => {
     const seen: GenerateContext[] = [];
     const hold = deferred();
-    const bureau = await createBureau({
-      agents: {},
-      generate: recordingGenerate(seen, hold.promise),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: recordingGenerate(seen, hold.promise) }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
@@ -434,7 +451,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       await bureau.dispose();
     });
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'Start',
       principal: alice.id,
     });
@@ -477,10 +494,10 @@ describe('the asset service is ready before the scheduler can fire (COR-716)', (
       });
     const fixture = createMemoryAssetStorageFixture({});
     cleanups.push(() => fixture.dispose());
-    const bureau = await createBureau({
-      agents: {},
-      generate: recordingGenerate([]),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: recordingGenerate([]), toolbox: createToolbox([]) }),
+      },
       storage: spy('engine', new MemoryStorage()),
       durableExecution: true,
       assets: { storage: spy('assets', fixture.storage) },

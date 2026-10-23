@@ -5,12 +5,14 @@ import {
   SchedulePausedEvent,
   ScheduleResumedEvent,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 // ---------------------------------------------------------------------------
 // D6 scheduled-fire E2E (#109)
@@ -81,14 +83,17 @@ describe('D6 scheduled-fire path (#109)', () => {
     'fires a stateless interval schedule and runs the agent with a fresh session per fire',
     async () => {
       const calls: RecordedCall[] = [];
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate(calls),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate(calls),
+            toolbox: createEmptyToolbox(),
+            instructions: 'You are a scheduled agent.',
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        systemPrompt: 'You are a scheduled agent.',
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -128,14 +133,17 @@ describe('D6 scheduled-fire path (#109)', () => {
     async () => {
       const sessionId = 'daily-digest';
       const calls: RecordedCall[] = [];
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate(calls),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate(calls),
+            toolbox: createEmptyToolbox(),
+            instructions: 'You are a scheduled agent.',
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        systemPrompt: 'You are a scheduled agent.',
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -181,10 +189,13 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
   it(
     'dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent from Bureau.pauseSchedule/resumeSchedule/cancelSchedule',
     async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate([]),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate([]),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -221,10 +232,13 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
   it(
     'dispatches AgentScheduledEvent (schedule.created) exactly once from Bureau.createSchedule, carrying scheduleId and the definition summary (AB-298)',
     async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate([]),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate([]),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });

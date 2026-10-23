@@ -221,8 +221,8 @@ describe('a procedure from proposal to revocation through public APIs (COR-770)'
           toolbox: createToolbox(allowed),
           skillDescriptors: [skill],
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(bureau);
     const run = await bureau.createRun({

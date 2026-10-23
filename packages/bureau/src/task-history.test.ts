@@ -18,6 +18,7 @@ import { createAskingAgent } from './test/task-record-crash-agent';
 import { TASK_RECORD_KEY_PREFIX } from './task-registry';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import type { AgentDefinitions } from './agent-catalog';
 
 const finishes: GenerateFunction = async () => ({ content: 'done', toolCalls: [] });
 const toolbox = createToolbox([]) as unknown as Toolbox;
@@ -25,18 +26,18 @@ const toolbox = createToolbox([]) as unknown as Toolbox;
 describe('a task’s own message history', () => {
   it('records the originating message of a session run, and of a catalog run', async () => {
     const worker = createAgent({ name: 'worker', generate: createMockGenerate([]) });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'history-bureau',
-      agents: { worker },
-      generate: finishes,
-      toolbox,
+      agents: {
+        worker,
+        default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const session = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'plan my trip',
         principal: 'api-key:alice',
       });
@@ -64,19 +65,18 @@ describe('a task’s own message history', () => {
   it('keeps the history, and the owner of a settled run, across a restart over the same storage', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
     const open = () =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         id: 'history-restart',
-        agents: {},
-        generate: finishes,
-        toolbox,
+        agents: {
+          default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
+        },
         storage: fixture.configuration,
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
     try {
       const first = await open();
       const run = await first.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'before the restart',
         principal: 'api-key:alice',
       });
@@ -105,18 +105,17 @@ describe('a task’s own message history', () => {
   });
 
   it('forgets a task whose run is deleted', async () => {
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'history-delete',
-      agents: {},
-      generate: finishes,
-      toolbox,
+      agents: {
+        default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'short lived',
         principal: 'api-key:alice',
       });
@@ -133,19 +132,18 @@ describe('a task’s own message history', () => {
 
   it('deletes a run whose task record cannot be read, and diagnoses it', async () => {
     const diagnostics: string[] = [];
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'history-unreadable',
-      agents: {},
-      generate: finishes,
-      toolbox,
+      agents: {
+        default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'short lived',
         principal: 'api-key:alice',
       });
@@ -171,19 +169,18 @@ describe('a task’s own message history', () => {
         signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
       });
     const open = () =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         id: 'shutdown-abort',
-        agents: {},
-        generate: parks,
-        toolbox,
+        agents: {
+          default: createAgent({ generate: parks, toolbox, stopWhen: stopWhen.noToolCalls() }),
+        },
         storage: fixture.configuration,
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
     try {
       const first = await open();
       const run = await first.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hold',
         principal: 'api-key:alice',
       });
@@ -229,19 +226,18 @@ describe('a task’s own message history', () => {
       },
     }) as Storage;
     const open = (storage: Storage | typeof fixture.configuration) =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         id: 'history-flush',
-        agents: {},
-        generate: finishes,
-        toolbox,
+        agents: {
+          default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
+        },
         storage,
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
     try {
       const first = await open(slowSettlements);
       const run = await first.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'finish at once',
         principal: 'api-key:alice',
       });
@@ -267,15 +263,22 @@ describe('a task’s own message history', () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
     const diagnostics: string[] = [];
     const open = (collect: boolean) =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         id: 'history-engine-dispose',
-        agents: { asker: createAskingAgent() },
-        generate: finishes,
-        toolbox,
+        agents: {
+          asker: createAskingAgent(),
+          default: createAgent({
+            generate: finishes,
+            toolbox,
+            stopWhen: stopWhen.some(
+              stopWhen.toolCalled('requestHumanInput'),
+              stopWhen.noToolCalls(),
+            ),
+          }),
+        },
         storage: fixture.configuration,
         durableExecution: true,
         humanInput: true,
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         durableOwnership: { ownership: 'none' },
         ...(collect
           ? { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic.message) }

@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -30,20 +30,25 @@ import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
 /** The Bureau every scenario boots over the dead process's storage. */
 function openBureau(storagePath: string) {
-  return createBureau({
+  return createBureau<AgentDefinitions>({
     id: 'task-record-crash',
-    agents: { asker: createAskingAgent() },
-    generate: finishes,
-    toolbox: createToolbox([]),
+    agents: {
+      asker: createAskingAgent(),
+      default: createAgent({
+        generate: finishes,
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      }),
+    },
     storage: { type: 'sqlite', path: storagePath },
     durableExecution: true,
     humanInput: true,
-    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     durableOwnership: { ownership: 'none' },
     // Shutting down while the recovered parked run is still in flight reports it as cut short.
     onDiagnostic: () => undefined,

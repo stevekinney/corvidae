@@ -22,6 +22,7 @@ import { BunSQLiteStorage, type Storage } from '@lostgradient/weft';
 
 import { createBureau } from '../create-bureau';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const [mode, storagePath, workflowDirectory, markerPath] = process.argv.slice(2);
 if (
@@ -60,7 +61,7 @@ function killingAfterStepClaim(raw: Storage): Storage {
 }
 
 let midstepStarted = false;
-const bureau = await createBureau({
+const bureau = await createBureau<AgentDefinitions>({
   agents: {
     writer: createAgent({
       name: 'writer',
@@ -74,9 +75,9 @@ const bureau = await createBureau({
         return { content: `answered: ${text.split('\n')[0]}`, toolCalls: [] };
       },
     }),
+    default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
   },
   workflowDirectory,
-  stopWhen: stopWhen.noToolCalls(),
   storage: killingAfterStepClaim(new BunSQLiteStorage(storagePath)),
   durableExecution: true,
   durableOwnership: {

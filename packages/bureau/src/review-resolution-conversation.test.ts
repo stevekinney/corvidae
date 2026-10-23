@@ -15,6 +15,7 @@ import {
   type Toolbox,
   waitForCondition,
   waitForRunState,
+  createAgent,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
@@ -24,6 +25,7 @@ import { z } from 'zod';
 
 import { ApprovalOutcomeNotWrittenError, BureauError, createBureau } from './create-bureau';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const APPROVAL_SECRET = 'review-resolution-secret';
 
@@ -83,25 +85,28 @@ async function settle(bureau: Bureau, runId: string): Promise<void> {
 async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
   let generations = 0;
   const seenByGenerate: Array<ReadonlyArray<Message>> = [];
-  const bureau = await createBureau({
-    agents: {},
-    generate: async (context) => {
-      generations += 1;
-      seenByGenerate.push(context.conversation.getMessages({ includeHidden: true }));
-      return generations === 1
-        ? {
-            content: '',
-            toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
-          }
-        : { content: 'Charged.', toolCalls: [] };
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async (context) => {
+          generations += 1;
+          seenByGenerate.push(context.conversation.getMessages({ includeHidden: true }));
+          return generations === 1
+            ? {
+                content: '',
+                toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+              }
+            : { content: 'Charged.', toolCalls: [] };
+        },
+        toolbox,
+        stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      }),
     },
-    toolbox,
-    stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     persistence: textValueStore(new MemoryStorage()),
     sessionPersistenceRetryDelayMilliseconds: 0,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
   });
-  const run = await bureau.createRun({ agentName: 'bureau', message: 'Charge the customer' });
+  const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
   await settle(bureau, run.id);
   const [review] = bureau.listPendingReviews();
   if (review === undefined || review.kind !== 'tool-approval') {
@@ -319,20 +324,23 @@ describe('an approval resolved while its run is still going', () => {
       { kind: 'respond', response: { content: 'Carried on.', toolCalls: [] } },
     ]);
     // No `pendingApproval()`: the run goes on past the gated call.
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'running-approval',
-      agents: {},
-      generate,
-      toolbox: approvalToolbox(charges),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       sessionPersistenceRetryDelayMilliseconds: 0,
       onDiagnostic: () => undefined,
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'charge it',
         principal: 'alice',
       });
@@ -364,7 +372,7 @@ describe('createRun with neither message nor appendMessages', () => {
     try {
       await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
 
-      const next = await bureau.createRun({ agentName: 'bureau', sessionId: run.sessionId });
+      const next = await bureau.createRun({ agentName: 'default', sessionId: run.sessionId });
       await settle(bureau, next.id);
 
       expect(next.id).not.toBe(run.id);
@@ -378,18 +386,19 @@ describe('createRun with neither message nor appendMessages', () => {
   });
 
   it('is refused as a bad request when the conversation ends in an assistant row', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'Hello.', toolCalls: [] }),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: 'Hello.', toolCalls: [] }) }),
+      },
       persistence: textValueStore(new MemoryStorage()),
     });
     try {
-      const first = await bureau.createRun({ agentName: 'bureau', message: 'Hi' });
+      const first = await bureau.createRun({ agentName: 'default', message: 'Hi' });
       await settle(bureau, first.id);
       const runsBefore = bureau.listRuns().length;
 
       const error = await bureau
-        .createRun({ agentName: 'bureau', sessionId: first.sessionId })
+        .createRun({ agentName: 'default', sessionId: first.sessionId })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -404,12 +413,13 @@ describe('createRun with neither message nor appendMessages', () => {
   });
 
   it('is refused as a bad request on a new session, which holds no row to answer', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: '', toolCalls: [] }),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),
+      },
     });
     try {
-      const error = await bureau.createRun({ agentName: 'bureau' }).then(
+      const error = await bureau.createRun({ agentName: 'default' }).then(
         () => undefined,
         (rejection: unknown) => rejection,
       );

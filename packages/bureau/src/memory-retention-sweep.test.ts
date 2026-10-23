@@ -144,9 +144,13 @@ async function start(
   const diagnostics: Diagnostic[] = [];
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
-    agents: options.agents ?? {},
-    generate: async () => ({ content: 'ok', toolCalls: [] }),
-    stopWhen: stopWhen.noToolCalls(),
+    agents: {
+      ...(options.agents ?? {}),
+      default: createAgent({
+        generate: async () => ({ content: 'ok', toolCalls: [] }),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     persistence: textValueStore(new MemoryStorage()),
     ...(options.withoutMemory ? {} : { memory: built.served }),
     ...(options.manual === false ? {} : { durableBackgroundTasks: 'manual' as const }),

@@ -16,7 +16,7 @@
  * completion callbacks (see `event-history-run-ownership-recovery-lmdb.test.ts`).
  */
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import {
   type BatchOperation,
   decode,
@@ -42,9 +42,10 @@ import {
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
 import type { Bureau, BureauDiagnostic, CreateRunRequest } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const REQUEST: CreateRunRequest = {
-  agentName: 'bureau',
+  agentName: 'default',
   message: 'Reconcile the ledger.',
   principal: 'alice',
   runCreationRequestId: 'request-1',
@@ -297,17 +298,20 @@ async function withScenario(
       },
       async boot(storage, generate) {
         const crashing = crashes.some((crash) => crash.storage === storage);
-        const bureau = await createBureau({
+        const bureau = await createBureau<AgentDefinitions>({
           ...(crashing
             ? { onDiagnostic: (diagnostic) => deadProcessDiagnostics.push(diagnostic) }
             : {}),
-          agents: {},
-          generate,
-          toolbox: createToolbox<readonly Tool[]>([]),
+          agents: {
+            default: createAgent({
+              generate,
+              toolbox: createToolbox<readonly Tool[]>([]),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
           storage,
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         });
         bureaus.push(bureau);
         return bureau;

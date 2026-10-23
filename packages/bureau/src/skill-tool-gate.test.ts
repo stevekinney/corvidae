@@ -32,6 +32,7 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -107,10 +108,14 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
     const catalog = await skillCatalogOnDisk();
     const executions: string[] = [];
     const bureau = await harness.open({
-      generate: activateThenPing(),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: pingToolbox(executions),
+      agents: {
+        default: createAgent({
+          generate: activateThenPing(),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: pingToolbox(executions),
+        }),
+      },
     });
 
     const run = await bureau.createRun({ agentName: 'bureau', message: 'activate, then ping' });
@@ -244,19 +249,23 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     const executions: string[] = [];
     let reachedLaterStep = false;
     const first = await harness.open({
-      generate: activateThenPing(
-        (context) =>
-          new Promise((_resolve, reject) => {
-            reachedLaterStep = true;
-            context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
-              once: true,
-            });
-          }),
-      ),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: pingToolbox(executions),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: activateThenPing(
+            (context) =>
+              new Promise((_resolve, reject) => {
+                reachedLaterStep = true;
+                context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+                  once: true,
+                });
+              }),
+          ),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: pingToolbox(executions),
+        }),
+      },
     });
     const run = await first.createRun({ agentName: 'bureau', message: 'activate, then ping' });
     await pollForTime(
@@ -270,13 +279,17 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     // The process "crashes": a second Bureau recovers the run from the same store.
     const replayed: Array<{ outcome: string; code?: string; content: unknown } | undefined> = [];
     const recovered = await harness.open({
-      generate: activateThenPing(async (context) => {
-        replayed.push(resultOf(getMessages(context.conversation.current), 'ping-1'));
-      }),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: pingToolbox(executions),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: activateThenPing(async (context) => {
+            replayed.push(resultOf(getMessages(context.conversation.current), 'ping-1'));
+          }),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog: await catalog.discover() },
+          toolbox: pingToolbox(executions),
+        }),
+      },
     });
     await pollUntil(
       () => (replayed.length > 0 ? true : undefined),
@@ -391,10 +404,14 @@ async function playScript(path: RunPath, script: ScriptedCall[][]): Promise<Scri
     await agent.run('play the script').result();
   } else {
     const bureau = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog },
-      toolbox: hostToolbox(executions),
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: { catalog },
+          toolbox: hostToolbox(executions),
+        }),
+      },
     });
     await bureau.createRun({ agentName: 'bureau', message: 'play the script' });
     await finished.promise;

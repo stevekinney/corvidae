@@ -5,7 +5,7 @@
  * history event each on their own), a checkpoint that cannot be read strictly closes nothing, and
  * a fire's seed state goes with the fire.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -29,6 +29,7 @@ import {
   storedText,
 } from './schedule-fire-fixtures.test-support';
 import type { Bureau, PendingReview, PendingToolApprovalReview } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const harness = createScheduleFireHarness();
 
@@ -362,12 +363,16 @@ describe('a tool approval’s decision that waits for the seed read', () => {
     harness.onDispose(() => hold.release());
     const charges: number[] = [];
     const bureau = await harness.open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       storage: await harness.sqliteStorage(harness.nextDatabasePath(), (storage) =>
         hold.wrap(storage),
       ),
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
     });
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-approval');
@@ -625,11 +630,15 @@ async function openApproving(
   onDiagnostic?: DiagnosticCollector,
 ) {
   return harness.open({
-    generate: continuing,
-    toolbox: approvalToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
     storage: await harness.sqliteStorage(path, wrap),
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+    agents: {
+      default: createAgent({
+        generate: continuing,
+        toolbox: approvalToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
   });
 }
 
@@ -719,11 +728,15 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     const unreadable = { on: true };
     const diagnostics: string[] = [];
     const second = await harness.open({
-      generate: continuing,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage: await harness.sqliteStorage(path, (storage) => unreadableSteps(storage, unreadable)),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      agents: {
+        default: createAgent({
+          generate: continuing,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     await pollUntil(
       () =>
@@ -816,11 +829,15 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     // round 1 with the wrong reason and action, so nothing is written and the boot says so.
     const diagnostics: string[] = [];
     const restarted = await harness.open({
-      generate: continuing,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage: await harness.sqliteStorage(path),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      agents: {
+        default: createAgent({
+          generate: continuing,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     await pollUntil(
       () =>

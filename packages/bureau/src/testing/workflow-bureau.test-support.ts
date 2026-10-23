@@ -76,13 +76,11 @@ export async function startWorkflowBureau(
   const directory = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-workflow-run-')));
   const calls = options.calls ?? [];
   const bureau = await createBureau<AgentDefinitions>({
-    agents: scriptedAgents(
-      options.agentNames ?? ['writer', 'editor'],
-      options.replies ?? {},
-      calls,
-    ),
+    agents: {
+      ...scriptedAgents(options.agentNames ?? ['writer', 'editor'], options.replies ?? {}, calls),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+    },
     workflowDirectory: directory,
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     ...options.overrides,

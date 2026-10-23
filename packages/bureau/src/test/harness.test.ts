@@ -20,6 +20,7 @@ import {
   createMemoryStorageFixture,
   createSqliteStorageFixture,
 } from './storage-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -72,10 +73,12 @@ async function harnessWithMemoryStorage(
   const harness = await createBureauTestHarness({
     agents: {
       worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
+      default: createAgent({
+        generate: mockGenerate(),
+        stopWhen: stopWhen.noToolCalls(),
+        toolbox: createToolbox([]),
+      }),
     },
-    generate: mockGenerate(),
-    stopWhen: stopWhen.noToolCalls(),
-    toolbox: createToolbox([]),
     storage,
     ...overrides,
   });
@@ -123,9 +126,9 @@ describe('createBureauTestHarness', () => {
     const runtime = createManualRuntimeServices({ origin: '2030-01-01T00:00:00.000Z' });
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       runtime,
       storage,
     });
@@ -156,9 +159,9 @@ describe('createBureauTestHarness', () => {
     // the disposeCalls assertion below is guaranteed to run only after this
     // rejection — and this test's own cleanup — have actually settled.
     const error: unknown = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       storage,
       sessionInput: { sessionBacklogLimit: 0 },
     }).then(
@@ -173,9 +176,9 @@ describe('createBureauTestHarness', () => {
   it('defaults runtime to a freshly constructed ManualRuntimeServices when omitted', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       storage,
     });
     disposals.push(async () => {
@@ -288,37 +291,40 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.resolveReview', async () => {
       const approvalStateStore = createProcessLocalApprovalStateStore();
       const harness = await harnessWithMemoryStorage({
-        agents: {},
-        generate: async () => ({
-          content: '',
-          toolCalls: [{ id: 'call-1', name: 'sensitive-tool', arguments: {} }],
-        }),
-        toolbox: createToolbox(
-          [
-            createTool({
-              name: 'sensitive-tool',
-              version: '1.0.0',
-              description: 'Requires approval',
-              input: z.object({}),
-              async execute() {
-                return 'unexpected';
-              },
+        agents: {
+          default: createAgent({
+            generate: async () => ({
+              content: '',
+              toolCalls: [{ id: 'call-1', name: 'sensitive-tool', arguments: {} }],
             }),
-          ],
-          {
-            approvalSecret: 'harness-test-secret',
-            approvalStateStore,
-            policy: {
-              beforeExecute: () => ({
-                allow: false,
-                status: 'needs_approval',
-                reason: 'Operator approval required',
-                action: { message: 'Approve harness test' },
-              }),
-            },
-          },
-        ),
-        stopWhen: stopWhen.toolOutcome('action_required'),
+            toolbox: createToolbox(
+              [
+                createTool({
+                  name: 'sensitive-tool',
+                  version: '1.0.0',
+                  description: 'Requires approval',
+                  input: z.object({}),
+                  async execute() {
+                    return 'unexpected';
+                  },
+                }),
+              ],
+              {
+                approvalSecret: 'harness-test-secret',
+                approvalStateStore,
+                policy: {
+                  beforeExecute: () => ({
+                    allow: false,
+                    status: 'needs_approval',
+                    reason: 'Operator approval required',
+                    action: { message: 'Approve harness test' },
+                  }),
+                },
+              },
+            ),
+            stopWhen: stopWhen.toolOutcome('action_required'),
+          }),
+        },
       });
 
       const summary = await harness.startSession({
@@ -387,9 +393,9 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
     const runtime = createManualRuntimeServices();
     const storage = createSqliteStorageFixture({ runtime });
     const harness = await createBureauTestHarness({
-      agents: {},
-      generate: mockGenerate(),
-      toolbox: createToolbox([]),
+      agents: {
+        default: createAgent({ generate: mockGenerate(), toolbox: createToolbox([]) }),
+      },
       runtime,
       storage,
       durableExecution: true,
@@ -468,16 +474,16 @@ describe('two concurrent harnesses are fully isolated', () => {
         storageB = makeStorage();
 
         harnessA = await createBureauTestHarness({
-          agents: {},
-          generate: mockGenerate('A'),
-          toolbox: createToolbox([]),
+          agents: {
+            default: createAgent({ generate: mockGenerate('A'), toolbox: createToolbox([]) }),
+          },
           runtime: runtimeA,
           storage: storageA,
         });
         harnessB = await createBureauTestHarness({
-          agents: {},
-          generate: mockGenerate('B'),
-          toolbox: createToolbox([]),
+          agents: {
+            default: createAgent({ generate: mockGenerate('B'), toolbox: createToolbox([]) }),
+          },
           runtime: runtimeB,
           storage: storageB,
         });

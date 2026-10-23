@@ -19,7 +19,12 @@ import type {
   GenerateResponse,
   Toolbox,
 } from '@lostgradient/operative';
-import { ScheduleCompletedEvent, ScheduleFailedEvent, stopWhen } from '@lostgradient/operative';
+import {
+  ScheduleCompletedEvent,
+  ScheduleFailedEvent,
+  stopWhen,
+  createAgent,
+} from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
@@ -27,6 +32,7 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 const FIRE_TIMEOUT_MS = 20_000;
 
@@ -85,30 +91,35 @@ describe('D6 scheduled-fire path (#109)', () => {
 
       try {
         let bureauACall: RecordedCall | undefined;
-        const bureauA = await createBureau({
-          agents: {},
-          generate: async (context: GenerateContext) => {
-            const messages = context.conversation.getMessages();
-            bureauACall = {
-              conversationId: context.conversation.current.id,
-              messageCount: messages.length,
-              roles: messages.map((message) => message.role),
-              userPrompts: messages
-                .filter((message) => message.role === 'user' && typeof message.content === 'string')
-                .map((message) => message.content as string),
-              systemPrompts: messages
-                .filter(
-                  (message) => message.role === 'system' && typeof message.content === 'string',
-                )
-                .map((message) => message.content as string),
-            };
-            return new Promise<never>(() => {});
+        const bureauA = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async (context: GenerateContext) => {
+                const messages = context.conversation.getMessages();
+                bureauACall = {
+                  conversationId: context.conversation.current.id,
+                  messageCount: messages.length,
+                  roles: messages.map((message) => message.role),
+                  userPrompts: messages
+                    .filter(
+                      (message) => message.role === 'user' && typeof message.content === 'string',
+                    )
+                    .map((message) => message.content as string),
+                  systemPrompts: messages
+                    .filter(
+                      (message) => message.role === 'system' && typeof message.content === 'string',
+                    )
+                    .map((message) => message.content as string),
+                };
+                return new Promise<never>(() => {});
+              },
+              toolbox: createEmptyToolbox(),
+              instructions: 'You are a recoverable scheduled agent.',
+              stopWhen: stopWhen.noToolCalls(),
+            }),
           },
-          toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
-          systemPrompt: 'You are a recoverable scheduled agent.',
-          stopWhen: stopWhen.noToolCalls(),
         });
 
         const schedule = await bureauA.createSchedule({
@@ -133,30 +144,35 @@ describe('D6 scheduled-fire path (#109)', () => {
           resolveRecoveredGenerate = resolve;
         });
         let bureauBCall: RecordedCall | undefined;
-        const bureauB = await createBureau({
-          agents: {},
-          generate: async (context: GenerateContext) => {
-            const messages = context.conversation.getMessages();
-            bureauBCall = {
-              conversationId: context.conversation.current.id,
-              messageCount: messages.length,
-              roles: messages.map((message) => message.role),
-              userPrompts: messages
-                .filter((message) => message.role === 'user' && typeof message.content === 'string')
-                .map((message) => message.content as string),
-              systemPrompts: messages
-                .filter(
-                  (message) => message.role === 'system' && typeof message.content === 'string',
-                )
-                .map((message) => message.content as string),
-            };
-            return recoveredGenerate;
+        const bureauB = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async (context: GenerateContext) => {
+                const messages = context.conversation.getMessages();
+                bureauBCall = {
+                  conversationId: context.conversation.current.id,
+                  messageCount: messages.length,
+                  roles: messages.map((message) => message.role),
+                  userPrompts: messages
+                    .filter(
+                      (message) => message.role === 'user' && typeof message.content === 'string',
+                    )
+                    .map((message) => message.content as string),
+                  systemPrompts: messages
+                    .filter(
+                      (message) => message.role === 'system' && typeof message.content === 'string',
+                    )
+                    .map((message) => message.content as string),
+                };
+                return recoveredGenerate;
+              },
+              toolbox: createEmptyToolbox(),
+              instructions: 'You are a recoverable scheduled agent.',
+              stopWhen: stopWhen.noToolCalls(),
+            }),
           },
-          toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
-          systemPrompt: 'You are a recoverable scheduled agent.',
-          stopWhen: stopWhen.noToolCalls(),
         });
 
         try {
@@ -214,26 +230,29 @@ describe('D6 scheduled-fire path (#109)', () => {
       const sessionId = 'maxsteps-digest';
       const calls: RecordedCall[] = [];
       const recording = createRecordingGenerate(calls);
-      const bureau = await createBureau({
-        agents: {},
-        generate: async (context: GenerateContext) => {
-          await recording(context);
-          // Always call the tool → the run never stops on noToolCalls and instead
-          // terminates on maximumSteps.
-          return { content: '', toolCalls: [{ name: 'noop', arguments: {} }] };
-        },
-        toolbox: createToolbox([
-          createTool({
-            name: 'noop',
-            description: 'no-op',
-            input: z.object({}),
-            execute: async () => 'ok',
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async (context: GenerateContext) => {
+              await recording(context);
+              // Always call the tool → the run never stops on noToolCalls and instead
+              // terminates on maximumSteps.
+              return { content: '', toolCalls: [{ name: 'noop', arguments: {} }] };
+            },
+            toolbox: createToolbox([
+              createTool({
+                name: 'noop',
+                description: 'no-op',
+                input: z.object({}),
+                execute: async () => 'ok',
+              }),
+            ]),
+            maximumSteps: 1,
+            stopWhen: stopWhen.noToolCalls(),
           }),
-        ]),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        maximumSteps: 1,
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -274,13 +293,16 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
     'dispatches ScheduleCompletedEvent, correlated to the fired runId, for a fire that finishes successfully',
     async () => {
       const calls: RecordedCall[] = [];
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate(calls),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate(calls),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -316,15 +338,18 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
   it(
     'dispatches ScheduleFailedEvent, not ScheduleCompletedEvent, for a fire whose finishReason is a failure classification',
     async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: async () => {
-          throw new Error('deliberate scheduled-fire failure');
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              throw new Error('deliberate scheduled-fire failure');
+            },
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {

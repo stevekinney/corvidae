@@ -22,6 +22,7 @@ import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const silent = () => undefined;
 const API_KEY = 'reviews-test-key';
@@ -628,19 +629,22 @@ describe('the reviews operations against a real Bureau', () => {
       }
       return { content: 'approved and processed', toolCalls: [] };
     };
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'reviews-bureau',
-      agents: {},
-      generate,
-      toolbox: emptyToolbox(),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: emptyToolbox(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'park-me',
       principal: 'api-key:tester',
     });
@@ -739,27 +743,30 @@ describe('the reviews operations against a real Bureau', () => {
         },
       },
     ) as unknown as Toolbox;
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'reviews-tool-approval-bureau',
-      agents: {},
-      generate: async () => {
-        generations++;
-        return generations === 1
-          ? {
-              content: '',
-              toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
-            }
-          : { content: 'Charged.', toolCalls: [] };
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            generations++;
+            return generations === 1
+              ? {
+                  content: '',
+                  toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+                }
+              : { content: 'Charged.', toolCalls: [] };
+          },
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
       },
-      toolbox,
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Charge it',
         principal: 'api-key:tester',
       });
@@ -857,7 +864,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
             ],
           }
         : { content: 'thanks', toolCalls: [] };
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'catalog-reviews-bureau',
       agents: {
@@ -866,11 +873,11 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
           toolbox: createToolbox([]) as unknown as Toolbox,
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     const run = bureau.run('asker', 'deploy', principal === undefined ? {} : { principal });
     await waitForCondition(

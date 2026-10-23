@@ -17,6 +17,7 @@ import {
   type GenerateFunction,
   type RunFrame,
   type StopCondition,
+  createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
@@ -28,6 +29,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition, waitForRunState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
 import type { BureauOptions } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const ORIGIN = '2026-10-03T00:00:00.000Z';
 
@@ -62,10 +64,10 @@ async function collectRunFrames(
   generate: GenerateFunction,
   driverOptions: Pick<BureauOptions, 'storage' | 'durableExecution'>,
 ): Promise<{ frames: RunFrame[]; finishReason: string | undefined }> {
-  const bureau = await createBureau({
-    agents: {},
-    generate,
-    toolbox: createToolbox<readonly Tool[]>([noopTool]),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({ generate, toolbox: createToolbox<readonly Tool[]>([noopTool]) }),
+    },
     runtime: createManualRuntimeServices({ origin: ORIGIN }),
     ...driverOptions,
   });
@@ -74,7 +76,7 @@ async function collectRunFrames(
     const unsubscribe = bureau.subscribeLiveFrames((frame) => {
       if (frame.type === 'run-envelope') frames.push(frame.frame);
     });
-    const summary = await bureau.createRun({ agentName: 'bureau', message: 'Go.' });
+    const summary = await bureau.createRun({ agentName: 'default', message: 'Go.' });
     const settled = await waitForRunState(bureau, summary.id);
     unsubscribe();
     return { frames, finishReason: settled.finishReason };
@@ -176,15 +178,16 @@ describe.each(failureShapes)(
       try {
         // Bureau A fails the run at step 1 and never learns the outcome: its terminal commit
         // is never released, so the stored workflow is left running with that failure memoized.
-        bureauA = await createBureau({
-          agents: {},
+        bureauA = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({ toolbox: createToolbox<readonly Tool[]>([noopTool]) }),
+          },
           ...options,
-          toolbox: createToolbox<readonly Tool[]>([noopTool]),
           storage: crashed.storage,
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
         });
-        const run = await bureauA.createRun({ agentName: 'bureau', message: 'Go.' });
+        const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
         await crashed.reached;
         replayed = holdFirstTerminalRunCommit(
           await resolveStorage({ type: 'sqlite', path: databasePath }),
@@ -194,14 +197,17 @@ describe.each(failureShapes)(
         // the run without calling `generate` or announcing any step. Its terminal commit is held
         // so this test subscribes before the replay can settle.
         let generateCallsAfterRestart = 0;
-        const reattached = await createBureau({
-          agents: {},
-          ...options,
-          generate: async (generateInput) => {
-            generateCallsAfterRestart += 1;
-            return options.generate(generateInput);
+        const reattached = await createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: async (generateInput) => {
+                generateCallsAfterRestart += 1;
+                return options.generate(generateInput);
+              },
+              toolbox: createToolbox<readonly Tool[]>([noopTool]),
+            }),
           },
-          toolbox: createToolbox<readonly Tool[]>([noopTool]),
+          ...options,
           storage: replayed.storage,
           durableExecution: true,
           durableOwnership: { ownership: 'none' },

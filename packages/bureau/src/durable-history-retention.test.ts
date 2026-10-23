@@ -11,6 +11,7 @@ import {
   type DurableEventEnvelope,
   type GenerateFunction,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
@@ -21,6 +22,7 @@ import { DURABLE_HISTORY_GAP_KIND } from './durable-event-history';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
@@ -60,11 +62,14 @@ async function withBureau(
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
-  const bureau = await createBureau({
-    agents: {},
-    generate: finishes,
-    stopWhen: stopWhen.noToolCalls(),
-    toolbox: createToolbox<readonly Tool[]>([]),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: finishes,
+        stopWhen: stopWhen.noToolCalls(),
+        toolbox: createToolbox<readonly Tool[]>([]),
+      }),
+    },
     runtime,
     storage: fixture.configuration,
     durableExecution: true,
@@ -99,7 +104,7 @@ async function withBureau(
 
 /** Creates a run and waits for it to finish. */
 async function settledRun(bureau: Bureau, message = 'work') {
-  const created = await bureau.createRun({ agentName: 'bureau', message, principal: 'alice' });
+  const created = await bureau.createRun({ agentName: 'default', message, principal: 'alice' });
   expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
   return created;
 }
@@ -202,10 +207,13 @@ describe('eventRetention', () => {
   it('rejects a window that is not a finite, non-negative number', async () => {
     for (const olderThan of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
       const failure = await rejectionOf(
-        createBureau({
-          agents: {},
-          generate: finishes,
-          toolbox: createToolbox<readonly Tool[]>([]),
+        createBureau<AgentDefinitions>({
+          agents: {
+            default: createAgent({
+              generate: finishes,
+              toolbox: createToolbox<readonly Tool[]>([]),
+            }),
+          },
           eventRetention: { olderThan },
         }),
       );
@@ -317,7 +325,7 @@ describe('taskRetention', () => {
     await withBureau(
       async ({ bureau, at }) => {
         const created = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'fails',
           principal: 'alice',
         });
@@ -332,7 +340,10 @@ describe('taskRetention', () => {
         }
         expect(bureau.getRun(created.id)).toBeUndefined();
       },
-      { generate: failing, taskRetention: { olderThan: DAY_MS } },
+      {
+        taskRetention: { olderThan: DAY_MS },
+        agents: { default: createAgent({ generate: failing }) },
+      },
     );
   });
 
@@ -344,7 +355,7 @@ describe('taskRetention', () => {
         const settled = await settledRun(bureau, 'short');
         hold.on = true;
         const running = await bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'long',
           principal: 'alice',
         });
@@ -356,7 +367,10 @@ describe('taskRetention', () => {
         expect(bureau.getRun(settled.id)).toBeUndefined();
         gate.resolve();
       },
-      { generate: holdableGenerate(hold, gate.promise), taskRetention: { olderThan: DAY_MS } },
+      {
+        taskRetention: { olderThan: DAY_MS },
+        agents: { default: createAgent({ generate: holdableGenerate(hold, gate.promise) }) },
+      },
     );
   });
 
@@ -384,7 +398,7 @@ describe('taskRetention', () => {
     await withBureau(
       async ({ bureau, at }) => {
         const request = {
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'Summarize the quarter.',
           principal: 'alice',
           runCreationRequestId: 'request-1',
@@ -429,10 +443,10 @@ describe('taskRetention', () => {
 
   it('rejects a window that is not a finite, non-negative number', async () => {
     const failure = await rejectionOf(
-      createBureau({
-        agents: {},
-        generate: finishes,
-        toolbox: createToolbox<readonly Tool[]>([]),
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate: finishes, toolbox: createToolbox<readonly Tool[]>([]) }),
+        },
         taskRetention: { olderThan: -1 },
       }),
     );
@@ -449,17 +463,20 @@ function holdableGenerate(hold: { on: boolean }, gate: Promise<void>): GenerateF
 describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
   it('reports true when task retention removed runs, and undefined when it removed none', async () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
-    const bureau = await createBureau({
-      agents: {},
-      generate: finishes,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: finishes,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createToolbox<readonly Tool[]>([]),
+        }),
+      },
       runtime,
       taskRetention: { olderThan: DAY_MS },
     });
     try {
       const created = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'work',
         principal: 'alice',
       });

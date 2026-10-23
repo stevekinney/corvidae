@@ -1,19 +1,20 @@
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
 async function openBureau() {
-  return createBureau({
-    agents: {},
-    generate,
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     persistence: textValueStore(new MemoryStorage()),
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 
@@ -25,7 +26,7 @@ async function createdSession(
   sessionId: string,
 ) {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'hello',
     sessionId,
     ...(principal === undefined ? {} : { principal }),

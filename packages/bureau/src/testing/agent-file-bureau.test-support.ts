@@ -74,16 +74,18 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
   const observed = options.observed ?? [];
   const scripts = options.scripts ?? {};
   const bureau = await createBureau<AgentDefinitions>({
-    agents: options.agents ?? {
-      alpha: createAgent({
-        generate: async () => ({ content: 'alpha', toolCalls: [] }),
-        name: 'alpha',
+    agents: {
+      ...(options.agents ?? {
+        alpha: createAgent({
+          generate: async () => ({ content: 'alpha', toolCalls: [] }),
+          name: 'alpha',
+        }),
       }),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
     },
     agentDirectory: directory,
     agentTools: { 'lookup-order': lookupTool },
     resolveAgentGenerate: (descriptor) => generateFor(descriptor, scripts, observed),
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     // A handler over this Bureau serves the asset operations, so the Bureau has the service.

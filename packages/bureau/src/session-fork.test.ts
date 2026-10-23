@@ -66,8 +66,10 @@ async function openBureau(
   options: { agent?: ReturnType<typeof twoStepAgent>; path?: string } = {},
 ) {
   const bureau = await createBureau<AgentDefinitions>({
-    agents: { agent: options.agent ?? twoStepAgent() },
-    stopWhen: stopWhen.noToolCalls(),
+    agents: {
+      agent: options.agent ?? twoStepAgent(),
+      default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
+    },
     storage:
       options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
     durableExecution: true,
@@ -381,18 +383,21 @@ describe('a message that is not a branch point', () => {
   it('refuses a fork while the run still has a pending approval', async () => {
     const charges: number[] = [];
     const bureau = await createBureau<AgentDefinitions>({
-      agents: {},
-      generate: async () => ({
-        content: 'charging',
-        toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 100 } }],
-      }),
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      agents: {
+        default: createAgent({
+          generate: async () => ({
+            content: 'charging',
+            toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 100 } }],
+          }),
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     cleanups.push(() => bureau.dispose());
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'go', principal: ALICE });
+    const run = await bureau.createRun({ agentName: 'default', message: 'go', principal: ALICE });
     await waitForRunState(bureau, run.id);
 
     expect(await refusalOf(fork(bureau, run.sessionId, `${run.id}:step:0`))).toBe(
@@ -662,8 +667,8 @@ describe('a parent whose model a policy profile chose', () => {
             return { content: 'answer', toolCalls: [] };
           },
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
-      stopWhen: stopWhen.noToolCalls(),
       storage: { type: 'memory' },
       modelPolicy: POLICY,
       ...(durable ? { durableExecution: true } : {}),
@@ -742,8 +747,8 @@ describe('a parent whose model a policy profile chose', () => {
           generate: async () => ({ content: 'answer', toolCalls: [] }),
           allowedCandidates: [OPUS_5_5, OPUS_5],
         }),
+        default: createAgent({ stopWhen: stopWhen.noToolCalls() }),
       },
-      stopWhen: stopWhen.noToolCalls(),
       storage: { type: 'memory' },
       modelPolicy: POLICY,
     });

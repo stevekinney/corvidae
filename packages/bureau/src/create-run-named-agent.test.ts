@@ -80,8 +80,8 @@ async function start(
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
     ...(options.storage === undefined ? { persistence: textValueStore(new MemoryStorage()) } : {}),
-    stopWhen: stopWhen.noToolCalls(),
     ...options,
+    agents: { default: createAgent({ stopWhen: stopWhen.noToolCalls() }) },
   });
   bureaus.push(bureau);
   return bureau;
@@ -133,9 +133,11 @@ describe('createRun with a named agent', () => {
           generate: scripted('beta speaking', second),
           toolbox: createToolbox([namedTool('beta-tool'), namedTool('beta-extra')]),
         }),
+        default: createAgent({
+          generate: scripted('bureau speaking', wide),
+          toolbox: createToolbox([namedTool('bureau-tool')]),
+        }),
       },
-      generate: scripted('bureau speaking', wide),
-      toolbox: createToolbox([namedTool('bureau-tool')]),
     });
 
     const alpha = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
@@ -158,9 +160,11 @@ describe('createRun with a named agent', () => {
           generate: scripted('ok', seen),
           toolbox: createToolbox([namedTool('alpha-tool')]),
         }),
+        default: createAgent({
+          generate: scripted('wide'),
+          toolbox: createToolbox([namedTool('bureau-tool')]),
+        }),
       },
-      generate: scripted('wide'),
-      toolbox: createToolbox([namedTool('bureau-tool')]),
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
@@ -176,16 +180,18 @@ describe('createRun with a named agent', () => {
     const withoutOption: Observation[] = [];
     const nonDurable: Observation[] = [];
     const durableWithoutOption = await start({
-      agents: { alpha: createAgent({ generate: scripted('ok', withoutOption) }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('ok', withoutOption) }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     const optionWithoutEngine = await start({
-      agents: { alpha: createAgent({ generate: scripted('ok', nonDurable) }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('ok', nonDurable) }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
       humanInput: true,
     });
 
@@ -202,10 +208,14 @@ describe('createRun with a named agent', () => {
     const wide: Observation[] = [];
     const agent: Observation[] = [];
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha', agent) }) },
-      generate: scripted('bureau speaking', wide),
-      toolbox: createToolbox([namedTool('bureau-tool')]),
-      systemPrompt: 'BUREAU PROMPT',
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha', agent) }),
+        default: createAgent({
+          generate: scripted('bureau speaking', wide),
+          toolbox: createToolbox([namedTool('bureau-tool')]),
+          instructions: 'BUREAU PROMPT',
+        }),
+      },
     });
 
     const run = await bureau.createRun({ message: 'hello' } as CreateRunRequest);
@@ -224,9 +234,10 @@ describe('createRun with a named agent', () => {
 describe('an agent that is not in the catalog', () => {
   it('is refused with NOT_FOUND before anything is persisted', async () => {
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha') }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha') }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
     });
 
     const refusal = await rejectionOf(
@@ -242,9 +253,10 @@ describe('an agent that is not in the catalog', () => {
   it('is refused for an unnamed run on a session whose stored agent is gone', async () => {
     const persistence = textValueStore(new MemoryStorage());
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha') }) },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha') }),
+        default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
+      },
       persistence,
     });
     // A session an earlier process bound to an agent this catalog no longer has.
@@ -273,9 +285,8 @@ describe('a session’s agent', () => {
       agents: {
         alpha: createAgent({ generate: scripted('alpha speaking') }),
         beta: createAgent({ generate: scripted('beta speaking') }),
+        default: createAgent({ generate: scripted('bureau speaking'), toolbox: createToolbox([]) }),
       },
-      generate: scripted('bureau speaking'),
-      toolbox: createToolbox([]),
     });
     const first = await bureau.createRun({ message: 'one', agentName: 'alpha' });
     await finish(bureau, first.id);
@@ -290,11 +301,12 @@ describe('a session’s agent', () => {
 
   it('is never promoted from the default agent to a named one', async () => {
     const bureau = await start({
-      agents: { assistant: createAgent({ generate: scripted('assistant speaking') }) },
-      generate: scripted('bureau speaking'),
-      toolbox: createToolbox([]),
+      agents: {
+        assistant: createAgent({ generate: scripted('assistant speaking') }),
+        default: createAgent({ generate: scripted('bureau speaking'), toolbox: createToolbox([]) }),
+      },
     });
-    const first = await bureau.createRun({ agentName: 'bureau', message: 'one' });
+    const first = await bureau.createRun({ agentName: 'default', message: 'one' });
     await finish(bureau, first.id);
 
     const promotion = await rejectionOf(
@@ -308,9 +320,10 @@ describe('a session’s agent', () => {
 
   it('is inherited by a later run that names no agent, or the same one', async () => {
     const bureau = await start({
-      agents: { alpha: createAgent({ generate: scripted('alpha speaking') }) },
-      generate: scripted('bureau speaking'),
-      toolbox: createToolbox([]),
+      agents: {
+        alpha: createAgent({ generate: scripted('alpha speaking') }),
+        default: createAgent({ generate: scripted('bureau speaking'), toolbox: createToolbox([]) }),
+      },
     });
     const first = await bureau.createRun({ message: 'one', agentName: 'alpha' });
     await finish(bureau, first.id);
@@ -442,12 +455,14 @@ describe('two runs creating one new session', () => {
             return { content: 'alpha speaking', toolCalls: [] };
           },
         }),
+        default: createAgent({
+          generate: async () => {
+            calls.house += 1;
+            return { content: 'house speaking', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+        }),
       },
-      generate: async () => {
-        calls.house += 1;
-        return { content: 'house speaking', toolCalls: [] };
-      },
-      toolbox: createToolbox([]),
       persistence,
     });
 
@@ -475,11 +490,15 @@ describe('two runs creating one new session', () => {
 describe('an agent named bureau', () => {
   it('is refused at construction, because the name is the Bureau-wide default agent', async () => {
     const attempt = createBureau<AgentDefinitions>({
-      agents: { bureau: createAgent({ generate: scripted('catalog bureau') }) },
-      generate: scripted('house default'),
-      toolbox: createToolbox([]),
+      agents: {
+        bureau: createAgent({ generate: scripted('catalog bureau') }),
+        default: createAgent({
+          generate: scripted('house default'),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     const refusal = await rejectionOf(attempt);
@@ -495,9 +514,8 @@ describe('an agent named bureau', () => {
       agents: {
         'bureau-2': createAgent({ generate: scripted('second') }),
         Bureau: createAgent({ generate: scripted('capitalized') }),
+        default: createAgent({ generate: scripted('house default'), toolbox: createToolbox([]) }),
       },
-      generate: scripted('house default'),
-      toolbox: createToolbox([]),
     });
 
     const run = await bureau.createRun({ message: 'hi', agentName: 'bureau-2' });
@@ -528,10 +546,12 @@ describe('run settings', () => {
           111,
         ),
         plain: createAgent({ generate: scripted('plain', seen), toolbox: createToolbox([]) }),
+        default: createAgent({
+          generate: scripted('wide'),
+          toolbox: createToolbox([]),
+          instructions: 'BUREAU PROMPT',
+        }),
       },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
-      systemPrompt: 'BUREAU PROMPT',
     });
 
     const fromAgent = await bureau.createRun({ message: 'a', agentName: 'alpha' });
@@ -567,10 +587,12 @@ describe('run settings', () => {
             stopWhen: [],
             ...(agentSteps === undefined ? {} : { maximumSteps: agentSteps }),
           }),
+          default: createAgent({
+            generate: scripted('wide'),
+            toolbox: createToolbox([]),
+            maximumSteps: 6,
+          }),
         },
-        generate: scripted('wide'),
-        toolbox: createToolbox([]),
-        maximumSteps: 6,
       });
       const run = await bureau.createRun({
         message: 'go',
@@ -595,12 +617,14 @@ describe('run settings', () => {
           toolbox: createToolbox([tick]),
           stopWhen: stopWhen.toolCalled('tick'),
         }),
+        default: createAgent({
+          generate: scripted('wide'),
+          toolbox: createToolbox([]),
+          stopWhen: [],
+          maximumSteps: 5,
+        }),
       },
-      generate: scripted('wide'),
-      toolbox: createToolbox([]),
       // Never stops on its own: a run that used it would go to the step cap.
-      stopWhen: [],
-      maximumSteps: 5,
     });
 
     const run = await bureau.createRun({ message: 'go', agentName: 'alpha' });

@@ -3,6 +3,7 @@ import {
   createSessionStore,
   type GenerateFunction,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
@@ -12,6 +13,7 @@ import { createConversationHistory } from 'conversationalist';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import { waitForCondition } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * COR-1587: a recovered run that fails after replay ends its run record and its session as
@@ -33,7 +35,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
     await sessionStore.save(
       createAgentSession({
         id: sessionId,
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: sessionId }),
         metadata: { lastRunId: runId, lastRunStatus: 'running' },
       }),
@@ -55,7 +57,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
     probe.durable!.engine[Symbol.dispose]?.();
     probe.disposeStorage?.();
 
-    const input = { runId, sessionId, agentName: 'bureau' };
+    const input = { runId, sessionId, agentName: 'default' };
     const handle = {
       id: runId,
       getLaunchMetadata: async () => ({ input }),
@@ -74,13 +76,16 @@ describe('a run Bureau recovers after the engine failed it', () => {
       return id === runId ? { id, status: 'failed' } : originalGet.call(this, id);
     });
 
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       storage,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: () => undefined,
     });
     try {
