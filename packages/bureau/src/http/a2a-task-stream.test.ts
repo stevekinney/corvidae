@@ -49,6 +49,7 @@ function standIn(
   let closed: ((error: unknown) => void) | undefined;
   let changed: ((view: TaskView) => void) | undefined;
   const bureau: A2AStreamBureau = {
+    getReview: async () => undefined,
     eventHistory:
       overrides.eventHistory ??
       (async () => ({ events: [], hasMore: false, nextCursor: undefined })),
