@@ -435,7 +435,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
+    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-status-warning-background);
     border: 1px solid var(--cinder-status-warning-border);
@@ -456,7 +456,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 12px 14px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     display: flex;
     flex-direction: column;
     gap: 10px;

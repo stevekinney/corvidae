@@ -198,7 +198,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 14px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 
   .weft-health-tab__panel-header {
@@ -221,7 +221,7 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 9px 12px;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     margin: 10px 0;
     background: var(--cinder-surface-inset);
     border: 1px solid var(--cinder-border);

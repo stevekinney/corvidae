@@ -181,6 +181,7 @@ Use `--cinder-text-muted` for readable secondary text that remains part of the c
 | `--cinder-content-width-prose` | `65ch` | Prose column width, 65ch — caps line length at a readable measure. Expressed as a unitless number with a ch recipe because DTCG dimension units are limited to px and rem. |
 | `--cinder-content-width-narrow` | `40rem` | Tighter centered column width. |
 | `--cinder-content-width-wide` | `90rem` | Roomier centered column width. |
+| `--cinder-content-width-reading` | `47.5rem` | Reading column width (760px). The width of a page of text, forms, and lists: wide enough for a row of controls, narrow enough to read. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -373,12 +374,13 @@ An intent layer over the raw scale. Rather than reaching for a numeric step like
 
 <!-- BEGIN GENERATED TOKEN TABLE: semantic-aliases -->
 
-| Token                     | Default                   | Description                          |
-| ------------------------- | ------------------------- | ------------------------------------ |
-| `--cinder-pad-control`    | `var(--cinder-space-2-5)` | Default control padding.             |
-| `--cinder-pad-card`       | `var(--cinder-space-4)`   | Default card padding.                |
-| `--cinder-gap-stack`      | `var(--cinder-space-3)`   | Default vertical stack gap.          |
-| `--cinder-gap-inline`     | `var(--cinder-space-2)`   | Default inline gap.                  |
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-pad-control` | `var(--cinder-space-2-5)` | Default control padding. |
+| `--cinder-pad-card` | `var(--cinder-space-4)` | Default card padding. |
+| `--cinder-pad-page` | `var(--cinder-space-6)` | Page side gutter: the inline padding a shell puts around a page of content. |
+| `--cinder-gap-stack` | `var(--cinder-space-3)` | Default vertical stack gap. |
+| `--cinder-gap-inline` | `var(--cinder-space-2)` | Default inline gap. |
 | `--cinder-radius-control` | `var(--cinder-radius-md)` | Default control corner radius alias. |
 | `--cinder-radius-surface` | `var(--cinder-radius-lg)` | Default surface corner radius alias. |
 
@@ -482,6 +484,37 @@ Each `--cinder-chart-series-*` is a theme-aware design token: it wraps independe
 | `--cinder-chart-series-6` | `light-dark(oklch(56% 0.148 44), oklch(81% 0.152 80))` | Chart series 6. |
 | `--cinder-chart-series-7` | `light-dark(oklch(59% 0.126 120), oklch(85% 0.078 235))` | Chart series 7. |
 | `--cinder-chart-series-8` | `light-dark(oklch(63% 0.098 205), oklch(89% 0.19 120))` | Chart series 8. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+## Type roles
+
+The type scale above is a ladder of sizes; a page uses five of its steps, and these aliases name them by what they are for. A page title is `--cinder-text-page-title` at `--cinder-font-semibold`, and there is one per page. A section title is `--cinder-text-section-title` at semibold. Body text is `--cinder-text-body`. Secondary text is `--cinder-text-secondary` in `--cinder-text-muted`. Code is `--cinder-text-code` in `--cinder-font-mono`. Retuning an alias moves every page that uses it.
+
+<!-- BEGIN GENERATED TOKEN TABLE: type-roles -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-text-page-title` | `var(--cinder-text-2xl)` | Page title size (20px); set it at semibold. |
+| `--cinder-text-section-title` | `var(--cinder-text-lg)` | Section title size (16px); set it at semibold. |
+| `--cinder-text-body` | `var(--cinder-text-base)` | Body text size (14px). |
+| `--cinder-text-secondary` | `var(--cinder-text-sm)` | Secondary text size (13px); set it in the muted text color. |
+| `--cinder-text-code` | `var(--cinder-text-sm)` | Code size (13px), in the mono font stack. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
+## Density
+
+A page is either comfortable or compact, and says which once. The values in the table are the comfortable density, the default. Put `data-density="compact"` on an ancestor (a shell's page outlet, say) and `foundation.css` remaps the four tokens for everything inside it: a row drops from 56px to 40px, row padding from 12px by 16px to 8px by 12px, and card padding from 16px to 12px. A component or page reads the tokens with `var()` and never branches on the density itself. `--cinder-pad-page` is the page's side gutter and `--cinder-content-width-reading` is the 760px column a page of text, forms, and lists centres in.
+
+<!-- BEGIN GENERATED TOKEN TABLE: density -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-density-row-height` | `3.5rem` | Row height: 56px comfortable, 40px compact. |
+| `--cinder-density-pad-block` | `var(--cinder-space-3)` | Block padding of a row: 12px comfortable, 8px compact. |
+| `--cinder-density-pad-inline` | `var(--cinder-space-4)` | Inline padding of a row: 16px comfortable, 12px compact. |
+| `--cinder-density-pad-card` | `var(--cinder-space-4)` | Padding of a card or panel: 16px comfortable, 12px compact. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

@@ -78,7 +78,7 @@
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    padding: 12px 14px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border-radius: var(--cinder-radius-lg);
     border: 1px solid var(--cinder-border);
   }

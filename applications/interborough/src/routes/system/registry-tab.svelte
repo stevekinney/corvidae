@@ -398,7 +398,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 14px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 
   .weft-registry-activity-card__header {

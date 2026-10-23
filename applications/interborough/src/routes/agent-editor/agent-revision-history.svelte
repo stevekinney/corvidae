@@ -74,7 +74,7 @@
 
   .weft-agent-revisions__heading {
     margin: 0;
-    font-size: var(--cinder-text-md, 15px);
+    font-size: var(--cinder-text-md);
     font-weight: 600;
   }
 

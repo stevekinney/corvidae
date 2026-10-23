@@ -25,6 +25,11 @@
   }
 
   .cinder-table-scroll {
+    /* The wrapper scrolls, so it also contains: an absolutely positioned
+     * descendant (a visually hidden label in a header cell) otherwise
+     * positions against the page, escapes this scroll container's clip, and
+     * widens the page's own scrollable overflow to the width of the table. */
+    position: relative;
     inline-size: 100%;
     max-inline-size: 100%;
     overflow-x: auto;

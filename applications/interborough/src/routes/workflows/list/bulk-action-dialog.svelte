@@ -300,7 +300,7 @@
   .weft-bulk-dialog__chip {
     display: block;
     margin-bottom: 12px;
-    padding: 8px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-sm);
     font-family: var(--cinder-font-mono);
@@ -325,7 +325,7 @@
 
   .weft-bulk-dialog__errors {
     margin: 10px 0 0;
-    padding-inline-start: 18px;
+    padding-inline-start: var(--cinder-space-4);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
     max-height: 160px;
