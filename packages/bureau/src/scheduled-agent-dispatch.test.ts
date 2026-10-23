@@ -1,7 +1,7 @@
 /**
  * COR-323 — a scheduler task and a schedule's fire run as a named catalog agent, resolved through
  * the catalog, with that agent's own `generate`. No Bureau-wide `generate` exists to run them on,
- * and the implicit `bureau` agent that used to stand for it is refused rather than run.
+ * and the implicit `bureau` agent that used to stand for it is refused rather than run. COR-1667: creating a schedule under a name the catalog lacks is refused too, so a fire only meets a missing agent after the catalog loses one.
  */
 import {
   createAgent,
@@ -9,8 +9,11 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { decode, encode, encodeStorageKeyComponent } from '@lostgradient/weft';
+import { Database } from 'bun:sqlite';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -22,7 +25,7 @@ import {
   pollUntil,
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau } from './types';
+import type { Bureau, BureauOptions } from './types';
 
 const harness = createScheduleFireHarness();
 const bureaus: Bureau[] = [];
@@ -164,27 +167,93 @@ describe('a schedule’s fire', () => {
     expect(other.calls()).toBe(0);
   });
 
-  it('stored under the implicit "bureau" agent fails with a diagnostic and runs nothing', async () => {
+  it('stored under an agent the catalog later lost fails with a diagnostic and runs nothing (COR-1667)', async () => {
+    // Creation refuses a name the catalog lacks, so the schedule is made under a catalog agent and
+    // the agent leaves the catalog between restarts: the fire still fails, exactly as before.
+    const databasePath = createTemporaryPath('bureau-schedule-agent-removed', '.sqlite');
     const worker = answering('never');
-    const bureau = await harness.open({
+    try {
+      const first = await createBureau<AgentDefinitions>({
+        agents: { worker: createAgent({ generate: worker.generate }) },
+        storage: { type: 'sqlite', path: databasePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      const created = await first.createSchedule({
+        agentName: 'worker',
+        input: 'check in',
+        spec: '1m',
+        principal: OWNER.alice,
+      });
+      await first.dispose();
+
+      const second = await createBureau<AgentDefinitions>({
+        agents: {},
+        storage: { type: 'sqlite', path: databasePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      bureaus.push(second);
+      await second.runDurableMaintenance(created!.nextFireAt!);
+      const status = await pollUntil(async () => {
+        const page = await second.listDurableRuns();
+        const fire = page?.items[0];
+        return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
+      }, 'the fire to settle');
+
+      expect(status).toBe('failed');
+      expect(worker.calls()).toBe(0);
+    } finally {
+      removeTemporaryPath(databasePath);
+    }
+  });
+
+  it('stored under the legacy "bureau" agent name fails its fire and runs nothing', async () => {
+    // Persisted before creation refused unknown names, and a catalog cannot hold the reserved
+    // name, so the stored schedule is rewritten in place. The fire-time check still refuses it.
+    const databasePath = createTemporaryPath('bureau-schedule-legacy-agent', '.sqlite');
+    const worker = answering('never');
+    const options = {
       agents: { worker: createAgent({ generate: worker.generate }) },
-    });
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+    } satisfies BureauOptions<AgentDefinitions>;
+    try {
+      const first = await createBureau<AgentDefinitions>(options);
+      const created = await first.createSchedule({
+        agentName: 'worker',
+        input: 'check in',
+        spec: '1m',
+        principal: OWNER.alice,
+      });
+      await first.dispose();
 
-    const created = await bureau.createSchedule({
-      agentName: 'bureau',
-      input: 'check in',
-      spec: '1m',
-      principal: OWNER.alice,
-    });
-    await bureau.runDurableMaintenance(created!.nextFireAt!);
-    const status = await pollUntil(async () => {
-      const page = await bureau.listDurableRuns();
-      const fire = page?.items[0];
-      return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
-    }, 'the fire to settle');
+      const database = new Database(databasePath);
+      const key = `schedule:${encodeStorageKeyComponent(created!.id)}`;
+      const row = database.query('select value from kv where key = ?').get(key) as {
+        value: Uint8Array;
+      };
+      const stored = decode(row.value) as { input: { agentName: string } };
+      expect(stored.input.agentName).toBe('worker');
+      stored.input.agentName = 'bureau';
+      database.query('update kv set value = ? where key = ?').run(encode(stored), key);
+      database.close();
 
-    expect(status).toBe('failed');
-    expect(worker.calls()).toBe(0);
+      const second = await createBureau<AgentDefinitions>(options);
+      bureaus.push(second);
+      await second.runDurableMaintenance(created!.nextFireAt!);
+      const status = await pollUntil(async () => {
+        const page = await second.listDurableRuns();
+        const fire = page?.items[0];
+        return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
+      }, 'the fire to settle');
+
+      expect(status).toBe('failed');
+      expect(worker.calls()).toBe(0);
+    } finally {
+      removeTemporaryPath(databasePath);
+    }
   });
 });
 
