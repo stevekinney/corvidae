@@ -50,6 +50,7 @@
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleNotice from './schedule-notice.svelte';
   import {
+    cadenceIdentifiers,
     scheduleName,
     scheduleNameIdentifiers,
     scheduleSentence,
@@ -272,7 +273,7 @@
       <span>
         {sentence.verb}
         <ScheduleTarget {schedule} kind={target.kind} inSentence />
-        {sentence.clause}
+        <IdentifierText text={sentence.clause} identifiers={cadenceIdentifiers(schedule)} />
       </span>
       {#if schedule.status === 'active' && schedule.nextFireAt !== null}
         <span>· {SCHEDULE_COPY.next(formatRelativeTime(schedule.nextFireAt))}</span>
@@ -328,7 +329,7 @@
               >
                 {#if run.status === 'completed'}
                   <CircleCheck class="ib-schedule-glyph" size={14} aria-hidden="true" />
-                {:else if run.status === 'failed' || run.status === 'timed-out'}
+                {:else if run.status === 'failed' || run.status === 'timed-out' || run.status === 'cancelled'}
                   <CircleX class="ib-schedule-glyph" size={14} aria-hidden="true" />
                 {/if}
                 {formatRelativeTime(run.createdAt)}
@@ -352,6 +353,10 @@
       </Tooltip>
     </p>
 
+    {#snippet cronDefinition()}
+      <code class="ib-identifier">{schedule.cronExpression}</code>
+    {/snippet}
+
     <Collapsible bind:open={engineOpen} trigger={SCHEDULE_COPY.engine} animated={false}>
       <div class="ib-schedule__engine">
         <DescriptionList
@@ -362,8 +367,11 @@
                   ? SCHEDULE_COPY.engineRows.cron
                   : SCHEDULE_COPY.engineRows.interval,
               definition:
-                schedule.cronExpression ??
-                (schedule.intervalMs !== undefined ? `${schedule.intervalMs}ms` : '—'),
+                schedule.cronExpression !== undefined
+                  ? cronDefinition
+                  : schedule.intervalMs !== undefined
+                    ? `${schedule.intervalMs}ms`
+                    : '—',
             },
             {
               term: SCHEDULE_COPY.engineRows.jitter,

@@ -369,6 +369,78 @@ describe('ScheduleDetail', () => {
     }
   }, 10000);
 
+  test('sets the cron expression in monospace, in the sentence and in the Engine list', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'weekday-probe',
+      description: 'Weekday probe',
+      cron: '0 9 * * 1-5',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { getByRole, getByTestId } = render(ScheduleDetailHarness, {
+        props: { client, id: 'weekday-probe' },
+      });
+
+      const sentence = await waitFor(() => getByTestId('schedule-status-line'));
+      expect(sentence.textContent).toContain('on cron 0 9 * * 1-5');
+      expect(
+        Array.from(sentence.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
+      ).toContain('0 9 * * 1-5');
+
+      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      const definition = await waitFor(() => {
+        const found = document.querySelector('.cinder-description-list__definition code');
+        if (found === null) throw new Error('the Engine list has not rendered the cron expression');
+        return found;
+      });
+      expect(definition.textContent).toBe('0 9 * * 1-5');
+      expect(definition.classList.contains('ib-identifier')).toBe(true);
+    } finally {
+      await server.stop();
+    }
+  }, 10000);
+
+  test('a cancelled run shows the failure glyph, as the list does', async () => {
+    const server = await startLiveSourceTestServer();
+    const handle = await server.engine.schedule({
+      workflow: 'long-sleeper',
+      id: 'cancelled-probe',
+      description: 'Cancelled probe',
+      every: '50ms',
+      input: { label: 'cancelled-probe' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    // One run is started; stop the schedule from starting another, then cancel the one running.
+    let runId: string | undefined;
+    await waitForServerState(async () => {
+      runId = (await client.list({ scheduleId: 'cancelled-probe', limit: 5 })).items[0]?.id;
+      return runId !== undefined;
+    }, 'cancelled-probe has started a run');
+    await handle.pause();
+    await client.cancel(runId!);
+    await waitForServerState(async () => {
+      const runs = await client.list({ scheduleId: 'cancelled-probe', limit: 5 });
+      return runs.items.some((run) => run.status === 'cancelled');
+    }, 'cancelled-probe has a cancelled run');
+
+    try {
+      const { getByTestId } = render(ScheduleDetailHarness, {
+        props: { client, id: 'cancelled-probe' },
+      });
+
+      const runs = await waitFor(() => getByTestId('schedule-runs'), { timeout: 5000 });
+      await waitFor(() => expect(within(runs).getAllByText('Cancelled').length).toBeGreaterThan(0));
+      const cancelled = within(runs).getAllByText('Cancelled')[0]?.closest('li');
+      expect(cancelled?.querySelector('.ib-schedule-glyph')).not.toBeNull();
+    } finally {
+      await server.stop();
+    }
+  }, 15000);
+
   test('a failed run is marked as failed with how long it took, opens its run when clicked, and the back link returns to the list', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({

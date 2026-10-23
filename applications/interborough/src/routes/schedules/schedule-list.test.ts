@@ -214,6 +214,43 @@ describe('ScheduleList', () => {
     }
   }, 10000);
 
+  test('sets a cron expression it cannot put in words in monospace', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'weekday-probe',
+      description: 'Weekday probe',
+      cron: '0 9 * * 1-5',
+      input: { warehouseId: 'wh-main' },
+    });
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'daily-probe',
+      description: 'Daily probe',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      render(ScheduleListHarness, { props: { client } });
+
+      await waitFor(() =>
+        expect(row('weekday-probe')?.textContent).toContain('Cron · 0 9 * * 1-5'),
+      );
+      const codes = (id: string) =>
+        Array.from(
+          row(id)?.querySelectorAll('code.ib-identifier') ?? [],
+          (code) => code.textContent,
+        );
+      expect(codes('weekday-probe')).toContain('0 9 * * 1-5');
+      // A cadence in words has no expression to set.
+      expect(codes('daily-probe')).not.toContain('0 2 * * *');
+    } finally {
+      await server.stop();
+    }
+  }, 10000);
+
   test('a schedule whose last run failed says so', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({

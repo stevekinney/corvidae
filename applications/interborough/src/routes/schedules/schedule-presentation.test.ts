@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   cadenceClause,
+  cadenceIdentifiers,
   scheduleName,
   scheduleNameIdentifiers,
   scheduleSentence,
@@ -64,6 +65,18 @@ describe('a cadence at the end of a sentence', () => {
   test('says an expression it cannot put in words as it is', () => {
     expect(cadenceClause({ cronExpression: '0 9 * * 1-5' })).toBe('on cron 0 9 * * 1-5');
     expect(cadenceClause({})).toBe('on an unknown cadence');
+  });
+});
+
+describe('the code value in a cadence', () => {
+  test('is the cron expression when it could only be said as it is', () => {
+    expect(cadenceIdentifiers({ cronExpression: '0 9 * * 1-5' })).toEqual(['0 9 * * 1-5']);
+  });
+
+  test('is nothing when the cadence was put into words or has no expression', () => {
+    expect(cadenceIdentifiers({ cronExpression: '0 9 * * *' })).toEqual([]);
+    expect(cadenceIdentifiers({ intervalMs: 5 * 60_000 })).toEqual([]);
+    expect(cadenceIdentifiers({})).toEqual([]);
   });
 });
 

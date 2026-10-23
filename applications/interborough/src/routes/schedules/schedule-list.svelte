@@ -47,7 +47,11 @@
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleLastFire from './schedule-last-fire.svelte';
   import ScheduleNotice from './schedule-notice.svelte';
-  import { scheduleName, scheduleNameIdentifiers } from './schedule-presentation.ts';
+  import {
+    cadenceIdentifiers,
+    scheduleName,
+    scheduleNameIdentifiers,
+  } from './schedule-presentation.ts';
   import { fetchScheduleList } from './schedule-queries.ts';
   import { scheduleStatusDescriptor } from './schedule-status.ts';
   import ScheduleTarget from './schedule-target.svelte';
@@ -296,7 +300,12 @@
             </div>
             <p class="ib-schedule-row__facts">
               <ScheduleTarget {schedule} kind={target.kind} />
-              <span>{describeCadence(schedule)}</span>
+              <span
+                ><IdentifierText
+                  text={describeCadence(schedule)}
+                  identifiers={cadenceIdentifiers(schedule)}
+                /></span
+              >
               {#if schedule.status === 'active' && schedule.nextFireAt !== null}
                 <span>{SCHEDULE_COPY.next(formatRelativeTime(schedule.nextFireAt))}</span>
               {/if}

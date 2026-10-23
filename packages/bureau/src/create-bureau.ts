@@ -514,11 +514,10 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
+import { scheduleInputPreview } from './schedule-input-preview';
 import { streamEventToFrame } from './websocket-frames';
 
 const BUREAU_AGENT_NAME = 'bureau';
-/** The most characters of a schedule's input that `getScheduleInputPreview` returns. */
-const SCHEDULE_INPUT_PREVIEW_LENGTH = 500;
 
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
@@ -10062,22 +10061,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * The start of the text an agent schedule sends each fire, at most
-   * {@link SCHEDULE_INPUT_PREVIEW_LENGTH} characters and ending in `…` when it was cut, so a
-   * schedule can be told by what it says. The text parts of a multi-part input are joined with a
-   * space; an input of media alone has none, and its schedule has no preview.
+   * The start of the text an agent schedule sends each fire, at most 500 characters and ending in
+   * `…` when it was cut, so a schedule can be told by what it says (see
+   * {@link scheduleInputPreview}); an input of media alone has none, and its schedule has no
+   * preview.
    */
   async function getScheduleInputPreview(scheduleId: string): Promise<string | undefined> {
     const stored = await readScheduledAgentInput(scheduleId);
     if (stored === undefined) return undefined;
-    const text =
-      typeof stored.input === 'string'
-        ? stored.input
-        : stored.input.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ');
-    if (text.trim() === '') return undefined;
-    return text.length <= SCHEDULE_INPUT_PREVIEW_LENGTH
-      ? text
-      : `${text.slice(0, SCHEDULE_INPUT_PREVIEW_LENGTH - 1)}…`;
+    return scheduleInputPreview(stored.input);
   }
 
   async function sessionOwner(sessionId: string): Promise<string | undefined> {

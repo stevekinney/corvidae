@@ -43,6 +43,7 @@ import {
   ScheduleLocatorUnavailableError,
   UnknownScheduleAgentError,
 } from '../../create-bureau.ts';
+import { scheduleInputPreview } from '../../schedule-input-preview.ts';
 import type { Bureau } from '../../types.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -405,7 +406,9 @@ export const schedulesCreateOperation = defineOperation<
         principal: owner,
       });
       if (summary === undefined) throw unsupported();
-      return viewOf(summary, owner, input.agentName, await host.schedules.inputPreview(summary.id));
+      // The preview comes from the request's own text, never a second read of storage: a read that
+      // failed after the schedule was made would hide the schedule from a retry (COR-411).
+      return viewOf(summary, owner, input.agentName, scheduleInputPreview(input.input));
     } catch (error) {
       return faultOf(error, input.agentName);
     }

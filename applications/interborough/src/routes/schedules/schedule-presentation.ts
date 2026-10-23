@@ -54,6 +54,17 @@ export function cadenceClause(cadence: ScheduleCadence): string {
 }
 
 /**
+ * What a cadence is made of that is a code value, to be set in monospace: the cron expression when
+ * `describeCadence` could only say it as it is ("on cron 0 9 * * 1-5"), and nothing when it put the
+ * expression into words ("every day at 09:00"), where no expression is shown.
+ */
+export function cadenceIdentifiers(cadence: ScheduleCadence): string[] {
+  return cadence.cronExpression !== undefined && describeCadence(cadence).startsWith('Cron · ')
+    ? [cadence.cronExpression]
+    : [];
+}
+
+/**
  * What a schedule does and when, as a sentence: "Runs assistant every day at 09:00". What it runs
  * is the middle of the sentence and is left to the page, which links it, so this returns the words
  * on either side.
