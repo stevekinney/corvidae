@@ -149,4 +149,60 @@ describe('ScanPanel', () => {
     expect(activeStub.calls[1]?.url).toContain('gt=app%3Ab');
     expect(queryByText('Load more')).toBeNull();
   });
+
+  describe('with the prefixes found in storage', () => {
+    const KNOWN = ['agent-session:', 'bureau-goal:'] as const;
+
+    test('picks the prefix from them, with Any key first and Other last, instead of typing it', () => {
+      const { getByLabelText } = render(ScanPanelHarness, {
+        props: { client: fakeClient(), knownPrefixes: KNOWN },
+      });
+
+      const picker = getByLabelText('Prefix') as HTMLSelectElement;
+      expect(picker.tagName).toBe('SELECT');
+      expect([...picker.options].map((option) => option.textContent?.trim())).toEqual([
+        'Any key',
+        'agent-session:',
+        'bureau-goal:',
+        'Other…',
+      ]);
+    });
+
+    test('scans the prefix that was picked, and everything when none was', async () => {
+      activeStub = stubStorageFetch(() =>
+        ndjsonResponse([ndjsonRow('bureau-goal:g1', new TextEncoder().encode('goal'))]),
+      );
+
+      const { getByLabelText, getByText, findByText } = render(ScanPanelHarness, {
+        props: { client: fakeClient(), knownPrefixes: KNOWN },
+      });
+
+      await fireEvent.click(getByText('Scan'));
+      await findByText('bureau-goal:g1');
+      expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe('');
+
+      await fireEvent.change(getByLabelText('Prefix'), { target: { value: 'bureau-goal:' } });
+      await fireEvent.click(getByText('Scan'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(new URL(activeStub.calls[1]?.url ?? '').searchParams.get('prefix')).toBe(
+        'bureau-goal:',
+      );
+    });
+
+    test('Other brings a field to type a prefix that is not in the list, such as a reserved one', async () => {
+      activeStub = stubStorageFetch(() => ndjsonResponse([]));
+
+      const { getByLabelText, getByText, queryByLabelText } = render(ScanPanelHarness, {
+        props: { client: fakeClient(), knownPrefixes: KNOWN },
+      });
+      expect(queryByLabelText('Other prefix')).toBeNull();
+
+      await fireEvent.change(getByLabelText('Prefix'), { target: { value: '__other__' } });
+      await fireEvent.input(getByLabelText('Other prefix'), { target: { value: 'wf:' } });
+      await fireEvent.click(getByText('Scan'));
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe('wf:');
+    });
+  });
 });

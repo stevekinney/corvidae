@@ -26,9 +26,11 @@
   interface KvBrowserProps {
     client: StorageConnection;
     conditionalBatchSupported: boolean | undefined;
+    /** The non-reserved prefixes found in storage, for the Scan panel's picker; none until they are read. */
+    knownPrefixes?: readonly string[];
   }
 
-  let { client, conditionalBatchSupported }: KvBrowserProps = $props();
+  let { client, conditionalBatchSupported, knownPrefixes = [] }: KvBrowserProps = $props();
 
   type StorageOperation = 'get' | 'scan' | 'put' | 'delete' | 'batch';
 
@@ -51,6 +53,7 @@
     <SegmentedControl
       id="storage-op-picker"
       label="Storage operation"
+      labelVisible={false}
       variant="tablist"
       fullWidth
       bind:value={operation}
@@ -78,7 +81,7 @@
   {#if shown === 'get'}
     <GetPanel {client} />
   {:else if shown === 'scan'}
-    <ScanPanel {client} />
+    <ScanPanel {client} {knownPrefixes} />
   {:else if shown === 'put'}
     <PutPanel {client} />
   {:else if shown === 'delete'}

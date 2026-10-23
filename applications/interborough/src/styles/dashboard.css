@@ -126,6 +126,16 @@
   grid-column: 1 / -1;
 }
 
+/* Cards that share a row are one height, whether a card is a link (reviews) or not. */
+.weft-aggregate-cards-band > .weft-reviews-card-link,
+.weft-aggregate-cards-band > .weft-dashboard-card {
+  height: 100%;
+}
+
+.weft-aggregate-cards-band > .weft-reviews-card-link > .weft-dashboard-card {
+  height: 100%;
+}
+
 /* `Card` receives `class="weft-dashboard-card"` directly on its own root
  * (see `dashboard-card.svelte` in schedules/workers/reviews), so this
  * targets that class directly rather than as a descendant — a descendant

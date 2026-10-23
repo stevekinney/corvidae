@@ -17,6 +17,7 @@
   import { getPrincipalStore, scopeReason } from '../../lib/scopes.svelte.ts';
   import CapabilitiesPanel from './capabilities-panel.svelte';
   import KvBrowser from './kv-browser.svelte';
+  import { discoverPrefixes } from './prefix-discovery.ts';
   import { storageQueryKeys } from './queries.ts';
 
   const client = getClient();
@@ -48,6 +49,19 @@
     undefined,
   );
 
+  // The prefixes the Scan panel offers. Only the picker depends on them: a read that fails leaves the
+  // panel with the field to type a prefix into, as it always had.
+  const prefixesQuery = createQuery(
+    () => ({
+      queryKey: storageQueryKeys.prefixes(),
+      queryFn: () => discoverPrefixes(client),
+      enabled: untrack(() => hasStorageAdmin),
+      staleTime: 5 * 60_000,
+      retry: false,
+    }),
+    undefined,
+  );
+
   let activeTab = $state('browser');
 </script>
 
@@ -68,7 +82,11 @@
         <Tabs.Trigger value="capabilities">Capabilities</Tabs.Trigger>
       </Tabs.List>
       <Tabs.Panel value="browser">
-        <KvBrowser {client} conditionalBatchSupported={capabilitiesQuery.data?.conditionalBatch} />
+        <KvBrowser
+          {client}
+          conditionalBatchSupported={capabilitiesQuery.data?.conditionalBatch}
+          knownPrefixes={prefixesQuery.data ?? []}
+        />
       </Tabs.Panel>
       <Tabs.Panel value="capabilities">
         <CapabilitiesPanel

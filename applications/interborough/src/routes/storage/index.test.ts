@@ -7,7 +7,7 @@ import { requireElement } from '../../../tests/dom.test-support.ts';
  * (COR-1539).
  */
 import { HttpClient } from '@lostgradient/weft';
-import { fireEvent, render, within } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { stubStorageFetch, type StubbedFetchCall } from './storage-fetch-stub.test-support.ts';
@@ -82,6 +82,44 @@ describe('Storage route', () => {
     expect(getByText('KV browser')).not.toBeNull();
     expect(getByText('Capabilities')).not.toBeNull();
     expect(queryByText('Storage access requires storage:admin')).toBeNull();
+  });
+
+  test('offers the non-reserved prefixes found in storage in the Scan panel', async () => {
+    const keys = ['agent-session:a', 'agent-session:b', 'bureau-goal:g1', 'wf:one'];
+    activeStub = stubStorageFetch((call) => {
+      if (isCapabilitiesCall(call)) {
+        return Response.json({ jsonrpc: '2.0', id: 1, result: CAPABILITIES });
+      }
+      const params = new URL(call.url).searchParams;
+      const gte = params.get('gte');
+      const rows = keys
+        .filter((key) => gte === null || key >= gte)
+        .slice(0, 1)
+        .map((key) => JSON.stringify({ key, value: Buffer.from('v').toString('base64') }));
+      return new Response(rows.length > 0 ? `${rows.join('\n')}\n` : '', {
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      });
+    });
+
+    const { getByLabelText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
+
+    // The field to type into stands until the prefixes have been read, and the picker takes its place.
+    await waitFor(() => expect(getByLabelText('Prefix').tagName).toBe('SELECT'));
+    const picker = getByLabelText('Prefix') as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.textContent?.trim())).toEqual([
+      'Any key',
+      'agent-session:',
+      'bureau-goal:',
+      'Other…',
+    ]);
+  });
+
+  test('keeps the field to type a prefix into when the prefixes cannot be read', async () => {
+    activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
+
+    const { findByLabelText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
+
+    expect(((await findByLabelText('Prefix')) as HTMLElement).tagName).toBe('INPUT');
   });
 
   test('shows the reserved-prefix warning beside the write switch when unlocked, and writes start off', async () => {

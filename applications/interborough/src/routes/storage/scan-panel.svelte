@@ -14,6 +14,7 @@
     Input,
     Segment,
     SegmentedControl,
+    Select,
     Table,
   } from '@lostgradient/cinder';
   import { ChevronDown, SearchX } from '@lucide/svelte';
@@ -32,14 +33,35 @@
 
   interface ScanPanelProps {
     client: StorageConnection;
+    /**
+     * The non-reserved prefixes found in storage. With some, the prefix is picked from them (or typed
+     * under Other); with none, as before the picker, the prefix is a field to type into.
+     */
+    knownPrefixes?: readonly string[];
   }
 
-  let { client }: ScanPanelProps = $props();
+  let { client, knownPrefixes = [] }: ScanPanelProps = $props();
+
+  /** The picker's value for "a prefix that is not in the list", which brings a field to type it in. */
+  const OTHER_PREFIX = '__other__';
 
   const DEFAULT_SCAN_LIMIT = 100;
 
   let mode = $state<'prefix' | 'range'>('prefix');
   let prefix = $state('');
+  let prefixChoice = $state('');
+
+  const prefixOptions = $derived([
+    { value: '', label: 'Any key' },
+    ...knownPrefixes.map((known) => ({ value: known, label: known })),
+    { value: OTHER_PREFIX, label: 'Other…' },
+  ]);
+
+  /** What the picker holds is the prefix; under Other, what was typed is. */
+  function chosenPrefix(): string {
+    if (knownPrefixes.length === 0 || prefixChoice === OTHER_PREFIX) return prefix;
+    return prefixChoice;
+  }
   let rangeStart = $state('');
   let rangeEnd = $state('');
   let limit = $state(String(DEFAULT_SCAN_LIMIT));
@@ -66,7 +88,7 @@
         ...(rangeEnd.length > 0 ? { lt: rangeEnd } : {}),
       };
     }
-    return { prefix, limit: boundedLimit() };
+    return { prefix: chosenPrefix(), limit: boundedLimit() };
   }
 
   function runScan(): void {
@@ -104,6 +126,7 @@
   <SegmentedControl
     id="storage-scan-mode"
     label="Scan by"
+    labelVisible={false}
     variant="tablist"
     fullWidth
     bind:value={mode}
@@ -113,12 +136,24 @@
   </SegmentedControl>
 
   {#if mode === 'prefix'}
-    <Input
-      id="storage-scan-prefix"
-      label="Prefix"
-      bind:value={prefix}
-      class="weft-storage-monospace-input"
-    />
+    {#if knownPrefixes.length > 0}
+      <Select
+        id="storage-scan-prefix-choice"
+        label="Prefix"
+        options={prefixOptions}
+        value={prefixChoice}
+        onchange={(event) => (prefixChoice = event.currentTarget.value)}
+      />
+    {/if}
+    {#if knownPrefixes.length === 0 || prefixChoice === OTHER_PREFIX}
+      <Input
+        id="storage-scan-prefix"
+        label={knownPrefixes.length === 0 ? 'Prefix' : 'Other prefix'}
+        labelVisible={knownPrefixes.length === 0}
+        bind:value={prefix}
+        class="weft-storage-monospace-input"
+      />
+    {/if}
   {:else}
     <Input
       id="storage-scan-start"
@@ -170,7 +205,7 @@
     <div class="weft-storage-results-header">
       <span>Results</span>
       <span class="weft-storage-results-meta">
-        {mode === 'prefix' ? `prefix "${prefix}"` : 'range scan'} · {entries.length}
+        {mode === 'prefix' ? `prefix "${chosenPrefix()}"` : 'range scan'} · {entries.length}
         {entries.length === 1 ? 'key' : 'keys'}
       </span>
     </div>

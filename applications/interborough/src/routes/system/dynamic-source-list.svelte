@@ -225,9 +225,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: var(--cinder-density-pad-card);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
   }
 
   .weft-source-list__header {

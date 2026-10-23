@@ -203,8 +203,10 @@
       />
     {/if}
     <div class="weft-audit__actions">
-      <Button type="submit" variant="primary">{AUDIT_COPY.searchAction}</Button>
-      <Button type="button" variant="secondary" onclick={clear}>{AUDIT_COPY.clearAction}</Button>
+      <Button type="submit" variant="primary" size="lg">{AUDIT_COPY.searchAction}</Button>
+      <Button type="button" variant="secondary" size="lg" onclick={clear}
+        >{AUDIT_COPY.clearAction}</Button
+      >
     </div>
   </form>
 
@@ -212,7 +214,9 @@
     <Alert variant="danger">
       <p class="weft-audit__alert-title">{AUDIT_COPY.failed.title}</p>
       <p class="weft-audit__alert-body">{AUDIT_COPY.failed.description}</p>
-      <Button variant="secondary" onclick={() => void trail.refetch()}>{RETRY_LABEL}</Button>
+      <Button variant="secondary" size="lg" onclick={() => void trail.refetch()}
+        >{RETRY_LABEL}</Button
+      >
     </Alert>
   {:else if trail.isPending}
     <p role="status" aria-busy="true" class="weft-audit__muted">{VIEW_COPY.audit.loading.title}</p>
@@ -260,6 +264,7 @@
       <div class="weft-audit__more">
         <Button
           variant="secondary"
+          size="lg"
           disabled={trail.isFetchingNextPage}
           onclick={() => void trail.fetchNextPage()}>{AUDIT_COPY.loadMore}</Button
         >
