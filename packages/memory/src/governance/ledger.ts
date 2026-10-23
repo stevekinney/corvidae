@@ -50,6 +50,14 @@ export interface MemoryGovernanceLedger {
   }): Promise<MemoryGovernanceEvent[]>;
   /** Removes events older than `before`; returns how many were removed. */
   pruneEvents(tenantId: string, before: number): Promise<number>;
+  /**
+   * Stores a new receipt only when none is stored under its `deletionId`, as
+   * one conditional write. Returns whether it stored it: two deletions that
+   * hold the same claim build receipts under the same `deletionId`, so only
+   * the first to open one does.
+   */
+  openReceipt(receipt: MemoryDeletionReceipt): Promise<boolean>;
+  /** Stores a receipt's latest state, replacing whatever is stored under its `deletionId`. */
   putReceipt(receipt: MemoryDeletionReceipt): Promise<void>;
   getReceipt(deletionId: string): Promise<MemoryDeletionReceipt | undefined>;
   listReceipts(filter: { tenantId?: string; open?: boolean }): Promise<MemoryDeletionReceipt[]>;
@@ -296,6 +304,15 @@ export function createMemoryGovernanceLedger(
         removed++;
       }
       return removed;
+    },
+
+    openReceipt(receipt) {
+      const key = receiptKey(receipt.deletionId);
+      return storageConditionalBatch(
+        storage,
+        [{ key, expectedValue: null }],
+        [{ type: 'put', key, value: encode(receipt) }],
+      );
     },
 
     async putReceipt(receipt) {

@@ -156,11 +156,14 @@ import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admi
 import {
   claimRowAssets,
   isPermanentClaimFailure,
+  releaseClaimsByHolderPrefix,
   releaseRowAssetClaims,
   runRowHolderId,
   sessionRowHolderId,
+  sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
 import type { AssetService } from './assets/types';
+import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -12337,6 +12340,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1664 — claims on assets whose run ended or whose session was deleted without a release.
+      await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
       try {
         await recordPendingScheduleTransitions();
@@ -12614,6 +12619,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cause: error,
           });
         }
+        // COR-1664 — claims on assets whose run ended or whose session was deleted without a release.
+        await reconcileAssetClaims();
         // COR-194 — a schedule transition whose record failed after its commit is retried here.
         try {
           await recordPendingScheduleTransitions();
@@ -13078,7 +13085,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
       claimedRowAssets,
     );
+    // COR-1664 — the session may have been deleted while its claims were being taken (a goal
+    // handoff or a drain holds a snapshot loaded before the delete). The delete released what it
+    // saw, so a claim taken after that is released here, from the asset side. A session deleted
+    // after this check releases every claim already taken. It runs before a transient failure is
+    // rethrown: a retain that succeeded earlier in the pass must not be stranded by a later one.
+    let checkFailure: { error: unknown } | undefined;
+    try {
+      const stillLive = await runtime.sessionStore?.load(session.id);
+      if (runtime.sessionStore !== undefined && stillLive?.incarnation !== session.incarnation) {
+        await releaseClaimsByHolderPrefix(
+          context.service,
+          sessionRowHolderPrefix(session.id, session.incarnation),
+          (claim, error) => context.onReleaseFailure(claim.assetId, error, claim.holderId),
+          claimedRowAssets,
+        );
+      }
+    } catch (error) {
+      checkFailure = { error };
+    }
     if (transientFailure !== undefined) throw transientFailure.error;
+    if (checkFailure !== undefined) throw checkFailure.error;
   }
 
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
@@ -13092,6 +13119,41 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       context.onReleaseFailure,
       claimedRowAssets,
     );
+    // COR-1664 — the walk above reaches only the rows the session holds now. A row compaction (or
+    // a replaced history) removed still has its claim, so the deleted incarnation's whole holder
+    // prefix is released from the asset side, at the deletion rather than at the next boot or
+    // maintenance pass. Only this incarnation: an id recreated since has its own claims.
+    await releaseClaimsByHolderPrefix(
+      context.service,
+      sessionRowHolderPrefix(session.id, session.incarnation),
+      (claim, error) => context.onReleaseFailure(claim.assetId, error, claim.holderId),
+      claimedRowAssets,
+    );
+  }
+
+  /**
+   * COR-1664 — releases, from the asset side, the claims of a run that ended or a session that was
+   * deleted when the paths that normally release them never ran (`asset-claim-reconciliation.ts`).
+   */
+  const assetClaimReconciler = createAssetClaimReconciler({
+    assets: () => assetServiceHolder.current,
+    durableEnd: catalogDurableEnd,
+    loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+    goalIsOver: (goalRunId) => goalsComposition.goalIsOver(goalRunId),
+    sessionIsLive: async (sessionId, incarnation) => {
+      // Without a session store no session holds a claim; only a store that answers can say gone.
+      const live = await runtime.sessionStore?.load(sessionId);
+      return runtime.sessionStore === undefined || live?.incarnation === incarnation;
+    },
+    isClosed: () => catalogAssetReleasesClosed,
+    onReleased: (claim) => claimedRowAssets.delete(`${claim.holderId}\u0000${claim.assetId}`),
+    diagnose,
+  });
+
+  /** Releases the claims of runs that ended and sessions that were deleted; never rejects. */
+  async function reconcileAssetClaims(): Promise<void> {
+    await assetClaimReconciler.reconcileRunClaims();
+    await assetClaimReconciler.reconcileSessionClaims();
   }
 
   async function performDeleteSession(
@@ -18616,6 +18678,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           } satisfies BureauRecoveryReport;
         });
         void recovery.then((report) => resolveDurableRecoveryBarrier?.(report));
+        void recovery.then(() => trackCatalogAssetRelease(reconcileAssetClaims()));
       }
     },
     getRequestAuthorityValidator() {
@@ -19131,6 +19194,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       } satisfies BureauRecoveryReport;
     });
     await durableRecoveryBarrier;
+    // COR-1664 — after recovery, so the runs it resumed are in flight and keep their claims. Not
+    // awaited: recovery's resumed steps race the caller's first subscription, and every extra turn
+    // before this function returns costs a recovered run's first events. Shutdown waits for it.
+    void trackCatalogAssetRelease(reconcileAssetClaims());
   }
 
   trackScheduledFireReviewState(bureau, scheduledFireReviewState);

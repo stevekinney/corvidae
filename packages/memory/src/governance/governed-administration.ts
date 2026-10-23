@@ -88,25 +88,24 @@ async function deleteExpired(
   expired: readonly ResolvedRecord[],
 ): Promise<string[]> {
   const deletionIds: string[] = [];
-  // A held record already waiting on its hold keeps its one exempt receipt;
-  // every later sweep would otherwise add another.
-  const receipts = await context.ledger.listReceipts({ tenantId: authority.tenantId });
-  const awaiting = new Set(
-    receipts.filter((receipt) => receipt.awaitingHoldRelease).map((receipt) => receipt.record.id),
-  );
+  // Whether another deletion (a held one, or another sweep's) already owns a
+  // record is decided inside the request, against receipts read after the
+  // record's claim, never against a listing taken here.
   for (const resolved of expired) {
     const current = await context.load(resolved.scope.tenantId, {
       id: resolved.record.id,
       namespace: resolved.scope.namespace,
     });
-    if (current === undefined || awaiting.has(current.record.id)) continue;
-    const receipt = await deletion.requestDeletion({
+    if (current === undefined) continue;
+    const outcome = await deletion.requestDeletion({
       attribution: context.attribution(authority, operationId),
       resolved: current,
       trigger: 'retention-expiry',
       scope: current.read.governance.lineage === undefined ? 'source' : 'projection',
     });
-    deletionIds.push(receipt.deletionId);
+    // Otherwise another deletion (another sweep sharing this store, say)
+    // claimed the record first, and its receipt is the record's one.
+    if (outcome.status === 'requested') deletionIds.push(outcome.receipt.deletionId);
   }
   return deletionIds;
 }

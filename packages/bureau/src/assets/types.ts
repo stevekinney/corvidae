@@ -17,6 +17,7 @@
  * names the same content while the asset is available.
  */
 import type { CleanupAcknowledgement, ClosedOptions } from '@lostgradient/operative';
+import type { bureauClaim } from './internal-access';
 import type { ContentSource, MediaLimits, MimeFamily, Modality } from 'conversationalist';
 
 /** The `managed-asset` member of conversationalist's `ContentSource`. */
@@ -504,6 +505,14 @@ export interface AssetShutdownReport {
   }[];
 }
 
+/** One retention claim as the reconciler reports it: who holds it and whose asset it is. */
+export interface AssetHeldClaim {
+  readonly assetId: string;
+  /** The principal id that owns the asset, and so the principal that can release the claim. */
+  readonly ownerId: string;
+  readonly holderId: string;
+}
+
 /** The asset service — see `asset-service.ts` for the contract of each operation. */
 export interface AssetService {
   readonly durability: 'process-local' | 'durable';
@@ -563,9 +572,20 @@ export interface AssetService {
   retain(
     assetId: string,
     principal: AssetPrincipal,
-    reference: { readonly holderId: string; readonly until: string },
+    reference: {
+      readonly holderId: string;
+      readonly until: string;
+      /** Bureau's own row claims only; a public caller cannot name this. */
+      readonly [bureauClaim]?: true;
+    },
   ): Promise<AssetDescriptor>;
   release(assetId: string, principal: AssetPrincipal, holderId: string): Promise<AssetDescriptor>;
+  /**
+   * Like {@link AssetService.release}, but reports whether the call removed a claim: `false` when
+   * the holder held nothing, which changes nothing and emits no `asset.released` event. A
+   * reconciler that may race another uses it to count only the releases it made.
+   */
+  releaseClaim(assetId: string, principal: AssetPrincipal, holderId: string): Promise<boolean>;
   placeHold(
     assetId: string,
     principal: AssetPrincipal,
