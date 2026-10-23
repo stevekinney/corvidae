@@ -191,9 +191,9 @@ export function affectedWorkspaces(
         queue.push(next);
       }
   };
-  const changed = [...affected];
-  visit(changed, reversed);
-  visit(changed, graph.dependencies);
+  visit([...affected], reversed);
+  // Seeded after the dependent expansion, so a dependent's own dependencies count too.
+  visit([...affected], graph.dependencies);
   return affected;
 }
 

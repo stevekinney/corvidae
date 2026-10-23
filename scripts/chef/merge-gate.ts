@@ -25,8 +25,10 @@
 //                     worktree was clean (`git status --porcelain` empty) at the start and at the end
 //                     of the run with HEAD unmoved (start head = end head = the pull request's head);
 //   5. threads        every review thread is resolved, and SEEN equals TOTAL;
-//   6. comment        post the comment file (skipped with --dry-run);
-//   7. refetch        fetch again; the step 3 base check still holds;
+//   6. refetch        fetch again; the step 3 base check still holds (the dependency graph is read
+//                     from the gated commit and from `origin/<default>`, never from the worktree);
+//   7. comment        post the comment file plus a `Base:` line from this final check (skipped with
+//                     --dry-run);
 //   8. merge          `gh pr merge --<method> --match-head-commit <head>` (skipped with --dry-run);
 //   9. confirm        the pull request is MERGED, and `git diff --quiet <mergeCommit> <head>` holds,
 //                     which is `treesMatch`. For a head that did not contain the base, the merge
@@ -75,7 +77,6 @@ import {
 import { readGateLog } from './gate-run.ts';
 import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
 import {
-  filesystemSource,
   overlappingFiles,
   readWorkspaceGraph,
   unionGraphs,
@@ -261,14 +262,15 @@ export function mergeGate(
     if (typeof pullRequestFiles === 'string') return pullRequestFiles;
     const baseFiles = changedFiles(baseSha, remote);
     if (typeof baseFiles === 'string') return baseFiles;
-    // A dependency edge added on the default branch counts as much as one at the head.
-    const baseSource: GraphSource = {
+    // Both sides come from commits, not from the worktree: the gated head, which a dirty worktree
+    // may disagree with, and the default branch, where a dependency edge may have been added.
+    const gitSource = (ref: string): GraphSource => ({
       read: (path) => {
-        const shown = git('show', `${remote}:${path}`);
+        const shown = git('show', `${ref}:${path}`);
         return shown.code === 0 ? shown.stdout : undefined;
       },
       list: (directory) => {
-        const listed = git('ls-tree', '--name-only', remote, `${directory}/`);
+        const listed = git('ls-tree', '--name-only', ref, `${directory}/`);
         return listed.code === 0
           ? listed.stdout
               .split('\n')
@@ -276,10 +278,10 @@ export function mergeGate(
               .map((line) => line.slice(directory.length + 1))
           : [];
       },
-    };
+    });
     const graph = unionGraphs(
-      readWorkspaceGraph(filesystemSource(options.worktree)),
-      readWorkspaceGraph(baseSource),
+      readWorkspaceGraph(gitSource('HEAD')),
+      readWorkspaceGraph(gitSource(remote)),
     );
     const overlap = overlappingFiles(pullRequestFiles, baseFiles, graph);
     if (overlap.length > 0)
@@ -318,7 +320,6 @@ export function mergeGate(
   report.basePath = baseCheck.path;
   if (baseCheck.tree !== undefined) report.mergeTree = baseCheck.tree;
   else delete report.mergeTree;
-  const baseNote = describeBasePath(report, defaultBranch);
 
   // 3b. main-health
   const healthFile =
@@ -391,14 +392,26 @@ export function mergeGate(
   if (listing.unresolved > 0)
     return fail('threads', `${listing.unresolved} review thread(s) are unresolved.`);
 
-  // 6. comment
-  if (!options.dryRun) {
+  // 6. refetch
+  const refetchProblem = fetchBase('refetch');
+  if (refetchProblem !== undefined) return fail('refetch', refetchProblem);
+  const refetchCheck = checkBase();
+  if (typeof refetchCheck === 'string')
+    return fail('refetch', `${defaultBranch} moved: ${refetchCheck}`);
+  report.basePath = refetchCheck.path;
+  if (refetchCheck.tree !== undefined) report.mergeTree = refetchCheck.tree;
+  else delete report.mergeTree;
+  report.base = git('rev-parse', `origin/${defaultBranch}`).stdout.trim() || report.base;
+  if (options.dryRun) return report;
+
+  // 7. comment (after the refetch, so the note names the base that will actually be merged against)
+  {
     // The comment says which base path the gate relied on, so a reader sees it was not a clean fast-forward.
     const commentDirectory = mkdtempSync(join(tmpdir(), 'merge-gate-comment-'));
     const commentBody = join(commentDirectory, 'comment.md');
     writeFileSync(
       commentBody,
-      `${readFileSync(options.commentFile, 'utf8').trimEnd()}\n\nBase: ${baseNote}\n`,
+      `${readFileSync(options.commentFile, 'utf8').trimEnd()}\n\nBase: ${describeBasePath(report, defaultBranch)}\n`,
     );
     const commented = runner([
       'gh',
@@ -417,18 +430,6 @@ export function mergeGate(
         `gh pr comment failed (exit ${commented.code}): ${firstLine(commented.stderr)}`,
       );
   }
-
-  // 7. refetch
-  const refetchProblem = fetchBase('refetch');
-  if (refetchProblem !== undefined) return fail('refetch', refetchProblem);
-  const refetchCheck = checkBase();
-  if (typeof refetchCheck === 'string')
-    return fail('refetch', `${defaultBranch} moved: ${refetchCheck}`);
-  report.basePath = refetchCheck.path;
-  if (refetchCheck.tree !== undefined) report.mergeTree = refetchCheck.tree;
-  else delete report.mergeTree;
-  report.base = git('rev-parse', `origin/${defaultBranch}`).stdout.trim() || report.base;
-  if (options.dryRun) return report;
 
   // 8. merge
   const merge = runner([

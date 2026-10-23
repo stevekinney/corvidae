@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnWithHangGuard } from '../hang-guard.ts';
@@ -100,6 +108,10 @@ interface World {
   mergedTree?: string;
   /** Files at origin/main by path, as `git show` and `git ls-tree` read them. */
   baseTree?: Record<string, string>;
+  /** Files at the gated commit; when unset the sandbox files stand for them. */
+  headTree?: Record<string, string>;
+  /** `ancestors` is per call; this one makes the refetch's base differ from the first. */
+  baseShas?: string[];
 }
 
 const MERGE_TREE = '9'.repeat(40);
@@ -110,6 +122,7 @@ function fake(world: World = {}) {
   const comments: string[] = [];
   let ancestorCall = 0;
   let fetchCall = 0;
+  let baseCall = 0;
   const nodes = world.threadNodes ?? [{ id: 'T1', isResolved: true }];
   const runner: Runner = (command) => {
     calls.push(command);
@@ -123,14 +136,31 @@ function fake(world: World = {}) {
       if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
         return { code: 0, stdout: `${world.mergedTree ?? MERGE_TREE}\n`, stderr: '' };
       if (rest[0] === 'show') {
-        const content = world.baseTree?.[rest[1]?.replace(/^origin\/main:/, '') ?? ''];
+        const [ref = '', path = ''] = (rest[1] ?? '').split(':');
+        const content =
+          ref === 'HEAD'
+            ? world.headTree === undefined
+              ? existsSync(join(sandbox, path))
+                ? readFileSync(join(sandbox, path), 'utf8')
+                : undefined
+              : world.headTree[path]
+            : world.baseTree?.[path];
         return content === undefined
           ? { code: 128, stdout: '', stderr: 'fatal: path does not exist' }
           : { code: 0, stdout: content, stderr: '' };
       }
       if (rest[0] === 'ls-tree') {
         const prefix = rest[3] ?? '';
-        const names = Object.keys(world.baseTree ?? {})
+        const onDisk =
+          rest[2] === 'HEAD' && world.headTree === undefined
+            ? existsSync(join(sandbox, prefix))
+              ? readdirSync(join(sandbox, prefix)).map((name) => `${prefix}${name}/x`)
+              : []
+            : [];
+        const names = [
+          ...Object.keys((rest[2] === 'HEAD' ? world.headTree : world.baseTree) ?? {}),
+          ...onDisk,
+        ]
           .filter((path) => path.startsWith(prefix))
           .map((path) => path.slice(0, path.indexOf('/', prefix.length)))
           .filter((path, index, all) => path !== '' && all.indexOf(path) === index);
@@ -145,7 +175,11 @@ function fake(world: World = {}) {
       if (rest[0] === 'rev-parse')
         return rest[1] === 'HEAD'
           ? { code: 0, stdout: `${world.head ?? HEAD}\n`, stderr: '' }
-          : { code: 0, stdout: `${BASE}\n`, stderr: '' };
+          : {
+              code: 0,
+              stdout: `${world.baseShas?.[Math.min(baseCall++, world.baseShas.length - 1)] ?? BASE}\n`,
+              stderr: '',
+            };
       if (rest[0] === 'merge-base' && rest[1] !== '--is-ancestor')
         return { code: 0, stdout: `${MERGE_BASE}\n`, stderr: '' };
       if (rest[0] === 'diff' && rest[1] === '--name-only') {
@@ -305,10 +339,10 @@ describe('mergeGate', () => {
       'gh pr view',
       'git merge-base',
       'gh api graphql',
-      'gh pr comment',
       'git fetch',
       'git merge-base',
       'git rev-parse',
+      'gh pr comment',
       'gh pr merge',
       'gh pr view',
       'git fetch',
@@ -445,11 +479,11 @@ describe('mergeGate', () => {
     expect(short.merged()).toBe(false);
   });
 
-  test('the base moving after the comment stops before the merge', () => {
+  test('the base moving after the first check stops before the comment and the merge', () => {
     const world = fake({ ancestors: [true, false] });
     const report = mergeGate(options, { runner: world.runner });
     expect(report.failedStep).toBe('refetch');
-    expect(world.posted()).toBe(true);
+    expect(world.posted()).toBe(false);
     expect(world.merged()).toBe(false);
   });
 
@@ -822,6 +856,58 @@ describe('a head that does not contain the base', () => {
     expect(report.failedStep).toBe('contains-base');
     expect(report.detail).toContain('packages/c/other.ts');
     expect(world.merged()).toBe(false);
+  });
+
+  test('the dependencies of a dependent workspace count as affected', () => {
+    mkdirSync(join(sandbox, 'packages/d'), { recursive: true });
+    writeFileSync(
+      join(sandbox, 'packages/b/package.json'),
+      JSON.stringify({
+        name: '@x/b',
+        dependencies: { '@x/a': 'workspace:*', '@x/c': 'workspace:*' },
+      }),
+    );
+    const world = fake(cleanWorld({ baseFiles: ['packages/c/other.ts'] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report.failedStep).toBe('contains-base');
+    expect(report.detail).toContain('packages/c/other.ts');
+  });
+
+  test('the head side of the graph comes from the gated commit, not a dirty worktree', () => {
+    const committed = {
+      'packages/a/package.json': JSON.stringify({ name: '@x/a' }),
+      'packages/b/package.json': JSON.stringify({
+        name: '@x/b',
+        dependencies: { '@x/a': 'workspace:*' },
+      }),
+      'packages/c/package.json': JSON.stringify({ name: '@x/c' }),
+    };
+    // The worktree drops b's dependency on a; the commit still has it, so a change to b refuses.
+    writeFileSync(join(sandbox, 'packages/b/package.json'), JSON.stringify({ name: '@x/b' }));
+    const world = fake(
+      cleanWorld({
+        headTree: committed,
+        pullRequestFiles: ['packages/a/source.ts'],
+        baseFiles: ['packages/b/other.ts'],
+      }),
+    );
+    expect(mergeGate(options, { runner: world.runner }).failedStep).toBe('contains-base');
+    // And a dependency the worktree invents does not make an unrelated change refuse.
+    writeFileSync(
+      join(sandbox, 'packages/c/package.json'),
+      JSON.stringify({ name: '@x/c', dependencies: { '@x/a': 'workspace:*' } }),
+    );
+    const unrelated = fake(cleanWorld({ headTree: committed, baseFiles: ['packages/c/other.ts'] }));
+    expect(mergeGate(options, { runner: unrelated.runner }).failedStep).toBeNull();
+  });
+
+  test('the posted Base line names the final base check after the refetch', () => {
+    const FINAL = 'e'.repeat(40);
+    const world = fake(cleanWorld({ ancestors: [true, false], baseShas: [BASE, FINAL] }));
+    const report = mergeGate(options, { runner: world.runner });
+    expect(report).toMatchObject({ failedStep: null, basePath: 'merge-tree' });
+    expect(world.comments[0]).toContain('Base: merges cleanly with origin/main eeeeeeeeeeee');
+    expect(world.comments[0]).not.toContain('contains origin/main');
   });
 
   test('refuses a conflicting merge, naming the failed condition', () => {
