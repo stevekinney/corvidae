@@ -71,8 +71,9 @@ import {
   type RuntimeTimers,
 } from '@lostgradient/lifecycle';
 import type { Principal } from '@lostgradient/weft';
-import { requestSignalOf } from '@lostgradient/weft/a2a';
+import { A2APushConfigurationConflictError, requestSignalOf } from '@lostgradient/weft/a2a';
 
+import { completeSend, owedInstallOf } from './a2a-push-install-claim.ts';
 import {
   BureauLedgerConflictError,
   type CommandLedger,
@@ -90,21 +91,13 @@ import {
   A2UI_EXTENSION_URI,
   declaredExtensionsOf,
 } from './a2a-agent-card.ts';
+import { type A2ATaskRecord, type A2ATaskRecords, type A2AWireMessage } from './a2a-task-record.ts';
 import {
-  type A2ATaskRecord,
-  type A2ATaskRecords,
-  type A2AWireMessage,
-  clearedRecord,
-} from './a2a-task-record.ts';
-import {
-  agentMessage,
   bureauStateOf,
   CLEANUP_EXTENSION_URI,
   isSettled,
   isTerminal,
-  projectTask,
   type ProjectionShape,
-  replyMessageId,
 } from './a2a-task-projection.ts';
 import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
 import {
@@ -116,6 +109,9 @@ import {
   type SendReceiptState,
 } from './a2a-command-receipts.ts';
 import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
+import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
+import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
+import { createTaskReader } from './a2a-task-reader.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
 /** The version of the A2A send command's contract, part of every ledger identity. */
@@ -153,7 +149,13 @@ const SETTLE_POLL_MS = 1_000;
  * of a claim left pending takes the same path, whatever state the task has reached since, so an
  * answer that took effect is never resent as session input.
  */
-export type A2ASendClaim = { readonly path?: 'answer' | 'input' | undefined };
+export type A2ASendClaim = {
+  readonly path?: 'answer' | 'input' | undefined;
+  /** For a send that embeds a push configuration: whether it owes an install before it completes. */
+  readonly pushOwed?: boolean | undefined;
+  /** For a send that embeds a push configuration: the cursor its checkpoint starts at. */
+  readonly pushCursor?: string | undefined;
+};
 
 /** Which path a send took: a new task, an answer to a wait, or input to a working task. */
 type SendPath = 'create' | 'answer' | 'input';
@@ -252,6 +254,19 @@ export type BureauA2ARequestHandlerOptions = {
    * its original task. Defaults to always.
    */
   readonly acceptsNewTasks?: (() => boolean) | undefined;
+  /**
+   * Push notification delivery (COR-1543). Served only when the card also declares
+   * `pushNotifications`; a handler without both answers every push operation with
+   * `PushNotificationNotSupportedError`.
+   */
+  readonly push?:
+    | {
+        readonly delivery: A2APushDelivery;
+        readonly checkpoints: A2APushCheckpoints;
+        readonly projector: A2APushProjector;
+        readonly ready: Promise<void>;
+      }
+    | undefined;
 };
 
 type Owner = string;
@@ -511,80 +526,96 @@ export function createBureauA2ARequestHandler(
     return view;
   }
 
-  /** The agent's reply on a completed task: from the live run, its settlement, or its history. */
-  async function replyOf(view: TaskView): Promise<string | undefined> {
-    if (view.status !== 'completed') return undefined;
-    const run = bureau.getRun(view.id);
-    const final = run?.stepDetails.findLast((step) => step.final);
-    if (final !== undefined) return final.content;
-    const record = await bureau.tasks.record(view.id);
-    if (record?.settled?.answer !== undefined) return record.settled.answer.text;
-    let since: string | undefined;
-    let content: string | undefined;
-    for (;;) {
-      const page = await bureau.eventHistory(
-        { kind: 'run', id: view.id },
-        { ...(since === undefined ? {} : { since }), limit: 200 },
+  const reader = createTaskReader({ bureau, records });
+  const replyOf = (view: TaskView): Promise<string | undefined> => reader.replyOf(view);
+  const push = options.card().capabilities?.pushNotifications === true ? options.push : undefined;
+
+  /** The push support the card declares, or the answer a deployment without it gives. */
+  function requirePush(): NonNullable<typeof push> {
+    if (push === undefined) {
+      throw new PushNotificationNotSupportedError(
+        'This agent does not deliver push notifications.',
       );
-      if (!('events' in page)) break;
-      for (const event of page.events) {
-        if (event.kind !== 'run.completed') continue;
-        const payload = event.payload as { content?: unknown } | undefined;
-        if (typeof payload?.content === 'string') content = payload.content;
-      }
-      if (!page.hasMore) break;
-      since = page.nextCursor ?? page.events.at(-1)?.cursor;
-      if (since === undefined) break;
     }
-    return content;
+    return push;
   }
 
-  /** The task as one response shows it, folding a completed task's reply into its history once. */
+  function callerOf(context: ServerCallContext | undefined): A2APushCaller {
+    const user = userOf(context);
+    return { authenticated: user.isAuthenticated, userName: user.userName };
+  }
+
+  /**
+   * Installs a push configuration on a task and starts its checkpoint at `cursor`, so it
+   * receives every event after the cursor and none before. Both writes are idempotent: a repeat
+   * of the same configuration leaves one configuration and keeps its checkpoint.
+   */
+  async function installPush(
+    taskId: string,
+    configuration: TaskPushNotificationConfig,
+    context: ServerCallContext | undefined,
+    cursor: string,
+  ): Promise<TaskPushNotificationConfig> {
+    const { delivery, checkpoints, projector, ready } = requirePush();
+    // Recovery settles every pending checkpoint it finds, so an install starts after it: a
+    // recovery that read a checkpoint this install reuses could otherwise remove it.
+    await ready;
+    // The identifier is fixed first so the checkpoint can be written ahead of the configuration,
+    // marked pending: a crash between the two writes leaves a checkpoint that a restart confirms
+    // or removes, never a configuration that no checkpoint knows.
+    const serverContext = context as ServerCallContext;
+    const repeated =
+      configuration.id === ''
+        ? await delivery.sender.pushStore.check(taskId, serverContext, configuration)
+        : undefined;
+    const configId =
+      configuration.id === '' ? (repeated?.id ?? crypto.randomUUID()) : configuration.id;
+    const installId = crypto.randomUUID();
+    await checkpoints.create({
+      recordVersion: 1,
+      taskId,
+      configId,
+      cursor,
+      caller: callerOf(context),
+      pending: true,
+      installId,
+    });
+    let stored: TaskPushNotificationConfig;
+    try {
+      stored = await delivery.sender.pushStore.create(taskId, serverContext, {
+        ...structuredClone(configuration),
+        id: configId,
+        taskId,
+      });
+    } catch (error) {
+      await checkpoints.removePending(taskId, configId, installId);
+      throw error;
+    }
+    if (stored.id !== configId) {
+      // A concurrent create of the same webhook won: its configuration is the one checkpointed.
+      await checkpoints.removePending(taskId, configId, installId);
+      await checkpoints.create({
+        recordVersion: 1,
+        taskId,
+        configId: stored.id,
+        cursor,
+        caller: callerOf(context),
+        pending: true,
+        installId,
+      });
+    }
+    await checkpoints.confirm(taskId, stored.id);
+    projector.watch(taskId);
+    return stored;
+  }
+
+  /** The task as one response shows it, with the command's receipt when it has one. */
   async function respondWith(
     view: TaskView,
     shape: ProjectionShape,
     receipt?: Receipt,
   ): Promise<Task> {
-    const stored = await bureau.tasks.record(view.id);
-    let record = await records.read(view.id);
-    // A deleted context empties its tasks' own history, and the A2A history goes with it, even on
-    // an instance that did not see the deletion happen.
-    if (record !== undefined && stored !== undefined && stored.history.length === 0) {
-      if (record.history.length > 0 || !record.replyRecorded) {
-        record = await records.update(view.id, (current) =>
-          current.history.length === 0 && current.replyRecorded
-            ? undefined
-            : clearedRecord(current),
-        );
-      }
-    }
-    const reply = await replyOf(view);
-    // The reply is folded in once it can be read: a completed task whose reply is not yet visible
-    // here (its history event has not reached this instance) is folded on a later read.
-    const replyReady = view.status !== 'completed' || (reply !== undefined && reply !== '');
-    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded && replyReady) {
-      record = await records.update(view.id, (current) =>
-        current.replyRecorded
-          ? undefined
-          : {
-              ...current,
-              replyRecorded: true,
-              history:
-                reply === undefined || reply === ''
-                  ? current.history
-                  : [
-                      ...current.history,
-                      Message.toJSON(
-                        agentMessage(view, replyMessageId(view.id), reply),
-                      ) as A2AWireMessage,
-                    ],
-            },
-      );
-    }
-    const task = projectTask(
-      { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
-      shape,
-    );
+    const { task, record } = await reader.read(view, shape);
     if (receipt !== undefined && shape.activated.has(COMMAND_RECEIPTS_EXTENSION_URI)) {
       task.metadata = {
         ...task.metadata,
@@ -933,6 +964,9 @@ export function createBureauA2ARequestHandler(
     const user = userOf(context);
     const owner = ownerOf(context);
     const message = requireMessage(params);
+    // Snapshotted before the first await: the request object is the caller's.
+    const embedded = params.configuration?.taskPushNotificationConfig;
+    const inlinePush = embedded === undefined ? undefined : structuredClone(embedded);
     const activated = activate(declared, context, message);
     const version = context?.requestedVersion ?? '1.0';
     const continuing = message.taskId !== '';
@@ -993,10 +1027,23 @@ export function createBureauA2ARequestHandler(
       throw new TaskNotFoundError(`Agent '${agentName}' was withdrawn and takes no new task.`);
     }
 
-    if (params.configuration?.taskPushNotificationConfig !== undefined) {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+    if (inlinePush !== undefined) {
+      const { delivery } = requirePush();
+      // Refused before the claim: a configuration the store refuses once the input is applied
+      // would leave a pending claim whose every exact retry repeats the effect and throws. The
+      // store's conflict is answered as -32602.
+      if (continuing) {
+        try {
+          await delivery.sender.pushStore.check(
+            message.taskId,
+            context as ServerCallContext,
+            structuredClone(inlinePush),
+          );
+        } catch (error) {
+          if (error instanceof A2APushConfigurationConflictError) throw invalid(error.message);
+          throw error;
+        }
+      }
     }
     const outputModes = params.configuration?.acceptedOutputModes ?? [];
     if (outputModes.length > 0 && !outputModes.some((mode) => A2A_OUTPUT_MODES.includes(mode))) {
@@ -1038,9 +1085,26 @@ export function createBureauA2ARequestHandler(
       }
     }
 
+    // The install this send owes is decided here, once, and recorded in the claim: a retry of a
+    // claim left pending reads it back, so it installs the same configuration at the same cursor
+    // whatever the task has become since.
+    const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
+    const owed = owedInstallOf({
+      hasInline: inlinePush !== undefined,
+      continuing: continued !== undefined,
+      expired,
+      pending,
+      tail:
+        inlinePush === undefined || continued === undefined || pending?.pushOwed !== undefined
+          ? undefined
+          : await push?.projector.tailOf(continued.id),
+    });
     let claimed;
     try {
-      claimed = await ledger.claim(identity, digest, path === undefined ? {} : { path });
+      claimed = await ledger.claim(identity, digest, {
+        ...(path === undefined ? {} : { path }),
+        ...(owed === undefined ? {} : owed),
+      });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
         const original = await ledger.locate(identity);
@@ -1058,12 +1122,12 @@ export function createBureauA2ARequestHandler(
       );
     }
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
-    const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
     let result: A2ASendResult;
     // Whether the command may have taken effect: a run created, a wait answered, an input
     // admitted. From then on the claim is kept, so a retry finishes it by the same path rather
     // than claiming afresh against the task's later state.
     let effected = false;
+    let installed = false;
     const markEffected = () => {
       effected = true;
     };
@@ -1101,6 +1165,12 @@ export function createBureauA2ARequestHandler(
         );
         result = { taskId: continued.id, ...answered };
       }
+      // Installed before the binding completes, so an exact retry of a send that crashed here
+      // runs this again and finds the one configuration.
+      if (owed?.pushOwed === true && inlinePush !== undefined) {
+        await installPush(result.taskId, inlinePush, context, owed.pushCursor);
+        installed = true;
+      }
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
       if (claimed.outcome === 'claimed' && !effected) {
@@ -1108,7 +1178,7 @@ export function createBureauA2ARequestHandler(
       }
       throw error;
     }
-    await ledger.complete(entry, result);
+    await completeSend(ledger, entry, result, owed, installed);
     return admitted(result);
   }
 
@@ -1311,35 +1381,55 @@ export function createBureauA2ARequestHandler(
     },
 
     async createTaskPushNotificationConfig(
-      _params: TaskPushNotificationConfig,
+      params: TaskPushNotificationConfig,
+      context,
     ): Promise<TaskPushNotificationConfig> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+      const { projector } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      // Read before the configuration exists, so an event that lands meanwhile reaches it.
+      const cursor = (await projector.tailOf(view.id)) ?? '-1';
+      return installPush(view.id, params, context, cursor);
     },
 
     async getTaskPushNotificationConfig(
-      _params: GetTaskPushNotificationConfigRequest,
+      params: GetTaskPushNotificationConfigRequest,
+      context,
     ): Promise<TaskPushNotificationConfig> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+      const { delivery } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      const config = await delivery.sender.pushStore.get(view.id, params.id, context);
+      if (config === undefined) {
+        throw new TaskNotFoundError(
+          `Push notification config with id '${params.id}' not found for task ${view.id}.`,
+        );
+      }
+      return config;
     },
 
     async listTaskPushNotificationConfigs(
-      _params: ListTaskPushNotificationConfigsRequest,
+      params: ListTaskPushNotificationConfigsRequest,
+      context,
     ): Promise<ListTaskPushNotificationConfigsResponse> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
+      const { delivery } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      return delivery.sender.pushStore.list(
+        { taskId: view.id, pageSize: params.pageSize, pageToken: params.pageToken },
+        context,
       );
     },
 
     async deleteTaskPushNotificationConfig(
-      _params: DeleteTaskPushNotificationConfigRequest,
+      params: DeleteTaskPushNotificationConfigRequest,
+      context,
     ): Promise<void> {
-      throw new PushNotificationNotSupportedError(
-        'This agent does not deliver push notifications.',
-      );
+      const { delivery, checkpoints, projector } = requirePush();
+      const view = await ownTask(params.taskId, ownerOf(context));
+      // The sender's store stops the configuration's deliveries before it returns; the checkpoint
+      // goes with the configuration.
+      await delivery.sender.pushStore.delete(view.id, context, params.id);
+      await checkpoints.remove(view.id, params.id);
+      // A task left with no configuration has nothing to project: its watcher finds that and stops.
+      projector.watch(view.id);
     },
   };
 }

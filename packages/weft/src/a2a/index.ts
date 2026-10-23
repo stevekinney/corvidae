@@ -51,6 +51,7 @@ export {
 } from './peer-client.ts';
 export {
   DEFAULT_PUSH_DELIVERY_INTERVAL_MS,
+  openDeliveries,
   startPushDelivery,
   type StartPushDeliveryOptions,
 } from './push-delivery.ts';
@@ -58,6 +59,7 @@ export {
   A2A_PUSH_DELIVERY_KIND,
   A2A_PUSH_MAX_ATTEMPTS,
   createOutboxPushNotificationSender,
+  pushDestinationRef,
   pushNotificationResolvers,
   type OutboxPushNotificationSender,
   type OutboxPushNotificationSenderOptions,

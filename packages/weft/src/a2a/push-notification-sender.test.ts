@@ -22,6 +22,7 @@ import {
 import {
   A2A_PUSH_DELIVERY_KIND,
   createOutboxPushNotificationSender,
+  pushDestinationRef,
   pushNotificationResolvers,
 } from './push-notification-sender.ts';
 import { pushConfigurationCreatePlannerOf } from './push-notification-store.ts';
@@ -103,6 +104,35 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
 
     await fixture.sender.send(statusEvent(2), alice());
     expect(await fixture.outbox.list()).toHaveLength(2);
+  });
+
+  test('a keyed send deduplicates only a replay of the same event key', async () => {
+    const fixture = await createPushFixture();
+    await createConfiguration(fixture);
+
+    await fixture.sender.sendKeyed(statusEvent(1), alice(), 'cursor-1');
+    await fixture.sender.sendKeyed(statusEvent(1), alice(), 'cursor-1');
+    expect(await fixture.outbox.list()).toHaveLength(1);
+
+    // An identical-looking event under another key is another delivery.
+    await fixture.sender.sendKeyed(statusEvent(1), alice(), 'cursor-2');
+    expect(await fixture.outbox.list()).toHaveLength(2);
+  });
+
+  test('the wrapped store checks a create through the underlying store', async () => {
+    const fixture = await createPushFixture();
+    const created = await createConfiguration(fixture);
+
+    expect(await fixture.sender.pushStore.check('task-1', alice(), created)).toEqual(created);
+  });
+
+  test('names a configuration’s destination by its caller scope', async () => {
+    const fixture = await createPushFixture();
+    await createConfiguration(fixture);
+    await fixture.sender.send(statusEvent(1), alice());
+
+    const [receipt] = await fixture.outbox.list();
+    expect(receipt?.destinationRef).toBe(pushDestinationRef(alice(), 'task-1', 'config-1'));
   });
 
   test('one event is one delivery per push configuration', async () => {

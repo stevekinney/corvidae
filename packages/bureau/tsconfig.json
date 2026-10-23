@@ -1,6 +1,6 @@
 {
   "extends": "@lostgradient/typescript/library.json",
-  "include": ["src", "test"],
+  "include": ["src", "test", "scripts"],
   "exclude": ["node_modules", "coverage"],
   "references": [
     {
