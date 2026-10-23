@@ -174,9 +174,10 @@ for (const view of VIEW_NAMES) {
         // No view scrolls the page sideways at the phone width, in any state: a table scrolls
         // inside its own wrapper, and nothing hidden is positioned outside it (COR-1647).
         const scrollWidth = await page.evaluate(() => document.scrollingElement?.scrollWidth ?? 0);
-        expect(scrollWidth, `${view} — ${outcome} at ${width}px scrolls sideways`).toBeLessThanOrEqual(
-          width,
-        );
+        expect(
+          scrollWidth,
+          `${view} — ${outcome} at ${width}px scrolls sideways`,
+        ).toBeLessThanOrEqual(width);
       });
     }
   }

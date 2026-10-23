@@ -18,7 +18,14 @@ describe('the views', () => {
     for (const name of ['runs', 'audit', 'engine', 'workers', 'storage', 'system'] as const) {
       expect(VIEWS[name], name).toMatchObject({ density: 'compact', width: 'full' });
     }
-    for (const name of ['chat', 'agents', 'agent-editor', 'workflows', 'schedules', 'reviews'] as const) {
+    for (const name of [
+      'chat',
+      'agents',
+      'agent-editor',
+      'workflows',
+      'schedules',
+      'reviews',
+    ] as const) {
       expect(VIEWS[name], name).toMatchObject({ density: 'comfortable', width: 'reading' });
     }
   });

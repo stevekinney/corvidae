@@ -147,7 +147,9 @@ test('the raw-pixel detector finds a px length in a padding or font-size and not
   expect(rawPixelDeclarations('.a { padding-inline-start: 18px }')).toHaveLength(1);
   expect(rawPixelDeclarations('.a { font-size: var(--cinder-text-md, 15px); }')).toHaveLength(1);
   expect(rawPixelDeclarations('<div style="color: red; padding: 15px;"></div>')).toHaveLength(1);
-  expect(rawPixelDeclarations('.a { padding: 0 var(--cinder-space-4) 0 calc(1px + 2px); }')).toHaveLength(1);
+  expect(
+    rawPixelDeclarations('.a { padding: 0 var(--cinder-space-4) 0 calc(1px + 2px); }'),
+  ).toHaveLength(1);
   expect(rawPixelDeclarations('.a { padding: var(--cinder-density-pad-block) 0; }')).toEqual([]);
   expect(
     rawPixelDeclarations('.a { margin: 4px; gap: 8px; width: 36px; border: 1px solid red; }'),

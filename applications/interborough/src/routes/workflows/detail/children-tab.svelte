@@ -78,7 +78,9 @@
 </script>
 
 {#if childrenQuery.isPending}
-  <div class="weft-children-tab"><div style="padding: var(--cinder-density-pad-card);"><Skeleton height="3rem" /></div></div>
+  <div class="weft-children-tab">
+    <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="3rem" /></div>
+  </div>
 {:else if children.length === 0}
   <EmptyState
     title="No child workflows"

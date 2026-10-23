@@ -57,7 +57,10 @@ test.describe('the outlet pads a page and nothing else does', () => {
     test(`${path} has no padding of its own at the top of the page`, async ({ page }) => {
       await page.setViewportSize(DESKTOP);
       await page.goto(path);
-      await expect(page.locator('[data-view]').first()).not.toHaveAttribute('data-state', 'loading');
+      await expect(page.locator('[data-view]').first()).not.toHaveAttribute(
+        'data-state',
+        'loading',
+      );
       const roots = await pageRootPaddings(page);
       expect(roots.length).toBeGreaterThan(0);
       for (const root of roots) {
@@ -122,11 +125,15 @@ test.describe('each view declares how dense and how wide it is', () => {
     await page.goto('/runs');
     const compact = await page
       .locator('main.weft-shell-outlet')
-      .evaluate((outlet) => getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'));
+      .evaluate((outlet) =>
+        getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'),
+      );
     await page.goto('/agents');
     const comfortable = await page
       .locator('main.weft-shell-outlet')
-      .evaluate((outlet) => getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'));
+      .evaluate((outlet) =>
+        getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'),
+      );
     expect(compact.trim()).toBe('2.5rem');
     expect(comfortable.trim()).toBe('3.5rem');
   });
