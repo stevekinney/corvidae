@@ -9,7 +9,14 @@ import {
   manualTimer,
   pendingGate,
 } from './gate-child.test-support.ts';
-import { readGateLog, renderGateSummary, run, runCommand, runGate } from './gate-run.ts';
+import {
+  isProcessLive,
+  readGateLog,
+  renderGateSummary,
+  run,
+  runCommand,
+  runGate,
+} from './gate-run.ts';
 import type { Runner } from './process-runner.ts';
 
 describe('readGateLog', () => {
@@ -352,10 +359,12 @@ describe('runGate and signals', () => {
     }
   });
 
-  test('a leader that exits 0 after a signal is still recorded as interrupted, per signal', async () => {
-    for (const [signal, code] of [
-      ['SIGINT', 130],
-      ['SIGHUP', 129],
+  test('an interrupted gate reports the signal code whatever the child exited with', async () => {
+    for (const [signal, code, childCode] of [
+      ['SIGINT', 130, 0],
+      ['SIGINT', 130, 1],
+      ['SIGHUP', 129, 143],
+      ['SIGTERM', 143, 2],
     ] as const) {
       const { sandbox, configPath, log } = sandboxWithConfig();
       try {
@@ -383,7 +392,7 @@ describe('runGate and signals', () => {
           [901, 'SIGTERM'],
           [901, 'SIGKILL'],
         ]);
-        child.finish(0);
+        child.finish(childCode);
         const result = await running;
         expect(result.code).toBe(code);
         expect(readFileSync(log, 'utf8').endsWith(`GATE_RC=${code}\n`)).toBe(true);
@@ -479,6 +488,21 @@ describe('runGate and signals', () => {
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }
+  });
+});
+
+describe('isProcessLive', () => {
+  test('a zombie or an unlisted pid is gone, and any other state is live', () => {
+    expect(isProcessLive(1, () => 'Z')).toBe(false);
+    expect(isProcessLive(1, () => 'Z+')).toBe(false);
+    expect(isProcessLive(1, () => '')).toBe(false);
+    expect(isProcessLive(1, () => 'S')).toBe(true);
+    expect(isProcessLive(1, () => 'Ss+')).toBe(true);
+    expect(isProcessLive(1, () => 'R')).toBe(true);
+  });
+
+  test('the real reader sees this process as live', () => {
+    expect(isProcessLive(process.pid)).toBe(true);
   });
 });
 

@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../promise-outcome.test-support.ts';
 import { fakeSignals } from './gate-child.test-support.ts';
-import { readGateLog, run, runCommand, runControl, runGate, UsageError } from './gate-run.ts';
+import {
+  processExists,
+  readGateLog,
+  run,
+  runCommand,
+  runControl,
+  runGate,
+  UsageError,
+} from './gate-run.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
 
@@ -276,14 +284,7 @@ scenarios.describe('runGate', () => {
         await Bun.sleep(20);
       }
       const pids = readFileSync(pidFile, 'utf8').trim().split(' ').map(Number);
-      const alive = (pid: number) => {
-        try {
-          process.kill(pid, 0);
-          return true;
-        } catch {
-          return false;
-        }
-      };
+      const alive = (pid: number) => processExists(pid);
       expect(pids.every(alive)).toBe(true);
       signals.emit('SIGTERM');
       await Bun.sleep(200);

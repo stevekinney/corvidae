@@ -310,15 +310,29 @@ export const signalOneProcess: GateDependencies['signalProcess'] = (pid, signal)
   }
 };
 
-/** Whether `pid` exists (a process this user may not signal still exists). */
-export const processExists: GateDependencies['isAlive'] = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as { code?: string }).code === 'EPERM';
-  }
-};
+/** `ps -o stat=` for one process: its state letters, or `''` when no such process exists. */
+export function readProcessState(pid: number): string {
+  const result = Bun.spawnSync(['ps', '-o', 'stat=', '-p', String(pid)], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  return result.stdout.toString().trim();
+}
+
+/**
+ * Whether `pid` is a running process. A zombie (state `Z`) has exited and only waits to be reaped,
+ * so it counts as gone; so does a pid `ps` does not list. `readState` is injectable for tests.
+ */
+export function isProcessLive(
+  pid: number,
+  readState: (pid: number) => string = readProcessState,
+): boolean {
+  const state = readState(pid);
+  return state !== '' && !state.startsWith('Z');
+}
+
+/** Whether `pid` is a live, non-zombie process. */
+export const processExists: GateDependencies['isAlive'] = (pid) => isProcessLive(pid);
 
 function signalExitCode(signal: string | null | undefined): number {
   const number = (signalConstants.signals as Record<string, number | undefined>)[signal ?? ''];
@@ -444,7 +458,7 @@ async function runGateChild(
       }
     }
     return {
-      code: interrupted !== undefined && code === 0 ? signalExitCode(interrupted) : code,
+      code: interrupted === undefined ? code : signalExitCode(interrupted),
       interrupted,
     };
   } finally {
