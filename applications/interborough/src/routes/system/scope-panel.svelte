@@ -17,6 +17,12 @@
 </script>
 
 <div class="weft-scope-panel">
+  <p class="weft-scope-panel__caller">
+    Every request acts as <code class="ib-identifier" data-testid="principal-subject"
+      >{principal.principal?.subject ?? 'unknown'}</code
+    >, the one local caller. These are its scopes.
+  </p>
+
   <div class="weft-scope-panel__section-title">
     <ShieldCheck aria-hidden="true" size={16} class="weft-scope-panel__icon--success" />
     Granted scopes
@@ -67,8 +73,10 @@
     margin-top: 14px;
   }
 
-  .weft-scope-panel__section-title:first-child {
-    margin-top: 0;
+  .weft-scope-panel__caller {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
   }
 
   :global(.weft-scope-panel__icon--success) {

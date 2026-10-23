@@ -68,6 +68,12 @@ export const TASK_RECORD_KEY_PREFIX = 'bureau-task:v1:';
 /** The key prefix of the index from a context to its tasks. */
 export const TASK_CONTEXT_INDEX_KEY_PREFIX = 'bureau-task-context:v1:';
 
+/**
+ * What {@link TaskRegistry.onSettled} calls. A promise it returns is awaited by the settlement
+ * that announced it, so `flush()` and `idle()` wait for it.
+ */
+export type SettledListener = (view: TaskView, record: TaskRecord) => unknown;
+
 /** How many event-loop turns {@link TaskRegistry.idle} waits, by default, for acknowledgements that have not arrived. */
 const IDLE_MAXIMUM_TURNS = 50;
 
@@ -359,7 +365,7 @@ export interface TaskRegistry {
    * settlement was recorded by the run's end or by a cancellation. Returns the function that
    * stops listening. A task already settled is not announced: read it with {@link get}.
    */
-  onSettled(taskId: string, listener: (view: TaskView, record: TaskRecord) => void): () => void;
+  onSettled(taskId: string, listener: SettledListener): () => void;
   /**
    * Calls `listener` with the task's view each time {@link announceChanged} finds it changed, for
    * as long as it listens (COR-1596). Returns the function that stops listening.
@@ -704,7 +710,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   /** Where each followed task's cleanup stands, set as soon as its acknowledgement arrives. */
   const observed = new Map<string, TaskCleanupState>();
   /** Who is waiting to be told a task has settled (COR-1482). */
-  const settledListeners = new Map<string, Set<(view: TaskView, record: TaskRecord) => void>>();
+  const settledListeners = new Map<string, Set<SettledListener>>();
   /** Who is waiting to be told a task's view changed (COR-1596). */
   const changedListeners = new Map<string, Set<(view: TaskView) => void>>();
 
@@ -1154,13 +1160,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     // these listeners: two back-to-back settlements tell each listener once, not twice.
     if (settledListeners.get(taskId) !== waiting) return;
     settledListeners.delete(taskId);
-    for (const listener of waiting) {
-      try {
-        listener(view, record);
-      } catch (error) {
-        diagnose(`A listener of task "${taskId}" failed`, error);
-      }
-    }
+    // A listener that returns a promise is awaited, so settlement work it starts (a reply fold)
+    // is tracked with the write that announced it and a shutdown's `idle()` waits for it.
+    await Promise.all(
+      [...waiting].map(async (listener) => {
+        try {
+          await listener(view, record);
+        } catch (error) {
+          diagnose(`A listener of task "${taskId}" failed`, error);
+        }
+      }),
+    );
   }
 
   /** The receipt a cleanup state is reported as. */

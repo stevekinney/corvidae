@@ -121,6 +121,7 @@ async function open(schema: HumanInputSchema | undefined) {
     pushNotifications: false,
   });
   const handler = createBureauA2ARequestHandler({
+    publicUrl: 'http://localhost',
     agentName: 'asker',
     card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
     bureau,

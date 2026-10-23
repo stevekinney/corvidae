@@ -8,7 +8,7 @@
 //                               [--log-dir <dir>] [--issue <ID> --completion-file <md>]
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
-//                               [--max-attempts <n>] [--config <json>] [--json]
+//                               [--max-attempts <n>] [--fixes-main] [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
 //   fetch      `git fetch origin <default>`, retried up to three times when Git cannot lock the ref;
@@ -28,6 +28,9 @@
 //              each read back. A failure leaves `merged` true and names step `issue`;
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
+//
+// `--fixes-main` declares the pull request the fix for a red `main` and is forwarded to the
+// merge gate on every attempt; without it the merge gate refuses at main-health while `main` is red.
 //
 // Retry: fetch, base, gate and merge are one attempt. When the merge gate refuses at `contains-base`
 // (another session merged into the default branch during the gate), the whole attempt repeats: merge
@@ -89,6 +92,8 @@ export interface DeliverOptions {
   transcripts?: string[] | undefined;
   /** Total attempts when the base moves during the gate; defaults to 3, minimum 1. */
   maxAttempts?: number | undefined;
+  /** Declares this pull request the fix for a red `main`; forwarded to the merge gate. */
+  fixesMain?: boolean | undefined;
 }
 
 export interface DeliverReport {
@@ -270,6 +275,7 @@ export async function deliver(
       commentFile: options.commentFile,
       dryRun: false,
       checkMainHealth: true,
+      fixesMain: options.fixesMain === true,
       ...(options.usageLog === undefined
         ? {}
         : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
@@ -355,7 +361,7 @@ export async function run(
       'max-attempts',
     ],
     repeated: ['transcript'],
-    flags: ['remove-worktree', 'json'],
+    flags: ['remove-worktree', 'fixes-main', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
@@ -394,6 +400,7 @@ export async function run(
       usageLog,
       transcripts,
       maxAttempts: maxAttemptsText === undefined ? undefined : Number(maxAttemptsText),
+      fixesMain: parsed.flags.has('fixes-main'),
       removeWorktree:
         remove && provider !== undefined && name !== undefined ? { provider, name } : undefined,
     },
