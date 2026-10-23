@@ -40,6 +40,11 @@ import {
 } from './ag-ui-projection.ts';
 import { readSessionOwnedBy, runIsOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiSink, createAgUiSink } from './ag-ui-sink.ts';
+import {
+  type AgUiA2uiDeclaration,
+  createSurfaceSource,
+  type SurfaceSource,
+} from './ag-ui-surface-source.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
 /** What a stream reads from the Bureau. */
@@ -58,6 +63,7 @@ export type AgUiStreamBureau = Pick<
   | 'getDurableRun'
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
+  | 'surfaces'
 >;
 
 export type AgUiStreamEnvironment = {
@@ -110,6 +116,12 @@ export type OpenRunStream = {
    * until the run consumes the answer, so the stream does not end on one of these.
    */
   readonly answered?: ReadonlyArray<string> | undefined;
+  /**
+   * Set when the client opted into A2UI surface events (COR-837): the stream then merges the run's
+   * surfaces into the stream as `ACTIVITY_SNAPSHOT`s, the catalogs it declared gating each one.
+   * Absent, the stream carries no surface event.
+   */
+  readonly a2ui?: AgUiA2uiDeclaration | undefined;
 };
 
 /** The message a mount-minted `RUN_ERROR` carries, by code. */
@@ -315,6 +327,7 @@ export function openRunStream(
   let ended = false;
   let unsubscribeFrames: (() => void) | undefined;
   let unsubscribeSnapshots: (() => void) | undefined;
+  let surfaceSource: SurfaceSource | undefined;
   const buffer: ServerFrame[] = [];
   let highestSequence = -1;
   let opened = false;
@@ -332,6 +345,7 @@ export function openRunStream(
     unsubscribeFrames = undefined;
     unsubscribeSnapshots?.();
     unsubscribeSnapshots = undefined;
+    surfaceSource?.stop();
     buffer.length = 0;
   };
 
@@ -374,6 +388,13 @@ export function openRunStream(
       }
     }
   };
+
+  /**
+   * The surfaces that changed since the last call, as `ACTIVITY_SNAPSHOT`s. A read that fails
+   * leaves the stream without them rather than ending the run's stream.
+   */
+  const surfaceEvents = async (): Promise<Event[]> =>
+    surfaceSource === undefined ? [] : await surfaceSource.reconcile().catch(() => []);
 
   const stateSnapshot = (snapshot: {
     revision: number;
@@ -466,6 +487,9 @@ export function openRunStream(
     };
     writeEvents(closing);
     if (ended) return;
+    // A surface the run changed last is in the stream before the run's end.
+    writeEvents(await surfaceEvents());
+    if (ended) return;
     const { threadId, runId } = request;
     const snapshotWritten = await writeDeliveredInputs();
     if (ended) return;
@@ -535,7 +559,11 @@ export function openRunStream(
       const parked = pendingFor(bureau, request.nativeRunId).filter(
         (review) => review.kind === 'human-wait',
       );
-      if (parked.length > 0) interruptNow(parked.map(toInterrupt));
+      if (parked.length > 0) {
+        writeEvents(await surfaceEvents());
+        if (ended) return;
+        interruptNow(parked.map(toInterrupt));
+      }
     }
   };
 
@@ -705,6 +733,7 @@ export function openRunStream(
       if (ended) cleanup();
       else cleanups.push(cleanup);
     },
+    surfaceEvents,
     interruptNow,
     fail,
     finish: (last, cursor) => {
@@ -726,6 +755,27 @@ export function openRunStream(
       return;
     }
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    // The run's surfaces are the stream's second source. They share the run's durable history, so
+    // the fence is the highest cursor just read: the source follows the history strictly after it
+    // and reads the surfaces as they stand, and nothing falls between the two.
+    if (request.a2ui !== undefined && bureau.surfaces !== undefined) {
+      surfaceSource = createSurfaceSource({
+        surfaces: bureau.surfaces,
+        subscribe: (listener, since) =>
+          bureau.subscribeEventHistory(
+            { kind: 'run', id: request.nativeRunId },
+            listener,
+            since === undefined ? {} : { since },
+          ),
+        taskId: request.nativeRunId,
+        owner: request.owner,
+        declaration: request.a2ui,
+        stampContext,
+        // Queued behind the opening, so a change that lands while it is written is sent after it.
+        onChange: () => enqueue(async () => writeEvents(await surfaceEvents())),
+      });
+      surfaceSource.start(history?.fence);
+    }
     const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
     const detail: RunDetail | undefined = bureau.getRun(request.nativeRunId);
     // A run held under another owner's name is not the one the route authorized. Nothing has been
@@ -784,6 +834,7 @@ export function openRunStream(
     }
     writeEvents([stateSnapshot(snapshot)]);
     lastState = stateKey(snapshot);
+    writeEvents(await surfaceEvents());
     writeEvents(request.preludeEvents?.() ?? []);
 
     // Replay what the client has not seen, through the same projection the live
