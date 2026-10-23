@@ -33,6 +33,7 @@
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
+  import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
   import { VIEWS, type ViewName } from './views.ts';
 
@@ -175,7 +176,12 @@
       <Skeleton height="10rem" />
     </div>
   {:else if state === 'empty' && emptyCopy}
-    <EmptyState title={emptyCopy.title} description={emptyCopy.description} headingLevel={1}>
+    <EmptyState
+      class="weft-view__empty"
+      title={emptyCopy.title}
+      description={emptyCopy.description}
+      headingLevel={1}
+    >
       {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
       {#snippet action()}
         {#if emptyCopy.action}
@@ -186,10 +192,18 @@
             onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</a
           >
         {/if}
+        {#if initial.view === 'chat'}
+          <WelcomeAgents />
+        {/if}
       {/snippet}
     </EmptyState>
   {:else if state === 'not-found' && notFoundCopy}
-    <EmptyState title={notFoundCopy.title} description={notFoundCopy.description} headingLevel={1}>
+    <EmptyState
+      class="weft-view__empty"
+      title={notFoundCopy.title}
+      description={notFoundCopy.description}
+      headingLevel={1}
+    >
       {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
   {:else if state === 'error'}
@@ -201,7 +215,12 @@
       onRetry={() => void probeQuery.refetch()}
     />
   {:else}
-    <EmptyState title={forbiddenTitle} description={forbiddenDescription} headingLevel={1}>
+    <EmptyState
+      class="weft-view__empty"
+      title={forbiddenTitle}
+      description={forbiddenDescription}
+      headingLevel={1}
+    >
       {#snippet icon()}<Lock size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
   {/if}

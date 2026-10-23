@@ -78,6 +78,14 @@ export interface CreateAgentOptionsBase {
   description?: string | undefined;
 
   /**
+   * Prompts that show what a person might ask this agent, for a host that offers them as buttons
+   * on a new chat. Pure description: they are never sent to the model on their own and do not
+   * affect a run. Not the same as an A2A skill's `examples`, which belong to one skill; these
+   * describe the agent as a whole. Left out, the agent suggests none.
+   */
+  examples?: readonly string[] | undefined;
+
+  /**
    * Descriptive metadata for the capabilities this agent offers, in the shape
    * of A2A's `AgentSkill` (specification section 4.4.5). Pure description: it
    * never reaches a run.
@@ -499,6 +507,13 @@ export interface StandaloneAgent<
   readonly description?: string | undefined;
 
   /**
+   * The prompts this agent was created with (`options.examples`), in order, for a host that offers
+   * them on a new chat. Omitted when the agent was created with none. Read-only description: it
+   * never reaches a run. Frozen once.
+   */
+  readonly examples?: readonly string[] | undefined;
+
+  /**
    * Descriptive metadata for the capabilities this agent offers, in the shape
    * of A2A's `AgentSkill` (specification section 4.4.5). Pure description: it
    * never reaches a run.
@@ -718,6 +733,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     output,
     name: configuredName,
     description,
+    examples,
     skillDescriptors,
     // Default to `noToolCalls()` when the caller doesn't supply a `stopWhen`
     // — see the doc comment on `CreateAgentOptionsBase.stopWhen`. Falls back
@@ -982,6 +998,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     name: resolvedName,
     hasOutput: output !== undefined,
     ...(description === undefined ? {} : { description }),
+    ...(examples === undefined ? {} : { examples: Object.freeze([...examples]) }),
     ...(skillDescriptors === undefined ? {} : { skillDescriptors }),
     generationProfile,
     // COR-1265 — omitted entirely rather than set to `undefined` when the

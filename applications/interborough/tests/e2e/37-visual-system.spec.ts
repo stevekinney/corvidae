@@ -8,6 +8,7 @@ import type { Page } from '@playwright/test';
 
 import { VIEW_NAMES, VIEWS } from '../../src/app/views.ts';
 import { approveThroughMount, newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 /** A chat is a transcript of one user message, tool calls, and one reply: nothing needs more. */
@@ -81,6 +82,30 @@ test.describe('the outlet pads a page and nothing else does', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(outlet).toHaveCSS('padding-top', '12px');
     await expect(outlet).toHaveCSS('padding-left', '16px');
+  });
+});
+
+test.describe('the empty chat screen on a fresh host', () => {
+  // The second host holds nothing a person did, so /chat is empty (`24-chat-sessions.spec.ts`).
+  test.use({ baseURL: E2E_BUREAU_URL });
+
+  test('adds no padding of its own inside the outlet, which pads the page', async ({ page }) => {
+    await page.setViewportSize(DESKTOP);
+    await page.goto('/chat');
+    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
+
+    // Cinder's EmptyState pads itself 48px by 32px; the frame takes that off, so the outlet's
+    // padding is the only one and the state starts where the page does.
+    const empty = page.locator('[data-view="chat"] .cinder-empty-state');
+    await expect(empty).toHaveCSS('padding-top', '0px');
+    await expect(empty).toHaveCSS('padding-right', '0px');
+    await expect(empty).toHaveCSS('padding-bottom', '0px');
+    await expect(empty).toHaveCSS('padding-left', '0px');
+    const roots = await pageRootPaddings(page);
+    expect(roots.length).toBeGreaterThan(0);
+    for (const root of roots) {
+      expect(root, `/chat (empty): ${root}`).toMatch(/ 0px 0px 0px 0px$/);
+    }
   });
 });
 

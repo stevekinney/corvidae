@@ -286,6 +286,11 @@ export const agentSummarySchema = z.object({
    * `[]`, an agent it says has none.
    */
   tools: z.array(z.string()).optional(),
+  /**
+   * Prompts that show what a person might ask the agent, which a new chat offers as buttons.
+   * Absent when the agent has none.
+   */
+  examples: z.array(z.string()).optional(),
 });
 
 export type AgentSummary = z.infer<typeof agentSummarySchema>;

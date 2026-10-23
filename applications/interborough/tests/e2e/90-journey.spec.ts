@@ -195,7 +195,7 @@ test('starts a second session with the same agent from the agent’s page, and r
   await page.goto('/chat');
   await page
     .getByRole('navigation', { name: 'Chats' })
-    .getByRole('button', { name: /Start the journey/ })
+    .getByRole('link', { name: /Start the journey/ })
     .click();
 
   await expect(page).toHaveURL(new RegExp(`/chat/${sessions.followUp}$`));

@@ -695,9 +695,40 @@
   color: var(--cinder-text-muted);
 }
 
+/* The frame's empty, not-found and forbidden states are Cinder's EmptyState, which pads itself
+ * 48px by 32px. The shell's outlet already pads the page (COR-1647), so the state adds none. */
+.weft-view__empty {
+  padding: 0;
+}
+
 .weft-view__action {
   color: var(--cinder-accent-text);
   font-weight: 600;
+}
+
+/* The welcome's line naming the agents a person can start with. */
+.ib-welcome-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: baseline;
+  justify-content: center;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-welcome-agents__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-welcome-agents__list li + li::before {
+  content: '·';
+  margin-inline-end: var(--cinder-space-2);
 }
 
 /* The address that matched nothing, above the way back. It wraps so a long one never scrolls. */

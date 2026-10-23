@@ -180,3 +180,20 @@ describe('createAgent: tool names', () => {
     expect(Object.isFrozen(agent.toolNames)).toBe(true);
   });
 });
+
+describe('createAgent examples', () => {
+  it('reports the prompts it was created with, in order, as a frozen copy', () => {
+    const given = ['Refund order 1234', 'Look up order 1001'];
+    const agent = createAgent({ generate: mockGenerate(), examples: given });
+
+    expect(agent.examples).toEqual(['Refund order 1234', 'Look up order 1001']);
+    expect(Object.isFrozen(agent.examples)).toBe(true);
+    // A later change to the caller's array does not change what the agent reports.
+    given.push('Another');
+    expect(agent.examples).toHaveLength(2);
+  });
+
+  it('omits the field for an agent created without any, so none is not an empty list', () => {
+    expect('examples' in createAgent({ generate: mockGenerate() })).toBe(false);
+  });
+});

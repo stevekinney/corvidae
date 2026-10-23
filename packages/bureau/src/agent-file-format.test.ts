@@ -227,6 +227,45 @@ describe('serializeUpdatedAgentFile', () => {
     expect(bodyOnly).toBe(ORIGINAL.replace(existing.body, 'New.\n'));
   });
 
+  it('reads the examples a file lists and keeps them through a rewrite and an unchanged write', () => {
+    const original = [
+      '---',
+      'name: Researcher',
+      'model: anthropic/claude-sonnet-4-5',
+      'examples:',
+      '  - Find the latest filing',
+      '  - Summarise it',
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    const existing = parsed('researcher', original);
+    expect(existing.definition.examples).toEqual(['Find the latest filing', 'Summarise it']);
+
+    // An input never carries them, so a write that changes nothing else writes nothing.
+    const same = {
+      name: 'Researcher',
+      model: 'anthropic/claude-sonnet-4-5',
+      instructions: existing.body,
+    };
+    expect(serializeUpdatedAgentFile('researcher', existing, same)).toBeUndefined();
+    // A write that changes the model keeps the list in the file.
+    const rewritten = parsed(
+      'researcher',
+      decoder.decode(serializeUpdatedAgentFile('researcher', existing, { ...same, model: 'a/b' })),
+    );
+    expect(rewritten.definition.model).toBe('a/b');
+    expect(rewritten.definition.examples).toEqual(['Find the latest filing', 'Summarise it']);
+  });
+
+  it('has no examples for a file that lists none, and refuses a list that is not text', () => {
+    expect('examples' in parsed('a', '---\nmodel: a/b\n---\n').definition).toBe(false);
+    for (const value of ['3', '[1]', '[""]', '{ a: b }']) {
+      const result = parseAgentFile('a', `---\nmodel: a/b\nexamples: ${value}\n---\n`);
+      expect(result.ok, value).toBe(false);
+    }
+  });
+
   it('keeps a byte order mark and the line ending', () => {
     const original = '﻿---\r\nmodel: a/b\r\n---\r\nbody';
     const existing = parsed('bom', original);

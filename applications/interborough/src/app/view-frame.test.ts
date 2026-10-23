@@ -429,6 +429,47 @@ describe('the chat list, a new chat, and the agents', () => {
     expect(container.querySelector('a[href="/chat/new"]')?.textContent).toBe('New chat');
   });
 
+  test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {
+    stubBureau({
+      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
+      'bureau.agents.list': () =>
+        agents(
+          { name: 'assistant' },
+          { name: 'tool-runner' },
+          { name: 'internal', publishState: 'unpublished' },
+        ),
+    });
+    const { container, findByTestId } = mount('chat', { pattern: '/chat' });
+
+    const line = await findByTestId('welcome-agents');
+
+    expect(line.textContent).toContain('Agents:');
+    expect(
+      [...line.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
+    ).toEqual(['assistant', 'tool-runner']);
+    // The outlet pads the page, so the empty state is Cinder's with its own padding removed.
+    expect(container.querySelector('.cinder-empty-state')?.classList).toContain('weft-view__empty');
+  });
+
+  test('the welcome says nothing of agents when the Bureau lists none', async () => {
+    let asked = 0;
+    stubBureau({
+      'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }),
+      'bureau.agents.list': () => {
+        asked += 1;
+        return agents();
+      },
+    });
+    const { container, findByRole } = mount('chat', { pattern: '/chat' });
+
+    await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
+    // The line is not there for want of an answer: the Bureau has been asked and said none.
+    await waitFor(() => expect(asked).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();
+  });
+
   test('a new chat is ready for a published agent', async () => {
     stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
     const { container, findByTestId } = mount('chat', { pattern: '/chat/new' });

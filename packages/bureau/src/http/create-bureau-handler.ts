@@ -711,6 +711,25 @@ function toolsOf(names: readonly string[] | undefined): { readonly tools?: reado
   return names === undefined ? {} : { tools: names };
 }
 
+/** The `examples` field of a {@link PublishedAgent}, which is absent when the agent has none. */
+function examplesOf(prompts: readonly string[] | undefined): {
+  readonly examples?: readonly string[];
+} {
+  return prompts === undefined || prompts.length === 0 ? {} : { examples: prompts };
+}
+
+/**
+ * The example prompts a code-defined agent states (`StandaloneAgent.examples`), or `undefined` for
+ * an agent that is not a `createAgent` result or states anything else. A runnable agent may be any
+ * object with a `run`, so the property is checked rather than trusted.
+ */
+function readCodeExamples(agent: object): readonly string[] | undefined {
+  const prompts = (agent as { readonly examples?: unknown }).examples;
+  return Array.isArray(prompts) && prompts.every((prompt) => typeof prompt === 'string')
+    ? prompts
+    : undefined;
+}
+
 /**
  * The tool names a code-defined agent states (`StandaloneAgent.toolNames`), or `undefined` for an
  * agent that is not a `createAgent` result, or states anything else. A runnable agent may be any
@@ -750,6 +769,7 @@ function publishedAgentsOf(
         publishState: publish.includes(listing.id) ? 'published' : 'unpublished',
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readCodeToolNames(agent)),
+        ...examplesOf(readCodeExamples(agent)),
       },
     ];
   });
@@ -767,6 +787,7 @@ function publishedAgentsOf(
         publishState: listing.published ? 'published' : 'withdrawn',
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
         ...toolsOf(readFileAgentBinding(agent)?.definition.tools),
+        ...examplesOf(readFileAgentBinding(agent)?.definition.examples),
       },
     ];
   });

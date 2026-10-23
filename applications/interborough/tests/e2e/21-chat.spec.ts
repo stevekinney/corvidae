@@ -428,3 +428,57 @@ for (const width of [375, 1280] as const) {
     }
   });
 }
+
+for (const width of [375, 1280] as const) {
+  test.describe(`a new chat's agent card at ${width} pixels`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+    });
+
+    test('shows the agent, what it does, its tools and its example prompt, and a prompt fills the composer without sending it', async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.goto('/chat/new?agent=tool-runner');
+
+      const card = page.getByTestId('agent-card');
+      await expect(card).toBeVisible();
+      await expect(card.getByRole('heading', { level: 2 })).toHaveText('tool-runner');
+      await expect(card.getByRole('heading', { level: 2 }).locator('code')).toHaveCount(1);
+      await expect(card).toContainText('Looks an order up, then asks for approval to refund it.');
+      await expect(card).toContainText('2 tools');
+      // `?agent=` is the person's own choice, so the other agents are not offered as cards.
+      await expect(page.getByRole('heading', { name: 'Or start with another agent' })).toHaveCount(
+        0,
+      );
+      await checkA11y(`a new chat with the tool-runner's card at ${width}px`);
+
+      await card.getByRole('button', { name: 'Refund order 1234' }).click();
+
+      await expect(composer(page)).toHaveValue('Refund order 1234');
+      await expect(composer(page)).toBeFocused();
+      // Filling the composer starts nothing: the address is still the new chat's.
+      await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
+    });
+
+    test('offers the other agents as cards until one is chosen, and choosing one selects it', async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.goto('/chat/new');
+      await expect(page.getByTestId('agent-card')).toContainText('assistant');
+      const others = page.getByRole('heading', { name: 'Or start with another agent' });
+      await expect(others).toBeVisible();
+      await checkA11y(`a new chat with the agents to choose from at ${width}px`);
+
+      await page.getByRole('button', { name: /request-human-input/ }).click();
+
+      await expect(page).toHaveURL(/\/chat\/new\?agent=request-human-input$/);
+      await expect(page.getByTestId('agent-card')).toContainText('request-human-input');
+      await expect(page.getByTestId('agent-card').getByRole('button')).toHaveText(
+        'Ship the release',
+      );
+      await expect(others).toHaveCount(0);
+    });
+  });
+}

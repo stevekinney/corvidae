@@ -124,6 +124,96 @@ describe('a new chat', () => {
     expect(names.some((name) => name.includes('Internal'))).toBe(false);
   });
 
+  test('shows the agent’s card with its prompts, and the other agents to choose from until one is chosen', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({
+        agents: [
+          { ...AGENT, examples: ['Say hello', 'Plan the week', 'Summarise it', 'A fourth one'] },
+          { ...RESEARCHER, description: 'Finds things.', examples: ['Find the latest filing'] },
+          INTERNAL,
+        ],
+      }),
+    }).restore;
+    landAt('/chat/new');
+
+    const { findByTestId, findByRole, queryByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    const card = await findByTestId('agent-card');
+    expect(card.textContent).toContain(AGENT.description);
+    // Up to three prompts, as buttons, and an agent that suggests none shows none.
+    const group = await findByRole('group', { name: 'Example prompts' });
+    expect(
+      [...group.querySelectorAll('button')].map((button) => button.textContent?.trim()),
+    ).toEqual(['Say hello', 'Plan the week', 'Summarise it']);
+    // The other published agents are cards to choose from, and an unpublished one is not.
+    const others = await findByRole('heading', { name: 'Or start with another agent' });
+    const grid = others.parentElement;
+    expect(grid?.textContent).toContain('Finds things.');
+    expect(grid?.textContent).not.toContain('Internal');
+    expect(queryByRole('group', { name: 'Example prompts' })).not.toBeNull();
+  });
+
+  test('shows only the card of an agent the address names, with its prompts', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({
+        agents: [AGENT, { ...RESEARCHER, examples: ['Find the latest filing'] }],
+      }),
+    }).restore;
+    landAt('/chat/new?agent=researcher');
+
+    const { findByTestId, queryByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'researcher',
+      agentChosen: true,
+      isNew: true,
+    });
+
+    const card = await findByTestId('agent-card');
+    expect(card.textContent).toContain('Researcher');
+    expect(card.textContent).toContain('Find the latest filing');
+    expect(queryByRole('heading', { name: 'Or start with another agent' })).toBeNull();
+  });
+
+  test('puts a prompt in the composer without sending it, and choosing an agent’s card selects that agent', async () => {
+    const runs: string[] = [];
+    restore = bureau(
+      {
+        'bureau.agents.list': () => ({
+          agents: [
+            { ...AGENT, examples: ['Say hello'] },
+            { ...RESEARCHER, description: 'Finds things.' },
+          ],
+        }),
+      },
+      (url) => {
+        if (url.includes('/ag-ui/agents/')) runs.push(url);
+        return undefined;
+      },
+    ).restore;
+    landAt('/chat/new');
+    const { container, findByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await fireEvent.click(await findByRole('button', { name: 'Say hello' }));
+
+    await waitFor(() => expect(container.querySelector('textarea')?.value).toBe('Say hello'));
+    expect(runs).toEqual([]);
+
+    await fireEvent.click(await findByRole('button', { name: /Researcher/ }));
+
+    expect(router.current.search.get('agent')).toBe('researcher');
+  });
+
   test('replaces ?agent= when the agent is changed, without adding a history entry', async () => {
     restore = served().restore;
     landAt('/chat/new');
