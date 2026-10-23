@@ -20,6 +20,13 @@ import {
 /** The longest identifier (`commandId`, `taskId`, `surfaceId`, action name) a command may carry. */
 const MAX_IDENTIFIER_LENGTH = 256;
 
+/**
+ * The cap on an identifier Bureau composes from others: a task id is a session
+ * id (up to 256 characters) plus `:<sequence>`, and a review id wraps a task id
+ * with its kind and suffix, so neither fits the leaf cap.
+ */
+export const MAX_COMPOSITE_IDENTIFIER_LENGTH = 1024;
+
 /** The longest text summary a surface may carry. */
 const MAX_SUMMARY_LENGTH = 4096;
 
@@ -86,9 +93,13 @@ export function assertKnownFields(
 }
 
 /** A non-empty identifier of bounded length, with no control characters. */
-export function readIdentifier(value: unknown, where: string): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_IDENTIFIER_LENGTH) {
-    fail(`${where} must be a non-empty string of at most ${MAX_IDENTIFIER_LENGTH} characters`);
+export function readIdentifier(
+  value: unknown,
+  where: string,
+  maxLength: number = MAX_IDENTIFIER_LENGTH,
+): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > maxLength) {
+    fail(`${where} must be a non-empty string of at most ${maxLength} characters`);
   }
   // eslint-disable-next-line no-control-regex -- the point is to refuse control characters.
   if (/[\u0000-\u001f\u007f]/.test(value)) fail(`${where} must not contain control characters`);
@@ -484,13 +495,21 @@ function readAction(
     }
     readContinuation = {
       type: 'review',
-      reviewId: readIdentifier(continuation['reviewId'], `${where}.continuation.reviewId`),
+      reviewId: readIdentifier(
+        continuation['reviewId'],
+        `${where}.continuation.reviewId`,
+        MAX_COMPOSITE_IDENTIFIER_LENGTH,
+      ),
       ...(round === undefined ? {} : { round }),
     };
   } else if (continuation['type'] === 'review') {
     // An answer delivers its value as a held human wait's payload; it never decides an approval.
     assertKnownFields(continuation, ['type', 'reviewId'], `${where}.continuation`);
-    const reviewId = readIdentifier(continuation['reviewId'], `${where}.continuation.reviewId`);
+    const reviewId = readIdentifier(
+      continuation['reviewId'],
+      `${where}.continuation.reviewId`,
+      MAX_COMPOSITE_IDENTIFIER_LENGTH,
+    );
     if (!reviewId.startsWith('human-wait:')) {
       fail(`${where}: an ${intent} action continues a signal or a human-wait review`);
     }

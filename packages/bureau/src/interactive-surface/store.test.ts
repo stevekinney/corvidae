@@ -1103,6 +1103,26 @@ describe('closing, cancellation, and cleanup', () => {
     ).toMatchObject({ reason: 'invalid' });
   });
 
+  it('accepts the run id of a longest session, and replays a create frozen once its task ended', async () => {
+    const longRun = `${'s'.repeat(256)}:0`;
+    const { surfaces, table } = harness({
+      [longRun]: { owner: OWNER, contextId: 's'.repeat(256) },
+      [TASK]: { owner: OWNER, contextId: 'session-1' },
+    });
+    expect(
+      await surfaces.create(createCommand({ taskId: longRun, actions: [], commandId: 'long' })),
+    ).toMatchObject({ outcome: 'accepted' });
+
+    await surfaces.create(createCommand());
+    // A settlement this process never saw (another process's, or one before a restart).
+    table.set(TASK, { owner: OWNER, contextId: 'session-1', settled: 'completed' });
+    expect(await surfaces.create(createCommand())).toMatchObject({
+      outcome: 'accepted',
+      replayed: true,
+      surface: { state: 'closed', liveness: 'frozen' },
+    });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

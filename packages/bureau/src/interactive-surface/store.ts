@@ -63,6 +63,7 @@ import {
   readActions,
   detach,
   readAudience,
+  MAX_COMPOSITE_IDENTIFIER_LENGTH,
   readIdentifier,
   readJsonValue,
   readRepresentation,
@@ -757,7 +758,7 @@ export function createInteractiveSurfaces(
     return {
       record,
       commandId: readIdentifier(record['commandId'], 'commandId'),
-      taskId: readIdentifier(record['taskId'], 'taskId'),
+      taskId: readIdentifier(record['taskId'], 'taskId', MAX_COMPOSITE_IDENTIFIER_LENGTH),
     };
   }
 
@@ -815,7 +816,9 @@ export function createInteractiveSurfaces(
       watch(taskId);
 
       return retrying(async () => {
-        const existing = await load(taskId, surfaceId);
+        // `current`, not `load`: a retry replays the surface as it stands, frozen
+        // first when its task has ended, like every other read.
+        const existing = await current(task, taskId, surfaceId);
         if (existing !== undefined) {
           return (
             (await replay(existing.stored, commandId, digest)) ??
@@ -982,7 +985,7 @@ export function createInteractiveSurfaces(
         throw new InteractiveSurfaceValidationError('type must be "surface.snapshot"');
       }
       assertContractVersion(query.contractVersion);
-      const taskId = readIdentifier(query.taskId, 'taskId');
+      const taskId = readIdentifier(query.taskId, 'taskId', MAX_COMPOSITE_IDENTIFIER_LENGTH);
       const surfaceId = readIdentifier(query.surfaceId, 'surfaceId');
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
@@ -1221,7 +1224,7 @@ export function createInteractiveSurfaces(
         throw new InteractiveSurfaceValidationError('type must be "surface.cleanup"');
       }
       assertContractVersion(query.contractVersion);
-      const taskId = readIdentifier(query.taskId, 'taskId');
+      const taskId = readIdentifier(query.taskId, 'taskId', MAX_COMPOSITE_IDENTIFIER_LENGTH);
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');

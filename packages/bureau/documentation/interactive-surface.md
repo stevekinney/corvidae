@@ -57,7 +57,7 @@ An action continues the surface's own task, and nothing else. Its `intent` is on
 
 A tool approval that is re-gated keeps its id and advances its round, so a decision may carry the `round` its surface shows. The adapter that continues an admitted decision refuses it when that round is no longer the review's current one. A run with no session, such as a `bureau.run()` catalog run, is answered through its held `human-wait` review rather than a session signal.
 
-Each action in the catalog has a unique `name`, its `intent`, its `continuation`, an optional `label`, and an optional `valueSchema`. An action's value must satisfy its `valueSchema`; on an `input-form` surface, an `answer` or `submit` action without one takes the form's own schema; any other action without one takes no value. Management-plane commands are never reachable from a surface: there is no intent for them.
+Each action in the catalog has a unique `name`, its `intent`, its `continuation`, an optional `label`, and an optional `valueSchema`. An action's value must satisfy its `valueSchema`, which in v1 is a JSON Schema object (the boolean schemas `true` and `false` are not accepted; omit the schema to accept any value); on an `input-form` surface, an `answer` or `submit` action without one takes the form's own schema; any other action without one takes no value. Management-plane commands are never reachable from a surface: there is no intent for them.
 
 A renderer is never trusted. An action arrives as a command and is admitted only when the surface is open, the caller may act on it, the `revision` the renderer showed is the surface's current revision, the action is in the catalog, the value satisfies its schema, and, for an `mcp-app`, the request comes from the instance the surface shows: a caller that states a principal must also state the `instanceId`, and it must be the one the surface shows. Anything else is denied and commits nothing. An action request may also carry A2UI's provenance, its `sourceComponentId` and its `timestamp` (an ISO 8601 date-time naming a real date and time); both are recorded with the admitted action.
 
@@ -173,7 +173,7 @@ A surface follows its task: it stays readable, frozen or closed, until `BureauOp
 
 ## Payload limits
 
-A surface's content, its representation, data, summary, actions, and audience as JSON, is capped at `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, 1 MiB, which is the default `maxRequestBodyBytes` of `createBureauHandler`, so a surface that fits the cap fits in one request. A larger create or update is rejected as `payload-too-large`. Identifiers, each audience principal among them, are at most 256 characters of well-formed Unicode with no control characters, and a summary at most 4,096.
+A surface's content, its representation, data, summary, actions, and audience as JSON, is capped at `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, 1 MiB, which is the default `maxRequestBodyBytes` of `createBureauHandler`, so a surface that fits the cap fits in one request. A larger create or update is rejected as `payload-too-large`. Identifiers, each audience principal among them, are at most 256 characters of well-formed Unicode with no control characters, except the ones Bureau composes from others, a `taskId` (a session id plus `:<sequence>`) and a review id, which may be up to 1,024, and a summary at most 4,096.
 
 ## Accessibility
 
