@@ -39,6 +39,10 @@ export type ChatToolResult = ToolResult & {
  * A producer picks the version its consumers can read: version 4 only once
  * every consumer decodes it. Versions 3 and 4 are otherwise identical.
  *
+ * The schema 7 projection applies only to the encoded version 1, 2, or 3
+ * wire. An in-memory event of any version (what a transport produces and what
+ * the decoder returns) carries the schema 8 conversation.
+ *
  * Version 3 adds the `run.started` frame and a required `messageId` on
  * `stream:text-delta`, so the wire maps losslessly to AG-UI `RUN_STARTED` and
  * `TEXT_MESSAGE_*`. A version 1 or 2 producer keeps working unchanged, and a
