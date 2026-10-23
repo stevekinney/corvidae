@@ -5,8 +5,8 @@
  *
  * - The replay seeds the input row again, outside any checkpointed step, so the row must keep its id
  *   or the claim made under it is made twice, once per row id, and nothing releases the first.
- * - The recovered run's own steps claim what they generate under the run, so the image survives the
- *   retention floor.
+ * - The recovered run's own steps claim what they generate under the run, and the claims are released
+ *   when the recovered run ends (COR-1630), so the image falls back to the retention floor.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
@@ -129,8 +129,13 @@ describe('a sessionless durable run recovered after a crash', () => {
     const before = await holdersOf(first, assetId);
 
     const seenSecond: GenerateContext[] = [];
-    const second = await openBureau(store, { viewer: viewer(seenSecond) });
+    const resume = Promise.withResolvers<void>();
+    const second = await openBureau(store, { viewer: viewer(seenSecond, resume.promise) });
     await waitForCondition(() => seenSecond.length > 0, 'the recovered run never took a step');
+    for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
+    const during = await holdersOf(second, assetId);
+
+    resume.resolve();
     await waitForCondition(
       async () => {
         const state = await second.getRun(run.id);
@@ -139,14 +144,21 @@ describe('a sessionless durable run recovered after a crash', () => {
       'the recovered run never finished',
       200,
     );
-    for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
-    const after = await holdersOf(second, assetId);
+    await waitForCondition(
+      async () => {
+        const holders = await holdersOf(second, assetId);
+        return holders.length === 0;
+      },
+      'the recovered run never released its claim',
+      200,
+    );
 
+    // The replay re-seeded the input row under its own id: one holder, then none once it ends.
     expect(before).toEqual([runRowHolderId(run.id, `${run.id}:input`)]);
-    expect(after).toEqual(before);
+    expect(during).toEqual(before);
   });
 
-  it('claims the image its recovered steps generate, so it survives the retention floor', async () => {
+  it('claims the image its recovered steps generate, and releases it when the recovered run ends', async () => {
     const store = await createStore();
     const generate: GenerateFunction = async (context: GenerateContext) => {
       if (context.step === 0) {
@@ -197,6 +209,22 @@ describe('a sessionless durable run recovered after a crash', () => {
     await reviewOf(first, run.id);
 
     const second = await openBureau(store, { painter }, options);
+    const claims: Array<{
+      type: 'asset.retained' | 'asset.released';
+      assetId: string;
+      holderId: string;
+    }> = [];
+    const unsubscribe = second.assets!.subscribe((event) => {
+      const { assetId, holderId } = event;
+      if (
+        (event.type === 'asset.retained' || event.type === 'asset.released') &&
+        assetId !== undefined &&
+        holderId?.startsWith('run-row:') === true
+      ) {
+        claims.push({ type: event.type, assetId, holderId });
+      }
+    });
+    cleanups.push(async () => unsubscribe());
     const restored = await reviewOf(second, run.id);
     await second.resolveReview({ id: restored.id, decision: 'approve', principal: 'operator' });
     const finished = await second.waitForDurableRun(run.id);
@@ -208,13 +236,24 @@ describe('a sessionless durable run recovered after a crash', () => {
     }
     const assetId = image.source.assetId;
 
+    await waitForCondition(
+      async () => {
+        const holders = await holdersOf(second, assetId);
+        return holders.length === 0;
+      },
+      'the recovered run never released its claim',
+      200,
+    );
+    // The commit claimed the image under the run, and the run's end released that same claim.
+    const holder = expect.stringContaining(`run-row:${encodeURIComponent(run.id)}:`);
+    expect(claims.filter((event) => event.assetId === assetId)).toEqual([
+      { type: 'asset.retained', assetId, holderId: holder },
+      { type: 'asset.released', assetId, holderId: holder },
+    ]);
+
     await store.runtime.advance(5_000);
     const collected = await second.assets!.collectGarbage().result();
     if (collected.outcome !== 'completed') throw new Error(`collection ${collected.outcome}`);
-
-    expect(collected.value.expired).not.toContain(assetId);
-    expect(await holdersOf(second, assetId)).toEqual([
-      expect.stringContaining(`run-row:${encodeURIComponent(run.id)}:`),
-    ]);
+    expect(collected.value.expired).toContain(assetId);
   });
 });
