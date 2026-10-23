@@ -24,6 +24,7 @@
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
+  import { connectNotificationFeed } from '../notification-feed.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
   import { ThemeStore } from '../theme.svelte.ts';
@@ -65,7 +66,7 @@
 
   const theme = new ThemeStore();
   const notifications = new NotificationStore();
-  const engineStatus = new EngineStatusController(initialClient, notifications);
+  const engineStatus = new EngineStatusController(initialClient);
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
   // `provideFleetEventSource()` doc: shares the ONE fleet SSE connection with
   // route components instead of each opening its own.
@@ -80,6 +81,9 @@
   $effect(() => {
     notifications.reportEngineStatus(engineStatus.status, Date.now());
   });
+
+  // What is waiting on the person, and what finished, comes from the Bureau.
+  connectNotificationFeed(notifications);
 
   // `g`, then a letter, opens a view (`../../lib/navigation-shortcuts.ts`); the sidebar's tooltips
   // name the same keys.
@@ -145,13 +149,7 @@
 <div class="weft-shell">
   <Sidebar {client} engineStatus={engineStatus.status} bind:collapsed={sidebarCollapsed} />
   <div class="weft-shell-main">
-    <Topbar
-      {notifications}
-      liveStatus={engineStatus.fleetSource.status}
-      {theme}
-      bind:paletteOpen
-      bind:sidebarCollapsed
-    />
+    <Topbar {notifications} {theme} bind:paletteOpen bind:sidebarCollapsed />
     <AuthModeBanner mode={principalStore.bannerMode} />
     <CriticalAlertStrip store={notifications} />
     <RouteOutlet />

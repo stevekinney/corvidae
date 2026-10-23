@@ -6,7 +6,7 @@
    *
    * **Shares the shell's one connection.** Plan §5 and `FleetEventSource`'s
    * own module doc require exactly ONE fleet SSE connection, fanned out to
-   * every consumer (dashboard feed, notification center, list liveness).
+   * every consumer (dashboard feed, task evidence, list liveness).
    * `Shell` (`src/app/shell/shell.svelte`) constructs the one
    * `EngineStatusController` and provides its `fleetSource` via
    * `provideFleetEventSource()` (`src/app/engine-status.svelte.ts`); this
@@ -49,7 +49,7 @@
   import { ConnectionIndicator, Card, Feed, FeedEvent, Skeleton } from '@lostgradient/cinder';
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
-  import { classifyFleetEvent } from '../../app/notifications.svelte.ts';
+  import { classifyFleetEvent } from '../../app/fleet-event-classification.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { ActivityFeedBatcher, type ActivityFeedRow } from './activity-feed-batcher.svelte.ts';
@@ -71,7 +71,7 @@
     };
   });
 
-  /** Same icon-name lookup `../../app/shell/notification-bell.svelte` uses for the same `classifyFleetEvent` icon strings — that table isn't exported from the frozen shell, so this is a small, intentional local duplicate (this track's final report flags it as a foundation follow-up: extract a shared icon-resolution helper). */
+  /** The icon each `classifyFleetEvent` icon name stands for. */
   const ICONS: Readonly<Record<string, LucideIcon>> = {
     siren: Siren,
     'circle-alert': CircleAlert,

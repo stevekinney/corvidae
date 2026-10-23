@@ -110,12 +110,18 @@ export const AGENT_EDITOR_COPY = {
   fileLabel: 'File',
   /** The directory under the state directory that holds agent files, when the host does not say where. */
   fallbackDirectory: 'agents',
+  /** The titles of the form's four sections. */
+  sections: {
+    identity: 'Identity',
+    model: 'Model',
+    instructions: 'Instructions',
+    tools: 'Tools',
+  },
   nameLabel: 'Name',
-  nameDescription: 'A label for people. It need not be unique.',
+  nameDescription: 'What people see. It need not be unique.',
   identifierLabel: 'Identifier',
-  identifierCreateDescription:
-    'The agent’s file name without .md. It follows the name until you change it, and it cannot be changed after the first save.',
-  identifierEditDescription: 'The agent’s file name without .md. It cannot be changed.',
+  identifierCreateDescription: 'The file name, without .md. Fixed once saved.',
+  identifierEditDescription: 'The file name, without .md. It cannot change.',
   identifierInvalid:
     'Use lowercase letters, digits, and hyphens, starting and ending with a letter or digit, in at most 64 characters.',
   /** `new` is the address of the page that creates an agent, so an agent called `new` could never be opened. */
@@ -128,23 +134,30 @@ export const AGENT_EDITOR_COPY = {
   descriptionLabel: 'Description',
   descriptionDescription: 'What the agent does. Optional.',
   modelLabel: 'Model',
-  modelDescription: 'Only the models this installation offers are listed.',
+  modelDescription: 'The models this installation offers.',
   modelPlaceholder: 'Choose a model',
-  noModels: {
-    /** The only option the model field shows when there is no model to choose. */
-    option: 'No models available',
-    title: 'No models are available',
-    description:
-      'An agent cannot be saved without a model. Add a model provider to configuration.json in the state directory, then restart the host.',
+  /**
+   * What the page shows instead of the form when the catalog holds no model: an agent cannot be
+   * saved without one, and nothing in the application can add a provider.
+   */
+  noProvider: {
+    title: 'Add a model provider to create agents',
+    description: 'Agents run on a model. This installation has none configured.',
+    configurationStep:
+      'Put this in the configuration file. If the file exists, add the provider to its providers.',
+    secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
+    restartStep: 'Restart the host, then reload this page.',
+    reload: 'Reload this page',
+    snippetLabel: 'Provider configuration',
   },
-  toolsLabel: 'Tools',
   toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
+  /** The disclosure on a tool row that shows the full text the model is told about the tool. */
+  toolDisclosure: 'What the agent is told',
   instructionsLabel: 'Instructions',
   instructionsDescription: 'What the agent should do. This is the body of its file.',
   publishedLabel: 'Published',
-  publishedDescription:
-    'A published agent can be started in a new chat. A withdrawn agent cannot, and keeps its history.',
+  publishedDescription: 'A published agent can start new chats. A withdrawn one keeps its history.',
   /** The action on the agent list that opens the form for a new agent. */
   newAction: 'New agent',
   /** The action on an agent's page that opens its editor. */
@@ -1085,6 +1098,30 @@ export const PALETTE_COPY = {
   emptyDescription: 'Type the name of a chat or an agent, or an id, to jump to it.',
   noMatchesTitle: 'No matches',
   noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
+} as const;
+
+/**
+ * The words of the notification bell: what needs the person, and what finished. Each sentence
+ * names the agent and is followed by the chat or schedule it is about, never a run.
+ */
+export const NOTIFICATION_COPY = {
+  panelTitle: 'Notifications',
+  markAllRead: 'Mark all read',
+  empty: 'Nothing needs you right now.',
+  /** What the bell button is called; the count says how many items need the person. */
+  bellLabel: (count: number): string =>
+    count === 0 ? 'Notifications' : `Notifications, ${count} need${count === 1 ? 's' : ''} you`,
+  needsApproval: (agent: string): string => `${agent} needs your approval`,
+  askedQuestion: (agent: string): string => `${agent} asked a question`,
+  answered: (agent: string): string => `${agent} answered`,
+  failed: (subject: string): string => `${subject} failed`,
+  /** What an agent is called when the Bureau names none. */
+  unnamedAgent: 'An agent',
+  /** Read between a sentence and the chat it is about, by a screen reader only. */
+  inJoiner: ' in ',
+  /** Read between a failed schedule and the first line of its error. */
+  errorJoiner: ': ',
+  noErrorText: 'No reason was given',
 } as const;
 
 /** The words of the navigation: its two groups of views, and what the engine status says. */

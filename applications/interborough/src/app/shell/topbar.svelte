@@ -15,7 +15,6 @@
   import { Button, Kbd } from '@lostgradient/cinder';
   import { Menu, Monitor, Moon, Search, Sun } from '@lucide/svelte';
 
-  import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { PALETTE_COPY, VIEW_COPY } from '../copy.ts';
   import type { ThemeStore } from '../theme.svelte.ts';
@@ -24,8 +23,6 @@
 
   interface TopbarProps {
     notifications: NotificationStore;
-    /** The shared fleet feed's connection status — passed through to the notification bell's footer live pill. */
-    liveStatus: LiveSourceStatus;
     theme: ThemeStore;
     paletteOpen: boolean;
     /** Bound to `Sidebar`'s own `collapsed` (`./shell.svelte`) — below the mobile breakpoint this doubles as "drawer closed"; the menu button toggles it open. */
@@ -34,7 +31,6 @@
 
   let {
     notifications,
-    liveStatus,
     theme,
     paletteOpen = $bindable(false),
     sidebarCollapsed = $bindable(false),
@@ -69,7 +65,7 @@
     </span>
   </Button>
 
-  <NotificationBell store={notifications} {liveStatus} />
+  <NotificationBell store={notifications} />
 
   <Button
     variant="ghost"

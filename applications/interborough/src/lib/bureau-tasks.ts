@@ -223,6 +223,15 @@ export const taskEventSchema = z.discriminatedUnion('kind', [
     ...statusFields,
     artifact: taskArtifactSchema.nullable(),
   }),
+  // The Bureau's history failed to record a change and restates where the task stands
+  // (COR-1669): apply it as a `task.status`.
+  z.object({
+    ...elementCommon,
+    kind: z.literal('task.resynced'),
+    ...statusFields,
+    artifact: taskArtifactSchema.nullable(),
+    revision: z.number(),
+  }),
   z.object({
     ...elementCommon,
     kind: z.literal('task.gap'),

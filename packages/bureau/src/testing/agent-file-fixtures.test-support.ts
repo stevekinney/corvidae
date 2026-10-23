@@ -37,6 +37,16 @@ export const lookupTool = createTool({
   execute: async () => 'order',
 });
 
+/** A tool that declares `metadata.shortDescription`, beside {@link lookupTool}, which does not. */
+export const summarizedTool = createTool({
+  name: 'summarize-order',
+  description:
+    'Summarizes an order for the model, in several sentences. It never changes anything.',
+  input: z.object({}),
+  metadata: { shortDescription: 'Summarize an order.' },
+  execute: async () => 'summary',
+});
+
 export function agentFileText(
   frontmatter: Record<string, string>,
   body = 'You are helpful.\n',
@@ -77,6 +87,8 @@ export interface AgentFileFixtureOptions {
   readonly subdirectory?: string;
   readonly reserved?: readonly string[];
   readonly watch?: boolean;
+  /** Replaces the tool catalog, which holds {@link lookupTool} by default. */
+  readonly tools?: AgentFileCatalogOptions['tools'];
   readonly operations?: AgentFileOperations;
   readonly descriptors?: readonly BackendDescriptor[];
   readonly runtime?: RuntimeServices;
@@ -106,7 +118,7 @@ export async function createAgentFileFixture(
   const catalog = createAgentFileCatalog({
     directory,
     reservedIdentifiers: new Set(options.reserved ?? ['alpha']),
-    tools: { 'lookup-order': lookupTool },
+    tools: options.tools ?? { 'lookup-order': lookupTool },
     modelCatalog,
     resolveGenerate: options.resolveGenerate ?? resolveGenerate,
     runtime: options.runtime ?? createDefaultRuntimeServices(),

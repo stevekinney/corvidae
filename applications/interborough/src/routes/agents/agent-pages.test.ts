@@ -2,7 +2,7 @@ import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
-import { StubFault } from '../../lib/bureau-stub.test-support.ts';
+import { StubFault, stubHostPaths } from '../../lib/bureau-stub.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, CONTEXT, landAt } from '../chat/pages.test-support.ts';
@@ -234,10 +234,9 @@ const READY_LISTING = {
 
 const hostPaths = (url: string) =>
   url.endsWith('/host/paths')
-    ? Response.json({
-        agentDirectory: '/home/tester/.interborough/agents',
-        workflowDirectory: '/home/tester/.interborough/workflows',
-      })
+    ? Response.json(
+        stubHostPaths('/home/tester/.interborough/agents', '/home/tester/.interborough/workflows'),
+      )
     : undefined;
 
 describe('the list of agents, and the agent editor', () => {

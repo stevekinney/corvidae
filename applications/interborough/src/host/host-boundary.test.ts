@@ -103,7 +103,12 @@ describe('/host/paths', () => {
     const response = await fetch(new URL('/host/paths', host.url));
     expect(response.status).toBe(200);
     const paths = (await response.json()) as Record<string, unknown>;
-    expect(Object.keys(paths).toSorted()).toEqual(['agentDirectory', 'workflowDirectory']);
+    expect(Object.keys(paths).toSorted()).toEqual([
+      'agentDirectory',
+      'configurationFile',
+      'providers',
+      'workflowDirectory',
+    ]);
     expect(String(paths['workflowDirectory'])).toEndWith('workflows');
   });
 
