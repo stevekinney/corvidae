@@ -23,6 +23,7 @@
  * continues across restarts regardless of the wall clock. Events carry
  * identifiers, states, codes, digests, and URL origins only.
  */
+import { exposeHeldClaims } from './internal-access';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
 import {
@@ -222,7 +223,7 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
     }, interval);
   }
 
-  return {
+  const service: AssetService = {
     durability: storage.durability,
     policy,
 
@@ -305,6 +306,11 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       guarded(() => lifecycle.retain(internals, assetId, principal, reference)),
     release: (assetId, principal, holderId) =>
       guarded(() => lifecycle.release(internals, assetId, principal, holderId)),
+    releaseClaim: (assetId, principal, holderId) =>
+      guarded(async () => {
+        const released = await lifecycle.releaseHolder(internals, assetId, principal, holderId);
+        return released.removed;
+      }),
     placeHold: (assetId, principal, hold) =>
       guarded(() => lifecycle.placeHold(internals, assetId, principal, hold)),
     releaseHold: (assetId, principal, holdId) =>
@@ -369,4 +375,8 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       return report;
     },
   };
+  exposeHeldClaims(service, (holderPrefix) =>
+    guarded(() => lifecycle.heldClaims(internals, holderPrefix)),
+  );
+  return service;
 }

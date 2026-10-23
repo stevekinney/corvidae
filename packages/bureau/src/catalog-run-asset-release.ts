@@ -43,7 +43,13 @@
  *
  * @module catalog-run-asset-release
  */
-import { releaseHeldRowAssetClaims, runRowHolderId } from './assets/row-asset-claims';
+import {
+  hasCompactedRows,
+  releaseClaimsByHolderPrefix,
+  releaseHeldRowAssetClaims,
+  runRowHolderId,
+  runRowHolderPrefix,
+} from './assets/row-asset-claims';
 import type { ClaimableRow } from './assets/row-asset-claims';
 import type { AssetService } from './assets/types';
 import type { CatalogRunSettlement, DurableEnd, DurableEndReader } from './catalog-run-settlement';
@@ -161,6 +167,23 @@ export function createCatalogRunAssetReleaser(
           error,
         ),
     );
+    // COR-1664 — a row that history compaction removed is not in the checkpoint, so the walk above
+    // cannot reach its claim; it is found from the asset side by the run's holder prefix. That
+    // reads every asset record, so it runs only for a conversation compaction has touched.
+    if (!hasCompactedRows(rows)) return;
+    try {
+      await releaseClaimsByHolderPrefix(service, runRowHolderPrefix(run.runId), (claim, error) =>
+        warn(
+          `[bureau] Could not release the retention claim of run "${run.runId}" on asset "${claim.assetId}" under holder "${claim.holderId}": ${serializeUnknownError(error)}`,
+          error,
+        ),
+      );
+    } catch (error) {
+      warn(
+        `[bureau] Could not list the retention claims of run "${run.runId}" on managed assets, so the ones held by rows compaction removed were not released: ${serializeUnknownError(error)}`,
+        error,
+      );
+    }
   }
 
   async function releaseEndedRun(run: RunClaims): Promise<void> {
