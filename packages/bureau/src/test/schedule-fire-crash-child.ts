@@ -75,7 +75,7 @@ const bureau = await createBureau<AgentDefinitions>({
 });
 
 const created = await bureau.createSchedule({
-  agentName: 'researcher',
+  agentName: 'default',
   input: 'crash during this fire',
   spec: '1m',
 });
