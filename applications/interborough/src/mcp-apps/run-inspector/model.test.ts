@@ -6,6 +6,7 @@ function inspection(overrides: Partial<Inspection> = {}): Inspection {
   return {
     schemaVersion: 'bureau.task-inspection.v1',
     taskId: 'run-1',
+    canCancel: true,
     task: {
       id: 'run-1',
       agentName: 'worker',
@@ -104,5 +105,11 @@ describe('the run inspector model', () => {
     expect(isStaleInspection(older, newer)).toBe(false);
     expect(isStaleInspection(undefined, older)).toBe(false);
     expect(isStaleInspection(newer, inspection({ liveness: null }))).toBe(false);
+  });
+
+  it('offers no abort to a caller who may not cancel, or when the host cannot be called', () => {
+    expect(buildInspectorModel(inspection({ canCancel: false }), []).abort.available).toBe(false);
+    expect(buildInspectorModel(inspection(), [], false).abort.available).toBe(false);
+    expect(buildInspectorModel(inspection(), []).abort.available).toBe(true);
   });
 });

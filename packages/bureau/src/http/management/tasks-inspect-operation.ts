@@ -128,6 +128,8 @@ const inspectInput = z.object({ taskId: z.string().min(1) });
 const inspectOutput = z.object({
   schemaVersion: z.literal(TASK_INSPECTION_SCHEMA_VERSION),
   taskId: z.string(),
+  /** Whether the caller may cancel the task: `bureau.tasks.cancel` would not refuse it. */
+  canCancel: z.boolean(),
   task: taskViewSchema,
   /** `null` when this process holds no live run for the task, as after a restart. */
   liveness: livenessSchema.nullable(),
@@ -172,6 +174,7 @@ export const tasksInspectOperation = defineOperation<
     return {
       schemaVersion: TASK_INSPECTION_SCHEMA_VERSION,
       taskId: input.taskId,
+      canCancel: await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'),
       task: { ...task, openWaits: [...task.openWaits] },
       liveness: projectLiveness(host.inspection.liveness(input.taskId)),
       children: children.map((child) => ({

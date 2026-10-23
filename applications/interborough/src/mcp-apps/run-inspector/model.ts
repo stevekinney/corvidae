@@ -12,6 +12,8 @@ const PROGRESS_SOURCES: ReadonlySet<string> = new Set(['tool-progress', 'provide
 export type Inspection = {
   readonly schemaVersion: string;
   readonly taskId: string;
+  /** Whether the caller may cancel this task, as `bureau.tasks.cancel` would judge it. */
+  readonly canCancel: boolean;
   readonly task: {
     readonly id: string;
     readonly agentName: string | null;
@@ -165,6 +167,7 @@ export function foldEvents(events: readonly TaskEventElement[]): {
 export function buildInspectorModel(
   inspection: Inspection,
   events: readonly TaskEventElement[],
+  canCallServer = true,
 ): InspectorModel {
   const { task, liveness } = inspection;
   const evidence = liveness?.evidence ?? [];
@@ -196,7 +199,11 @@ export function buildInspectorModel(
     result: folded.result,
     stream: folded.stream,
     abort: {
-      available: liveness?.cancellable === true && abortState(task) === 'running',
+      available:
+        canCallServer &&
+        inspection.canCancel &&
+        liveness?.cancellable === true &&
+        abortState(task) === 'running',
       state: abortState(task),
       cleanup: task.cleanup,
     },

@@ -32,6 +32,7 @@ test.beforeAll(async () => {
 const inspection = (overrides: Record<string, unknown> = {}, taskOverrides = {}) => ({
   schemaVersion: 'bureau.task-inspection.v1',
   taskId: 'run-1',
+  canCancel: true,
   task: {
     id: 'run-1',
     contextId: 'c',
@@ -232,6 +233,7 @@ test.describe('the run inspector MCP App', () => {
       window.referenceHost.handlers['bureau.tasks.inspect'] = () => ({
         schemaVersion: 'bureau.task-inspection.v1',
         taskId: 'run-1',
+        canCancel: true,
         task: {
           id: 'run-1',
           agentName: 'worker',
@@ -262,6 +264,7 @@ test.describe('the run inspector MCP App', () => {
       window.referenceHost.handlers['bureau.tasks.inspect'] = () => ({
         schemaVersion: 'bureau.task-inspection.v1',
         taskId: 'run-1',
+        canCancel: true,
         task: {
           id: 'run-1',
           agentName: 'worker',
@@ -285,5 +288,16 @@ test.describe('the run inspector MCP App', () => {
     await page.waitForTimeout(3500);
     await expect(app.getByRole('region', { name: 'Lifecycle' })).toContainText('healthy');
     await expect(app.getByRole('region', { name: 'Lifecycle' })).not.toContainText('failed');
+  });
+
+  test('keeps keyboard focus on Abort across a refresh', async ({ page }) => {
+    const { app } = await open(page, { inspection: inspection() });
+    const abort = app.getByRole('button', { name: 'Abort run' });
+    await abort.focus();
+    const before = await page.evaluate(() => window.referenceHost.calls.length);
+    await expect
+      .poll(() => page.evaluate(() => window.referenceHost.calls.length), { timeout: 10_000 })
+      .toBeGreaterThan(before + 1);
+    await expect(abort).toBeFocused();
   });
 });

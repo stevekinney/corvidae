@@ -72,13 +72,6 @@ export function renderInspector(
   const { ownerDocument: document } = root;
   const main = element(document, 'main', undefined, { 'aria-labelledby': 'inspector-title' });
   main.append(element(document, 'h1', `Run ${model.taskId}`, { id: 'inspector-title' }));
-  main.append(
-    element(document, 'p', announcement ?? '', {
-      role: 'status',
-      'aria-live': 'polite',
-      id: 'inspector-status',
-    }),
-  );
 
   const lifecycle = section(document, 'inspector-lifecycle', 'Lifecycle');
   lifecycle.append(
@@ -153,7 +146,10 @@ export function renderInspector(
   main.append(stream);
 
   const abort = section(document, 'inspector-abort', 'Abort and cleanup');
-  const button = element(document, 'button', 'Abort run', { type: 'button' });
+  const button = element(document, 'button', 'Abort run', {
+    type: 'button',
+    id: 'inspector-abort-button',
+  });
   button.disabled = !model.abort.available;
   button.addEventListener('click', handlers.onAbort);
   abort.append(
@@ -166,5 +162,20 @@ export function renderInspector(
   );
   main.append(abort);
 
-  root.replaceChildren(main);
+  // The live region outlives every render, so a change to its text is announced; the focused
+  // control is put back on its replacement, so a poll never moves the reader.
+  let status = root.querySelector('#inspector-status');
+  if (status === null) {
+    status = element(document, 'p', '', {
+      role: 'status',
+      'aria-live': 'polite',
+      id: 'inspector-status',
+    });
+    root.prepend(status);
+  }
+  if (announcement !== null) status.textContent = announcement;
+  const focusedAbort = document.activeElement?.id === 'inspector-abort-button';
+  root.querySelector('main')?.remove();
+  root.append(main);
+  if (focusedAbort) root.querySelector<HTMLElement>('#inspector-abort-button')?.focus();
 }

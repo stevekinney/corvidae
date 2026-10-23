@@ -6,6 +6,7 @@ import { describeChange, renderInspector } from './render.ts';
 const inspection: Inspection = {
   schemaVersion: 'bureau.task-inspection.v1',
   taskId: 'run-<b>1</b>',
+  canCancel: true,
   task: {
     id: 'run-1',
     agentName: 'worker',

@@ -168,6 +168,7 @@ describe.each(eras)('the Bureau MCP adapter ($era era)', ({ mode, version }) => 
     expect(inspected.structuredContent).toMatchObject({
       schemaVersion: 'bureau.task-inspection.v1',
       taskId: run.id,
+      canCancel: true,
       task: { id: run.id, owner: OWNER.alice },
       liveness: { id: run.id, status: 'running', cancellable: true },
       children: [],
