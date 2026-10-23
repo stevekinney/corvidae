@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test';
 
 import { MEMORY_COPY } from '../../app/copy.ts';
 import type { Memory, MemoryLineage } from '../../lib/memory-client.ts';
-import { formatMemoryTime, labelFor, lineageFields } from './memory-presentation.ts';
+import {
+  excerpt,
+  formatMemoryTime,
+  highlightSegments,
+  kindOf,
+  labelFor,
+  lineageFields,
+} from './memory-presentation.ts';
 
 const MEMORY: Memory = {
   id: 'memory-1',
@@ -102,5 +109,75 @@ describe('lineageFields', () => {
   test('carries the words for what is known of a legal hold', () => {
     const held = MEMORY_COPY.detail.legalHold.held;
     expect(byId(lineageFields(MEMORY, none, held))['legal-hold']?.value).toBe(held);
+  });
+});
+
+describe('kindOf', () => {
+  test('words each class the Bureau stores, with a sentence that explains it', () => {
+    for (const memoryClass of [
+      'working',
+      'episodic',
+      'semantic',
+      'procedural',
+      'identity',
+      'resource',
+    ] as const) {
+      const kind = kindOf({ memoryClass, source: 'conversation' });
+      expect(kind).toEqual(MEMORY_COPY.kind[memoryClass]);
+      expect(kind.description.startsWith(`${kind.label}: `)).toBe(true);
+    }
+  });
+
+  test('calls a memory a person wrote an operator memory, whatever its class', () => {
+    expect(kindOf({ memoryClass: 'episodic', source: 'operator' })).toEqual(
+      MEMORY_COPY.kind.operator,
+    );
+  });
+
+  test('shows a class the Bureau added as it wrote it, and says there is no description', () => {
+    expect(kindOf({ memoryClass: 'dreamt', source: 'conversation' })).toEqual({
+      label: 'dreamt',
+      description: MEMORY_COPY.kind.unknown('dreamt'),
+    });
+    // A name that is on every object is not a kind.
+    expect(kindOf({ memoryClass: 'constructor', source: 'conversation' }).label).toBe(
+      'constructor',
+    );
+  });
+});
+
+describe('highlightSegments', () => {
+  test('marks each word searched for, ignoring case, and keeps the text whole', () => {
+    const segments = highlightSegments('Window seats and a window view', 'WINDOW seats');
+
+    expect(segments.map((segment) => segment.text).join('')).toBe('Window seats and a window view');
+    expect(segments.filter((segment) => segment.match).map((segment) => segment.text)).toEqual([
+      'Window',
+      'seats',
+      'window',
+    ]);
+  });
+
+  test('marks nothing for a query with no words, and a hit that holds none of them', () => {
+    expect(highlightSegments('aisle', '   ')).toEqual([{ text: 'aisle', match: false }]);
+    expect(highlightSegments('aisle', 'window')).toEqual([{ text: 'aisle', match: false }]);
+    expect(highlightSegments('', 'window')).toEqual([{ text: '', match: false }]);
+  });
+
+  test('reads characters a pattern would treat as syntax as plain text', () => {
+    const segments = highlightSegments('costs $5 (maybe) a.b', '$5 (maybe a.b ( [');
+
+    expect(segments.filter((segment) => segment.match).map((segment) => segment.text)).toEqual([
+      '$5',
+      '(maybe',
+      'a.b',
+    ]);
+  });
+});
+
+describe('excerpt', () => {
+  test('collapses whitespace and cuts a long memory short', () => {
+    expect(excerpt('  one\n two  ')).toBe('one two');
+    expect(excerpt('x'.repeat(60))).toBe(`${'x'.repeat(48)}…`);
   });
 });

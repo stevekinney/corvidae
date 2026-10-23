@@ -79,3 +79,56 @@ export function lineageFields(
     { id: 'legal-hold', term: fields.legalHold, value: legalHold },
   ];
 }
+
+/** What a row's chip says about a memory, and the sentence that explains it. */
+export type MemoryKind = { readonly label: string; readonly description: string };
+
+/**
+ * The kind a row shows. A memory a person wrote is an operator memory whatever its class, because
+ * that is the fact the person can act on; every other memory shows the class it was stored under.
+ */
+export function kindOf(memory: Pick<Memory, 'memoryClass' | 'source'>): MemoryKind {
+  const words: Readonly<Record<string, MemoryKind | undefined>> = {
+    operator: MEMORY_COPY.kind.operator,
+    working: MEMORY_COPY.kind.working,
+    episodic: MEMORY_COPY.kind.episodic,
+    semantic: MEMORY_COPY.kind.semantic,
+    procedural: MEMORY_COPY.kind.procedural,
+    identity: MEMORY_COPY.kind.identity,
+    resource: MEMORY_COPY.kind.resource,
+  };
+  const key = memory.source === 'operator' ? 'operator' : memory.memoryClass;
+  const known = Object.hasOwn(words, key) ? words[key] : undefined;
+  return known ?? { label: key, description: MEMORY_COPY.kind.unknown(key) };
+}
+
+/** A run of a memory's text, and whether it is one of the words searched for. */
+export type HighlightSegment = { readonly text: string; readonly match: boolean };
+
+const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * `text` cut into runs, those that are one of the words of `query` marked as matches. Matching
+ * ignores case; a query with no words marks nothing. The Bureau's search ranks by meaning, so a hit
+ * may contain none of the words and comes back as one plain run.
+ */
+export function highlightSegments(text: string, query: string): HighlightSegment[] {
+  const words = [...new Set(query.trim().toLowerCase().split(/\s+/).filter(Boolean))].sort(
+    (first, second) => second.length - first.length,
+  );
+  if (words.length === 0 || text === '') return [{ text, match: false }];
+  const pattern = new RegExp(
+    `(${words.map((word) => word.replace(REGEX_SPECIALS, '\\$&')).join('|')})`,
+    'gi',
+  );
+  return text
+    .split(pattern)
+    .filter((part) => part !== '')
+    .map((part) => ({ text: part, match: words.includes(part.toLowerCase()) }));
+}
+
+/** A short excerpt of a memory, to name the actions of its row. */
+export function excerpt(content: string): string {
+  const text = content.trim().replace(/\s+/g, ' ');
+  return text.length > 48 ? `${text.slice(0, 48)}…` : text;
+}

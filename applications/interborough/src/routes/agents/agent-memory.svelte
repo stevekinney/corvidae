@@ -11,7 +11,7 @@
    */
   import { untrack } from 'svelte';
 
-  import { Alert, Badge, Button, SearchField, Skeleton } from '@lostgradient/cinder';
+  import { Alert, Button, SearchField, Skeleton } from '@lostgradient/cinder';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
@@ -20,8 +20,9 @@
   import { listMemories, searchMemories, type Memory } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
-  import { formatMemoryTime, labelFor } from './memory-presentation.ts';
+  import MemoryRow from './memory-row.svelte';
 
   const PAGE_SIZE = 20;
   const agentId = untrack(() => router.current.params['id'] ?? '');
@@ -31,6 +32,8 @@
   let applied = $state('');
   let selectedId = $state<string | null>(null);
   let notice = $state<'corrected' | undefined>(undefined);
+  let outcome = $state<ForgetOutcome | undefined>(undefined);
+  let changes = $state<ReturnType<typeof MemoryChanges> | undefined>(undefined);
 
   const list = createInfiniteQuery(
     () => ({
@@ -94,6 +97,7 @@
       selectedId = change.id;
     } else {
       notice = undefined;
+      if (selectedId === change.id) selectedId = null;
     }
   }
 
@@ -104,6 +108,15 @@
 
   const backPath = agentPath(agentId);
 
+  /** What the agent remembers, from the pages read so far: exact once the last page is in. */
+  const loaded = $derived(
+    combinePages(
+      list.data?.pages,
+      (page) => page.memories,
+      (memory) => memory.id,
+    ).length,
+  );
+
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
@@ -111,19 +124,18 @@
     event.preventDefault();
     router.navigate(path);
   }
-
-  /** A short excerpt of a memory, to name its Details action. */
-  function excerpt(content: string): string {
-    const text = content.trim().replace(/\s+/g, ' ');
-    return text.length > 48 ? `${text.slice(0, 48)}…` : text;
-  }
 </script>
 
 <section class="weft-memory" aria-labelledby="weft-memory-title" data-agent={agentId}>
   <header class="weft-memory__header">
     <div>
       <h1 id="weft-memory-title" class="weft-chat-header__title">{MEMORY_COPY.heading}</h1>
-      <p class="weft-chat-header__agent">{agentId}</p>
+      <p class="weft-chat-header__agent">
+        <code class="weft-memory__agent">{agentId}</code>
+        {#if loaded > 0}
+          · <span data-testid="memory-count">{MEMORY_COPY.count(loaded, list.hasNextPage)}</span>
+        {/if}
+      </p>
     </div>
     <Button
       href={router.href(backPath)}
@@ -151,6 +163,8 @@
     </Alert>
   {/if}
 
+  <MemoryChanges bind:this={changes} {agentId} bind:outcome onChanged={changed} />
+
   <div class="weft-memory__body" data-has-detail={selectedId !== null}>
     <div class="weft-memory__results">
       {#if active.isPending}
@@ -166,36 +180,39 @@
           >
         </Alert>
       {:else}
-        {#if rows.length === 0}
-          <p class="weft-memory__nothing" data-testid="memory-nothing-left">
-            {MEMORY_COPY.nothingLeft}
+        {#if applied !== ''}
+          <p class="weft-memory__count" role="status" data-testid="memory-match-count">
+            {#if rows.length > 0}
+              {MEMORY_COPY.closest(rows.length, applied)}
+            {:else}
+              {MEMORY_COPY.noMatch(applied)}
+            {/if}
           </p>
+        {/if}
+        {#if rows.length === 0}
+          {#if applied === ''}
+            <p class="weft-memory__nothing" data-testid="memory-nothing-left">
+              {MEMORY_COPY.nothingLeft}
+            </p>
+          {:else}
+            <div>
+              <Button variant="secondary" size="sm" onclick={clearSearch}
+                >{MEMORY_COPY.clearMatch}</Button
+              >
+            </div>
+          {/if}
         {/if}
         <ul class="weft-memory__list" aria-label={MEMORY_COPY.listLabel}>
           {#each rows as row (row.memory.id)}
-            <li
-              class="weft-memory__row"
-              data-memory={row.memory.id}
-              data-selected={row.memory.id === selectedId}
-            >
-              <p class="weft-memory__content">{row.memory.content}</p>
-              <div class="weft-memory__meta">
-                <Badge variant="neutral" size="sm"
-                  >{labelFor(MEMORY_COPY.memoryClass, row.memory.memoryClass)}</Badge
-                >
-                <time datetime={row.memory.createdAt}>{formatMemoryTime(row.memory.createdAt)}</time
-                >
-                {#if row.score !== null}
-                  <span>{MEMORY_COPY.relevance}: {row.score.toFixed(2)}</span>
-                {/if}
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label={`${MEMORY_COPY.openDetails}: ${excerpt(row.memory.content)}`}
-                onclick={() => open(row.memory.id)}>{MEMORY_COPY.openDetails}</Button
-              >
-            </li>
+            <MemoryRow
+              memory={row.memory}
+              query={applied}
+              score={row.score}
+              selected={row.memory.id === selectedId}
+              onOpen={open}
+              onForget={(id) => changes?.askToForget(id)}
+              onCorrect={(memory) => changes?.startCorrecting(memory)}
+            />
           {/each}
         </ul>
         {#if applied === '' && list.hasNextPage}
@@ -213,9 +230,11 @@
         <MemoryDetail
           {agentId}
           id={selectedId}
+          legalHold={outcome?.id === selectedId && outcome.result.deletion === 'exempt'}
           onOpen={open}
           onClose={() => (selectedId = null)}
-          onChanged={changed}
+          onForget={(id) => changes?.askToForget(id)}
+          onCorrect={(memory) => changes?.startCorrecting(memory)}
         />
       {/key}
     {/if}
@@ -235,6 +254,10 @@
     align-items: baseline;
     justify-content: space-between;
     gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .weft-memory__agent {
+    font-family: var(--cinder-font-mono);
   }
 
   .weft-memory__search {
@@ -264,57 +287,24 @@
   .weft-memory__results {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-3);
+    gap: var(--cinder-space-2);
     min-width: 0;
   }
 
   .weft-memory__list {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
-  .weft-memory__row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--cinder-space-2);
-    padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-  }
-
-  .weft-memory__row[data-selected='true'] {
-    border-color: var(--cinder-border-control);
-    outline: 2px solid var(--cinder-border-control);
-  }
-
-  .weft-memory__content {
-    margin: 0;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-    display: -webkit-box;
-    -webkit-line-clamp: 4;
-    line-clamp: 4;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .weft-memory__meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
+  .weft-memory__count,
   .weft-memory__nothing {
     margin: 0;
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
   }
 
   .weft-memory__alert-title {

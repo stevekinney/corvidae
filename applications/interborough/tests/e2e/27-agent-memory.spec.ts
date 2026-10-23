@@ -7,7 +7,7 @@
  * (`text-echo-agent.ts`) answers with what it was sent, so a case that sends a unique label stores a
  * memory that is its own, whatever the seeded agents' fixed replies have stored in the same run.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
@@ -25,12 +25,24 @@ const frame = (page: Page) => page.locator('[data-view="agents"]');
 const rowOf = (page: Page, text: string) => page.locator('[data-memory]', { hasText: text });
 const detailOf = (page: Page) => page.getByRole('region', { name: MEMORY_COPY.detail.heading });
 
-/** Opens the details of the memory whose text is `text`. */
+/** Opens the details of the memory whose text is `text`, by clicking its row. */
 async function openDetails(page: Page, text: string) {
-  await rowOf(page, text)
-    .getByRole('button', { name: new RegExp(MEMORY_COPY.openDetails) })
-    .click();
+  await rowOf(page, text).locator('.weft-memory__content').click();
   await expect(detailOf(page)).toBeVisible();
+}
+
+/** A row's Forget or Correct: named for the memory (`Forget: <text>`), so a memory whose own words say "forget" is not mistaken for it. */
+const rowAction = (row: Locator, action: string) =>
+  row.getByRole('button', { name: new RegExp(`^${action}:`) });
+
+/** Forgets the memory whose text is `text` from its row, and confirms the question. */
+async function forgetFromRow(page: Page, text: string) {
+  const row = rowOf(page, text);
+  await row.hover();
+  await rowAction(row, MEMORY_COPY.forget.action).click();
+  const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }).click();
 }
 
 test.describe('the memory page', () => {
@@ -54,11 +66,17 @@ test.describe('the memory page', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(MEMORY_COPY.heading);
     await expect(rowOf(page, label)).toHaveCount(1);
 
-    // A search ranks every memory the agent has, best first, and says how relevant each is.
+    // A search ranks every memory the agent has, best first, says how many it ranked, and how
+    // relevant each is.
     await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
     await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
     await expect(page.locator('[data-memory]').first()).toContainText(label);
     await expect(page.locator('[data-memory]').first()).toContainText(MEMORY_COPY.relevance);
+    const ranked = await page.locator('[data-memory]').count();
+    await expect(page.getByTestId('memory-match-count')).toHaveText(
+      MEMORY_COPY.closest(ranked, label),
+    );
+    await expect(page.locator('mark').first()).toHaveText(label.split(' ')[0] ?? '');
 
     await openDetails(page, label);
     const detail = detailOf(page);
@@ -95,12 +113,8 @@ test.describe('the memory page', () => {
       uniqueLabel('Keep me'),
     );
     await page.goto(MEMORY_PATH);
-    await openDetails(page, label);
 
-    await detailOf(page).getByRole('button', { name: MEMORY_COPY.forget.action }).click();
-    const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }).click();
+    await forgetFromRow(page, label);
 
     await expect(
       page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
@@ -115,11 +129,8 @@ test.describe('the memory page', () => {
     const label = uniqueLabel('Only memory');
     await runToEnd(request, TEXT_ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
     await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
-    await openDetails(page, label);
 
-    await detailOf(page).getByRole('button', { name: MEMORY_COPY.forget.action }).click();
-    const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
-    await dialog.getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }).click();
+    await forgetFromRow(page, label);
 
     // The page says nothing is left, and the receipt is still there to read.
     await expect(page.getByText(MEMORY_COPY.nothingLeft)).toBeVisible();
@@ -130,6 +141,40 @@ test.describe('the memory page', () => {
     // Opening the page again asks the Bureau again, and the agent is empty.
     await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');
+  });
+
+  test('opens a row on click, shows its actions on hover, and has no Details button', async ({
+    page,
+    request,
+  }) => {
+    const label = uniqueLabel('Row opens');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-row'), label);
+    await page.goto(MEMORY_PATH);
+    const row = rowOf(page, label);
+    const actions = row.locator('.weft-memory__actions');
+    await expect(row).toHaveCount(1);
+
+    await expect(page.getByRole('button', { name: /^Details/ })).toHaveCount(0);
+    // Hovering the row shows Forget and Correct, and so does holding focus in it.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(actions).toHaveCSS('opacity', '0');
+    await row.hover();
+    await expect(actions).toHaveCSS('opacity', '1');
+    await expect(rowAction(row, MEMORY_COPY.forget.action)).toBeVisible();
+    await expect(rowAction(row, MEMORY_COPY.correct.action)).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(actions).toHaveCSS('opacity', '0');
+    await rowAction(row, MEMORY_COPY.correct.action).focus();
+    await expect(actions).toHaveCSS('opacity', '1');
+
+    // The kind reads in plain words and says what it means to a screen reader.
+    await expect(row.locator('.weft-memory__kind')).toHaveAccessibleDescription(
+      MEMORY_COPY.kind.episodic.description,
+    );
+
+    await row.locator('.weft-memory__content').click();
+    await expect(detailOf(page)).toBeVisible();
+    await expect(row).toHaveAttribute('data-selected', 'true');
   });
 
   test('is empty for an agent that has remembered nothing', async ({ page }) => {
@@ -167,6 +212,24 @@ for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 900 });
     });
 
+    test('shows how many memories a search ranked, with the words marked', async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      const label = uniqueLabel(`Searched at ${width}`);
+      await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-search'), label);
+      await page.goto(MEMORY_PATH);
+      await expect(rowOf(page, label)).toHaveCount(1);
+
+      await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
+      await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
+
+      await expect(page.getByTestId('memory-match-count')).toContainText(label);
+      await expect(page.locator('mark').first()).toBeVisible();
+      await checkA11y(`a memory search at ${width}px`);
+    });
+
     test('corrects a memory and the list shows the correction in its place', async ({
       page,
       request,
@@ -182,7 +245,11 @@ for (const width of WIDTHS) {
 
       await openDetails(page, original);
       await checkA11y(`a memory's details at ${width}px`);
-      await detailOf(page).getByRole('button', { name: MEMORY_COPY.correct.action }).click();
+      // A correction starts from the row itself, with no need to open the details first.
+      const row = rowOf(page, original);
+      await row.hover();
+      await checkA11y(`a memory's row with its actions at ${width}px`);
+      await rowAction(row, MEMORY_COPY.correct.action).click();
       const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel(MEMORY_COPY.correct.dialog.label)).toHaveValue(original);

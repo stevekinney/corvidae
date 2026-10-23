@@ -629,10 +629,49 @@ export const MEMORY_COPY = {
   /** Shown when forgetting leaves the agent with nothing, while the receipt is still on the screen. */
   nothingLeft: 'This agent remembers nothing now.',
   listFailed: 'The memories could not be loaded.',
-  /** The label on a row's action that opens one memory's details. */
-  openDetails: 'Details',
   noContent: 'This memory has no text.',
   relevance: 'Relevance',
+  /** How many memories the agent has; `more` is true when the list has pages left to load. */
+  count: (shown: number, more: boolean): string =>
+    `${shown}${more ? '+' : ''} ${shown === 1 && !more ? 'memory' : 'memories'}`,
+  /**
+   * What a search answered. The Bureau ranks every memory the agent has and has no score floor, so
+   * a hit is the closest memories and not a filtered set: the words say "closest", never "match".
+   */
+  closest: (shown: number, query: string): string =>
+    `${shown} closest ${shown === 1 ? 'memory' : 'memories'} to “${query}”, best first`,
+  noMatch: (query: string): string => `No memory matches “${query}”`,
+  /** The action under an empty search that lists everything again. */
+  clearMatch: 'Show all memories',
+  /** The kind chip on a row: a short name, and a sentence for the person who did not choose it. */
+  kind: {
+    operator: { label: 'Operator', description: 'Operator: a correction you wrote' },
+    working: {
+      label: 'Working',
+      description: 'Working: a note the agent keeps while it works on something',
+    },
+    episodic: {
+      label: 'Episodic',
+      description: 'Episodic: something the agent learned from a chat',
+    },
+    semantic: { label: 'Semantic', description: 'Semantic: a fact the agent knows' },
+    procedural: {
+      label: 'Procedural',
+      description: 'Procedural: a way of doing something that the agent has learned',
+    },
+    identity: { label: 'Identity', description: 'Identity: what the agent knows about itself' },
+    resource: {
+      label: 'Resource',
+      description: 'Resource: reference material the agent can look up',
+    },
+    /** For a kind the Bureau added that this page has no words for. */
+    unknown: (kind: string): string => `${kind}: a kind of memory this page has no description for`,
+  },
+  /** The names of a row's actions: the memory is named so each row's buttons are told apart. */
+  rowAction: {
+    forget: (excerpt: string): string => `Forget: ${excerpt}`,
+    correct: (excerpt: string): string => `Correct: ${excerpt}`,
+  },
   detail: {
     heading: 'Memory details',
     loading: 'Loading this memory',

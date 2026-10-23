@@ -86,14 +86,12 @@ function open(path = '/agents/assistant/memory') {
   return mount(AgentMemory);
 }
 
-/** Opens the Details of the memory whose text is `content`. */
+/** Opens the details of the memory whose text is `content`, by clicking its row. */
 async function openDetails(view: ReturnType<typeof open>, content: string) {
   const text = await view.findByText(content);
-  const row = text.closest('li');
-  if (row === null) throw new Error(`No row holds "${content}".`);
-  await fireEvent.click(
-    within(row).getByRole('button', { name: new RegExp(MEMORY_COPY.openDetails) }),
-  );
+  const opener = text.closest('button');
+  if (opener === null) throw new Error(`No row holds "${content}".`);
+  await fireEvent.click(opener);
   return view.findByRole('region', { name: MEMORY_COPY.detail.heading });
 }
 
@@ -114,15 +112,67 @@ describe('the list and the search', () => {
       'memory-aisle',
       'memory-window',
     ]);
-    expect(rows[0]?.textContent).toContain(MEMORY_COPY.memoryClass.episodic);
+    expect(rows[0]?.textContent).toContain(MEMORY_COPY.kind.episodic.label);
     expect(rows[0]?.querySelector('time')?.getAttribute('datetime')).toBe(AISLE.createdAt);
+    expect(rows[0]?.querySelector('time')?.getAttribute('title')).toBe(
+      new Date(AISLE.createdAt).toLocaleString(),
+    );
+  });
+
+  test('says how many memories the agent has, and that there are more when a page is left', async () => {
+    bureau({ 'bureau.memory.list': () => ({ memories: [AISLE, WINDOW], nextOffset: 2 }) });
+    const { findByTestId } = open();
+
+    expect(textOf(await findByTestId('memory-count'))).toBe(MEMORY_COPY.count(2, true));
+    expect(MEMORY_COPY.count(1, false)).toBe('1 memory');
+    expect(MEMORY_COPY.count(2, false)).toBe('2 memories');
+  });
+
+  test('has no Details button: a row opens its memory, and shows Forget and Correct', async () => {
+    const served = bureau();
+    const view = open();
+    const text = await view.findByText(AISLE.content);
+
+    expect(view.queryByRole('button', { name: /^Details/ })).toBeNull();
+    const row = text.closest('li') as HTMLElement;
+    expect(within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(AISLE.content) }))
+      .not.toBeNull();
+    expect(within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }))
+      .not.toBeNull();
+    expect(served.callsTo('bureau.memory.get')).toEqual([]);
+
+    await fireEvent.click(text.closest('button') as HTMLElement);
+
+    expect(await view.findByRole('region', { name: MEMORY_COPY.detail.heading })).not.toBeNull();
+    expect(served.callsTo('bureau.memory.get')[0]?.params['id']).toBe(AISLE.id);
+    expect(row.getAttribute('data-selected')).toBe('true');
+  });
+
+  test('describes the kind chip in plain words, and calls a person’s own memory an operator one', async () => {
+    bureau();
+    const view = open();
+    await view.findByText(AISLE.content);
+
+    const chip = within(view.container.querySelector('[data-memory="memory-aisle"]') as HTMLElement)
+      .getByText(MEMORY_COPY.kind.episodic.label)
+      .closest('.weft-memory__kind') as HTMLElement;
+    const describedBy = chip.getAttribute('aria-describedby');
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy as string)?.textContent).toBe(
+      MEMORY_COPY.kind.episodic.description,
+    );
+    expect(
+      within(view.container.querySelector('[data-memory="memory-window"]') as HTMLElement).getByText(
+        MEMORY_COPY.kind.operator.label,
+      ),
+    ).not.toBeNull();
   });
 
   test('searches by the typed text, ranks every hit with its relevance, and lists again when cleared', async () => {
     const served = bureau({
       'bureau.memory.search': () => ({ hits: [{ memory: WINDOW, score: 0.8 }] }),
     });
-    const { findByText, getByRole, getByLabelText, queryByText } = open();
+    const { container, findByText, getByRole, getByLabelText, getByTestId, queryByText } = open();
     await findByText(AISLE.content);
 
     await fireEvent.input(getByLabelText(MEMORY_COPY.searchLabel), {
@@ -132,6 +182,9 @@ describe('the list and the search', () => {
 
     await findByText(`${MEMORY_COPY.relevance}: 0.80`);
     expect(queryByText(AISLE.content)).toBeNull();
+    // The count says what the Bureau ranked, and the word searched for is marked in the text.
+    expect(textOf(getByTestId('memory-match-count'))).toBe(MEMORY_COPY.closest(1, 'window'));
+    expect(container.querySelector('mark')?.textContent).toBe('window');
     expect(served.callsTo('bureau.memory.search')[0]?.params).toEqual({
       agentId: 'assistant',
       query: 'window',
@@ -141,6 +194,23 @@ describe('the list and the search', () => {
     await fireEvent.click(getByRole('button', { name: /clear/i }));
     await findByText(AISLE.content);
     expect(queryByText(new RegExp(MEMORY_COPY.relevance))).toBeNull();
+  });
+
+  test('says no memory matches an empty search, and lists everything again from its action', async () => {
+    bureau();
+    const { findByText, getByRole, getByLabelText, getByTestId, queryByTestId } = open();
+    await findByText(AISLE.content);
+
+    await fireEvent.input(getByLabelText(MEMORY_COPY.searchLabel), { target: { value: 'zebra' } });
+    await fireEvent.click(getByRole('button', { name: MEMORY_COPY.searchAction }));
+
+    await waitFor(() =>
+      expect(textOf(getByTestId('memory-match-count'))).toBe(MEMORY_COPY.noMatch('zebra')),
+    );
+    await fireEvent.click(getByRole('button', { name: MEMORY_COPY.clearMatch }));
+
+    expect(await findByText(AISLE.content)).not.toBeNull();
+    expect(queryByTestId('memory-match-count')).toBeNull();
   });
 
   test('lists on a blank search rather than asking the Bureau to search for nothing', async () => {
@@ -323,7 +393,7 @@ describe('one memory’s lineage', () => {
     const view = open();
     await view.findByText(AISLE.content);
 
-    await fireEvent.click(view.getAllByRole('button', { name: /^Details/ })[0]!);
+    await openDetails(view, AISLE.content);
 
     const loading = await view.findByRole('status', { name: MEMORY_COPY.detail.loading });
     expect(loading.getAttribute('aria-busy')).toBe('true');
@@ -387,7 +457,7 @@ describe('one memory’s lineage', () => {
     });
     const view = open();
     await view.findByText(AISLE.content);
-    await fireEvent.click(view.getAllByRole('button', { name: /^Details/ })[0]!);
+    await openDetails(view, AISLE.content);
     const failed = await view.findByText(MEMORY_COPY.detail.failed);
     const region = failed.closest('section') as HTMLElement;
     failing = false;
@@ -408,7 +478,7 @@ describe('one memory’s lineage', () => {
     });
     const view = open();
     await view.findByText(AISLE.content);
-    await fireEvent.click(view.getAllByRole('button', { name: /^Details/ })[0]!);
+    await openDetails(view, AISLE.content);
     expect(await view.findByText(MEMORY_COPY.detail.notFound.title)).not.toBeNull();
     cleanup();
     stub?.restore();
@@ -420,7 +490,7 @@ describe('one memory’s lineage', () => {
     });
     const failing = open();
     await failing.findByText(AISLE.content);
-    await fireEvent.click(failing.getAllByRole('button', { name: /^Details/ })[0]!);
+    await openDetails(failing, AISLE.content);
     expect(await failing.findByText(MEMORY_COPY.detail.failed)).not.toBeNull();
   });
 
@@ -469,6 +539,18 @@ describe('forgetting a memory', () => {
     return { served, view, detail };
   }
 
+  /** Forgets the first memory straight from its row, confirming the question. */
+  async function forgetFromRow(view: ReturnType<typeof open>, content: string) {
+    const row = (await view.findByText(content)).closest('li') as HTMLElement;
+    await fireEvent.click(
+      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(content) }),
+    );
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+    );
+  }
+
   test('asks first, and forgets nothing when the question is declined', async () => {
     const served = bureau();
     const view = open();
@@ -483,19 +565,19 @@ describe('forgetting a memory', () => {
 
   for (const state of ['completed', 'exempt', 'pending', 'failed', 'unknown'] as const) {
     test(`words a deletion that came to ${state}`, async () => {
-      const { served, detail } = await forgetWith(state);
+      const { served, view } = await forgetWith(state);
       const words = MEMORY_COPY.forget.outcome[state];
 
-      const title = await within(detail).findByText(words.title);
+      const title = await view.findByText(words.title);
 
       expect(title.getAttribute('data-forget-outcome')).toBe(state);
-      expect(detail.textContent).toContain(words.description);
+      expect(view.container.textContent).toContain(words.description);
       expect(served.callsTo('bureau.memory.forget')[0]?.params).toEqual({
         agentId: 'assistant',
         id: AISLE.id,
       });
       // The receipt's rows are shown in the receipt's own states.
-      expect(textOf(detail)).toContain(
+      expect(textOf(view.container)).toContain(
         `${MEMORY_COPY.forget.targets['source-evidence']}: ${MEMORY_COPY.forget.targetStatus[state]}`,
       );
     });
@@ -504,7 +586,7 @@ describe('forgetting a memory', () => {
   test('learns of a legal hold from the exempt answer, and leaves the memory listed', async () => {
     const { served, view, detail } = await forgetWith('exempt');
 
-    await within(detail).findByText(MEMORY_COPY.forget.outcome.exempt.title);
+    await view.findByText(MEMORY_COPY.forget.outcome.exempt.title);
 
     expect(
       textOf(
@@ -518,19 +600,34 @@ describe('forgetting a memory', () => {
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
   });
 
-  test('takes the actions away from a memory that is gone, and reads the list again', async () => {
-    const { served, detail } = await forgetWith('completed');
+  test('closes the details of a memory that is gone, and reads the list again', async () => {
+    const { served, view } = await forgetWith('completed');
 
-    await within(detail).findByText(MEMORY_COPY.forget.outcome.completed.title);
+    await view.findByText(MEMORY_COPY.forget.outcome.completed.title);
 
-    expect(within(detail).queryByRole('button', { name: MEMORY_COPY.forget.action })).toBeNull();
-    expect(within(detail).queryByRole('button', { name: MEMORY_COPY.correct.action })).toBeNull();
+    // The memory is gone, so there is nothing left to show about it or to do to it.
+    expect(view.queryByRole('region', { name: MEMORY_COPY.detail.heading })).toBeNull();
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
-    // The memory is gone, so its details are not asked for again: the outcome stays, and the
-    // page does not answer it with "not found".
+    // Its details are not asked for again, and the page does not answer it with "not found".
     expect(served.callsTo('bureau.memory.get')).toHaveLength(1);
-    expect(within(detail).queryByText(MEMORY_COPY.detail.notFound.title)).toBeNull();
-    expect(within(detail).getByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
+    expect(view.queryByText(MEMORY_COPY.detail.notFound.title)).toBeNull();
+  });
+
+  test('forgets from the row without opening the details', async () => {
+    const served = bureau({
+      'bureau.memory.forget': () => ({ id: AISLE.id, deletion: 'completed', receipt: RECEIPT }),
+    });
+    const view = open();
+
+    await forgetFromRow(view, AISLE.content);
+
+    expect(await view.findByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
+    expect(served.callsTo('bureau.memory.forget')[0]?.params).toEqual({
+      agentId: 'assistant',
+      id: AISLE.id,
+    });
+    expect(served.callsTo('bureau.memory.get')).toEqual([]);
+    expect(view.queryByRole('region', { name: MEMORY_COPY.detail.heading })).toBeNull();
   });
 
   test('keeps the receipt on screen when the last memory is forgotten, inside the Agents view', async () => {
@@ -558,11 +655,11 @@ describe('forgetting a memory', () => {
     expect(await view.findByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
     expect(await view.findByText(MEMORY_COPY.nothingLeft)).not.toBeNull();
     expect(view.container.querySelector('.weft-view')?.getAttribute('data-state')).toBe('ready');
-    expect(textOf(detail)).toContain(MEMORY_COPY.forget.targets['source-evidence']);
+    expect(textOf(view.container)).toContain(MEMORY_COPY.forget.targets['source-evidence']);
   });
 
   test('says so when the Bureau refuses the forget', async () => {
-    const { detail } = await forgetWith('completed', {
+    const { view } = await forgetWith('completed', {
       'bureau.memory.forget': () => {
         throw new StubFault('Forbidden', 403, 'No.', {
           reason: 'missing scope bureau.memory:write',
@@ -570,9 +667,9 @@ describe('forgetting a memory', () => {
       },
     });
 
-    await within(detail).findByText(MEMORY_COPY.forget.failed);
+    await view.findByText(MEMORY_COPY.forget.failed);
 
-    expect(detail.textContent).toContain(MEMORY_COPY.correct.refusal.forbidden.description);
+    expect(view.container.textContent).toContain(MEMORY_COPY.correct.refusal.forbidden.description);
   });
 });
 
@@ -591,11 +688,11 @@ describe('a forget the Bureau cannot answer', () => {
       within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
     );
 
-    await within(detail).findByText(MEMORY_COPY.forget.failed);
-    expect(detail.textContent).toContain('The Bureau broke.');
-    await fireEvent.click(within(detail).getByRole('button', { name: /dismiss/i }));
+    await view.findByText(MEMORY_COPY.forget.failed);
+    expect(view.container.textContent).toContain('The Bureau broke.');
+    await fireEvent.click(view.getByRole('button', { name: /dismiss/i }));
 
-    expect(within(detail).queryByText(MEMORY_COPY.forget.failed)).toBeNull();
+    expect(view.queryByText(MEMORY_COPY.forget.failed)).toBeNull();
     expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
   });
 });
@@ -636,6 +733,31 @@ describe('correcting a memory', () => {
       ),
     );
     expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title })).toBeNull();
+  });
+
+  test('corrects from the row, starting from the memory’s own words', async () => {
+    const corrected = { ...WINDOW, content: 'The user prefers the exit row.' };
+    const served = bureau({ 'bureau.memory.correct': () => ({ id: AISLE.id, memory: corrected }) });
+    const view = open();
+    const row = (await view.findByText(AISLE.content)).closest('li') as HTMLElement;
+
+    await fireEvent.click(
+      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }),
+    );
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+    const field = within(dialog).getByLabelText(MEMORY_COPY.correct.dialog.label);
+    expect((field as HTMLTextAreaElement).value).toBe(AISLE.content);
+    await fireEvent.input(field, { target: { value: corrected.content } });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }),
+    );
+
+    expect(await view.findByText(MEMORY_COPY.correct.saved.title)).not.toBeNull();
+    expect(served.callsTo('bureau.memory.correct')[0]?.params).toEqual({
+      agentId: 'assistant',
+      id: AISLE.id,
+      content: corrected.content,
+    });
   });
 
   test('words the Bureau’s refusal of a memory that was already corrected', async () => {

@@ -1,0 +1,161 @@
+<script lang="ts">
+  /**
+   * One memory in the list: its text, how long ago it was learned, and what kind of memory it is.
+   * The whole row opens the memory's details; Forget and Correct sit beside it and appear when the
+   * row is hovered or holds focus (always, on a screen that cannot hover), so neither is behind a
+   * second click. The kind chip carries a sentence in plain words, for a person who did not choose
+   * the kind and for a screen reader (`aria-describedby`, through the tooltip).
+   */
+  import { Badge, Button, RelativeTime, SelectableRow, Tooltip } from '@lostgradient/cinder';
+
+  import { MEMORY_COPY } from '../../app/copy.ts';
+  import type { Memory } from '../../lib/memory-client.ts';
+  import { excerpt, formatMemoryTime, highlightSegments, kindOf } from './memory-presentation.ts';
+
+  type Props = {
+    memory: Memory;
+    /** What the list was searched for, to mark in the text; empty when it is not a search. */
+    query: string;
+    /** The search's relevance for this memory, or `null` when the list is not a search. */
+    score: number | null;
+    selected: boolean;
+    onOpen: (id: string) => void;
+    onForget: (id: string) => void;
+    onCorrect: (memory: Memory) => void;
+  };
+
+  let { memory, query, score, selected, onOpen, onForget, onCorrect }: Props = $props();
+
+  const kind = $derived(kindOf(memory));
+  const segments = $derived(highlightSegments(memory.content, query));
+  const name = $derived(excerpt(memory.content));
+  let chip = $state<HTMLElement | null>(null);
+</script>
+
+<li class="weft-memory__row" data-memory={memory.id} data-selected={selected}>
+  <SelectableRow
+    density="condensed"
+    {selected}
+    selectedState="current"
+    onclick={() => onOpen(memory.id)}
+  >
+    {#snippet title()}
+      <span class="weft-memory__content"
+        >{#each segments as segment, index (index)}{#if segment.match}<mark
+              class="weft-memory__match">{segment.text}</mark
+            >{:else}{segment.text}{/if}{/each}</span
+      >
+    {/snippet}
+    {#snippet meta()}
+      {#if score !== null}
+        <span>{MEMORY_COPY.relevance}: {score.toFixed(2)}</span>
+      {/if}
+    {/snippet}
+    {#snippet trailingActions()}
+      <RelativeTime
+        class="weft-memory__time"
+        date={memory.createdAt}
+        title={formatMemoryTime(memory.createdAt)}
+      />
+      <span class="weft-memory__kind" bind:this={chip}>
+        <Badge variant="neutral" size="sm">{kind.label}</Badge>
+      </span>
+      <Tooltip text={kind.description} triggerRef={chip} />
+      <span class="weft-memory__actions">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={MEMORY_COPY.rowAction.correct(name)}
+          onclick={() => onCorrect(memory)}>{MEMORY_COPY.correct.action}</Button
+        >
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={MEMORY_COPY.rowAction.forget(name)}
+          onclick={() => onForget(memory.id)}>{MEMORY_COPY.forget.action}</Button
+        >
+      </span>
+    {/snippet}
+  </SelectableRow>
+</li>
+
+<style>
+  .weft-memory__row {
+    display: block;
+    list-style: none;
+  }
+
+  .weft-memory__content {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .weft-memory__match {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .weft-memory__row :global(.weft-memory__time) {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    white-space: nowrap;
+  }
+
+  /* One width for every kind, so the times and the actions line up down the list. */
+  .weft-memory__kind {
+    display: inline-flex;
+  }
+
+  @media (min-width: 40.0625rem) {
+    .weft-memory__kind {
+      min-inline-size: 5.5rem;
+    }
+  }
+
+  .weft-memory__actions {
+    display: inline-flex;
+    gap: var(--cinder-space-1);
+    opacity: 0;
+  }
+
+  .weft-memory__row:hover .weft-memory__actions,
+  .weft-memory__row:focus-within .weft-memory__actions,
+  .weft-memory__row[data-selected='true'] .weft-memory__actions {
+    opacity: 1;
+  }
+
+  /* Where nothing can hover, and where the actions sit under the text, they are always there. */
+  @media (hover: none), (max-width: 40rem) {
+    .weft-memory__actions {
+      opacity: 1;
+    }
+  }
+
+  /* The trailing group sits beside the text on a wide screen and under it on a narrow one. */
+  @media (max-width: 40rem) {
+    .weft-memory__row :global(.cinder-selectable-row--has-trailing-actions) {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: 0;
+    }
+
+    .weft-memory__row :global(.cinder-selectable-row__primary) {
+      padding-block-end: 0;
+    }
+
+    .weft-memory__row :global(.cinder-selectable-row__trailing-actions) {
+      flex-wrap: wrap;
+      padding-block-end: var(--cinder-space-2);
+      padding-inline-start: var(--cinder-space-3);
+    }
+
+    .weft-memory__actions {
+      margin-inline-start: auto;
+    }
+  }
+</style>
