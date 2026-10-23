@@ -224,7 +224,8 @@ export function inputFormMessages(surfaceId: string, schema: HumanInputSchema): 
     components.push({
       id: 'field-response',
       component: 'TextField',
-      label: 'Answer as JSON matching the requested schema',
+      // A schema that takes a string takes the text as typed, so asking for JSON would keep the quotes.
+      label: takesPlainText(schema) ? 'Answer' : 'Answer as JSON matching the requested schema',
       value: { path: '/response' },
       variant: 'longText',
     });
@@ -295,6 +296,21 @@ function normalisedSubmission(fields: readonly FormField[], submitted: unknown):
  */
 const schemaChecker = new InteractiveSurfaceSchemaCompiler();
 
+/**
+ * Whether the schema asks only for a string (`type: "string"`, or `enum`/`const` of strings), so
+ * the person's text is the answer as typed and not JSON to parse.
+ */
+function takesPlainText(schema: HumanInputSchema): boolean {
+  const { type, enum: choices, const: constant } = schema;
+  if (type === 'string' || typeof constant === 'string') return true;
+  return (
+    type === undefined &&
+    Array.isArray(choices) &&
+    choices.length > 0 &&
+    choices.every((choice) => typeof choice === 'string')
+  );
+}
+
 /** The outcome of {@link checkFormSubmission}. */
 export type FormSubmission =
   { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly message: string };
@@ -303,8 +319,9 @@ export type FormSubmission =
  * Checks a submitted answer against the schema its wait was parked with, and returns the value to
  * deliver. The submission is untrusted: it is validated here, in full, and a refusal says why.
  *
- * A schema the form could not map is answered as `{ "response": "<JSON text>" }` or directly as the
- * value; the first is parsed, and the result is validated the same way.
+ * A schema the form could not map is answered as `{ "response": "<text>" }` or directly as the
+ * value. The text is the answer as written when the schema asks only for a string, and is otherwise
+ * parsed as JSON; the result is validated the same way.
  */
 export function checkFormSubmission(schema: HumanInputSchema, submitted: unknown): FormSubmission {
   let value: unknown = submitted;
@@ -316,10 +333,16 @@ export function checkFormSubmission(schema: HumanInputSchema, submitted: unknown
     Object.keys(submitted).length === 1 &&
     typeof submitted['response'] === 'string'
   ) {
-    try {
-      value = JSON.parse(submitted['response']);
-    } catch {
-      return { ok: false, message: 'The response is not valid JSON.' };
+    const text = submitted['response'];
+    // A schema that accepts the text as a string takes it as written; it is not JSON to parse.
+    if (takesPlainText(schema)) {
+      value = text;
+    } else {
+      try {
+        value = JSON.parse(text);
+      } catch {
+        return { ok: false, message: 'The response is not valid JSON.' };
+      }
     }
   }
   let problem: string | undefined;
