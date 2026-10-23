@@ -117,10 +117,14 @@ describe('deleting a push configuration', () => {
     fixture.receiver.reply(503);
     await fixture.outbox.deliverNext();
     expect(await onlyReceipt(fixture)).toMatchObject({ state: 'retry-scheduled' });
+    const cancellations = recordCancellations(fixture.outbox);
 
     await fixture.sender.pushStore.delete('task-1', alice(), 'config-1');
 
-    expect(await onlyReceipt(fixture)).toMatchObject({ state: 'cancelled', cleanupPending: false });
+    expect(cancellations).toHaveLength(1);
+    expect(cancellations[0]).toMatchObject({ receipt: { state: 'cancelled' } });
+    // The cancelled record is purged with the configuration it belonged to.
+    expect(await fixture.outbox.list()).toEqual([]);
     fixture.clock.advance(TEN_MINUTES_MS);
     expect(await fixture.outbox.deliverNext()).toMatchObject({ status: 'empty' });
     expect(fixture.receiver.requests).toHaveLength(1);
@@ -151,12 +155,10 @@ describe('deleting a push configuration', () => {
       status: 'requested',
       receipt: { state: 'cancellation-requested' },
     });
-    const receipt = await onlyReceipt(fixture);
-    expect(receipt.terminalAt).toBeDefined();
-    expect(receipt.cleanupPending ?? false).toBe(false);
-    expect(await fixture.outbox.cleanupState(receipt.deliveryId)).toMatchObject({
-      status: 'settled',
-    });
+    const deliveryId = cancellations[0]!.receipt.deliveryId;
+    // Delete returned only once the aborted attempt settled, and then purged its record.
+    expect(await fixture.outbox.list()).toEqual([]);
+    expect(await fixture.outbox.receipt(deliveryId)).toBeNull();
     await fixture.receiver.nextAbandoned();
 
     fixture.clock.advance(TEN_MINUTES_MS);
@@ -191,7 +193,7 @@ describe('deleting a push configuration', () => {
     expect(budgets).toEqual([fixture.adapter.timeoutMs + 1000]);
   });
 
-  test('leaves other configurations and settled deliveries alone', async () => {
+  test('cancels only the deleted configuration’s open delivery and purges every deleted one’s record', async () => {
     const fixture = await createPushFixture();
     await createConfiguration(fixture, { id: 'config-1' });
     await createConfiguration(fixture, { id: 'config-2', token: 'token-2' });
@@ -203,10 +205,8 @@ describe('deleting a push configuration', () => {
     await fixture.sender.pushStore.delete('task-1', alice(), 'config-2');
 
     expect(cancellations).toHaveLength(1);
-    const receipts = await fixture.outbox.list();
-    expect(new Set(receipts.map((receipt) => receipt.state))).toEqual(
-      new Set(['acknowledged', 'cancelled']),
-    );
+    // Both configurations are deleted, so each one's settled or cancelled record is purged.
+    expect(await fixture.outbox.list()).toEqual([]);
   });
 });
 

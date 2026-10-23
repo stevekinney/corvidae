@@ -291,12 +291,22 @@ export function createOutboxPushNotificationSender(
     async delete(taskId, context, configId = taskId) {
       await pushStore.delete(taskId, context, configId);
       const scope = callerScope('', context);
+      const destinationRef = encodeLocator({
+        tenant: scope.tenant,
+        owner: scope.owner,
+        taskId,
+        configId,
+      });
       await stopPushDeliveries(
         outbox,
         adapter,
-        encodeLocator({ tenant: scope.tenant, owner: scope.owner, taskId, configId }),
+        destinationRef,
         'The push notification configuration was deleted.',
       );
+      // Settled records carry the task's payload and hold the idempotency keys of the events
+      // already sent, so a later configuration that reuses this id would be handed a duplicate
+      // of a delivery to the previous webhook instead of its own.
+      await outbox.purge({ destinationRef });
     },
   };
   delegatePushConfigurationCreates(wrappedStore, pushStore);

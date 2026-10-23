@@ -94,7 +94,12 @@ export type PushFixture = {
 /** A Bureau serving the `asker` agent, with push delivery to a loopback receiver. */
 export async function openPushBureau(
   generate: GenerateFunction,
-  options: { durableHistory?: boolean; humanInput?: boolean; push?: boolean } = {},
+  options: {
+    durableHistory?: boolean;
+    humanInput?: boolean;
+    push?: boolean;
+    sweepIntervalMs?: number;
+  } = {},
 ): Promise<PushFixture> {
   const storage = new MemoryStorage();
   const receiver = new Receiver();
@@ -117,7 +122,17 @@ export async function openPushBureau(
     ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: {
       publicUrl: 'http://localhost',
-      ...(options.push === false ? {} : { pushNotifications: { sender, outbox } }),
+      ...(options.push === false
+        ? {}
+        : {
+            pushNotifications: {
+              sender,
+              outbox,
+              ...(options.sweepIntervalMs === undefined
+                ? {}
+                : { sweepIntervalMs: options.sweepIntervalMs }),
+            },
+          }),
     },
   });
   let delivery: AbortController | undefined;

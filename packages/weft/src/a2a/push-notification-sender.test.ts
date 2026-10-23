@@ -343,6 +343,29 @@ describe('createOutboxPushNotificationSender store wrapper', () => {
   });
 });
 
+describe('createOutboxPushNotificationSender delete purge', () => {
+  test('a delete purges that configuration’s settled records and no other’s', async () => {
+    const fixture = await createPushFixture();
+    await createConfiguration(fixture, { id: 'config-1' });
+    await fixture.sender.sendKeyed(statusEvent(1), alice(), 'event-1');
+    expect(await fixture.outbox.deliverNext()).toMatchObject({ status: 'settled' });
+    // Another configuration's settled record is not touched.
+    await createConfiguration(fixture, { id: 'config-2' });
+    await fixture.sender.sendKeyed(statusEvent(2), alice(), 'event-2');
+    await fixture.outbox.drain({ timeoutMs: 0 });
+
+    await fixture.sender.pushStore.delete('task-1', alice(), 'config-1');
+
+    const remaining = await fixture.outbox.list();
+    expect(
+      remaining.every(
+        (receipt) => receipt.destinationRef !== pushDestinationRef(alice(), 'task-1', 'config-1'),
+      ),
+    ).toBe(true);
+    expect(remaining.length).toBeGreaterThan(0);
+  });
+});
+
 describe('pushNotificationResolvers', () => {
   test('resolves a configuration in a tenant for a named user and for an anonymous caller', async () => {
     const fixture = await createPushFixture();

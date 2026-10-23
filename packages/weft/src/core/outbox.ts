@@ -61,7 +61,7 @@ import {
   type OutboxRuntime,
 } from './outbox-internals.ts';
 import { listDeliveries } from './outbox-listing.ts';
-import { runOutboxMaintenance } from './outbox-maintenance.ts';
+import { purgeSettledDeliveries, runOutboxMaintenance } from './outbox-maintenance.ts';
 import { deadLetterDelivery, retryDelivery } from './outbox-operations.ts';
 import { deliverNext } from './outbox-runner.ts';
 import {
@@ -431,6 +431,28 @@ export class Outbox {
   async runMaintenance(now = this.#runtime.now()): Promise<OutboxMaintenanceReport> {
     this.#assertLive();
     return runOutboxMaintenance(this.#runtime, requireMaintenanceInstant(now));
+  }
+
+  /**
+   * Delete every settled (terminal) delivery bound for `destinationRef`, with its listing entry
+   * and idempotency binding, whatever its age, and return how many. Open deliveries are never
+   * touched: cancel them first. A host calls this when the destination is gone, so neither the
+   * payloads nor the spent idempotency keys outlive it.
+   *
+   * @example
+   * ```ts
+   * import type { Outbox } from '@lostgradient/weft';
+   *
+   * declare const outbox: Outbox;
+   * console.log(await outbox.purge({ destinationRef: 'webhook:orders' }));
+   * ```
+   */
+  async purge(options: { readonly destinationRef: string }): Promise<number> {
+    this.#assertLive();
+    if (typeof options.destinationRef !== 'string' || options.destinationRef.length === 0) {
+      throw new ApplicationDeliveryValidationError('purge requires a non-empty destinationRef.');
+    }
+    return purgeSettledDeliveries(this.#runtime, options.destinationRef);
   }
 
   /**
