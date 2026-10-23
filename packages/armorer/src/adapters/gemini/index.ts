@@ -43,6 +43,13 @@ type GeminiToolCallSource =
 export interface GeminiFormatToolResultsOptions {
   toolNameByCallId?: Record<string, string> | ((callId: string) => string | undefined);
   defaultToolName?: string;
+  /**
+   * The call ids Gemini itself issued on its `functionCall` parts (Gemini 3 always sends one;
+   * earlier models may send none, and Armorer then generates the call id). A response echoes
+   * `functionResponse.id` only for an id listed here, because Google defines that field as the
+   * originating call's id. Omit it and no response carries an id.
+   */
+  providerCallIds?: ReadonlySet<string> | ((callId: string) => boolean);
 }
 
 /**
@@ -129,6 +136,7 @@ export async function formatGeminiToolResultsAsync(
       const content = normalizeAsyncContent(await collectAsyncIterable(stream));
       return {
         functionResponse: {
+          ...geminiResponseId(result, options),
           name: resolveGeminiToolName(result, options),
           response: normalizeGeminiResponse({ ...result, content }),
         },
@@ -191,9 +199,10 @@ function toFunctionResponsePart(
   options: GeminiFormatToolResultsOptions,
 ): GeminiFunctionResponsePart {
   const name = resolveGeminiToolName(result, options);
+  const id = geminiResponseId(result, options);
   const parts = toolResultParts(result);
   if (parts === undefined) {
-    return { functionResponse: { name, response: normalizeGeminiResponse(result) } };
+    return { functionResponse: { ...id, name, response: normalizeGeminiResponse(result) } };
   }
   const { output, parts: media } = geminiToolResultParts(parts);
   const response =
@@ -205,7 +214,18 @@ function toFunctionResponsePart(
           ...(result.error ? { error: result.error } : {}),
           ...(result.action ? { action: result.action } : {}),
         };
-  return { functionResponse: { name, response, parts: media } };
+  return { functionResponse: { ...id, name, response, parts: media } };
+}
+
+/** The `id` field to echo: the call id, only when Gemini issued it. */
+function geminiResponseId(
+  result: ToolResultLike,
+  options: GeminiFormatToolResultsOptions,
+): { id: string } | Record<never, never> {
+  const callId = 'toolCallId' in result ? result.toolCallId : result.callId;
+  const issued = options.providerCallIds;
+  const fromProvider = typeof issued === 'function' ? issued(callId) : issued?.has(callId) === true;
+  return fromProvider ? { id: callId } : {};
 }
 
 function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown> {
