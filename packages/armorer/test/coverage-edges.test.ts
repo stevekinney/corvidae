@@ -503,8 +503,8 @@ describe('coverage edges', () => {
         },
       ] as any),
     ).toEqual([
-      { functionResponse: { id: 'call-scalar', name: 'gemini', response: { result: 42 } } },
-      { functionResponse: { id: 'call-null', name: 'gemini', response: { result: null } } },
+      { functionResponse: { name: 'gemini', response: { result: 42 } } },
+      { functionResponse: { name: 'gemini', response: { result: null } } },
     ]);
 
     expect(

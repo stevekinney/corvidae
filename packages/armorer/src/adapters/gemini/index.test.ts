@@ -203,14 +203,12 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
-          id: 'call-1',
           name: 'search',
           response: { ok: true },
         },
       },
       {
         functionResponse: {
-          id: 'call-2',
           name: 'approve',
           response: {
             outcome: 'action_required',
@@ -222,28 +220,33 @@ describe('formatGeminiToolResults', () => {
     ]);
   });
 
-  it('echoes each call id on two calls to the same function, with and without parts', () => {
-    const responses = formatGeminiToolResults(
-      [
-        { callId: 'call-a', outcome: 'success', content: { n: 1 }, toolName: 'lookup' },
-        { callId: 'call-b', outcome: 'success', content: { n: 2 }, toolName: 'lookup' },
-        {
-          callId: 'call-c',
-          outcome: 'success',
-          content: 'text',
-          toolName: 'lookup',
-          parts: [{ type: 'text', text: 'three' }],
-        },
-      ],
-      {},
-    );
-    expect(responses.map((part) => [part.functionResponse.name, part.functionResponse.id])).toEqual(
-      [
-        ['lookup', 'call-a'],
-        ['lookup', 'call-b'],
-        ['lookup', 'call-c'],
-      ],
-    );
+  it('echoes only provider-issued call ids, on two calls to the same function', () => {
+    const results = [
+      { callId: 'call-a', outcome: 'success', content: { n: 1 }, toolName: 'lookup' },
+      { callId: 'call-b', outcome: 'success', content: { n: 2 }, toolName: 'lookup' },
+      {
+        callId: 'call-c',
+        outcome: 'success',
+        content: 'text',
+        toolName: 'lookup',
+        parts: [{ type: 'text', text: 'three' }],
+      },
+      { callId: 'generated-d', outcome: 'success', content: { n: 4 }, toolName: 'lookup' },
+    ] as const;
+    const ids = (providerCallIds: ReadonlySet<string> | undefined) =>
+      formatGeminiToolResults([...results], { providerCallIds }).map(
+        (part) => part.functionResponse.id,
+      );
+
+    expect(ids(new Set(['call-a', 'call-b', 'call-c']))).toEqual([
+      'call-a',
+      'call-b',
+      'call-c',
+      undefined,
+    ]);
+    expect(ids(undefined)).toEqual([undefined, undefined, undefined, undefined]);
+    const part = formatGeminiToolResults(results[3], { providerCallIds: () => false })[0];
+    expect(part?.functionResponse).not.toHaveProperty('id');
   });
 
   it('resolves tool names from explicit mappings and defaults', () => {
@@ -262,7 +265,6 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
-          id: 'call-function',
           name: 'function-mapped',
           response: { ok: true },
         },
@@ -283,7 +285,6 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
-          id: 'call-object',
           name: 'object-mapped',
           response: { ok: true },
         },
@@ -304,7 +305,6 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
-          id: 'call-default',
           name: 'fallback-name',
           response: { ok: true },
         },
@@ -342,14 +342,12 @@ describe('formatGeminiToolResultsAsync', () => {
     ).toEqual([
       {
         functionResponse: {
-          id: 'call-stream',
           name: 'unknown',
           response: { result: ['alpha', 'beta'] },
         },
       },
       {
         functionResponse: {
-          id: 'call-symbol',
           name: 'unknown',
           response: { result: ['Symbol(chunk)'] },
         },
