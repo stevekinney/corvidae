@@ -369,6 +369,40 @@ describe('ScheduleDetail', () => {
     }
   }, 10000);
 
+  test('a failed run is marked as failed with how long it took, opens its run when clicked, and the back link returns to the list', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'system-failure-demo',
+      id: 'failing-probe',
+      description: 'Failing probe',
+      every: '50ms',
+      input: { orderId: 'order-1' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    await waitForServerState(async () => {
+      const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
+      return runs.items.some((run) => run.status === 'failed');
+    }, 'failing-probe has a failed run');
+
+    try {
+      const { getByRole, getByTestId } = render(ScheduleDetailHarness, {
+        props: { client, id: 'failing-probe' },
+      });
+
+      const runs = await waitFor(() => getByTestId('schedule-runs'), { timeout: 5000 });
+      await waitFor(() => expect(within(runs).getAllByText('Failed').length).toBeGreaterThan(0));
+      const link = within(runs).getAllByRole('link')[0];
+      if (link === undefined) throw new Error('expected a run link');
+      await fireEvent.click(link);
+      expect(window.location.pathname).toMatch(/^\/runs\//);
+
+      await fireEvent.click(getByRole('button', { name: /Back to schedules/ }));
+      expect(window.location.pathname).toBe('/schedules');
+    } finally {
+      await server.stop();
+    }
+  }, 10000);
+
   test('a paused schedule says it is not scheduled instead of listing next fires', async () => {
     const server = await startLiveSourceTestServer();
     const handle = await server.engine.schedule({

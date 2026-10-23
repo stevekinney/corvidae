@@ -214,6 +214,145 @@ describe('ScheduleList', () => {
     }
   }, 10000);
 
+  test('a schedule whose last run failed says so', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'system-failure-demo',
+      id: 'failing-probe',
+      description: 'Failing probe',
+      every: '50ms',
+      input: { orderId: 'order-1' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
+      if (runs.items.some((run) => run.status === 'failed')) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    try {
+      render(ScheduleListHarness, { props: { client } });
+
+      await waitFor(
+        () =>
+          expect(
+            row('failing-probe')
+              ?.querySelector('[data-testid="schedule-last-fire"]')
+              ?.getAttribute('data-outcome'),
+          ).toBe('failed'),
+        { timeout: 5000 },
+      );
+    } finally {
+      await server.stop();
+    }
+  }, 10000);
+
+  test('the actions menu resumes a paused schedule, opens its editor, and copies its identifier', async () => {
+    const server = await startLiveSourceTestServer();
+    const handle = await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'nightly-rollup',
+      description: 'Nightly rollup',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    await handle.pause();
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    const written: string[] = [];
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: (text: string) => (written.push(text), Promise.resolve()) },
+    });
+
+    try {
+      const { getByRole, findByText } = render(ScheduleListHarness, { props: { client } });
+      const actions = await waitFor(() =>
+        getByRole('button', { name: 'Actions for Nightly rollup' }),
+      );
+
+      // The identifier is copied, and the person is told so.
+      await fireEvent.click(actions);
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy id' })));
+      await waitFor(() => expect(written).toEqual(['nightly-rollup']));
+      expect(await findByText('Schedule id copied')).not.toBeNull();
+
+      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: /Resume/ })));
+      await waitFor(() =>
+        expect(row('nightly-rollup')?.getAttribute('data-status')).toBe('active'),
+      );
+
+      await fireEvent.click(getByRole('button', { name: 'Actions for Nightly rollup' }));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Edit' })));
+      expect(window.location.search).toBe('?edit=1');
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+      await server.stop();
+    }
+  });
+
+  test('says when the identifier could not be copied', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'nightly-rollup',
+      description: 'Nightly rollup',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('Clipboard blocked')) },
+    });
+
+    try {
+      const { getByRole, findByText } = render(ScheduleListHarness, { props: { client } });
+      await fireEvent.click(
+        await waitFor(() => getByRole('button', { name: 'Actions for Nightly rollup' })),
+      );
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy id' })));
+
+      expect(await findByText(/The schedule id was not copied/)).not.toBeNull();
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+      await server.stop();
+    }
+  });
+
+  test('an ?agent= filter that matches nothing says so, and keeps the agent in the filter', async () => {
+    resetLocation('/schedules?agent=assistant');
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'nightly-rollup',
+      description: 'Nightly rollup',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { getByRole, findByText } = render(ScheduleListHarness, { props: { client } });
+
+      expect(await findByText('No matching schedules')).not.toBeNull();
+      expect(
+        requireElement(getByRole('combobox', { name: 'Agent' }), HTMLSelectElement).value,
+      ).toBe('assistant');
+      await fireEvent.change(getByRole('combobox', { name: 'Agent' }), {
+        target: { value: 'all' },
+      });
+      await waitFor(() => expect(window.location.search).toBe(''));
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('locks the list with a reason, and never fetches, when schedules:read is missing', async () => {
     const server = await startLiveSourceTestServer();
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
