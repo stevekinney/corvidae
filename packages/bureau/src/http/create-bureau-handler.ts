@@ -323,7 +323,7 @@ export type BureauHandlerOptions = {
     /**
      * How often, in milliseconds, the projector sweeps every push checkpoint for a task that no
      * longer exists and removes its configurations, checkpoints, and settled deliveries. A sweep
-     * also runs at start. A positive integer; defaults to one hour. The timer does not keep the
+     * also runs at start. A positive integer of at most 2147483647; defaults to one hour. The timer does not keep the
      * process alive and ends with the Bureau.
      */
     readonly sweepIntervalMs?: number;
@@ -539,11 +539,13 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
   }
   assertA2AUrl('publicUrl', options.publicUrl);
   const sweepIntervalMs = options.pushNotifications?.sweepIntervalMs;
-  if (
-    sweepIntervalMs !== undefined &&
-    (!Number.isInteger(sweepIntervalMs) || sweepIntervalMs <= 0)
-  ) {
-    fail('pushNotifications.sweepIntervalMs must be a positive integer');
+  if (sweepIntervalMs !== undefined) {
+    if (!Number.isInteger(sweepIntervalMs) || sweepIntervalMs <= 0) {
+      fail('pushNotifications.sweepIntervalMs must be a positive integer');
+    }
+    if (sweepIntervalMs > 2_147_483_647) {
+      fail('pushNotifications.sweepIntervalMs must be at most 2147483647');
+    }
   }
   if (options.discoveryUrl !== undefined) assertA2AUrl('discoveryUrl', options.discoveryUrl);
   if (!bureau.hasDurableEngine) {

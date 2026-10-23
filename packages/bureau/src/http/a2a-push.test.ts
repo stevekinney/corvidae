@@ -111,7 +111,7 @@ describe('the card', () => {
 describe('the sweep interval', () => {
   it('accepts a positive integer and refuses anything else at construction', async () => {
     await fixtureOf(answering('done'), { sweepIntervalMs: 60_000 });
-    for (const bad of [0, -1, 1.5, Number.NaN]) {
+    for (const bad of [0, -1, 1.5, Number.NaN, 2_147_483_648]) {
       await expect(openPushBureau(answering('done'), { sweepIntervalMs: bad })).rejects.toThrow(
         /sweepIntervalMs/,
       );
