@@ -372,4 +372,24 @@ describe('A2UI surfaces on the AG-UI stream', () => {
       await reader.rest();
     });
   });
+  it('delivers a surface created after a peer’s attach opened, while the run is still going', async () => {
+    await withHarness(async (harness) => {
+      const { reader, taskId } = await startHeld(harness);
+      const peer = await harness.peer([]);
+      try {
+        const attached = new FrameReader(
+          await peer.handler(attachRunRequest(taskId, { 'x-a2a-extensions': A2UI_EXTENSION_URI })),
+        );
+        await attached.until(EventType.STATE_SNAPSHOT);
+        await propose(harness, taskId, { commandId: 'create' });
+        const live = await nextActivity(attached);
+        expect(live.content.surfaceRevision).toBe(1);
+        harness.generate.release('hold');
+        await reader.rest();
+        await attached.rest();
+      } finally {
+        await peer.dispose();
+      }
+    });
+  });
 });

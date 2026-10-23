@@ -396,6 +396,26 @@ export function openRunStream(
   const surfaceEvents = async (): Promise<Event[]> =>
     surfaceSource === undefined ? [] : await surfaceSource.reconcile().catch(() => []);
 
+  /**
+   * Sends the surfaces that changed once the opening is written. Not part of the serial queue: a
+   * peer's opening lasts until its run ends, and a change must reach the client while it runs.
+   * One flush at a time, so no revision is sent twice; a change that lands mid-flush runs another.
+   */
+  let surfaceChanged = false;
+  let flushing = false;
+  const flushSurfaces = async (): Promise<void> => {
+    if (flushing || !opened || ended || surfaceSource === undefined) return;
+    flushing = true;
+    try {
+      while (surfaceChanged && !ended) {
+        surfaceChanged = false;
+        writeEvents(await surfaceEvents());
+      }
+    } finally {
+      flushing = false;
+    }
+  };
+
   const stateSnapshot = (snapshot: {
     revision: number;
     status: string;
@@ -728,6 +748,7 @@ export function openRunStream(
     isEnded: () => ended,
     markOpened: () => {
       opened = true;
+      void flushSurfaces();
     },
     onDispose: (cleanup) => {
       if (ended) cleanup();
@@ -774,8 +795,10 @@ export function openRunStream(
         owner: request.owner,
         declaration: request.a2ui,
         stampContext,
-        // Queued behind the opening, so a change that lands while it is written is sent after it.
-        onChange: () => enqueue(async () => writeEvents(await surfaceEvents())),
+        onChange: () => {
+          surfaceChanged = true;
+          void flushSurfaces();
+        },
       });
       surfaceSource.start(history?.fence);
     }
@@ -892,6 +915,7 @@ export function openRunStream(
       if (buffer[index]!.type === 'stream:text-delta') buffer.splice(index, 1);
     }
     opened = true;
+    void flushSurfaces();
     if (ending !== undefined) {
       await finishAs(ending);
       return;
