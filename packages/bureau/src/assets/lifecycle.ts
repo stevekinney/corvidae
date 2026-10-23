@@ -150,28 +150,47 @@ export async function release(
   principal: AssetPrincipal,
   holderId: string,
 ): Promise<AssetDescriptor> {
+  const released = await releaseHolder(internals, assetId, principal, holderId);
+  return released.descriptor;
+}
+
+/**
+ * Releases `holderId`'s claim and says whether it removed one. A holder that holds nothing (a
+ * second release of the same claim, or a release racing another) changes nothing, emits no
+ * `asset.released` event, and reports `removed: false` (COR-1664).
+ */
+export async function releaseHolder(
+  internals: AssetInternals,
+  assetId: string,
+  principal: AssetPrincipal,
+  holderId: string,
+): Promise<{ readonly descriptor: AssetDescriptor; readonly removed: boolean }> {
+  let removed = false;
   const record = await transition(
     internals,
     assetId,
     (current) => authorize(current, assetId, principal),
-    ({ record: current }) =>
-      current.references.some((entry) => entry.holderId === holderId)
-        ? {
-            next: bump(internals, current, {
-              references: current.references.filter((entry) => entry.holderId !== holderId),
-            }),
-          }
-        : undefined,
+    ({ record: current }) => {
+      if (!current.references.some((entry) => entry.holderId === holderId)) return undefined;
+      removed = true;
+      return {
+        next: bump(internals, current, {
+          references: current.references.filter((entry) => entry.holderId !== holderId),
+        }),
+      };
+    },
   );
-  await internals.emit({
-    type: 'asset.released',
-    assetId,
-    revision: record.revision,
-    state: record.state,
-    principal: principal.id,
-    holderId,
-  });
-  return projectFor(record, principal);
+  if (removed) {
+    await internals.emit({
+      type: 'asset.released',
+      assetId,
+      revision: record.revision,
+      state: record.state,
+      principal: principal.id,
+      holderId,
+    });
+  }
+  return { descriptor: projectFor(record, principal), removed };
 }
 
 export async function heldClaims(

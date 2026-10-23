@@ -13065,20 +13065,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
       claimedRowAssets,
     );
-    if (transientFailure !== undefined) throw transientFailure.error;
     // COR-1664 — the session may have been deleted while its claims were being taken (a goal
     // handoff or a drain holds a snapshot loaded before the delete). The delete released what it
     // saw, so a claim taken after that is released here, from the asset side. A session deleted
-    // after this check releases every claim already taken.
-    const stillLive = await runtime.sessionStore?.load(session.id);
-    if (runtime.sessionStore !== undefined && stillLive?.incarnation !== session.incarnation) {
-      await releaseClaimsByHolderPrefix(
-        context.service,
-        sessionRowHolderPrefix(session.id, session.incarnation),
-        (claim, error) => context.onReleaseFailure(claim.assetId, error, claim.holderId),
-        claimedRowAssets,
-      );
+    // after this check releases every claim already taken. It runs before a transient failure is
+    // rethrown: a retain that succeeded earlier in the pass must not be stranded by a later one.
+    let checkFailure: { error: unknown } | undefined;
+    try {
+      const stillLive = await runtime.sessionStore?.load(session.id);
+      if (runtime.sessionStore !== undefined && stillLive?.incarnation !== session.incarnation) {
+        await releaseClaimsByHolderPrefix(
+          context.service,
+          sessionRowHolderPrefix(session.id, session.incarnation),
+          (claim, error) => context.onReleaseFailure(claim.assetId, error, claim.holderId),
+          claimedRowAssets,
+        );
+      }
+    } catch (error) {
+      checkFailure = { error };
     }
+    if (transientFailure !== undefined) throw transientFailure.error;
+    if (checkFailure !== undefined) throw checkFailure.error;
   }
 
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {

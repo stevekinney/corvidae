@@ -229,6 +229,64 @@ describe('reconciling the claims of runs', () => {
   });
 });
 
+describe('reconciling claims that other holders or other reconcilers also touch', () => {
+  it('skips a malformed holder id and still releases the other runs’ claims', async () => {
+    const { service, reconciler, claim } = await setup({ ends: { 'agent-run-1': 'completed' } });
+    const assetId = await admitAsset(service);
+    await claim(assetId, 'run-row:%:row');
+    await claim(assetId, 'session-row:%:i:row');
+    await claim(assetId, runRowHolderId('agent-run-1', 'row-1'));
+
+    expect(await reconciler.reconcileRunClaims()).toEqual({ released: 1, kept: 0 });
+    expect(await reconciler.reconcileSessionClaims()).toEqual({ released: 0, kept: 0 });
+
+    const remaining = await holdersOf(service, assetId);
+    expect(remaining.toSorted()).toEqual(['run-row:%:row', 'session-row:%:i:row']);
+  });
+
+  it('emits one release and counts one when two reconcilers release the same claim', async () => {
+    const { service, reconciler, claim } = await setup({ ends: { 'agent-run-1': 'completed' } });
+    const other = createAssetClaimReconciler({
+      assets: () => service,
+      durableEnd: async () => 'completed',
+      loadRecoveryRecord: async () => ({ status: 'missing' }),
+      goalIsOver: async () => true,
+      sessionIsLive: async () => false,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    const assetId = await admitAsset(service);
+    await claim(assetId, runRowHolderId('agent-run-1', 'row-1'));
+    const events: string[] = [];
+    service.subscribe((event) => {
+      if (event.type === 'asset.released') events.push(event.holderId ?? '');
+    });
+
+    const reports = await Promise.all([
+      reconciler.reconcileRunClaims(),
+      other.reconcileRunClaims(),
+    ]);
+    // Release events are delivered after the write settles.
+    await service.auditRecords();
+
+    expect(reports.reduce((total, report) => total + report.released, 0)).toBe(1);
+    expect(events).toEqual([runRowHolderId('agent-run-1', 'row-1')]);
+    expect(await holdersOf(service, assetId)).toEqual([]);
+  });
+
+  it('emits nothing when a holder that holds nothing is released', async () => {
+    const { service } = await setup();
+    const assetId = await admitAsset(service);
+    const events: string[] = [];
+    service.subscribe((event) => events.push(event.type));
+
+    expect(await service.releaseClaim(assetId, alice, 'run-row:none:row')).toBe(false);
+    await service.auditRecords();
+
+    expect(events).toEqual([]);
+  });
+});
+
 describe('reconciling the claims of sessions', () => {
   it('releases the claims of a deleted session and of a replaced incarnation, and keeps the live one', async () => {
     const { service, reconciler, claim } = await setup({

@@ -8,7 +8,9 @@ import {
   managedAssetIdsOf,
   releaseHeldRowAssetClaims,
   releaseRowAssetClaims,
+  runIdOfRowHolder,
   runRowHolderId,
+  sessionOfRowHolder,
 } from './row-asset-claims';
 import type { AssetService } from './types';
 
@@ -279,4 +281,24 @@ describe('rows that history compaction replaced (COR-1664)', () => {
 
     expect(hasCompactedRows(conversation.getMessages({ includeHidden: true }))).toBe(false);
   });
+});
+
+describe('reading a holder id back (COR-1664)', () => {
+  it('reads the ids the holder functions write', () => {
+    expect(runIdOfRowHolder(runRowHolderId('run:1', 'row'))).toBe('run:1');
+  });
+
+  it.each(['run-row:%:row', 'run-row:%E0%A4%A:row', 'run-row:a:b:c', 'other:a:b'])(
+    'treats %s as unrecognized instead of throwing',
+    (holderId) => {
+      expect(runIdOfRowHolder(holderId)).toBeUndefined();
+    },
+  );
+
+  it.each(['session-row:%:i:row', 'session-row:s:%E0%A4%A:row', 'session-row:s:i', 'run-row:a:b'])(
+    'treats %s as not a session holder instead of throwing',
+    (holderId) => {
+      expect(sessionOfRowHolder(holderId)).toBeUndefined();
+    },
+  );
 });

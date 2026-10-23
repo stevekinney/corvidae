@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { AgentDefinitions } from './agent-catalog';
+import { KEYS } from './assets/records';
 import { runRowHolderId, sessionRowHolderPrefix } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
@@ -63,12 +64,6 @@ async function admitImage(bureau: Bureau) {
   return { assetId: admission.assetId, source: admission.source };
 }
 
-/** How many `asset.released` events the asset store's audit log holds. */
-async function releasesRecorded(bureau: Bureau): Promise<number> {
-  const records = await bureau.assets!.auditRecords();
-  return records.filter((record) => record.type === 'asset.released').length;
-}
-
 describe('a run that ended in a process that died before it released', () => {
   async function createStore() {
     const directory = await mkdtemp(join(tmpdir(), 'bureau-claim-reconciliation-'));
@@ -93,11 +88,15 @@ describe('a run that ended in a process that died before it released', () => {
     stopWhen: stopWhen.noToolCalls(),
   });
 
-  async function openBureau(store: Store, agent = finishing): Promise<Bureau> {
+  async function openBureau(
+    store: Store,
+    agent = finishing,
+    assetStorage = store.fixture.storage,
+  ): Promise<Bureau> {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { viewer: agent },
       runtime: store.runtime,
-      assets: { storage: store.fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
+      assets: { storage: assetStorage, policy: { defaultRetentionMilliseconds: 1_000 } },
       storage: store.storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
@@ -144,13 +143,33 @@ describe('a run that ended in a process that died before it released', () => {
       'the boot never released the lost claim',
       200,
     );
-    const released = await releasesRecorded(second);
     await second.dispose();
 
-    const third = await openBureau(store);
-    for (let turn = 0; turn < 50; turn += 1) await yieldToPortableEventLoop();
+    // The third boot's reconciliation is observed from the asset store: each pass lists every
+    // asset record once, and the subscription (made before any release could land, since the
+    // listing is asynchronous) sees every release it makes.
+    let recordListings = 0;
+    const observed = {
+      ...store.fixture.storage,
+      list: async (prefix: string) => {
+        if (prefix === KEYS.recordPrefix) recordListings += 1;
+        return store.fixture.storage.list(prefix);
+      },
+    };
+    const third = await openBureau(store, finishing, observed);
+    const releases: string[] = [];
+    third.assets!.subscribe((event) => {
+      if (event.type === 'asset.released') releases.push(event.assetId ?? '');
+    });
+    await waitForCondition(
+      () => recordListings >= 2,
+      'the third boot never reconciled its run and session claims',
+      200,
+    );
+    // Disposing waits for the tracked reconciliation, so it has finished when this returns.
     expect(await holdersOf(third, assetId)).toEqual([]);
-    expect(await releasesRecorded(third)).toBe(released);
+    await third.dispose();
+    expect(releases).toEqual([]);
   });
 
   it('keeps every claim of a run that is still going, through maintenance', async () => {
@@ -205,17 +224,15 @@ describe('a session deleted while its claims are being taken', () => {
     return { bureau, runtime };
   }
 
-  async function saveSession(bureau: Bureau, sessionId: string, assetId: string) {
+  async function saveSession(bureau: Bureau, sessionId: string, ...assetIds: string[]) {
     const history = appendMessages(createConversationHistory({ id: sessionId }), {
       id: 'row-1',
       role: 'user',
-      content: [
-        {
-          type: 'image',
-          mimeType: 'image/png',
-          source: { kind: 'managed-asset', assetId },
-        },
-      ],
+      content: assetIds.map((assetId) => ({
+        type: 'image' as const,
+        mimeType: 'image/png',
+        source: { kind: 'managed-asset' as const, assetId },
+      })),
     });
     await bureau.sessionStore!.save(
       createAgentSession({
@@ -247,6 +264,27 @@ describe('a session deleted while its claims are being taken', () => {
     expect(deleted).toBe(true);
     expect(await bureau.sessionStore!.load('session-1')).toBeUndefined();
     expect(await holdersOf(bureau, assetId)).toEqual([]);
+  });
+
+  it('leaves no claim on the asset it did claim when a later claim in the same pass fails', async () => {
+    const { bureau } = await open();
+    const { assetId: first } = await admitImage(bureau);
+    const { assetId: second } = await admitImage(bureau);
+    const retain = bureau.assets!.retain.bind(bureau.assets!);
+    let deleted = false;
+    spyOn(bureau.assets!, 'retain').mockImplementation(async (...args) => {
+      if (args[0] === second) throw new Error('retention unavailable');
+      if (!deleted && args[2].holderId.startsWith('session-row:')) {
+        deleted = true;
+        await bureau.sessionStore!.delete('session-1');
+      }
+      return retain(...args);
+    });
+
+    await saveSession(bureau, 'session-1', first, second);
+
+    expect(deleted).toBe(true);
+    expect(await holdersOf(bureau, first)).toEqual([]);
   });
 
   it('keeps the claims of a session that is not deleted', async () => {

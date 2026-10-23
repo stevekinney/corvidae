@@ -575,6 +575,12 @@ export interface AssetService {
   ): Promise<AssetDescriptor>;
   release(assetId: string, principal: AssetPrincipal, holderId: string): Promise<AssetDescriptor>;
   /**
+   * Like {@link AssetService.release}, but reports whether the call removed a claim: `false` when
+   * the holder held nothing, which changes nothing and emits no `asset.released` event. A
+   * reconciler that may race another uses it to count only the releases it made.
+   */
+  releaseClaim(assetId: string, principal: AssetPrincipal, holderId: string): Promise<boolean>;
+  /**
    * Every retention claim whose holder id starts with `holderPrefix`, found by reading each stored
    * asset record (the asset side), for the management plane to reconcile claims whose holder is
    * gone: a row that compaction removed, a run that ended in a process that died before it

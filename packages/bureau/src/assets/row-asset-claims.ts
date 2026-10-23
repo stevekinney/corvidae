@@ -55,7 +55,12 @@ export function sessionRowHolderPrefix(sessionId: string, incarnation: string): 
 export function runIdOfRowHolder(holderId: string): string | undefined {
   const parts = holderId.split(':');
   if (parts.length !== 3 || parts[0] !== 'run-row') return undefined;
-  return decodeURIComponent(parts[1]!);
+  // A holder id is an opaque string to the asset store, so a malformed escape is unrecognized, not fatal.
+  try {
+    return decodeURIComponent(parts[1]!);
+  } catch {
+    return undefined;
+  }
 }
 
 /** The session incarnation a `session-row` holder id belongs to, or `undefined` for any other holder. */
@@ -64,10 +69,14 @@ export function sessionOfRowHolder(
 ): { readonly sessionId: string; readonly incarnation: string } | undefined {
   const parts = holderId.split(':');
   if (parts.length !== 4 || parts[0] !== 'session-row') return undefined;
-  return {
-    sessionId: decodeURIComponent(parts[1]!),
-    incarnation: decodeURIComponent(parts[2]!),
-  };
+  try {
+    return {
+      sessionId: decodeURIComponent(parts[1]!),
+      incarnation: decodeURIComponent(parts[2]!),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /** A conversation row as the claim walker reads it: its content and, for a tool result, its parts. */
@@ -223,8 +232,10 @@ export async function releaseHeldClaims(
   for (const claim of claims) {
     claimed?.delete(`${claim.holderId}\u0000${claim.assetId}`);
     try {
-      await assets.release(claim.assetId, { id: claim.ownerId }, claim.holderId);
-      released += 1;
+      // A claim another reconciler released first is no release of ours: it is not counted.
+      if (await assets.releaseClaim(claim.assetId, { id: claim.ownerId }, claim.holderId)) {
+        released += 1;
+      }
     } catch (error) {
       if (!isNotOurs(error)) onFailure(claim, error);
     }

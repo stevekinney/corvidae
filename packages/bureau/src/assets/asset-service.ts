@@ -306,6 +306,11 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
     release: (assetId, principal, holderId) =>
       guarded(() => lifecycle.release(internals, assetId, principal, holderId)),
     heldClaims: ({ holderPrefix }) => guarded(() => lifecycle.heldClaims(internals, holderPrefix)),
+    releaseClaim: (assetId, principal, holderId) =>
+      guarded(async () => {
+        const released = await lifecycle.releaseHolder(internals, assetId, principal, holderId);
+        return released.removed;
+      }),
     placeHold: (assetId, principal, hold) =>
       guarded(() => lifecycle.placeHold(internals, assetId, principal, hold)),
     releaseHold: (assetId, principal, holdId) =>

@@ -72,6 +72,10 @@ function setup(
         },
       };
     },
+    async releaseClaim(assetId: string, _principal: unknown, holderId: string) {
+      released.push([assetId, holderId]);
+      return true;
+    },
     async release(assetId: string, _principal: unknown, holderId: string) {
       released.push([assetId, holderId]);
       if (assetId === 'broken') throw new Error('the store is down');
