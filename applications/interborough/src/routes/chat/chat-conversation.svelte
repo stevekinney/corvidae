@@ -300,7 +300,9 @@
     untrack(() => {
       // A read the page could not make (a turn is going) is tried again at the next poll.
       void (async () => {
-        const read = await session.refresh();
+        // A read that threw is as unsuccessful as one that said no: the key is cleared for both, so
+        // the next poll tries again instead of skipping this set of reviews for good.
+        const read = await session.refresh().catch(() => false);
         if (read) {
           // The thread now says what is decided, so these reviews are not watched for any longer.
           seen.forget(decided);

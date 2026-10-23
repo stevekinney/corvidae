@@ -7,6 +7,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
+import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
@@ -558,6 +559,88 @@ describe('a run that waits on a tool approval', () => {
       invalidated.mockRestore();
     }
   });
+});
+
+describe('a decision made somewhere else', () => {
+  test('is read again at the next poll when the first read of the thread failed', async () => {
+    let messageReads = 0;
+    let listReads = 0;
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => CONTEXT,
+        // The review is pending at first, so the page has seen it, and gone after.
+        'bureau.reviews.list': () => {
+          listReads += 1;
+          return {
+            reviews:
+              listReads === 1
+                ? [
+                    toolApprovalFixture({
+                      sessionId: 'session-1',
+                      approval: { ...toolApprovalFixture().approval, callId: 'call-refund' },
+                    }),
+                  ]
+                : [],
+          };
+        },
+      },
+      (url, init) => {
+        if (url.endsWith('/messages')) {
+          messageReads += 1;
+          // The open read, then the read after the decision, which fails once.
+          if (messageReads === 2) throw new TypeError('Failed to fetch');
+          return Response.json({ threadId: 'session-1', messages: [] });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        const input: { runId: string } = JSON.parse(
+          typeof init?.body === 'string' ? init.body : '{}',
+        );
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: input.runId },
+          { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+          { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{"cents":4200}' },
+          { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+          {
+            type: 'TOOL_CALL_RESULT',
+            messageId: 'result-1',
+            toolCallId: 'call-refund',
+            content: 'requires approval',
+            role: 'tool',
+          },
+          {
+            type: 'RUN_FINISHED',
+            threadId: 'session-1',
+            runId: input.runId,
+            outcome: {
+              type: 'interrupt',
+              interrupts: [
+                {
+                  id: 'approval:native-1:call-refund',
+                  reason: 'tool-approval',
+                  toolCallId: 'call-refund',
+                  message: 'Refund order-1001?',
+                },
+              ],
+            },
+          },
+        ]);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    const { container } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await sendMessage(container, 'Refund it');
+    await waitFor(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+
+    // The poll finds the review gone and the read fails; the next poll reads the thread again.
+    await waitFor(() => expect(messageReads).toBeGreaterThanOrEqual(3), { timeout: 12_000 });
+  }, 20_000);
 });
 
 describe('what went wrong', () => {

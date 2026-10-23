@@ -383,4 +383,17 @@ describe('a question answered somewhere else', () => {
 
     expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
   });
+
+  test('is not reported as read when the thread could not be read again', async () => {
+    const mounted = mount([parkedStart([environment])]);
+    const session = open(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      // The run's own stream is gone with the network; the transcript is still readable.
+      if (url.includes('/threads/') && url.endsWith('/run')) throw new TypeError('Failed to fetch');
+      return mounted.fetch(input, init);
+    });
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    expect(await session.refresh()).toBe(false);
+  });
 });

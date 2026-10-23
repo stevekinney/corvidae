@@ -46,12 +46,15 @@ function open(
     /** How many goals the Bureau puts on one page, however many are asked for. */
     goalsPageSize?: number;
     scopes?: readonly AuthorizationScope[];
+    /** Makes the Bureau fail to list goals for as long as this says so. */
+    goalsFail?: () => boolean;
   } = {},
 ) {
   stub = installBureauWorld(emptyBureauWorld(options.world));
   const goals = options.goals ?? [];
   const pageSize = options.goalsPageSize ?? 100;
   stub.on('bureau.goals.list', (params) => {
+    if (options.goalsFail?.()) throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
     const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
     return {
       goals: goals.slice(offset, offset + pageSize),
@@ -222,6 +225,22 @@ describe('a run’s page', () => {
     failing = false;
     await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     await view.findByRole('heading', { level: 1, name: 'echo' });
+  });
+
+  test('is an error with a retry, and not a missing run, when the goals could not be read for a run the Bureau lacks', async () => {
+    const goals = [goalFixture('goal-1', { attempts: [goalAttemptFixture('goal-1-a0')] })];
+    let failing = true;
+    const { findByRole } = open('/runs/goal-1-a0', {
+      goals,
+      scopes: WITHOUT_ENGINE,
+      goalsFail: () => failing,
+    });
+
+    await findByRole('heading', { level: 1, name: TASK_COPY.loadFailed.title });
+
+    failing = false;
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
+    await findByRole('heading', { level: 1, name: 'assistant' });
   });
 
   test('is a run that was not found once the Bureau says the task was removed', async () => {

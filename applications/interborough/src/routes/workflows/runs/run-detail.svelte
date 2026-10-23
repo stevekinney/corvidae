@@ -131,7 +131,8 @@
   // Only a run the Bureau does not know may be a goal's attempt. Any other failure to read the task
   // is not a reason to look anywhere else: it is shown as the failure it is.
   const notFound = $derived(task.isError && classifyFault(task.error)?.kind === 'not-found');
-  const failed = $derived(task.isError && !notFound);
+  // A run the Bureau does not know is looked for among the goals' attempts; when that look fails,
+  // the page cannot say whether the run exists, so it says so and offers to try again.
   const goals = createQuery(
     () => ({
       queryKey: ['goals', 'runs'] as const,
@@ -141,6 +142,7 @@
     }),
     undefined,
   );
+  const failed = $derived((task.isError && !notFound) || (notFound && goals.isError));
   const attempt = $derived.by(() => {
     for (const goal of goals.data ?? []) {
       const found = goal.attempts.find((candidate) => candidate.runId === initialRunId);
@@ -181,10 +183,10 @@
   const answer = $derived(follower.artifact?.text);
   const answerHtml = $derived(answer === undefined ? '' : renderMarkdown(answer).html);
   const startedAt = $derived(task.data === undefined ? undefined : Date.parse(task.data.createdAt));
-  // Nothing knows this run: the Bureau has no task, no goal made it, and the caller may not ask the
-  // engine, which is the only other place a run can be.
+  // Nothing knows this run: the Bureau has no task, no goal made it (the goals were read), and the
+  // caller may not ask the engine, which is the only other place a run can be.
   const unknownRun = $derived(
-    notFound && !goals.isPending && attempt === undefined && !engineAllowed,
+    notFound && goals.isSuccess && attempt === undefined && !engineAllowed,
   );
 </script>
 
@@ -202,7 +204,7 @@
     description={TASK_COPY.loadFailed.description}
     headingLevel={1}
     retryLabel={RETRY_LABEL}
-    onRetry={() => void task.refetch()}
+    onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
   />
 {:else}
   <article class="ib-run" aria-labelledby="ib-run-title">

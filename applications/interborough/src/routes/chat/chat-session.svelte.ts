@@ -79,6 +79,8 @@ export class ChatSessionState {
    */
   readonly adapter: ChatSessionController['adapter'];
   #attachment: Promise<void> = Promise.resolve();
+  /** Whether the last attach could not read the thread. */
+  #attachFailed = false;
   /** Whether the turn on screen carried files, which decides what the door's `INVALID_INPUT` is about. */
   #turnHadAttachments = false;
   /**
@@ -284,7 +286,8 @@ export class ChatSessionState {
     if (history === undefined || this.streaming || this.attaching) return false;
     this.conversation = history;
     await this.attach({ rereading: true });
-    return true;
+    // A read that failed has not said what the run waits on, so the caller reads again.
+    return !this.#attachFailed;
   }
 
   /** Stops telling the person of the last failure. */
@@ -314,6 +317,7 @@ export class ChatSessionState {
    */
   async #attach(rereading: boolean): Promise<boolean> {
     this.attaching = true;
+    this.#attachFailed = false;
     try {
       const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
       if (restored === undefined) {
@@ -334,6 +338,7 @@ export class ChatSessionState {
     } catch (error) {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
       // rejection with an empty transcript.
+      this.#attachFailed = true;
       if (!rereading) this.failure = error instanceof Error ? error.message : String(error);
       return false;
     } finally {

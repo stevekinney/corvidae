@@ -75,7 +75,9 @@ async function probeGoals(): Promise<ViewProbeResult> {
  */
 async function probeRuns(): Promise<ViewProbeResult> {
   const [tasks, goals] = await Promise.all([listTasks({ limit: 1 }), listGoals({ limit: 1 })]);
-  return { empty: tasks.tasks.length === 0 && goals.goals.length === 0 };
+  const empty = tasks.tasks.length === 0 && goals.goals.length === 0;
+  // A first run can arrive while the page is open, so an empty page asks again.
+  return empty ? { empty, recheckMs: RUNS_RECHECK_MS } : { empty };
 }
 
 /** The editor for a new agent needs the models and tools it may offer, so it asks for them. */
