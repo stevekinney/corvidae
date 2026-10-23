@@ -167,6 +167,27 @@ describe('A2A peer client', () => {
     expect(second).toMatchObject({ state: 'completed', message: 'resumed' });
   });
 
+  test.each([true, false])(
+    'a peer without status timestamps can ask twice (streaming %p)',
+    async (streaming) => {
+      const { peer, client } = connect({
+        omitTimestamps: true,
+        card: withCard((card) => {
+          if (card.capabilities !== undefined) card.capabilities.streaming = streaming;
+        }),
+      });
+      const first = await sendAndSettle(client, { text: 'ask' });
+      expect(first).toMatchObject({ state: 'input-required', message: 'first question' });
+      const second = await sendAndSettle(client, {
+        text: 'ask',
+        taskId: first.taskId,
+        contextId: first.contextId,
+      });
+      expect(second).toMatchObject({ state: 'input-required', message: 'second question' });
+      expect(peer.methods()).not.toContain('CancelTask');
+    },
+  );
+
   describe('Agent Card validation', () => {
     test('refuses a required extension it does not support before any RPC', async () => {
       const { peer, client } = connect({

@@ -31,6 +31,8 @@ export interface ScriptedPeerOptions {
     method: string,
     real: () => Promise<Response>,
   ) => Promise<Response | undefined> | Response | undefined;
+  /** Leave `status.timestamp` unset, which A2A 1.0 allows. */
+  readonly omitTimestamps?: boolean | undefined;
   /** Resolves when `slow` tasks may finish. */
   readonly gate?: Promise<void>;
 }
@@ -44,14 +46,21 @@ function text(value: string) {
   };
 }
 
-function status(state: TaskState, message?: string, taskId = '', contextId = '') {
+function status(
+  state: TaskState,
+  message?: string,
+  taskId = '',
+  contextId = '',
+  tag = '',
+  omitTimestamp = false,
+) {
   return {
     state,
     message:
       message === undefined
         ? undefined
         : {
-            messageId: `${taskId}-${state}`,
+            messageId: `${taskId}-${state}${tag}`,
             contextId,
             taskId,
             role: Role.ROLE_AGENT,
@@ -60,12 +69,12 @@ function status(state: TaskState, message?: string, taskId = '', contextId = '')
             extensions: [],
             referenceTaskIds: [],
           },
-    timestamp: new Date().toISOString(),
+    timestamp: omitTimestamp ? undefined : new Date().toISOString(),
   };
 }
 
 /** The executor: the first text part of the message picks the behavior. */
-function scriptedExecutor(gate: Promise<void>): AgentExecutor {
+function scriptedExecutor(gate: Promise<void>, omitTimestamp: boolean): AgentExecutor {
   return {
     async execute(requestContext, eventBus) {
       const { taskId, contextId } = requestContext;
@@ -76,7 +85,14 @@ function scriptedExecutor(gate: Promise<void>): AgentExecutor {
           AgentEvent.statusUpdate({
             taskId,
             contextId,
-            status: status(state, message, taskId, contextId),
+            status: status(
+              state,
+              message,
+              taskId,
+              contextId,
+              requestContext.task === undefined ? '' : '-again',
+              omitTimestamp,
+            ),
             metadata: undefined,
           }),
         );
@@ -101,6 +117,12 @@ function scriptedExecutor(gate: Promise<void>): AgentExecutor {
           break;
         case 'auth':
           publishStatus(TaskState.TASK_STATE_AUTH_REQUIRED, 'sign in');
+          return;
+        case 'ask':
+          publishStatus(
+            TaskState.TASK_STATE_INPUT_REQUIRED,
+            requestContext.task === undefined ? 'first question' : 'second question',
+          );
           return;
         case 'wait':
           publishStatus(TaskState.TASK_STATE_INPUT_REQUIRED, 'which one?');
@@ -174,7 +196,7 @@ export function createScriptedPeer(options: ScriptedPeerOptions = {}) {
     requestHandler: new DefaultRequestHandler(
       card,
       new InMemoryTaskStore(),
-      scriptedExecutor(options.gate ?? Promise.resolve()),
+      scriptedExecutor(options.gate ?? Promise.resolve(), options.omitTimestamps === true),
     ),
     agentCard: card,
     publicUrl: PUBLIC_URL,

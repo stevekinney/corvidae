@@ -147,6 +147,8 @@ export class PeerTaskTracker {
   apply(event: PeerStreamEvent): void {
     const payload = event.payload;
     if (payload === undefined) return;
+    // An event after the first response is new by definition, whatever its status says.
+    if (this.headSeen && payload.$case !== 'task') this.fresh = true;
     switch (payload.$case) {
       case 'task':
         this.applyTask(payload.value);
@@ -214,7 +216,7 @@ export class PeerTaskTracker {
 
   private setStatus(status: Task['status']): void {
     this.current = peerStateOf(status?.state);
-    this.stamp = `${this.current}|${status?.timestamp ?? ''}`;
+    this.stamp = `${this.current}|${status?.timestamp ?? ''}|${status?.message?.messageId ?? ''}`;
     if (this.headSeen && this.stamp !== this.headStamp) this.fresh = true;
     if (status?.message !== undefined) this.lastMessage = textOfMessage(status.message);
     this.emit();
