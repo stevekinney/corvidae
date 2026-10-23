@@ -1642,11 +1642,14 @@ export function createBureauA2ARequestHandler(
       ) {
         throw invalid('statusTimestampAfter must be an ISO 8601 timestamp.');
       }
-      const status =
-        params.status === TaskState.TASK_STATE_UNSPECIFIED
-          ? undefined
-          : bureauStateOf(params.status);
-      if (params.status !== TaskState.TASK_STATE_UNSPECIFIED && status === undefined) {
+      // An absent status and `UNSPECIFIED` both mean no filter. The SDK client's JSON codec turns
+      // the `status: undefined` it sends for an absent one into `UNRECOGNIZED` (-1) on arrival.
+      const unfiltered =
+        params.status === undefined ||
+        params.status === TaskState.TASK_STATE_UNSPECIFIED ||
+        params.status === TaskState.UNRECOGNIZED;
+      const status = unfiltered ? undefined : bureauStateOf(params.status);
+      if (!unfiltered && status === undefined) {
         // A state no Bureau task reaches (`REJECTED`, `AUTH_REQUIRED`) matches nothing.
         return { tasks: [], nextPageToken: '', pageSize, totalSize: 0 };
       }
