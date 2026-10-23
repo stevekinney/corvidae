@@ -357,9 +357,8 @@ export const STALE_COPY = {
 
 /** The words the schedules area (`/schedules` and under it) uses outside its view states. */
 export const SCHEDULE_COPY = {
-  /** What a schedule starts, by the service that owns it. */
+  /** What a workflow's schedule says it starts; an agent run is said by its agent alone. */
   kind: {
-    'agent-run': 'Agent run',
     'workflow-file': 'Agent-authored workflow',
     code: 'Code-defined workflow',
   },
