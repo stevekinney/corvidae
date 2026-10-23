@@ -56,14 +56,26 @@ function childOf(container: Container, segment: string): A2uiJsonValue | undefin
   return Array.isArray(container) ? container[Number(segment)] : container[segment];
 }
 
+/**
+ * Whether `segment` can name a member of `container`. An array has only its
+ * indices (RFC 6901: `0` or a digit string with no leading zero); `Number`
+ * would read `''` as `0`, so any other token must never reach one.
+ */
+function addresses(container: Container, segment: string): boolean {
+  return !Array.isArray(container) || /^(?:0|[1-9]\d*)$/.test(segment);
+}
+
 function assign(container: Container, segment: string, value: A2uiJsonValue): void {
   if (Array.isArray(container)) container[Number(segment)] = value;
   else container[segment] = value;
 }
 
-/** Splits a JSON Pointer into its unescaped segments. `''` and `'/'` are the root. */
+/**
+ * Splits a JSON Pointer into its unescaped segments. `''` is the whole
+ * document; `'/'` is the member whose key is empty (RFC 6901).
+ */
 export function pointerSegments(pointer: string): string[] {
-  if (pointer === '' || pointer === '/') return [];
+  if (pointer === '') return [];
   return pointer
     .replace(/^\//, '')
     .split('/')
@@ -76,14 +88,14 @@ export function pointerSegments(pointer: string): string[] {
  */
 export function resolvePath(path: string, scope: string): string {
   if (path.startsWith('/')) return path;
-  if (path === '' || path === '.') return scope === '' ? '/' : scope;
-  return `${scope === '/' ? '' : scope}/${path}`;
+  if (path === '' || path === '.') return scope;
+  return `${scope}/${path}`;
 }
 
 /** Appends one escaped segment to a pointer. */
 export function childPointer(pointer: string, segment: string | number): string {
   const escaped = String(segment).replaceAll('~', '~0').replaceAll('/', '~1');
-  return `${pointer === '/' ? '' : pointer}/${escaped}`;
+  return `${pointer}/${escaped}`;
 }
 
 /** A surface's data model. Reads are reactive; writes notify `onChange`. */
@@ -91,10 +103,12 @@ export class A2uiDataModel {
   #root: A2uiJsonValue;
   /** Advanced by every write; each read depends on it, so it reruns after any change. */
   #version = $state(0);
+  #generation = $state(0);
   readonly #onChange: ((value: A2uiJsonValue) => void) | undefined;
 
   constructor(initial: A2uiJsonValue | undefined, onChange?: (value: A2uiJsonValue) => void) {
-    this.#root = ownCopy(initial ?? {});
+    // Only an absent model starts empty; an explicit `null` is a value of its own.
+    this.#root = ownCopy(initial === undefined ? {} : initial);
     this.#onChange = onChange;
   }
 
@@ -106,8 +120,14 @@ export class A2uiDataModel {
 
   /** Replaces the whole model, as a server update does. */
   replace(value: A2uiJsonValue | undefined): void {
-    this.#root = ownCopy(value ?? {});
+    this.#root = ownCopy(value === undefined ? {} : value);
     this.#version += 1;
+    this.#generation += 1;
+  }
+
+  /** How many times the host has replaced the model; a write of the surface's own leaves it. */
+  get generation(): number {
+    return this.#generation;
   }
 
   /** The value at `pointer`, or `undefined` when nothing is there. */
@@ -131,6 +151,13 @@ export class A2uiDataModel {
       this.#root = ownCopy(value);
     } else {
       if (!isContainer(this.#root)) this.#root = ownCopy({});
+      // A token an array cannot hold anywhere on the path writes nothing.
+      let probe: A2uiJsonValue | undefined = this.#root;
+      for (const segment of [...segments, last]) {
+        if (!isContainer(probe)) break;
+        if (!addresses(probe, segment)) return;
+        probe = childOf(probe, segment);
+      }
       let current: A2uiJsonValue | undefined = this.#root;
       for (const segment of segments) {
         if (!isContainer(current)) break;

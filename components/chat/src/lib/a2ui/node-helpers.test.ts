@@ -3,11 +3,13 @@ import { describe, expect, test } from 'bun:test';
 import type { A2uiEvaluationContext } from './functions.ts';
 import {
   dateTimeForControl,
+  displayTimeZone,
   elementId,
   evaluationContext,
   failingCheck,
   iconLabel,
   matchesPattern,
+  plainText,
   runAction,
   toJsonValue,
 } from './node-helpers.ts';
@@ -25,10 +27,44 @@ describe('node helpers', () => {
     expect(dateTimeForControl('not a date', 'day')).toBeUndefined();
   });
 
+  test('dateTimeForControl shows a zoned value in the time zone it is given', () => {
+    const zoned = '2025-12-15T17:00:00Z';
+    expect(dateTimeForControl(zoned, 'minute', 'America/New_York')).toBe('2025-12-15T12:00');
+    expect(dateTimeForControl(zoned, 'minute', 'Asia/Tokyo')).toBe('2025-12-16T02:00');
+    expect(dateTimeForControl(zoned, 'time', 'Asia/Tokyo')).toBe('02:00');
+    expect(dateTimeForControl(zoned, 'day', 'UTC')).toBe('2025-12-15');
+    // A value without a zone is a wall-clock time, so no zone moves it.
+    expect(dateTimeForControl('2025-12-15T17:30', 'minute', 'Asia/Tokyo')).toBe('2025-12-15T17:30');
+  });
+
+  test('dateTimeForControl falls back to the runtime zone for a zone it does not know', () => {
+    // The runner's zone is UTC.
+    expect(dateTimeForControl('2025-12-15T17:00:00Z', 'minute', 'Not/AZone')).toBe(
+      '2025-12-15T17:00',
+    );
+  });
+
+  test('displayTimeZone shows UTC until the surface mounts, unless the host names a zone', () => {
+    expect(displayTimeZone(undefined, false)).toBe('UTC');
+    expect(displayTimeZone(undefined, true)).toBeUndefined();
+    expect(displayTimeZone('Asia/Tokyo', false)).toBe('Asia/Tokyo');
+    expect(displayTimeZone('Asia/Tokyo', true)).toBe('Asia/Tokyo');
+  });
+
+  test('plainText keeps intraword underscores, as CommonMark does', () => {
+    expect(plainText('save_file_as')).toBe('save_file_as');
+    expect(plainText('snake__case__name')).toBe('snake__case__name');
+    expect(plainText('an _emphasized_ and __strong__ word')).toBe('an emphasized and strong word');
+    expect(plainText('a*b*c and **bold**')).toBe('abc and bold');
+  });
+
   test('matchesPattern reports an invalid pattern as undefined', () => {
     expect(matchesPattern('^a', 'abc')).toBe(true);
     expect(matchesPattern('^b', 'abc')).toBe(false);
     expect(matchesPattern('(', 'abc')).toBeUndefined();
+    // A TextField's validationRegexp runs in linear time too.
+    expect(matchesPattern('^(a+)+$', `${'a'.repeat(5000)}!`)).toBe(false);
+    expect(matchesPattern('^(a)\\1$', 'aa')).toBeUndefined();
   });
 
   test('iconLabel turns an icon name into words', () => {

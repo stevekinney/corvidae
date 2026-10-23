@@ -9,6 +9,7 @@
  * expression grammar, and `openUrl` opens only `http:` and `https:` URLs.
  */
 import { resolvePath } from './data-model.svelte.ts';
+import { compileSafePattern } from './safe-regexp.ts';
 import type { A2uiJsonValue } from './types.ts';
 
 /** What resolving a dynamic value can read and report. */
@@ -145,12 +146,14 @@ function required(value: unknown): boolean {
 }
 
 function regex(value: unknown, pattern: unknown, context: A2uiEvaluationContext): boolean {
-  try {
-    return new RegExp(stringify(pattern)).test(stringify(value));
-  } catch {
-    context.report(`regex: "${stringify(pattern)}" is not a valid pattern`);
+  const compiled = compileSafePattern(stringify(pattern));
+  if (compiled === undefined) {
+    context.report(
+      `regex: "${stringify(pattern)}" is not a valid pattern, or needs backreferences or lookaround, which do not run`,
+    );
     return false;
   }
+  return compiled.test(stringify(value));
 }
 
 function length(value: unknown, min: unknown, max: unknown): boolean {
@@ -356,6 +359,8 @@ export function interpolate(template: string, context: A2uiEvaluationContext): s
   return output;
 }
 
+const KEYWORDS: Readonly<Record<string, boolean | null>> = { true: true, false: false, null: null };
+
 class ExpressionParser {
   position: number;
 
@@ -406,19 +411,11 @@ class ExpressionParser {
       this.position += word[0].length + 1;
       return this.call(word[0]);
     }
-    for (const [keyword, value] of [
-      ['true', true],
-      ['false', false],
-      ['null', null],
-    ] as const) {
-      if (word?.[0] === keyword) {
-        this.position += keyword.length;
-        return value;
-      }
-    }
     const path = /^[^\s}),]+/.exec(rest);
     if (path === null) throw new Error(`expected an expression at ${this.position}`);
     this.position += path[0].length;
+    // A keyword is a literal only as a whole token: `true/value` is a relative path.
+    if (Object.hasOwn(KEYWORDS, path[0])) return KEYWORDS[path[0]];
     return this.context.read(resolvePath(path[0], this.context.scope));
   }
 
