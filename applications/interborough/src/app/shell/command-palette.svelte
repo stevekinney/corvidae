@@ -1,27 +1,31 @@
 <script lang="ts">
   /**
-   * ⌘K search skeleton (plan §13 T1.6): ID-prefix search across workflows /
-   * schedules / workers / reviews via each domain's list operation,
-   * navigating to the selected record (a run, a schedule, a worker) on select; a review has no page of its own, so it opens the reviews page. "Skeleton" per the task
-   * brief — this is a jump-to-record finder, not the full command surface
-   * (actions, recent items) a later pass may add.
+   * ⌘K search: chats and agents first, then runs, schedules, workers and reviews by id, then the
+   * engine's pages and the commands ("New chat with <agent>", "Go to Reviews"). Choosing a result
+   * opens that record, not the collection it belongs to.
    *
-   * Each domain search runs independently and swallows its own failure (a
-   * 403 from a scope this principal lacks, a transient network error)
+   * Each domain search runs independently and swallows its own failure (a 403
+   * from a scope this principal lacks, a transient network error)
    * rather than failing the whole palette — a search-as-you-type surface
    * degrading one section to "no results" beats it going blank.
    */
   import { CommandItem, CommandPalette, EmptyState } from '@lostgradient/cinder';
-  import type {
-    ReviewListEntry,
-    ScheduleSummary,
-    WorkflowSummary,
-    HttpClient,
-  } from '@lostgradient/weft';
+  import type { HttpClient } from '@lostgradient/weft';
 
+  import { formatRelativeTime } from '../../lib/format/index.ts';
+  import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
-  import { schedulePath, searchConsole, workerPath } from './command-palette-search.ts';
+  import { newChatPath } from '../../routes/agents/agent-presentation.ts';
+  import { PALETTE_COPY } from '../copy.ts';
+  import {
+    newChatLabel,
+    schedulePath,
+    searchConsole,
+    workerPath,
+    type ConsoleSearchResults,
+  } from './command-palette-search.ts';
 
   interface CommandPaletteLauncherProps {
     open: boolean;
@@ -38,21 +42,25 @@
 
   let query = $state('');
 
-  let workflowResults = $state<WorkflowSummary[]>([]);
-  let scheduleResults = $state<ScheduleSummary[]>([]);
-  let workerResults = $state<{ id: string; queue: string }[]>([]);
-  let reviewResults = $state<ReviewListEntry[]>([]);
+  const NOTHING: ConsoleSearchResults = {
+    chats: [],
+    agents: [],
+    newChats: [],
+    workflows: [],
+    schedules: [],
+    workers: [],
+    reviews: [],
+    pages: [],
+  };
+  let results = $state<ConsoleSearchResults>(NOTHING);
 
   async function search(currentQuery: string): Promise<void> {
-    const results = await searchConsole(client, currentQuery, { scheduleReadGate });
+    const found = await searchConsole(client, currentQuery, { scheduleReadGate });
 
     // `currentQuery` may be stale by the time these settle — drop results
     // for a query the user has already changed.
     if (currentQuery !== query) return;
-    workflowResults = results.workflows;
-    scheduleResults = results.schedules;
-    workerResults = results.workers;
-    reviewResults = results.reviews;
+    results = found;
   }
 
   $effect(() => {
@@ -76,74 +84,175 @@
     router.navigate(path);
     open = false;
   }
+
+  const enginePages = $derived(results.pages.filter((page) => page.group === 'engine'));
+  const reviewsCommand = $derived(results.pages.filter((page) => page.group === 'command'));
+  const hasCommands = $derived(results.newChats.length > 0 || reviewsCommand.length > 0);
 </script>
 
 <CommandPalette
   bind:open
   bind:query
-  label="Command palette"
-  placeholder="Search workflows, schedules, workers, reviews…"
+  label={PALETTE_COPY.label}
+  placeholder={PALETTE_COPY.placeholder}
 >
   {#snippet items()}
-    {#if workflowResults.length > 0}
+    {#if results.chats.length > 0}
+      <li role="presentation" class="weft-command-group">
+        <span class="weft-command-group__label">Chats</span>
+        <ul role="group" aria-label="Chats">
+          {#each results.chats as chat (chat.id)}
+            {@const title = chat.title ?? chat.lastMessagePreview ?? PALETTE_COPY.untitledChat}
+            <CommandItem
+              value={`chat-${chat.id}`}
+              accessibleLabel={`${title}, ${chat.agentName}`}
+              onSelect={() => goTo(chatSessionPath(chat.id))}
+            >
+              {title}
+              {#snippet trailing()}
+                <span class="weft-command-meta">
+                  <code class="ib-identifier">{chat.agentName}</code>
+                  <span>{formatRelativeTime(Date.parse(chat.updatedAt))}</span>
+                </span>
+              {/snippet}
+            </CommandItem>
+          {/each}
+        </ul>
+      </li>
+    {/if}
+    {#if results.agents.length > 0}
+      <li role="presentation" class="weft-command-group">
+        <span class="weft-command-group__label">Agents</span>
+        <ul role="group" aria-label="Agents">
+          {#each results.agents as agent (agent.name)}
+            <CommandItem
+              value={`agent-${agent.name}`}
+              accessibleLabel={agent.description === null
+                ? agent.name
+                : `${agent.name}, ${agent.description}`}
+              onSelect={() => goTo(agentPath(agent.name))}
+            >
+              <code class="ib-identifier">{agent.name}</code>
+              {#snippet trailing()}
+                {#if agent.description !== null}
+                  <span class="weft-command-meta">{agent.description}</span>
+                {/if}
+              {/snippet}
+            </CommandItem>
+          {/each}
+        </ul>
+      </li>
+    {/if}
+    {#if results.workflows.length > 0}
       <li role="presentation" class="weft-command-group">
         <span class="weft-command-group__label">Runs</span>
         <ul role="group" aria-label="Runs">
-          {#each workflowResults as workflow (workflow.id)}
+          {#each results.workflows as workflow (workflow.id)}
             <CommandItem
               value={`workflow-${workflow.id}`}
-              description={workflow.type}
+              accessibleLabel={`${workflow.id}, ${workflow.type}`}
               onSelect={() => goTo(workflowDetailPath(workflow.id))}
             >
-              {workflow.id}
+              <code class="ib-identifier">{workflow.id}</code>
+              {#snippet trailing()}
+                <span class="weft-command-meta"
+                  ><code class="ib-identifier">{workflow.type}</code></span
+                >
+              {/snippet}
             </CommandItem>
           {/each}
         </ul>
       </li>
     {/if}
-    {#if scheduleResults.length > 0}
+    {#if results.schedules.length > 0}
       <li role="presentation" class="weft-command-group">
         <span class="weft-command-group__label">Schedules</span>
         <ul role="group" aria-label="Schedules">
-          {#each scheduleResults as schedule (schedule.id)}
+          {#each results.schedules as schedule (schedule.id)}
             <CommandItem
               value={`schedule-${schedule.id}`}
-              description={schedule.workflowType}
+              accessibleLabel={`${schedule.id}, ${schedule.workflowType}`}
               onSelect={() => goTo(schedulePath(schedule.id))}
             >
-              {schedule.id}
+              <code class="ib-identifier">{schedule.id}</code>
+              {#snippet trailing()}
+                <span class="weft-command-meta"
+                  ><code class="ib-identifier">{schedule.workflowType}</code></span
+                >
+              {/snippet}
             </CommandItem>
           {/each}
         </ul>
       </li>
     {/if}
-    {#if workerResults.length > 0}
+    {#if results.workers.length > 0}
       <li role="presentation" class="weft-command-group">
         <span class="weft-command-group__label">Workers</span>
         <ul role="group" aria-label="Workers">
-          {#each workerResults as worker (worker.id)}
+          {#each results.workers as worker (worker.id)}
             <CommandItem
               value={`worker-${worker.id}`}
-              description={worker.queue}
+              accessibleLabel={`${worker.id}, ${worker.queue}`}
               onSelect={() => goTo(workerPath(worker.id))}
             >
-              {worker.id}
+              <code class="ib-identifier">{worker.id}</code>
+              {#snippet trailing()}
+                <span class="weft-command-meta"
+                  ><code class="ib-identifier">{worker.queue}</code></span
+                >
+              {/snippet}
             </CommandItem>
           {/each}
         </ul>
       </li>
     {/if}
-    {#if reviewResults.length > 0}
+    {#if results.reviews.length > 0}
       <li role="presentation" class="weft-command-group">
         <span class="weft-command-group__label">Reviews</span>
         <ul role="group" aria-label="Reviews">
-          {#each reviewResults as review (review.reviewId)}
+          {#each results.reviews as review (review.reviewId)}
             <CommandItem
               value={`review-${review.reviewId}`}
-              description={review.reviewType}
+              accessibleLabel={`${review.reviewId}, ${review.reviewType}`}
               onSelect={() => goTo('/reviews')}
             >
-              {review.reviewId}
+              <code class="ib-identifier">{review.reviewId}</code>
+              {#snippet trailing()}
+                <span class="weft-command-meta">{review.reviewType}</span>
+              {/snippet}
+            </CommandItem>
+          {/each}
+        </ul>
+      </li>
+    {/if}
+    {#if enginePages.length > 0}
+      <li role="presentation" class="weft-command-group">
+        <span class="weft-command-group__label">Engine pages</span>
+        <ul role="group" aria-label="Engine pages">
+          {#each enginePages as page (page.path)}
+            <CommandItem value={`page-${page.view}`} onSelect={() => goTo(page.path)}>
+              {page.label}
+            </CommandItem>
+          {/each}
+        </ul>
+      </li>
+    {/if}
+    {#if hasCommands}
+      <li role="presentation" class="weft-command-group">
+        <span class="weft-command-group__label">Commands</span>
+        <ul role="group" aria-label="Commands">
+          {#each results.newChats as agent (agent.name)}
+            <CommandItem
+              value={`new-chat-${agent.name}`}
+              accessibleLabel={newChatLabel(agent.name)}
+              onSelect={() => goTo(newChatPath(agent.name))}
+            >
+              New chat with <code class="ib-identifier">{agent.name}</code>
+            </CommandItem>
+          {/each}
+          {#each reviewsCommand as page (page.path)}
+            <CommandItem value={`go-to-${page.view}`} onSelect={() => goTo(page.path)}>
+              Go to {page.label}
             </CommandItem>
           {/each}
         </ul>
@@ -152,10 +261,10 @@
   {/snippet}
   {#snippet empty()}
     <EmptyState
-      title={query.length === 0 ? 'Search the console' : 'No matches'}
+      title={query.length === 0 ? PALETTE_COPY.emptyTitle : PALETTE_COPY.noMatchesTitle}
       description={query.length === 0
-        ? 'Type an id or name to jump to a run, schedule, worker, or review.'
-        : `Nothing matched "${query}".`}
+        ? PALETTE_COPY.emptyDescription
+        : PALETTE_COPY.noMatchesDescription(query)}
     />
   {/snippet}
 </CommandPalette>

@@ -10,6 +10,7 @@ import { describe, expect, test } from 'bun:test';
 import type { FleetEventFrame } from '../lib/live-source/fleet-event-source.svelte.ts';
 import {
   classifyFleetEvent,
+  ENGINE_STATUS_ITEM_ID,
   NotificationStore,
   type NotificationTier,
 } from './notifications.svelte.ts';
@@ -189,5 +190,54 @@ describe('NotificationStore', () => {
     expect(store.items).toHaveLength(50);
     // Most recent (`c54`) is first — the list is newest-first.
     expect(store.items[0]?.id).toBe('c54');
+  });
+});
+
+describe('NotificationStore.reportEngineStatus', () => {
+  test('names an unreachable engine as one critical item, and a stale one as a warning', () => {
+    const store = new NotificationStore();
+
+    store.reportEngineStatus('closed', 1_000);
+    expect(store.items.map((item) => [item.id, item.tier, item.title])).toEqual([
+      [ENGINE_STATUS_ITEM_ID, 'critical', 'Engine unreachable'],
+    ]);
+
+    store.reportEngineStatus('stale', 2_000);
+    expect(store.items.map((item) => [item.id, item.tier, item.title])).toEqual([
+      [ENGINE_STATUS_ITEM_ID, 'warning', 'Engine status stale'],
+    ]);
+  });
+
+  test('adds nothing for a state that is not a problem, and removes the item on recovery', () => {
+    const store = new NotificationStore();
+    for (const status of ['connecting', 'live', 'reconnecting', 'polling'] as const) {
+      store.reportEngineStatus(status, 1_000);
+    }
+    expect(store.items).toHaveLength(0);
+
+    store.reportEngineStatus('closed', 1_000);
+    expect(store.items).toHaveLength(1);
+    store.reportEngineStatus('live', 2_000);
+    expect(store.items).toHaveLength(0);
+  });
+
+  test('a connection that keeps dropping leaves one item, and keeps it read once it was read', () => {
+    const store = new NotificationStore();
+    store.ingest(frame('workflow:started', { cursor: 'c1', workflowId: 'wf-1' }));
+    store.reportEngineStatus('closed', 1_000);
+    store.markRead(ENGINE_STATUS_ITEM_ID);
+
+    store.reportEngineStatus('closed', 2_000);
+    store.reportEngineStatus('closed', 3_000);
+
+    const engine = store.items.filter((item) => item.id === ENGINE_STATUS_ITEM_ID);
+    expect(engine).toHaveLength(1);
+    expect(engine[0]?.read).toBe(true);
+    expect(engine[0]?.emittedAtMs).toBe(1_000);
+    expect(store.items).toHaveLength(2);
+
+    store.reportEngineStatus('live', 4_000);
+    store.reportEngineStatus('closed', 5_000);
+    expect(store.items.find((item) => item.id === ENGINE_STATUS_ITEM_ID)?.read).toBe(false);
   });
 });

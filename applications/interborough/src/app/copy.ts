@@ -1064,6 +1064,35 @@ export const REVIEWS_COPY = {
     'The approval was gated again, so the tool did not run. A replacement approval is waiting.',
 } as const;
 
+/** The words of the ⌘K palette. */
+export const PALETTE_COPY = {
+  label: 'Command palette',
+  placeholder: 'Search chats, agents, workflows…',
+  untitledChat: CHAT_COPY.untitled,
+  emptyTitle: 'Search the console',
+  emptyDescription: 'Type the name of a chat or an agent, or an id, to jump to it.',
+  noMatchesTitle: 'No matches',
+  noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
+} as const;
+
+/** The words of the navigation: its two groups of views, and what the engine status says. */
+export const NAVIGATION_COPY = {
+  /** The views for working with agents. */
+  workGroup: 'Work',
+  /** The views for operating the engine. */
+  engineGroup: 'Engine',
+  engineLink: 'Engine',
+  /** What the engine status dot says, by the state of the live feed. */
+  engineStatus: {
+    connecting: 'Engine connecting',
+    live: 'Engine healthy',
+    reconnecting: 'Engine reconnecting',
+    polling: 'Engine healthy (polling)',
+    stale: 'Engine status stale',
+    closed: 'Engine unreachable',
+  },
+} as const;
+
 /**
  * The words every view's states use. A view's state title and description live here and
  * nowhere else, so a change to the voice of the product is one edit and a test can name every
