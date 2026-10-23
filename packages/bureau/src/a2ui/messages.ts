@@ -120,7 +120,26 @@ export function isClassified(value: ClassifiedMessage | A2uiIssue): value is Cla
   return 'kind' in value;
 }
 
+/** The deepest a message, a data-model value, or a context may nest. */
+export const A2UI_MAX_JSON_DEPTH = 48;
+
 const MAX_JSON_DEPTH = 64;
+
+/**
+ * Whether a value nests deeper than `limit` levels. Iterative, so a hostile depth cannot overflow
+ * the stack; it stops as soon as the limit is passed, so a cyclic value terminates too.
+ */
+export function jsonDepthExceeds(value: unknown, limit: number): boolean {
+  const stack: { value: unknown; depth: number }[] = [{ value, depth: 1 }];
+  for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
+    if (typeof item.value !== 'object' || item.value === null) continue;
+    if (item.depth > limit) return true;
+    for (const inner of Object.values(item.value)) {
+      stack.push({ value: inner, depth: item.depth + 1 });
+    }
+  }
+  return false;
+}
 
 /** Why a value is not JSON a data model can hold, or `undefined` when it is. */
 export function jsonProblemOf(value: unknown, depth = 0): string | undefined {
@@ -177,7 +196,7 @@ export function changeDataModel(
   if (segments === undefined)
     return { ok: false, message: `"${String(path).slice(0, 80)}" is not a valid JSON Pointer.` };
   if (segments.length === 0) {
-    return { ok: true, data: value === undefined ? null : structuredClone(value) };
+    return { ok: true, data: value === undefined ? {} : structuredClone(value) };
   }
   const root: unknown = current === null ? {} : structuredClone(current);
   if (!isContainer(root))
@@ -281,11 +300,11 @@ export function a2uiMessagesOf(surface: InteractiveSurface): A2uiServerMessage[]
       updateComponents: { surfaceId: surface.surfaceId, components: representation.components },
     });
   }
-  if (surface.data !== null) {
-    messages.push({
-      version,
-      updateDataModel: { surfaceId: surface.surfaceId, path: '/', value: surface.data },
-    });
-  }
+  // Always, even for `null`: the renderer starts an absent model as `{}` and keeps an explicit
+  // `null`, and the adapter stores an absent model as `{}`, so a stored `null` is explicit.
+  messages.push({
+    version,
+    updateDataModel: { surfaceId: surface.surfaceId, path: '/', value: surface.data },
+  });
   return messages;
 }

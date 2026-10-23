@@ -154,6 +154,19 @@ export function createProposeA2uiSurfaceTool(options: ProposeA2uiSurfaceToolOpti
               }),
         });
       }
+      // An update builds on the latest revision; the adapter requires it be stated.
+      const creating = proposal.messages.some((message) => 'createSurface' in message);
+      const baseRevision =
+        proposal.baseRevision ??
+        (creating ? undefined : await adapter.revisionOf(taskId, proposal.surfaceId, { taskId }));
+      if (!creating && baseRevision === undefined) {
+        return JSON.stringify({
+          outcome: 'rejected',
+          reason: 'not-found',
+          detail: `Surface "${proposal.surfaceId}" does not exist on this task.`,
+          issues: [],
+        });
+      }
       const result = await adapter.apply(
         {
           taskId,
@@ -164,7 +177,7 @@ export function createProposeA2uiSurfaceTool(options: ProposeA2uiSurfaceToolOpti
           // survives a model's update, so a model cannot relabel a button that runs one.
           actions,
           ...(supportedCatalogIds === undefined ? {} : { supportedCatalogIds }),
-          ...(proposal.baseRevision === undefined ? {} : { baseRevision: proposal.baseRevision }),
+          ...(baseRevision === undefined ? {} : { baseRevision }),
           complete: !proposal.messages.some((message) => 'deleteSurface' in message),
         },
         { taskId },

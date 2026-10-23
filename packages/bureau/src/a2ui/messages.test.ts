@@ -95,7 +95,7 @@ describe('the data model', () => {
   it('replaces the whole model at the root and at "/"', () => {
     expect(changeDataModel({ a: 1 }, undefined, { b: 2 })).toEqual({ ok: true, data: { b: 2 } });
     expect(changeDataModel({ a: 1 }, '/', [1])).toEqual({ ok: true, data: [1] });
-    expect(changeDataModel({ a: 1 }, undefined, undefined)).toEqual({ ok: true, data: null });
+    expect(changeDataModel({ a: 1 }, undefined, undefined)).toEqual({ ok: true, data: {} });
   });
 
   it('sets, creates, and removes at a pointer, deterministically and without touching its input', () => {

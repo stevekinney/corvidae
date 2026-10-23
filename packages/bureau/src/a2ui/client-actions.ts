@@ -13,6 +13,7 @@
 
 import {
   INTERACTIVE_SURFACE_CONTRACT_VERSION,
+  type InteractiveSurfaceActionDefinition,
   type InteractiveSurfaceActionRequest,
   type InteractiveSurfaceJsonObject,
 } from '../interactive-surface/types.ts';
@@ -138,14 +139,23 @@ export interface A2uiActionContext {
 /**
  * The `surface.action` command for a parsed client action. The store admits it only for an action
  * the surface declares, from a caller it authorizes, at the revision the surface is at, and
- * validates `context` against the action's `valueSchema`.
+ * validates `context` against the action's `valueSchema`. Pass the surface's declared action (for
+ * an `a2ui` surface) so an empty context on an action without a schema is sent as no value.
  *
  * @experimental
  */
 export function toActionRequest(
   action: A2uiClientAction,
   context: A2uiActionContext,
+  declared?: Pick<InteractiveSurfaceActionDefinition, 'valueSchema'>,
 ): InteractiveSurfaceActionRequest {
+  // An A2UI event with no bindings carries an empty (or absent) context, and the Chat renderer
+  // sends `{}`. For an action that declares no `valueSchema` that is the no-value action, which the
+  // store takes as `null`; for one that declares a schema, `{}` is a value like any other.
+  const noValue =
+    declared !== undefined &&
+    declared.valueSchema === undefined &&
+    Object.keys(action.context).length === 0;
   return {
     type: 'surface.action',
     contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
@@ -154,7 +164,7 @@ export function toActionRequest(
     surfaceId: action.surfaceId,
     revision: context.revision,
     action: action.name,
-    value: action.context,
+    value: noValue ? null : action.context,
     ...(action.sourceComponentId === undefined
       ? {}
       : { sourceComponentId: action.sourceComponentId }),

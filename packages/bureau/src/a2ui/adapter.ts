@@ -34,10 +34,17 @@ import {
   type InteractiveSurfaceJsonValue,
   type InteractiveSurfaceRejectionReason,
 } from '../interactive-surface/types.ts';
-import { a2uiCatalogOf, offeredCatalogIds, type A2uiCatalog } from './catalogs.ts';
+import {
+  A2UI_BASIC_CATALOG_ID,
+  a2uiCatalogOf,
+  offeredCatalogIds,
+  type A2uiCatalog,
+} from './catalogs.ts';
 import { checkBindings, checkEvents, checkGraph, type A2uiIssue } from './graph.ts';
 import {
   A2UI_MAX_BATCH,
+  A2UI_MAX_JSON_DEPTH,
+  jsonDepthExceeds,
   A2UI_MESSAGE_DEFINITIONS,
   changeDataModel,
   classifyMessage,
@@ -71,7 +78,7 @@ export interface A2uiApplyRequest {
    * catalog may be used.
    */
   readonly supportedCatalogIds?: readonly string[] | undefined;
-  /** The surface revision the batch builds on; the commit fails if the surface has moved on. Defaults to the current one. */
+  /** The surface revision the batch builds on. Required for an update or delete: the commit fails if the surface has moved on, and an exact retry replays. */
   readonly baseRevision?: number | undefined;
   /** Require a whole surface: a `root`, no dangling reference, nothing unreachable. */
   readonly complete?: boolean | undefined;
@@ -109,6 +116,12 @@ export interface A2uiAdapter {
     request: A2uiApplyRequest,
     authorization?: InteractiveSurfaceAuthorization,
   ): Promise<A2uiApplyReceipt>;
+  /** The surface's current revision, for a caller that builds on the latest; `undefined` when it cannot be read. */
+  revisionOf(
+    taskId: string,
+    surfaceId: string,
+    authorization?: InteractiveSurfaceAuthorization,
+  ): Promise<number | undefined>;
 }
 
 function reject(
@@ -214,6 +227,22 @@ export function createA2uiAdapter(options: {
         `messages must be an array of 1 to ${A2UI_MAX_BATCH} A2UI messages.`,
       );
     }
+    // Bound nesting iteratively before anything recurses over the messages (Ajv, the binding and
+    // event scans): a deep function call under the payload cap must be refused, not overflow the stack.
+    for (const [index, message] of batch.entries()) {
+      if (jsonDepthExceeds(message, A2UI_MAX_JSON_DEPTH)) {
+        return reject(
+          'invalid',
+          `Message ${index} nests deeper than ${A2UI_MAX_JSON_DEPTH} levels.`,
+          [
+            {
+              path: `/messages/${index}`,
+              message: `nests deeper than ${A2UI_MAX_JSON_DEPTH} levels`,
+            },
+          ],
+        );
+      }
+    }
     const classified: ClassifiedMessage[] = [];
     for (const [index, message] of batch.entries()) {
       const result = classifyMessage(message, index);
@@ -236,54 +265,43 @@ export function createA2uiAdapter(options: {
       return reject('invalid', 'deleteSurface must be sent alone.');
     }
 
-    // The surface the batch builds on, for anything but a create.
-    let existing: InteractiveSurface | undefined;
     if (!creating) {
-      const found = await surfaces.snapshot(
-        {
-          type: 'surface.snapshot',
-          contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
-          taskId,
-          surfaceId,
-        },
-        authorization,
-      );
-      if (found.outcome === 'rejected') {
+      // `surface.update` and `surface.close` cannot change these, so a batch that states them must
+      // not be reported as accepted with them dropped.
+      const unchangeable: A2uiIssue[] = [];
+      if (request.audience !== undefined) {
+        unchangeable.push({
+          path: '/audience',
+          message: 'An update cannot change the audience; set it when the surface is created.',
+        });
+      }
+      if (request.classification !== undefined) {
+        unchangeable.push({
+          path: '/classification',
+          message:
+            'An update cannot change the classification; set it when the surface is created.',
+        });
+      }
+      if (unchangeable.length > 0) {
         return reject(
-          found.reason,
-          found.detail ?? 'The surface could not be read.',
-          [],
-          found.currentRevision,
+          'invalid',
+          'Audience and classification are fixed at creation.',
+          unchangeable,
         );
       }
-      existing = found.surface;
-      if (existing.state !== 'open' || existing.liveness !== 'live') {
-        return reject(
-          'closed',
-          `Surface "${surfaceId}" is ${existing.liveness}.`,
-          [],
-          existing.revision,
-        );
-      }
-      if (existing.kind !== 'a2ui' || existing.representation?.kind !== 'a2ui') {
-        return reject('invalid', `Surface "${surfaceId}" is not an A2UI surface.`);
-      }
-      if (request.baseRevision !== undefined && request.baseRevision !== existing.revision) {
-        return reject(
-          'stale-revision',
-          `The batch builds on revision ${request.baseRevision}; the surface is at ${existing.revision}.`,
-          [],
-          existing.revision,
-        );
+      // The revision is part of the command the store fingerprints, so a retry replays only when
+      // it states the same one. Deriving it here would give a retry a new command.
+      if (request.baseRevision === undefined) {
+        return reject('invalid', 'baseRevision is required to update or delete a surface.', [
+          { path: '/baseRevision', message: 'is required' },
+        ]);
       }
     }
-    const baseRevision = request.baseRevision ?? existing?.revision ?? 0;
+    const baseRevision = request.baseRevision ?? 0;
 
     if (first.kind === 'deleteSurface') {
-      const deleting = a2uiCatalogOf(
-        existing!.representation!.kind === 'a2ui' ? existing!.representation!.catalogId : '',
-      );
-      const issues = deleting === undefined ? [] : checkMessage(deleting, first, 0);
+      // The message names no component, so any catalog's envelope check serves.
+      const issues = checkMessage(a2uiCatalogOf(A2UI_BASIC_CATALOG_ID)!, first, 0);
       if (issues.length > 0)
         return reject('invalid', 'The deleteSurface message is invalid.', issues);
       const receipt = await surfaces.close(
@@ -307,6 +325,41 @@ export function createA2uiAdapter(options: {
         );
       }
       return { outcome: 'accepted', receipt, rootMissing: false, dangling: [] };
+    }
+
+    // The surface the batch builds on, for anything but a create. A closed or frozen surface is
+    // still read: the store decides (and replays an exact retry) before it refuses.
+    let existing: InteractiveSurface | undefined;
+    if (!creating) {
+      const found = await surfaces.snapshot(
+        {
+          type: 'surface.snapshot',
+          contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
+          taskId,
+          surfaceId,
+        },
+        authorization,
+      );
+      if (found.outcome === 'rejected') {
+        return reject(
+          found.reason,
+          found.detail ?? 'The surface could not be read.',
+          [],
+          found.currentRevision,
+        );
+      }
+      existing = found.surface;
+      if (existing.representation === null) {
+        return reject(
+          'closed',
+          `Surface "${surfaceId}" is ${existing.liveness}.`,
+          [],
+          existing.revision,
+        );
+      }
+      if (existing.kind !== 'a2ui' || existing.representation.kind !== 'a2ui') {
+        return reject('invalid', `Surface "${surfaceId}" is not an A2UI surface.`);
+      }
     }
 
     // The catalog: named by `createSurface` (and negotiated), or the one the surface already uses.
@@ -421,7 +474,9 @@ export function createA2uiAdapter(options: {
             surfaceId,
             summary: request.summary ?? summaryOf(components, surfaceId),
             representation,
-            ...(touchedData ? { data } : {}),
+            // An absent model is stored as an empty one, which is what a renderer starts with, so
+            // a stored `null` always means an explicit null.
+            data: touchedData ? data : {},
             actions: request.actions ?? [],
             ...(request.audience === undefined ? {} : { audience: request.audience }),
             ...(request.classification === undefined
@@ -456,5 +511,22 @@ export function createA2uiAdapter(options: {
     return { outcome: 'accepted', receipt, rootMissing: !report.rooted, dangling: report.dangling };
   }
 
-  return { apply };
+  async function revisionOf(
+    taskId: string,
+    surfaceId: string,
+    authorization?: InteractiveSurfaceAuthorization,
+  ): Promise<number | undefined> {
+    const found = await surfaces.snapshot(
+      {
+        type: 'surface.snapshot',
+        contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
+        taskId,
+        surfaceId,
+      },
+      authorization,
+    );
+    return found.outcome === 'found' ? found.surface.revision : undefined;
+  }
+
+  return { apply, revisionOf };
 }

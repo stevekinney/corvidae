@@ -49,6 +49,7 @@ describe('progressive rendering', () => {
     const second = await h.adapter.apply({
       taskId: TASK,
       commandId: 'c2',
+      baseRevision: 1,
       messages: [updateComponentsMessage('panel', panelComponents().slice(4))],
     });
     expect(second).toMatchObject({ outcome: 'accepted', rootMissing: false, dangling: [] });
@@ -59,6 +60,7 @@ describe('progressive rendering', () => {
     await h.adapter.apply({
       taskId: TASK,
       commandId: 'c3',
+      baseRevision: 2,
       messages: [
         {
           version: 'v0.9.1',
@@ -132,6 +134,7 @@ describe('invalid graph repair', () => {
     const cycle = await h.adapter.apply({
       taskId: TASK,
       commandId: 'bad-1',
+      baseRevision: 1,
       messages: [
         updateComponentsMessage('panel', [
           { id: 'title', component: 'Column', children: ['root'] },
@@ -144,6 +147,7 @@ describe('invalid graph repair', () => {
     const dangling = await h.adapter.apply({
       taskId: TASK,
       commandId: 'bad-2',
+      baseRevision: 1,
       complete: true,
       messages: [
         updateComponentsMessage('panel', [
@@ -156,6 +160,7 @@ describe('invalid graph repair', () => {
     const unknownProperty = await h.adapter.apply({
       taskId: TASK,
       commandId: 'bad-3',
+      baseRevision: 1,
       messages: [
         updateComponentsMessage('panel', [
           { id: 'title', component: 'Text', text: 'x', onClick: 'steal()' },
@@ -168,6 +173,7 @@ describe('invalid graph repair', () => {
     const repaired = await h.adapter.apply({
       taskId: TASK,
       commandId: 'good',
+      baseRevision: 1,
       messages: [
         updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'Fixed' }]),
       ],
@@ -295,6 +301,7 @@ describe('reconnecting', () => {
     await h.adapter.apply({
       taskId: TASK,
       commandId: 'd',
+      baseRevision: 1,
       messages: [
         { version: 'v0.9.1', updateDataModel: { surfaceId: 'panel', path: '/note', value: 'x' } },
       ],
@@ -333,11 +340,11 @@ describe('ownership', () => {
       updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'pwned' }]),
     ];
     const fromOtherTask = await h.adapter.apply(
-      { taskId: TASK, commandId: 'x1', messages: update },
+      { taskId: TASK, commandId: 'x1', baseRevision: 1, messages: update },
       { taskId: 'agent-run-2' },
     );
     const fromOtherPrincipal = await h.adapter.apply(
-      { taskId: TASK, commandId: 'x2', messages: update },
+      { taskId: TASK, commandId: 'x2', baseRevision: 1, messages: update },
       { principal: 'api-key:bob' },
     );
     const onOtherTask = await h.adapter.apply({
@@ -369,6 +376,7 @@ describe('owner cancellation, deletion, and cleanup', () => {
     const update = await h.adapter.apply({
       taskId: TASK,
       commandId: 'late',
+      baseRevision: 2,
       messages: [
         updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'late' }]),
       ],
@@ -382,6 +390,7 @@ describe('owner cancellation, deletion, and cleanup', () => {
     const deleted = await h.adapter.apply({
       taskId: TASK,
       commandId: 'del',
+      baseRevision: 1,
       messages: [{ version: 'v0.9.1', deleteSurface: { surfaceId: 'panel' } }],
     });
     expect(deleted).toMatchObject({ outcome: 'accepted' });
@@ -389,6 +398,7 @@ describe('owner cancellation, deletion, and cleanup', () => {
     const after = await h.adapter.apply({
       taskId: TASK,
       commandId: 'again',
+      baseRevision: 2,
       messages: [updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'x' }])],
     });
     expect(after).toMatchObject({ outcome: 'rejected', reason: 'closed' });
@@ -400,6 +410,7 @@ describe('owner cancellation, deletion, and cleanup', () => {
     const mixed = await h.adapter.apply({
       taskId: TASK,
       commandId: 'm',
+      baseRevision: 1,
       messages: [
         updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'x' }]),
         { version: 'v0.9.1', deleteSurface: { surfaceId: 'panel' } },
@@ -496,7 +507,12 @@ describe('the batch contract', () => {
   it('needs 1 to 64 messages for one surface, with createSurface first', async () => {
     const h = a2uiHarness();
     const apply = async (messages: unknown) => {
-      const receipt = await h.adapter.apply({ taskId: TASK, commandId: 'x', messages });
+      const receipt = await h.adapter.apply({
+        taskId: TASK,
+        commandId: 'x',
+        baseRevision: 1,
+        messages,
+      });
       return receipt.outcome;
     };
     expect(await apply([])).toBe('rejected');
@@ -527,8 +543,162 @@ describe('the batch contract', () => {
     const receipt = await h.adapter.apply({
       taskId: TASK,
       commandId: 'x',
+      baseRevision: 1,
       messages: [updateComponentsMessage('form', [{ id: 'root', component: 'Text', text: 'x' }])],
     });
     expect(receipt).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+  });
+});
+
+describe('exact retries', () => {
+  it('replays an update that stated its base revision, and does not apply it twice', async () => {
+    const h = a2uiHarness();
+    await createPanel(h);
+    const update = {
+      taskId: TASK,
+      commandId: 'u1',
+      baseRevision: 1,
+      messages: [
+        { version: 'v0.9.1', updateDataModel: { surfaceId: 'panel', path: '/note', value: 'a' } },
+      ],
+    };
+    expect(await h.adapter.apply(update)).toMatchObject({ outcome: 'accepted' });
+    const again = await h.adapter.apply(update);
+    expect(again).toMatchObject({ outcome: 'accepted', receipt: { replayed: true } });
+    expect(await surfaceField(h, 'panel', 'revision')).toBe(2);
+  });
+
+  it('replays a delete, and asks an update to state its base revision', async () => {
+    const h = a2uiHarness();
+    await createPanel(h);
+    const remove = {
+      taskId: TASK,
+      commandId: 'del',
+      baseRevision: 1,
+      messages: [{ version: 'v0.9.1', deleteSurface: { surfaceId: 'panel' } }],
+    };
+    expect(await h.adapter.apply(remove)).toMatchObject({ outcome: 'accepted' });
+    expect(await h.adapter.apply(remove)).toMatchObject({
+      outcome: 'accepted',
+      receipt: { replayed: true },
+    });
+    const unstated = await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'x',
+      messages: [updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'x' }])],
+    });
+    expect(unstated).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+  });
+});
+
+describe('what an update cannot change', () => {
+  it('refuses audience and classification on an update instead of dropping them', async () => {
+    const h = a2uiHarness();
+    await createPanel(h);
+    const receipt = await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'aud',
+      baseRevision: 1,
+      audience: [],
+      classification: 'sensitive',
+      messages: [updateComponentsMessage('panel', [{ id: 'title', component: 'Text', text: 'x' }])],
+    });
+    expect(receipt).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    expect(receipt.outcome === 'rejected' && receipt.issues.map((issue) => issue.path)).toEqual([
+      '/audience',
+      '/classification',
+    ]);
+    expect(await surfaceField(h, 'panel', 'revision')).toBe(1);
+  });
+});
+
+describe('an action with no value', () => {
+  it('admits the exact envelope the Chat renderer emits for an event with no bindings', async () => {
+    const h = a2uiHarness();
+    await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'ack',
+      complete: true,
+      messages: [
+        createMessage('ack-panel'),
+        updateComponentsMessage('ack-panel', [
+          { id: 'label', component: 'Text', text: 'Acknowledge' },
+          { id: 'go', component: 'Button', child: 'label', action: { event: { name: 'ack' } } },
+          { id: 'root', component: 'Column', children: ['go'] },
+        ]),
+      ],
+      actions: [
+        {
+          name: 'ack',
+          intent: 'submit',
+          continuation: { type: 'signal', sessionId: 'session-1', signalName: 'acked' },
+        },
+      ],
+    });
+    // components/chat/src/lib/a2ui/node-helpers.ts dispatches exactly these fields, with `{}`.
+    const envelope = {
+      version: 'v0.9.1',
+      action: {
+        name: 'ack',
+        surfaceId: 'ack-panel',
+        sourceComponentId: 'go',
+        timestamp: '2026-10-23T12:00:00.000Z',
+        context: {},
+      },
+    };
+    const parsed = parseClientMessage(envelope);
+    if (!parsed.ok || parsed.kind !== 'action') throw new Error('expected an action');
+    const surface = await h.snapshot('ack-panel');
+    const declared = surface.actions.find((entry) => entry.name === 'ack');
+    const admitted = await h.surfaces.act(
+      toActionRequest(parsed.action, { taskId: TASK, commandId: 'act', revision: 1 }, declared),
+    );
+    expect(admitted).toMatchObject({ outcome: 'accepted', value: null });
+    // Without the declared action the empty context stays a value, which the store refuses.
+    const unaware = await h.surfaces.act(
+      toActionRequest(parsed.action, { taskId: TASK, commandId: 'act-2', revision: 1 }),
+    );
+    expect(unaware).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+  });
+});
+
+describe('hostile nesting', () => {
+  it('refuses a deeply nested function call with a structured rejection, not a RangeError', async () => {
+    const h = a2uiHarness();
+    let text: unknown = 'x';
+    for (let depth = 0; depth < 20_000; depth += 1) {
+      text = { call: 'formatString', args: { value: text } };
+    }
+    const receipt = await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'deep',
+      messages: [
+        createMessage('deep'),
+        updateComponentsMessage('deep', [{ id: 'root', component: 'Text', text }]),
+      ],
+    });
+    expect(receipt).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    expect(receipt.outcome === 'rejected' && receipt.issues[0]?.message).toContain('nests deeper');
+  });
+});
+
+describe('the data model on reconnect', () => {
+  it('keeps an explicit null and starts an absent model empty', async () => {
+    const h = a2uiHarness();
+    await createPanel(h);
+    expect(a2uiMessagesOf(await h.snapshot('panel')).at(-1)).toMatchObject({
+      updateDataModel: { path: '/', value: {} },
+    });
+    await h.adapter.apply({
+      taskId: TASK,
+      commandId: 'null',
+      baseRevision: 1,
+      messages: [
+        { version: 'v0.9.1', updateDataModel: { surfaceId: 'panel', path: '/', value: null } },
+      ],
+    });
+    expect(a2uiMessagesOf(await h.snapshot('panel')).at(-1)).toMatchObject({
+      updateDataModel: { path: '/', value: null },
+    });
   });
 });
