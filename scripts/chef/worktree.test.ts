@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Runner } from './process-runner.ts';
@@ -139,6 +147,109 @@ describe('createWorktree with a fake runner', () => {
       ).toThrow(Refusal);
     });
     expect(calls.some((command) => command.includes('--git-common-dir'))).toBe(false);
+  });
+});
+
+describe('createWorktree --install-log', () => {
+  const listing = 'worktree /home/dev/corvidae\nHEAD aaaa\nbranch refs/heads/main\n\n';
+
+  test('resolves a relative log against the caller, and a refused creation leaves none behind', () => {
+    const calls: string[][] = [];
+    const runner: Runner = (command) => {
+      calls.push(command);
+      return { code: 0, stdout: listing, stderr: '' };
+    };
+    const caller = mkdtempSync(join(tmpdir(), 'worktree-caller-'));
+    const previous = process.cwd();
+    try {
+      process.chdir(caller);
+      withConfiguration((configPath) => {
+        // The fake `git worktree add` creates no manifest, so creation is refused before the
+        // install; the probe of the log must not outlive the refusal.
+        expect(() =>
+          createWorktree(
+            {
+              configPath,
+              provider: 'claude',
+              name: 'alpha',
+              branch: 'feature/alpha',
+              installLog: join('logs', 'install.log'),
+            },
+            { runner, checkout: '/home/dev/corvidae' },
+          ),
+        ).toThrow(Refusal);
+      });
+      expect(existsSync(join(caller, 'logs', 'install.log'))).toBe(false);
+    } finally {
+      process.chdir(previous);
+      rmSync(caller, { recursive: true, force: true });
+    }
+  });
+
+  test('a relative log reaches the install command as an absolute path', () => {
+    const installs: string[] = [];
+    withConfiguration((configPath) => {
+      const root = JSON.parse(readFileSync(configPath, 'utf8')).worktreeRoots.claude as string;
+      const caller = mkdtempSync(join(tmpdir(), 'worktree-caller-'));
+      const previous = process.cwd();
+      const runner: Runner = (command) => {
+        if (command.includes('add')) {
+          mkdirSync(join(root, 'alpha'), { recursive: true });
+          writeFileSync(join(root, 'alpha', 'package.json'), JSON.stringify({ name: 'demo' }));
+        }
+        if (command[0] === 'sh') installs.push(command[2] ?? '');
+        return { code: 0, stdout: listing, stderr: '' };
+      };
+      try {
+        process.chdir(caller);
+        createWorktree(
+          {
+            configPath,
+            provider: 'claude',
+            name: 'alpha',
+            branch: 'feature/alpha',
+            installLog: join('logs', 'install.log'),
+          },
+          { runner, checkout: '/home/dev/corvidae' },
+        );
+        expect(installs[0]).toContain(join(realpathSync(caller), 'logs', 'install.log'));
+      } finally {
+        process.chdir(previous);
+        rmSync(caller, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('an unwritable log is a refusal naming the path, before any worktree is added', () => {
+    const calls: string[][] = [];
+    const runner: Runner = (command) => {
+      calls.push(command);
+      return { code: 0, stdout: listing, stderr: '' };
+    };
+    const caller = mkdtempSync(join(tmpdir(), 'worktree-caller-'));
+    try {
+      const blocker = join(caller, 'blocker');
+      writeFileSync(blocker, 'a file, not a directory');
+      const log = join(blocker, 'install.log');
+      withConfiguration((configPath) => {
+        const attempt = () =>
+          createWorktree(
+            {
+              configPath,
+              provider: 'claude',
+              name: 'alpha',
+              branch: 'feature/alpha',
+              installLog: log,
+            },
+            { runner, checkout: '/home/dev/corvidae' },
+          );
+        expect(attempt).toThrow(Refusal);
+        expect(attempt).toThrow(log);
+      });
+      expect(calls.some((command) => command.includes('add'))).toBe(false);
+    } finally {
+      rmSync(caller, { recursive: true, force: true });
+    }
   });
 });
 

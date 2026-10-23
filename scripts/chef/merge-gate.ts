@@ -186,6 +186,69 @@ function viewPullRequest(
   }
 }
 
+/**
+ * Whether `worktree`'s HEAD may be merged against the current `origin/<defaultBranch>`: it contains
+ * it, or it merges cleanly and nothing that landed since touches a workspace the pull request
+ * affects. A string is the reason it may not. The caller fetches first.
+ */
+export function checkMergeBase(
+  runner: Runner,
+  worktree: string,
+  defaultBranch: string,
+): { path: 'contains' | 'merge-tree'; tree?: string } | string {
+  const git = (...args: string[]) => runner(['git', ...args], { cwd: worktree });
+  const containsBase = (): boolean =>
+    git('merge-base', '--is-ancestor', `origin/${defaultBranch}`, 'HEAD').code === 0;
+  const changedFiles = (from: string, to: string): string[] | string => {
+    const diff = git('diff', '--name-only', '--no-renames', from, to);
+    return diff.code === 0
+      ? diff.stdout.split('\n').filter((line) => line !== '')
+      : `git diff ${from.slice(0, 12)}..${to.slice(0, 12)} failed (exit ${diff.code}): ${firstLine(diff.stderr)}`;
+  };
+  if (containsBase()) return { path: 'contains' };
+  const remote = `origin/${defaultBranch}`;
+  const refusal = `HEAD does not contain ${remote}`;
+  const mergeTree = git('merge-tree', '--write-tree', remote, 'HEAD');
+  if (mergeTree.code !== 0)
+    return `${refusal} and does not merge cleanly with it (git merge-tree exit ${mergeTree.code}); merge it in and re-gate.`;
+  const tree = mergeTree.stdout.split('\n')[0]?.trim() ?? '';
+  if (!/^[0-9a-f]{40,64}$/.test(tree))
+    return `${refusal}, and git merge-tree printed no tree to confirm the merge against.`;
+  const mergeBase = git('merge-base', remote, 'HEAD');
+  const baseSha = mergeBase.stdout.trim();
+  if (mergeBase.code !== 0 || baseSha === '')
+    return `${refusal}, and it has no merge base with it: ${firstLine(mergeBase.stderr)}`;
+  const pullRequestFiles = changedFiles(baseSha, 'HEAD');
+  if (typeof pullRequestFiles === 'string') return pullRequestFiles;
+  const baseFiles = changedFiles(baseSha, remote);
+  if (typeof baseFiles === 'string') return baseFiles;
+  // Both sides come from commits, not from the worktree: the gated head, which a dirty worktree
+  // may disagree with, and the default branch, where a dependency edge may have been added.
+  const gitSource = (ref: string): GraphSource => ({
+    read: (path) => {
+      const shown = git('show', `${ref}:${path}`);
+      return shown.code === 0 ? shown.stdout : undefined;
+    },
+    list: (directory) => {
+      const listed = git('ls-tree', '--name-only', ref, `${directory}/`);
+      return listed.code === 0
+        ? listed.stdout
+            .split('\n')
+            .filter((line) => line !== '')
+            .map((line) => line.slice(directory.length + 1))
+        : [];
+    },
+  });
+  const graph = unionGraphs(
+    readWorkspaceGraph(gitSource('HEAD')),
+    readWorkspaceGraph(gitSource(remote)),
+  );
+  const overlap = overlappingFiles(pullRequestFiles, baseFiles, graph);
+  if (overlap.length > 0)
+    return `${refusal}, and ${overlap.length} file(s) that landed on it since the merge base lie in workspaces this pull request affects, so the gate may not describe the merge: ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ', ...' : ''}. Merge it in and re-gate.`;
+  return { path: 'merge-tree', tree };
+}
+
 /** Run the nine steps. Never throws for a failed step; the report names it. */
 export function mergeGate(
   options: MergeGateOptions,
@@ -231,63 +294,7 @@ export function mergeGate(
       ? undefined
       : `${step}: git fetch origin ${defaultBranch} failed (exit ${fetched.code}): ${firstLine(fetched.stderr)}`;
   };
-  const containsBase = (): boolean =>
-    git('merge-base', '--is-ancestor', `origin/${defaultBranch}`, 'HEAD').code === 0;
-  const changedFiles = (from: string, to: string): string[] | string => {
-    const diff = git('diff', '--name-only', '--no-renames', from, to);
-    return diff.code === 0
-      ? diff.stdout.split('\n').filter((line) => line !== '')
-      : `git diff ${from.slice(0, 12)}..${to.slice(0, 12)} failed (exit ${diff.code}): ${firstLine(diff.stderr)}`;
-  };
-  /**
-   * Whether the head may be merged against the current base: it contains it, or it merges cleanly
-   * and nothing that landed since touches a workspace the pull request affects. A string is the
-   * reason it may not.
-   */
-  const checkBase = (): { path: 'contains' | 'merge-tree'; tree?: string } | string => {
-    if (containsBase()) return { path: 'contains' };
-    const remote = `origin/${defaultBranch}`;
-    const refusal = `HEAD does not contain ${remote}`;
-    const mergeTree = git('merge-tree', '--write-tree', remote, 'HEAD');
-    if (mergeTree.code !== 0)
-      return `${refusal} and does not merge cleanly with it (git merge-tree exit ${mergeTree.code}); merge it in and re-gate.`;
-    const tree = mergeTree.stdout.split('\n')[0]?.trim() ?? '';
-    if (!/^[0-9a-f]{40,64}$/.test(tree))
-      return `${refusal}, and git merge-tree printed no tree to confirm the merge against.`;
-    const mergeBase = git('merge-base', remote, 'HEAD');
-    const baseSha = mergeBase.stdout.trim();
-    if (mergeBase.code !== 0 || baseSha === '')
-      return `${refusal}, and it has no merge base with it: ${firstLine(mergeBase.stderr)}`;
-    const pullRequestFiles = changedFiles(baseSha, 'HEAD');
-    if (typeof pullRequestFiles === 'string') return pullRequestFiles;
-    const baseFiles = changedFiles(baseSha, remote);
-    if (typeof baseFiles === 'string') return baseFiles;
-    // Both sides come from commits, not from the worktree: the gated head, which a dirty worktree
-    // may disagree with, and the default branch, where a dependency edge may have been added.
-    const gitSource = (ref: string): GraphSource => ({
-      read: (path) => {
-        const shown = git('show', `${ref}:${path}`);
-        return shown.code === 0 ? shown.stdout : undefined;
-      },
-      list: (directory) => {
-        const listed = git('ls-tree', '--name-only', ref, `${directory}/`);
-        return listed.code === 0
-          ? listed.stdout
-              .split('\n')
-              .filter((line) => line !== '')
-              .map((line) => line.slice(directory.length + 1))
-          : [];
-      },
-    });
-    const graph = unionGraphs(
-      readWorkspaceGraph(gitSource('HEAD')),
-      readWorkspaceGraph(gitSource(remote)),
-    );
-    const overlap = overlappingFiles(pullRequestFiles, baseFiles, graph);
-    if (overlap.length > 0)
-      return `${refusal}, and ${overlap.length} file(s) that landed on it since the merge base lie in workspaces this pull request affects, so the gate may not describe the merge: ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ', ...' : ''}. Merge it in and re-gate.`;
-    return { path: 'merge-tree', tree };
-  };
+  const checkBase = () => checkMergeBase(runner, options.worktree, defaultBranch);
 
   // 1. fetch
   const fetchProblem = fetchBase('fetch');
