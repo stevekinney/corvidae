@@ -466,7 +466,8 @@ describe('workflows-list', () => {
       trigger: TRIGGER,
       steps: STEPS,
     });
-    const listed = (await harness.callTool('workflows-list', {})).result as {
+    const listing = await harness.callTool('workflows-list', {});
+    const listed = listing.result as {
       workflows: Array<{ id: string; hash: string; description: string | null }>;
     };
     expect(listed.workflows).toMatchObject([
@@ -481,7 +482,8 @@ describe('workflows-list', () => {
       steps: STEPS,
     });
     expect(result).toMatchObject({ status: 'ok' });
-    const after = (await harness.callTool('workflows-list', {})).result as {
+    const afterListing = await harness.callTool('workflows-list', {});
+    const after = afterListing.result as {
       workflows: Array<{ description: string | null }>;
     };
     expect(after.workflows[0]?.description).toBe('Writes the daily digest.');

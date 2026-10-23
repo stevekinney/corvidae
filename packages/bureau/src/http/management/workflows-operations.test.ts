@@ -316,7 +316,8 @@ describe('results', () => {
     });
     try {
       const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
-      const [file] = listed.result?.['workflows'] as Array<{ runs: unknown }>;
+      const files = (listed.result?.['workflows'] ?? []) as Array<{ runs: unknown }>;
+      const file = files[0];
       expect(file?.runs).toEqual({
         active: 0,
         last24Hours: 0,
