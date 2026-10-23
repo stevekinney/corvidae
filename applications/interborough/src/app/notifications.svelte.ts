@@ -34,6 +34,8 @@
  * module feeds.
  */
 import type { FleetEventFrame } from '../lib/live-source/fleet-event-source.svelte.ts';
+import type { LiveSourceStatus } from '../lib/live-source/index.ts';
+import { NAVIGATION_COPY } from './copy.ts';
 import { NOTIFICATION_RULES } from './notification-rules.ts';
 
 export type NotificationTier = 'critical' | 'warning' | 'info';
@@ -51,6 +53,27 @@ export interface NotificationItem {
 }
 
 const NOTIFICATION_HISTORY_LIMIT = 50;
+
+/** The one item the host's own problem lives in (`NotificationStore.reportEngineStatus`). */
+export const ENGINE_STATUS_ITEM_ID = 'engine-status';
+
+/** What the bell says for each state of the live feed that is a problem; a state with no entry is not one. */
+const ENGINE_PROBLEMS: Readonly<
+  Partial<Record<LiveSourceStatus, Pick<NotificationItem, 'tier' | 'icon' | 'title' | 'body'>>>
+> = {
+  closed: {
+    tier: 'critical',
+    icon: 'plug-zap',
+    title: NAVIGATION_COPY.engineStatus.closed,
+    body: 'The host did not answer. Check that it is running.',
+  },
+  stale: {
+    tier: 'warning',
+    icon: 'triangle-alert',
+    title: NAVIGATION_COPY.engineStatus.stale,
+    body: 'The engine has not reported in a while. What you see may be out of date.',
+  },
+};
 
 /** Classifies one fleet frame into a `NotificationItem`, or `null` for a kind this module doesn't track (none today — every `EVENTS_READ_EVENT_TYPES` kind has a rule). */
 export function classifyFleetEvent(
@@ -99,6 +122,33 @@ export class NotificationStore {
     const item: NotificationItem = { id: frame.cursor, read: false, ...classified };
     this.items = [item, ...this.items].slice(0, NOTIFICATION_HISTORY_LIMIT);
     return item;
+  }
+
+  /**
+   * Keeps the host's own problem in the list: an unreachable or stale engine is one item under a
+   * fixed id, so a connection that flaps between states replaces it rather than stacking a new
+   * one for each drop, and a recovery removes it. The same state again leaves the item, and
+   * whether it has been read, as it was.
+   */
+  reportEngineStatus(status: LiveSourceStatus, nowMs: number): void {
+    const problem = ENGINE_PROBLEMS[status];
+    const current = this.items.find((item) => item.id === ENGINE_STATUS_ITEM_ID);
+    if (problem === undefined) {
+      if (current !== undefined) this.items = this.items.filter((item) => item !== current);
+      return;
+    }
+    if (current?.title === problem.title) return;
+    const item: NotificationItem = {
+      id: ENGINE_STATUS_ITEM_ID,
+      read: false,
+      href: '/engine',
+      emittedAtMs: nowMs,
+      ...problem,
+    };
+    this.items = [item, ...this.items.filter((existing) => existing.id !== item.id)].slice(
+      0,
+      NOTIFICATION_HISTORY_LIMIT,
+    );
   }
 
   markAllRead(): void {

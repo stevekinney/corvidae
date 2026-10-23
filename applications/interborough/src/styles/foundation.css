@@ -94,6 +94,12 @@
 .weft-shell-sidebar {
   flex: none;
   background: var(--cinder-surface-inset);
+  /* The inset surface sets the sidebar apart from the page; a rule beside it only distracts. */
+  border-inline-end: none;
+}
+
+.weft-shell-sidebar .cinder-sidebar__footer {
+  border-block-start: none;
 }
 
 .weft-shell-sidebar:not(.weft-shell-sidebar--mobile):not(.weft-shell-sidebar--collapsed) {
@@ -124,6 +130,21 @@
   padding: 0;
 }
 
+/* The drawer's header holds the product name and the close button and nothing else, so it is one
+ * compact row with no rule under it, and the drawer has no rule beside it. */
+.cinder-drawer:has(.weft-shell-sidebar--mobile) {
+  border-inline-end: none;
+}
+
+.cinder-drawer:has(.weft-shell-sidebar--mobile) .cinder-drawer__header {
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  border-block-end: none;
+}
+
+.cinder-drawer:has(.weft-shell-sidebar--mobile) .cinder-drawer__title {
+  font-size: var(--cinder-text-md);
+}
+
 .weft-shell-nav-item {
   display: flex;
   align-items: center;
@@ -144,39 +165,24 @@
   white-space: nowrap;
 }
 
-.weft-shell-engine-pill {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: var(--cinder-space-2) var(--cinder-space-3);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface);
-  border: 1px solid var(--cinder-border);
-  color: inherit;
-  text-decoration: none;
-}
-
-@media (hover: hover) {
-  .weft-shell-engine-pill:hover {
-    background: var(--cinder-surface-hover);
-  }
-}
-
-.weft-shell-engine-pill__chevron {
+/* A count is a round for one digit and a pill for more, with room either side of the number. */
+.weft-shell-nav-badge {
   flex: none;
-  color: var(--cinder-text-subtle);
-  margin-inline-start: auto;
+  min-inline-size: 1.25rem;
+  justify-content: center;
+  padding-inline: var(--cinder-space-2);
+  border-radius: var(--cinder-radius-full);
 }
 
-/* Topbar (design: 53px, surface background). */
+/* Topbar: the view's title, then the search trigger, the bell and the theme toggle, which are
+ * ghost buttons of one height. */
 
 .weft-shell-topbar {
   height: 53px;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--cinder-space-2);
   padding: 0 var(--cinder-space-4);
   border-bottom: 1px solid var(--cinder-border);
   background: var(--cinder-surface);
@@ -189,31 +195,27 @@
   white-space: nowrap;
 }
 
-.weft-shell-search-trigger {
+.weft-shell-topbar .weft-shell-search-trigger {
   margin-inline-start: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   min-width: 300px;
   flex: 0 1 auto;
-  padding: var(--cinder-space-2) var(--cinder-space-3);
-  border: 1px solid var(--cinder-border-control);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-inset);
-  color: var(--cinder-text-subtle);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--cinder-text-sm);
+  justify-content: flex-start;
+  color: var(--cinder-text-muted);
+  /* The resting fill and rule Cinder gives a ghost icon button, so the wide trigger and the icon
+   * buttons beside it are one style. */
+  background: color-mix(in oklch, var(--cinder-surface), var(--cinder-text-default) 4%);
+  border-color: var(--cinder-border-muted);
 }
 
 @media (hover: hover) {
-  .weft-shell-search-trigger:hover {
+  .weft-shell-topbar .weft-shell-search-trigger:hover {
     background: var(--cinder-surface-hover);
+    border-color: var(--cinder-border);
     color: var(--cinder-text-default);
   }
 }
 
-.weft-shell-search-trigger span:not(.weft-shell-search-trigger__kbd) {
+.weft-shell-search-trigger__label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -222,75 +224,15 @@
 .weft-shell-search-trigger__kbd {
   margin-inline-start: auto;
   display: flex;
-  gap: 3px;
+  gap: var(--cinder-space-0-5);
   flex: none;
-}
-
-.weft-shell-search-trigger__kbd kbd {
-  font-family: var(--cinder-font-mono);
-  font-size: var(--cinder-text-2xs);
-  padding: var(--cinder-space-0-5) var(--cinder-space-1);
-  border: 1px solid var(--cinder-border);
-  border-radius: 4px;
-  background: var(--cinder-surface);
-}
-
-.weft-shell-principal {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: var(--cinder-space-1) var(--cinder-space-2);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-md);
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-xs);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.weft-shell-scope-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: var(--cinder-space-1) var(--cinder-space-2);
-  border: 1px solid var(--cinder-status-warning-border);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-status-warning-background);
-  color: var(--cinder-status-warning-text);
-  font-size: var(--cinder-text-xs);
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.weft-shell-icon-button {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border: 0;
-  border-radius: var(--cinder-radius-md);
-  background: transparent;
-  color: var(--cinder-text-subtle);
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .weft-shell-icon-button:hover {
-    background: var(--cinder-surface-hover);
-    color: var(--cinder-text-default);
-  }
 }
 
 /* Mobile navigation-drawer trigger — hidden above Cinder Sidebar's own
  * mobile breakpoint (`SIDEBAR_MOBILE_BREAKPOINT`, `47.99rem`); below it,
  * `Sidebar` renders no trigger of its own, so this is the only way to
  * reopen the drawer once closed (`shell.svelte`'s module doc). */
-.weft-shell-menu-trigger {
+.weft-shell-topbar .weft-shell-menu-trigger {
   display: none;
 }
 
@@ -300,12 +242,11 @@
  * own `47.99rem` mobile breakpoint (cinder#735/#801) so the menu trigger
  * appears exactly when `Sidebar` actually becomes a drawer. */
 @media (max-width: 47.99rem) {
-  .weft-shell-menu-trigger {
-    display: grid;
+  .weft-shell-topbar .weft-shell-menu-trigger {
+    display: inline-flex;
   }
 
   .weft-shell-topbar {
-    gap: 8px;
     padding: 0 var(--cinder-space-2);
   }
 
@@ -313,11 +254,16 @@
     display: none;
   }
 
-  .weft-shell-search-trigger {
-    min-width: 0;
-    width: 40px;
-    height: 40px;
-    padding: 0;
+  /* One size for every control in the bar, and a touch target. The search trigger is icon-only at
+   * this width. */
+  .weft-shell-topbar .cinder-button {
+    min-block-size: 2.5rem;
+    min-inline-size: 2.5rem;
+  }
+
+  .weft-shell-topbar .weft-shell-search-trigger {
+    min-width: 2.5rem;
+    padding-inline: 0;
     justify-content: center;
   }
 
@@ -327,7 +273,7 @@
 
   /* Icon-only at this width, but the label stays in the accessibility tree
    * so the button keeps its name for screen readers. */
-  .weft-shell-search-trigger span:not(.weft-shell-search-trigger__kbd) {
+  .weft-shell-search-trigger__label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -339,16 +285,6 @@
     border: 0;
   }
 
-  .weft-shell-scope-pill span,
-  .weft-shell-principal span {
-    display: none;
-  }
-
-  .weft-shell-icon-button {
-    width: 40px;
-    height: 40px;
-  }
-
   .weft-shell-outlet {
     --weft-outlet-gutter: var(--cinder-space-4);
     padding-block-start: var(--cinder-space-3);
@@ -357,10 +293,15 @@
 
 /* Notification bell + dropdown panel (design `Weft New Surfaces.dc.html` §C). */
 
+.weft-notification-bell__icon {
+  position: relative;
+  display: inline-grid;
+}
+
 .weft-notification-bell__count {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  inset-block-start: calc(-1 * var(--cinder-space-2));
+  inset-inline-end: calc(-1 * var(--cinder-space-2));
   min-width: 15px;
   height: 15px;
   padding: 0 var(--cinder-space-1);
@@ -630,12 +571,26 @@
 }
 
 .weft-shell-auth-banner__dismiss {
+  display: grid;
+  place-items: center;
+  flex: none;
   margin-inline-start: auto;
   width: 22px;
   height: 22px;
+  border: 0;
+  border-radius: var(--cinder-radius-md);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
-/* Command palette result groups (skeleton: id-prefix search). */
+/* Command palette result groups: chats and agents first, then the records found by id. */
+
+.weft-command-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cinder-space-2);
+}
 
 .weft-command-group__label {
   display: block;
