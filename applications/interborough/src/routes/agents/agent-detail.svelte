@@ -77,7 +77,11 @@
   const memoryCount = $derived(
     memories.data === undefined
       ? undefined
-      : memories.data.pages.reduce((total, page) => total + page.memories.length, 0),
+      : combinePages(
+          memories.data.pages,
+          (page) => page.memories,
+          (memory) => memory.id,
+        ).length,
   );
   const memoryLabel = $derived(memoryActionText(memoryCount, memories.hasNextPage));
 

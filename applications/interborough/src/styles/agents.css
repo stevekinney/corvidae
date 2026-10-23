@@ -72,6 +72,16 @@
   align-items: center;
 }
 
+/* An identifier is the longest unbroken thing in a row: it breaks where it has to rather than
+ * pushing the page wider than the outlet. */
+.ib-agent-name,
+.ib-agent-id,
+.ib-agent__heading h1 {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
 .ib-agent-name {
   color: var(--cinder-text-default);
   font-weight: 600;

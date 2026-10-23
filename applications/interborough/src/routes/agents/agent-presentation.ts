@@ -20,13 +20,18 @@ export type AgentChatUsage = { readonly count: number; readonly lastChatAt: numb
  * The chat count and last-chat time of each agent, from the sessions the Bureau lists. Both are the
  * Bureau's own figures grouped by the agent each session names: a count is the sessions, and the
  * last-chat time is the latest `updatedAt` among them (a session that is still being talked in
- * counts as used now). An agent with no session has no entry.
+ * counts as used now). A session read twice counts once. An agent with no session has no entry.
  */
 export function chatUsageByAgent(
-  contexts: readonly Pick<ChatContext, 'agentName' | 'updatedAt'>[],
+  contexts: readonly Pick<ChatContext, 'id' | 'agentName' | 'updatedAt'>[],
 ): ReadonlyMap<string, AgentChatUsage> {
   const usage = new Map<string, AgentChatUsage>();
+  // The Bureau pages by offset, and a list that shifts while it is read gives the next page a
+  // session the last one already gave: a session is one chat, so it counts once.
+  const counted = new Set<string>();
   for (const context of contexts) {
+    if (counted.has(context.id)) continue;
+    counted.add(context.id);
     const updated = Date.parse(context.updatedAt);
     const known = usage.get(context.agentName);
     const latest = Number.isNaN(updated) ? null : updated;
@@ -69,7 +74,8 @@ export type AgentFacts = {
     | { readonly kind: 'model'; readonly name: string }
     | { readonly kind: 'unknown' };
   readonly tools: readonly string[] | null;
-  readonly skills: readonly string[];
+  /** Each skill by its identifier, the only thing about it that is unique, and the name it shows as. */
+  readonly skills: readonly { readonly id: string; readonly name: string }[];
 };
 
 export function agentFacts(
@@ -84,7 +90,7 @@ export function agentFacts(
           ? { kind: 'unknown' }
           : { kind: 'model', name: definition.model },
       tools: definition?.tools ?? agent.tools ?? null,
-      skills: definition?.skills.map((skill) => skill.name) ?? [],
+      skills: definition?.skills.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
     };
   }
   // A code-defined agent with no model descriptor is a script. One with descriptors names its model

@@ -384,6 +384,23 @@ describe('one agent’s page', () => {
     ).toMatchObject({ agentName: 'researcher' });
   });
 
+  test('shows two skills that share a name, which only their identifiers tell apart', async () => {
+    const twin = (id: string) => ({ id, name: 'Cite', description: 'Cites sources', tags: [] });
+    serve(FILE_AGENT, {
+      model: 'anthropic/sonnet',
+      tools: [],
+      skills: [twin('cite-a'), twin('cite-b')],
+      instructions: '',
+    });
+    landAt('/agents/researcher');
+
+    const { container, findByText } = mount(AgentDetail);
+
+    await findByText('anthropic/sonnet');
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
+  });
+
   test('says a code agent whose listing names an empty list has no tools', async () => {
     serve({ ...AGENT, tools: [] });
     landAt('/agents/assistant');
@@ -480,6 +497,29 @@ describe('one agent’s page', () => {
     expect(link.getAttribute('href')).toBe('/agents/assistant/memory');
     link.click();
     expect(router.pathname).toBe('/agents/assistant/memory');
+  });
+
+  test('counts a memory once when a list that shifted gave it on two pages', async () => {
+    const memory = (id: string) => ({ ...MEMORY, id });
+    memoryList = (params) =>
+      params['offset'] === 0
+        ? { memories: [memory('a'), memory('b')], nextOffset: 2 }
+        : { memories: [memory('b'), memory('c')], nextOffset: null };
+    serve(AGENT);
+    landAt('/agents/assistant');
+    // The memory page has read both pages, and the agent page reads the same cache.
+    const client = createQueryClient();
+    client.setQueryData(queryKeys.memory.list('assistant'), {
+      pages: [
+        { memories: [memory('a'), memory('b')], nextOffset: 2 },
+        { memories: [memory('b'), memory('c')], nextOffset: null },
+      ],
+      pageParams: [0, 2],
+    });
+
+    const { findByRole } = render(QueryPage, { props: { page: AgentDetail, client } } as never);
+
+    await findByRole('link', { name: 'Memory (3)' });
   });
 
   test('marks a memory count that has more pages unread, and says just Memory for an agent that remembers nothing', async () => {

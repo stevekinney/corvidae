@@ -42,10 +42,10 @@ describe('what an agent’s chats say of its use', () => {
 
   test('counts the sessions of each agent and dates the latest one', () => {
     const usage = chatUsageByAgent([
-      { agentName: 'echo', updatedAt: '2026-10-23T11:00:00.000Z' },
-      { agentName: 'tool-runner', updatedAt: '2026-10-20T11:00:00.000Z' },
-      { agentName: 'echo', updatedAt: '2026-10-23T11:57:00.000Z' },
-      { agentName: 'echo', updatedAt: '2026-10-22T11:00:00.000Z' },
+      { id: 'session-1', agentName: 'echo', updatedAt: '2026-10-23T11:00:00.000Z' },
+      { id: 'session-2', agentName: 'tool-runner', updatedAt: '2026-10-20T11:00:00.000Z' },
+      { id: 'session-3', agentName: 'echo', updatedAt: '2026-10-23T11:57:00.000Z' },
+      { id: 'session-4', agentName: 'echo', updatedAt: '2026-10-22T11:00:00.000Z' },
     ]);
 
     expect(usage.get('echo')).toEqual({
@@ -56,11 +56,21 @@ describe('what an agent’s chats say of its use', () => {
     expect(usage.has('assistant')).toBe(false);
   });
 
+  test('counts a session the Bureau gave twice once, as a list that shifted between page reads does', () => {
+    const usage = chatUsageByAgent([
+      { id: 'session-a', agentName: 'echo', updatedAt: '2026-10-23T11:00:00.000Z' },
+      { id: 'session-b', agentName: 'echo', updatedAt: '2026-10-23T11:30:00.000Z' },
+      { id: 'session-b', agentName: 'echo', updatedAt: '2026-10-23T11:30:00.000Z' },
+    ]);
+
+    expect(usage.get('echo')?.count).toBe(2);
+  });
+
   test('counts a session whose time cannot be read without dating it by it', () => {
     const usage = chatUsageByAgent([
-      { agentName: 'echo', updatedAt: 'not a time' },
-      { agentName: 'echo', updatedAt: '2026-10-23T11:57:00.000Z' },
-      { agentName: 'echo', updatedAt: 'also not a time' },
+      { id: 'session-5', agentName: 'echo', updatedAt: 'not a time' },
+      { id: 'session-6', agentName: 'echo', updatedAt: '2026-10-23T11:57:00.000Z' },
+      { id: 'session-7', agentName: 'echo', updatedAt: 'also not a time' },
     ]);
 
     expect(usage.get('echo')).toEqual({
@@ -68,7 +78,9 @@ describe('what an agent’s chats say of its use', () => {
       lastChatAt: Date.parse('2026-10-23T11:57:00.000Z'),
     });
     expect(
-      lastChatText(chatUsageByAgent([{ agentName: 'echo', updatedAt: 'nope' }]).get('echo')),
+      lastChatText(
+        chatUsageByAgent([{ id: 'session-8', agentName: 'echo', updatedAt: 'nope' }]).get('echo'),
+      ),
     ).toBe(undefined);
   });
 
@@ -101,13 +113,27 @@ describe('an agent’s facts', () => {
     ).toEqual({
       model: { kind: 'model', name: 'anthropic/sonnet' },
       tools: ['lookup-order'],
-      skills: ['Cite'],
+      skills: [{ id: 'cite', name: 'Cite' }],
     });
     expect(agentFacts({ kind: 'file', media: null }, undefined, undefined)).toEqual({
       model: { kind: 'unknown' },
       tools: null,
       skills: [],
     });
+  });
+
+  test('keeps each skill’s identifier, so two skills that share a name stay two', () => {
+    const twin = (id: string) => ({ id, name: 'Cite', description: '', tags: [] });
+    const facts = agentFacts(
+      { kind: 'file', media: null },
+      { ...definition([]), skills: [twin('cite-a'), twin('cite-b')] },
+      undefined,
+    );
+
+    expect(facts.skills).toEqual([
+      { id: 'cite-a', name: 'Cite' },
+      { id: 'cite-b', name: 'Cite' },
+    ]);
   });
 
   test('a code agent that names no model is Scripted, and has the tools its listing names', () => {

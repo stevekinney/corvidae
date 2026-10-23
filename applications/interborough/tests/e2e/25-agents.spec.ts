@@ -212,6 +212,59 @@ for (const width of WIDTHS) {
       await checkA11y(`an agent's page at ${width}px`);
     });
 
+    test('a maximum-length identifier breaks inside the outlet, in the list and on the page', async ({
+      page,
+    }) => {
+      const identifier = `long-${'x'.repeat(59)}`;
+      expect(identifier).toHaveLength(64);
+      // The Bureau answers as it does, with two more agents in the list: one named by its
+      // identifier alone, and one with a short display name beside the long identifier.
+      await page.route('**/bureau/jsonrpc', async (route) => {
+        if (!(route.request().postData() ?? '').includes('"bureau.agents.list"')) {
+          await route.fallback();
+          return;
+        }
+        const response = await route.fetch();
+        const body = (await response.json()) as { result: { agents: unknown[] } };
+        const agent = (name: string, displayName: string) => ({
+          name,
+          displayName,
+          description: null,
+          definitionRevision: 1,
+          kind: 'code',
+          publishState: 'published',
+          media: null,
+          tools: [],
+        });
+        body.result.agents.push(
+          agent(identifier, identifier),
+          agent(`named-${identifier.slice(6)}`, 'Short'),
+        );
+        await route.fulfill({ response, json: body });
+      });
+      // The outlet is what scrolls sideways when a row is wider than it, not the document.
+      const fits = () =>
+        page.evaluate(() => {
+          const outlet = document.querySelector('.weft-shell-outlet');
+          return (
+            outlet !== null &&
+            outlet.scrollWidth <= outlet.clientWidth &&
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth
+          );
+        });
+
+      await page.goto('/agents');
+      await expect(row(page, identifier)).toBeVisible();
+      await expect(row(page, `named-${identifier.slice(6)}`)).toBeVisible();
+      expect(await fits()).toBe(true);
+
+      for (const name of [identifier, `named-${identifier.slice(6)}`]) {
+        await page.goto(`/agents/${name}`);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        expect(await fits()).toBe(true);
+      }
+    });
+
     test('an unpublished agent’s page passes axe', async ({ page, checkA11y }) => {
       await page.goto('/agents/internal');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('internal');

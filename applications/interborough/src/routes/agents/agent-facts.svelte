@@ -78,8 +78,8 @@
     <div class="ib-agent-fact">
       <span class="ib-agent-fact__label">{AGENTS_COPY.skillsLabel}</span>
       <ul class="ib-agent-chips" aria-label={AGENTS_COPY.skillsLabel}>
-        {#each facts.skills as skill (skill)}
-          <li><Badge variant="neutral" size="sm">{skill}</Badge></li>
+        {#each facts.skills as skill (skill.id)}
+          <li><Badge variant="neutral" size="sm">{skill.name}</Badge></li>
         {/each}
       </ul>
     </div>
