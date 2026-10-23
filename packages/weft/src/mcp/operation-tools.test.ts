@@ -298,7 +298,8 @@ describe.each(eras)('injected resources and tool metadata ($era era)', ({ mode }
     const { client } = await connect(mode, strangerContext, {
       resources: [{ ...page, authorize: () => false }],
     });
-    expect((await client.listResources()).resources).toEqual([]);
+    const listed = await client.listResources();
+    expect(listed.resources).toEqual([]);
     await expect(client.readResource({ uri: page.uri })).rejects.toThrow();
   });
 });

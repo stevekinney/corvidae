@@ -221,16 +221,12 @@ function contextOf(request: McpRequestContext): OperationHandlerMountContext {
 
 type CollectionLimits = { readonly maxEvents: number; readonly idleMs: number };
 
-function buildServer(
+/** Register the injected resources the request's caller may see. */
+function registerResources(
+  server: McpServer,
   context: OperationHandlerMountContext,
-  serverInfo: { readonly name: string; readonly title?: string; readonly version: string },
-  limits: CollectionLimits,
   resources: readonly OperationMcpResource[],
-  toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
-): McpServer {
-  const server = new McpServer(serverInfo, {
-    capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
-  });
+): void {
   for (const resource of resources) {
     if (resource.authorize !== undefined && !resource.authorize(context)) continue;
     server.registerResource(
@@ -254,6 +250,19 @@ function buildServer(
       }),
     );
   }
+}
+
+function buildServer(
+  context: OperationHandlerMountContext,
+  serverInfo: { readonly name: string; readonly title?: string; readonly version: string },
+  limits: CollectionLimits,
+  resources: readonly OperationMcpResource[],
+  toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): McpServer {
+  const server = new McpServer(serverInfo, {
+    capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
+  });
+  registerResources(server, context, resources);
   for (const operation of context.operations) {
     if (!operation.mcpExposable || operation.mcpTool !== undefined) continue;
     server.registerTool(
@@ -372,4 +381,12 @@ async function nextOrIdle(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toolMetaOf(
+  toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  name: string,
+): { _meta?: Record<string, unknown> } {
+  const meta = toolMeta[name];
+  return meta === undefined ? {} : { _meta: { ...meta } };
 }
