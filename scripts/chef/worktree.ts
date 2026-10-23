@@ -36,6 +36,7 @@
 
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -43,7 +44,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
@@ -140,15 +141,20 @@ function failure(step: string, result: { stdout: string; stderr: string; code: n
   return new Refusal(`${step} failed (exit ${result.code}): ${detail}`);
 }
 
-function validateName(name: string, label: string, pattern: RegExp): string {
+export function validateName(name: string, label: string, pattern: RegExp): string {
   if (!pattern.test(name) || name.includes('..') || name.endsWith('/') || name.endsWith('.lock'))
     throw new UsageError(`--${label} "${name}" is not a safe ${label}.`);
   return name;
 }
 
-function providerRoot(config: RepositoryConfig, provider: string): string {
+/** Throws a `UsageError` unless `provider` is a known provider. */
+export function validateProvider(provider: string): void {
   if (!providers.includes(provider as Provider))
     throw new UsageError(`--provider must be one of ${providers.join(', ')}.`);
+}
+
+function providerRoot(config: RepositoryConfig, provider: string): string {
+  validateProvider(provider);
   return config.worktreeRoots[provider as Provider];
 }
 
@@ -194,7 +200,6 @@ export function createWorktree(
     throw new UsageError('--scope-paths and --scope-output go together.');
   const base = options.base ?? `origin/${config.defaultBranch}`;
   const path = join(root, name);
-
   // Main-branch ownership preflight: a new worktree never gets the default branch.
   const listing = git(runner, checkout, 'worktree', 'list', '--porcelain');
   if (listing.code !== 0) throw failure('git worktree list', listing);
@@ -205,6 +210,23 @@ export function createWorktree(
     );
   }
   if (existsSync(path)) throw new Refusal(`${path} already exists.`);
+
+  // A relative --install-log is the caller's path, not the worktree's: the install runs inside the
+  // worktree, where a relative log would land (or fail to) somewhere the caller never looks.
+  const resolvedInstallLog = resolve(
+    options.installLog ?? join(dirname(path), `${name}-install.log`),
+  );
+  const logExisted = existsSync(resolvedInstallLog);
+  try {
+    mkdirSync(dirname(resolvedInstallLog), { recursive: true });
+    writeFileSync(resolvedInstallLog, '', { flag: 'a' });
+    // Only a probe: a refusal before the install must not leave a log for an install that never ran.
+    if (!logExisted) rmSync(resolvedInstallLog, { force: true });
+  } catch (error) {
+    throw new Refusal(
+      `Cannot write the install log ${resolvedInstallLog}: ${error instanceof Error ? error.message : String(error)}. Nothing was created.`,
+    );
+  }
 
   const fetch = git(runner, checkout, 'fetch', 'origin', config.defaultBranch);
   if (fetch.code !== 0) throw failure(`git fetch origin ${config.defaultBranch}`, fetch);
@@ -227,7 +249,7 @@ export function createWorktree(
     );
 
   const head = git(runner, path, 'rev-parse', 'HEAD').stdout.trim();
-  const installLog = options.installLog ?? join(dirname(path), `${name}-install.log`);
+  const installLog = resolvedInstallLog;
   const install = runner(
     ['sh', '-c', `(${config.installCommand}) > ${shellQuote(installLog)} 2>&1`],
     { cwd: path },
