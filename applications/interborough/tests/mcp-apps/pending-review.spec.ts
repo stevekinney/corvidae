@@ -26,7 +26,8 @@ test.beforeAll(async () => {
   });
   if (!bundle.success) throw new AggregateError(bundle.logs, 'The reference host did not build');
   hostScript = await bundle.outputs[0]!.text();
-  pageHtml = (await buildPendingReviewPage()).html;
+  const built = await buildPendingReviewPage();
+  pageHtml = built.html;
 });
 
 const review = (id: string, overrides: Record<string, unknown> = {}) => ({
@@ -151,10 +152,12 @@ test.describe('the pending-review MCP App', () => {
     await app.getByRole('button', { name: 'Reject with feedback' }).click();
     const reason = app.getByLabel('Feedback for the agent');
     await reason.fill('draft');
-    const before = (await calls(page, 'bureau.reviews.list')).length;
-    await expect
-      .poll(async () => (await calls(page, 'bureau.reviews.list')).length, { timeout: 10_000 })
-      .toBeGreaterThan(before);
+    const listCalls = async (): Promise<number> => {
+      const made = await calls(page, 'bureau.reviews.list');
+      return made.length;
+    };
+    const before = await listCalls();
+    await expect.poll(listCalls, { timeout: 10_000 }).toBeGreaterThan(before);
     await expect(reason).toHaveValue('draft');
     await expect(reason).toBeFocused();
   });
@@ -187,6 +190,22 @@ test.describe('the pending-review MCP App', () => {
     await app.getByRole('button', { name: 'Approve' }).click();
     await expect(app.getByRole('status')).toContainText('This review changed while you read it.');
     expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(0);
+  });
+
+  test('reports a decision the host refuses, and leaves the review listed', async ({ page }) => {
+    const { app } = await open(page, [review('a')]);
+    await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
+    // A caller who may read reviews but not resolve them: `get` answers, `resolve` is refused.
+    await page.evaluate(() => {
+      window.referenceHost.handlers['bureau.reviews.resolve'] = () => {
+        throw new Error('NotFound');
+      };
+    });
+    await app.getByRole('button', { name: 'Approve' }).click();
+    await expect(app.getByRole('status')).toContainText('The decision was refused');
+    await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
+    const resolves = await calls(page, 'bureau.reviews.resolve');
+    expect(resolves).toHaveLength(1);
   });
 
   test('offers no decision for an expired review', async ({ page }) => {

@@ -55,7 +55,11 @@ async function start(): Promise<void> {
     const now = Date.now();
     renderReviews(
       root,
-      reviews.map((review) => viewReview(review, now)),
+      // Without the host's `serverTools` capability no decision can be made, so none is offered.
+      reviews.map((review) => {
+        const view = viewReview(review, now);
+        return { ...view, decidable: view.decidable && canCallServer() };
+      }),
       states,
       handlers,
       announcement,
@@ -72,7 +76,7 @@ async function start(): Promise<void> {
         !next.some((other) => other.id === review.id) && rowOf(review.id).outcome === null,
     ).length;
     reviews = next;
-    for (const id of [...states.keys()]) {
+    for (const id of states.keys()) {
       if (!next.some((review) => review.id === id) && rowOf(id).outcome === null) states.delete(id);
     }
     notice = canCallServer() ? null : 'This host does not let the page decide; it only lists.';
