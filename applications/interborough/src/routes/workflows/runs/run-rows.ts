@@ -3,20 +3,39 @@
  * are joined. The Bureau's tasks (`bureau.tasks.list`) are the runs of chats and of anything started
  * with `bureau.run()`; a goal's attempts are runs too, but the Bureau does not make them tasks, so
  * they come from `bureau.goals.list`. Each row says which agent ran, what started it (a chat the
- * Bureau still has, a goal, or nothing it can name), how it stands, and when.
+ * Bureau still has, a goal, a schedule's fire, or nothing it can name), how it stands, and when.
  *
- * A schedule's fire is not here: the Bureau records no link from a run to the schedule that
- * started it, so a run a schedule started is listed without its origin.
+ * A run's session is not listed on `/chat` when a goal or a schedule's fire started it (the
+ * session's `origin`), so this list is where it is reached: a goal's row and a fire's row each link
+ * to the session the run ran in.
  */
 import { TASK_COPY } from '../../../app/copy.ts';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
-import { isTerminalState, type TaskState, type TaskView } from '../../../lib/bureau-tasks.ts';
+import {
+  isScheduleFire,
+  isTerminalState,
+  type TaskState,
+  type TaskView,
+} from '../../../lib/bureau-tasks.ts';
 import { chatSessionPath } from '../../../lib/identifier-paths.ts';
 
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
-  | { readonly kind: 'goal'; readonly name: string; readonly href: string }
+  /** A goal's attempt: the goal, and the session the attempt ran in while the Bureau still has it. */
+  | {
+      readonly kind: 'goal';
+      readonly name: string;
+      readonly href: string;
+      readonly session: { readonly title: string; readonly href: string } | null;
+    }
+  /**
+   * A schedule's fire (the task's own `actor`, not the session's origin, which a fire that
+   * continues a chat keeps as `chat`): the session it ran in, named by the text the schedule
+   * delivered when the caller lists that session, and empty when it does not (an operator sees
+   * every owner's fires and lists only their own sessions).
+   */
+  | { readonly kind: 'schedule'; readonly title: string; readonly href: string }
   | { readonly kind: 'none' };
 
 export type RunRow = {
@@ -37,12 +56,13 @@ export type RunRow = {
 };
 
 /** What can start a run, for the filter. */
-export type StartedBy = 'chat' | 'goal';
+export type StartedBy = 'chat' | 'goal' | 'schedule';
 
 /** The words for each way a run can start. */
 export const STARTED_BY_LABELS: Readonly<Record<StartedBy, string>> = {
   chat: 'A chat',
   goal: 'A goal',
+  schedule: 'A schedule',
 };
 
 /** The ranges of time the list can be narrowed to, in milliseconds. */
@@ -69,6 +89,25 @@ function waitSummary(task: TaskView): string {
   return wait.kind === 'tool-approval' ? TASK_COPY.waiting.approval : TASK_COPY.waiting.answer;
 }
 
+function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
+  // The task says what started it. A schedule may continue a chat session, which keeps its `chat`
+  // origin, so the session cannot be asked.
+  // A fire always runs in a session, and its link comes from the task: the caller-owned sessions
+  // listed are only a source of the title. `bureau.contexts.get` decides whether it opens.
+  if (isScheduleFire(task)) {
+    return {
+      kind: 'schedule',
+      title: chat?.title ?? '',
+      href: chatSessionPath(task.contextId),
+    };
+  }
+  // A task that is not a fire is a chat's only when a session the caller lists has its `contextId`:
+  // the wire task does not say whether that id is a session or a catalog run's handle, which no
+  // chat has, so another owner's chat cannot be told from a handle and reads as started directly.
+  if (chat === undefined) return { kind: 'none' };
+  return { kind: 'chat', title: chat.title ?? '', href: chatSessionPath(chat.id) };
+}
+
 function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRow {
   const chat = chats.get(task.contextId);
   const startedAt = Date.parse(task.createdAt);
@@ -83,14 +122,7 @@ function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRo
     id: task.id,
     agentName: task.agentName,
     status: task.status,
-    origin:
-      chat === undefined
-        ? { kind: 'none' }
-        : {
-            kind: 'chat',
-            title: chat.title ?? '',
-            href: chatSessionPath(chat.id),
-          },
+    origin: taskOrigin(task, chat),
     summary,
     startedAt,
     updatedAt,
@@ -106,15 +138,25 @@ const ATTEMPT_STATUS = {
   aborted: 'canceled',
 } as const satisfies Record<Goal['attempts'][number]['status'], TaskState>;
 
-function goalRows(goal: Goal): RunRow[] {
+function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[] {
   return goal.attempts.map((attempt) => {
     const startedAt = Date.parse(attempt.startedAt);
     const completedAt = attempt.completedAt === null ? null : Date.parse(attempt.completedAt);
+    // The link comes from the attempt itself: for a principal with operator reach the goals are
+    // every owner's, and the sessions listed are only the caller's. `bureau.contexts.get` decides
+    // whether the session opens.
+    const title = chats.get(attempt.sessionId)?.title ?? '';
     return {
       id: attempt.runId,
       agentName: goal.agentName,
       status: ATTEMPT_STATUS[attempt.status],
-      origin: { kind: 'goal', name: goal.goalRunId, href: '/goals' },
+      origin: {
+        kind: 'goal',
+        name: goal.goalRunId,
+        href: '/goals',
+        session:
+          attempt.sessionId === '' ? null : { title, href: chatSessionPath(attempt.sessionId) },
+      },
       summary: attempt.status === 'passed' ? '' : (attempt.finishReason ?? ''),
       startedAt,
       updatedAt: completedAt ?? startedAt,
@@ -131,7 +173,7 @@ export function buildRunRows(input: {
 }): RunRow[] {
   const chats = new Map(input.chats.map((chat) => [chat.id, chat] as const));
   const rows = new Map<string, RunRow>();
-  for (const goal of input.goals) for (const row of goalRows(goal)) rows.set(row.id, row);
+  for (const goal of input.goals) for (const row of goalRows(goal, chats)) rows.set(row.id, row);
   // A task is the Bureau's own account of a run, so it wins over a goal's view of the same run.
   for (const task of input.tasks) rows.set(task.id, taskRow(task, chats));
   return [...rows.values()].toSorted((left, right) => right.updatedAt - left.updatedAt);
@@ -170,7 +212,9 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
   return {
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
-    ...(startedBy === 'chat' || startedBy === 'goal' ? { startedBy } : {}),
+    ...(startedBy === 'chat' || startedBy === 'goal' || startedBy === 'schedule'
+      ? { startedBy }
+      : {}),
     ...(since === undefined ? {} : { since }),
   };
 }

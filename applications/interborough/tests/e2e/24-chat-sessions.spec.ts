@@ -1,13 +1,15 @@
 /**
- * Starting, listing, and returning to chat sessions: `/` opens the newest session, `/chat` lists
- * them with load-more paging, `/chat/new` starts one with the agent chosen above the composer and
- * becomes `/chat/:sessionId` without a reload, and a finished session opens on its whole
- * transcript. The page is the real application against the real host.
+ * Starting, listing, and returning to chat sessions: `/` opens the newest chat, `/chat` lists them
+ * with load-more paging, a session a goal or a schedule's fire started is in neither (its run on
+ * `/runs` links to it), `/chat/new` starts one with the agent chosen above the composer and becomes
+ * `/chat/:sessionId` without a reload, and a finished session opens on its whole transcript. The
+ * page is the real application against the real host.
  */
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 
-import { VIEW_COPY } from '../../src/app/copy.ts';
+import { TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
@@ -24,25 +26,190 @@ function sessionOf(page: Page): string {
   return decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1) ?? '');
 }
 
-/** Answers every `bureau.contexts.list` with no sessions, for a page that must see an empty Bureau. */
-async function withNoSessions(page: Page): Promise<void> {
-  await page.route('**/bureau/jsonrpc', async (route) => {
-    if ((route.request().postData() ?? '').includes('"bureau.contexts.list"')) {
-      await route.fulfill({
-        json: {
-          jsonrpc: '2.0',
-          id: 'bureau.contexts.list',
-          result: { contexts: [], nextOffset: null },
-        },
-      });
-      return;
-    }
-    await route.fallback();
+const SEEDED_GOAL_SESSION = 'goal-seeded-goal-s0';
+const SEEDED_GOAL_RUN = 'goal-seeded-goal-a0';
+const WIDTHS = [375, 1280] as const;
+
+type Context = { id: string; origin: string };
+type Fire = { id: string; contextId: string; status: string };
+
+/** One call to the Bureau's management plane, as another client would make it. */
+async function bureau<Result>(
+  request: APIRequestContext,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<Result> {
+  const response = await request.post('/bureau/jsonrpc', {
+    data: { jsonrpc: '2.0', id: method, method, params },
   });
+  const body = (await response.json()) as { result?: Result; error?: unknown };
+  expect(body.error, method).toBeUndefined();
+  return body.result as Result;
 }
 
+/**
+ * A fresh host: its home holds the seed (an agent run on a schedule, and a goal that has already
+ * run in a session of its own) and nothing a person did, so these cases run in order on it. The
+ * second host is the one no case before them uses (`e2e-constants.ts`). What they make is deleted
+ * afterwards, so a server reused between runs is fresh again.
+ */
+test.describe.serial('a fresh Interborough, and the sessions a goal and a schedule start', () => {
+  test.use({ baseURL: E2E_BUREAU_URL });
+
+  const made: string[] = [];
+  let chatId = '';
+  let fireContextId = '';
+  let fireRunId = '';
+  const fireInput = `e2e-fire-${crypto.randomUUID().slice(0, 8)}`;
+  const chatTitle = `A chat I started ${crypto.randomUUID().slice(0, 8)}`;
+
+  test.afterAll(async ({ playwright }) => {
+    const request = await playwright.request.newContext({ baseURL: E2E_BUREAU_URL });
+    for (const contextId of made) {
+      await request.post('/bureau/jsonrpc', {
+        data: {
+          jsonrpc: '2.0',
+          id: 'cleanup',
+          method: 'bureau.contexts.delete',
+          params: { contextId },
+        },
+      });
+    }
+    await request.dispose();
+  });
+
+  for (const width of WIDTHS) {
+    test(`opens / on /chat with a welcome and a New chat link, not on the goal's session, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      // The goal has run, so its session exists and an empty chat list is the filter's doing.
+      const every = await bureau<{ contexts: Context[] }>(request, 'bureau.contexts.list', {});
+      expect(every.contexts.find((context) => context.id === SEEDED_GOAL_SESSION)?.origin).toBe(
+        'goal',
+      );
+      await page.setViewportSize({ width, height: 900 });
+
+      await page.goto('/');
+
+      await expect(page).toHaveURL(/\/chat$/);
+      const frame = page.locator('[data-view="chat"]');
+      await expect(frame).toHaveAttribute('data-state', 'empty');
+      await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+        VIEW_COPY.chat.empty?.title ?? '',
+      );
+      await expect(page.getByRole('link', { name: 'New chat' })).toBeVisible();
+      await checkA11y(`chat — the welcome at ${width}px`);
+    });
+  }
+
+  test('New chat reaches a working /chat/new, and the chat started there is listed and opened by /', async ({
+    page,
+  }) => {
+    await page.goto('/chat');
+    await page.getByRole('link', { name: 'New chat' }).click();
+    await expect(page).toHaveURL(/\/chat\/new$/);
+
+    await send(page, chatTitle);
+
+    await expect(page).toHaveURL(sessionUrl);
+    chatId = sessionOf(page);
+    made.push(chatId);
+    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
+
+    await page.goto('/chat');
+    const rows = page.getByRole('navigation', { name: 'Chats' }).getByRole('listitem');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText(chatTitle);
+    await page.goto('/');
+    await expect(page).toHaveURL(new RegExp(`/chat/${chatId}$`));
+  });
+
+  test('a schedule’s fire makes a session that neither / nor /chat shows, though it is newer than the chat', async ({
+    page,
+    request,
+  }) => {
+    const created = await bureau<{ id: string }>(request, 'bureau.schedules.create', {
+      agentName: 'assistant',
+      spec: '2s',
+      input: fireInput,
+      description: 'e2e fire for the chat list',
+    });
+    try {
+      await expect
+        .poll(
+          async () => {
+            const { tasks } = await bureau<{ tasks: Fire[] }>(request, 'bureau.tasks.list', {});
+            const fire = tasks.find(
+              (task) =>
+                task.contextId.startsWith(`sched-${created.id}-`) && task.status === 'completed',
+            );
+            if (fire !== undefined) {
+              fireRunId = fire.id;
+              fireContextId = fire.contextId;
+            }
+            return fire !== undefined;
+          },
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+    } finally {
+      await bureau(request, 'bureau.schedules.cancel', { scheduleId: created.id });
+    }
+    made.push(fireContextId);
+
+    const every = await bureau<{ contexts: Context[] }>(request, 'bureau.contexts.list', {});
+    expect(every.contexts.find((context) => context.id === fireContextId)?.origin).toBe('schedule');
+    // Newest first: the fire is above the chat, which is above the goal's session.
+    const order = every.contexts.map((context) => context.id);
+    expect(order.indexOf(fireContextId)).toBeLessThan(order.indexOf(chatId));
+    expect(order.indexOf(chatId)).toBeLessThan(order.indexOf(SEEDED_GOAL_SESSION));
+
+    await page.goto('/chat');
+    const rows = page.getByRole('navigation', { name: 'Chats' }).getByRole('listitem');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText(chatTitle);
+    await page.goto('/');
+    await expect(page).toHaveURL(new RegExp(`/chat/${chatId}$`));
+  });
+
+  for (const width of WIDTHS) {
+    test(`lists the goal’s run and the fire’s run on /runs, each with a link to its session, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/runs');
+
+      const goalRow = page.locator(`li.ib-run-row[data-run="${SEEDED_GOAL_RUN}"]`);
+      const fireRow = page.locator(`li.ib-run-row[data-run="${fireRunId}"]`);
+      await expect(goalRow).toHaveCount(1);
+      await expect(fireRow).toHaveCount(1);
+      await expect(goalRow.locator(`a[href="/chat/${SEEDED_GOAL_SESSION}"]`)).toHaveCount(1);
+      await expect(fireRow.locator(`a[href="/chat/${fireContextId}"]`)).toHaveCount(1);
+      await expect(fireRow).toContainText(TASK_COPY.schedule);
+      await checkA11y(`runs — a goal's and a schedule's runs at ${width}px`);
+    });
+  }
+
+  test('opens the goal’s session from its run’s page, and the fire’s from its own', async ({
+    page,
+  }) => {
+    await page.goto(`/runs/${SEEDED_GOAL_RUN}`);
+    await page.getByRole('link', { name: TASK_COPY.openSession }).click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${SEEDED_GOAL_SESSION}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Say hello.');
+
+    await page.goto(`/runs/${fireRunId}`);
+    await page.getByRole('link', { name: TASK_COPY.openSession }).click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${fireContextId}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(fireInput);
+  });
+});
+
 test.describe('the home screen', () => {
-  test('opens the session that was updated most recently', async ({ page, request }) => {
+  test('opens the chat that was updated most recently', async ({ page, request }) => {
     await runToEnd(request, 'assistant', newThreadId('older'), 'An older chat');
     const newest = newThreadId('newest');
     await runToEnd(request, 'assistant', newest, 'The newest chat');
@@ -65,22 +232,6 @@ test.describe('the home screen', () => {
     await page.goBack();
 
     await expect(page).toHaveURL(/\/agents$/);
-  });
-
-  test('lands on /chat when there is no session, and New chat there reaches a working /chat/new', async ({
-    page,
-  }) => {
-    await withNoSessions(page);
-
-    await page.goto('/');
-
-    await expect(page).toHaveURL(/\/chat$/);
-    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'empty');
-    await page.getByRole('link', { name: 'New chat' }).click();
-    await expect(page).toHaveURL(/\/chat\/new$/);
-    await send(page, 'The first message of a first chat');
-    await expect(page).toHaveURL(sessionUrl);
-    await expect(page.getByText('Hello from the assistant.')).toBeVisible();
   });
 });
 
