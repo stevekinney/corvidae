@@ -224,7 +224,10 @@ export function inputFormMessages(surfaceId: string, schema: HumanInputSchema): 
     components.push({
       id: 'field-response',
       component: 'TextField',
-      label: 'Answer as JSON matching the requested schema',
+      // A schema that takes a string takes the text as typed, so asking for JSON would keep the quotes.
+      label: acceptsAsWritten(schema, 'a')
+        ? 'Answer'
+        : 'Answer as JSON matching the requested schema',
       value: { path: '/response' },
       variant: 'longText',
     });

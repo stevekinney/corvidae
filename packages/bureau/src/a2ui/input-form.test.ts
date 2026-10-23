@@ -294,6 +294,19 @@ describe('inputFormMessages', () => {
       'no properties': { type: 'object' },
     };
 
+    it('labels the long-text field as plain text when the schema takes a string', () => {
+      const schema: HumanInputSchema = { type: 'string', minLength: 1 };
+      const { components } = messagesOf(schema);
+
+      expect(components.find((component) => component.id === 'field-response')?.label).toBe(
+        'Answer',
+      );
+      expect(checkFormSubmission(schema, { response: 'Alice' })).toEqual({
+        ok: true,
+        value: 'Alice',
+      });
+    });
+
     for (const [name, schema] of Object.entries(unmapped)) {
       it(`falls back to one long-text TextField for ${name}`, () => {
         const { components } = messagesOf(schema);
