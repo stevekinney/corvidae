@@ -12,7 +12,7 @@
 import { unwatchFile, watch, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { buildBrowserApplication } from './browser-build.ts';
+import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
 import { startHost } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 
@@ -56,6 +56,8 @@ watchFile(ENTRY_PAGE, { interval: 100 }, entryChanged);
 
 async function shutDown(): Promise<void> {
   rebuilds.close();
+  // A build still running would write `build/` after this process has gone.
+  await stopBrowserBuilds();
   unwatchFile(ENTRY_PAGE, entryChanged);
   for (const watcher of watchers) watcher.close();
   await host.close();
