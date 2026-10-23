@@ -39,6 +39,21 @@ export type AdmittedAsset = {
   readonly assetId: string;
   /** The media type admission detected, which the stored row and the history both name. */
   readonly mediaType: string;
+  /**
+   * Set when admission reused an asset the caller already held (`duplicatePolicy: 'reuse'`): the
+   * id is that asset's, which this send did not create and must never delete.
+   */
+  readonly reused?: true | undefined;
+};
+
+/**
+ * The authorized form of a message's files, recorded in the send's ledger claim: the native content
+ * the run receives and the message as the task's history keeps it. A retry completes from it and
+ * never reads the assets again, so an asset that expires between attempts cannot fail it.
+ */
+export type InboundProjection = {
+  readonly content: readonly MultiModalContent[];
+  readonly history: Record<string, unknown>;
 };
 
 /** What planning a message's parts needs. */
@@ -245,7 +260,9 @@ export async function discardAssets(
 ): Promise<void> {
   if (assets === undefined) return;
   await Promise.all(
-    admitted.map(async ({ assetId }) => {
+    admitted.map(async ({ assetId, reused }) => {
+      // An asset admission reused was the caller's before this send: it stays.
+      if (reused === true) return;
       try {
         await assets.delete(assetId, { id: owner }).result();
       } catch {
@@ -277,6 +294,7 @@ export async function admitInline(
         },
         { id: context.owner },
       );
+      // Until it settles, the only asset this call knows it created is the pending one.
       admitted.push({ assetId: admission.assetId, mediaType: part.declaredMediaType });
       const result = await admission.work.result();
       if (result.outcome !== 'completed') {
@@ -287,7 +305,14 @@ export async function admitInline(
       if (!modeAccepted(context.inputModes, detected)) {
         throw unsupported(detected, context.inputModes);
       }
-      admitted[admitted.length - 1] = { assetId: admission.assetId, mediaType: detected };
+      // Under `duplicatePolicy: 'reuse'` the completed admission names the asset that holds the
+      // bytes, which is not the one `admit` returned.
+      const reused = result.value.assetId !== admission.assetId;
+      admitted[admitted.length - 1] = {
+        assetId: result.value.assetId,
+        mediaType: detected,
+        ...(reused ? { reused: true as const } : {}),
+      };
     }
   } catch (error) {
     await discardAssets(assets, context.owner, admitted);
@@ -342,5 +367,25 @@ export function historyMessageOf(
         mediaType: asset.mediaType,
       };
     }),
+  };
+}
+
+/**
+ * The projection to record for a message: its content with each inline part replaced by the asset
+ * it was admitted as, and its history form. `undefined` for a message of text alone.
+ */
+export function projectionOf(
+  message: Message,
+  plan: InboundPlan,
+  admitted: readonly AdmittedAsset[],
+  publicUrl: string,
+): InboundProjection | undefined {
+  if (!plan.hasMedia) return undefined;
+  return {
+    content: contentOf(plan, admitted),
+    history: Message.toJSON(historyMessageOf(message, admitted, publicUrl)) as Record<
+      string,
+      unknown
+    >,
   };
 }

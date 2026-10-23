@@ -91,15 +91,15 @@ import { A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
 import {
   type AdmittedAsset,
   admitInline,
-  contentOf,
   discardAssets,
-  historyMessageOf,
   holdsFileParts,
   holdsMedia,
   type InboundContext,
   type InboundPlan,
+  type InboundProjection,
   modeAccepted,
   planInbound,
+  projectionOf,
 } from './a2a-inbound-parts.ts';
 import { type A2ATaskRecord, type A2ATaskRecords, type A2AWireMessage } from './a2a-task-record.ts';
 import {
@@ -173,6 +173,12 @@ export type A2ASendClaim = {
    * instead of admitting the bytes a second time.
    */
   readonly assets?: readonly AdmittedAsset[] | undefined;
+  /**
+   * For a send with files: their authorized projection (content and history form), decided once
+   * before the claim. A retry of a claim left pending completes from it and never reads the
+   * assets again, so an asset that expired in between cannot fail it.
+   */
+  readonly inbound?: InboundProjection | undefined;
 };
 
 /** Which path a send took: a new task, an answer to a wait, or input to a working task. */
@@ -201,7 +207,7 @@ type Admitted = {
  * asset by its route and never holds bytes.
  */
 type Inbound = {
-  readonly content: ReturnType<typeof contentOf> | undefined;
+  readonly content: InboundProjection['content'] | undefined;
   readonly history: Message;
 };
 
@@ -212,8 +218,8 @@ export type A2ASendResult = {
   readonly path?: SendPath | undefined;
   readonly state?: SendReceiptState | undefined;
   readonly reason?: string | undefined;
-  /** The assets the send's inline bytes were admitted as, so a replay delivers the same input. */
-  readonly assets?: readonly AdmittedAsset[] | undefined;
+  /** The send's authorized projection, so a replay delivers the same input. */
+  readonly inbound?: InboundProjection | undefined;
 };
 
 /** The ledger A2A sends record their bindings in. */
@@ -618,6 +624,17 @@ function parseContinuation(
   return { path, input: input.data };
 }
 
+/** Whether an error is the handler's own refusal of a send: raised before anything took effect. */
+function isRefusal(error: unknown): boolean {
+  return (
+    error instanceof RequestMalformedError ||
+    error instanceof TaskNotFoundError ||
+    error instanceof ContentTypeNotSupportedError ||
+    error instanceof UnsupportedOperationError ||
+    error instanceof CommandReceiptError
+  );
+}
+
 /** Creates the request handler that serves one published agent. */
 export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
@@ -868,7 +885,10 @@ export function createBureauA2ARequestHandler(
           : {
               appendMessages: [
                 {
-                  id: message.messageId,
+                  // The id follows from the whole command (version, agent, message), not the bare
+                  // `messageId`: the same id sent to two agents in one context is two commands, and
+                  // their rows must not collide. A retry derives the same id.
+                  id: `a2a:${version}:${agentName}:${message.messageId}`,
                   role: 'user' as const,
                   content: inbound.content,
                   position: 0,
@@ -1038,15 +1058,12 @@ export function createBureauA2ARequestHandler(
     return outcome;
   }
 
-  /** The message's content for the run and its form in the task's history, given its assets. */
-  function inboundOf(
-    message: Message,
-    plan: InboundPlan,
-    admitted: readonly AdmittedAsset[],
-  ): Inbound {
+  /** The message's content for the run and its form in the task's history, as recorded. */
+  function inboundOf(message: Message, projection: InboundProjection | undefined): Inbound {
+    if (projection === undefined) return { content: undefined, history: message };
     return {
-      content: plan.hasMedia ? contentOf(plan, admitted) : undefined,
-      history: historyMessageOf(message, admitted, options.publicUrl),
+      content: projection.content,
+      history: Message.fromJSON(projection.history),
     };
   }
 
@@ -1058,7 +1075,6 @@ export function createBureauA2ARequestHandler(
   async function currentInputResult(
     message: Message,
     owner: Owner,
-    principal: Principal,
     deadline: number | undefined,
     stored: A2ASendResult,
   ): Promise<A2ASendResult> {
@@ -1067,9 +1083,8 @@ export function createBureauA2ARequestHandler(
       const view = await ownTask(stored.taskId, owner);
       const command = parseContinuation(message, 'input', view, [], inputModes);
       if (command.path !== 'input') return stored;
-      // The replay delivers the input it delivered: the assets the first attempt admitted.
-      const plan = await planInbound(message, inboundContext(principal, owner));
-      const inbound = inboundOf(message, plan, stored.assets ?? []);
+      // The replay delivers the input it delivered, from the projection the first attempt recorded.
+      const inbound = inboundOf(message, stored.inbound);
       const outcome = await submitInput(message, view, owner, deadline, command, inbound);
       return { ...stored, state: inputReceiptState(outcome.receipt.state) };
     } catch {
@@ -1196,13 +1211,7 @@ export function createBureauA2ARequestHandler(
     if (located.state === 'retained' && located.entry.state === 'completed') {
       if (located.entry.payloadDigest !== digest) throw conflict(located.entry.result);
       return admitted(
-        await currentInputResult(
-          message,
-          owner,
-          user.principal,
-          request.deadline,
-          located.entry.result,
-        ),
+        await currentInputResult(message, owner, request.deadline, located.entry.result),
       );
     }
     // A claim an earlier attempt left pending already took effect, or may have: it is finished
@@ -1256,8 +1265,9 @@ export function createBureauA2ARequestHandler(
     // The message's parts, read and authorized before anything is admitted. An answer to a wait
     // reads no file, so only a new task and input to a working task plan any.
     const inboundContextOfCaller = inboundContext(user.principal, owner);
+    // A pending claim that recorded its projection completes from it: the assets are not read again.
     const plan: InboundPlan | undefined =
-      continued === undefined || command?.path === 'input'
+      pending?.inbound === undefined && (continued === undefined || command?.path === 'input')
         ? await planInbound(message, inboundContextOfCaller)
         : undefined;
     // A pending claim's effect may already have moved the revision it was checked against.
@@ -1303,12 +1313,18 @@ export function createBureauA2ARequestHandler(
         ? []
         : await admitInline(plan, inboundContextOfCaller);
     const discardMine = () => discardAssets(assets, owner, mine);
+    // What this send delivers is decided once, here, and the claim records it.
+    const projection =
+      plan === undefined || expired
+        ? undefined
+        : projectionOf(message, plan, mine, options.publicUrl);
     let claimed;
     try {
       claimed = await ledger.claim(identity, digest, {
         ...(path === undefined ? {} : { path }),
         ...(owed === undefined ? {} : owed),
         ...(mine.length === 0 ? {} : { assets: mine }),
+        ...(projection === undefined ? {} : { inbound: projection }),
       });
     } catch (error) {
       await discardMine();
@@ -1327,16 +1343,11 @@ export function createBureauA2ARequestHandler(
     if (claimed.outcome === 'existing') await discardMine();
     if (claimed.outcome === 'existing' && claimed.entry.state === 'completed') {
       return admitted(
-        await currentInputResult(
-          message,
-          owner,
-          user.principal,
-          request.deadline,
-          claimed.entry.result,
-        ),
+        await currentInputResult(message, owner, request.deadline, claimed.entry.result),
       );
     }
     const delivered: readonly AdmittedAsset[] = claimedAssets ?? [];
+    const recorded = claimed.entry.claim.inbound;
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     let result: A2ASendResult;
     // Whether the command may have taken effect: a run created, a wait answered, an input
@@ -1351,9 +1362,9 @@ export function createBureauA2ARequestHandler(
     try {
       // Everything from here may throw with the claim held, so it is inside the try that releases
       // it. An expired command applies nothing and admitted nothing: it reads no assets.
-      if (plan !== undefined && delivered.length === plan.inlineCount) {
-        inbound = inboundOf(message, plan, delivered);
-      } else if (!expired && plan !== undefined) {
+      if (recorded !== undefined) {
+        inbound = inboundOf(message, recorded);
+      } else if (!expired && plan?.hasMedia === true) {
         throw invalid(
           `messageId '${message.messageId}' was already used with a different payload.`,
         );
@@ -1401,15 +1412,20 @@ export function createBureauA2ARequestHandler(
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
       if (claimed.outcome === 'claimed' && !effected) {
-        await ledger.release(entry).catch(() => undefined);
-        // The assets this attempt admitted belonged to a send that took no effect: no row
-        // names them, so they are deleted rather than left to the retention floor.
-        await discardMine();
+        // A failure that is not a refusal may have come after the run or the mailbox record was
+        // committed: the claim then stays, with the assets it names, for the retry to finish.
+        const refused = isRefusal(error);
+        if (refused || delivered.length === 0) {
+          const released = await ledger.release(entry).catch(() => false);
+          // Deleted only when this send provably took no effect and the claim is really gone:
+          // otherwise another attempt may have completed it and its rows name these assets.
+          if (refused && released) await discardMine();
+        }
       }
       throw error;
     }
     const completed: A2ASendResult =
-      delivered.length === 0 ? result : { ...result, assets: delivered };
+      recorded === undefined ? result : { ...result, inbound: recorded };
     await completeSend(ledger, entry, completed, owed, installed);
     return admitted(completed);
   }

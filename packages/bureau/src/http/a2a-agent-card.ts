@@ -22,6 +22,7 @@
  * @module a2a-agent-card
  */
 
+import { normalizeMediaType } from '../assets/media-inspection.ts';
 import type { AgentCard, AgentExtension, AgentSkill } from '@a2a-js/sdk';
 import type { A2AAgentCardInput, A2ASecurityDeclaration } from '@lostgradient/weft/a2a';
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
@@ -92,7 +93,7 @@ export function mediaInputModesOf(
       for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) {
         if (
           allowedMediaTypes === undefined ||
-          allowedMediaTypes.some((allowed) => overlaps(type, allowed))
+          allowedMediaTypes.some((allowed) => overlaps(type, normalizeMediaType(allowed)))
         ) {
           input.add(type);
         }

@@ -99,6 +99,16 @@ async function admissions(opened: OpenedBureau): Promise<number> {
   return records.filter((record) => record.type === 'asset.admission.started').length;
 }
 
+/** The one user row a task's context holds: its row id follows from the whole command. */
+async function userRowOf(opened: OpenedBureau, contextId: string): Promise<Json> {
+  const session = await opened.bureau.getSession(contextId);
+  const rows = Object.values(session!.conversationHistory.messages).filter(
+    (row) => row.role === 'user',
+  );
+  expect(rows).toHaveLength(1);
+  return rows[0];
+}
+
 const png = (padding = 32) => pngBytes(4, 3, padding);
 
 describe('the Agent Card’s input modes', () => {
@@ -158,9 +168,7 @@ describe('a file part on this server’s asset route', () => {
 
       const task = body.result.task ?? body.result;
       expect(task.status.state).toBe('TASK_STATE_COMPLETED');
-      const row = (await opened.bureau.getSession(task.contextId))!.conversationHistory.messages[
-        task.history[0].messageId
-      ]!;
+      const row = await userRowOf(opened, task.contextId);
       expect(row.content).toEqual([
         { type: 'text', text: 'What is this?' },
         {
@@ -288,9 +296,7 @@ describe('inline bytes', () => {
         mediaType: 'image/png',
       });
 
-      const row = (await opened.bureau.getSession(task.contextId))!.conversationHistory.messages[
-        task.history[0].messageId
-      ]!;
+      const row = await userRowOf(opened, task.contextId);
       expect(row.content).toMatchObject([
         { type: 'text', text: 'Look.' },
         { type: 'image', source: { kind: 'managed-asset', assetId } },
@@ -635,6 +641,165 @@ describe('a send whose deadline has already passed', () => {
         expect(await admissions(opened)).toBe(0);
       },
       { durableHistory: true },
+    );
+  });
+});
+
+/** An agent that parks until its run is aborted, so a task stays working. */
+const parked = () =>
+  withBackendDescriptors(
+    (async ({ signal }: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) =>
+        signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+      )) as unknown as GenerateFunction,
+    vision,
+  );
+
+describe('a retry completes from the claim', () => {
+  it('does not read an asset route again: an asset deleted between attempts cannot fail the retry', async () => {
+    await withAgents({ seer: seeing({ calls: 0, rows: [] }) }, async (opened) => {
+      const assetId = await admit(opened, png(90));
+      const real = opened.bureau.createRun.bind(opened.bureau);
+      let failures = 1;
+      opened.bureau.createRun = async (request: Parameters<typeof real>[0]) => {
+        const run = await real(request);
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error('the connection was lost after the run was created');
+        }
+        return run;
+      };
+      const message = messageWith([
+        { text: 'x' },
+        { url: routeOf(assetId), mediaType: 'image/png' },
+      ]);
+
+      const lost = await send(opened, 'seer', message);
+      expect(lost.error).toBeDefined();
+      await opened.bureau.assets!.delete(assetId, { id: ALICE }).result();
+      const retried = await send(opened, 'seer', message);
+
+      expect(retried.error).toBeUndefined();
+      const task = retried.result.task ?? retried.result;
+      expect(task.history[0].parts[1].url).toBe(routeOf(assetId));
+    });
+  });
+
+  it('keeps the assets of an input the mailbox may already hold when its admission throws', async () => {
+    await withAgents({ asker: parked() }, async (opened) => {
+      const working = await send(opened, 'asker', messageWith([{ text: 'start' }]), undefined, {
+        configuration: { returnImmediately: true },
+      });
+      const taskId = (working.result.task ?? working.result).id;
+      const real = opened.bureau.submitSessionInput.bind(opened.bureau);
+      let failures = 1;
+      opened.bureau.submitSessionInput = async (sessionId: string, request: Json) => {
+        const outcome = await real(sessionId, request);
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error('the mailbox record was committed, then the identity write failed');
+        }
+        return outcome;
+      };
+      const message = messageWith(
+        [{ text: 'and this' }, { raw: base64Of(png(91)), mediaType: 'image/png' }],
+        { taskId },
+      );
+      const options = { configuration: { returnImmediately: true } };
+
+      const lost = await send(opened, 'asker', message, undefined, options);
+      expect(lost.error).toBeDefined();
+      const retried = await send(opened, 'asker', message, undefined, options);
+
+      expect(retried.error).toBeUndefined();
+      expect(await admissions(opened)).toBe(1);
+      const task = retried.result.task ?? retried.result;
+      const assetId = decodeURIComponent(
+        task.history.at(-1).parts[1].url.slice(`${PUBLIC_URL}/assets/`.length, -'/content'.length),
+      );
+      const kept = await opened.bureau.assets!.inspect(assetId, { id: ALICE });
+      expect(kept.state).toBe('available');
+    });
+  });
+});
+
+describe('inline bytes under the reuse duplicate policy', () => {
+  it('are the asset the caller already held, which a refused send never deletes', async () => {
+    await withAgents(
+      { seer: seeing({ calls: 0, rows: [] }) },
+      async (opened) => {
+        const bytes = png(92);
+        const held = await admit(opened, bytes);
+        const sent = await send(
+          opened,
+          'seer',
+          messageWith([{ text: 'x' }, { raw: base64Of(bytes), mediaType: 'image/png' }]),
+        );
+        const task = sent.result.task ?? sent.result;
+        expect(task.history[0].parts[1].url).toBe(routeOf(held));
+        const row = await userRowOf(opened, task.contextId);
+        expect(row.content[1].source.assetId).toBe(held);
+
+        const stranger = await opened.bureau.createRun({
+          agentName: 'seer',
+          principal: BOB,
+          message: 'mine',
+        });
+        const refused = await send(
+          opened,
+          'seer',
+          messageWith([{ text: 'x' }, { raw: base64Of(bytes), mediaType: 'image/png' }], {
+            contextId: stranger.sessionId,
+          }),
+        );
+        expect(refused.error?.code).toBe(-32001);
+        const kept = await opened.bureau.assets!.inspect(held, { id: ALICE });
+        expect(kept.state).toBe('available');
+      },
+      { assetPolicy: { duplicatePolicy: 'reuse' } },
+    );
+  });
+});
+
+describe('a messageId sent to two agents', () => {
+  it('creates two tasks, each with its own row', async () => {
+    await withAgents(
+      { one: seeing({ calls: 0, rows: [] }), two: seeing({ calls: 0, rows: [] }) },
+      async (opened) => {
+        const message = messageWith([
+          { text: 'x' },
+          { raw: base64Of(png(93)), mediaType: 'image/png' },
+        ]);
+        const first = await send(opened, 'one', message);
+        const second = await send(opened, 'two', message);
+        expect(first.error).toBeUndefined();
+        expect(second.error).toBeUndefined();
+        expect((first.result.task ?? first.result).id).not.toBe(
+          (second.result.task ?? second.result).id,
+        );
+      },
+    );
+  });
+});
+
+describe('the card under a policy spelled loosely', () => {
+  it('reads allowedMediaTypes as admission does: case and parameters ignored', async () => {
+    await withAgents(
+      { seer: seeing({ calls: 0, rows: [] }) },
+      async (opened) => {
+        const response = await opened.handler(
+          new Request(`${PUBLIC_URL}/a2a/seer/.well-known/agent-card.json`),
+        );
+        const card: Json = await response.json();
+        expect(card.defaultInputModes).toContain('image/*');
+        const sent = await send(
+          opened,
+          'seer',
+          messageWith([{ text: 'x' }, { raw: base64Of(png(94)), mediaType: 'image/png' }]),
+        );
+        expect((sent.result.task ?? sent.result).status.state).toBe('TASK_STATE_COMPLETED');
+      },
+      { assetPolicy: { allowedMediaTypes: ['IMAGE/PNG; charset=binary'] } },
     );
   });
 });
