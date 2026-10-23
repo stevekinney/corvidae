@@ -11,7 +11,7 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Placeholder from '../../routes/placeholder/index.svelte';
-import { ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
+import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
 import { routes } from '../routes.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
@@ -64,9 +64,25 @@ describe('the route outlet', () => {
   test('says when no route owns the path', async () => {
     restore = installFetchImplementation(async () => Response.json({}));
     landAt('/nowhere');
-    const { findByText, container } = mount();
-    expect(await findByText('Page not found')).not.toBeNull();
-    expect(container.querySelector('.weft-view')).toBeNull();
+    const { findByRole, container } = mount();
+    expect(
+      await findByRole('heading', { level: 1, name: NOT_FOUND_ROUTE_COPY.title }),
+    ).not.toBeNull();
+    const frame = container.querySelector('.weft-view');
+    expect(frame?.getAttribute('data-view')).toBe('not-found');
+    expect(frame?.getAttribute('data-state')).toBe('not-found');
+    expect(container.textContent).toContain('/nowhere');
+    expect(container.textContent).toContain(NOT_FOUND_ROUTE_COPY.description);
+  });
+
+  test('offers a way back to the chat list from an address no route owns', async () => {
+    restore = installFetchImplementation(async () => Response.json({}));
+    landAt('/nowhere');
+    const { findByRole } = mount();
+    const link = await findByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label });
+    expect(link.getAttribute('href')).toBe('/chat');
+    link.click();
+    await waitFor(() => expect(router.pathname).toBe('/chat'));
   });
 
   test('is the page’s one main landmark, whatever the route renders', async () => {

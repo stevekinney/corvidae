@@ -77,6 +77,7 @@ import {
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
+import { isShellNavigation } from './shell-request.ts';
 import { createHostMemory } from './memory.ts';
 import {
   createCatalogGenerate,
@@ -238,20 +239,28 @@ async function assetResponse(buildDirectory: string, pathname: string): Promise<
   });
 }
 
-type PublicRoutes = Bun.Serve.Routes<WebSocketRelayData, string>;
-
-/**
- * The route table for the application: `index.html` for every client route, and the build's
- * assets. The routes are the client router's own patterns, so a route added there is served here.
- */
-function applicationRoutes(buildDirectory: string, refuse: Guard): PublicRoutes {
-  const shell = async (): Promise<Response> => {
+/** The application's one page, `index.html`, which the client router takes over. */
+function shellResponder(buildDirectory: string): () => Promise<Response> {
+  return async () => {
     const page = Bun.file(join(buildDirectory, 'index.html'));
     if (!(await page.exists())) return missingBuild();
     return new Response(page, {
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
     });
   };
+}
+
+type PublicRoutes = Bun.Serve.Routes<WebSocketRelayData, string>;
+
+/**
+ * The route table for the application: `index.html` for every client route, and the build's
+ * assets. The routes are the client router's own patterns, so a route added there is served here.
+ */
+function applicationRoutes(
+  buildDirectory: string,
+  refuse: Guard,
+  shell: () => Promise<Response>,
+): PublicRoutes {
   const table: PublicRoutes = {
     '/assets/*': {
       GET: (request) =>
@@ -381,11 +390,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<WebSocketRelayData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
+    const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
+    const shell = shellResponder(buildDirectory);
     const publicServer = Bun.serve<WebSocketRelayData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
       routes: {
-        ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY, refuse),
+        ...applicationRoutes(buildDirectory, refuse, shell),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
           refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
@@ -399,6 +410,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
         if (!isEngineRequestPath(new URL(request.url).pathname)) {
+          // An address no client route names: the router renders its not-found view inside the
+          // shell. A miss on an asset, the engine, or the Bureau stays a 404.
+          if (isShellNavigation(request)) return shell();
           return new Response('Not found', { status: 404 });
         }
         const { url, key } = await upstream;
