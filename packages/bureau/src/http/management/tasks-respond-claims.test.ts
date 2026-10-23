@@ -415,3 +415,70 @@ describe('bureau.tasks.respond and a retry after the approval was gated again', 
     expect(await ledger.read(decisionIdentity)).toMatchObject({ claim: { round: 2 } });
   });
 });
+
+describe('bureau.tasks.respond delivers a form submission to the review its claim names', () => {
+  const schema = {
+    type: 'object',
+    properties: { name: { type: 'string' } },
+    required: ['name'],
+  };
+  const otherReviewId = 'human-wait:run-1:other:1';
+  const otherWait = { kind: 'human-wait' as const, reviewId: otherReviewId, signalName: 'other' };
+  const formReview = (id: string) => ({
+    ...resolved('pending', undefined),
+    id,
+    inputSchema: schema,
+  });
+  const submit = (data: unknown) => ({ taskId: 'run-1', messageId: 'm1', data });
+  const getReview = async (id: string) => formReview(id) as never;
+
+  it('validates and delivers the data when a retry now sees two waits and no signal name', async () => {
+    const ledger = newLedger();
+    await ledger.claim(identity, digestCommandPayload({ data: JSON.stringify({ name: 'x' }) }), {
+      reviewId,
+    });
+    const delivered: unknown[] = [];
+
+    const result = await tasksRespondOperation.invoke({
+      input: submit({ name: 'x' }),
+      host: hostOver(ledger, {
+        openWaits: [openWait, otherWait],
+        getReview,
+        resolveReview: async (request) => {
+          delivered.push(request);
+          return {
+            id: request.id,
+            kind: 'human-wait' as const,
+            decision: 'approve' as const,
+            result: { outcome: 'completed' },
+          } as never;
+        },
+      }),
+      principal,
+    } as never);
+
+    expect(result).toMatchObject({ reviewId, receipt: 'applied' });
+    expect(delivered).toEqual([expect.objectContaining({ id: reviewId, payload: { name: 'x' } })]);
+  });
+
+  it('refuses invalid data on that retry and leaves the claim pending', async () => {
+    const ledger = newLedger();
+    await ledger.claim(identity, digestCommandPayload({ data: JSON.stringify({ name: 1 }) }), {
+      reviewId,
+    });
+
+    let fault: unknown;
+    try {
+      await tasksRespondOperation.invoke({
+        input: submit({ name: 1 }),
+        host: hostOver(ledger, { openWaits: [openWait, otherWait], getReview }),
+        principal,
+      } as never);
+    } catch (error) {
+      fault = error;
+    }
+
+    expect(fault).toMatchObject({ code: 'InvalidParams' });
+    expect(await ledger.read(identity)).toMatchObject({ state: 'pending' });
+  });
+});

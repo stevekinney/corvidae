@@ -231,12 +231,11 @@ function unprocessable(message: string, reason: string): OperationFault {
  */
 async function checkedSubmission(
   host: BureauTasksRespondOperationHost,
-  wait: OpenWait,
+  reviewId: string,
   input: z.infer<typeof tasksRespondInput>,
 ): Promise<{ readonly value: unknown } | undefined> {
   // A task's view names its waits by identifier only: the schema is on the review.
-  const review =
-    wait.kind === 'human-wait' ? await host.reviews.getReview(wait.reviewId) : undefined;
+  const review = await host.reviews.getReview(reviewId);
   const schema = review?.kind === 'human-wait' ? review.inputSchema : undefined;
   if (input.data === undefined) {
     if (schema === undefined) return undefined;
@@ -380,7 +379,7 @@ async function respond({
     let submissionRefusal: unknown;
     if (wait !== undefined) {
       try {
-        submission = await checkedSubmission(host, wait, input);
+        submission = await checkedSubmission(host, wait.reviewId, input);
       } catch (error) {
         submissionRefusal = error;
       }
@@ -418,6 +417,17 @@ async function respond({
     // another attempt made belongs to it: that attempt may be resolving the review right
     // now, possibly in another process, and deleting its claim would lose its receipt.
     const ownClaim = claimed.outcome === 'claimed';
+    // The payload belongs to the review the claim names, not to the wait selected now: a retry
+    // can select a different wait, or none, and must still deliver the data it was sent with.
+    if (reviewId !== '' && reviewId !== wait?.reviewId) {
+      submission = undefined;
+      submissionRefusal = undefined;
+      try {
+        submission = await checkedSubmission(host, reviewId, input);
+      } catch (error) {
+        submissionRefusal = error;
+      }
+    }
     const refuse = async (fault: unknown): Promise<never> => {
       // The Bureau refused it before changing anything, so a retry may claim afresh.
       if (ownClaim) await host.respondLedger.release(entry);
