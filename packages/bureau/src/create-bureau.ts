@@ -4092,6 +4092,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `BureauOptions.onEvent`.
   const BOOT_FRAME_BUFFER_LIMIT = 1024;
   let recoveryPassActive = false;
+  /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
+  let taskResyncBootPass: Promise<void> | undefined;
   const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
@@ -9079,7 +9081,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       });
       // COR-1669: a task whose settlement was written but whose event never was. Not awaited, so
-      // the boot takes no extra turn; tracked, so a shutdown waits for it before storage closes.
+      // the boot takes no extra turn; held in `taskResyncBootPass`, which `shutdown()` awaits
+      // before storage closes.
       const repaired = taskResyncInstance?.repairAll().then(
         () => undefined,
         (error: unknown) => {
@@ -9091,7 +9094,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           });
         },
       );
-      if (repaired !== undefined) runtimeServices.deferred.track(repaired, 'task-resync-boot');
+      if (repaired !== undefined) {
+        taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
+      }
       return report;
     } finally {
       recoveryPassActive = false;
@@ -17284,6 +17289,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (automaticRunOwnershipPruneCurrentPass) {
         await automaticRunOwnershipPruneCurrentPass;
       }
+      if (taskResyncBootPass) await taskResyncBootPass;
       // AB-388: drain any manual `runDurableMaintenance()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either

@@ -28,6 +28,9 @@ import {
 type Faults = {
   /** How many of the next appends to the durable history fail. */
   failAppends: number;
+  /** When set, the boot repair's listing of owed tasks waits for it, and `held` resolves once one is waiting. */
+  hold?: Promise<void>;
+  held?: () => void;
 };
 
 type Faulty = { readonly storage: Storage; readonly faults: Faults };
@@ -53,6 +56,19 @@ async function faultyStorage(): Promise<Faulty> {
   const storage = new Proxy(base, {
     get(target, property) {
       const value = Reflect.get(target, property, target) as unknown;
+      if (property === 'keys' && faults.hold !== undefined) {
+        return async function* (...parameters: unknown[]) {
+          // The boot repair's own listing of the tasks it owes, not the reconcile's before it.
+          if (new Error().stack?.includes('resyncCandidates') === true) {
+            faults.held?.();
+            await faults.hold;
+          }
+          yield* (value as (...arguments_: unknown[]) => AsyncIterable<unknown>).call(
+            target,
+            ...parameters,
+          );
+        };
+      }
       if (property === 'conditionalBatch') {
         return async (
           conditions: unknown,
@@ -398,4 +414,47 @@ describe('the task event projection of task.resynced', () => {
       undefined,
     );
   });
+
+  it('holds shutdown until the boot repair has finished, before storage closes', async () => {
+    const faulty = await faultyStorage();
+    let finished: () => void = () => undefined;
+    const done = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
+    const first = await open(
+      faulty,
+      parksThenAnswers(() => {
+        faulty.faults.failAppends = 1_000;
+        finished();
+      }),
+    );
+    const run = await park(first, faulty.faults, 0);
+    await answer(first, run.id);
+    await done;
+    await waitForCondition(() => first.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await first.dispose();
+    faulty.faults.failAppends = 0;
+    await clearMark(faulty, run.id);
+
+    const release = Promise.withResolvers<void>();
+    const reached = Promise.withResolvers<void>();
+    faulty.faults.hold = release.promise;
+    faulty.faults.held = reached.resolve;
+    const second = await open(faulty, async () => ({ content: 'unused', toolCalls: [] }));
+    await reached.promise;
+
+    let disposed = false;
+    const disposing = second.bureau.shutdown().then(() => {
+      disposed = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(disposed).toBe(false);
+
+    release.resolve();
+    await disposing;
+    expect(disposed).toBe(true);
+    faulty.faults.hold = undefined;
+    const third = await open(faulty, async () => ({ content: 'unused', toolCalls: [] }));
+    expect(await resyncCount(third, run.id)).toBe(1);
+  }, 30_000);
 });
