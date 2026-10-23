@@ -100,6 +100,18 @@
   width: 232px;
 }
 
+/* A file path is the longest unbroken thing on a page. Cinder's code location never wraps it, so
+ * on a phone a long path pushed its page wider than the outlet and the outlet scrolled sideways.
+ * It stays inside its parent and breaks where it has to. */
+.cinder-code-location {
+  max-inline-size: 100%;
+}
+
+.cinder-code-location code {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
 /* In the mobile drawer the navigation is the drawer's whole body. Cinder's drawer pads its body
  * and the sidebar paints the inset surface, so together they box the navigation in a gutter
  * inside the drawer; the drawer's own surface is the background here, and the body has no

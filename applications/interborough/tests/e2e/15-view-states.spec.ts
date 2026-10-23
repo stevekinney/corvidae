@@ -178,6 +178,17 @@ for (const view of VIEW_NAMES) {
           scrollWidth,
           `${view} — ${outcome} at ${width}px scrolls sideways`,
         ).toBeLessThanOrEqual(width);
+        // The shell clips the document (`.weft-shell` is `overflow: hidden`), so a page that is
+        // simply too wide scrolls the outlet instead and the check above passes. The outlet is
+        // what must not overflow (COR-1647).
+        const outlet = await page.locator('main.weft-shell-outlet').evaluate((element) => ({
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+        }));
+        expect(
+          outlet.scrollWidth,
+          `${view} — ${outcome} at ${width}px scrolls the outlet sideways`,
+        ).toBeLessThanOrEqual(outlet.clientWidth);
       });
     }
   }
