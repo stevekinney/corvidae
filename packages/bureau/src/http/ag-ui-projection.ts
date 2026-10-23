@@ -27,7 +27,11 @@
 
 import { type Event, EventType, type TokenUsage } from '@ag-ui/core';
 import { materializeToolResult, toAGUIToolMessage } from 'conversationalist';
-import { assistantMessageIdentifier, toolResultMessageIdentifier } from '@lostgradient/operative';
+import {
+  assistantMessageIdentifier,
+  isFailureFinishReason,
+  toolResultMessageIdentifier,
+} from '@lostgradient/operative';
 
 import { assetPartsOf } from './ag-ui-asset-parts.ts';
 import {
@@ -185,10 +189,12 @@ export class RunProjector {
         this.tripwire = true;
         return { events: [] };
       case RECORDED.runCompleted:
-        // COR-1627: a run that stopped at its step limit is a failure, which ends the AG-UI run
-        // with `RUN_ERROR`. Its `run.error` came first and projects no ending, so the stream does
-        // not end before the `onMaximumSteps` answer, which only this record carries.
-        if (data['finishReason'] === 'maximum-steps') {
+        // COR-1627: the completion of a run that failed ends the AG-UI run with `RUN_ERROR`, by
+        // the one predicate, so a reader that ends on the last terminal record (a replay, a
+        // history read) ends in the error its `run.error` announced. For a run that stopped at
+        // its step limit the `run.error` projected no ending, so the stream does not end before
+        // the `onMaximumSteps` answer, which only this record carries.
+        if (isFailureFinishReason(data['finishReason'])) {
           return {
             events: this.maximumStepsTail(data),
             terminal: { ...this.ending('error', detail), recordedAs: RECORDED.runCompleted },
@@ -196,16 +202,12 @@ export class RunProjector {
         }
         return { events: this.maximumStepsTail(data), terminal: this.ending('completed', detail) };
       case RECORDED.runError:
-        // Only a `run.error` the run itself classifies as a step limit is deferred to the
-        // `run.completed` that follows: a thrown error that merely carries the code is a plain
-        // `error` there, and ends the stream here. A record from before the payload carried a
-        // finish reason is deferred by its code, as it was.
-        if (
-          errorOf(detail).code === MAXIMUM_STEPS_CODE &&
-          (data['finishReason'] === undefined || data['finishReason'] === 'maximum-steps')
-        ) {
-          return { events: [] };
-        }
+        // Only a `run.error` whose run finished at its step limit is deferred to the
+        // `run.completed` that follows, which carries the `onMaximumSteps` answer. Every other
+        // `run.error` ends the stream here, a record from before the payload carried a finish
+        // reason included: `main` recorded no `run.error` for a run that ran out of steps, so such
+        // a record is a thrown error, which ended the stream then as it does now.
+        if (data['finishReason'] === 'maximum-steps') return { events: [] };
         return { events: [], terminal: this.ending('error', detail) };
       case RECORDED.runAborted:
         return { events: [], terminal: this.ending('aborted', detail) };

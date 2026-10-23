@@ -290,3 +290,35 @@ describe('a peer stream of a run that stops at its step limit', () => {
     );
   });
 });
+
+describe('a retry of the start of a run that already failed', () => {
+  // The same replay as above, for every failure: the run recorded `run.error` and then the
+  // `run.completed` that carries its finish reason, and reading to the last of them must still
+  // end the stream in the error.
+  it('streams the ended run again, ending with RUN_ERROR and never RUN_FINISHED', async () => {
+    await withPeers(
+      { script: [{ kind: 'fail', error: new Error('provider said no') }] },
+      async (harness) => {
+        const first = await startOn(harness.handler);
+        await first.reader.rest();
+        expect(harness.bureau.listRuns()[0]!.status).toBe('error');
+        expect(first.reader.received.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          message: 'provider said no',
+        });
+
+        const retry = await startOn(harness.handler);
+        await retry.reader.rest();
+        const frames = retry.reader.received;
+
+        expect(harness.bureau.listRuns()).toHaveLength(1);
+        expect(retry.nativeRunId).toBe(first.nativeRunId);
+        expect(typesOf(frames)).not.toContain(EventType.RUN_FINISHED);
+        expect(frames.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          message: 'provider said no',
+        });
+      },
+    );
+  });
+});

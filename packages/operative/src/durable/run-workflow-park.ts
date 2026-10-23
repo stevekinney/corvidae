@@ -2,6 +2,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
 import { Conversation, withMessageId } from 'conversationalist';
 
+import { isFailureFinishReason } from '../finish-reason';
 import { signalMessageIdentifier } from '../message-identifiers';
 import type { FinishReason } from '../types';
 import {
@@ -23,7 +24,8 @@ export type WorkflowParkContext = Pick<
 export interface WorkflowParkState {
   snapshot: ReturnType<Conversation['snapshot']>;
   cursor: RunCursor;
-  finishReason: FinishReason;
+  /** The reason the loop ended with, or `undefined` when it broke out to park (COR-1627). */
+  finishReason: FinishReason | undefined;
   errorMessage?: string | undefined;
   abortReason?: string | undefined;
   schemaValidation?: { success: boolean; error?: string | undefined } | undefined;
@@ -59,15 +61,12 @@ export function* runWorkflowPark(
   ctx: WorkflowParkContext,
   state: WorkflowParkState,
 ): WorkflowOperation<boolean> {
-  // Not `isFailureFinishReason` (COR-1627): while a run is parked its `finishReason` is the loop's
-  // default, `maximum-steps`, which is where a run waiting on a sleep or a signal stands and so
-  // not a failure here. An abort is not a failure by that predicate either, but it still ends the run.
+  // A loop that broke out to park carries no finish reason yet. One that ended in a failure, by
+  // the one predicate (COR-1627), or in an abort, which is not a failure but still ends the run,
+  // does not park: the request its step registered is left unfired. A stop parks and continues.
   const isFailureOutcome =
-    state.finishReason === 'error' ||
-    state.finishReason === 'aborted' ||
-    state.finishReason === 'elicitation-denied' ||
-    state.finishReason === 'budget-exceeded' ||
-    state.finishReason === 'tripwire';
+    state.finishReason !== undefined &&
+    (isFailureFinishReason(state.finishReason) || state.finishReason === 'aborted');
 
   if (!isFailureOutcome && state.pendingWakeup !== undefined) {
     const requestedDuration = state.pendingWakeup.duration;
@@ -158,7 +157,7 @@ export function* runWorkflowPark(
 }
 
 function resetTerminalState(state: WorkflowParkState): void {
-  state.finishReason = 'maximum-steps';
+  state.finishReason = undefined;
   state.errorMessage = undefined;
   state.abortReason = undefined;
   state.schemaValidation = undefined;

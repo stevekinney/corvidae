@@ -211,12 +211,17 @@ describe('a run that stopped at its step limit (COR-1627)', () => {
   };
 
   it('does not end on the run.error, which projects nothing', () => {
-    expect(projector().handleRecorded(RECORDED.runError, stepLimitError)).toEqual({ events: [] });
+    expect(
+      projector().handleRecorded(RECORDED.runError, {
+        ...stepLimitError,
+        finishReason: 'maximum-steps',
+      }),
+    ).toEqual({ events: [] });
   });
 
   it('ends in the error on the run.completed that follows, after the handler’s row', () => {
     const run = projector();
-    run.handleRecorded(RECORDED.runError, stepLimitError);
+    run.handleRecorded(RECORDED.runError, { ...stepLimitError, finishReason: 'maximum-steps' });
 
     const ended = run.handleRecorded(RECORDED.runCompleted, {
       finishReason: 'maximum-steps',
@@ -237,13 +242,14 @@ describe('a run that stopped at its step limit (COR-1627)', () => {
     });
   });
 
-  it('does not end on a run.error whose payload says the run finished at its step limit', () => {
-    expect(
-      projector().handleRecorded(RECORDED.runError, {
-        ...stepLimitError,
-        finishReason: 'maximum-steps',
-      }),
-    ).toEqual({ events: [] });
+  it('ends on a run.error that carries the step-limit code but no finish reason', () => {
+    // A record from before the payload carried a finish reason: `main` never recorded a
+    // `run.error` for a run that ran out of steps, so such a record is a thrown error, which
+    // `main` ended the stream on, and the `run.completed` that follows it says `error` too.
+    const ended = projector().handleRecorded(RECORDED.runError, stepLimitError);
+
+    expect(ended.terminal).toMatchObject({ outcome: 'error' });
+    expect(errorOf(ended.terminal?.detail)).toMatchObject({ code: 'MAXIMUM_STEPS' });
   });
 
   it('ends on a run.error that carries the step-limit code but finished as a plain error', () => {
@@ -264,6 +270,40 @@ describe('a run that stopped at its step limit (COR-1627)', () => {
     });
 
     expect(ended.terminal).toMatchObject({ outcome: 'error' });
+    expect(ended.terminal?.recordedAs).toBeUndefined();
+  });
+});
+
+describe('the run.completed of a run that failed (COR-1627)', () => {
+  // Every failure records `run.error` and then the `run.completed` that carries its finish
+  // reason. A replay that reads to the last terminal, or a history read that keeps the last one,
+  // must still end in the error: the completion of a failed run is not a success.
+  it.each(['error', 'tripwire', 'elicitation-denied', 'budget-exceeded', 'maximum-steps'])(
+    'ends in the error for finishReason %s',
+    (finishReason) => {
+      const ended = projector().handleRecorded(RECORDED.runCompleted, {
+        finishReason,
+        content: '',
+        steps: [],
+        error: JSON.stringify({ message: 'it failed', code: 'UNKNOWN' }),
+      });
+
+      expect(ended.terminal).toMatchObject({
+        outcome: 'error',
+        recordedAs: RECORDED.runCompleted,
+      });
+      expect(errorOf(ended.terminal?.detail)).toEqual({ code: 'UNKNOWN', message: 'it failed' });
+    },
+  );
+
+  it('ends in a success for a stop condition', () => {
+    const ended = projector().handleRecorded(RECORDED.runCompleted, {
+      finishReason: 'stop-condition',
+      content: 'Done.',
+      steps: [],
+    });
+
+    expect(ended.terminal).toMatchObject({ outcome: 'completed' });
     expect(ended.terminal?.recordedAs).toBeUndefined();
   });
 });

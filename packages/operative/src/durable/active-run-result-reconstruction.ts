@@ -159,7 +159,10 @@ export function reconstructTerminalRunError(
   args: ReconstructTerminalRunErrorArgs,
 ): AgentRunError | undefined {
   if (args.finishReason === 'maximum-steps') {
-    return new MaximumStepsExceededError(args.steps);
+    // No message means the loop ran out of steps, so the limit is the count it committed. A
+    // message is a step-limit error a step, tool, or hook threw and the workflow checkpointed
+    // (COR-1627): the error it reports is that one, with the limit that error named.
+    return new MaximumStepsExceededError(args.steps, args.errorMessage);
   }
   if (args.finishReason === 'aborted') {
     return new AbortAgentRunError(args.abortReason);

@@ -129,3 +129,58 @@ describe('a run that stops at its step limit', () => {
     expect(observed.map(({ type }) => type)).toEqual(['run.completed']);
   });
 });
+
+describe('a run that throws a step-limit error of its own (COR-1627)', () => {
+  // The in-process rows of the durable loop's outcome matrix (`run-workflow-outcomes.test.ts`):
+  // a thrown `MaximumStepsExceededError` ends through `makeErrorResult` as `maximum-steps`, with
+  // the step's own `run.error` and the limit the error named, not the count of steps the run ran.
+  const thrown = () => new MaximumStepsExceededError(9);
+  const rows: ReadonlyArray<{ name: string; options: () => RunOptions; steps: number }> = [
+    {
+      name: 'generate throws it',
+      options: () => ({
+        ...neverStopping({ maximumSteps: 5 }),
+        generate: async () => {
+          throw thrown();
+        },
+      }),
+      steps: 0,
+    },
+    {
+      name: 'an afterToolExecution hook throws it',
+      options: () => {
+        const hooks = new HookRegistry<OperativeHookMap>();
+        hooks.on('afterToolExecution', async () => {
+          throw thrown();
+        });
+        return neverStopping({ maximumSteps: 5, hooks });
+      },
+      steps: 0,
+    },
+  ];
+
+  for (const row of rows) {
+    it(`ends as maximum-steps with that error, once, when ${row.name}`, async () => {
+      const hookErrors: unknown[] = [];
+      const options = row.options();
+      const hooks = options.hooks ?? new HookRegistry<OperativeHookMap>();
+      hooks.on('onRunError', async ({ error }) => {
+        hookErrors.push(error);
+      });
+      const activeRun = createActiveRun({ ...options, hooks });
+      const observed = observe(activeRun);
+
+      const result = await activeRun.result;
+      await activeRun.closed();
+
+      expect(result.finishReason).toBe('maximum-steps');
+      expect(result.steps).toHaveLength(row.steps);
+      expect(observed.map(({ type }) => type)).toEqual(['run.error', 'run.completed']);
+      const announced = observed[0]?.error;
+      expect(announced).toBeInstanceOf(MaximumStepsExceededError);
+      expect((announced as Error).message).toBe('Agent run exceeded maximumSteps (9).');
+      expect(result.error).toBe(announced);
+      expect(hookErrors).toEqual([announced]);
+    });
+  }
+});

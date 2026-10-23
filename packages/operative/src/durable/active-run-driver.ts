@@ -393,8 +393,12 @@ export async function driveDurableRun(
   // `run.completed`, like every other failure. The workflow body does not dispatch it (it would
   // fire again on replay), so it fires here on the host, after `handle.result()` settled and
   // outside anything replay re-runs. A process that dies before this line never fires it; its
-  // recovered run goes through the reattach driver, which announces the marked one instead, so no
-  // path fires two. A live `run.error` already seen is not repeated.
+  // recovered run goes through the reattach driver, which announces the marked one instead. A
+  // live `run.error` already seen is not repeated. One window announces twice, and it is the one
+  // every reason recovery announces shares: a process that dies after this `run.error` reached
+  // the durable history but before the `run.completed` and the session save that follow leaves
+  // the session `running`, and the reattach driver, which has no process-local
+  // `terminalErrorFromEvent`, announces the marked one again on the next boot.
   // `reconstructRunResult` always gives a step-limit result its `MaximumStepsExceededError`.
   const terminalError =
     terminalErrorFromEvent ?? (result.error instanceof AgentRunError ? result.error : undefined);

@@ -198,6 +198,32 @@ describe('a reattached run whose summary carries a failure finish reason', () =>
     });
   }
 
+  it('announces the step-limit error a step threw, with the limit that error named', async () => {
+    // COR-1627: the summary of a step that threw `new MaximumStepsExceededError(9)` carries its
+    // message; the announcement and the result report that error, not one rebuilt from the
+    // count of steps the run committed.
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const observed = observeLifecycle(emitter);
+
+    const result = await reattach(
+      summaryFor('reattach-thrown-maximum-steps', {
+        finishReason: 'maximum-steps',
+        errorMessage: 'Agent run exceeded maximumSteps (9).',
+        errorKind: 'policy',
+        errorCode: 'MAXIMUM_STEPS',
+      }),
+      emitter,
+    );
+
+    expect(observed.map(({ type }) => type)).toEqual(['run.error', 'run.completed']);
+    expect(observed[0]).toEqual({
+      type: RunErrorEvent.type,
+      reconstructed: true,
+      errorName: 'MaximumStepsExceededError',
+    });
+    expect((result.error as Error).message).toBe('Agent run exceeded maximumSteps (9).');
+  });
+
   it('announces no run.error for a run that ended without failing', async () => {
     // An in-band abort ends with its own `run.aborted`, never `run.completed`.
     const endings = [

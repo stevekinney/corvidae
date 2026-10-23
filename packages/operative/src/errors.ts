@@ -203,8 +203,14 @@ export function toAgentRunError(
 }
 
 export class MaximumStepsExceededError extends AgentRunError {
-  constructor(maximumSteps: number) {
-    super(`Agent run exceeded maximumSteps (${maximumSteps}).`, {
+  /**
+   * @param maximumSteps the limit the run reached, which the default message names.
+   * @param message replaces the default message: a durable run rebuilt from its checkpoint
+   * carries the message of the error that was thrown, which may have named another limit
+   * than the count of steps the run committed (COR-1627).
+   */
+  constructor(maximumSteps: number, message?: string) {
+    super(message ?? `Agent run exceeded maximumSteps (${maximumSteps}).`, {
       kind: 'policy',
       code: 'MAXIMUM_STEPS',
     });

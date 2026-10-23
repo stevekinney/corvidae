@@ -27,7 +27,8 @@ export interface AgentRunWorkflowResult {
   finishReason: FinishReason;
   /**
    * Serialized message of the error that ended the run, when `finishReason` is
-   * `error` / `elicitation-denied` / `budget-exceeded`. The live error object is
+   * `error` / `elicitation-denied` / `budget-exceeded` / `tripwire`, or `maximum-steps` for a
+   * step-limit error a step, tool, or hook threw (absent when the loop ran out of steps). The live error object is
    * not cloneable across a checkpoint, so only its message survives; the adapter
    * rebuilds an `Error` from it so consumers (e.g. gateway's `lastError`) see the
    * real cause rather than a synthetic placeholder.

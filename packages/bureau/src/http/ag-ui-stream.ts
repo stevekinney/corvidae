@@ -21,6 +21,7 @@
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { isFailureFinishReason } from '@lostgradient/operative';
 import { type Event, EventType, type Interrupt, type RunFinishedOutcome } from '@ag-ui/core';
 import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conversationalist';
 
@@ -169,11 +170,11 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
       fence = event.cursor;
       const outcome = TERMINAL_OUTCOME[event.kind];
       if (outcome === undefined) continue;
-      // COR-1627: a run that stopped at its step limit recorded `run.error` and then a
-      // `run.completed` that carries its finish reason; it ended in the error.
+      // COR-1627: a run that failed recorded `run.error` and then a `run.completed` that carries
+      // its finish reason; the last terminal is kept, and it ended in the error.
       const payload = event.payload as { finishReason?: unknown } | null | undefined;
       terminal =
-        event.kind === RECORDED.runCompleted && payload?.finishReason === 'maximum-steps'
+        event.kind === RECORDED.runCompleted && isFailureFinishReason(payload?.finishReason)
           ? { outcome: 'error', detail: event.payload, recordedAs: RECORDED.runCompleted }
           : { outcome, detail: event.payload };
     }
