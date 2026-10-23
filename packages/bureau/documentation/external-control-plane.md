@@ -320,7 +320,7 @@ Bureau publishes these A2A extensions. Each URI names a specification document, 
 
 `…` is `https://github.com/stevekinney/weft/blob/main/packages/weft/documentation`.
 
-Bureau also advertises one third-party extension, A2UI's A2A extension at the URI the pinned A2UI release (`v0.9.1`) defines, as optional. It carries interactive surfaces to A2A clients that render them; Bureau's own rules below apply to it as well.
+Bureau also advertises one third-party extension, A2UI's A2A extension at the URI the pinned A2UI release (`v0.9.1`) defines, as optional. It carries interactive surfaces to A2A clients that render them (experimental, pinned to A2UI v0.9.1); its card `params` are `supportedCatalogIds` (the basic catalog and Cinder's), `acceptsInlineCatalogs: false`, and `experimental: true`. Bureau's own rules below apply to it as well.
 
 The rules for every extension:
 

@@ -32,7 +32,7 @@ import { replyPartsOf } from './a2a-reply-parts.ts';
 /** The part of a Bureau the reader needs. */
 export type A2ATaskReaderBureau = Pick<
   Bureau,
-  'getRun' | 'eventHistory' | 'getReview' | 'assets'
+  'getRun' | 'eventHistory' | 'getReview' | 'assets' | 'surfaces'
 > & {
   readonly tasks: Pick<TaskRegistry, 'record'>;
 };
@@ -198,6 +198,7 @@ export function createTaskReader(options: {
         reply: reply?.parts,
         acknowledgement: stored?.cleanupAcknowledgement,
         forms: await formsOf(bureau, view),
+        surfaces: await bureau.surfaces?.list(view.id),
       },
       shape,
     );

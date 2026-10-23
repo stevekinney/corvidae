@@ -87,7 +87,9 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
+import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
+import { surfaceActionOf } from './a2a-surface-actions.ts';
+import { declaredExtensionsOf } from './a2a-agent-card.ts';
 import {
   type AdmittedAsset,
   admitInline,
@@ -256,6 +258,7 @@ export type A2ABureau = Pick<
   | 'addEventListener'
   | 'removeEventListener'
   | 'assets'
+  | 'surfaces'
 > & {
   readonly tasks: Pick<
     TaskRegistry,
@@ -1279,10 +1282,25 @@ export function createBureauA2ARequestHandler(
       continued === undefined
         ? undefined
         : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
-    const command =
-      continued === undefined || path === undefined
+    // An A2UI action on one of the task's surfaces is admitted by the surface store first; the
+    // answer it stands for then travels the same path as any other answer.
+    const surfaceAction =
+      continued === undefined || path !== 'answer'
         ? undefined
-        : parseContinuation(message, path, continued, await formsOf(bureau, continued), inputModes);
+        : await surfaceActionOf({ bureau, message, view: continued, activated });
+    if (surfaceAction?.ok === false) throw invalid(surfaceAction.message);
+    const command: ContinuationCommand | undefined =
+      surfaceAction?.ok === true
+        ? { path: 'answer', input: surfaceAction.input }
+        : continued === undefined || path === undefined
+          ? undefined
+          : parseContinuation(
+              message,
+              path,
+              continued,
+              await formsOf(bureau, continued),
+              inputModes,
+            );
     // The message's parts, read and authorized before anything is admitted. An answer to a wait
     // reads no file, so only a new task and input to a working task plan any.
     const inboundContextOfCaller = inboundContext(user.principal, owner);

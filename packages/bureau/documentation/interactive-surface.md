@@ -215,7 +215,13 @@ Over AG-UI, the adapter projects each committed revision as an `ACTIVITY_SNAPSHO
 - **Authors.** Author code calls `apply`. A model uses `createProposeA2uiSurfaceTool`, which runs the same path; the host chooses each action's continuation, and the model chooses only its name and intent.
 - **Conformance.** `bun run test:a2ui-conformance` (in `packages/bureau`) drives the adapter and the real store through progressive rendering, stale updates, graph repair, typed actions, reconnect, cross-surface authorization, cancellation, deletion, cleanup, and catalog negotiation. It also runs in Bureau's `test`.
 
-Not yet done: carrying these surfaces over the AG-UI mount and the A2A extension (the next change), the extension's `supportedCatalogIds` parameters, and a rendered end-to-end test.
+#### Over A2A (experimental)
+
+A task read (`GetTask`, `ListTasks`, and the first task a send returns) carries the task's `a2ui` surfaces on its status message. A request that activated A2UI's extension gets one data part per surface, typed `application/a2ui+json`, holding the messages that rebuild it (`a2uiMessagesOf`: `createSurface`, `updateComponents`, and the data model, always, so an explicit `null` survives). Any other request gets each surface's `summary` as text. The card's A2UI extension entry carries `supportedCatalogIds` (the basic and Cinder catalogs), `acceptsInlineCatalogs: false`, and `experimental: true`.
+
+A renderer's `action` arrives as a data part of a `SendMessage` that continues the task, and counts as a surface action only when the request activated the extension, the task is `input-required`, and the message names one of the task's `a2ui` surfaces. The surface store admits it (`surfaces.act`, the message id as the command id) as the task's owner, against the revision in `metadata.a2uiSurfaceRevision` when the client states one and the surface's current revision otherwise. The admitted action becomes the answer its host-declared continuation stands for: a `signal` continuation answers that human wait with the action's value (or, for a valueless action, its name), and a `review` continuation approves or denies a tool approval by the action's intent. The answer then travels the ordinary answer path and its ledger, so a retry of the same message is idempotent.
+
+Not yet done: carrying surface updates on A2A _streams_ (the `a2a-task-stream.ts` status messages), which waits for COR-1669 part 2b-3, and the AG-UI projection (`ACTIVITY_SNAPSHOT`), which needs a decision about merging a second event source into the stream's cursor.
 
 ### MCP Apps (COR-910)
 
