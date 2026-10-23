@@ -82,6 +82,15 @@ export type DeletionRequestOutcome =
   | { readonly status: 'requested' | 'owned'; readonly receipt: MemoryDeletionReceipt }
   | { readonly status: 'pending' };
 
+/**
+ * What a claim attempt decided: the claim this request now holds, an outcome
+ * that stops it, or a failed receipt that owns the claim and is retried.
+ */
+type ClaimDecision =
+  | MemoryDeletionClaim
+  | DeletionRequestOutcome
+  | { readonly status: 'retry'; readonly receipt: MemoryDeletionReceipt };
+
 export interface DeletionEngine {
   /** Claims the record and, under a winning, unexpired claim, opens and runs its deletion. */
   requestDeletion(request: DeletionRequest): Promise<DeletionRequestOutcome>;
@@ -357,6 +366,19 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
   }
 
   /**
+   * Whether `receipt` is a deletion of the requested scope whose row removing
+   * the record failed, leaving it stored. A held deletion is not one: its
+   * release re-queues it.
+   */
+  function retriable(receipt: MemoryDeletionReceipt, request: DeletionRequest): boolean {
+    return (
+      receipt.scope === request.scope &&
+      !receipt.awaitingHoldRelease &&
+      deletionOutcome(receipt) === 'failed'
+    );
+  }
+
+  /**
    * Whether `receipt` still owns its record's deletion: it is open, or it
    * waits on a legal hold whose release (and only that) re-queues it.
    */
@@ -376,7 +398,7 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     request: DeletionRequest,
     current: MemoryDeletionClaim | undefined,
     receiptsForRecord: readonly MemoryDeletionReceipt[],
-  ): Promise<MemoryDeletionClaim | DeletionRequestOutcome> {
+  ): Promise<ClaimDecision> {
     const owner = receiptsForRecord.find((receipt) => owns(receipt, request));
     if (owner !== undefined) return { status: 'owned', receipt: owner };
     const now = context.now();
@@ -394,6 +416,10 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
         : { deletionId: current.deletionId, ...fresh };
     }
     if (owns(stored, request)) return { status: 'owned', receipt: stored };
+    // Read after the claim, so it holds even when the receipt failed and
+    // closed after this request listed the record's receipts: the failed
+    // deletion is retried under its own receipt, as a fresh request would.
+    if (retriable(stored, request)) return { status: 'retry', receipt: stored };
     return { deletionId: context.runtime.identifiers.next('memory-deletion'), ...fresh };
   }
 
@@ -408,7 +434,7 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     request: DeletionRequest,
     reference: MemoryRecordSourceReference,
     receiptsForRecord: readonly MemoryDeletionReceipt[],
-  ): Promise<MemoryDeletionClaim | DeletionRequestOutcome> {
+  ): Promise<ClaimDecision> {
     const tenantId = request.resolved.scope.tenantId;
     for (let attempt = 0; attempt < DELETION_CLAIM_ATTEMPTS; attempt++) {
       const current = await context.load(tenantId, reference);
@@ -807,12 +833,7 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     request: DeletionRequest,
     receiptsForRecord: readonly MemoryDeletionReceipt[],
   ): MemoryDeletionReceipt | undefined {
-    return receiptsForRecord.find(
-      (receipt) =>
-        receipt.scope === request.scope &&
-        !receipt.awaitingHoldRelease &&
-        deletionOutcome(receipt) === 'failed',
-    );
+    return receiptsForRecord.find((receipt) => retriable(receipt, request));
   }
 
   /** Every stored receipt for the record `reference` names. */
@@ -865,7 +886,13 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       return { status: 'requested', receipt: await retryDeletion(failed, request.attribution) };
     }
     const claim = await claimRecord(request, reference, receiptsForRecord);
-    if ('status' in claim) return claim;
+    if ('status' in claim) {
+      if (claim.status !== 'retry') return claim;
+      return {
+        status: 'requested',
+        receipt: await retryDeletion(claim.receipt, request.attribution),
+      };
+    }
     const requestedAt = context.now();
     const bound = resolveTenantPolicy(context.policy(), tenantId).deletionBoundMilliseconds;
     const plan = await claimPlan(request, reference);

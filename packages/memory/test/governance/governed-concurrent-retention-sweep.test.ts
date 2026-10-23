@@ -11,6 +11,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { DELETION_CLAIM_LEASE_MILLISECONDS } from '../../src/governance/deletion';
 import type { MemoryGovernanceLedger } from '../../src/governance/ledger';
+import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
+import { DEFAULT_DELETION_BOUND_MILLISECONDS } from '../../src/governance/policy';
 import {
   MEMORY_GOVERNANCE_METADATA_KEY,
   collectionNamespace,
@@ -94,6 +96,10 @@ async function expiredRecord(fixture: GovernedFixture): Promise<string> {
 async function receiptsFor(fixture: GovernedFixture, recordId: string) {
   const receipts = await fixture.ledger.listReceipts({ tenantId: 'tenant-a' });
   return receipts.filter((receipt) => receipt.record.id === recordId);
+}
+
+function statusOf(receipt: MemoryDeletionReceipt | undefined, target: string) {
+  return receipt?.targets.find((row) => row.target === target)?.status;
 }
 
 async function claimOf(fixture: GovernedFixture, recordId: string) {
@@ -273,6 +279,52 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       const swept = await stalled;
       expect(swept.deletionIds).toEqual([first!.deletionId]);
       expect(await receiptsFor(fixture, recordId)).toHaveLength(1);
+      expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
+    });
+
+    it('retries the failed receipt of a claimant that opened after its rival scanned the receipts', async () => {
+      const fixture = await createGovernedFixture(backend);
+      const recordId = await expiredRecord(fixture);
+      const scanned = park();
+      let scans = 0;
+      // B lists the record's receipts (its second listing, inside the deletion
+      // request), finds none, and stalls before it claims.
+      const rival = fixture.restart({
+        ledger: {
+          ...fixture.ledger,
+          listReceipts: async (...parameters) => {
+            const receipts = await fixture.ledger.listReceipts(...parameters);
+            scans += 1;
+            if (scans === 2) await scanned.wait();
+            return receipts;
+          },
+        },
+      });
+      const stalled = rival.sweepRetention(retentionService);
+      await scanned.reached;
+
+      // Meanwhile A claims, opens its receipt, and its synchronous lane fails;
+      // past the bound its waiting rows fail too, and the receipt closes.
+      const failing = fixture.restart({
+        storage: intercept(fixture.storage, {
+          deleteMany: () => Promise.reject(new Error('storage unavailable')),
+        }),
+      });
+      const first = await failing.sweepRetention(retentionService);
+      expect(first.deletionIds).toHaveLength(1);
+      await fixture.runtime.advance(DEFAULT_DELETION_BOUND_MILLISECONDS);
+      await failing.processDeletionPropagation();
+      const failed = await fixture.ledger.getReceipt(first.deletionIds[0]!);
+      expect(failed).toMatchObject({ open: false });
+      expect(statusOf(failed, 'source-evidence')).toBe('failed');
+
+      // B resumes on its stale, empty listing, and retries A's receipt rather than opening another.
+      scanned.release();
+      const retried = await stalled;
+      expect(retried.deletionIds).toEqual([...first.deletionIds]);
+      const receipts = await receiptsFor(fixture, recordId);
+      expect(receipts.map((receipt) => receipt.deletionId)).toEqual([...first.deletionIds]);
+      expect(statusOf(receipts[0], 'source-evidence')).toBe('completed');
       expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
     });
 
