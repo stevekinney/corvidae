@@ -207,3 +207,31 @@ describe('the sidebar', () => {
     });
   });
 });
+
+describe('the sidebar on a narrow viewport', () => {
+  test('closes its drawer, and records that it is collapsed, when the drawer is dismissed', async () => {
+    stubEngine();
+    landAt('/chat');
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const { findByRole } = mount();
+      const dialog = await findByRole('dialog');
+      expect(document.querySelector('.weft-shell-sidebar--mobile')).not.toBeNull();
+      // A click on the dialog itself is a click on its backdrop, which dismisses the drawer.
+      await fireEvent.click(dialog);
+      await waitFor(() =>
+        expect(document.querySelector('.weft-shell-sidebar--mobile')?.outerHTML ?? null).toBeNull(),
+      );
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+});

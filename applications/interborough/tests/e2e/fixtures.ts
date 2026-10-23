@@ -1,10 +1,12 @@
 /**
  * Playwright fixtures shared by every persona-flow spec (plan §11.4). The host serves one local
- * caller and asks for no sign-in, so the page needs no credential: the only fixture is the axe
- * gate, `checkA11y`.
+ * caller and asks for no sign-in, so the page needs no credential. There are two fixtures: the axe
+ * gate, `checkA11y`, and an automatic one that fails a test whose page logged a console error,
+ * threw, or had a request fail, on any page of its context, unless `ALLOWED_PAGE_ERRORS` names it
+ * or the test declared it.
  */
 import PlaywrightAxeBuilder from '@axe-core/playwright';
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * Polls every button/input's `background-color`/`color` across consecutive
@@ -122,10 +124,170 @@ async function assertNoSeriousAxeViolations(page: Page, screenLabel: string): Pr
   ).toEqual([]);
 }
 
-export const test = base.extend<{ checkA11y: (screenLabel: string) => Promise<void> }>({
+/**
+ * A report a test may leave unfixed. The suite-wide list, `ALLOWED_PAGE_ERRORS`, starts empty and
+ * every entry is a reviewed edit: a page that reports an error, or a request that dies, is a
+ * defect (AGENTS.md), so the way to clear one is to fix its cause. An entry is only for a cause
+ * outside Interborough, and names it in `reason`. A test that makes the server fail on purpose
+ * declares the failure it caused through `pageErrors.expect(...)` instead.
+ */
+export type PageErrorAllowance = {
+  /** Matched against the line the page reported (see `describePageError`). */
+  readonly pattern: RegExp;
+  /** Why this report is expected: the cause outside Interborough, or the failure the test caused. */
+  readonly reason: string;
+  /**
+   * How many matching reports the declaration covers. A declaration made through
+   * `pageErrors.expect(...)` covers one by default and fails the test if it covers fewer or more,
+   * so a second failure the test did not mean to cause is not hidden by the first one's allowance.
+   * Suite-wide entries cover every match.
+   */
+  readonly count?: number;
+};
+
+export const ALLOWED_PAGE_ERRORS: readonly PageErrorAllowance[] = [];
+
+/** Playwright's `errorText` for a request the page itself cancelled. */
+const ABORTED_BY_THE_PAGE = 'net::ERR_ABORTED';
+
+/** One line for a console error or a failed request, the way a person would read it. */
+export function describePageError(
+  report:
+    | { readonly kind: 'console'; readonly text: string; readonly location: string }
+    | {
+        readonly kind: 'request';
+        readonly method: string;
+        readonly url: string;
+        readonly error: string;
+      },
+): string {
+  return report.kind === 'console'
+    ? `console error: ${report.text} (${report.location})`
+    : `request failed: ${report.method} ${report.url} (${report.error})`;
+}
+
+/**
+ * What Chromium logs for a response whose status is an error, which is all it logs for one. A test
+ * that answers a request with this status on purpose expects exactly this line.
+ */
+export function loggedFailedResponse(status: number, urlPattern: RegExp): RegExp {
+  return new RegExp(
+    `^console error: Failed to load resource: the server responded with a status of ${status} .*${urlPattern.source}`,
+  );
+}
+
+/** A declaration the test made through `pageErrors.expect(...)`. */
+type DeclaredAllowance = { readonly allowance: PageErrorAllowance };
+
+/**
+ * What every page of one browser context reported during one test, and which of it the test
+ * expects. The context is the unit, not the default `page`: a test that opens a second tab
+ * (`context.newPage()`) or a popup is held to the same bar.
+ */
+export class PageErrorLog {
+  readonly #reports: string[] = [];
+  readonly #standing: PageErrorAllowance[] = [...ALLOWED_PAGE_ERRORS];
+  readonly #declared: DeclaredAllowance[] = [];
+  readonly #watched = new WeakSet<Page>();
+
+  constructor(context: BrowserContext) {
+    for (const page of context.pages()) this.#watch(page);
+    context.on('page', (page) => this.#watch(page));
+  }
+
+  #watch(page: Page): void {
+    if (this.#watched.has(page)) return;
+    this.#watched.add(page);
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return;
+      const { url, lineNumber } = message.location();
+      this.#reports.push(
+        describePageError({
+          kind: 'console',
+          text: message.text(),
+          location: url === '' ? 'no source' : `${url}:${lineNumber}`,
+        }),
+      );
+    });
+    page.on('pageerror', (error) => {
+      this.#reports.push(`uncaught exception: ${error.message}`);
+    });
+    page.on('requestfailed', (request) => {
+      const error = request.failure()?.errorText ?? 'unknown';
+      // An abort is the page cancelling a request it no longer wants (a query whose view was left,
+      // a run the person stopped). Chromium does not log it, and it is how a stream is meant to end
+      // (COR-1643), so it is not a failure. Every other way a request dies is.
+      if (error === ABORTED_BY_THE_PAGE) return;
+      this.#reports.push(
+        describePageError({ kind: 'request', method: request.method(), url: request.url(), error }),
+      );
+    });
+  }
+
+  /**
+   * Declares a report this test causes on purpose, such as a request it answers with a 500. It
+   * covers one matching report, or `allowance.count` of them.
+   */
+  expect(allowance: PageErrorAllowance): void {
+    this.#declared.push({ allowance });
+  }
+
+  /** Hands each report to the first declaration with room for it; what no one covers is left over. */
+  #settle(): { unexpected: string[]; matched: number[] } {
+    const matched = this.#declared.map(() => 0);
+    const unexpected: string[] = [];
+    for (const line of this.#reports) {
+      if (this.#standing.some((entry) => entry.pattern.test(line))) continue;
+      const index = this.#declared.findIndex(
+        (entry, position) =>
+          (matched[position] ?? 0) < (entry.allowance.count ?? 1) &&
+          entry.allowance.pattern.test(line),
+      );
+      if (index < 0) unexpected.push(line);
+      else matched[index] = (matched[index] ?? 0) + 1;
+    }
+    return { unexpected, matched };
+  }
+
+  /** What the pages reported that no standing entry and no declaration with room covers. */
+  unexpected(): string[] {
+    return this.#settle().unexpected;
+  }
+
+  /** The declarations that covered fewer reports than they said they would. */
+  unused(): string[] {
+    const { matched } = this.#settle();
+    return this.#declared.flatMap((entry, position) => {
+      const wanted = entry.allowance.count ?? 1;
+      const seen = matched[position] ?? 0;
+      return seen < wanted
+        ? [
+            `${entry.allowance.pattern} (${entry.allowance.reason}): expected ${wanted}, saw ${seen}`,
+          ]
+        : [];
+    });
+  }
+}
+
+export const test = base.extend<{
+  checkA11y: (screenLabel: string) => Promise<void>;
+  pageErrors: PageErrorLog;
+}>({
   checkA11y: async ({ page }, use) => {
     await use((screenLabel: string) => assertNoSeriousAxeViolations(page, screenLabel));
   },
+  // Every test fails when its page reported an error: the suite used to pass over them.
+  pageErrors: [
+    // Built from the page's context, so the first page exists before the log listens and every
+    // page the test opens later is watched too.
+    async ({ page }, use) => {
+      const log = new PageErrorLog(page.context());
+      await use(log);
+      expect(log.unexpected(), 'a page reported errors the test did not expect').toEqual([]);
+      expect(log.unused(), 'the test declared reports its pages never made').toEqual([]);
+    },
+    { auto: true },
+  ],
 });
 
 export { expect };

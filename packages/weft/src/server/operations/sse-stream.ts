@@ -36,7 +36,8 @@ type EventEnvelopeSSEStreamOptions<TEnvelope extends ServerSentEventEnvelope> = 
   readonly maxDurationMs?: number;
 };
 
-const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+/** How often a quiet event stream sends a `ping`, so a connection that is open is never silent for longer. */
+export const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 export const SSE_ACCEPT_REQUIRED_MESSAGE = 'Accept header must include text/event-stream';
 
 export function acceptsServerSentEvents(acceptHeader: string | null): boolean {

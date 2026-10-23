@@ -553,6 +553,16 @@ export interface StandaloneAgent<
   readonly skills?: AgentSkills | undefined;
 
   /**
+   * The names of the tools this agent was created with, in definition order: the keys of
+   * `options.tools` (the canonical names the model calls them by), or the names of the tools in
+   * `options.toolbox`, each name once even when the toolbox holds two tools under it. Read-only
+   * description for a host that wants to show what the agent can do: it never reaches a run, and it
+   * leaves out the skill tools (`activate_skill`, `deactivate_skill`) a run adds when `skills` is
+   * set. An agent created without tools lists `[]`.
+   */
+  readonly toolNames: readonly string[];
+
+  /**
    * Always `true`: a `createAgent` agent resolves its own guardrails and
    * honors `AgentRunContext.inheritedGuardrails`, so a host hands its policy
    * down rather than layering it on top (COR-1367).
@@ -803,6 +813,15 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       }))
     : [];
 
+  // The names the model calls the tools by: the map keys (see above), or the names in a supplied
+  // toolbox, which has no way to add a tool after it is built. A pre-built toolbox may hold two
+  // tools under one name, and a name is listed once: a host keys what it shows by it. Frozen once.
+  const toolNames: readonly string[] = Object.freeze(
+    providedToolbox === undefined
+      ? Object.keys(tools ?? {})
+      : [...new Set(providedToolbox.tools().map((tool) => tool.name))],
+  );
+
   // Shared by `run()` and the AB-21 definition-resolution protocol below —
   // both need the exact same `RunOptions` bag; only what happens to it
   // (start an in-memory run vs. hand it to a durable engine) differs.
@@ -972,6 +991,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // COR-1367 — omitted when not declared, matching `hooks` above.
     ...(declaredGuardrails === undefined ? {} : { guardrails: declaredGuardrails }),
     ...(skills === undefined ? {} : { skills }),
+    toolNames,
     [OPERATIVE_RESOLVES_GUARDRAILS]: true,
     run(input: AgentInput, context?: AgentRunContext): AgentRun<unknown, boolean> {
       // AB-241 review finding: `createActiveRun` derives `LivenessSnapshot.owner`

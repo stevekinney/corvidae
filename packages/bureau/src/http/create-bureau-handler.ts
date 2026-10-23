@@ -58,6 +58,7 @@ import {
   type BureauAgentCatalog,
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
+import { readFileAgentBinding } from '../agent-file-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
@@ -705,6 +706,23 @@ async function recoveryOf(bureau: BureauHandlerSource): Promise<DeploymentRecove
   return { status: report.outcome, failedRunCount: report.perRunFailures.length };
 }
 
+/** The `tools` field of a {@link PublishedAgent}, which is absent when the agent does not say. */
+function toolsOf(names: readonly string[] | undefined): { readonly tools?: readonly string[] } {
+  return names === undefined ? {} : { tools: names };
+}
+
+/**
+ * The tool names a code-defined agent states (`StandaloneAgent.toolNames`), or `undefined` for an
+ * agent that is not a `createAgent` result, or states anything else. A runnable agent may be any
+ * object with a `run`, so the property is checked rather than trusted.
+ */
+function readCodeToolNames(agent: object): readonly string[] | undefined {
+  const names = (agent as { readonly toolNames?: unknown }).toolNames;
+  return Array.isArray(names) && names.every((name) => typeof name === 'string')
+    ? names
+    : undefined;
+}
+
 /**
  * The agents this deployment lists as published or withdrawn. A code-defined agent is published
  * by the `publish` allowlist alone and is not listed otherwise. A persisted agent (COR-1526)
@@ -731,6 +749,7 @@ function publishedAgentsOf(
         definitionRevision: readGenerationProfile(agent as never).revision,
         publishState: publish.includes(listing.id) ? 'published' : 'unpublished',
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
+        ...toolsOf(readCodeToolNames(agent)),
       },
     ];
   });
@@ -747,6 +766,7 @@ function publishedAgentsOf(
         definitionRevision: readGenerationProfile(agent as never).revision,
         publishState: listing.published ? 'published' : 'withdrawn',
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
+        ...toolsOf(readFileAgentBinding(agent)?.definition.tools),
       },
     ];
   });
