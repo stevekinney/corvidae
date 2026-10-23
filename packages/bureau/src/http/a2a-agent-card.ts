@@ -10,7 +10,8 @@
  * - Input modes are `text/plain` and `application/json` (an approval's decision travels as a
  *   data part); output is `text/plain`. Multimodal parts are COR-788's.
  * - `skills` are the agent's skill descriptors, or one skill standing for the agent itself.
- * - `capabilities.streaming` is `true`; `pushNotifications` is `false` until COR-1543 serves it,
+ * - `capabilities.streaming` is `true`; `pushNotifications` is `true` only where the Bureau composes both an outbox and the durable
+ *   event history (COR-1543),
  *   and `extendedAgentCard` is `false`.
  * - The extensions are cleanup, A2UI's, and, where the Bureau keeps durable stores (a persistent
  *   ledger and event history), durable history and command receipts. Every one is
@@ -49,6 +50,11 @@ export type A2AAgentCardSource = {
   readonly security: A2ASecurityDeclaration | undefined;
   /** Whether the Bureau keeps a durable event history, which the durable-history extension needs. */
   readonly durableHistory: boolean;
+  /**
+   * Whether the Bureau delivers push notifications: only where both an outbox and the durable
+   * event history are composed, because a push notification is a projection of durable history.
+   */
+  readonly pushNotifications: boolean;
 };
 
 const CLEANUP_EXTENSION: AgentExtension = {
@@ -132,7 +138,7 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
     documentationUrl: undefined,
     capabilities: {
       streaming: true,
-      pushNotifications: false,
+      pushNotifications: source.pushNotifications,
       extendedAgentCard: false,
       extensions: [
         CLEANUP_EXTENSION,
