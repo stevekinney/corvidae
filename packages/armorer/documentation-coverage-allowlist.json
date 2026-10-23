@@ -323,7 +323,6 @@
     ". normalizeTextQuery",
     ". openAIToolAdapter",
     ". parseAnthropicToolCalls",
-    ". parseGeminiToolCalls",
     ". parseToolId",
     ". projectExecutionSnapshot",
     ". queryTools",
