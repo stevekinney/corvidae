@@ -37,6 +37,7 @@ import { withStreamEventCursor } from '@lostgradient/weft/a2a';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 
 import { A2UI_EXTENSION_URI, offeredCatalogIds } from '../a2ui/catalogs.ts';
+import { a2uiMessagesOf } from '../a2ui/messages.ts';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import { INTERACTIVE_SURFACE_EVENT_KINDS } from '../interactive-surface/store.ts';
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
@@ -657,7 +658,12 @@ function withoutCreateSurface(part: Part): Part {
 }
 
 /** What a client holds of one surface: the revision sent, and whether it was A2UI data. */
-type SentSurface = { readonly revision: number; readonly data: boolean };
+type SentSurface = {
+  readonly revision: number;
+  readonly data: boolean;
+  /** The `createSurface` message sent, which holds the properties only it can carry. */
+  readonly created: string;
+};
 
 /**
  * Re-reads a task's surfaces and frames what the client has not been sent. `sent` starts as the
@@ -678,11 +684,19 @@ function createSurfaceReconciler(
   const offered = offeredCatalogIds(surfaces.supportedCatalogIds);
   const delivered = (surface: InteractiveSurface): boolean =>
     surface.representation?.kind === 'a2ui' && offered.includes(surface.representation.catalogId);
+  /** The `createSurface` a surface would begin with: its catalog, theme, and data-model return. */
+  const createdOf = (surface: InteractiveSurface): string =>
+    delivered(surface)
+      ? JSON.stringify(a2uiMessagesOf(surface).find((message) => 'createSurface' in message))
+      : '';
+  const sentOf = (surface: InteractiveSurface): SentSurface => ({
+    revision: surface.revision,
+    data: delivered(surface),
+    created: createdOf(surface),
+  });
   const sent = new Map<string, SentSurface>();
   for (const surface of shown) {
-    if (surface.kind === 'a2ui') {
-      sent.set(surface.surfaceId, { revision: surface.revision, data: delivered(surface) });
-    }
+    if (surface.kind === 'a2ui') sent.set(surface.surfaceId, sentOf(surface));
   }
   const activated: ReadonlySet<string> = new Set([A2UI_EXTENSION_URI]);
   return {
@@ -698,16 +712,22 @@ function createSurfaceReconciler(
         const before = sent.get(surface.surfaceId);
         if (before !== undefined && before.revision >= surface.revision) continue;
         if (surface.representation === null) {
-          sent.set(surface.surfaceId, { revision: surface.revision, data: false });
+          sent.set(surface.surfaceId, { revision: surface.revision, data: false, created: '' });
           // A client that never held the surface learns nothing of its end.
           if (before?.data !== true) continue;
           parts.push(deleteSurfacePart(surface));
         } else {
-          sent.set(surface.surfaceId, { revision: surface.revision, data: delivered(surface) });
+          const next = sentOf(surface);
+          sent.set(surface.surfaceId, next);
           const whole = surfaceParts([surface], activated, surfaces.supportedCatalogIds);
           // A surface the client already holds is continued with its whole current state and no
           // second `createSurface`, which A2UI v0.9.1 forbids for an existing surface id.
-          parts.push(...(before?.data === true ? whole.map(withoutCreateSurface) : whole));
+          if (before?.data !== true) parts.push(...whole);
+          else if (next.data && before.created !== next.created) {
+            // `theme` and `sendDataModel` travel only in `createSurface`, so a surface whose
+            // replacement changed them is deleted and begun again, whole.
+            parts.push(deleteSurfacePart(surface), ...whole);
+          } else parts.push(...whole.map(withoutCreateSurface));
         }
         revisions.push(`${surface.surfaceId}@${surface.revision}`);
       }

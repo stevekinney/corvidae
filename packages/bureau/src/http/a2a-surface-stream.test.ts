@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { CINDER, createMessage, updateComponentsMessage } from '../a2ui/a2ui.test-support.ts';
 import { createA2uiAdapter } from '../a2ui/adapter.ts';
+import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from '../interactive-surface/types.ts';
 import { A2UI_BASIC_CATALOG_ID, A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
@@ -188,7 +189,11 @@ function kitOf(opened: OpenedBureau) {
     opened.handler(rpc('SubscribeToTask', { id: taskId }, headers));
   const stream = (headers: Record<string, string>, extra: Json = {}) =>
     opened.handler(rpc('SendStreamingMessage', { message: message('start', extra) }, headers));
-  return { opened, park, apply, remove, answer, subscribe, stream };
+  const owner = async (taskId: string) => {
+    const record = await opened.bureau.tasks.record(taskId);
+    return record?.owner;
+  };
+  return { opened, park, apply, remove, answer, subscribe, stream, surfaces, owner };
 }
 
 /** The A2UI data parts of a streamed event's status message, with their metadata. */
@@ -272,6 +277,47 @@ describe('SubscribeToTask with a surface', () => {
       expect(kinds(second)).toEqual(['updateComponents', 'updateDataModel']);
       expect(kinds(third)).toEqual(['updateComponents', 'updateDataModel']);
       expect(replayed([opening, created, second, third])).toEqual({ panel: ['Three'] });
+      await stream.cancel();
+    });
+  });
+
+  it('deletes and begins a surface again when an update changes what only createSurface carries', async () => {
+    await withTask(async (kit) => {
+      const taskId = await kit.park();
+      const stream = serverSentEvents(await kit.subscribe(taskId));
+      const opening = await stream.next();
+      await kit.apply(taskId);
+      const created = await stream.next();
+      // The adapter cannot restate `createSurface` on an update, but the store accepts a
+      // replacement representation that does.
+      const principal = await kit.owner(taskId);
+      const [held] = await kit.surfaces.list(taskId, { principal });
+      if (held?.representation?.kind !== 'a2ui') throw new Error('expected an A2UI surface');
+      const updated = await kit.surfaces.update(
+        {
+          type: 'surface.update',
+          contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
+          commandId: 'theme-1',
+          taskId,
+          surfaceId: 'panel',
+          baseRevision: held.revision,
+          representation: { ...held.representation, sendDataModel: true },
+        },
+        { principal },
+      );
+      expect(updated.outcome).toBe('accepted');
+      const changed = await stream.next();
+      const kinds = surfaceDataOf(changed).flatMap((part) =>
+        (part.data as Json[]).map((message) => Object.keys(message).find((k) => k !== 'version')),
+      );
+      expect(kinds).toEqual([
+        'deleteSurface',
+        'createSurface',
+        'updateComponents',
+        'updateDataModel',
+      ]);
+      expect(surfaceDataOf(changed)[1]?.data[0].createSurface.sendDataModel).toBe(true);
+      expect(replayed([opening, created, changed])).toEqual({ panel: ['Pick'] });
       await stream.cancel();
     });
   });
