@@ -7,6 +7,7 @@
  * Storage is ordered, so the prefixes are found by skipping rather than by reading every key: read
  * one key, name its group, jump past the whole group, and read the next. The cost is one request per
  * group of keys, not per key, and `MAXIMUM_STEPS` bounds it for a store with more groups than that.
+ * The walk takes an `AbortSignal`, so a view that unmounts stops it between reads.
  */
 import { matchedReservedPrefix } from './reserved-prefix.ts';
 import { storageScan, type StorageConnection, type StorageScanOptions } from './storage-client.ts';
@@ -32,12 +33,15 @@ function groupOf(key: string): { readonly prefix: string; readonly reserved: boo
 /** The non-reserved prefixes in storage, in key order. */
 export async function discoverPrefixes(
   connection: StorageConnection,
-  options: { readonly maximumSteps?: number } = {},
+  options: { readonly maximumSteps?: number; readonly signal?: AbortSignal } = {},
 ): Promise<string[]> {
   const found: string[] = [];
   let after: Pick<StorageScanOptions, 'gt' | 'gte'> = {};
   for (let step = 0; step < (options.maximumSteps ?? MAXIMUM_STEPS); step += 1) {
-    const page = await storageScan(connection, { limit: 1, ...after });
+    // An aborted signal ends the walk before its next read, and a read in flight is cancelled by the
+    // signal itself, so a view that has gone reads no more.
+    options.signal?.throwIfAborted();
+    const page = await storageScan(connection, { limit: 1, ...after }, options.signal);
     const key = page.entries[0]?.key;
     if (key === undefined) break;
     const group = groupOf(key);

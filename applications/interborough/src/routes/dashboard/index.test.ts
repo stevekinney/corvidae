@@ -69,10 +69,15 @@ describe('Dashboard', () => {
     scripted = new ScriptedFetch();
     scripted.routeUrl('/v1/health', { status: 'ok' });
     scripted.routeJsonRpcMethod('weft.workflows.aggregate', {
-      total: 12,
+      total: 27,
       groups: [
         { key: 'running', count: 9 },
+        { key: 'pending', count: 1 },
+        { key: 'suspended', count: 2 },
+        { key: 'completed', count: 5 },
+        { key: 'cancelled', count: 3 },
         { key: 'failed', count: 3 },
+        { key: 'timed-out', count: 4 },
       ],
       truncated: false,
     });
@@ -100,8 +105,19 @@ describe('Dashboard', () => {
     expect(getAllByText('9').length).toBeGreaterThan(0);
     expect(getByText('Recent activity')).not.toBeNull();
     // Each status opens the runs list on a state it has, and a modified click is the browser's.
+    const targets: Readonly<Record<string, string>> = {
+      Running: '/runs?status=working',
+      Pending: '/runs?status=working',
+      Suspended: '/runs?status=working',
+      Completed: '/runs?status=completed',
+      Cancelled: '/runs?status=canceled',
+      Failed: '/runs?status=failed',
+      'Timed out': '/runs?status=failed',
+    };
+    for (const [label, target] of Object.entries(targets)) {
+      expect(getByText(label).closest('a')?.getAttribute('href'), label).toBe(target);
+    }
     const failed = getByText('Failed').closest('a') as HTMLAnchorElement;
-    expect(failed.getAttribute('href')).toBe('/runs?status=failed');
     expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/runs');
     expect(await fireEvent.click(failed, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(failed, { button: 0 })).toBe(false);

@@ -176,7 +176,11 @@ describe('Workers route — Diagnostics provenance filters', () => {
     resetLocation('/workers?tab=diagnostics&buildId=build-2');
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
-    const pending = scripted.deferJsonRpcMethod('weft.tasks.diagnostics');
+    // Only the filtered read is deferred: the page's tabs wait for the unfiltered one.
+    const pending = scripted.deferJsonRpcMethod(
+      'weft.tasks.diagnostics',
+      (params) => params['buildId'] !== undefined,
+    );
 
     const { findByRole, getByLabelText } = renderRoute();
 

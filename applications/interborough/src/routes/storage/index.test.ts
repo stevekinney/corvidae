@@ -114,6 +114,24 @@ describe('Storage route', () => {
     ]);
   });
 
+  test('aborts the prefix discovery when the view unmounts', async () => {
+    activeStub = stubStorageFetch((call) =>
+      isCapabilitiesCall(call)
+        ? Response.json({ jsonrpc: '2.0', id: 1, result: CAPABILITIES })
+        : // The first read of the walk never answers, so only the signal can end it.
+          new Promise<Response>(() => {}),
+    );
+
+    const view = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    const scanSignal = () => activeStub?.calls.find((call) => !isCapabilitiesCall(call))?.signal;
+    await waitFor(() => expect(scanSignal()).toBeDefined());
+    expect(scanSignal()?.aborted).toBe(false);
+
+    view.unmount();
+
+    await waitFor(() => expect(scanSignal()?.aborted).toBe(true));
+  });
+
   test('keeps the field to type a prefix into when the prefixes cannot be read', async () => {
     activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
 

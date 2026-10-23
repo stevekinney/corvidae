@@ -314,18 +314,21 @@
   // Each tab gates on its OWN query, not a blanket loading/error state for
   // the whole route — a failure fetching, say, task queues must not hide an
   // already-successful Diagnostics tab behind a shared error screen.
-  // No worker, deployment, or queue: the engine runs in-process, and the page says so instead of
+  // No worker, deployment, queue, or task: the engine runs in-process, and the page says so instead of
   // showing five tabs of zeros. A fleet that has not been read yet, or could not be, is not that.
-  // Until the workers are read the page is a skeleton, so the tabs do not appear and then go; a
-  // slow queue list leaves the tabs (and the queues tab's own skeleton) up until it answers.
-  const fleetSettling = $derived(workersQuery.isPending);
+  // The page is a skeleton until the workers, the queues, and the diagnostics have all answered, so
+  // the tabs never appear and then go (or the sentence appear and then give way to them) when one
+  // list is quicker than another. A list that failed has settled, and says nothing about the fleet.
+  const fleetSettling = $derived(
+    workersQuery.isPending || queuesQuery.isPending || diagnosticsQuery.isPending,
+  );
   const inProcessOnly = $derived(
     workersQuery.data !== undefined &&
       queuesQuery.data !== undefined &&
-      runsInProcessOnly(workersQuery.data, queuesQuery.data, router.search),
+      diagnosticsQuery.data !== undefined &&
+      runsInProcessOnly(workersQuery.data, queuesQuery.data, diagnosticsQuery.data, router.search),
   );
   const fleetError = $derived(workersQuery.error ?? null);
-  const queuesLoading = $derived(queuesQuery.isPending);
   const queuesError = $derived(queuesQuery.error ?? null);
   const diagnosticsLoading = $derived(diagnosticsTabQuery.isPending);
   const diagnosticsErrorValue = $derived(diagnosticsTabQuery.error ?? null);
@@ -429,17 +432,7 @@
       </TabPanel>
 
       <TabPanel value="queues">
-        {#if queuesLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading task queues"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if queuesError}
+        {#if queuesError}
           <EmptyState
             title={FAULT_TREATMENT_TITLE[faultTreatment(queuesError).kind]}
             description={faultTreatment(queuesError).message}

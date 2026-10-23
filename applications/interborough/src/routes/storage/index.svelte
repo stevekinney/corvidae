@@ -50,11 +50,12 @@
   );
 
   // The prefixes the Scan panel offers. Only the picker depends on them: a read that fails leaves the
-  // panel with the field to type a prefix into, as it always had.
+  // panel with the field to type a prefix into, as it always had. The query hands its abort signal to
+  // the walk, so leaving the route (the last observer going) cancels the reads still to come.
   const prefixesQuery = createQuery(
     () => ({
       queryKey: storageQueryKeys.prefixes(),
-      queryFn: () => discoverPrefixes(client),
+      queryFn: ({ signal }) => discoverPrefixes(client, { signal }),
       enabled: untrack(() => hasStorageAdmin),
       staleTime: 5 * 60_000,
       retry: false,

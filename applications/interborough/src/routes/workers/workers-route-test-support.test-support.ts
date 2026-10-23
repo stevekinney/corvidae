@@ -158,14 +158,29 @@ export class ScriptedFetch {
    * response first and flipping `loading` to `false` out from under the
    * test (flagged in WFC-10 PR #14 review).
    */
-  deferJsonRpcMethod(method: string): { resolve: (result: unknown) => void } {
+  deferJsonRpcMethod(
+    method: string,
+    /** Defer only the requests whose `params` satisfy this; the rest fall to the routes before it. */
+    when: (params: Record<string, unknown>) => boolean = () => true,
+  ): { resolve: (result: unknown) => void } {
     let releaseResponse: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       releaseResponse = resolve;
     });
     let pendingResult: unknown;
     this.#routes.push({
-      matches: (call) => parsedJsonRpcMethod(call) === method,
+      matches: (call) =>
+        parsedJsonRpcMethod(call) === method &&
+        when(
+          (() => {
+            const body =
+              typeof call.init?.body === 'string' ? parseJsonObject(call.init.body) : undefined;
+            const params = body?.['params'];
+            return typeof params === 'object' && params !== null && !Array.isArray(params)
+              ? Object.fromEntries(Object.entries(params))
+              : {};
+          })(),
+        ),
       respond: async () => {
         await gate;
         return Response.json({ jsonrpc: '2.0', id: 1, result: pendingResult });

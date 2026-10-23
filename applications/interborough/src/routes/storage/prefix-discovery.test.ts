@@ -103,4 +103,20 @@ describe('discoverPrefixes', () => {
 
     expect(await rejectionOf(discoverPrefixes(connection))).toBeInstanceOf(Error);
   });
+
+  test('hands its abort signal to every read, and reads no more once it is aborted', async () => {
+    const controller = new AbortController();
+    const respond = storeOf(['a:1', 'b:1', 'c:1', 'd:1']);
+    // The view goes away while the first read is in flight.
+    stub = stubStorageFetch((call) => {
+      controller.abort(new Error('the view is gone'));
+      return respond(call);
+    });
+
+    const outcome = await rejectionOf(discoverPrefixes(connection, { signal: controller.signal }));
+
+    expect(outcome).toBeInstanceOf(Error);
+    expect(stub.calls.length).toBe(1);
+    expect(stub.calls[0]?.signal).toBe(controller.signal);
+  });
 });

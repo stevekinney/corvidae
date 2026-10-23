@@ -171,6 +171,7 @@
       id="weft-audit-type"
       label={AUDIT_COPY.typeLabel}
       labelVisible={false}
+      class="weft-audit__identifier"
       options={typeOptions}
       value={typeChoice}
       onchange={(event) => (typeChoice = event.currentTarget.value)}
@@ -250,6 +251,7 @@
             triggerClass="weft-audit__record-trigger"
             animated={false}
           >
+            <h2 class="weft-audit__raw-heading">{AUDIT_COPY.rawRecord}</h2>
             <CodeBlock
               code={JSON.stringify(record, null, 2)}
               language="json"
@@ -309,7 +311,8 @@
     align-items: center;
   }
 
-  :global(.weft-audit__identifier input) {
+  :global(.weft-audit__identifier input),
+  :global(.weft-audit__identifier select) {
     font-family: var(--cinder-font-mono);
   }
 
@@ -326,6 +329,13 @@
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+  }
+
+  .weft-audit__raw-heading {
+    margin: 0 0 var(--cinder-space-2);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: 600;
   }
 
   .weft-audit__more {

@@ -230,38 +230,20 @@ describe('Workers route — loading skeletons', () => {
     expect(getByLabelText('Loading fleet')).not.toBeNull();
   });
 
-  test('the Task queues tab shows a loading skeleton before the queues query resolves', async () => {
-    scripted = new ScriptedFetch();
-    routeHappyPaths(scripted);
-    // Registered after routeHappyPaths, so it wins for `weft.task.queues.list`
-    // (ScriptedFetch matches the LAST registered route) and stays pending
-    // through the awaits below — a synchronously-resolved route risks
-    // TanStack Query processing the response during `findByRole`/
-    // `fireEvent.click`'s awaited microtasks, flipping `queuesLoading` to
-    // false before this assertion runs (flagged in WFC-10 PR #14 review).
-    const queuesGate = scripted.deferJsonRpcMethod('weft.task.queues.list');
-
-    const { findByRole, getByLabelText } = render(WorkersRouteTestHarness, {
-      props: {
-        client: realClient(),
-        queryClient: createQueryClient(),
-        component: WorkersRoute,
-        principalScopes: ['system:read', 'system:admin'],
-      },
-    });
-
-    await fireEvent.click(await findByRole('tab', { name: 'Task queues' }));
-    expect(getByLabelText('Loading task queues')).not.toBeNull();
-    queuesGate.resolve({ items: [queue()] });
-  });
-
   test('the Diagnostics tab shows a loading skeleton before the diagnostics query resolves', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
-    // Same deferred-response reasoning as the Task queues test above.
-    const diagnosticsGate = scripted.deferJsonRpcMethod('weft.tasks.diagnostics');
+    // Only the filtered read is deferred: the page waits for the unfiltered diagnostics before it
+    // shows its tabs (`index-in-process.test.ts`), and a provenance filter is a second read of its own.
+    // Deferred, not routed, so the response stays pending through the awaits below instead of being
+    // processed by TanStack Query during `findByRole`/`fireEvent.click`'s microtasks.
+    const diagnosticsGate = scripted.deferJsonRpcMethod(
+      'weft.tasks.diagnostics',
+      (params) => params['workerId'] !== undefined,
+    );
+    resetLocation('/workers?tab=diagnostics&workerId=worker-1');
 
-    const { findByRole, getByLabelText } = render(WorkersRouteTestHarness, {
+    const { findByLabelText } = render(WorkersRouteTestHarness, {
       props: {
         client: realClient(),
         queryClient: createQueryClient(),
@@ -270,8 +252,7 @@ describe('Workers route — loading skeletons', () => {
       },
     });
 
-    await fireEvent.click(await findByRole('tab', { name: 'Diagnostics' }));
-    expect(getByLabelText('Loading diagnostics')).not.toBeNull();
+    expect(await findByLabelText('Loading diagnostics')).not.toBeNull();
     diagnosticsGate.resolve({ items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY });
   });
 });

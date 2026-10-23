@@ -49,7 +49,16 @@
 
   let mode = $state<'prefix' | 'range'>('prefix');
   let prefix = $state('');
-  let prefixChoice = $state('');
+  /**
+   * What the person picked, once they have. Until then the picker follows what was typed: the prefixes
+   * are read after the panel opens, and a prefix typed into the field before they arrive must not be
+   * lost when the picker takes the field's place. It is picked when it is one of them, else it is
+   * Other, with the typed text kept.
+   */
+  let pickedPrefix = $state<string | undefined>(undefined);
+  const prefixChoice = $derived(
+    pickedPrefix ?? (prefix === '' ? '' : knownPrefixes.includes(prefix) ? prefix : OTHER_PREFIX),
+  );
 
   const prefixOptions = $derived([
     { value: '', label: 'Any key' },
@@ -142,7 +151,8 @@
         label="Prefix"
         options={prefixOptions}
         value={prefixChoice}
-        onchange={(event) => (prefixChoice = event.currentTarget.value)}
+        class="weft-storage-monospace-input"
+        onchange={(event) => (pickedPrefix = event.currentTarget.value)}
       />
     {/if}
     {#if knownPrefixes.length === 0 || prefixChoice === OTHER_PREFIX}

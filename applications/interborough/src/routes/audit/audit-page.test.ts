@@ -119,6 +119,10 @@ describe('a record', () => {
 
     expect(triggers[0]?.getAttribute('aria-expanded')).toBe('true');
     expect(container.querySelector('[data-record="2"]')?.textContent).toContain('"sequence": 2');
+    // The raw JSON is introduced by a small heading, shown with the record and not before.
+    expect(container.querySelector('[data-record="2"] .weft-audit__raw-heading')?.textContent).toBe(
+      AUDIT_COPY.rawRecord,
+    );
     expect(container.querySelector('[data-record="1"]')?.textContent).not.toContain(
       '"sequence": 1',
     );

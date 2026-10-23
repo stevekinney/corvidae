@@ -9,7 +9,12 @@ import { Window } from 'happy-dom';
 
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { queue, routeHappyPaths, worker } from './index-actions.test-support.ts';
+import {
+  EMPTY_DIAGNOSTICS_SUMMARY,
+  queue,
+  routeHappyPaths,
+  worker,
+} from './index-actions.test-support.ts';
 import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './workers-route-test-support.test-support.ts';
@@ -98,6 +103,46 @@ describe('Workers route with no connected worker', () => {
   });
 });
 
+describe('Workers route while the lists are being read', () => {
+  test('stays the loading skeleton, with no tabs, when the workers answer before the queues', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted);
+    const queuesGate = scripted.deferJsonRpcMethod('weft.task.queues.list');
+
+    const view = renderRoute();
+
+    // The workers have answered (the deferred queues have not), and the page still waits for both.
+    const asked = (method: string) =>
+      scripted?.calls.some(
+        (call) => typeof call.init?.body === 'string' && call.init.body.includes(method),
+      );
+    await waitFor(() => expect(asked('weft.workers.list')).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(view.getByLabelText('Loading fleet')).not.toBeNull();
+    expect(view.queryAllByRole('tab').length).toBe(0);
+
+    queuesGate.resolve({ items: [queue()] });
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+  });
+
+  test('stays the loading skeleton, not the sentence, until the diagnostics have been read', async () => {
+    scripted = emptyFleet();
+    const diagnosticsGate = scripted.deferJsonRpcMethod('weft.tasks.diagnostics');
+
+    const view = renderRoute();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(view.getByLabelText('Loading fleet')).not.toBeNull();
+    expect(view.queryByText(SENTENCE)).toBeNull();
+
+    diagnosticsGate.resolve({
+      items: [],
+      summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+    });
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+  });
+});
+
 describe('Workers route with something to operate', () => {
   test('shows the full page with its tabs once a worker is connected', async () => {
     scripted = new ScriptedFetch();
@@ -112,6 +157,31 @@ describe('Workers route with something to operate', () => {
   test('shows the full page while a task queue exists, whose ledger Diagnostics reads', async () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted, { workers: [], deployments: [], queues: [queue()] });
+
+    const view = renderRoute();
+
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    expect(view.queryByText(SENTENCE)).toBeNull();
+  });
+
+  test('shows the full page for an address that names a diagnostic, as the Overview alerts do', async () => {
+    openAt('/workers?diagnostic=stuckQueued');
+    scripted = emptyFleet();
+
+    const view = renderRoute();
+
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    expect(view.queryByText(SENTENCE)).toBeNull();
+  });
+
+  test('shows the full page for a dead letter whose worker disconnected, which no queue lists', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      workers: [],
+      deployments: [],
+      queues: [],
+      diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+    });
 
     const view = renderRoute();
 

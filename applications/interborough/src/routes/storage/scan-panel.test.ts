@@ -189,6 +189,36 @@ describe('ScanPanel', () => {
       );
     });
 
+    test('keeps a prefix typed before the prefixes were found, in the picker that replaces the field', async () => {
+      activeStub = stubStorageFetch(() => ndjsonResponse([]));
+
+      const view = render(ScanPanelHarness, { props: { client: fakeClient(), knownPrefixes: [] } });
+      await fireEvent.input(view.getByLabelText('Prefix'), { target: { value: 'wf:' } });
+
+      // The prefixes arrive: the typed one is not among them, so it stays, under Other.
+      await view.rerender({ client: fakeClient(), knownPrefixes: KNOWN });
+      expect((view.getByLabelText('Prefix') as HTMLSelectElement).value).toBe('__other__');
+      expect((view.getByLabelText('Other prefix') as HTMLInputElement).value).toBe('wf:');
+      await fireEvent.click(view.getByText('Scan'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe('wf:');
+    });
+
+    test('picks a prefix typed before the prefixes were found when it is one of them', async () => {
+      activeStub = stubStorageFetch(() => ndjsonResponse([]));
+
+      const view = render(ScanPanelHarness, { props: { client: fakeClient(), knownPrefixes: [] } });
+      await fireEvent.input(view.getByLabelText('Prefix'), { target: { value: 'bureau-goal:' } });
+
+      await view.rerender({ client: fakeClient(), knownPrefixes: KNOWN });
+      expect((view.getByLabelText('Prefix') as HTMLSelectElement).value).toBe('bureau-goal:');
+      await fireEvent.click(view.getByText('Scan'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe(
+        'bureau-goal:',
+      );
+    });
+
     test('Other brings a field to type a prefix that is not in the list, such as a reserved one', async () => {
       activeStub = stubStorageFetch(() => ndjsonResponse([]));
 
