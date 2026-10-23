@@ -146,7 +146,7 @@ class PeerTaskRun implements A2APeerTask {
     try {
       return await Promise.race([opened.next(), expired]);
     } catch (error) {
-      opened.return().catch(() => undefined);
+      void Promise.allSettled([opened.return()]);
       throw error;
     } finally {
       clearTimeout(timer);
@@ -189,7 +189,7 @@ class PeerTaskRun implements A2APeerTask {
   private closeStream(): void {
     const open = this.stream;
     this.stream = undefined;
-    open?.return().catch(() => undefined);
+    if (open !== undefined) void Promise.allSettled([open.return()]);
   }
 
   private async settle(): Promise<A2APeerOutcome> {

@@ -37,6 +37,28 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
 }
 
 describe('A2A peer client review round 3', () => {
+  test('reads the card under a base URL that has a path', async () => {
+    const peer = createScriptedPeer();
+    const seen: string[] = [];
+    const cardPath = '/a2a/agent-name/.well-known/agent-card.json';
+    const client = createA2APeerClient({
+      url: 'https://peer.example/a2a/agent-name',
+      allowedInterfaceOrigins: [new URL(peer.url).origin],
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.method !== 'GET') return peer.fetch(request);
+        seen.push(new URL(request.url).pathname);
+        if (new URL(request.url).pathname !== cardPath) return new Response('', { status: 404 });
+        return peer.fetch(`${new URL(peer.url).origin}/.well-known/agent-card.json`);
+      }) as typeof fetch,
+      sleep: immediate,
+      attempts: 1,
+    });
+    const card = await client.card();
+    expect(seen).toEqual([cardPath]);
+    expect(card.cardUrl).toBe(`https://peer.example${cardPath}`);
+  });
+
   test('a stream that never emits its first event fails with a timeout', async () => {
     const { client } = connect(
       {

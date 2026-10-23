@@ -34,14 +34,19 @@ export async function retryRequest<T>(
   call: () => Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
+  for (let attempt = 1; attempt < policy.attempts; attempt++) {
     try {
       return await call();
     } catch (error) {
       const classified = policy.classify(error);
-      const exhausted = attempt >= policy.attempts || signal?.aborted === true;
-      if (!classified.retryable || exhausted) throw classified;
+      if (!classified.retryable || signal?.aborted === true) throw classified;
       await policy.sleep(backoffMs(policy, attempt), signal);
     }
+  }
+  // The last attempt has nothing left to retry, so its failure is final.
+  try {
+    return await call();
+  } catch (error) {
+    throw policy.classify(error);
   }
 }

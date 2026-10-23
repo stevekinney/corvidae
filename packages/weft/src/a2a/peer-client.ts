@@ -83,7 +83,8 @@ export interface A2APeerClientOptions {
   readonly sleep?: ((ms: number, signal?: AbortSignal) => Promise<void>) | undefined;
 }
 
-const CARD_PATH = '/.well-known/agent-card.json';
+/** Relative, so a base URL with a path (a mount like `/a2a/agent`) keeps its path. */
+const CARD_PATH = '.well-known/agent-card.json';
 const ACCEPTED_OUTPUT_MODES = ['text/plain'];
 
 /** Failures that mean the cached card may no longer describe the peer. */
@@ -143,6 +144,8 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
   const limits = resolveLimits(options);
   const now = options.now ?? Date.now;
   const supported = new Set(options.supportedExtensions ?? []);
+  // The card lives under the base path, so the base ends in a slash for relative resolution.
+  const baseUrl = options.url.endsWith('/') ? options.url : `${options.url}/`;
   const cardOrigin = originOf(options.url);
   if (cardOrigin === undefined) {
     throw new TypeError(`url must be an absolute URL; received ${options.url}.`);
@@ -164,7 +167,7 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
 
   async function readCard(resolver: DefaultAgentCardResolver): Promise<AgentCard> {
     try {
-      return await retryRequest(retryPolicy, () => resolver.resolve(options.url));
+      return await retryRequest(retryPolicy, () => resolver.resolve(baseUrl));
     } catch (error) {
       const classified = classifyPeerError(error);
       if (classified.code !== 'protocol') throw classified;
@@ -199,7 +202,7 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
         name: raw.name,
         version: raw.version,
         description: raw.description,
-        cardUrl: new URL(CARD_PATH, options.url).href,
+        cardUrl: new URL(CARD_PATH, baseUrl).href,
         interfaceUrl: selected.url,
         streaming,
         activeExtensions,
