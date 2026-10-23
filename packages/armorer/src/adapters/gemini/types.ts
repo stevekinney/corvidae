@@ -43,6 +43,8 @@ export interface GeminiTool {
 
 export interface GeminiFunctionCallPart {
   functionCall: {
+    /** The id Gemini issued for the call; `parseGeminiToolCalls` records it as `providerCallId`. */
+    id?: string;
     name: string;
     args: Record<string, unknown>;
   };
@@ -50,7 +52,7 @@ export interface GeminiFunctionCallPart {
 
 export interface GeminiFunctionResponsePart {
   functionResponse: {
-    /** The originating `functionCall.id`; present only when Gemini issued one (an id recorded by `parseGeminiToolCalls`). */
+    /** The originating `functionCall.id`; present only when the result carries a `providerCallId` (set by `parseGeminiToolCalls`). */
     id?: string;
     name: string;
     response: Record<string, unknown>;

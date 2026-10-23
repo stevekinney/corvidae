@@ -5,6 +5,7 @@ import type { AnyToolDefinition } from '../../core';
 import { createRegistry, defineTool, serializeToolDefinition } from '../../core';
 import { createTool } from '../../create-tool';
 import { createToolbox } from '../../create-toolbox';
+import type { ToolExecutionResult } from '../../types';
 import {
   formatGeminiToolResults,
   formatGeminiToolResultsAsync,
@@ -143,7 +144,7 @@ describe('parseGeminiToolCalls', () => {
         { functionCall: undefined },
       ]),
     ).toEqual([
-      { id: 'call-1', name: 'search', arguments: { query: 'id' } },
+      { id: 'call-1', providerCallId: 'call-1', name: 'search', arguments: { query: 'id' } },
       { name: 'list', arguments: {} },
     ]);
   });
@@ -254,10 +255,75 @@ describe('formatGeminiToolResults', () => {
     ]);
   });
 
-  it('echoes a provider-issued id on a result with parts and never an unseen id', () => {
-    parseGeminiToolCalls([{ functionCall: { id: 'gem-parts', name: 'lookup', args: {} } }]);
+  it('carries providerCallId onto success, unknown-tool, and thrown-error results', async () => {
+    const ok = createTool({
+      name: 'ok',
+      version: '1.0.0',
+      description: 'Succeeds',
+      input: z.object({}),
+      execute: async () => 'fine',
+    });
+    const boom = createTool({
+      name: 'boom',
+      version: '1.0.0',
+      description: 'Throws',
+      input: z.object({}),
+      execute: async () => {
+        throw new Error('nope');
+      },
+    });
+    const toolbox = createToolbox([ok, boom]);
+    const results = await toolbox.execute(
+      parseGeminiToolCalls([
+        { functionCall: { id: 'gem-id', name: 'ok', args: {} } },
+        { functionCall: { id: 'gem-id', name: 'missing', args: {} } },
+        { functionCall: { id: 'gem-id', name: 'boom', args: {} } },
+        { functionCall: { name: 'ok', args: {} } },
+      ]),
+    );
+    expect(results.map((result) => result.outcome)).toEqual([
+      'success',
+      'error',
+      'error',
+      'success',
+    ]);
+    expect(results.slice(0, 3).map((result) => result.providerCallId)).toEqual([
+      'gem-id',
+      'gem-id',
+      'gem-id',
+    ]);
+    expect(results[3]).not.toHaveProperty('providerCallId');
+  });
+
+  it('stamps providerCallId on a copy when a wrapped tool returns a frozen result', async () => {
+    const base = createTool({
+      name: 'frozen',
+      version: '1.0.0',
+      description: 'Returns a frozen result',
+      input: z.object({}),
+      execute: async () => 'fine',
+    });
+    const frozen = new Proxy(base, {
+      get(target, property, receiver) {
+        if (property !== 'execute') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof target.execute>) => {
+          const settled = (await target.execute(...args)) as unknown as ToolExecutionResult;
+          return Object.freeze({ ...settled });
+        };
+      },
+    });
+    const toolbox = createToolbox([frozen]);
+    const [result] = await toolbox.execute(
+      parseGeminiToolCalls([{ functionCall: { id: 'gem-frozen', name: 'frozen', args: {} } }]),
+    );
+    expect(result?.outcome).toBe('success');
+    expect(result?.providerCallId).toBe('gem-frozen');
+  });
+
+  it('echoes a provider-issued id on a result with parts and never an Armorer-generated id', () => {
     const withParts = formatGeminiToolResults({
       callId: 'gem-parts',
+      providerCallId: 'gem-parts',
       outcome: 'success',
       content: 'text',
       toolName: 'lookup',
@@ -271,6 +337,21 @@ describe('formatGeminiToolResults', () => {
       toolName: 'lookup',
     });
     expect(generated[0]?.functionResponse).not.toHaveProperty('id');
+  });
+
+  it('formats the marker alone, with no prior parse in this module state', async () => {
+    const result = {
+      callId: 'never-parsed-here',
+      providerCallId: 'never-parsed-here',
+      outcome: 'success' as const,
+      content: { n: 1 },
+      toolName: 'lookup',
+    };
+    expect(formatGeminiToolResults(result)[0]?.functionResponse.id).toBe('never-parsed-here');
+    const asyncParts = await formatGeminiToolResultsAsync(result);
+    expect(asyncParts[0]?.functionResponse.id).toBe('never-parsed-here');
+    const { providerCallId: _marker, ...unmarked } = result;
+    expect(formatGeminiToolResults(unmarked)[0]?.functionResponse).not.toHaveProperty('id');
   });
 
   it('resolves tool names from explicit mappings and defaults', () => {

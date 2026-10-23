@@ -86,24 +86,6 @@ export function fromGeminiTools(
 }
 
 /**
- * Ids Gemini issued on `functionCall` parts, recorded by {@link parseGeminiToolCalls}. Google
- * defines `functionResponse.id` as the originating call's id, so a response echoes an id only when
- * it is in here; an Armorer-generated id is never sent. It is process-local, and bounded so a
- * long-running process does not grow it without limit (the oldest id is dropped first).
- */
-const providerIssuedCallIds = new Set<string>();
-const PROVIDER_ISSUED_CALL_ID_LIMIT = 10_000;
-
-function recordProviderIssuedCallId(id: string): void {
-  providerIssuedCallIds.delete(id);
-  providerIssuedCallIds.add(id);
-  if (providerIssuedCallIds.size > PROVIDER_ISSUED_CALL_ID_LIMIT) {
-    const oldest = providerIssuedCallIds.values().next().value;
-    if (oldest !== undefined) providerIssuedCallIds.delete(oldest);
-  }
-}
-
-/**
  * Parses `functionCall` parts into tool calls, keeping the id Gemini issued (Gemini 3 always sends
  * one; earlier models may send none, and execution then generates it). The formatters echo that id
  * as `functionResponse.id` with no further wiring, so two calls to one function pair correctly.
@@ -203,9 +185,10 @@ function transformToGeminiSchema(schema: Record<string, unknown>): GeminiSchema 
 function convertFunctionCall(
   functionCall: NonNullable<GeminiResponsePart['functionCall']> & { name: string },
 ): ToolCallInput {
-  if (typeof functionCall.id === 'string') recordProviderIssuedCallId(functionCall.id);
   return {
-    ...(typeof functionCall.id === 'string' ? { id: functionCall.id } : {}),
+    ...(typeof functionCall.id === 'string'
+      ? { id: functionCall.id, providerCallId: functionCall.id }
+      : {}),
     name: functionCall.name,
     arguments: functionCall.args ?? {},
   };
@@ -234,10 +217,10 @@ function toFunctionResponsePart(
   return { functionResponse: { ...id, name, response, parts: media } };
 }
 
-/** The `id` field to echo: the call id, only when Gemini issued it. */
+/** The `id` field to echo: the provider-issued id the result carries, never an Armorer-generated one. */
 function geminiResponseId(result: ToolResultLike): { id: string } | Record<never, never> {
-  const callId = 'toolCallId' in result ? result.toolCallId : result.callId;
-  return providerIssuedCallIds.has(callId) ? { id: callId } : {};
+  const issued = result.providerCallId;
+  return typeof issued === 'string' && issued.length > 0 ? { id: issued } : {};
 }
 
 function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown> {

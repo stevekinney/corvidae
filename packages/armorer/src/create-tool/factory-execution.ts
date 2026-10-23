@@ -3,6 +3,7 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { freezeToolRequestContext } from '../execution-context';
 import type { ExecutionHandle, ExecutionLifecycle } from '../execution-lifecycle';
 import type { ToolCallWithArguments, ToolExecuteOptions, ToolExecuteWithOptions } from '../is-tool';
+import { providerCallIdField } from '../provider-call-id';
 import {
   type ToolCallReturn,
   type ToolExecutionResult,
@@ -303,6 +304,7 @@ function queuedCancellationResult(
     outcome: 'error',
     content: message,
     toolCallId: toolCall.id,
+    ...providerCallIdField(toolCall),
     toolName,
     result: undefined,
     error: toolError,
@@ -322,6 +324,7 @@ function deadlineCancellationResult(
     outcome: 'error',
     content: message,
     toolCallId: toolCall.id,
+    ...providerCallIdField(toolCall),
     toolName,
     result: undefined,
     error: toolError,

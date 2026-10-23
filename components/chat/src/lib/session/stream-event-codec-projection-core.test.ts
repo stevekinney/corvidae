@@ -112,6 +112,21 @@ describe('encode-time field projection (CIN-507)', () => {
     expect(encoded).not.toContain('should-never-cross-the-wire');
   });
 
+  test('never encodes provider call-id provenance on a tool_result frame', () => {
+    const encoded = encodeChatStreamEvent(
+      hostileEvent({
+        type: 'tool_result',
+        callId: 'call-1',
+        outcome: 'success',
+        content: { ok: true },
+        providerCallId: 'gem-1',
+      }),
+    );
+
+    expect(encoded).not.toContain('providerCallId');
+    expect(encoded).not.toContain('gem-1');
+  });
+
   test('rejects encoding a wire envelope carrying only wireVersion', () => {
     const event = hostileEvent({
       type: 'text',
