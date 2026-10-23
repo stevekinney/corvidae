@@ -11,7 +11,13 @@
 // The steps run in order and stop at the first failure, which is named:
 //   1. fetch          `git fetch origin <default>`;
 //   2. head           the worktree's HEAD equals the pull request's `headRefOid`, and it is open;
-//   3. contains-base  HEAD contains `origin/<default>`;
+//   3. contains-base  HEAD contains `origin/<default>`, or else it merges cleanly with it
+//                     (`git merge-tree --write-tree` exits 0) and no commit that landed on
+//                     `origin/<default>` since the merge base lies in a workspace the pull request
+//                     affects (`merge-overlap.ts`: its changed workspaces, their dependents and
+//                     dependencies; `bun.lock`, the root manifest, `turbo.json` and the root
+//                     `tsconfig*.json` touch everything). The refusal names which condition failed
+//                     and the overlapping paths;
 //   3b. main-health   `main`'s last batch validate (`main-health.ts`) at a head on `origin/<default>`'s
 //                     first-parent history did not fail, unless the pull request is declared the fix
 //                     with `--fixes-main`, which is recorded in the report and the health file;
@@ -20,12 +26,23 @@
 //                     of the run with HEAD unmoved (start head = end head = the pull request's head);
 //   5. threads        every review thread is resolved, and SEEN equals TOTAL;
 //   6. comment        post the comment file (skipped with --dry-run);
-//   7. refetch        fetch again; HEAD still contains `origin/<default>`;
+//   7. refetch        fetch again; the step 3 base check still holds;
 //   8. merge          `gh pr merge --<method> --match-head-commit <head>` (skipped with --dry-run);
 //   9. confirm        the pull request is MERGED, and `git diff --quiet <mergeCommit> <head>` holds,
-//                     which is `treesMatch` (skipped with --dry-run).
+//                     which is `treesMatch`. For a head that did not contain the base, the merge
+//                     commit's tree must instead equal the `merge-tree` result tree (skipped with
+//                     --dry-run).
 //
-// It prints { pr, head, base, gateRc, threads, merged, mergeCommit, treesMatch, failedStep }.
+// The report and the posted comment say which base path was used: "contains origin/<default>" or
+// "merges cleanly with origin/<default> <sha>; intervening commits touch no affected workspace".
+//
+// Cross-session merge lock: unless --dry-run, the command line holds one exclusive lock in the Git
+// common directory (`corvidae-merge-lock`, the lock of `scripts/run-exclusively.ts`) from before
+// step 1 to after step 9, so two sessions never gate and merge at once. A waiting merge prints
+// who holds it; a lock whose holder died is reclaimed.
+//
+// It prints { pr, head, base, gateRc, threads, merged, mergeCommit, treesMatch, failedStep }, plus
+// basePath ("contains" or "merge-tree") and, for the latter, mergeTree.
 //
 // Spend record (optional): `--usage-log <file>` with one or more `--transcript <path>` (a
 // transcript file, or a directory searched recursively) totals those transcripts' tokens with
@@ -38,17 +55,33 @@
 // Exit codes: 0 every step passed (under --dry-run: every check passed), 1 a step failed or the
 // merged tree differs from the gated tree, 2 invalid CLI usage.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import {
+  acquireHostLock,
+  processStartTime,
+  type AcquireHostLockOptions,
+  type HostLockHolder,
+} from '../run-exclusively.ts';
 import { readGateLog } from './gate-run.ts';
 import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
+import { overlappingFiles, readWorkspaceGraph } from './merge-overlap.ts';
 import {
   defaultRunner,
   emitResult,
   parseOptions,
   requireOption,
-  type Runner,
   UsageError,
+  type Runner,
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { listThreads, ReviewThreadsError } from './review-threads.ts';
@@ -69,6 +102,10 @@ export interface MergeGateOptions {
   checkMainHealth?: boolean | undefined;
   /** Declares this pull request the fix for a red `main`, so the main-health step lets it through. */
   fixesMain?: boolean | undefined;
+  /** Where the cross-session merge lock lives; defaults to the Git common directory. */
+  lockDirectory?: string | undefined;
+  /** How often a waiter rechecks the merge lock, in milliseconds. */
+  lockPollIntervalMs?: number | undefined;
   /** Where to append the spend record after a successful merge; needs `transcripts`. */
   usageLog?: string | undefined;
   /** Transcript files or directories whose token usage the spend record totals. */
@@ -87,6 +124,10 @@ export interface MergeGateReport {
   mergeCommit: string | null;
   /** Whether the merge commit's tree equals the gated head's; `null` when it was not checked. */
   treesMatch: boolean | null;
+  /** How the head relates to the base: it contains it, or it merges cleanly with it. */
+  basePath?: 'contains' | 'merge-tree';
+  /** The tree `git merge-tree` computed for a head that does not contain the base. */
+  mergeTree?: string;
   /** Whether the pull request was declared the fix for a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
   /** The step that failed, or `null` when every step passed. */
@@ -109,6 +150,13 @@ interface PullRequestView {
   mergeStateStatus?: unknown;
   state?: unknown;
   mergeCommit?: { oid?: unknown } | null;
+}
+
+/** One line saying which base path a report relied on. */
+function describeBasePath(report: MergeGateReport, defaultBranch: string): string {
+  return report.basePath === 'merge-tree'
+    ? `merges cleanly with origin/${defaultBranch} ${report.base?.slice(0, 12) ?? 'unknown'}; intervening commits touch no affected workspace`
+    : `contains origin/${defaultBranch}`;
 }
 
 function firstLine(text: string): string {
@@ -178,6 +226,44 @@ export function mergeGate(
   };
   const containsBase = (): boolean =>
     git('merge-base', '--is-ancestor', `origin/${defaultBranch}`, 'HEAD').code === 0;
+  const changedFiles = (from: string, to: string): string[] | string => {
+    const diff = git('diff', '--name-only', '--no-renames', from, to);
+    return diff.code === 0
+      ? diff.stdout.split('\n').filter((line) => line !== '')
+      : `git diff ${from.slice(0, 12)}..${to.slice(0, 12)} failed (exit ${diff.code}): ${firstLine(diff.stderr)}`;
+  };
+  /**
+   * Whether the head may be merged against the current base: it contains it, or it merges cleanly
+   * and nothing that landed since touches a workspace the pull request affects. A string is the
+   * reason it may not.
+   */
+  const checkBase = (): { path: 'contains' | 'merge-tree'; tree?: string } | string => {
+    if (containsBase()) return { path: 'contains' };
+    const remote = `origin/${defaultBranch}`;
+    const refusal = `HEAD does not contain ${remote}`;
+    const mergeTree = git('merge-tree', '--write-tree', remote, 'HEAD');
+    if (mergeTree.code !== 0)
+      return `${refusal} and does not merge cleanly with it (git merge-tree exit ${mergeTree.code}); merge it in and re-gate.`;
+    const tree = mergeTree.stdout.split('\n')[0]?.trim() ?? '';
+    if (!/^[0-9a-f]{40,64}$/.test(tree))
+      return `${refusal}, and git merge-tree printed no tree to confirm the merge against.`;
+    const mergeBase = git('merge-base', remote, 'HEAD');
+    const baseSha = mergeBase.stdout.trim();
+    if (mergeBase.code !== 0 || baseSha === '')
+      return `${refusal}, and it has no merge base with it: ${firstLine(mergeBase.stderr)}`;
+    const pullRequestFiles = changedFiles(baseSha, 'HEAD');
+    if (typeof pullRequestFiles === 'string') return pullRequestFiles;
+    const baseFiles = changedFiles(baseSha, remote);
+    if (typeof baseFiles === 'string') return baseFiles;
+    const overlap = overlappingFiles(
+      pullRequestFiles,
+      baseFiles,
+      readWorkspaceGraph(options.worktree),
+    );
+    if (overlap.length > 0)
+      return `${refusal}, and ${overlap.length} file(s) that landed on it since the merge base lie in workspaces this pull request affects, so the gate may not describe the merge: ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ', ...' : ''}. Merge it in and re-gate.`;
+    return { path: 'merge-tree', tree };
+  };
 
   // 1. fetch
   const fetchProblem = fetchBase('fetch');
@@ -205,11 +291,12 @@ export function mergeGate(
     );
 
   // 3. contains-base
-  if (!containsBase())
-    return fail(
-      'contains-base',
-      `HEAD does not contain origin/${defaultBranch}; merge it in and re-gate.`,
-    );
+  const baseCheck = checkBase();
+  if (typeof baseCheck === 'string') return fail('contains-base', baseCheck);
+  report.basePath = baseCheck.path;
+  if (baseCheck.tree !== undefined) report.mergeTree = baseCheck.tree;
+  else delete report.mergeTree;
+  const baseNote = describeBasePath(report, defaultBranch);
 
   // 3b. main-health
   const healthFile =
@@ -284,6 +371,13 @@ export function mergeGate(
 
   // 6. comment
   if (!options.dryRun) {
+    // The comment says which base path the gate relied on, so a reader sees it was not a clean fast-forward.
+    const commentDirectory = mkdtempSync(join(tmpdir(), 'merge-gate-comment-'));
+    const commentBody = join(commentDirectory, 'comment.md');
+    writeFileSync(
+      commentBody,
+      `${readFileSync(options.commentFile, 'utf8').trimEnd()}\n\nBase: ${baseNote}\n`,
+    );
     const commented = runner([
       'gh',
       'pr',
@@ -292,8 +386,9 @@ export function mergeGate(
       '--repo',
       repository,
       '--body-file',
-      options.commentFile,
+      commentBody,
     ]);
+    rmSync(dirname(commentBody), { recursive: true, force: true });
     if (commented.code !== 0)
       return fail(
         'comment',
@@ -304,11 +399,12 @@ export function mergeGate(
   // 7. refetch
   const refetchProblem = fetchBase('refetch');
   if (refetchProblem !== undefined) return fail('refetch', refetchProblem);
-  if (!containsBase())
-    return fail(
-      'refetch',
-      `${defaultBranch} moved: HEAD no longer contains origin/${defaultBranch}.`,
-    );
+  const refetchCheck = checkBase();
+  if (typeof refetchCheck === 'string')
+    return fail('refetch', `${defaultBranch} moved: ${refetchCheck}`);
+  report.basePath = refetchCheck.path;
+  if (refetchCheck.tree !== undefined) report.mergeTree = refetchCheck.tree;
+  else delete report.mergeTree;
   report.base = git('rev-parse', `origin/${defaultBranch}`).stdout.trim() || report.base;
   if (options.dryRun) return report;
 
@@ -346,15 +442,29 @@ export function mergeGate(
       'confirm',
       `could not fetch merge commit ${mergeCommit.slice(0, 12)}: ${firstLine(fetchedCommit.stderr)}`,
     );
-  const diff = git('diff', '--quiet', mergeCommit, head);
-  if (diff.code > 1)
-    return fail('confirm', `git diff failed (exit ${diff.code}): ${firstLine(diff.stderr)}`);
-  report.treesMatch = diff.code === 0;
-  if (!report.treesMatch)
-    return fail(
-      'confirm',
-      `merged but the merge commit's tree differs from the gated head ${head.slice(0, 12)}.`,
-    );
+  if (report.basePath === 'merge-tree') {
+    // The head never contained the base, so the squash commit's tree is compared with the clean
+    // merge `git merge-tree` computed instead of with the head.
+    const tree = git('rev-parse', `${mergeCommit}^{tree}`);
+    if (tree.code !== 0)
+      return fail('confirm', `could not read the merge commit's tree: ${firstLine(tree.stderr)}`);
+    report.treesMatch = tree.stdout.trim() === report.mergeTree;
+    if (!report.treesMatch)
+      return fail(
+        'confirm',
+        `merged but the merge commit's tree differs from the clean merge of ${head.slice(0, 12)} with origin/${defaultBranch} that git merge-tree computed.`,
+      );
+  } else {
+    const diff = git('diff', '--quiet', mergeCommit, head);
+    if (diff.code > 1)
+      return fail('confirm', `git diff failed (exit ${diff.code}): ${firstLine(diff.stderr)}`);
+    report.treesMatch = diff.code === 0;
+    if (!report.treesMatch)
+      return fail(
+        'confirm',
+        `merged but the merge commit's tree differs from the gated head ${head.slice(0, 12)}.`,
+      );
+  }
 
   // 10. usage (optional): the spend record for this merge
   if (options.usageLog !== undefined) {
@@ -383,9 +493,57 @@ export function mergeGate(
   return report;
 }
 
+/**
+ * `mergeGate` under the cross-session merge lock, so two sessions never gate and merge at once.
+ * A dry run takes no lock. The lock is released whatever the outcome, and a dead holder's lock is
+ * reclaimed by `run-exclusively.ts`'s helpers.
+ */
+export async function mergeGateExclusively(
+  options: MergeGateOptions,
+  partial: Partial<MergeGateDependencies> = {},
+  onWait?: AcquireHostLockOptions['onWait'],
+): Promise<MergeGateReport> {
+  if (options.dryRun) return mergeGate(options, partial);
+  let lockDirectory = options.lockDirectory;
+  if (lockDirectory === undefined) {
+    const common = (partial.runner ?? defaultRunner)(
+      ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { cwd: options.worktree },
+    );
+    if (common.code !== 0 || common.stdout.trim() === '')
+      throw new UsageError(
+        `${options.worktree} is not a Git worktree: ${firstLine(common.stderr)}`,
+      );
+    lockDirectory = join(common.stdout.trim(), 'corvidae-merge-lock');
+  }
+  const holder: HostLockHolder = {
+    pid: process.pid,
+    ...(processStartTime(process.pid) === undefined
+      ? {}
+      : { pidStartedAt: processStartTime(process.pid) as string }),
+    command: `merge-gate pr #${options.pr}`,
+    cwd: options.worktree,
+    acquiredAt: new Date().toISOString(),
+  };
+  const held = await acquireHostLock({
+    lockDirectory,
+    holder,
+    ...(options.lockPollIntervalMs === undefined
+      ? {}
+      : { pollIntervalMs: options.lockPollIntervalMs }),
+    ...(onWait === undefined ? {} : { onWait }),
+  });
+  try {
+    return mergeGate(options, partial);
+  } finally {
+    await held.release();
+  }
+}
+
 export function renderMergeGate(report: MergeGateReport, dryRun: boolean): string {
   const lines = [
     `pr #${report.pr} head=${report.head?.slice(0, 12) ?? 'unknown'} base=${report.base?.slice(0, 12) ?? 'unknown'} gate rc=${report.gateRc ?? 'none'}`,
+    `base path: ${report.basePath ?? 'not checked'}`,
     `threads: ${report.threads === null ? 'not checked' : `seen ${report.threads.seen} of ${report.threads.total}, ${report.threads.unresolved} unresolved`}`,
   ];
   if (report.failedStep !== null) {
@@ -408,10 +566,7 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
   return lines.join('\n');
 }
 
-export function run(
-  argv: string[],
-  dependencies: Partial<MergeGateDependencies> = {},
-): { code: number; output: string } {
+function parseArguments(argv: string[]): { options: MergeGateOptions; json: boolean } {
   const parsed = parseOptions(argv, {
     values: ['config', 'pr', 'worktree', 'gate-log', 'comment-file', 'usage-log', 'health-file'],
     repeated: ['transcript'],
@@ -421,31 +576,61 @@ export function run(
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const pr = requireOption(parsed, 'pr');
   if (!/^[1-9]\d*$/.test(pr)) throw new UsageError(`"${pr}" is not a pull request number.`);
-  const options: MergeGateOptions = {
-    configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
-    pr: Number(pr),
-    worktree: requireOption(parsed, 'worktree'),
-    gateLog: requireOption(parsed, 'gate-log'),
-    commentFile: requireOption(parsed, 'comment-file'),
-    dryRun: parsed.flags.has('dry-run'),
-    healthFile: parsed.values['health-file'],
-    checkMainHealth: true,
-    fixesMain: parsed.flags.has('fixes-main'),
-    usageLog: parsed.values['usage-log'],
-    transcripts: parsed.repeated['transcript'] ?? [],
+  return {
+    json: parsed.flags.has('json'),
+    options: {
+      configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
+      pr: Number(pr),
+      worktree: requireOption(parsed, 'worktree'),
+      gateLog: requireOption(parsed, 'gate-log'),
+      commentFile: requireOption(parsed, 'comment-file'),
+      dryRun: parsed.flags.has('dry-run'),
+      healthFile: parsed.values['health-file'],
+      checkMainHealth: true,
+      fixesMain: parsed.flags.has('fixes-main'),
+      usageLog: parsed.values['usage-log'],
+      transcripts: parsed.repeated['transcript'] ?? [],
+    },
   };
-  const report = mergeGate(options, dependencies);
+}
+
+function finish(
+  report: MergeGateReport,
+  options: MergeGateOptions,
+  json: boolean,
+): { code: number; output: string } {
   return {
     code: report.failedStep === null ? 0 : 1,
-    output: parsed.flags.has('json')
-      ? JSON.stringify(report)
-      : renderMergeGate(report, options.dryRun),
+    output: json ? JSON.stringify(report) : renderMergeGate(report, options.dryRun),
   };
+}
+
+/** Runs the gate without the merge lock; the command line uses `runExclusively`. */
+export function run(
+  argv: string[],
+  dependencies: Partial<MergeGateDependencies> = {},
+): { code: number; output: string } {
+  const { options, json } = parseArguments(argv);
+  return finish(mergeGate(options, dependencies), options, json);
+}
+
+/** Runs the gate under the cross-session merge lock (a dry run takes none). */
+export async function runExclusively(
+  argv: string[],
+  dependencies: Partial<MergeGateDependencies> = {},
+): Promise<{ code: number; output: string }> {
+  const { options, json } = parseArguments(argv);
+  const report = await mergeGateExclusively(options, dependencies, (holder) =>
+    process.stderr.write(
+      `merge-gate: waiting for the merge lock${holder === undefined ? '' : ` held by ${holder.command} (pid ${holder.pid})`}\n`,
+    ),
+  );
+  return finish(report, options, json);
 }
 
 if (import.meta.main) {
   try {
-    const { code, output } = run(Bun.argv.slice(2));
+    const { code, output } = await runExclusively(Bun.argv.slice(2));
     emitResult(Bun.argv.slice(2), { code, output });
     process.exitCode = code;
   } catch (error) {
