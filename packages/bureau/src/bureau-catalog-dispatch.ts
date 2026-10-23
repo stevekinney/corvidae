@@ -42,7 +42,8 @@ import {
   wireDurableOptInTools,
 } from './runtime-composition';
 import type { RunAttribution } from './serialization';
-import type { BureauRunOptions } from './types';
+import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import type { BureauHumanInputOption, BureauRunOptions } from './types';
 
 type CatalogRunErrorCode = 'CONFLICT' | 'NOT_FOUND';
 
