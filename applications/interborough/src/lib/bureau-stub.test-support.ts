@@ -37,6 +37,27 @@ export const STUB_AGENT_DIRECTORY = '/home/tester/.interborough/agents';
 /** The directory the stub reports for workflow files. */
 export const STUB_WORKFLOW_DIRECTORY = '/home/tester/.interborough/workflows';
 
+/** The configuration file the stub reports. */
+export const STUB_CONFIGURATION_FILE = '/home/tester/.interborough/configuration.json';
+/** The directory the stub reports for provider API keys. */
+export const STUB_SECRETS_DIRECTORY = '/home/tester/.interborough/secrets';
+/** The providers the stub reports, each with the file that holds its API key. */
+export const STUB_PROVIDERS: { name: string; secretFile: string }[] = [
+  { name: 'anthropic', secretFile: `${STUB_SECRETS_DIRECTORY}/anthropic-api-key` },
+  { name: 'openai', secretFile: `${STUB_SECRETS_DIRECTORY}/openai-api-key` },
+  { name: 'gemini', secretFile: `${STUB_SECRETS_DIRECTORY}/gemini-api-key` },
+];
+
+/** The body `/host/paths` answers with, for the two directories a test chooses. */
+export function stubHostPaths(agentDirectory: string, workflowDirectory: string) {
+  return {
+    agentDirectory,
+    workflowDirectory,
+    configurationFile: STUB_CONFIGURATION_FILE,
+    providers: STUB_PROVIDERS,
+  };
+}
+
 export type BureauStub = {
   readonly calls: BureauCall[];
   /** The calls made to one method, in order. */
@@ -80,7 +101,7 @@ export function installBureauStub(
       const directory = options.hostPaths === undefined ? STUB_AGENT_DIRECTORY : options.hostPaths;
       return directory === null
         ? new Response('Not found', { status: 404 })
-        : Response.json({ agentDirectory: directory, workflowDirectory: STUB_WORKFLOW_DIRECTORY });
+        : Response.json(stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY));
     }
     if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });
@@ -146,7 +167,13 @@ export function catalogFixture(overrides: Partial<AgentCatalog> = {}): AgentCata
       },
       { provider: 'anthropic', model: 'claude-haiku-5', aliases: [] },
     ],
-    tools: [{ name: 'lookup-order', description: 'Look an order up by its identifier.' }],
+    tools: [
+      {
+        name: 'lookup-order',
+        description: 'Look an order up by its identifier.',
+        shortDescription: null,
+      },
+    ],
     ...overrides,
   };
 }

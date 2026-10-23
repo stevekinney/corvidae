@@ -43,7 +43,7 @@ import {
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
-import type { Tool } from 'armorer';
+import { readToolShortDescription, type Tool } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
 import {
@@ -82,7 +82,13 @@ export interface AgentFileDetail extends AgentListing {
 /** One tool of the deployment's tool catalog, by the name an agent file uses. */
 export interface AgentToolDescription {
   readonly name: string;
+  /** The tool's model-facing description: a prompt, which can run to several paragraphs. */
   readonly description: string;
+  /**
+   * The one line a screen shows for the tool: its `metadata.shortDescription`, or `null` when it
+   * declares none, in which case a screen derives a line from `description`.
+   */
+  readonly shortDescription: string | null;
 }
 
 /** The default agent every `createRun` without `agentName` runs. No file may take its name. */
@@ -654,7 +660,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     tools() {
       return Object.entries(options.tools)
-        .map(([name, tool]) => ({ name, description: tool.description }))
+        .map(([name, tool]) => ({
+          name,
+          description: tool.description,
+          shortDescription: readToolShortDescription(tool.metadata) ?? null,
+        }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     },
 

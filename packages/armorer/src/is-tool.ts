@@ -147,6 +147,13 @@ export type ToolEventDetailContext = {
 };
 
 export type ToolMetadata = JsonObject & {
+  /**
+   * One line, written for a person, that says what the tool does: shown where a screen lists
+   * tools, in place of the model-facing `description`, which is a prompt and can run to several
+   * paragraphs. Static text with no placeholders; `summary` is the per-call template. Read it with
+   * `readToolShortDescription`.
+   */
+  shortDescription?: string;
   mutates?: boolean;
   readOnly?: boolean;
   dangerous?: boolean;
