@@ -29,7 +29,7 @@ import type {
 import { TASK_ARTIFACT_TEXT_LIMIT } from '../task-registry.ts';
 import { formSurfaceId, previousParkReviewId, type WaitForm } from './a2a-input-forms.ts';
 import { A2UI_MEDIA_TYPE, inputFormDeletion, inputFormMessages } from '../a2ui/input-form.ts';
-import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
+import { A2UI_EXTENSION_URI, offeredCatalogIds } from '../a2ui/catalogs.ts';
 import { a2uiMessagesOf } from '../a2ui/messages.ts';
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
@@ -239,6 +239,11 @@ export type ProjectionShape = {
   readonly includeArtifacts: boolean;
   /** The extensions this request activated. */
   readonly activated: ReadonlySet<string>;
+  /**
+   * The catalogs the requesting client declared in `a2uiClientCapabilities` (only a send carries
+   * them); `undefined` is no declaration, which offers the basic catalog only.
+   */
+  readonly supportedCatalogIds?: readonly string[] | undefined;
 };
 
 /** A message of the task's A2A history, read back from its wire form. */
@@ -255,19 +260,29 @@ function historyMessage(wire: A2AWireMessage): Message {
 export function surfaceParts(
   surfaces: readonly InteractiveSurface[] | undefined,
   activated: ReadonlySet<string>,
+  supportedCatalogIds?: readonly string[] | undefined,
 ): Part[] {
   const shown = (surfaces ?? []).filter(
     (surface) => surface.kind === 'a2ui' && surface.representation !== null,
   );
-  if (activated.has(A2UI_EXTENSION_URI)) {
-    return shown.map((surface) => ({
-      content: { $case: 'data' as const, value: a2uiMessagesOf(surface) },
-      metadata: { mimeType: A2UI_MEDIA_TYPE },
-      filename: '',
-      mediaType: A2UI_MEDIA_TYPE,
-    }));
-  }
-  return shown.map((surface) => textPart(surface.summary));
+  if (!activated.has(A2UI_EXTENSION_URI)) return shown.map((surface) => textPart(surface.summary));
+  // Per surface: A2UI data only for a client that supports the surface's catalog, else its text.
+  const offered = offeredCatalogIds(supportedCatalogIds);
+  return shown.map((surface) =>
+    surface.representation?.kind === 'a2ui' && offered.includes(surface.representation.catalogId)
+      ? {
+          content: { $case: 'data' as const, value: a2uiMessagesOf(surface) },
+          // The revision is what a renderer echoes as `a2uiSurfaceRevision` on its action.
+          metadata: {
+            mimeType: A2UI_MEDIA_TYPE,
+            surfaceId: surface.surfaceId,
+            a2uiSurfaceRevision: surface.revision,
+          },
+          filename: '',
+          mediaType: A2UI_MEDIA_TYPE,
+        }
+      : textPart(surface.summary),
+  );
 }
 
 /** A Bureau task as an A2A `Task`, shaped for one response. */
@@ -299,7 +314,7 @@ export function projectTask(input: ProjectionInput, shape: ProjectionShape): Tas
   }
   // The task's A2UI surfaces ride on its status message, whatever the state: a frozen surface of a
   // finished task is still readable. They are not part of the reply artifact.
-  const shownSurfaces = surfaceParts(input.surfaces, shape.activated);
+  const shownSurfaces = surfaceParts(input.surfaces, shape.activated, shape.supportedCatalogIds);
   if (shownSurfaces.length > 0) {
     const revisions = (input.surfaces ?? []).map(
       (surface) => `${surface.surfaceId}@${surface.revision}`,

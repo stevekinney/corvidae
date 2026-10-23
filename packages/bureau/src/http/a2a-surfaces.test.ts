@@ -22,10 +22,12 @@ import {
 import { a2uiHarness, createMessage, updateComponentsMessage } from '../a2ui/a2ui.test-support.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import type { InteractiveSurfaces } from '../interactive-surface/store.ts';
+import { surfaceParts } from './a2a-task-projection.ts';
 import { createBureauAgentCard, declaredExtensionsOf } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,
   type A2ASendClaim,
+  type A2ASendLedger,
   type A2ASendResult,
   BureauA2AUser,
   createBureauA2ARequestHandler,
@@ -76,18 +78,30 @@ async function open() {
     durableHistory: false,
     pushNotifications: false,
   });
+  const inner = createCommandLedger<A2ASendClaim, A2ASendResult>({
+    kv: textValueStore(new MemoryStorage()),
+    keyPrefix: A2A_SEND_LEDGER_KEY_PREFIX,
+    clock: runtime.clock,
+    nextConflictId: () => runtime.identifiers.next('conflict'),
+  });
+  let failNextComplete = false;
+  const ledger: A2ASendLedger = {
+    ...inner,
+    async complete(entry, result) {
+      if (failNextComplete) {
+        failNextComplete = false;
+        throw new Error('the ledger write failed');
+      }
+      return inner.complete(entry, result);
+    },
+  };
   const handler = createBureauA2ARequestHandler({
     publicUrl: 'http://localhost',
     agentName: 'asker',
     card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
     bureau,
     records: createA2ATaskRecords(textValueStore(new MemoryStorage())),
-    ledger: createCommandLedger<A2ASendClaim, A2ASendResult>({
-      kv: textValueStore(new MemoryStorage()),
-      keyPrefix: A2A_SEND_LEDGER_KEY_PREFIX,
-      clock: runtime.clock,
-      nextConflictId: () => runtime.identifiers.next('conflict'),
-    }),
+    ledger,
     respond: (principal, input) => respondToTask(host, principal, input),
   });
   const principal = principalFromApiKey({ subject: 'alice', scopes: [] });
@@ -128,6 +142,9 @@ async function open() {
     start,
     read,
     send,
+    failNextComplete: () => {
+      failNextComplete = true;
+    },
     useSurfaces: (next: InteractiveSurfaces) => {
       store = next;
     },
@@ -166,7 +183,11 @@ describe('reading a task with an A2UI surface', () => {
       );
       expect(data).toHaveLength(1);
       expect(data[0]?.mediaType).toBe('application/a2ui+json');
-      expect(data[0]?.metadata).toEqual({ mimeType: 'application/a2ui+json' });
+      expect(data[0]?.metadata).toEqual({
+        mimeType: 'application/a2ui+json',
+        surfaceId: 'panel',
+        a2uiSurfaceRevision: 1,
+      });
       const messages =
         data[0]?.content?.$case === 'data'
           ? (data[0].content.value as Record<string, unknown>[])
@@ -292,7 +313,21 @@ async function withButton() {
     const view = await fixture.opened.bureau.tasks.get(task.id);
     return view?.status;
   };
-  return { fixture, task, action, message, status };
+  const update = async () => {
+    const updated = await harness.adapter.apply({
+      taskId: task.id,
+      commandId: 'c2',
+      baseRevision: 1,
+      complete: true,
+      messages: [
+        updateComponentsMessage('panel', [
+          { id: 'label', component: 'Text', text: 'Go ahead now' },
+        ]),
+      ],
+    });
+    expect(updated).toMatchObject({ outcome: 'accepted' });
+  };
+  return { fixture, task, action, message, status, update };
 }
 
 describe('an A2UI action sent to the task', () => {
@@ -345,5 +380,142 @@ describe('an A2UI action sent to the task', () => {
     } finally {
       await fixture.opened.dispose();
     }
+  });
+});
+
+async function errorOf(promise: Promise<unknown>) {
+  const error = (await rejectionOf(promise)) as {
+    toErrorInfo?: () => { reason: string; domain: string; metadata: Record<string, string> };
+  };
+  return error;
+}
+
+describe('the revision an A2UI action must echo', () => {
+  it('is sent on the surface part and accepted when it matches', async () => {
+    const { fixture, task, action, message, status, update } = await withButton();
+    try {
+      await update();
+      const read = await fixture.read(task.id, [A2UI_EXTENSION_URI]);
+      const part = (read.status?.message?.parts ?? []).find((p) => p.content?.$case === 'data');
+      expect(part?.metadata).toMatchObject({ surfaceId: 'panel', a2uiSurfaceRevision: 2 });
+      await fixture.send(message('m-ok', action(), { a2uiSurfaceRevision: 2 }), [
+        A2UI_EXTENSION_URI,
+      ]);
+      await waitForCondition(
+        async () => (await status()) === 'completed',
+        'the task never completed',
+      );
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('may be left out only while the surface is still at revision 1', async () => {
+    const { fixture, action, message, status } = await withButton();
+    try {
+      await fixture.send(message('m-r1', action()), [A2UI_EXTENSION_URI]);
+      await waitForCondition(
+        async () => (await status()) === 'completed',
+        'the task never completed',
+      );
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('is refused as stale when left out of an action on an updated surface', async () => {
+    const { fixture, action, message, status, update } = await withButton();
+    try {
+      await update();
+      const error = await errorOf(fixture.send(message('m-r2', action()), [A2UI_EXTENSION_URI]));
+      expect(error.toErrorInfo?.()).toMatchObject({
+        reason: 'STALE_REVISION',
+        domain: 'bureau',
+        metadata: { surfaceId: 'panel', currentRevision: '2' },
+      });
+      expect(await status()).toBe('input-required');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('is refused as stale when it names an older revision', async () => {
+    const { fixture, action, message, status, update } = await withButton();
+    try {
+      await update();
+      const error = await errorOf(
+        fixture.send(message('m-old', action(), { a2uiSurfaceRevision: 1 }), [A2UI_EXTENSION_URI]),
+      );
+      expect(error.toErrorInfo?.()).toMatchObject({ reason: 'STALE_REVISION', domain: 'bureau' });
+      expect(await status()).toBe('input-required');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+});
+
+describe('a retry of an applied A2UI action', () => {
+  it('completes from the recorded answer when the receipt write failed after the answer', async () => {
+    const { fixture, action, message, status } = await withButton();
+    try {
+      fixture.failNextComplete();
+      const first = message('m-retry', action());
+      await rejectionOf(fixture.send(first, [A2UI_EXTENSION_URI]));
+      await waitForCondition(
+        async () => (await status()) === 'completed',
+        'the task never completed',
+      );
+      const retried = await fixture.send(message('m-retry', action()), [A2UI_EXTENSION_URI]);
+      expect('status' in retried).toBe(true);
+      expect(await status()).toBe('completed');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('is a conflict when the same messageId carries a different payload', async () => {
+    const { fixture, action, message } = await withButton();
+    try {
+      fixture.failNextComplete();
+      await rejectionOf(fixture.send(message('m-same', action()), [A2UI_EXTENSION_URI]));
+      const error = await errorOf(
+        fixture.send(message('m-same', action({ context: { other: 1 } })), [A2UI_EXTENSION_URI]),
+      );
+      expect(error.toErrorInfo?.()).toMatchObject({ reason: 'INVALID_PARAMS' });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+});
+
+describe('the catalogs the requesting client supports', () => {
+  const surface = (catalogId: string, summary: string) =>
+    ({
+      kind: 'a2ui',
+      surfaceId: summary,
+      revision: 1,
+      summary,
+      representation: { kind: 'a2ui', catalogId, components: [] },
+    }) as never;
+  const surfaces = [
+    surface(A2UI_BASIC_CATALOG_ID, 'basic-one'),
+    surface(A2UI_CINDER_CATALOG_ID, 'cinder-one'),
+  ];
+  const kinds = (supported: readonly string[] | undefined) =>
+    surfaceParts(surfaces, new Set([A2UI_EXTENSION_URI]), supported).map((part) =>
+      part.content?.$case === 'data' ? 'data' : 'text',
+    );
+
+  it('sends A2UI data only for a surface whose catalog the client supports', () => {
+    expect(kinds([A2UI_BASIC_CATALOG_ID])).toEqual(['data', 'text']);
+    expect(kinds([A2UI_BASIC_CATALOG_ID, A2UI_CINDER_CATALOG_ID])).toEqual(['data', 'data']);
+  });
+
+  it('sends text for every surface when the client lists no supported catalog', () => {
+    expect(kinds([])).toEqual(['text', 'text']);
+  });
+
+  it('offers the basic catalog only when the client declared nothing', () => {
+    expect(kinds(undefined)).toEqual(['data', 'text']);
   });
 });

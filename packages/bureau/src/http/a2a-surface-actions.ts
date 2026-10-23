@@ -22,14 +22,22 @@ import type { TasksRespondInput } from './management/tasks-respond-operation.ts'
 
 /**
  * The message-metadata key that carries the surface revision a renderer last received. A2UI's
- * `action` has no revision of its own; without this key the surface's current revision is used.
+ * `action` has no revision of its own, so the surface part of a read carries its `revision` and
+ * the client echoes it here. Without this key an action is accepted only while the surface is
+ * still at revision 1; once it has been updated, a missing revision is refused as stale, so a
+ * click never applies to a UI its sender did not see.
  */
 export const SURFACE_REVISION_METADATA_KEY = 'a2uiSurfaceRevision';
 
 /** What reading a surface action found. */
 export type SurfaceAction =
   | { readonly ok: true; readonly input: TasksRespondInput }
-  | { readonly ok: false; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly message: string;
+      /** Set when the action answered a revision the surface has moved past. */
+      readonly stale?: { readonly surfaceId: string; readonly currentRevision: number };
+    };
 
 function firstDataPart(message: Message): unknown {
   for (const part of message.parts) {
@@ -44,7 +52,7 @@ function firstDataPart(message: Message): unknown {
  * surfaces (so the ordinary answer paths read it).
  */
 export async function surfaceActionOf(options: {
-  readonly bureau: Pick<Bureau, 'surfaces'>;
+  readonly bureau: Pick<Bureau, 'surfaces' | 'getReview'>;
   readonly message: Message;
   readonly view: TaskView;
   readonly activated: ReadonlySet<string>;
@@ -69,6 +77,13 @@ export async function surfaceActionOf(options: {
   );
   if (found.outcome !== 'found' || found.surface.kind !== 'a2ui') return undefined;
   const stated = message.metadata?.[SURFACE_REVISION_METADATA_KEY];
+  if (typeof stated !== 'number' && found.surface.revision > 1) {
+    return {
+      ok: false,
+      message: `The surface refused the action: stale-revision (the surface is at revision ${found.surface.revision}; state metadata.${SURFACE_REVISION_METADATA_KEY}).`,
+      stale: { surfaceId: action.surfaceId, currentRevision: found.surface.revision },
+    };
+  }
   const revision = typeof stated === 'number' ? stated : found.surface.revision;
   const declared = found.surface.actions.find((entry) => entry.name === action.name);
   const admission = await surfaces.act(
@@ -83,9 +98,26 @@ export async function surfaceActionOf(options: {
     return {
       ok: false,
       message: `The surface refused the action: ${admission.reason}${admission.detail === undefined ? '' : ` (${admission.detail})`}.`,
+      ...(admission.reason === 'stale-revision'
+        ? {
+            stale: {
+              surfaceId: action.surfaceId,
+              currentRevision: admission.currentRevision ?? found.surface.revision,
+            },
+          }
+        : {}),
     };
   }
   const { continuation, value, intent } = admission;
+  const payload =
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  // A valueless action answers with its own name; a value is the signal's payload.
+  const answerOf =
+    payload !== undefined && Object.keys(payload).length > 0
+      ? { data: payload }
+      : { answer: action.name };
   const base = { taskId: view.id, messageId: message.messageId } as const;
   if (continuation.type === 'signal') {
     const named = view.openWaits.some(
@@ -94,20 +126,9 @@ export async function surfaceActionOf(options: {
     if (!named) {
       return { ok: false, message: `The task is not waiting on "${continuation.signalName}".` };
     }
-    const payload =
-      value !== null && typeof value === 'object' && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : undefined;
     return {
       ok: true,
-      input: {
-        ...base,
-        signalName: continuation.signalName,
-        // A valueless action answers with its own name; a value is the signal's payload.
-        ...(payload !== undefined && Object.keys(payload).length > 0
-          ? { data: payload }
-          : { answer: action.name }),
-      },
+      input: { ...base, signalName: continuation.signalName, ...answerOf },
     };
   }
   const wait = view.openWaits.find((entry) => entry.reviewId === continuation.reviewId);
@@ -118,10 +139,21 @@ export async function surfaceActionOf(options: {
     if (intent !== 'approve' && intent !== 'deny') {
       return { ok: false, message: 'An approval is decided by an approve or deny action.' };
     }
+    // A re-gated approval keeps its id and advances its round: a surface declared for an earlier
+    // round must not decide the new one.
+    if (continuation.round !== undefined) {
+      const review = await bureau.getReview(wait.reviewId);
+      if (review?.kind === 'tool-approval' && review.round !== continuation.round) {
+        return {
+          ok: false,
+          message: `The surface refused the action: stale-round (the approval is at round ${review.round}, the surface shows round ${continuation.round}).`,
+        };
+      }
+    }
     return { ok: true, input: { ...base, callId: wait.callId, decision: intent } };
   }
   return {
     ok: true,
-    input: { ...base, signalName: wait.signalName, answer: action.name },
+    input: { ...base, signalName: wait.signalName, ...answerOf },
   };
 }
