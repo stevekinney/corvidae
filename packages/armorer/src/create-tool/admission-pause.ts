@@ -5,6 +5,7 @@ import {
   policyPauseTierSymbol,
 } from '../internal/approval-resume';
 import type { ToolPolicyDecision } from '../is-tool';
+import { providerCallIdField } from '../provider-call-id';
 import type { ToolExecutionResult } from '../types';
 import type {
   AdmitToolExecutionOptions,
@@ -185,11 +186,13 @@ function actionRequiredResult<TInput>(
     outcome: 'action_required',
     content: pause.reason,
     toolCallId: callId,
+    ...providerCallIdField(parsedState.typedToolCall),
     toolName: input.name,
     result: undefined,
     action: pause.action,
     pendingApproval: {
       callId,
+      ...providerCallIdField(parsedState.typedToolCall),
       toolName: input.name,
       arguments: normalizeToolContent(parsedState.parsed),
       action: pause.action,

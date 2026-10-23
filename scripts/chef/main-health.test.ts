@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { finishedGate } from './gate-child.test-support.ts';
 import { runGate } from './gate-run.ts';
 import {
   healthFilePath,
@@ -112,7 +113,7 @@ describe('mainHealth', () => {
 });
 
 describe('gate-run records the batch validate', () => {
-  function runWith(command: string, exitCode: number) {
+  async function runWith(command: string, exitCode: number) {
     const configPath = join(sandbox, 'config.json');
     writeFileSync(
       configPath,
@@ -129,18 +130,22 @@ describe('gate-run records the batch validate', () => {
       }),
     );
     const runner: Runner = (argv) => {
-      if (argv[0] === 'sh') return { code: exitCode, stdout: '', stderr: '' };
       if (argv[1] === 'status') return { code: 0, stdout: '', stderr: '' };
       return { code: 0, stdout: `${sha('a')}\n`, stderr: '' };
     };
-    runGate(
+    await runGate(
       { configPath, worktree: sandbox, log: join(sandbox, 'gate.log'), command, healthFile },
-      { runner, load: () => 1, now: () => new Date('2026-10-23T01:02:03.000Z') },
+      {
+        runner,
+        load: () => 1,
+        now: () => new Date('2026-10-23T01:02:03.000Z'),
+        spawnGate: () => finishedGate(exitCode),
+      },
     );
   }
 
-  test('writes head, exit code and time for the batch command', () => {
-    runWith('bun run validate', 3);
+  test('writes head, exit code and time for the batch command', async () => {
+    await runWith('bun run validate', 3);
     expect(JSON.parse(readFileSync(healthFile, 'utf8')).runs).toEqual([
       {
         head: sha('a'),
@@ -151,9 +156,9 @@ describe('gate-run records the batch validate', () => {
     ]);
   });
 
-  test('records nothing for the per-pull-request check or any other command', () => {
-    runWith('bun run check', 0);
-    runWith('echo hi', 0);
+  test('records nothing for the per-pull-request check or any other command', async () => {
+    await runWith('bun run check', 0);
+    await runWith('echo hi', 0);
     expect(existsSync(healthFile)).toBe(false);
   });
 });

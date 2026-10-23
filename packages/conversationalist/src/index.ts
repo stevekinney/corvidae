@@ -29,7 +29,6 @@ export { appendAnthropicMessages, fromAnthropicMessages } from './adapters/anthr
 export { toAnthropicMessages } from './adapters/anthropic/outbound';
 export type * from './adapters/anthropic/types';
 export { geminiConversationAdapter } from './adapters/gemini';
-export { GEMINI_FUNCTION_CALL_ID_METADATA_KEY } from './adapters/gemini/content';
 export { appendGeminiMessages, fromGeminiMessages } from './adapters/gemini/inbound';
 export { toGeminiMessages } from './adapters/gemini/outbound';
 export type * from './adapters/gemini/types';

@@ -1,8 +1,22 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readGateLog, renderGateSummary, run, runGate } from './gate-run.ts';
+import {
+  fakeSignals,
+  fakeTree,
+  finishedGate,
+  manualTimer,
+  pendingGate,
+} from './gate-child.test-support.ts';
+import {
+  isProcessLive,
+  readGateLog,
+  renderGateSummary,
+  run,
+  runCommand,
+  runGate,
+} from './gate-run.ts';
 import type { Runner } from './process-runner.ts';
 
 describe('readGateLog', () => {
@@ -133,7 +147,7 @@ describe('read exit code', () => {
 });
 
 describe('runGate with a fake runner', () => {
-  test('runs the affected-only check without waiting for the lock, which it runs beside', () => {
+  test('runs the affected-only check without waiting for the lock, which it runs beside', async () => {
     const sandbox = mkdtempSync(join(tmpdir(), 'gate-run-shared-'));
     try {
       const configPath = join(sandbox, 'config.json');
@@ -159,9 +173,9 @@ describe('runGate with a fake runner', () => {
         if (command[0] === 'git') return { code: 0, stdout: 'abc123\n', stderr: '' };
         return { code: 0, stdout: '', stderr: '' };
       };
-      const result = runGate(
+      const result = await runGate(
         { configPath, worktree: sandbox, log: join(sandbox, 'gate.log') },
-        { runner, load: () => 1, sleep: () => undefined },
+        { runner, load: () => 1, sleep: () => undefined, spawnGate: () => finishedGate(0) },
       );
       expect(result.waits).toBe(0);
       expect(commands.some((command) => command[0] === 'pgrep')).toBe(false);
@@ -181,7 +195,7 @@ describe('runGate with a fake runner', () => {
     expect(pattern.test('bun scripts/run-exclusively.ts --shared bun run lint:root')).toBe(false);
   });
 
-  test('records the head and load first, waits out the lock, and appends the final exit code', () => {
+  test('records the head and load first, waits out the lock, and appends the final exit code', async () => {
     const sandbox = mkdtempSync(join(tmpdir(), 'gate-run-fast-'));
     try {
       const configPath = join(sandbox, 'config.json');
@@ -226,9 +240,18 @@ describe('runGate with a fake runner', () => {
         return { code: 4, stdout: '', stderr: '' };
       };
       const log = join(sandbox, 'gate.log');
-      const result = runGate(
+      const scripts: string[] = [];
+      const result = await runGate(
         { configPath, worktree, log },
-        { runner, load: () => 1.5, sleep: () => undefined },
+        {
+          runner,
+          load: () => 1.5,
+          sleep: () => undefined,
+          spawnGate: (script) => {
+            scripts.push(script);
+            return finishedGate(4);
+          },
+        },
       );
       expect(result).toEqual({
         code: 4,
@@ -247,12 +270,239 @@ describe('runGate with a fake runner', () => {
       expect(summary.treeStart).toEqual({ clean: true, head: 'abc123' });
       expect(summary.treeEnd).toEqual({ clean: false, head: 'def456' });
       expect(summary.exitCode).toBe(4);
-      const gate = commands.find((command) => command[0] === 'sh') ?? [];
-      expect(gate.slice(0, 2)).toEqual(['sh', '-c']);
-      expect(gate[2]).toStartWith("wrap sh -c 'the-gate' >> ");
+      expect(scripts).toHaveLength(1);
+      expect(scripts[0]).toStartWith("wrap sh -c 'the-gate' >> ");
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }
+  });
+});
+
+describe('runGate and signals', () => {
+  const quietRunner: Runner = (command) => {
+    if (command[1] === 'status') return { code: 0, stdout: '', stderr: '' };
+    if (command[0] === 'git') return { code: 0, stdout: 'abc123\n', stderr: '' };
+    return { code: 0, stdout: '', stderr: '' };
+  };
+
+  function sandboxWithConfig(overrides: Record<string, unknown> = {}) {
+    const sandbox = mkdtempSync(join(tmpdir(), 'gate-run-signal-'));
+    const configPath = join(sandbox, 'config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        repository: 'o/n',
+        defaultBranch: 'main',
+        worktreeRoots: { claude: '/c', codex: '/x' },
+        manifestName: 'n',
+        installCommand: 'true',
+        gateCommand: 'the-gate',
+        affectedCheckCommand: 'the-gate',
+        batchCommand: 'the-batch',
+        mergeMethod: 'squash',
+        ...overrides,
+      }),
+    );
+    return { sandbox, configPath, log: join(sandbox, 'gate.log') };
+  }
+
+  test('a signal kills the whole group, arms SIGKILL, and records a non-zero exit', async () => {
+    const { sandbox, configPath, log } = sandboxWithConfig();
+    try {
+      const child = pendingGate(900);
+      const tree = fakeTree([901]);
+      const signals = fakeSignals();
+      const timer = manualTimer();
+      const kills: [number, string][] = [];
+      const running = runGate(
+        { configPath, worktree: sandbox, log },
+        {
+          runner: quietRunner,
+          load: () => 1,
+          spawnGate: () => child,
+          killGroup: (pid, signal) => kills.push([pid, signal]),
+          signals,
+          ...tree.seams,
+          schedule: timer.schedule,
+          graceMilliseconds: 5_000,
+        },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(signals.registered()).toBe(3);
+      signals.emit('SIGTERM');
+      expect(kills).toEqual([[900, 'SIGTERM']]);
+      expect(timer.state.milliseconds).toBe(5_000);
+      // The wrapper exits, but turbo (901, in a session of its own) is still draining.
+      child.finish(143);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(timer.state.cancelled).toBe(false);
+      // The grace period passes: the group and every collected process get SIGKILL.
+      timer.fire();
+      expect(kills).toEqual([
+        [900, 'SIGTERM'],
+        [900, 'SIGKILL'],
+      ]);
+      const result = await running;
+      expect(tree.signalled).toContainEqual([901, 'SIGKILL']);
+      expect(tree.alive.size).toBe(0);
+      expect(result.code).toBe(143);
+      expect(result.interrupted).toBe('SIGTERM');
+      expect(signals.registered()).toBe(0);
+      expect(timer.state.cancelled).toBe(true);
+      const text = readFileSync(log, 'utf8');
+      expect(text).toContain('GATE_INTERRUPTED SIGTERM\n');
+      expect(text.endsWith('GATE_RC=143\n')).toBe(true);
+      expect(readGateLog(text).exitCode).toBe(143);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('an interrupted gate reports the signal code whatever the child exited with', async () => {
+    for (const [signal, code, childCode] of [
+      ['SIGINT', 130, 0],
+      ['SIGINT', 130, 1],
+      ['SIGHUP', 129, 143],
+      ['SIGTERM', 143, 2],
+    ] as const) {
+      const { sandbox, configPath, log } = sandboxWithConfig();
+      try {
+        const child = pendingGate(901);
+        const signals = fakeSignals();
+        const kills: [number, string][] = [];
+        const running = runGate(
+          { configPath, worktree: sandbox, log },
+          {
+            runner: quietRunner,
+            load: () => 1,
+            spawnGate: () => child,
+            killGroup: (pid, name) => kills.push([pid, name]),
+            signals,
+            ...fakeTree().seams,
+            schedule: manualTimer().schedule,
+          },
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+        signals.emit(signal);
+        signals.emit(signal);
+        // A second signal escalates to SIGKILL at once.
+        expect(kills).toEqual([
+          [901, 'SIGTERM'],
+          [901, 'SIGKILL'],
+        ]);
+        child.finish(childCode);
+        const result = await running;
+        expect(result.code).toBe(code);
+        expect(readFileSync(log, 'utf8').endsWith(`GATE_RC=${code}\n`)).toBe(true);
+      } finally {
+        rmSync(sandbox, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test('an exit with no signal records the child code, signals no group and leaves no handler', async () => {
+    const { sandbox, configPath, log } = sandboxWithConfig();
+    try {
+      const signals = fakeSignals();
+      const timer = manualTimer();
+      const kills: [number, string][] = [];
+      const result = await runGate(
+        { configPath, worktree: sandbox, log },
+        {
+          runner: quietRunner,
+          load: () => 1,
+          spawnGate: () => finishedGate(7),
+          killGroup: (pid, signal) => kills.push([pid, signal]),
+          signals,
+          ...fakeTree().seams,
+          schedule: timer.schedule,
+        },
+      );
+      expect(result.code).toBe(7);
+      expect(result.interrupted).toBeUndefined();
+      expect(kills).toEqual([]);
+      expect(signals.registered()).toBe(0);
+      expect(readFileSync(log, 'utf8')).not.toContain('GATE_INTERRUPTED');
+      expect(readFileSync(log, 'utf8').endsWith('GATE_RC=7\n')).toBe(true);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('an interrupted batch validate is not recorded as the health of main', async () => {
+    const { sandbox, configPath, log } = sandboxWithConfig();
+    try {
+      const healthFile = join(sandbox, 'health.json');
+      const child = pendingGate(902);
+      const signals = fakeSignals();
+      const running = runGate(
+        { configPath, worktree: sandbox, log, command: 'the-batch', healthFile },
+        {
+          runner: quietRunner,
+          load: () => 1,
+          spawnGate: () => child,
+          killGroup: () => undefined,
+          signals,
+          ...fakeTree().seams,
+          schedule: manualTimer().schedule,
+        },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      signals.emit('SIGTERM');
+      child.finish(143);
+      const interrupted = await running;
+      expect(interrupted.code).toBe(143);
+      expect(existsSync(healthFile)).toBe(false);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test('the run command reports an interrupted gate and exits with the signal code', async () => {
+    const { sandbox, configPath, log } = sandboxWithConfig();
+    try {
+      const child = pendingGate(903);
+      const signals = fakeSignals();
+      const running = runCommand(
+        ['run', '--config', configPath, '--worktree', sandbox, '--log', log],
+        {
+          runner: quietRunner,
+          load: () => 1,
+          spawnGate: () => child,
+          killGroup: () => undefined,
+          signals,
+          ...fakeTree().seams,
+          schedule: manualTimer().schedule,
+        },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      signals.emit('SIGHUP');
+      child.finish(129);
+      const result = await running;
+      expect(result.code).toBe(129);
+      expect(result.output).toContain('interrupted by SIGHUP');
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isProcessLive', () => {
+  test('a zombie or an unlisted pid is gone, and any other state is live', () => {
+    expect(isProcessLive(1, () => 'Z')).toBe(false);
+    expect(isProcessLive(1, () => 'Z+')).toBe(false);
+    expect(isProcessLive(1, () => '')).toBe(false);
+    expect(isProcessLive(1, () => 'S')).toBe(true);
+    expect(isProcessLive(1, () => 'Ss+')).toBe(true);
+    expect(isProcessLive(1, () => 'R')).toBe(true);
+  });
+
+  test('the real reader sees this process as live', () => {
+    expect(isProcessLive(process.pid)).toBe(true);
   });
 });
 

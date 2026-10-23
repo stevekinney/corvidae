@@ -9,7 +9,7 @@
 //                                  [--usage-log <file> --transcript <path>...]
 //
 // The steps run in order and stop at the first failure, which is named:
-//   1. fetch          `git fetch origin <default>`;
+//   1. fetch          `git fetch origin <default>`, retried up to three times when Git cannot lock the ref;
 //   2. head           the worktree's HEAD equals the pull request's `headRefOid`, and it is open;
 //   3. contains-base  HEAD contains `origin/<default>`, or else it merges cleanly with it
 //                     (`git merge-tree --write-tree` exits 0) and no commit that landed on
@@ -74,6 +74,7 @@ import {
   type AcquireHostLockOptions,
   type HostLockHolder,
 } from '../run-exclusively.ts';
+import { fetchWithRetry } from './fetch-retry.ts';
 import { readGateLog } from './gate-run.ts';
 import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
 import {
@@ -150,6 +151,8 @@ export interface MergeGateDependencies {
   /** Totals the tokens of the transcripts at these paths; defaults to `transcript-usage.ts`. */
   usage: (paths: string[]) => UsageTotals;
   now: () => Date;
+  /** Blocks between fetch retries; defaults to `Bun.sleepSync`. */
+  sleep: (milliseconds: number) => void;
 }
 
 interface PullRequestView {
@@ -289,7 +292,9 @@ export function mergeGate(
     return report;
   };
   const fetchBase = (step: string): string | undefined => {
-    const fetched = git('fetch', 'origin', defaultBranch);
+    const fetched = fetchWithRetry(() => git('fetch', 'origin', defaultBranch), {
+      sleep: partial.sleep,
+    });
     return fetched.code === 0
       ? undefined
       : `${step}: git fetch origin ${defaultBranch} failed (exit ${fetched.code}): ${firstLine(fetched.stderr)}`;

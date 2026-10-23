@@ -14,6 +14,7 @@ import {
   type ToolPolicyContextProvider,
   type ToolPolicyDecision,
 } from '../is-tool';
+import { providerCallIdField } from '../provider-call-id';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import { handleAuthorizationOnly } from './admission-authorization';
 import { handlePolicyPause } from './admission-pause';
@@ -297,6 +298,7 @@ function deniedResult<TInput>(
     outcome: 'error',
     content: reason,
     toolCallId: callId,
+    ...providerCallIdField(parsedState.typedToolCall),
     toolName: input.name,
     result: undefined,
     error: toolError,
