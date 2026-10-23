@@ -1589,6 +1589,7 @@ export function createBureauA2ARequestHandler(
             surfaces: {
               list: (id: string) => bureau.surfaces!.list(id, { principal: ownerOf(context) }),
               supportedCatalogIds: shape.supportedCatalogIds,
+              settle: (id: string, status) => bureau.surfaces!.settleTask(id, status),
             },
           }
         : {}),

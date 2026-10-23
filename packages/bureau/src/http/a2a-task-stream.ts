@@ -101,6 +101,15 @@ export type FollowSurfaces = {
   readonly list: (taskId: string) => Promise<readonly InteractiveSurface[]>;
   /** The catalogs the client declared; `undefined` offers the basic catalog only. */
   readonly supportedCatalogIds: readonly string[] | undefined;
+  /**
+   * Freezes the task's open surfaces now that its run has ended, resolving once they are written.
+   * The stream awaits it before its closing reconcile, so it never ends ahead of a freeze that the
+   * task record's settlement (the surface store's own trigger) has not yet started.
+   */
+  readonly settle: (
+    taskId: string,
+    status: 'completed' | 'failed' | 'canceled',
+  ) => Promise<unknown>;
 };
 
 /** What the opening snapshot hands back: the task, and the surfaces it showed. */
@@ -615,6 +624,16 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           // its end is delivered. It goes out ahead of the terminal status, which stays the last
           // frame of the stream, and repeats the state the client already holds.
           if (endsTask) {
+            // The run event can precede the task record's settlement, which is what freezes the
+            // surfaces on its own: freeze them here, so the reconcile below reads them frozen.
+            if (
+              options.surfaces !== undefined &&
+              (status.status === 'completed' ||
+                status.status === 'failed' ||
+                status.status === 'canceled')
+            ) {
+              await options.surfaces.settle(taskId, status.status).catch(() => undefined);
+            }
             const closing = await reconciler.reconcile(view, sentState, status.emittedAtMs);
             if (closing !== undefined) queue.push({ event: closing });
           }
