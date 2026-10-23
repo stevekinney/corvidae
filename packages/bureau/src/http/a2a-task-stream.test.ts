@@ -7,6 +7,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskView } from '../task-registry.ts';
 import { type A2AStreamBureau, followTask } from './a2a-task-stream.ts';
@@ -227,6 +228,6 @@ describe('followTask', () => {
     const second = stream.next();
     await new Promise((resolve) => setTimeout(resolve, 10));
     close(new Error('the history failed'));
-    await expect(second).rejects.toThrow('the history failed');
+    expect(((await rejectionOf(second)) as Error).message).toBe('the history failed');
   });
 });
