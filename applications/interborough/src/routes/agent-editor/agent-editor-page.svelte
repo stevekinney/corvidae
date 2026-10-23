@@ -11,7 +11,8 @@
    * the agent's page, and a delete lands on the list.
    *
    * What the form offers comes from `bureau.agents.catalog` and nothing else, and `published`
-   * changes only through publish and withdraw, never through a save.
+   * changes only through publish and withdraw, never through a save. A catalog with no model offers
+   * nothing a save could use, so the page shows where to configure a provider instead of the form.
    */
   import { untrack } from 'svelte';
 
@@ -44,6 +45,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import { AgentEditorState } from './agent-editor-state.svelte.ts';
   import AgentEditorForm from './agent-editor-form.svelte';
+  import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
   import AgentRevisionHistory from './agent-revision-history.svelte';
 
   interface Props {
@@ -97,11 +99,14 @@
   let confirmingDelete = $state(false);
 
   // Builds the form once, when everything it is filled from has arrived. A reload builds it again.
+  // A catalog with no model builds none, and a provider added since is picked up when the catalog is
+  // read again: the form's choices are fixed when it is built.
   $effect(() => {
     const catalogData = catalog.data;
     const detailData = detail.data;
     untrack(() => {
       if (editor !== undefined || catalogData === undefined) return;
+      if (catalogData.models.length === 0) return;
       if (agentId === undefined) {
         editor = AgentEditorState.create(catalogData);
       } else if (detailData?.state === 'ready' && detailData.definition !== null) {
@@ -129,7 +134,7 @@
   );
 
   /** The hash a write names: the one the form was filled from. */
-  const currentHash = $derived(editor?.hash ?? invalidAgent?.hash ?? null);
+  const currentHash = $derived(editor?.hash ?? detail.data?.hash ?? null);
 
   /** A file that is gone, or never was: the frame owns that state, so it is asked to look again. */
   function agentIsGone(): void {
@@ -237,8 +242,11 @@
     const catalogData = catalogResult.data;
     const detailData = detailResult.data;
     if (catalogData === undefined || detailData === undefined) return;
+    // A catalog that has lost its last model offers nothing to fill the form from.
     editor =
-      detailData.state === 'ready' && detailData.definition !== null
+      catalogData.models.length > 0 &&
+      detailData.state === 'ready' &&
+      detailData.definition !== null
         ? AgentEditorState.edit(detailData, catalogData)
         : undefined;
   }
@@ -250,13 +258,30 @@
   });
 
   const loadFailed = $derived(catalog.isError || (agentId !== undefined && detail.isError));
-  const loading = $derived(!loadFailed && editor === undefined && invalidAgent === undefined);
+  /** The Bureau answered and offers no model, so no agent could be saved. */
+  const noProvider = $derived(
+    !loadFailed &&
+      invalidAgent === undefined &&
+      editor === undefined &&
+      catalog.data !== undefined &&
+      catalog.data.models.length === 0,
+  );
+  const loading = $derived(
+    !loadFailed && !noProvider && editor === undefined && invalidAgent === undefined,
+  );
+
+  /** Reads the catalog and the host's paths again, so a provider added since shows its models. */
+  function reloadProviders(): void {
+    void catalog.refetch();
+    void hostPaths.refetch();
+  }
 </script>
 
 <div class="weft-agent-editor" data-editor={condition}>
   <PageHeader title={heading} headingLevel={1}>
     {#snippet actions()}
-      {#if currentHash !== null}
+      <!-- With the form on screen, its footer holds the delete; a file the form cannot show keeps it here. -->
+      {#if currentHash !== null && editor === undefined}
         <Button variant="danger" disabled={busy} onclick={() => (confirmingDelete = true)}>
           {copy.deleteAction}
         </Button>
@@ -316,6 +341,12 @@
       {/if}
       <Button variant="secondary" onclick={() => void reload()}>{copy.invalid.action}</Button>
     </Alert>
+  {:else if noProvider}
+    <AgentEditorNoProvider
+      paths={hostPaths.data}
+      onReload={reloadProviders}
+      reloading={catalog.isFetching || hostPaths.isFetching}
+    />
   {:else if loading}
     <div role="status" aria-busy="true" aria-label={heading}>
       <Skeleton height="1.5rem" width="40%" />
@@ -329,6 +360,7 @@
         onSave={submit}
         onCancel={cancel}
         onPublishedChange={setPublished}
+        onDelete={() => (confirmingDelete = true)}
       />
     {/key}
   {/if}

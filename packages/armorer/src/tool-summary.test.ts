@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createApprovalPolicyHooks, withToolSummary } from './approval-policy';
 import { createTool, createToolCall } from './create-tool';
 import type { ToolPolicyContext } from './is-tool';
-import { renderToolSummary } from './tool-summary';
+import { readToolShortDescription, renderToolSummary } from './tool-summary';
 
 const metadata = { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}' };
 
@@ -69,5 +69,31 @@ describe('the approval policy with a summary', () => {
     expect(typeof decision === 'object' && decision.action?.message).toBe(
       'Refund order order-1001 for $42.00',
     );
+  });
+});
+
+describe('readToolShortDescription', () => {
+  it('returns the trimmed line a tool declares', () => {
+    expect(readToolShortDescription({ shortDescription: '  Look up an order.  ' })).toBe(
+      'Look up an order.',
+    );
+  });
+
+  it('returns undefined when the tool declares none, a blank one, or a value that is not text', () => {
+    expect(readToolShortDescription(undefined)).toBeUndefined();
+    expect(readToolShortDescription({ readOnly: true })).toBeUndefined();
+    expect(readToolShortDescription({ shortDescription: '   ' })).toBeUndefined();
+    expect(readToolShortDescription({ shortDescription: 4 })).toBeUndefined();
+  });
+
+  it('is read from a tool built with createTool', () => {
+    const tool = createTool({
+      name: 'lookup-order',
+      description: 'A long, model-facing prompt about looking orders up.',
+      input: z.object({ orderId: z.string() }),
+      metadata: { shortDescription: 'Look up an order by its identifier.' },
+      execute: async ({ orderId }) => ({ orderId }),
+    });
+    expect(readToolShortDescription(tool.metadata)).toBe('Look up an order by its identifier.');
   });
 });

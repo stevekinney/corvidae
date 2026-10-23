@@ -16,6 +16,8 @@ import {
   installBureauStub,
   readyAgent,
   STUB_AGENT_DIRECTORY,
+  STUB_CONFIGURATION_FILE,
+  STUB_PROVIDERS,
   StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
@@ -39,14 +41,18 @@ afterEach(() => {
 function bureau(
   options: {
     readonly agent?: AgentDetail;
-    readonly catalog?: AgentCatalog;
+    /** The catalog, or a function that answers with the catalog as it is at each read. */
+    readonly catalog?: AgentCatalog | (() => AgentCatalog);
     readonly hostPaths?: string | null;
   } = {},
 ): BureauStub {
   const agent = options.agent ?? readyAgent();
   stub = installBureauStub(
     {
-      'bureau.agents.catalog': () => options.catalog ?? catalogFixture(),
+      'bureau.agents.catalog': () =>
+        typeof options.catalog === 'function'
+          ? options.catalog()
+          : (options.catalog ?? catalogFixture()),
       'bureau.agents.definitions.get': () => agent,
       'bureau.agents.definitions.revisions': () => ({ revisions: [] }),
       'bureau.agents.definitions.create': (params) => ({
@@ -80,8 +86,8 @@ describe('a new agent', () => {
           { provider: 'anthropic', model: 'claude-haiku-5', aliases: [] },
         ],
         tools: [
-          { name: 'lookup-order', description: 'Look an order up.' },
-          { name: 'issue-refund', description: 'Refund an order.' },
+          { name: 'lookup-order', description: 'Look an order up.', shortDescription: null },
+          { name: 'issue-refund', description: 'Refund an order.', shortDescription: null },
         ],
       }),
     });
@@ -103,15 +109,104 @@ describe('a new agent', () => {
     ).not.toBeNull();
   });
 
-  test('is not saveable, and says why, when the catalog holds no model', async () => {
+  test('shows where to add a provider, with this installation’s paths and no form, when the catalog holds no model', async () => {
     bureau({ catalog: catalogFixture({ models: [] }) });
-    const { findByText, getByRole, container } = mountEditor();
+    const { findByRole, getByTestId, getByRole, queryAllByRole, queryByRole, container } =
+      mountEditor();
 
-    expect(await findByText(AGENT_EDITOR_COPY.noModels.title)).not.toBeNull();
-    expect(container.textContent).toContain(AGENT_EDITOR_COPY.noModels.description);
-    await type(getByRole('textbox', { name: /^Name/ }), 'Researcher');
-    expect(getByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeDisabled();
-    expect(getByRole('combobox', { name: 'Model' })).toBeDisabled();
+    expect(
+      await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title }),
+    ).not.toBeNull();
+    expect(container.textContent).toContain(AGENT_EDITOR_COPY.noProvider.description);
+    // The paths are the host's, not the page's: each one comes from `/host/paths`.
+    expect(getByTestId('provider-configuration-file').textContent).toBe(STUB_CONFIGURATION_FILE);
+    for (const provider of STUB_PROVIDERS) {
+      const row = container.querySelector(`[data-provider="${provider.name}"]`);
+      expect(row?.textContent).toContain(provider.secretFile);
+    }
+    expect(container.textContent).toContain('"providers"');
+    expect(container.textContent).toContain('"anthropic": {}');
+    expect(container.textContent).toContain('chmod 600');
+    expect(getByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).not.toBeNull();
+    // Nothing to fill in: no field, no model choice, no save.
+    expect(queryAllByRole('textbox')).toEqual([]);
+    expect(queryByRole('combobox')).toBeNull();
+    expect(queryByRole('form')).toBeNull();
+    expect(queryByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeNull();
+  });
+
+  test('builds the form when a provider has been added and the page is reloaded', async () => {
+    let catalog = catalogFixture({ models: [] });
+    bureau({ catalog: () => catalog });
+    const { findByRole, getByRole, queryByRole } = mountEditor();
+
+    await fireEvent.click(
+      await findByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload }),
+    );
+    expect(queryByRole('form')).toBeNull();
+
+    // The button is disabled while the catalog is being read, so a second click waits for the first.
+    await waitFor(() =>
+      expect(getByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).toBeEnabled(),
+    );
+    catalog = catalogFixture();
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload }));
+    const model = await findByRole('combobox', { name: 'Model' });
+    expect(model).not.toBeNull();
+    expect(queryByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).toBeNull();
+  });
+
+  test('names no path when the host did not say where its files are', async () => {
+    bureau({ catalog: catalogFixture({ models: [] }), hostPaths: null });
+    const { findByRole, queryByTestId, container } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    expect(queryByTestId('provider-configuration-file')).toBeNull();
+    expect(container.textContent).not.toContain('/home/');
+  });
+
+  test('shows one line for each tool, and the full text only on request', async () => {
+    const prompt =
+      'Create a workflow: a JSON file of a trigger and steps that Bureau runs. `name` is what the workflow is called, and its identifier is derived from it (lowercase, with runs of other characters turned into one hyphen) unless you give `id`.';
+    bureau({
+      catalog: catalogFixture({
+        tools: [
+          {
+            name: 'lookup-order',
+            description: 'Look an order up by its identifier.',
+            shortDescription: null,
+          },
+          {
+            name: 'workflows-create',
+            description: prompt,
+            shortDescription: 'Create a workflow Bureau runs on a schedule or a signal.',
+          },
+          { name: 'draft-reply', description: `${prompt} ${prompt}`, shortDescription: null },
+        ],
+      }),
+    });
+    const { findByRole, getAllByTestId, getByText, queryAllByTestId } = mountEditor();
+    await findByRole('checkbox', { name: /workflows-create/ });
+
+    const lines = getAllByTestId('agent-tool-line').map((line) => line.textContent ?? '');
+    expect(lines[0]).toBe('Look an order up by its identifier.');
+    expect(lines[1]).toBe('Create a workflow Bureau runs on a schedule or a signal.');
+    // A tool with no line of its own shows its description cut to 120 characters.
+    expect(Array.from(lines[2] ?? '').length).toBeLessThanOrEqual(120);
+    expect(lines[2]?.endsWith('…')).toBe(true);
+    for (const line of lines) expect(Array.from(line).length).toBeLessThanOrEqual(120);
+    // The prompt is not on the page until someone opens the disclosure beside the tool.
+    expect(queryAllByTestId('agent-tool-full')).toEqual([]);
+    const disclosures = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.weft-tool-row button[aria-expanded]'),
+    );
+    expect(disclosures).toHaveLength(2);
+    expect(disclosures.map((button) => button.textContent?.trim())).toEqual([
+      AGENT_EDITOR_COPY.toolDisclosure,
+      AGENT_EDITOR_COPY.toolDisclosure,
+    ]);
+    await fireEvent.click(disclosures[0] as HTMLButtonElement);
+    expect(getByText(prompt)).not.toBeNull();
   });
 
   test('fills the identifier from the name until it is edited, and creates the agent', async () => {

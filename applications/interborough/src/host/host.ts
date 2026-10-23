@@ -35,7 +35,9 @@
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
  *   served by `createBureauHandler` with the `/bureau` prefix removed. They do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
  * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor and
- *   the Workflows pages can show an agent's file path and a workflow's.
+ *   the Workflows pages can show an agent's file path and a workflow's, and the agent editor can
+ *   say where to configure a model provider: the configuration file, and the file that holds each
+ *   provider's API key.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -82,6 +84,7 @@ import {
   createCatalogGenerate,
   loadProviders,
   PROVIDER_NAMES,
+  PROVIDER_SECRET_KEYS,
   type ModelSelection,
 } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
@@ -410,7 +413,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // a workflow's.
         [HOST_PATHS_ROUTE]: {
           GET: (request: Request) =>
-            refuse(request) ?? Response.json({ agentDirectory, workflowDirectory }),
+            refuse(request) ??
+            Response.json({
+              agentDirectory,
+              workflowDirectory,
+              configurationFile: bungalow.configuration,
+              providers: PROVIDER_NAMES.map((name) => ({
+                name,
+                secretFile: join(bungalow.secrets, PROVIDER_SECRET_KEYS[name]),
+              })),
+            }),
         },
       },
       async fetch(request, listener) {

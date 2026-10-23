@@ -14,6 +14,8 @@ import {
   agentFileText,
   createAgentFileFixture,
   KNOWN_MODEL,
+  lookupTool,
+  summarizedTool,
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
 
@@ -132,7 +134,21 @@ describe('tools', () => {
   it('lists the tool catalog by the name an agent file uses, with each description', async () => {
     const fixture = await start();
     expect(fixture.catalog.tools()).toEqual([
-      { name: 'lookup-order', description: 'Looks an order up' },
+      { name: 'lookup-order', description: 'Looks an order up', shortDescription: null },
+    ]);
+  });
+
+  it('carries a tool’s metadata.shortDescription, and null for a tool that declares none', async () => {
+    const fixture = await start({
+      tools: { 'summarize-order': summarizedTool, 'lookup-order': lookupTool },
+    });
+    expect(fixture.catalog.tools()).toEqual([
+      { name: 'lookup-order', description: 'Looks an order up', shortDescription: null },
+      {
+        name: 'summarize-order',
+        description: summarizedTool.description,
+        shortDescription: 'Summarize an order.',
+      },
     ]);
   });
 });
