@@ -379,6 +379,11 @@ describe('one agent’s page', () => {
     expect(version?.textContent).toContain('File version');
     expect(version?.querySelector('code')?.textContent).toBe('hash-1');
     expect(version?.querySelector('a')?.getAttribute('href')).toBe('/agents/researcher/edit');
+    // Opening the history is a navigation in the app, not a page load.
+    const history = version?.querySelector('a');
+    if (history === null || history === undefined) throw new Error('expected a history link');
+    history.click();
+    expect(router.pathname).toBe('/agents/researcher/edit');
     expect(container.textContent).not.toContain('Revision');
     expect(container.querySelector('h1')?.textContent?.trim()).toBe('Researcher');
     await findByText('Plan the week');
