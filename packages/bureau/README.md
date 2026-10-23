@@ -43,7 +43,7 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 ## What It Does
 
 - Composes a runtime from `BureauOptions`: a single provider, a fallover/routing provider set, tools, memory, skills, session persistence, durable execution, guardrails, cache, identity, and scheduler configuration.
-- Creates and tracks runs (`createRun`, **deprecated**—see AB-242), aborts and deletes them, and lists them by status.
+- Creates and tracks runs (`createRun`), aborts and deletes them, and lists them by status.
 - Persists sessions through a `SessionStore` and recovers in-flight durable runs after a process restart (`engine.recoverAll()`), reattaching bureau-owned runs and monitoring native scheduled fires.
 - Exposes durable primitives when a durable engine is composed: `signalSession` delivers a real fire-and-forget signal; `updateSession`/`querySession` are kept but unconditionally throw `BureauError('UNSUPPORTED_CAPABILITY')` (AB-192—the built-in `agentRun` workflow registers no `ctx.onUpdate`/`ctx.onQuery` handler; see `bureau.sessionVerbCapabilities`); `submitSessionInput` runs AB-42's fixed pre-admission checks (authorization, then session lifecycle, then capability/capacity), and an authorized request on a session that is not terminal reaches the durable session mailbox (`admitted`, `replayed`, `conflict`, or `backlog-exhausted`); it returns `{ outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' }` only when no session mailbox, durable storage, or key-value store is composed (AB-194, COR-435); `submitSteeringCommand` admits `pause`, `resume`, `agent-identity`, `route`, `model`, `provider`, and `effort` for authorized in-memory and durable sessions, persisting durable commands before applying them; `policyRef` resolves configuration coordinates through `modelPolicy.users`, while an `agent-identity` `policyRef` remains `unsupported-capability` with `selector-unavailable`; plus full CRUD over durable schedules (`createSchedule`, `getSchedule`, `listSchedules`, `pauseSchedule`, `resumeSchedule`, `cancelSchedule`).
 - Emits a typed event surface (`BureauEventMap`) and live WebSocket/SSE-ready frames (`ServerFrame`) via `subscribeLiveFrames` and `streamEventToFrame`.
@@ -56,7 +56,7 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 
 `createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `GovernedMemory`, an optional `Scheduler`, and the resolved runtime composition (generate function, toolbox, session store, durable engine).
 
-`createRun(request)` (**deprecated**, not yet removed—see AB-242's decision record and the removal issue it names, AB-352) loads or creates a session, appends the request message to its conversation, builds an `ActiveRun` via `operative`'s `createActiveRun`, and registers it with the store. If a durable engine is composed, the run is routed through it instead of the in-memory loop, so it can crash and resume from its last completed step. Terminal run events (`run.completed`, `run.aborted`) persist the session's status with a bounded retry.
+`createRun(request)` (`agentName` is required) loads or creates a session, appends the request message to its conversation, builds an `ActiveRun` via `operative`'s `createActiveRun`, and registers it with the store. If a durable engine is composed, the run is routed through it instead of the in-memory loop, so it can crash and resume from its last completed step. Terminal run events (`run.completed`, `run.aborted`) persist the session's status with a bounded retry.
 
 A `createRun` request that names a catalog agent (`agentName`) runs that agent. The session run uses the agent's own `generate`, tools, system prompt (the request's `systemPrompt` wins, then the agent's, then the Bureau's), `maximumSteps`, `maximumTokens`, and stop conditions, with the Bureau's memory, guardrails, identity, skills, and opt-in tools (`requestHumanInput`, `scheduleWakeup`) composed around it. A session is bound to the agent that created it: a later run omits `agentName` or repeats it, and naming another is a `BAD_REQUEST`. A name outside the catalog is `NOT_FOUND`, and a Bureau that has only catalog agents accepts a named run and refuses an unnamed one with `NOT_CONFIGURED`. A durable named run recovers as its agent. If the agent has left the catalog the run fails, and if its definition revision changed Bureau logs a warning and resumes with the current definition. A schedule's fire and a goal's attempt still run the Bureau-wide runtime.
 
@@ -70,7 +70,7 @@ On boot, if durable execution is configured, `bureau` sweeps suspended scheduler
 
 ## Quick Start
 
-This example demonstrates the `BureauOptions.provider` + `Bureau.createRun` path, which is **deprecated** (not yet removed—see AB-242's decision record and the removal issue it names, AB-352). New code should give `agents` a catalog entry built with `createAgent` and dispatch through `bureau.run(name, input, options?)` instead.
+This example demonstrates the `BureauOptions.provider` + `Bureau.createRun` path, whose Bureau-level `provider` is **deprecated** (COR-323 part 2 removes it). New code should give `agents` a catalog entry built with `createAgent` and name it in `createRun({ agentName })` or dispatch through `bureau.run(name, input, options?)`.
 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
@@ -132,7 +132,7 @@ const create: <const D extends AgentDefinitions = AgentDefinitions>(
 ) => Promise<Bureau<D>> = createBureau;
 ```
 
-Composes and returns a `Bureau`. `agents` is the only required field—pass `{}` for a bureau that only uses the session/durability-backed `createRun` surface below (**deprecated**, not yet removed—see AB-242) and doesn't dispatch through the typed catalog at all. Without a `generate`/`provider`/`providers` + `routing` (all agent-owned fields, **deprecated** per AB-242), the result has no generate function configured (`bureau.ready === false`) and `createRun` throws `BureauError('NOT_CONFIGURED')` until one is provided.
+Composes and returns a `Bureau`. `agents` is the only required field—pass `{}` for a bureau that only uses the session/durability-backed `createRun` surface below and doesn't dispatch through the typed catalog at all. Without a `generate`/`provider`/`providers` + `routing` (all agent-owned fields, **deprecated** per AB-242), the result has no generate function configured (`bureau.ready === false`) and `createRun` throws `BureauError('NOT_CONFIGURED')` until one is provided.
 
 ### `BureauOptions`
 

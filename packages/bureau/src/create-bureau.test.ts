@@ -146,6 +146,7 @@ import {
   type Bureau,
   type BureauDiagnostic,
   type ConfigurationResponse,
+  type CreateRunRequest,
   type ServerFrame,
 } from './types';
 
@@ -1040,9 +1041,8 @@ describe('createBureau', () => {
 
     // No agentName on the request — the common interactive path.
     const summary = await bureau.createRun({
-      agentName: 'bureau',
       message: 'Stamp test, no agent',
-    });
+    } as CreateRunRequest);
 
     const runState = bureau.store.getRun(summary.id);
     runState?.activeRun.addEventListener('tool.started', (event) => {
@@ -1093,7 +1093,7 @@ describe('createBureau', () => {
       persistence: textValueStore(new MemoryStorage()),
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'Unnamed dispatch' });
+    const run = await bureau.createRun({ message: 'Unnamed dispatch' } as CreateRunRequest);
     await waitForRunCompletion(bureau, run.id);
 
     const session = await bureau.getSession(run.sessionId);

@@ -208,7 +208,7 @@ describe('createRun with a named agent', () => {
       systemPrompt: 'BUREAU PROMPT',
     });
 
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+    const run = await bureau.createRun({ message: 'hello' } as CreateRunRequest);
     await finish(bureau, run.id);
 
     expect(await replies(bureau, run.sessionId)).toEqual(['bureau speaking']);
