@@ -62,17 +62,16 @@ export function lastChatText(
 
 /**
  * What the Bureau lets the browser know of an agent's model, tools, and skills, put as the views
- * show them. `model` is `scripted` for an agent defined in code that names no model (its replies
- * come from a script), a name for an agent that names one, and `unknown` while it is being read or
- * when it cannot be told (a routed agent, or a file the Bureau has not answered for). `tools` is
+ * show them. `model` is a name for an agent that names one, and `unknown` while it is being read or
+ * when it cannot be told: a routed agent, a file the Bureau has not answered for, or an agent
+ * defined in code whose generator the Bureau cannot look inside (`media` is `null`). Such a
+ * generator may be a script or a model call; the listing does not say which, so no model is shown
+ * for it rather than a guess. `tools` is
  * `null` when the tools cannot be known (an agent whose listing carries no tools, such as one that
  * is not a `createAgent` result), and an unknown list is never shown as an empty one.
  */
 export type AgentFacts = {
-  readonly model:
-    | { readonly kind: 'scripted' }
-    | { readonly kind: 'model'; readonly name: string }
-    | { readonly kind: 'unknown' };
+  readonly model: { readonly kind: 'model'; readonly name: string } | { readonly kind: 'unknown' };
   readonly tools: readonly string[] | null;
   /** Each skill by its identifier, the only thing about it that is unique, and the name it shows as. */
   readonly skills: readonly { readonly id: string; readonly name: string }[];
@@ -93,10 +92,11 @@ export function agentFacts(
       skills: definition?.skills.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
     };
   }
-  // A code-defined agent with no model descriptor is a script. One with descriptors names its model
-  // through `bureau.agents.models`, when it has a single one.
+  // A code-defined agent with no model descriptor has an opaque generator: it may be a script or a
+  // model the Bureau cannot introspect, and the listing does not say which, so it claims neither.
+  // One with descriptors names its model through `bureau.agents.models`, when it has a single one.
   if (agent.media === null) {
-    return { model: { kind: 'scripted' }, tools: agent.tools ?? null, skills: [] };
+    return { model: { kind: 'unknown' }, tools: agent.tools ?? null, skills: [] };
   }
   const only = models?.default ?? (models?.models.length === 1 ? models.models[0] : undefined);
   return {

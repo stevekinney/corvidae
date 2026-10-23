@@ -153,6 +153,27 @@ describe('createAgent: tool names', () => {
     expect(agent.toolNames).toEqual(['lookup-order', 'refund-order']);
   });
 
+  it('lists a name once when a pre-built toolbox holds two tools under it', () => {
+    const lookupAgain = createTool({
+      name: 'lookup-order',
+      namespace: 'second',
+      description: 'Look up an order a second way',
+      input: z.object({ id: z.string() }),
+      execute: async () => 'found again',
+    });
+    const toolbox = createToolbox([lookup, refund, lookupAgain]);
+    // The toolbox keeps both: the duplicate is real, not an artifact of how the test built it.
+    expect(toolbox.tools().map((tool) => tool.name)).toEqual([
+      'lookup-order',
+      'refund-order',
+      'lookup-order',
+    ]);
+
+    const agent = createAgent({ generate: mockGenerate(), toolbox });
+
+    expect(agent.toolNames).toEqual(['lookup-order', 'refund-order']);
+  });
+
   it('hands out a frozen list, so a caller cannot change what the agent reports', () => {
     const agent = createAgent({ generate: mockGenerate(), tools: { refund } });
 

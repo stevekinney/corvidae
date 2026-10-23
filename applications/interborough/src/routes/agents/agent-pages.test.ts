@@ -87,7 +87,10 @@ describe('the list of agents', () => {
     // Neither where an agent is defined nor that it is published is worded.
     expect(container.textContent).not.toContain('Defined in');
     expect(container.textContent).not.toContain('Published');
-    expect(text('assistant')).toContain('Scripted');
+    // The generator behind `assistant` is opaque to the Bureau (`media` is null): it may be a script
+    // or a model, and the listing does not say, so no model line is claimed for it.
+    expect(text('assistant')).not.toContain('Scripted');
+    expect(rows('assistant')?.textContent).not.toContain('Model');
     expect(text('assistant')).toContain('2 tools');
     expect(text('researcher')).toContain('2 tools');
     await waitFor(() =>
@@ -132,7 +135,7 @@ describe('the list of agents', () => {
       props: { page: AgentList, client },
     } as never);
 
-    await findByText('Scripted');
+    await findByText('Assistant');
     // The read has failed before anything is asserted about what it left out.
     await waitFor(() =>
       expect(client.getQueryState(queryKeys.contexts.usage())?.status).toBe('error'),
@@ -401,13 +404,42 @@ describe('one agent’s page', () => {
     expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
   });
 
+  test('shows a tool its listing names twice once for each time, rather than failing on a repeated key', async () => {
+    serve({ ...AGENT, tools: ['search-web', 'search-web'] });
+    landAt('/agents/assistant');
+
+    const { container, findByText } = mount(AgentDetail);
+
+    await findByText('Answers every message.');
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.querySelectorAll('ul[aria-label="Tools"] li')).toHaveLength(2);
+  });
+
+  test('shows a file agent’s tool its definition names twice, beside two skills of one name', async () => {
+    const twin = (id: string) => ({ id, name: 'Cite', description: 'Cites sources', tags: [] });
+    serve(FILE_AGENT, {
+      model: 'anthropic/sonnet',
+      tools: ['lookup-order', 'lookup-order'],
+      skills: [twin('cite-a'), twin('cite-b')],
+      instructions: '',
+    });
+    landAt('/agents/researcher');
+
+    const { container, findByText } = mount(AgentDetail);
+
+    await findByText('anthropic/sonnet');
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.querySelectorAll('ul[aria-label="Tools"] li')).toHaveLength(2);
+    expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
+  });
+
   test('says a code agent whose listing names an empty list has no tools', async () => {
     serve({ ...AGENT, tools: [] });
     landAt('/agents/assistant');
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('Scripted');
+    await findByText('No tools');
     expect(container.querySelector('[data-testid="agent-facts"]')?.textContent).toContain(
       'No tools',
     );
@@ -419,7 +451,7 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('Scripted');
+    await findByText('Answers every message.');
     expect(container.textContent).not.toContain('tools');
     expect(container.textContent).not.toContain('Tools');
   });
@@ -437,7 +469,7 @@ describe('one agent’s page', () => {
     expect(container.textContent).not.toContain('Skills');
   });
 
-  test('reads no definition for an agent defined in code, shows it as Scripted with no version, and offers New chat when it is published', async () => {
+  test('reads no definition for an agent defined in code, shows no model for it, with no version, and offers New chat when it is published', async () => {
     const served = serve(ASSISTANT);
     landAt('/agents/assistant');
 
@@ -446,17 +478,19 @@ describe('one agent’s page', () => {
     const action = await findByRole('link', { name: 'New chat' });
     const shown = container.textContent ?? '';
     // Its tools come from its listing, named as a file agent's are.
-    for (const present of [
-      'Assistant',
-      'Answers every message.',
-      'Scripted',
-      'search-web',
-      'send-mail',
-    ]) {
+    for (const present of ['Assistant', 'Answers every message.', 'search-web', 'send-mail']) {
       expect(shown).toContain(present);
     }
     // Where it is defined and that it is published are not worded, and it has no file version.
-    for (const absent of ['Defined in', 'Published', 'Revision', 'File version', 'Skills']) {
+    for (const absent of [
+      'Defined in',
+      'Published',
+      'Revision',
+      'File version',
+      'Skills',
+      'Model',
+      'Scripted',
+    ]) {
       expect(shown).not.toContain(absent);
     }
     action.click();
@@ -547,9 +581,16 @@ describe('one agent’s page', () => {
     };
     serve(AGENT);
     landAt('/agents/assistant');
-    const { findByRole, getByRole } = mount(AgentDetail);
+    const client = createQueryClient();
+    const { findByRole, getByRole } = render(QueryPage, {
+      props: { page: AgentDetail, client },
+    } as never);
 
     await findByRole('link', { name: 'New chat' });
+    // The read has failed before anything is asserted about what it left out.
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.memory.list('assistant'))?.status).toBe('error'),
+    );
     expect(getByRole('link', { name: 'Memory' }).getAttribute('href')).toBe(
       '/agents/assistant/memory',
     );

@@ -499,14 +499,12 @@ export const AUDIT_COPY = {
 } as const;
 
 /**
- * The words the agent list and an agent's page use for what an agent is and has: its model (or
- * that it is scripted), its tools, how much it has been used, and the one badge an agent can carry.
+ * The words the agent list and an agent's page use for what an agent is and has: its model, its
+ * tools, how much it has been used, and the one badge an agent can carry.
  * Where an agent is defined, and that it is published, are facts for the developer or the normal
  * state, so neither is worded: only an agent that is not published says so.
  */
 export const AGENTS_COPY = {
-  /** The model of an agent that calls none: its replies come from code. */
-  scripted: 'Scripted',
   notPublished: 'Not published',
   notPublishedHint: 'This agent is not published, so no one can start a chat with it.',
   modelLabel: 'Model',

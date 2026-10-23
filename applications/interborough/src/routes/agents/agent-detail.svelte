@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * `/agents/:id`: one agent, with its name once, its description, what it is made of (its model or
-   * "Scripted", its tools and skills), a Memory action that carries how many memories it has, a New
+   * `/agents/:id`: one agent, with its name once, its description, what it is made of (its model
+   * when the Bureau can tell, its tools and skills), a Memory action that carries how many memories it has, a New
    * chat action when it is published, and the chats the caller has had with it.
    *
    * An agent file shows the version of the file it runs, with a link to the history that lives in

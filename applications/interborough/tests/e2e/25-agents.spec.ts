@@ -1,6 +1,6 @@
 /**
  * `/agents` and `/agents/:id`: the agents the Bureau tells the caller of, each with what it is made
- * of (its model or "Scripted", its tools), how much it has been used, the one badge an agent can
+ * of (its model when the Bureau can tell, its tools), how much it has been used, the one badge an agent can
  * carry ("Not published"), a New chat action for a published one, and the chats had with one agent.
  */
 import type { Page } from '@playwright/test';
@@ -29,10 +29,14 @@ test.describe('the list of agents', () => {
 
     const frame = page.locator('[data-view="agents"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
+    // An absence proves nothing until the rows it is about have rendered.
+    await expect(row(page, 'assistant')).toBeVisible();
+    await expect(row(page, 'internal')).toBeVisible();
     // Where an agent is defined is for the developer, and published is the normal state: neither is said.
     await expect(frame).not.toContainText('Defined in');
     await expect(frame).not.toContainText('Published');
-    await expect(row(page, 'assistant')).toContainText('Scripted');
+    // Its generator is opaque to the Bureau, which cannot say whether it is a script: no model line.
+    await expect(row(page, 'assistant')).not.toContainText('Scripted');
     // A code-defined agent's tools are counted as a file agent's are: the Bureau names them.
     await expect(row(page, 'tool-runner')).toContainText('2 tools');
     await expect(row(page, 'assistant')).toContainText('No tools');
@@ -114,7 +118,8 @@ test.describe('one agent', () => {
     await expect(
       page.locator('.ib-agent__header').getByText(TEXT_ECHO_SOLO_AGENT_NAME, { exact: true }),
     ).toHaveCount(1);
-    await expect(frame).toContainText('Scripted');
+    await expect(frame).not.toContainText('Scripted');
+    await expect(frame).not.toContainText('Model');
     await expect(frame).not.toContainText('Defined in');
     await expect(frame).not.toContainText('Published');
     await expect(frame).not.toContainText('Revision');
@@ -217,16 +222,63 @@ for (const width of WIDTHS) {
     }) => {
       const identifier = `long-${'x'.repeat(59)}`;
       expect(identifier).toHaveLength(64);
-      // The Bureau answers as it does, with two more agents in the list: one named by its
-      // identifier alone, and one with a short display name beside the long identifier.
+      // A tool or a skill is as long as an identifier may be, and a chip never wraps by itself.
+      const longTool = `tool-${'t'.repeat(59)}`;
+      const longSkill = `skill-${'s'.repeat(58)}`;
+      expect(longTool).toHaveLength(64);
+      expect(longSkill).toHaveLength(64);
+      const withChips = `chips-${'c'.repeat(58)}`;
+      const withSkills = `skills-${'k'.repeat(57)}`;
+      expect(withSkills).toHaveLength(64);
+      // The Bureau answers as it does, with more agents in the list: one named by its identifier
+      // alone, one with a short display name beside the long identifier, one defined in code with
+      // the long tool listed twice (a toolbox may hold two tools under one name), and one file
+      // agent with the long tool and the long skill.
       await page.route('**/bureau/jsonrpc', async (route) => {
-        if (!(route.request().postData() ?? '').includes('"bureau.agents.list"')) {
+        const posted = route.request().postData() ?? '';
+        if (posted.includes('"bureau.agents.definitions.get"') && posted.includes(withSkills)) {
+          const { id } = JSON.parse(posted) as { id: unknown };
+          await route.fulfill({
+            json: {
+              jsonrpc: '2.0',
+              id,
+              result: {
+                id: withSkills,
+                source: 'file',
+                state: 'ready',
+                name: withSkills,
+                description: null,
+                published: true,
+                hash: 'a'.repeat(64),
+                problem: null,
+                definition: {
+                  name: withSkills,
+                  description: null,
+                  published: true,
+                  model: `provider/${'m'.repeat(55)}`,
+                  tools: [longTool, longTool],
+                  skills: [
+                    { id: 'skill-a', name: longSkill, description: '', tags: [] },
+                    { id: 'skill-b', name: longSkill, description: '', tags: [] },
+                  ],
+                  instructions: '',
+                },
+              },
+            },
+          });
+          return;
+        }
+        if (!posted.includes('"bureau.agents.list"')) {
           await route.fallback();
           return;
         }
         const response = await route.fetch();
         const body = (await response.json()) as { result: { agents: unknown[] } };
-        const agent = (name: string, displayName: string) => ({
+        const agent = (
+          name: string,
+          displayName: string,
+          extra: { kind?: string; tools?: string[] } = {},
+        ) => ({
           name,
           displayName,
           description: null,
@@ -235,10 +287,13 @@ for (const width of WIDTHS) {
           publishState: 'published',
           media: null,
           tools: [],
+          ...extra,
         });
         body.result.agents.push(
           agent(identifier, identifier),
           agent(`named-${identifier.slice(6)}`, 'Short'),
+          agent(withChips, withChips, { tools: [longTool, longTool] }),
+          agent(withSkills, withSkills, { kind: 'file', tools: [longTool, longTool] }),
         );
         await route.fulfill({ response, json: body });
       });
@@ -258,11 +313,16 @@ for (const width of WIDTHS) {
       await expect(row(page, `named-${identifier.slice(6)}`)).toBeVisible();
       expect(await fits()).toBe(true);
 
-      for (const name of [identifier, `named-${identifier.slice(6)}`]) {
+      for (const name of [identifier, `named-${identifier.slice(6)}`, withChips, withSkills]) {
         await page.goto(`/agents/${name}`);
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
         expect(await fits()).toBe(true);
       }
+      // The same tool listed twice shows twice, without the page failing on a repeated key, and so
+      // do two skills that share a name.
+      await expect(page.getByRole('list', { name: 'Tools' }).getByRole('listitem')).toHaveCount(2);
+      await expect(page.getByRole('list', { name: 'Skills' }).getByRole('listitem')).toHaveCount(2);
+      expect(await fits()).toBe(true);
     });
 
     test('an unpublished agent’s page passes axe', async ({ page, checkA11y }) => {

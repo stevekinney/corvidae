@@ -136,15 +136,23 @@ describe('an agent’s facts', () => {
     ]);
   });
 
-  test('a code agent that names no model is Scripted, and has the tools its listing names', () => {
+  test('a code agent whose generator the Bureau cannot look inside shows no model, not Scripted, and has the tools its listing names', () => {
     const facts = agentFacts(
       { kind: 'code', media: null, tools: ['search-web'] },
       undefined,
       undefined,
     );
 
-    expect(facts.model).toEqual({ kind: 'scripted' });
+    expect(facts.model).toEqual({ kind: 'unknown' });
     expect(facts.tools).toEqual(['search-web']);
+    // Not even a model the Bureau would name for another agent changes it: it is never asked.
+    expect(
+      agentFacts({ kind: 'code', media: null }, undefined, {
+        selectable: false,
+        models: [{ provider: 'anthropic', model: 'claude-haiku', displayName: 'claude-haiku' }],
+        default: null,
+      }).model,
+    ).toEqual({ kind: 'unknown' });
   });
 
   test('an agent whose listing names no tools has an unknown list, not an empty one', () => {
@@ -179,7 +187,7 @@ describe('an agent’s facts', () => {
     expect(
       agentFacts(code, undefined, { selectable: false, models: [choice], default: null }).model,
     ).toEqual({ kind: 'model', name: 'claude-haiku' });
-    // A routed agent answers no default and no single model: nothing is claimed, not Scripted.
+    // A routed agent answers no default and no single model: nothing is claimed.
     expect(
       agentFacts(code, undefined, { selectable: false, models: [], default: null }).model,
     ).toEqual({ kind: 'unknown' });

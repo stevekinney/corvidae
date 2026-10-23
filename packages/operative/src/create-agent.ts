@@ -555,7 +555,7 @@ export interface StandaloneAgent<
   /**
    * The names of the tools this agent was created with, in definition order: the keys of
    * `options.tools` (the canonical names the model calls them by), or the names of the tools in
-   * `options.toolbox`. Read-only
+   * `options.toolbox`, each name once even when the toolbox holds two tools under it. Read-only
    * description for a host that wants to show what the agent can do: it never reaches a run, and it
    * leaves out the skill tools (`activate_skill`, `deactivate_skill`) a run adds when `skills` is
    * set. An agent created without tools lists `[]`.
@@ -814,11 +814,12 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     : [];
 
   // The names the model calls the tools by: the map keys (see above), or the names in a supplied
-  // toolbox, which has no way to add a tool after it is built. Frozen once.
+  // toolbox, which has no way to add a tool after it is built. A pre-built toolbox may hold two
+  // tools under one name, and a name is listed once: a host keys what it shows by it. Frozen once.
   const toolNames: readonly string[] = Object.freeze(
     providedToolbox === undefined
       ? Object.keys(tools ?? {})
-      : providedToolbox.tools().map((tool) => tool.name),
+      : [...new Set(providedToolbox.tools().map((tool) => tool.name))],
   );
 
   // Shared by `run()` and the AB-21 definition-resolution protocol below —

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * `/agents`: every agent the Bureau tells the caller of, one flat row each: its name (and its
-   * identifier beside it when they differ), its description, its model or "Scripted", its tools,
+   * identifier beside it when they differ), its description, its model when the Bureau can tell, its tools,
    * how many chats it has had and when the last was, and the actions that are open to it. New chat
    * is the main one and is offered only for a published agent, which is also the only one that
    * carries a badge: an agent that is not published says so.

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * What an agent is made of, on one line: its model (or "Scripted" when its replies come from
-   * code), then its tools, then its skills. The list shows the tool count; an agent's page names
+   * What an agent is made of, on one line: its model (none when the Bureau cannot tell, as for an
+   * agent defined in code whose generator it cannot look inside), then its tools, then its skills. The list shows the tool count; an agent's page names
    * each tool and skill.
    *
    * The Bureau tells an agent file's model and skills (`bureau.agents.definitions.get`), a
@@ -16,6 +16,7 @@
   import { AGENTS_COPY } from '../../app/copy.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { getAgentModels, type AgentSummary } from '../../lib/bureau-client.ts';
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { agentFacts, toolCountText } from './agent-presentation.ts';
 
@@ -52,9 +53,7 @@
 </script>
 
 <div class="ib-agent-facts" data-testid="agent-facts">
-  {#if facts.model.kind === 'scripted'}
-    <div class="ib-agent-fact">{AGENTS_COPY.scripted}</div>
-  {:else if facts.model.kind === 'model'}
+  {#if facts.model.kind === 'model'}
     <div class="ib-agent-fact">
       <span class="ib-agent-fact__label">{AGENTS_COPY.modelLabel}</span>
       <Badge variant="neutral" size="sm" monospace>{facts.model.name}</Badge>
@@ -65,7 +64,7 @@
       <div class="ib-agent-fact">
         <span class="ib-agent-fact__label">{AGENTS_COPY.toolsLabel}</span>
         <ul class="ib-agent-chips" aria-label={AGENTS_COPY.toolsLabel}>
-          {#each facts.tools as tool (tool)}
+          {#each keyedByOccurrence(facts.tools, (tool) => tool) as { key, item: tool } (key)}
             <li><Badge variant="neutral" size="sm" monospace>{tool}</Badge></li>
           {/each}
         </ul>
@@ -78,7 +77,7 @@
     <div class="ib-agent-fact">
       <span class="ib-agent-fact__label">{AGENTS_COPY.skillsLabel}</span>
       <ul class="ib-agent-chips" aria-label={AGENTS_COPY.skillsLabel}>
-        {#each facts.skills as skill (skill.id)}
+        {#each keyedByOccurrence(facts.skills, (skill) => skill.id) as { key, item: skill } (key)}
           <li><Badge variant="neutral" size="sm">{skill.name}</Badge></li>
         {/each}
       </ul>
