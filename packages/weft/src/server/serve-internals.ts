@@ -30,6 +30,7 @@ import {
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
+import { SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import type { ServeOptions } from './index.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
 import { closeJsonRpcSessionsForShutdown } from './json-rpc-websocket-runtime.ts';
@@ -105,16 +106,6 @@ const MAX_CANCELLATION_GRACE_PERIOD_MS = 300_000;
  */
 export const WEBSOCKET_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024; // 4 MiB
 
-/**
- * Seconds a connection may send and receive nothing before Bun closes it. Bun's own default is 10,
- * which is shorter than the event streams' 15 second heartbeat
- * (`DEFAULT_SSE_HEARTBEAT_INTERVAL_MS`): a quiet stream was cut between pings, ending without its
- * terminating chunk, so a browser logged `ERR_INCOMPLETE_CHUNKED_ENCODING` and a client reconnected
- * every 10 seconds. It must stay above the heartbeat.
- *
- * @internal Exported only for test assertions.
- */
-export const SERVER_IDLE_TIMEOUT_SECONDS = 60;
 const AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE = 'WEFT_SERVER_AUTHENTICATION_REQUIRED';
 /**
  * @internal

@@ -35,6 +35,8 @@ type Outcome = Exclude<ViewStateName, 'not-found'> | 'ready';
 
 /** How a view's probe is recognised on the wire, and what an empty answer looks like. */
 type ProbeRoute = {
+  /** The URL the probe asks, as Chromium reports it when the test answers it with an error status. */
+  readonly url: RegExp;
   readonly matches: (url: URL, body: string) => boolean;
   readonly empty: unknown;
   /** A view that asks more than one question answers each by what the request asked. */
@@ -43,6 +45,7 @@ type ProbeRoute = {
 
 function jsonRpcProbe(method: string): ProbeRoute {
   return {
+    url: /\/jsonrpc/,
     matches: (url, body) => url.pathname.endsWith('/jsonrpc') && body.includes(`"${method}"`),
     empty: { items: [] },
   };
@@ -51,6 +54,7 @@ function jsonRpcProbe(method: string): ProbeRoute {
 /** A Bureau operation's request is a JSON-RPC call to `/bureau/jsonrpc`, answered with `empty` when the view is empty. */
 function bureauProbe(method: string, empty: unknown): ProbeRoute {
   return {
+    url: /\/bureau\/jsonrpc/,
     matches: (url, body) => url.pathname === '/bureau/jsonrpc' && body.includes(`"${method}"`),
     empty,
   };
@@ -65,6 +69,7 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   // The list joins the engine's definitions with the Bureau's files, so it asks both, and it is
   // empty only when neither lists anything.
   workflows: {
+    url: /\/(bureau\/)?jsonrpc/,
     matches: (url, body) =>
       (url.pathname.endsWith('/jsonrpc') && body.includes('"weft.workflows.definitions.list"')) ||
       (url.pathname === '/bureau/jsonrpc' && body.includes('"bureau.workflows.list"')),
@@ -77,6 +82,7 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   // The runs are the Bureau's: the view asks it for one task and one goal, and is empty only when
   // it has neither. The list that follows asks for a hundred of each.
   runs: {
+    url: /\/bureau\/jsonrpc/,
     matches: (url, body) =>
       url.pathname === '/bureau/jsonrpc' &&
       /"bureau\.(tasks|goals)\.list"/.test(body) &&
@@ -87,7 +93,11 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
         ? { tasks: [], nextPageToken: null }
         : { goals: [], nextOffset: null },
   },
-  schedules: { matches: (url) => url.pathname === '/v1/schedules', empty: { items: [], total: 0 } },
+  schedules: {
+    url: /\/v1\/schedules/,
+    matches: (url) => url.pathname === '/v1/schedules',
+    empty: { items: [], total: 0 },
+  },
   reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
@@ -103,15 +113,15 @@ async function drive(
   outcome: Outcome,
 ): Promise<void> {
   if (outcome === 'ready') return;
+  const probe = PROBES[view];
   if (outcome === 'error' || outcome === 'forbidden') {
     // The test answers the probe with an error status, and Chromium logs every such response.
     const status = outcome === 'error' ? 500 : 403;
     pageErrors.expect({
-      pattern: loggedFailedResponse(status, /./),
+      pattern: loggedFailedResponse(status, probe.url),
       reason: `the test answers the ${view} probe with a ${status}`,
     });
   }
-  const probe = PROBES[view];
   await page.route('**/*', async (route: Route) => {
     const request = route.request();
     if (!probe.matches(new URL(request.url()), request.postData() ?? '')) {

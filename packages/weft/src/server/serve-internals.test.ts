@@ -1,10 +1,12 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { SERVER_IDLE_TIMEOUT_MARGIN_SECONDS, SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import { DEFAULT_SSE_HEARTBEAT_INTERVAL_MS } from './operations/sse-stream.ts';
 import {
   minimalServeOptions,
   minimalServerContext,
 } from './runtime/server-context.test-support.ts';
+import { MAX_POLL_TIMEOUT } from './runtime/task-polling.ts';
 import {
   assertAuthenticationPosture,
   buildBunServeConfig,
@@ -13,7 +15,6 @@ import {
   clampWorkerReconnectGracePeriod,
   registerStackDisposers,
   resolveNetworkConfig,
-  SERVER_IDLE_TIMEOUT_SECONDS,
   WEBSOCKET_MAX_PAYLOAD_BYTES,
 } from './serve-internals.ts';
 
@@ -258,7 +259,7 @@ describe('registerStackDisposers', () => {
     expect(await response?.text()).toBe('Server not ready');
   });
 
-  it('keeps a connection open longer than the event streams stay quiet between pings', () => {
+  it('keeps a connection open longer than the longest silence it has to survive', () => {
     const config = buildBunServeConfig(
       7233,
       '127.0.0.1',
@@ -268,9 +269,23 @@ describe('registerStackDisposers', () => {
       async () => new Response('ok'),
       { open() {}, message() {}, close() {} },
     );
-    // Bun's default of 10 seconds cut a stream between two 15 second pings.
     expect(config.idleTimeout).toBe(SERVER_IDLE_TIMEOUT_SECONDS);
-    expect(SERVER_IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThan(DEFAULT_SSE_HEARTBEAT_INTERVAL_MS);
+    // Bun's default of 10 seconds cut a stream between two 15 second pings.
+    const longestSilenceSeconds =
+      Math.max(DEFAULT_SSE_HEARTBEAT_INTERVAL_MS, MAX_POLL_TIMEOUT) / 1000;
+    expect(SERVER_IDLE_TIMEOUT_SECONDS).toBe(
+      Math.ceil(longestSilenceSeconds) + SERVER_IDLE_TIMEOUT_MARGIN_SECONDS,
+    );
+    // Each silent interval stays clear of the cut by the margin, so growing either constant past
+    // the idle timeout fails here rather than as a stream cut in a browser.
+    expect(SERVER_IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThanOrEqual(
+      DEFAULT_SSE_HEARTBEAT_INTERVAL_MS + SERVER_IDLE_TIMEOUT_MARGIN_SECONDS * 1000,
+    );
+    expect(SERVER_IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThanOrEqual(
+      MAX_POLL_TIMEOUT + SERVER_IDLE_TIMEOUT_MARGIN_SECONDS * 1000,
+    );
+    // Bun accepts at most 255 seconds.
+    expect(SERVER_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255);
   });
 
   it('adds tls to the Bun serve config only when tls options exist', () => {
