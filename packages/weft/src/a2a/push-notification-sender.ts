@@ -73,6 +73,20 @@ function idempotencyKeyOf(locator: PushLocator, digest: string): string {
     .join(':');
 }
 
+/**
+ * The `destinationRef` every outbox delivery to one push configuration carries, for the
+ * caller scope `context` names. A host that serializes a configuration's deliveries finds
+ * the open ones in the outbox by it.
+ */
+export function pushDestinationRef(
+  context: ServerCallContext,
+  taskId: string,
+  configId: string,
+): string {
+  const scope = callerScope('', context);
+  return encodeLocator({ tenant: scope.tenant, owner: scope.owner, taskId, configId });
+}
+
 function decodeLocator(reference: string): PushLocator | undefined {
   const parts = reference.split(':');
   if (parts.length !== 5 || parts[0] !== LOCATOR_PREFIX) return undefined;
@@ -178,6 +192,16 @@ export type OutboxPushNotificationSenderOptions = {
  */
 export type OutboxPushNotificationSender = PushNotificationSender & {
   readonly pushStore: WeftPushNotificationStore;
+  /**
+   * Send `streamResponse` as the event named by `eventKey`. The key joins the response in the
+   * delivery's identity, so two distinct events whose responses serialize identically are two
+   * deliveries, and only a replay of the same `eventKey` deduplicates.
+   */
+  sendKeyed(
+    streamResponse: StreamResponse,
+    context: ServerCallContext,
+    eventKey: string,
+  ): Promise<void>;
 };
 
 /**
@@ -251,6 +275,7 @@ export function createOutboxPushNotificationSender(
 
   const wrappedStore: WeftPushNotificationStore = {
     create: (taskId, context, config) => pushStore.create(taskId, context, config),
+    check: (taskId, context, config) => pushStore.check(taskId, context, config),
     save: (taskId, context, config) => pushStore.save(taskId, context, config),
     get: (taskId, configId, context) => pushStore.get(taskId, configId, context),
     load: (taskId, context) => pushStore.load(taskId, context),
@@ -271,27 +296,37 @@ export function createOutboxPushNotificationSender(
 
   return {
     pushStore: wrappedStore,
-    async send(streamResponse: StreamResponse, context: ServerCallContext, _task?: Task) {
-      const taskId = taskIdOf(streamResponse);
-      if (taskId === '') return;
-      const configs = await pushStore.load(taskId, context);
-      if (configs.length === 0) return;
-      const json: unknown = StreamResponse.toJSON(streamResponse);
-      const traceparent = traceparentOf(context);
-      const event = {
-        json,
-        digest: sha256Hex(canonicalJson(json)),
-        ...(traceparent === undefined ? {} : { causation: { traceparent } }),
-      };
-      const failures = await Promise.all(
-        configs.map((config) => enqueueFor(config.id, taskId, context, event)),
-      );
-      const messages = failures.filter((failure) => failure !== null);
-      if (messages.length > 0) {
-        throw new Error(
-          `Push notifications for task ${taskId} were not enqueued: ${messages.join('; ')}.`,
-        );
-      }
-    },
+    send: (streamResponse: StreamResponse, context: ServerCallContext, _task?: Task) =>
+      deliver(streamResponse, context, undefined),
+    sendKeyed: (streamResponse, context, eventKey) => deliver(streamResponse, context, eventKey),
   };
+
+  async function deliver(
+    streamResponse: StreamResponse,
+    context: ServerCallContext,
+    eventKey: string | undefined,
+  ): Promise<void> {
+    const taskId = taskIdOf(streamResponse);
+    if (taskId === '') return;
+    const configs = await pushStore.load(taskId, context);
+    if (configs.length === 0) return;
+    const json: unknown = StreamResponse.toJSON(streamResponse);
+    const traceparent = traceparentOf(context);
+    const event = {
+      json,
+      digest: sha256Hex(
+        eventKey === undefined ? canonicalJson(json) : `${eventKey}\0${canonicalJson(json)}`,
+      ),
+      ...(traceparent === undefined ? {} : { causation: { traceparent } }),
+    };
+    const failures = await Promise.all(
+      configs.map((config) => enqueueFor(config.id, taskId, context, event)),
+    );
+    const messages = failures.filter((failure) => failure !== null);
+    if (messages.length > 0) {
+      throw new Error(
+        `Push notifications for task ${taskId} were not enqueued: ${messages.join('; ')}.`,
+      );
+    }
+  }
 }
