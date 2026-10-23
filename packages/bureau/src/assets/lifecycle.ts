@@ -28,11 +28,13 @@
 import {
   AssetAdmissionError,
   AssetConflictError,
+  AssetReservedHolderError,
   AssetHeldError,
   AssetRecordCorruptError,
   AssetUnavailableError,
   AssetWorkAbortedError,
 } from './errors';
+import { bureauClaim, isReservedHolderId } from './internal-access';
 import { type AssetInternals, classifyFailure } from './internals';
 import type { AssetWorkContext } from './operation';
 import { readVerifiedBytes } from './admission';
@@ -116,8 +118,16 @@ export async function retain(
   internals: AssetInternals,
   assetId: string,
   principal: AssetPrincipal,
-  reference: { readonly holderId: string; readonly until: string },
+  reference: {
+    readonly holderId: string;
+    readonly until: string;
+    readonly [bureauClaim]?: true;
+  },
 ): Promise<AssetDescriptor> {
+  // A holder id Bureau interprets belongs to its own claim code; no public caller may forge one.
+  if (isReservedHolderId(reference.holderId) && reference[bureauClaim] !== true) {
+    throw new AssetReservedHolderError(reference.holderId);
+  }
   const until = new Date(Date.parse(reference.until)).toISOString();
   const record = await transition(
     internals,

@@ -13119,6 +13119,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       context.onReleaseFailure,
       claimedRowAssets,
     );
+    // COR-1664 — the walk above reaches only the rows the session holds now. A row compaction (or
+    // a replaced history) removed still has its claim, so the deleted incarnation's whole holder
+    // prefix is released from the asset side, at the deletion rather than at the next boot or
+    // maintenance pass. Only this incarnation: an id recreated since has its own claims.
+    await releaseClaimsByHolderPrefix(
+      context.service,
+      sessionRowHolderPrefix(session.id, session.incarnation),
+      (claim, error) => context.onReleaseFailure(claim.assetId, error, claim.holderId),
+      claimedRowAssets,
+    );
   }
 
   /**

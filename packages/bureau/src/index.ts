@@ -65,6 +65,7 @@ export {
   AssetAccessDeniedError,
   AssetAdmissionError,
   AssetConflictError,
+  AssetReservedHolderError,
   AssetHeldError,
   AssetIntegrityError,
   AssetNotFoundError,

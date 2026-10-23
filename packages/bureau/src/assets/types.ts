@@ -17,6 +17,7 @@
  * names the same content while the asset is available.
  */
 import type { CleanupAcknowledgement, ClosedOptions } from '@lostgradient/operative';
+import type { bureauClaim } from './internal-access';
 import type { ContentSource, MediaLimits, MimeFamily, Modality } from 'conversationalist';
 
 /** The `managed-asset` member of conversationalist's `ContentSource`. */
@@ -504,7 +505,7 @@ export interface AssetShutdownReport {
   }[];
 }
 
-/** One retention claim as {@link AssetService.heldClaims} reports it: who holds it and whose asset it is. */
+/** One retention claim as the reconciler reports it: who holds it and whose asset it is. */
 export interface AssetHeldClaim {
   readonly assetId: string;
   /** The principal id that owns the asset, and so the principal that can release the claim. */
@@ -571,7 +572,12 @@ export interface AssetService {
   retain(
     assetId: string,
     principal: AssetPrincipal,
-    reference: { readonly holderId: string; readonly until: string },
+    reference: {
+      readonly holderId: string;
+      readonly until: string;
+      /** Bureau's own row claims only; a public caller cannot name this. */
+      readonly [bureauClaim]?: true;
+    },
   ): Promise<AssetDescriptor>;
   release(assetId: string, principal: AssetPrincipal, holderId: string): Promise<AssetDescriptor>;
   /**
@@ -580,15 +586,6 @@ export interface AssetService {
    * reconciler that may race another uses it to count only the releases it made.
    */
   releaseClaim(assetId: string, principal: AssetPrincipal, holderId: string): Promise<boolean>;
-  /**
-   * Every retention claim whose holder id starts with `holderPrefix`, found by reading each stored
-   * asset record (the asset side), for the management plane to reconcile claims whose holder is
-   * gone: a row that compaction removed, a run that ended in a process that died before it
-   * released, a session deleted mid-handoff. It reads and changes nothing. A record that cannot be
-   * read as one (corrupt) holds no claim anyone can release, so it is skipped. Release a claim
-   * with {@link AssetService.release}, as the claim's `ownerId`.
-   */
-  heldClaims(filter: { readonly holderPrefix: string }): Promise<readonly AssetHeldClaim[]>;
   placeHold(
     assetId: string,
     principal: AssetPrincipal,

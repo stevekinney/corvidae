@@ -19,6 +19,7 @@ import {
   AssetRecordCorruptError,
   AssetUnavailableError,
 } from './errors';
+import { bureauClaim, heldClaimsOf } from './internal-access';
 import type { AssetHeldClaim, AssetService } from './types';
 
 /**
@@ -165,7 +166,11 @@ export async function claimRowAssets(
       const key = `${holderId}\u0000${assetId}`;
       if (alreadyClaimed?.has(key)) continue;
       try {
-        await assets.retain(assetId, { id: principalId }, { holderId, until: ROW_CLAIM_UNTIL });
+        await assets.retain(
+          assetId,
+          { id: principalId },
+          { holderId, until: ROW_CLAIM_UNTIL, [bureauClaim]: true },
+        );
         alreadyClaimed?.add(key);
       } catch (error) {
         if (isNotOurs(error)) {
@@ -218,10 +223,10 @@ export async function releaseClaimsByHolderPrefix(
   onFailure: (claim: AssetHeldClaim, error: unknown) => void,
   claimed?: Set<string>,
 ): Promise<number> {
-  return releaseHeldClaims(assets, await assets.heldClaims({ holderPrefix }), onFailure, claimed);
+  return releaseHeldClaims(assets, await heldClaimsOf(assets, holderPrefix), onFailure, claimed);
 }
 
-/** Releases the claims already listed by {@link AssetService.heldClaims}; see {@link releaseClaimsByHolderPrefix}. */
+/** Releases the claims already listed by {@link heldClaimsOf}; see {@link releaseClaimsByHolderPrefix}. */
 export async function releaseHeldClaims(
   assets: AssetService,
   claims: Iterable<AssetHeldClaim>,

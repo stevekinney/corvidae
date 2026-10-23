@@ -19,6 +19,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { exposeHeldClaims } from './assets/internal-access';
 import { runRowHolderId } from './assets/row-asset-claims';
 import type { AssetHeldClaim, AssetService } from './assets/types';
 import {
@@ -60,10 +61,6 @@ function setup(
   const released: Array<[string, string]> = [];
   const listed: string[] = [];
   const assets = {
-    async heldClaims({ holderPrefix }: { holderPrefix: string }) {
-      listed.push(holderPrefix);
-      return (overrides.claims ?? []).filter((claim) => claim.holderId.startsWith(holderPrefix));
-    },
     async inspect(assetId: string) {
       return {
         projection: 'privileged',
@@ -81,6 +78,10 @@ function setup(
       if (assetId === 'broken') throw new Error('the store is down');
     },
   } as unknown as AssetService;
+  exposeHeldClaims(assets, async (holderPrefix) => {
+    listed.push(holderPrefix);
+    return (overrides.claims ?? []).filter((claim) => claim.holderId.startsWith(holderPrefix));
+  });
   const diagnostics: BureauDiagnostic[] = [];
   const reads: string[] = [];
   const releaser = createCatalogRunAssetReleaser({

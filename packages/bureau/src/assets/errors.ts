@@ -113,6 +113,17 @@ export class AssetConflictError extends Error {
   }
 }
 
+/** A public `retain` named a holder id Bureau reserves for its own row claims (COR-1664). */
+export class AssetReservedHolderError extends Error {
+  readonly holderId: string;
+
+  constructor(holderId: string) {
+    super(`The holder id "${holderId}" is reserved for Bureau's own claims.`);
+    this.name = 'AssetReservedHolderError';
+    this.holderId = holderId;
+  }
+}
+
 /** The bounded in-memory backend refused a write that would exceed its capacity. */
 export class AssetStorageCapacityError extends Error {
   readonly maxBytes: number;

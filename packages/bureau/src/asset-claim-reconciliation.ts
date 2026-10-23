@@ -10,7 +10,7 @@
  *   no settlement is published for again;
  * - a session deleted while a handoff or a drain was claiming for it.
  *
- * Both reconcilers read every claim under a holder kind once (`AssetService.heldClaims`), group them
+ * Both reconcilers read every claim under a holder kind once (`heldClaimsOf`), group them
  * by run or by session incarnation, and release the ones whose owner is over. They run at boot and
  * with durable maintenance, never reject, and are idempotent: a second pass finds nothing to release.
  *
@@ -29,6 +29,7 @@
  *
  * @module asset-claim-reconciliation
  */
+import { heldClaimsOf } from './assets/internal-access';
 import { releaseHeldClaims, runIdOfRowHolder, sessionOfRowHolder } from './assets/row-asset-claims';
 import type { AssetHeldClaim, AssetService } from './assets/types';
 import type { DurableEnd, DurableEndReader } from './catalog-run-settlement';
@@ -202,7 +203,7 @@ export function createAssetClaimReconciler(
   return {
     reconcileRunClaims: () =>
       guarded(async (service) => {
-        const claims = await service.heldClaims({ holderPrefix: 'run-row:' });
+        const claims = await heldClaimsOf(service, 'run-row:');
         let released = 0;
         let kept = 0;
         for (const [runId, held] of groupBy(claims, (claim) => runIdOfRowHolder(claim.holderId))) {
@@ -215,7 +216,7 @@ export function createAssetClaimReconciler(
 
     reconcileSessionClaims: () =>
       guarded(async (service) => {
-        const claims = await service.heldClaims({ holderPrefix: 'session-row:' });
+        const claims = await heldClaimsOf(service, 'session-row:');
         let released = 0;
         let kept = 0;
         const groups = groupBy(claims, (claim) => {

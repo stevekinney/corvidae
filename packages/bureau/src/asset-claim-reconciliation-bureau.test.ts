@@ -28,6 +28,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { AgentDefinitions } from './agent-catalog';
+import { AssetReservedHolderError } from './assets/errors';
+import { bureauClaim } from './assets/internal-access';
 import { KEYS } from './assets/records';
 import { runRowHolderId, sessionRowHolderPrefix } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
@@ -129,7 +131,11 @@ describe('a run that ended in a process that died before it released', () => {
     );
     // The process dies after the terminal commit and before the release: the claim is still there.
     const lost = runRowHolderId(run.id, 'row-lost');
-    await first.assets!.retain(assetId, alice, { holderId: lost, until: UNTIL });
+    await first.assets!.retain(assetId, alice, {
+      holderId: lost,
+      until: UNTIL,
+      [bureauClaim]: true,
+    });
     expect(await holdersOf(first, assetId)).toEqual([lost]);
     await first.dispose();
 
@@ -200,7 +206,9 @@ describe('a run that ended in a process that died before it released', () => {
 });
 
 describe('a session deleted while its claims are being taken', () => {
-  async function open(): Promise<{ bureau: Bureau; runtime: ManualRuntimeServices }> {
+  async function open(
+    extra: { durableBackgroundTasks?: 'manual' } = {},
+  ): Promise<{ bureau: Bureau; runtime: ManualRuntimeServices }> {
     const fixture = createMemoryAssetStorageFixture({});
     cleanups.push(() => fixture.dispose());
     const runtime = createManualRuntimeServices({ origin: '2026-10-23T00:00:00.000Z' });
@@ -217,6 +225,7 @@ describe('a session deleted while its claims are being taken', () => {
       persistence: textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
       runtime,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
+      ...extra,
     });
     cleanups.push(async () => {
       await bureau.dispose();
@@ -285,6 +294,42 @@ describe('a session deleted while its claims are being taken', () => {
 
     expect(deleted).toBe(true);
     expect(await holdersOf(bureau, first)).toEqual([]);
+  });
+
+  it('refuses a public retain under a Bureau holder id on bureau.assets', async () => {
+    const { bureau } = await open();
+    const { assetId } = await admitImage(bureau);
+
+    const refusal = await bureau
+      .assets!.retain(assetId, alice, { holderId: 'session-row:s:i:row', until: UNTIL })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(refusal).toBeInstanceOf(AssetReservedHolderError);
+  });
+
+  it('releases the claim of a row the session no longer holds when the session is deleted, with manual background tasks', async () => {
+    const { bureau } = await open({ durableBackgroundTasks: 'manual' });
+    const { assetId: compactedOut } = await admitImage(bureau);
+    const { assetId: kept } = await admitImage(bureau);
+    await saveSession(bureau, 'session-1', kept);
+    const session = await bureau.sessionStore!.load('session-1');
+    // Compaction removed a row the session once held; its claim outlived the row, so no walk of the
+    // session's current rows reaches it.
+    const gone = `${sessionRowHolderPrefix('session-1', session!.incarnation)}row-gone`;
+    await bureau.assets!.retain(compactedOut, alice, {
+      holderId: gone,
+      until: UNTIL,
+      [bureauClaim]: true,
+    });
+    expect(await holdersOf(bureau, compactedOut)).toEqual([gone]);
+
+    await bureau.deleteSession('session-1');
+
+    expect(await holdersOf(bureau, compactedOut)).toEqual([]);
+    expect(await holdersOf(bureau, kept)).toEqual([]);
   });
 
   it('keeps the claims of a session that is not deleted', async () => {

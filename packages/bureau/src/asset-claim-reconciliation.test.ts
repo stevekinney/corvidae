@@ -19,6 +19,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAssetService } from './assets/asset-service';
+import { AssetReservedHolderError } from './assets/errors';
+import { bureauClaim, heldClaimsOf } from './assets/internal-access';
 import { releaseHeldClaims, runRowHolderId, sessionRowHolderId } from './assets/row-asset-claims';
 import { createMemoryAssetStorage } from './assets/storage';
 import type { AssetService } from './assets/types';
@@ -84,9 +86,51 @@ async function setup(scenario: Scenario = {}) {
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
   const claim = async (assetId: string, holderId: string) =>
-    service.retain(assetId, alice, { holderId, until: UNTIL });
+    service.retain(assetId, alice, { holderId, until: UNTIL, [bureauClaim]: true });
   return { service, reconciler, diagnostics, forgotten, claim };
 }
+
+describe('what the public asset service does not offer (COR-1664)', () => {
+  it('has no claim lookup across principals, and the package index exports no way to one', async () => {
+    const { service } = await setup();
+    // @ts-expect-error `heldClaims` is not on the public `AssetService`.
+    const lookup: unknown = service.heldClaims;
+
+    expect(lookup).toBeUndefined();
+    expect('heldClaims' in service).toBe(false);
+    const exported = await import('./index');
+    for (const name of ['heldClaimsOf', 'exposeHeldClaims', 'bureauClaim', 'isReservedHolderId']) {
+      expect(name in exported).toBe(false);
+    }
+  });
+
+  it.each(['run-row:agent-run-1:row-1', 'session-row:s:i:row-1', 'run-row:'])(
+    'refuses a public retain under the reserved holder %s, and Bureau’s own claim may take it',
+    async (holderId) => {
+      const { service } = await setup();
+      const assetId = await admitAsset(service);
+
+      const refusal = await service.retain(assetId, alice, { holderId, until: UNTIL }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(refusal).toBeInstanceOf(AssetReservedHolderError);
+      expect(await holdersOf(service, assetId)).toEqual([]);
+      await service.retain(assetId, alice, { holderId, until: UNTIL, [bureauClaim]: true });
+      expect(await holdersOf(service, assetId)).toEqual([holderId]);
+    },
+  );
+
+  it('still accepts a public retain under any other holder', async () => {
+    const { service } = await setup();
+    const assetId = await admitAsset(service);
+
+    await service.retain(assetId, alice, { holderId: 'my-feature:1', until: UNTIL });
+
+    expect(await holdersOf(service, assetId)).toEqual(['my-feature:1']);
+  });
+});
 
 describe('reconciling the claims of runs', () => {
   it.each(['completed', 'failed', 'canceled'] as const)(
@@ -311,16 +355,20 @@ describe('releasing a claim while another Bureau updates the same asset (COR-166
     const { reconciling, other, interleave } = await twoServices();
     const assetId = await admitAsset(reconciling);
     const dead = runRowHolderId('agent-run-1', 'row-1');
-    await reconciling.retain(assetId, alice, { holderId: dead, until: UNTIL });
+    await reconciling.retain(assetId, alice, { holderId: dead, until: UNTIL, [bureauClaim]: true });
     const failures: unknown[] = [];
-    const claims = await reconciling.heldClaims({ holderPrefix: 'run-row:' });
+    const claims = await heldClaimsOf(reconciling, 'run-row:');
     const events: string[] = [];
     reconciling.subscribe((event) => {
       if (event.type === 'asset.released') events.push(event.holderId ?? '');
     });
     // Another Bureau renews a different reference between the reconciler's read and its write.
     interleave(async () => {
-      await other.retain(assetId, alice, { holderId: 'session-row:s:i:r', until: UNTIL });
+      await other.retain(assetId, alice, {
+        holderId: 'session-row:s:i:r',
+        until: UNTIL,
+        [bureauClaim]: true,
+      });
     });
 
     const released = await releaseHeldClaims(reconciling, claims, (_claim, error) =>
@@ -338,8 +386,8 @@ describe('releasing a claim while another Bureau updates the same asset (COR-166
     const { reconciling, other, interleave } = await twoServices();
     const assetId = await admitAsset(reconciling);
     const dead = runRowHolderId('agent-run-1', 'row-1');
-    await reconciling.retain(assetId, alice, { holderId: dead, until: UNTIL });
-    const claims = await reconciling.heldClaims({ holderPrefix: 'run-row:' });
+    await reconciling.retain(assetId, alice, { holderId: dead, until: UNTIL, [bureauClaim]: true });
+    const claims = await heldClaimsOf(reconciling, 'run-row:');
     interleave(async () => {
       await other.release(assetId, alice, dead);
     });
