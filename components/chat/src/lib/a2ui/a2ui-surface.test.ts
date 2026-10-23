@@ -57,7 +57,8 @@ async function loadExample(
     const update = message['updateComponents'] as { components: A2uiComponent[] } | undefined;
     for (const component of update?.components ?? []) byId.set(component.id, component);
     const data = message['updateDataModel'] as { path?: string; value?: A2uiJsonValue } | undefined;
-    if (data !== undefined) model.set(data.path ?? '/', data.value ?? null);
+    // No vendored example names a path, and `''` is the whole model (RFC 6901).
+    if (data !== undefined) model.set(data.path ?? '', data.value ?? null);
   }
   return { components: [...byId.values()], dataModel: model.snapshot() };
 }
@@ -965,5 +966,409 @@ describe('review fixes', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await flush();
     expect(screen.getByRole('dialog', { name: 'Confirm deletion' })).not.toBeNull();
+  });
+});
+
+describe('control fixes', () => {
+  test('a ChoicePicker option with an empty value is reported and not offered', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'empty-option',
+        components: [
+          {
+            id: 'root',
+            component: 'ChoicePicker',
+            label: 'Size',
+            options: [
+              { label: 'None', value: '' },
+              { label: 'Small', value: 's' },
+            ],
+            value: { path: '/size' },
+          },
+        ],
+        dataModel: { size: [] },
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(1);
+    expect(screen.queryByLabelText('None')).toBeNull();
+    expect(diagnostics.some((entry) => entry.message.includes('empty value'))).toBe(true);
+  });
+
+  test('a Slider over a fractional range steps by a fraction of it', async () => {
+    const changes: A2uiJsonValue[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'fraction',
+        components: [
+          {
+            id: 'root',
+            component: 'Slider',
+            label: 'Opacity',
+            min: 0,
+            max: 1,
+            value: { path: '/opacity' },
+          },
+        ],
+        dataModel: { opacity: 0.5 },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const slider = screen.getByRole('slider', { name: /Opacity/ });
+    expect(slider.getAttribute('aria-valuenow')).toBe('0.5');
+
+    await fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    await flush();
+
+    expect(changes.at(-1)).toEqual({ opacity: 0.51 });
+  });
+
+  test('a number TextField writes its bound path as the user types', async () => {
+    const changes: A2uiJsonValue[] = [];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'typing',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Count',
+            variant: 'number',
+            value: { path: '/count' },
+          },
+        ],
+        dataModel: { count: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = screen.getByRole('spinbutton', { name: /Count/ }) as HTMLInputElement;
+
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '42' } });
+    await flush();
+
+    expect(changes.at(-1)).toEqual({ count: '42' });
+    expect(field.value).toBe('42');
+
+    // Once the user leaves the field, a server update shows again.
+    await fireEvent.focusOut(field);
+    await view.rerender({ dataModel: { count: '7' } });
+    await flush();
+    expect(field.value).toBe('7');
+  });
+
+  test('a time-only DateTimeInput enforces its min and max', async () => {
+    const components = (value: string): A2uiComponent[] => [
+      {
+        id: 'root',
+        component: 'DateTimeInput',
+        label: 'Start',
+        enableTime: true,
+        min: '09:00',
+        max: '17:00',
+        value,
+      },
+    ];
+    const view = render(A2uiSurface, {
+      props: { surfaceId: 'time-range', components: components('08:30') },
+    });
+    await flush();
+    expect(screen.getByLabelText('Start').getAttribute('aria-invalid')).toBe('true');
+
+    await view.rerender({ components: components('12:00') });
+    await flush();
+    expect(screen.getByLabelText('Start').getAttribute('aria-invalid')).not.toBe('true');
+
+    await view.rerender({ components: components('17:30') });
+    await flush();
+    expect(screen.getByLabelText('Start').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  test('a server update that removes the selected tab selects the first', async () => {
+    const tabs = (count: number): A2uiComponent[] => [
+      {
+        id: 'root',
+        component: 'Tabs',
+        tabs: Array.from({ length: count }, (_entry, index) => ({
+          title: `Tab ${index + 1}`,
+          child: `panel-${index + 1}`,
+        })),
+      },
+      ...Array.from({ length: count }, (_entry, index): A2uiComponent => ({
+        id: `panel-${index + 1}`,
+        component: 'Text',
+        text: `Panel ${index + 1}`,
+        variant: 'h2',
+      })),
+    ];
+    const view = render(A2uiSurface, { props: { surfaceId: 'tabs', components: tabs(3) } });
+    await flush();
+    await fireEvent.click(screen.getByRole('tab', { name: 'Tab 3' }));
+    await flush();
+    expect(screen.getByRole('tab', { name: 'Tab 3' }).getAttribute('aria-selected')).toBe('true');
+
+    await view.rerender({ components: tabs(2) });
+    await flush();
+
+    expect(screen.getByRole('tab', { name: 'Tab 1' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('Panel 1')).not.toBeNull();
+  });
+
+  test('a DateTimeInput shows a zoned value in the surface’s time zone', async () => {
+    const components: A2uiComponent[] = [
+      {
+        id: 'root',
+        component: 'DateTimeInput',
+        label: 'When',
+        enableDate: true,
+        enableTime: true,
+        value: '2025-12-15T17:00:00Z',
+      },
+    ];
+    const view = render(A2uiSurface, {
+      props: { surfaceId: 'zoned', components, timeZone: 'Asia/Tokyo' },
+    });
+    await flush();
+    expect((screen.getByLabelText('When') as HTMLInputElement).value).toBe('2025-12-16T02:00');
+
+    view.unmount();
+    const original = process.env['TZ'];
+    process.env['TZ'] = 'America/Los_Angeles';
+    try {
+      // Without a zone from the host, the mounted surface shows the runtime's.
+      render(A2uiSurface, { props: { surfaceId: 'runtime', components } });
+      await flush();
+      expect((screen.getByLabelText('When') as HTMLInputElement).value).toBe('2025-12-15T09:00');
+    } finally {
+      if (original === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = original;
+    }
+  });
+
+  test('a DateTimeInput that enables neither a date nor a time renders no control and is reported', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'no-control',
+        components: [{ id: 'root', component: 'DateTimeInput', label: 'When', value: '' }],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(container.querySelector('input')).toBeNull();
+    expect(diagnostics.some((entry) => entry.message.includes('neither a date nor a time'))).toBe(
+      true,
+    );
+  });
+
+  test('a Slider shows its failing check as the other checkable inputs do', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'slider-check',
+        components: [
+          {
+            id: 'root',
+            component: 'Slider',
+            label: 'Volume',
+            min: 0,
+            max: 10,
+            value: 2,
+            checks: [{ condition: false, message: 'Turn it up' }],
+          },
+        ],
+      },
+    });
+    await flush();
+
+    const slider = screen.getByRole('slider', { name: /Volume/ });
+    expect(slider.getAttribute('aria-invalid')).toBe('true');
+    const described = (slider.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(described.map((id) => document.getElementById(id)?.textContent?.trim())).toContain(
+      'Turn it up',
+    );
+  });
+
+  test('a number TextField writes what the user types, in any locale’s notation', async () => {
+    const changes: A2uiJsonValue[] = [];
+    const number = (variant: string): A2uiComponent[] => [
+      { id: 'root', component: 'TextField', label: 'Rate', variant, value: { path: '/rate' } },
+    ];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'locale-number',
+        components: number('number'),
+        dataModel: { rate: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = () => screen.getByLabelText('Rate') as HTMLInputElement;
+
+    await fireEvent.focus(field());
+    await fireEvent.input(field(), { target: { value: '1,5' } });
+    await flush();
+    expect(changes.at(-1)).toEqual({ rate: '1,5' });
+
+    // A focused field replaced by another variant, then restored, follows the model again.
+    await view.rerender({ components: number('shortText') });
+    await flush();
+    await view.rerender({ components: number('number') });
+    await view.rerender({ dataModel: { rate: '9' } });
+    await flush();
+    expect(field().value).toBe('9');
+  });
+
+  test('a zoned DateTimeInput bound shows in the surface’s time zone, as its value does', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'zoned-bounds',
+        timeZone: 'Asia/Tokyo',
+        components: [
+          {
+            id: 'root',
+            component: 'DateTimeInput',
+            label: 'When',
+            enableDate: true,
+            enableTime: true,
+            min: '2025-12-15T17:00:00Z',
+            max: '2025-12-20T03:00:00+00:00',
+            value: '',
+          },
+        ],
+      },
+    });
+    await flush();
+
+    const input = screen.getByLabelText('When');
+    expect(input.getAttribute('min')).toBe('2025-12-16T02:00');
+    expect(input.getAttribute('max')).toBe('2025-12-20T12:00');
+  });
+
+  test('a multiple-selection ChoicePicker keeps an option whose value is empty', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'empty-multiple',
+        components: [
+          {
+            id: 'root',
+            component: 'ChoicePicker',
+            label: 'Extras',
+            variant: 'multipleSelection',
+            options: [
+              { label: 'None', value: '' },
+              { label: 'Cheese', value: 'cheese' },
+            ],
+            value: { path: '/extras' },
+          },
+        ],
+        dataModel: { extras: [''] },
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect((screen.getByLabelText('None') as HTMLInputElement).checked).toBe(true);
+    expect(diagnostics.some((entry) => entry.message.includes('empty value'))).toBe(false);
+  });
+
+  test('a validation pattern RE2 cannot run is reported, not silently ignored', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'lookahead',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Password',
+            value: 'lowercase',
+            validationRegexp: '^(?=.*[A-Z]).+$',
+          },
+        ],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(
+      diagnostics.some(
+        (entry) => entry.componentId === 'root' && entry.message.includes('validationRegexp'),
+      ),
+    ).toBe(true);
+  });
+
+  test('removing the selected tab from the middle selects the first, and a moved tab stays selected', async () => {
+    const tabs = (titles: string[]): A2uiComponent[] => [
+      {
+        id: 'root',
+        component: 'Tabs',
+        tabs: titles.map((title) => ({ title, child: `panel-${title}` })),
+      },
+      ...titles.map((title): A2uiComponent => ({
+        id: `panel-${title}`,
+        component: 'Text',
+        text: `Panel ${title}`,
+        variant: 'h2',
+      })),
+    ];
+    const selected = () =>
+      screen
+        .getAllByRole('tab')
+        .filter((tab) => tab.getAttribute('aria-selected') === 'true')
+        .map((tab) => tab.textContent?.trim());
+    const view = render(A2uiSurface, {
+      props: { surfaceId: 'middle-tab', components: tabs(['A', 'B', 'C']) },
+    });
+    await flush();
+    await fireEvent.click(screen.getByRole('tab', { name: 'B' }));
+    await flush();
+
+    await view.rerender({ components: tabs(['X', 'A', 'B', 'C']) });
+    await flush();
+    expect(selected()).toEqual(['B']);
+
+    await view.rerender({ components: tabs(['A', 'C']) });
+    await flush();
+    expect(selected()).toEqual(['A']);
+  });
+
+  test('a host update to a focused number field wins over the edit it replaces', async () => {
+    const changes: A2uiJsonValue[] = [];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'host-wins',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Seats',
+            variant: 'number',
+            value: { path: '/seats' },
+          },
+        ],
+        dataModel: { seats: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = screen.getByRole('spinbutton', { name: /Seats/ }) as HTMLInputElement;
+
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '4' } });
+    await view.rerender({ dataModel: { seats: '7' } });
+    await flush();
+    expect(field.value).toBe('7');
+
+    await fireEvent.blur(field);
+    await fireEvent.focusOut(field);
+    await flush();
+    expect(changes.at(-1) ?? { seats: '7' }).toEqual({ seats: '7' });
   });
 });

@@ -20,6 +20,11 @@ export type A2uiRenderContext = {
   readonly component: (id: string) => A2uiComponent | undefined;
   readonly model: A2uiDataModel;
   readonly locale: string | undefined;
+  /**
+   * The IANA time zone a zoned date-time shows in, or `undefined` for the
+   * runtime's own zone.
+   */
+  readonly timeZone: string | undefined;
   /** A prefix that makes generated element ids unique to this surface. */
   readonly idPrefix: string;
   readonly dispatch: (action: A2uiAction) => void;
