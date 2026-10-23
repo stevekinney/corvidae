@@ -290,6 +290,7 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
     assistant: createAgent({
       name: 'assistant',
       description: 'Answers every message with the same scripted reply.',
+      examples: ['Say hello'],
       generate:
         assistantGenerate ??
         createScriptedGenerate(
@@ -302,6 +303,7 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
     'tool-runner': createAgent({
       name: 'tool-runner',
       description: 'Looks an order up, then asks for approval to refund it.',
+      examples: ['Refund order 1234'],
       generate: toolRunnerGenerate(),
       toolbox: createToolRunnerToolbox(approvalSecret),
       executeOptions: { requestContext: LOCAL_REQUEST_CONTEXT },
@@ -310,6 +312,7 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
     'request-human-input': createAgent({
       name: 'request-human-input',
       description: 'Asks a human which environment the release should go to.',
+      examples: ['Ship the release'],
       generate: humanInputGenerate(),
       // The run ends on the request so it parks; once an operator answers it continues to the
       // reply, which has no tool call.
@@ -318,12 +321,14 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
     echo: createAgent({
       name: 'echo',
       description: 'Repeats the last message it was sent.',
+      examples: ['Hello echo, say this back'],
       generate: echoGenerate(),
       stopWhen: stopWhen.noToolCalls(),
     }),
     'model-switcher': createAgent({
       name: 'model-switcher',
       description: 'Names the model it answers as, and can be switched between two.',
+      examples: ['Which model are you?'],
       generate: modelSwitcherGenerate(),
       allowedCandidates: MODEL_SWITCHER_MODELS,
       stopWhen: stopWhen.noToolCalls(),
