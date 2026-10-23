@@ -8,6 +8,7 @@
 
 import { Message, type Task } from '@a2a-js/sdk';
 
+import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
@@ -42,6 +43,8 @@ export type A2ATaskReaderBureau = Pick<
 export type A2ATaskReading = {
   readonly task: Task;
   readonly record: A2ATaskRecord | undefined;
+  /** The surfaces the task was projected with, so a stream can seed what it has already sent. */
+  readonly surfaces: readonly InteractiveSurface[];
 };
 
 /** Reads tasks for A2A responses and push snapshots. */
@@ -192,6 +195,7 @@ export function createTaskReader(options: {
     }
     const reply = await resolveReply(view);
     record = await foldReply(view, record, reply);
+    const surfaces = (await bureau.surfaces?.list(view.id)) ?? [];
     const found = await formsOf(bureau, view);
     const forms = shape.activated.has(A2UI_EXTENSION_URI)
       ? await withPreviousForms(bureau, view, found)
@@ -203,11 +207,11 @@ export function createTaskReader(options: {
         reply: reply?.parts,
         acknowledgement: stored?.cleanupAcknowledgement,
         forms,
-        surfaces: await bureau.surfaces?.list(view.id),
+        surfaces,
       },
       shape,
     );
-    return { task, record };
+    return { task, record, surfaces };
   }
 
   return { replyOf, read, recordSettled };

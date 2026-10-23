@@ -96,12 +96,15 @@ function follow(
     snapshot: async (view) => {
       seen.view = view;
       return {
-        id: view.id,
-        contextId: view.contextId,
-        status: undefined,
-        artifacts: [],
-        history: [],
-        metadata: undefined,
+        task: {
+          id: view.id,
+          contextId: view.contextId,
+          status: undefined,
+          artifacts: [],
+          history: [],
+          metadata: undefined,
+        },
+        surfaces: [],
       };
     },
     replyOf: async () => undefined,

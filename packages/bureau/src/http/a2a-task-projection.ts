@@ -34,7 +34,11 @@ import {
   inputFormDeletion,
   inputFormMessages,
 } from '../a2ui/input-form.ts';
-import { A2UI_EXTENSION_URI, offeredCatalogIds } from '../a2ui/catalogs.ts';
+import {
+  A2UI_EXTENSION_URI,
+  A2UI_SPECIFICATION_VERSION,
+  offeredCatalogIds,
+} from '../a2ui/catalogs.ts';
 import { a2uiMessagesOf } from '../a2ui/messages.ts';
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
@@ -301,6 +305,28 @@ export function surfaceParts(
         }
       : textPart(surface.summary),
   );
+}
+
+/**
+ * The part that tells an A2UI client to drop a surface it holds: the `deleteSurface` envelope, typed
+ * and labelled as a surface part is, so a stream's torn-down surface reads like its live ones.
+ */
+export function deleteSurfacePart(surface: InteractiveSurface): Part {
+  return {
+    content: {
+      $case: 'data' as const,
+      value: [
+        { version: A2UI_SPECIFICATION_VERSION, deleteSurface: { surfaceId: surface.surfaceId } },
+      ],
+    },
+    metadata: {
+      mimeType: A2UI_MEDIA_TYPE,
+      surfaceId: surface.surfaceId,
+      a2uiSurfaceRevision: surface.revision,
+    },
+    filename: '',
+    mediaType: A2UI_MEDIA_TYPE,
+  };
 }
 
 /** A Bureau task as an A2A `Task`, shaped for one response. */

@@ -120,7 +120,11 @@ import {
   receiptMetadata,
   type SendReceiptState,
 } from './a2a-command-receipts.ts';
-import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
+import {
+  DURABLE_HISTORY_EXTENSION_URI,
+  followTask,
+  type OpeningSnapshot,
+} from './a2a-task-stream.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
 import { INPUT_FORM_SUBMIT_EVENT } from '../a2ui/input-form.ts';
@@ -774,7 +778,17 @@ export function createBureauA2ARequestHandler(
     shape: ProjectionShape,
     receipt?: Receipt,
   ): Promise<Task> {
-    const { task, record } = await reader.read(view, shape);
+    const { task } = await respondWithSurfaces(view, shape, receipt);
+    return task;
+  }
+
+  /** {@link respondWith}, with the surfaces the response showed, for a stream's opening snapshot. */
+  async function respondWithSurfaces(
+    view: TaskView,
+    shape: ProjectionShape,
+    receipt?: Receipt,
+  ): Promise<OpeningSnapshot> {
+    const { task, record, surfaces } = await reader.read(view, shape);
     if (receipt !== undefined && shape.activated.has(COMMAND_RECEIPTS_EXTENSION_URI)) {
       task.metadata = {
         ...task.metadata,
@@ -786,7 +800,7 @@ export function createBureauA2ARequestHandler(
         ),
       };
     }
-    return task;
+    return { task, surfaces };
   }
 
   /**
@@ -1525,7 +1539,17 @@ export function createBureauA2ARequestHandler(
         resuming && durableHistoryActive ? headerOf(context, 'last-event-id') : undefined,
       durableHistoryActive,
       a2ui: shape.activated.has(A2UI_EXTENSION_URI),
-      snapshot: (view) => respondWith(view, shape, receipt),
+      snapshot: (view) => respondWithSurfaces(view, shape, receipt),
+      // Only a client that activated A2UI is sent surface frames; it names the catalogs it renders
+      // on a send, and a subscription declares none, which offers the basic catalog only.
+      ...(shape.activated.has(A2UI_EXTENSION_URI) && bureau.surfaces !== undefined
+        ? {
+            surfaces: {
+              list: (id: string) => bureau.surfaces!.list(id, { principal: ownerOf(context) }),
+              supportedCatalogIds: shape.supportedCatalogIds,
+            },
+          }
+        : {}),
       replyOf,
       timers,
       signal: context === undefined ? undefined : requestSignalOf(context),

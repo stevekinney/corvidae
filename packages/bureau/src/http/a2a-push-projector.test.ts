@@ -217,7 +217,7 @@ function harness(initial: DurableEventEnvelope[] = []) {
             history: [],
             metadata: { snapshotOf: view.status },
           };
-          return { task, record: undefined };
+          return { task, record: undefined, surfaces: [] };
         },
       },
       timers: createDefaultRuntimeServices().timers,

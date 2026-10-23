@@ -281,7 +281,7 @@ describe('inputFormMessages', () => {
       'a range': { type: 'object', properties: { age: { type: 'number', minimum: 0 } } },
       'a default': { type: 'object', properties: { name: { type: 'string', default: 'x' } } },
       'a combinator': { oneOf: [{ type: 'object' }, { type: 'string' }] },
-      'a non-object root': { type: 'string' },
+      'a non-object root': { type: 'array', items: { type: 'string' } },
       'an unsupported format': {
         type: 'object',
         properties: { mail: { type: 'string', format: 'email' } },
@@ -293,6 +293,19 @@ describe('inputFormMessages', () => {
       },
       'no properties': { type: 'object' },
     };
+
+    it('labels the long-text field as plain text when the schema takes a string', () => {
+      const schema: HumanInputSchema = { type: 'string', minLength: 1 };
+      const { components } = messagesOf(schema);
+
+      expect(components.find((component) => component.id === 'field-response')?.['label']).toBe(
+        'Answer',
+      );
+      expect(checkFormSubmission(schema, { response: 'Alice' })).toEqual({
+        ok: true,
+        value: 'Alice',
+      });
+    });
 
     for (const [name, schema] of Object.entries(unmapped)) {
       it(`falls back to one long-text TextField for ${name}`, () => {
@@ -505,6 +518,23 @@ describe('checkFormSubmission', () => {
     it('refuses a response that is not JSON, or JSON that does not satisfy the schema', () => {
       expect(checkFormSubmission(unmapped, { response: '{tags' }).ok).toBe(false);
       expect(checkFormSubmission(unmapped, { response: '{"tags":[]}' }).ok).toBe(false);
+    });
+
+    it('takes a plain string response as written when the schema allows a string', () => {
+      const text: HumanInputSchema = { type: 'string', minLength: 1 };
+      expect(checkFormSubmission(text, { response: 'not json' })).toEqual({
+        ok: true,
+        value: 'not json',
+      });
+      expect(checkFormSubmission(text, { response: '"quoted"' })).toEqual({
+        ok: true,
+        value: '"quoted"',
+      });
+      const either: HumanInputSchema = { type: ['string', 'array'], minItems: 1 };
+      expect(checkFormSubmission(either, { response: '["a"]' })).toEqual({
+        ok: true,
+        value: ['a'],
+      });
     });
 
     it('accepts the value sent directly, and does not parse a mapped form’s response', () => {
