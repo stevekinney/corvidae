@@ -20,8 +20,9 @@
  * failed swap leaves the previous build intact and a reader never sees a half-written tree.
  */
 
-import { cp, mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { cp, mkdir, readdir, rename, rm } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { sveltePlugin } from '@lostgradient/testing';
@@ -31,6 +32,9 @@ export const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
 
 /** Where the application is built, and where the host looks by default. */
 export const DEFAULT_BUILD_DIRECTORY = join(PACKAGE_DIRECTORY, 'build');
+
+/** The repository root, which holds every workspace. */
+export const REPOSITORY_ROOT = resolve(PACKAGE_DIRECTORY, '..', '..');
 
 /** The page the build starts from. */
 export const ENTRY_HTML_PATH = join(PACKAGE_DIRECTORY, 'index.html');
@@ -224,6 +228,58 @@ export async function retainPreviousAssets(staging: string, directory: string): 
   return retained;
 }
 
+/** The staging directories of the builds running in this process. */
+const stagingDirectories = new Set<string>();
+
+/** Whether `path` is `directory` or lies beneath it. */
+function isWithin(directory: string, path: string): boolean {
+  const difference = relative(directory, path);
+  return difference === '' || (!difference.startsWith('..') && !isAbsolute(difference));
+}
+
+/** `path` made absolute, with symbolic links resolved as far down as the path exists. */
+function resolveExisting(path: string): string {
+  const absolute = resolve(path);
+  const missing: string[] = [];
+  let existing = absolute;
+  while (!existsSync(existing) && dirname(existing) !== existing) {
+    missing.unshift(relative(dirname(existing), existing));
+    existing = dirname(existing);
+  }
+  return join(realpathSync(existing), ...missing);
+}
+
+/**
+ * Refuse an output directory the build must never replace. {@link replaceDirectory} renames the
+ * directory it is given aside and deletes it, so an `--outdir` that is blank (which resolves to the
+ * working directory), or that is, contains, or sits inside the working directory, the application,
+ * the repository, or any of their source would delete work. An output directory is allowed outside
+ * the repository, or at or beneath the default `build/`.
+ */
+export function assertSafeOutputDirectory(
+  outdir: string,
+  workingDirectory: string = process.cwd(),
+): string {
+  if (outdir.trim() === '') throw new Error('The output directory must not be blank.');
+  const directory = resolveExisting(outdir);
+  const protectedDirectories = [
+    resolveExisting(workingDirectory),
+    resolveExisting(PACKAGE_DIRECTORY),
+    resolveExisting(REPOSITORY_ROOT),
+  ];
+  const defaultDirectory = resolveExisting(DEFAULT_BUILD_DIRECTORY);
+  const replacesSource =
+    protectedDirectories.some((protectedDirectory) => isWithin(directory, protectedDirectory)) ||
+    (isWithin(resolveExisting(REPOSITORY_ROOT), directory) &&
+      !isWithin(defaultDirectory, directory));
+  if (replacesSource) {
+    throw new Error(
+      `Refusing to build into ${outdir}: it would replace the working directory, the application, or the repository's source.`,
+    );
+  }
+  return resolve(outdir);
+}
+
 export type ApplicationBuild = {
   /** The directory the application was written to. */
   readonly directory: string;
@@ -248,9 +304,15 @@ export async function buildApplication(
   } = {},
 ): Promise<ApplicationBuild> {
   const development = options.development ?? false;
-  const directory = resolve(options.outdir ?? DEFAULT_BUILD_DIRECTORY);
+  const directory =
+    options.outdir === undefined
+      ? DEFAULT_BUILD_DIRECTORY
+      : assertSafeOutputDirectory(options.outdir);
   const parent = dirname(directory);
-  const staging = await mkdtemp(join(parent, '.build-staging-'));
+  // Created and recorded in one synchronous step, so a stale build that is told to exit between
+  // two awaits either has not made its staging directory yet or removes it.
+  const staging = mkdtempSync(join(parent, '.build-staging-'));
+  stagingDirectories.add(staging);
   try {
     const result = await (options.bundle ?? Bun.build)({
       ...browserBuildOptions({
@@ -269,17 +331,82 @@ export async function buildApplication(
     return { directory, files, metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });
+    stagingDirectories.delete(staging);
   }
+}
+
+/**
+ * Exit, removing the staging directories of the builds still running, when standard input closes.
+ * The development host runs the build as a child process with a pipe on standard input and never
+ * writes to it, so the pipe closing means the host's generation ended (a `bun --watch` reload, a
+ * stop, or a crash). The build is then stale, and it exits before it can replace the newer build.
+ */
+export function exitWhenStandardInputCloses(): void {
+  void (async () => {
+    // Nothing is ever sent; reading only waits for the end of the stream.
+    const reader = Bun.stdin.stream().getReader();
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) continue;
+    for (const staging of stagingDirectories) rmSync(staging, { recursive: true, force: true });
+    process.exit(1);
+  })();
+}
+
+/** What the command line asks {@link buildApplication} for. */
+export type BuildCommandOptions = {
+  readonly development?: boolean;
+  readonly outdir?: string;
+};
+
+/** The command line: what to build, and whether to stop when standard input closes. */
+export type BuildArguments = BuildCommandOptions & { readonly exitWithParent: boolean };
+
+/**
+ * Read the command-line arguments: `--development` builds the unminified development bundle,
+ * `--outdir <path>` builds somewhere other than `build/`, and `--exit-with-parent` stops the build
+ * when standard input closes ({@link exitWhenStandardInputCloses}). The development host runs this
+ * command in a child process, so an unknown argument fails loudly instead of building the wrong
+ * thing.
+ */
+export function parseBuildArguments(argv: readonly string[]): BuildArguments {
+  let development = false;
+  let exitWithParent = false;
+  let outdir: string | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--development') {
+      development = true;
+    } else if (argument === '--exit-with-parent') {
+      exitWithParent = true;
+    } else if (argument === '--outdir') {
+      outdir = argv[index + 1];
+      if (outdir === undefined || outdir.trim() === '') {
+        throw new Error('--outdir needs a directory');
+      }
+      index += 1;
+    } else {
+      throw new Error(`Unknown build argument: ${argument}`);
+    }
+  }
+  return { development, exitWithParent, ...(outdir === undefined ? {} : { outdir }) };
 }
 
 /** The command-line entry: build and report what was written. */
 export async function runBuildCommand(
   log: (line: string) => void = console.log,
   runBuild: typeof buildApplication = buildApplication,
+  argv: readonly string[] = [],
 ): Promise<ApplicationBuild> {
-  const build = await runBuild();
+  const { exitWithParent: _exitWithParent, ...options } = parseBuildArguments(argv);
+  const build = await runBuild(options);
   log(`Built Interborough into ${build.directory} (${build.files.length} files)`);
   return build;
 }
 
-if (import.meta.main) await runBuildCommand();
+if (import.meta.main) {
+  const argv = process.argv.slice(2);
+  const { exitWithParent } = parseBuildArguments(argv);
+  if (exitWithParent) exitWhenStandardInputCloses();
+  await runBuildCommand(console.log, buildApplication, argv);
+  // The standard-input reader keeps the process alive, so a build that finished exits itself.
+  if (exitWithParent) process.exit(0);
+}

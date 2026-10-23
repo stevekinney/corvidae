@@ -4,13 +4,15 @@
  *
  * The host serves `build/` from disk on every request, and a rebuild swaps the whole directory in
  * at once, so a reload after a rebuild gets the new bundle. `bun --watch` restarts this process
- * when the host's own modules change.
+ * when the host's own modules change, so the browser build runs in a child process
+ * ({@link buildBrowserApplication}): inside the watched process the bundler cannot resolve
+ * `@msgpack/msgpack`.
  */
 
 import { unwatchFile, watch, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { buildApplication } from '../../scripts/build.ts';
+import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
 import { startHost } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 
@@ -29,13 +31,13 @@ const WATCHED_DIRECTORIES = [
 /** Wait this long after the last change before rebuilding, so one save is one build. */
 const REBUILD_DELAY_MILLISECONDS = 100;
 
-await buildApplication({ development: true });
+await buildBrowserApplication();
 const host = await startHost();
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${dirname(host.databasePath)}`);
 
 const rebuilds = createRebuildScheduler({
-  build: async () => void (await buildApplication({ development: true })),
+  build: () => buildBrowserApplication(),
   delayMilliseconds: REBUILD_DELAY_MILLISECONDS,
   onRebuilt: () => console.info('Rebuilt the browser application.'),
   onFailure: (error) => console.error('The browser rebuild failed.', error),
@@ -54,6 +56,8 @@ watchFile(ENTRY_PAGE, { interval: 100 }, entryChanged);
 
 async function shutDown(): Promise<void> {
   rebuilds.close();
+  // A build still running would write `build/` after this process has gone.
+  await stopBrowserBuilds();
   unwatchFile(ENTRY_PAGE, entryChanged);
   for (const watcher of watchers) watcher.close();
   await host.close();
