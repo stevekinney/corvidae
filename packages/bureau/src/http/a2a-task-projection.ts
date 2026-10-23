@@ -27,8 +27,13 @@ import type {
   TaskView,
 } from '../task-registry.ts';
 import { TASK_ARTIFACT_TEXT_LIMIT } from '../task-registry.ts';
-import { formSurfaceId, previousParkReviewId, type WaitForm } from './a2a-input-forms.ts';
-import { A2UI_MEDIA_TYPE, inputFormDeletion, inputFormMessages } from '../a2ui/input-form.ts';
+import { formSurfaceId, type WaitForm } from './a2a-input-forms.ts';
+import {
+  A2UI_MEDIA_TYPE,
+  type A2uiMessage,
+  inputFormDeletion,
+  inputFormMessages,
+} from '../a2ui/input-form.ts';
 import {
   A2UI_EXTENSION_URI,
   A2UI_SPECIFICATION_VERSION,
@@ -143,8 +148,21 @@ export function replyMessageId(taskId: string): string {
   return `${taskId}:reply`;
 }
 
+function a2uiDataPart(messages: A2uiMessage[]): Part {
+  return {
+    content: { $case: 'data', value: messages },
+    metadata: { mimeType: A2UI_MEDIA_TYPE },
+    filename: '',
+    mediaType: A2UI_MEDIA_TYPE,
+  };
+}
+
 /** What an `INPUT_REQUIRED` task's status message names, so a continuation can address it. */
-export function waitingMessage(view: TaskView, forms: readonly WaitForm[] = []): Message {
+export function waitingMessage(
+  view: TaskView,
+  forms: readonly WaitForm[] = [],
+  a2ui = false,
+): Message {
   const signalNames = view.openWaits
     .filter(
       (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',
@@ -174,21 +192,21 @@ export function waitingMessage(view: TaskView, forms: readonly WaitForm[] = []):
     ...(callIds.length === 0 ? {} : { callIds }),
   });
   // One data part per form, carrying its A2UI messages as an array (the A2UI extension's data
-  // encoding). A repeated wait on a signal is a new surface: the earlier park's closes first.
-  for (const form of forms) {
-    const previous = previousParkReviewId(form.reviewId);
-    message.parts.push({
-      content: {
-        $case: 'data',
-        value: [
-          ...(previous === undefined ? [] : [inputFormDeletion(formSurfaceId(previous))]),
+  // encoding), only for a request that activated A2UI: the text above names the wait for the
+  // rest. A repeated wait is a new surface, and the earlier form's closes first. COR-1674 item 4
+  // (closing a form when the task leaves input-required) is not applicable: form surfaces appear
+  // only in activated read snapshots, and a snapshot does not carry deletes.
+  if (a2ui) {
+    for (const form of forms) {
+      message.parts.push(
+        a2uiDataPart([
+          ...(form.previousReviewId === undefined
+            ? []
+            : [inputFormDeletion(formSurfaceId(form.previousReviewId))]),
           ...inputFormMessages(formSurfaceId(form.reviewId), form.inputSchema),
-        ],
-      },
-      metadata: { mimeType: A2UI_MEDIA_TYPE },
-      filename: '',
-      mediaType: A2UI_MEDIA_TYPE,
-    });
+        ]),
+      );
+    }
   }
   return message;
 }
@@ -336,7 +354,7 @@ export function projectTask(input: ProjectionInput, shape: ProjectionShape): Tas
       view.statusMessage ?? view.finishReason ?? 'The task failed.',
     );
   } else if (view.status === 'input-required') {
-    statusMessage = waitingMessage(view, input.forms);
+    statusMessage = waitingMessage(view, input.forms, shape.activated.has(A2UI_EXTENSION_URI));
   }
   // The task's A2UI surfaces ride on its status message, whatever the state: a frozen surface of a
   // finished task is still readable. They are not part of the reply artifact.

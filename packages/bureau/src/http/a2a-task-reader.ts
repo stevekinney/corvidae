@@ -11,7 +11,8 @@ import { Message, type Task } from '@a2a-js/sdk';
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { formsOf } from './a2a-input-forms.ts';
+import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
+import { formsOf, withPreviousForms } from './a2a-input-forms.ts';
 import {
   type A2ATaskRecord,
   type A2ATaskRecords,
@@ -195,13 +196,17 @@ export function createTaskReader(options: {
     const reply = await resolveReply(view);
     record = await foldReply(view, record, reply);
     const surfaces = (await bureau.surfaces?.list(view.id)) ?? [];
+    const found = await formsOf(bureau, view);
+    const forms = shape.activated.has(A2UI_EXTENSION_URI)
+      ? await withPreviousForms(bureau, view, found)
+      : found;
     const task = projectTask(
       {
         view,
         record,
         reply: reply?.parts,
         acknowledgement: stored?.cleanupAcknowledgement,
-        forms: await formsOf(bureau, view),
+        forms,
         surfaces,
       },
       shape,
