@@ -102,6 +102,33 @@ const events = defineOperation<
   },
 });
 
+/** A subscription whose stream ends after one element, as a removed resource's does. */
+const finite = defineOperation<
+  typeof eventsInput,
+  typeof eventsEnvelope,
+  typeof testEventSchema,
+  TestHost
+>({
+  name: 'probe.finite',
+  kind: 'subscription',
+  mcpExposable: true,
+  summary: 'A feed that ends',
+  destructive: false,
+  inputSchema: eventsInput,
+  outputSchema: eventsEnvelope,
+  eventSchema: testEventSchema,
+  access: { kind: 'public' },
+  transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async () => ({
+    envelope: { subscriptionId: 'sub_finite', cursor: '0' },
+    iterable: (async function* () {
+      yield { kind: 'removed', cursor: '1', emittedAtMs: 0, payload: {} };
+    })(),
+    close: async () => undefined,
+  }),
+});
+
 const eras: Array<{ era: string; mode: NegotiationMode; version: string }> = [
   { era: 'modern', mode: { pin: MCP_PROTOCOL_VERSION }, version: MCP_PROTOCOL_VERSION },
   { era: 'legacy', mode: 'legacy', version: MCP_LEGACY_PROTOCOL_VERSION },
@@ -115,7 +142,7 @@ afterEach(async () => {
 async function connect(mode: NegotiationMode, caller: () => AuthContext = readerContext) {
   const host = createTestHost();
   const handler = createOperationHandler({
-    operations: [echo, hidden, missing, events],
+    operations: [echo, hidden, missing, events, finite],
     host,
     authenticate: async () => caller(),
     mounts: [createOperationMcpMount({ idleMs: 20 })],
@@ -140,6 +167,7 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     expect(tools.map((tool) => tool.name).toSorted()).toEqual([
       'probe.echo',
       'probe.events',
+      'probe.finite',
       'probe.missing',
     ]);
     const echoTool = tools.find((tool) => tool.name === 'probe.echo');
@@ -203,6 +231,18 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     });
     const next = resumed.structuredContent as { events: Array<{ kind: string }> };
     expect(next.events.map((event) => event.kind)).toEqual(['third']);
+  });
+});
+
+describe('a subscription tool whose stream ends', () => {
+  it('answers with what it delivered and reports that the stream ended', async () => {
+    const { client } = await connect({ pin: MCP_PROTOCOL_VERSION });
+    const result = await client.callTool({ name: 'probe.finite', arguments: {} });
+    expect(result.structuredContent).toMatchObject({
+      events: [{ kind: 'removed', cursor: '1' }],
+      nextCursor: '1',
+      ended: true,
+    });
   });
 });
 
