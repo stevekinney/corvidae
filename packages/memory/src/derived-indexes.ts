@@ -522,7 +522,7 @@ export function buildDerivedIndexes(input: BuildDerivedIndexesInput): DerivedInd
 /** A read set is taken at most this many times, each time twice, before giving up. */
 const MAXIMUM_READ_ATTEMPTS = 3;
 
-interface StorageRead {
+export interface StorageRead {
   readonly evidence: EvidenceRecord[];
   readonly supersessions: ReadonlyMap<string, EvidenceSupersession>;
   readonly projections: EvidenceProjectionRecord[];
@@ -594,12 +594,26 @@ export async function rebuildDerivedIndexes(options: {
   readonly authority: MemoryAuthority;
 }): Promise<DerivedIndexes> {
   const { storage, tenantId, namespace, authority } = options;
+  return buildDerivedIndexes({
+    ...(await readConsistently(storage, tenantId, namespace)),
+    authority,
+  });
+}
+
+/**
+ * The tenant's evidence and markers and one namespace's projections, every
+ * status, as one consistent read: the double read {@link rebuildDerivedIndexes}
+ * describes, for a caller that filters the read before it builds.
+ */
+export async function readConsistently(
+  storage: EvidenceProjectionStorage,
+  tenantId: string,
+  namespace: string,
+): Promise<StorageRead> {
   for (let attempt = 1; attempt <= MAXIMUM_READ_ATTEMPTS; attempt++) {
     const first = await readOnce(storage, tenantId, namespace);
     const second = await readOnce(storage, tenantId, namespace);
-    if (signatureOf(first) === signatureOf(second)) {
-      return buildDerivedIndexes({ ...second, authority });
-    }
+    if (signatureOf(first) === signatureOf(second)) return second;
   }
   throw new DerivedIndexConsistencyError(MAXIMUM_READ_ATTEMPTS);
 }

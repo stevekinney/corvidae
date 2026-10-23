@@ -191,7 +191,7 @@ export const goalsListOperation = defineOperation<
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List goals',
   description:
     'Lists the caller’s own goals, oldest first, ended ones included; a caller holding `bureau.goals:read` lists every owner’s. `status` narrows to one status. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A view carries the goal’s `revision` and its attempts, and never its prompt or instructions.',
@@ -229,7 +229,7 @@ export const goalsGetOperation = defineOperation<
   BureauGoalsOperationHost
 >({
   name: 'bureau.goals.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one goal',
   description:
     'Returns one of the caller’s own goals; a caller holding `bureau.goals:read` reads any owner’s. Another owner’s goal answers as a missing one does. The view carries the goal’s `revision`, to pass back as `expectedRevision`, and its attempts, and never its prompt or instructions.',

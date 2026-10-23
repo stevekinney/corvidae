@@ -579,7 +579,7 @@ export const tasksEventsOperation = defineOperation<
   BureauTaskEventsOperationHost
 >({
   name: 'bureau.tasks.events',
-  mcpExposable: false,
+  mcpExposable: true,
   kind: 'subscription',
   summary: 'Follow one task’s lifecycle',
   description:

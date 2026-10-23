@@ -130,7 +130,7 @@ export const contextsInputOperation = defineOperation<
   BureauContextsInputOperationHost
 >({
   name: 'bureau.contexts.input',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Send input to a context',
   description:
     'Admits `input` (an `id` of the caller’s choosing and a `payload`: text, or a list of parts) to one of the caller’s own contexts, to be delivered to the context’s run at its next step boundary. The `outcome` is `admitted`, or `replayed` for an exact retry of an `id` already admitted; the `receipt` says where the input stands (`accepted` while it waits, `promoted` once the run took it into the conversation, `canceled` if the run ended or the context had no run to take it). An input is answered by the run it was admitted to or not at all: one that a run ends without delivering is cancelled and must be sent again. Another owner’s context, and a missing one, answer `NotFound`. A different input under an `id` already used is a `Conflict` with reason `input-conflict`, a context that has ended is a `Conflict` with reason `session-terminal`, a Bureau that cannot take input is `Unavailable` with reason `unsupported-capability`, and a context with too much input waiting is `Unavailable` with reason `backlog-exhausted`.',

@@ -23376,13 +23376,13 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
 
   // `allowed-tools` is the specification's own field, and the client turns it into the active
   // skill's requested tool set. A skill asking for a tool only ever narrows what the run already
-  // had; it can never add one. COR-1628 — the narrowing also refuses a call, so the skill names
-  // `deactivate_skill` for the run to be able to deactivate it again.
+  // had; it can never add one. COR-1628 — the narrowing also refuses a call. COR-1633 — the skill
+  // lifecycle tools are exempt, so the skill need not name `deactivate_skill`.
   const narrowingSkill = {
     name: 'reader',
     description: 'Read only',
     body: 'Read things.',
-    allowedTools: 'read_file deactivate_skill',
+    allowedTools: 'read_file',
   };
 
   it('hides a tool outside the active skill allow list, and restores it on deactivation', async () => {

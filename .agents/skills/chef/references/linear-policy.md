@@ -15,7 +15,7 @@ When the `linear-track-work`, `linear-update-project`, `linear-create-issue`, `l
 
 - Issues use Backlog, Ready, In Progress, In Review, and Done. `Todo` is not Ready.
 - Projects use `Backlog`, `Ready`, `In Progress`, `Completed`, and `Canceled`, and the API accepts only those names. Intents such as Candidate, Shaping, Paused, and Verified are predicates that gate a transition, not statuses: write `Backlog` for a candidate, a shaping project, or a paused one (record the reason and any native blocker in a comment), and `Completed` only once every required published, deployed, and downstream artifact is independently verified.
-- Never create a `type:decision` issue, and never put a "Decide …" or "Define the … contract" issue in a project draft. A decision is resolved in conversation, as `SKILL.md` describes under "Decisions and Jev", and recorded in the issue or scope it settles. An existing `type:decision` issue is answered, recorded, and closed as Done.
+- Never create a `type:decision` issue, and never put a "Decide …" or "Define the … contract" issue in a project draft. A decision is resolved in conversation, as [decisions](decisions.md) describes, and recorded in the issue or scope it settles. An existing `type:decision` issue is answered, recorded, and closed as Done.
 - Each cohesive batch has its own acceptance criteria, verification, integration boundary, and tracking closeout. Move an independently completed issue to Done as its own gates pass; an unfinished neighbor does not hold it open. Preserve native dependencies, publication, deployment, and explicit whole-program gates.
 - Done means the execution boundary's required external truth exists. A merged pull request does not prove an npm publication, a deployment, or downstream adoption, so those gates stay open until the matching published version or live deployment is independently verified.
 - Picking up an issue is an end-to-end commitment: the session that claims it drives the work through its delivery artifact (a merged pull request, for repository work) and moves the issue itself to Done with completion evidence. Do not stop at In Review, and do not leave a merged pull request with the issue open. When something outside the session's control blocks Done, record a `Blocked` or `Handoff` comment, with a native blocker where one applies.
@@ -41,7 +41,7 @@ Check the predicates against the issue text and `bun scripts/chef/linear.ts bloc
 
 Write each as a Markdown file and post it with `bun scripts/chef/linear.ts comment <ID> --file <md>`, which reads the comment back by id.
 
-- A claim records the provider, the session or agent, the branch, the worktree, the base SHA, the scope, the first verification gate, and the current blocker state. Post the claim, then move the issue to In Progress.
+- A claim records the provider, the session or agent, the branch, the worktree, the base SHA, the scope, the first verification gate, and the current blocker state. Post the claim, then move the issue to In Progress. In a delegated run the coordinator posts the claim at dispatch, and the worker moves its own issue to In Progress when it starts.
 - A checkpoint records the current evidence and the next executable command.
 - A blocker records the failed command or unavailable operation, the last verified state, the exact condition, and one executable action that would unblock it. Add the native `blocked by` relation.
 - A handoff holds enough evidence and next steps to resume without the original transcript.
@@ -51,9 +51,17 @@ To change an issue description, append a dated revision with `bun scripts/chef/l
 
 ## Writing rules
 
-- Only the primary coordinator writes Linear. Planners, verifiers, and workers are read-only and return proposed changes.
+- Only the primary coordinator writes Linear, with one exception: a worker moves its own issue to In Progress (`linear.ts state <ID> "In Progress"`) when it starts. Every other write, closeout included (Done, completion comments, blockers, handoffs, project updates), is the coordinator's. Planners, verifiers, and workers otherwise are read-only and return proposed changes.
 - Read immediately before every write, and read every mutation back. `linear.ts` does the read-back and exits 1 on a mismatch; a mismatch is a failure, not a retry prompt.
 - Preview the complete mutation and approve it as coordinator before writing. Routine decisions within the authorized scope do not need renewed user permission.
 - Fail closed on unknown routing, a duplicate, an unreadable relation, a missing approval, or a read-back mismatch.
 - A pull request references its issues with a non-closing word such as `Refs`, so a merge cannot close an issue before its own evidence is checked.
 - Never put a secret in an issue, a comment, or a project update.
+
+## Recording findings
+
+Record actionable repository or environment findings in Linear as they arise. Search for duplicates first, read likely matches fully, then add evidence to an existing issue or create one through the intake and issue-creation workflows. Route them to the live owning team. Agent tooling and process findings are not tracked in Linear: record them in the work-history note and the final report. Include the observation, reproduction or source evidence, impact, a concrete proposed improvement, binary acceptance criteria, and exact verification. Preserve native blockers when a finding blocks this run.
+
+Compare root cause and execution boundary when deciding whether a finding duplicates an issue; similar wording alone is insufficient. Split a cross-team improvement into separately owned issues and connect any actual dependencies. An actionable finding has evidence, an affected boundary, and a verifiable proposed change; a vague preference is not a reason to create a ticket.
+
+Recording an improvement does not defer required work. Fix findings necessary for the assigned outcome within scope. Record independently useful improvements outside that scope without silently adding them to the delivery plan. If Linear is unavailable, retain the complete payload in the note, report the recording failure, and do not claim tracking is complete. If no actionable findings exist, record that result without inventing tickets. Never copy secrets into notes or tracking records.

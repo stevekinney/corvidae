@@ -349,12 +349,35 @@ scenarios.describe('baseline identity', () => {
     expect(report.errors.some((message) => message.includes('path set'))).toBe(true);
   });
 
-  scenarios.scenario('a changed HEAD fails', () => {
+  scenarios.scenario(
+    'a commit on top of the captured HEAD passes when its changes are in scope',
+    () => {
+      const before = captureScope(['src']);
+      write('src/app.ts', 'committed');
+      git(worktree, 'commit', '-q', '-am', 'commit during work');
+      const report = verifyScope(['src'], before);
+      expect(report.errors).toEqual([]);
+      expect(report.changed).toContain('src/app.ts');
+    },
+  );
+
+  scenarios.scenario('a committed change outside the allowed scope still fails', () => {
     const before = captureScope(['src']);
-    write('src/app.ts', 'committed');
-    git(worktree, 'commit', '-q', '-am', 'commit during work');
+    write('docs/readme.md', 'committed outside scope');
+    git(worktree, 'add', 'docs/readme.md');
+    git(worktree, 'commit', '-q', '-m', 'outside scope');
     const report = verifyScope(['src'], before);
-    expect(report.errors.some((message) => message.includes('HEAD'))).toBe(true);
+    expect(report.errors.some((message) => message.includes('outside the allowed scope'))).toBe(
+      true,
+    );
+  });
+
+  scenarios.scenario('a HEAD that does not descend from the capture fails', () => {
+    const before = captureScope(['src']);
+    git(worktree, 'checkout', '-q', '--orphan', 'unrelated');
+    git(worktree, 'commit', '-q', '-m', 'unrelated history');
+    const report = verifyScope(['src'], before);
+    expect(report.errors.some((message) => message.includes('does not descend'))).toBe(true);
   });
 
   scenarios.scenario('a different root fails', () => {

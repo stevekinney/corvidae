@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@ag-ui/client": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
     "ajv": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/testing": "workspace:*",

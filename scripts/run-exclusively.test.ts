@@ -10,10 +10,12 @@ import { rejectionOf } from './promise-outcome.test-support.ts';
 import {
   acquireHostLock,
   heldLockTokenVariable,
+  loadWaitLimitMs,
   ownerFileName,
   queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
+  waitForLowLoad,
   withPreflight,
   withTurborepoDefaults,
   type HostLockHolder,
@@ -455,6 +457,8 @@ const sharedRunsBesideAHeldLock = await inScratchDirectory(async (scratch) => {
         lockDirectory,
         script: 'exit 4',
         shared: true,
+        // The real load average would make this scenario depend on how busy the host is.
+        loadAverage: () => 0,
         report: (line) => reports.push(line),
       }),
     ).toBe(4);
@@ -465,9 +469,110 @@ const sharedRunsBesideAHeldLock = await inScratchDirectory(async (scratch) => {
   }
 });
 
+const sharedRunWaitsOutAnOverloadedHost = await inScratchDirectory(async (scratch) => {
+  const marker = join(scratch.directory, 'ran');
+  const loads = [30, 30, 21, 5];
+  const reports: string[] = [];
+  const events: string[] = [];
+  const code = await runExclusively({
+    lockDirectory: scratch.lockDirectory,
+    script: `touch ${marker}`,
+    shared: true,
+    processors: 10,
+    loadAverage: () => loads.shift() ?? 0,
+    now: () => 0,
+    sleep: async () => {
+      events.push(
+        `sleep:${await stat(marker).then(
+          () => 'after',
+          () => 'before',
+        )}`,
+      );
+    },
+    report: (line) => reports.push(line),
+  });
+  expect(code).toBe(0);
+  // The command ran only after the last sleep, and the unchanged 30 reported once.
+  expect(events).toEqual(['sleep:before', 'sleep:before', 'sleep:before']);
+  expect(reports).toEqual([
+    'run-exclusively: shared run waiting for load 30.00 to fall below 20.00',
+    'run-exclusively: shared run waiting for load 21.00 to fall below 20.00',
+  ]);
+  await stat(marker);
+});
+
+const lockedRunNeverReadsTheLoad = await inScratchDirectory(async (scratch) => {
+  const code = await runExclusively({
+    lockDirectory: scratch.lockDirectory,
+    script: 'exit 0',
+    loadAverage: () => {
+      throw new Error('a locked run read the load average');
+    },
+    sleep: async () => {
+      throw new Error('a locked run slept for load');
+    },
+  });
+  expect(code).toBe(0);
+});
+
+describe('waitForLowLoad', () => {
+  /** A fake clock whose sleep advances it, and a load reader that follows `loads` then repeats the last. */
+  function fakeHost(loads: number[]) {
+    let clock = 1_000;
+    const sleeps: number[] = [];
+    const reports: string[] = [];
+    let index = 0;
+    return {
+      sleeps,
+      reports,
+      options: {
+        processors: 4,
+        loadAverage: () => loads[Math.min(index++, loads.length - 1)] ?? 0,
+        now: () => clock,
+        sleep: async (milliseconds: number) => {
+          sleeps.push(milliseconds);
+          clock += milliseconds;
+        },
+        report: (line: string) => reports.push(line),
+      },
+    };
+  }
+
+  test('does not wait, or print, when the load is at or below processors × 2', async () => {
+    const host = fakeHost([8]);
+    await waitForLowLoad(host.options);
+    expect(host.sleeps).toEqual([]);
+    expect(host.reports).toEqual([]);
+  });
+
+  test('polls every 15 seconds and prints one line per change of load', async () => {
+    const host = fakeHost([12, 12, 9.5, 9.5, 7]);
+    await waitForLowLoad(host.options);
+    expect(host.sleeps).toEqual([15_000, 15_000, 15_000, 15_000]);
+    expect(host.reports).toEqual([
+      'run-exclusively: shared run waiting for load 12.00 to fall below 8.00',
+      'run-exclusively: shared run waiting for load 9.50 to fall below 8.00',
+    ]);
+  });
+
+  test('gives up after 20 minutes of waiting and lets the run proceed', async () => {
+    const host = fakeHost([50]);
+    await waitForLowLoad(host.options);
+    expect(host.sleeps).toHaveLength(80);
+    expect(host.sleeps.reduce((total, value) => total + value, 0)).toBe(loadWaitLimitMs);
+    expect(host.reports).toHaveLength(2);
+    expect(host.reports[1]).toContain('still above 8.00 after 20 minutes; running anyway');
+  });
+});
+
 describe('runExclusively', () => {
   test('a shared run neither waits for nor queues behind a held lock', () =>
     rethrow(sharedRunsBesideAHeldLock));
+
+  test('a shared run waits for an overloaded host to quiet down before it runs', () =>
+    rethrow(sharedRunWaitsOutAnOverloadedHost));
+
+  test('a locked run never reads the load average', () => rethrow(lockedRunNeverReadsTheLoad));
 
   test('two concurrent runs never overlap', () => rethrow(concurrentRunsNeverOverlap));
 

@@ -399,7 +399,9 @@ export {
   retireProcedure,
 } from './procedure-lifecycle';
 export type {
+  ProcedureOutcome,
   ProcedureOutcomeRecord,
+  RecordProcedureOutcomeBase,
   RecordProcedureOutcomeOptions,
   RetireProcedureOptions,
 } from './procedure-lifecycle';
@@ -412,6 +414,14 @@ export type {
   ProcedureValidator,
   PromoteProcedureOptions,
 } from './procedure-promotion';
+export { retrieveProcedures } from './procedure-retrieval';
+export type {
+  ProcedureEnvironmentEntry,
+  ProcedureExclusionReason,
+  ProcedureMatch,
+  ProcedureRetrieval,
+  RetrieveProceduresOptions,
+} from './procedure-retrieval';
 export { projectAssetChunks } from './project-asset-chunks';
 
 // Atomic, verified, observable memory transitions over evidence and projections.

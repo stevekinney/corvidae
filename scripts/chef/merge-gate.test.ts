@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mergeGate, renderMergeGate, run, type MergeGateOptions } from './merge-gate.ts';
@@ -365,6 +365,153 @@ describe('mergeGate', () => {
     );
     const none = mergeGate(options, { runner: fake({ mergeCommit: null }).runner });
     expect(none).toMatchObject({ failedStep: 'confirm', merged: true, mergeCommit: null });
+  });
+});
+
+describe('spend record', () => {
+  const totals = { input: 1200, cachedInput: 34000, output: 560 };
+  const fixedNow = () => new Date('2026-10-22T18:30:00.000Z');
+
+  test('appends one tab-separated line after a successful merge, from the injected usage', () => {
+    const usageLog = join(sandbox, 'spend', 'usage.tsv');
+    const seen: string[][] = [];
+    const usage = (paths: string[]) => {
+      seen.push(paths);
+      return totals;
+    };
+    const transcript = join(sandbox, 'session.jsonl');
+    const second = join(sandbox, 'subagents');
+    writeFileSync(transcript, '');
+    mkdirSync(second);
+    for (const pr of [12, 13]) {
+      const report = mergeGate(
+        { ...options, pr, usageLog, transcripts: [transcript, second] },
+        { runner: fake().runner, usage, now: fixedNow },
+      );
+      expect(report.failedStep).toBeNull();
+      expect(report.usage).toEqual(totals);
+    }
+    expect(seen).toEqual([
+      [transcript, second],
+      [transcript, second],
+    ]);
+    expect(readFileSync(usageLog, 'utf8')).toBe(
+      [
+        `2026-10-22T18:30:00.000Z\t12\t${MERGE}\t1200\t34000\t560`,
+        `2026-10-22T18:30:00.000Z\t13\t${MERGE}\t1200\t34000\t560`,
+        '',
+      ].join('\n'),
+    );
+  });
+
+  test('without the flags nothing is read or written, and the report has no usage', () => {
+    const report = mergeGate(options, {
+      runner: fake().runner,
+      usage: () => {
+        throw new Error('read the transcripts without being asked');
+      },
+    });
+    expect(report.failedStep).toBeNull();
+    expect('usage' in report).toBe(false);
+  });
+
+  test('records nothing for a dry run or a failed merge', () => {
+    const usageLog = join(sandbox, 'usage.tsv');
+    const transcript = join(sandbox, 'session.jsonl');
+    writeFileSync(transcript, '');
+    const withRecord = { ...options, usageLog, transcripts: [transcript] };
+    const dependencies = (runner: Runner) => ({ runner, usage: () => totals, now: fixedNow });
+    expect(
+      mergeGate({ ...withRecord, dryRun: true }, dependencies(fake().runner)).failedStep,
+    ).toBeNull();
+    expect(mergeGate(withRecord, dependencies(fake({ mergeCode: 1 }).runner)).failedStep).toBe(
+      'merge',
+    );
+    expect(existsSync(usageLog)).toBe(false);
+  });
+
+  test('a record that cannot be produced is a named step after the merge', () => {
+    const transcript = join(sandbox, 'session.jsonl');
+    writeFileSync(transcript, '');
+    const report = mergeGate(
+      { ...options, usageLog: join(sandbox, 'usage.tsv'), transcripts: [transcript] },
+      {
+        runner: fake().runner,
+        usage: () => {
+          throw new Error('unreadable transcript');
+        },
+      },
+    );
+    expect(report.merged).toBe(true);
+    expect(report.failedStep).toBe('usage');
+    expect(report.detail).toContain('unreadable transcript');
+  });
+
+  test('the two flags go together and a missing transcript is refused before any write', () => {
+    const { runner, calls } = fake();
+    const transcript = join(sandbox, 'session.jsonl');
+    writeFileSync(transcript, '');
+    expect(() => mergeGate({ ...options, usageLog: join(sandbox, 'u.tsv') }, { runner })).toThrow(
+      'go together',
+    );
+    expect(() => mergeGate({ ...options, transcripts: [transcript] }, { runner })).toThrow(
+      'go together',
+    );
+    expect(() =>
+      mergeGate(
+        { ...options, usageLog: join(sandbox, 'u.tsv'), transcripts: [join(sandbox, 'nope')] },
+        { runner },
+      ),
+    ).toThrow('No such transcript');
+    expect(calls).toEqual([]);
+  });
+
+  test('--usage-log and repeated --transcript reach the record through run', () => {
+    const usageLog = join(sandbox, 'usage.tsv');
+    const first = join(sandbox, 'a.jsonl');
+    const second = join(sandbox, 'b.jsonl');
+    writeFileSync(first, '');
+    writeFileSync(second, '');
+    const seen: string[][] = [];
+    const result = run(
+      [
+        '--config',
+        options.configPath,
+        '--pr',
+        '12',
+        '--worktree',
+        options.worktree,
+        '--gate-log',
+        options.gateLog,
+        '--comment-file',
+        options.commentFile,
+        '--usage-log',
+        usageLog,
+        '--transcript',
+        first,
+        '--transcript',
+        second,
+      ],
+      {
+        runner: fake().runner,
+        usage: (paths) => {
+          seen.push(paths);
+          return totals;
+        },
+        now: fixedNow,
+      },
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('usage recorded: input=1200 cachedInput=34000 output=560');
+    expect(seen).toEqual([[first, second]]);
+    expect(readFileSync(usageLog, 'utf8').trim().split('\t')).toEqual([
+      '2026-10-22T18:30:00.000Z',
+      '12',
+      MERGE,
+      '1200',
+      '34000',
+      '560',
+    ]);
   });
 });
 

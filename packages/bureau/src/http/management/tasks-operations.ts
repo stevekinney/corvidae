@@ -83,7 +83,7 @@ export const tasksListOperation = defineOperation<
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List tasks',
   description:
     'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, and filters (`contextId`, `agentName`, `status`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.',
@@ -141,7 +141,7 @@ export const tasksGetOperation = defineOperation<
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one task',
   description:
     'Returns one of the caller’s own tasks; a caller holding `bureau.tasks:read` reads any owner’s. Another owner’s task answers as a missing one does.',
@@ -196,7 +196,7 @@ export const tasksCancelOperation = defineOperation<
   BureauTasksOperationHost
 >({
   name: 'bureau.tasks.cancel',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Cancel a task',
   description:
     'Cancels one of the caller’s own tasks; a caller holding `bureau.tasks:write` cancels any owner’s. The receipt says where the cancellation stands: `cancel-requested` (the run has not stopped), `canceled` (a durable run stopped with no cleanup evidence to report), `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` (cleanup could not be confirmed and may still be running, so nothing is promised about external effects), `unknown-outcome` (an external effect may or may not have happened), or `rejected` (the task had already finished without being canceled; nothing is applied). `waitMilliseconds` (default 0) waits that long for the cleanup acknowledgement; `bureau.tasks.get` carries the same state afterwards. A repeated cancel has the same effect.',

@@ -38,6 +38,8 @@ export {
 export type {
   OperationHandlerMount,
   OperationHandlerMountContext,
+  OperationHandlerMountDispatchOptions,
+  OperationHandlerMountOperation,
 } from './operation-handler-mounts.ts';
 export {
   createOperationHandler,
