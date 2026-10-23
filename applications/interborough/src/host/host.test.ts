@@ -158,6 +158,18 @@ describe('the identity of every request', () => {
     const resources = await mcp(4, 'resources/list', {});
     expect(resources.result?.['resources']).toMatchObject([
       { uri: 'ui://bureau/run-inspector/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://bureau/pending-review/v1', mimeType: 'text/html;profile=mcp-app' },
+    ]);
+    // The pending-review app opens from the existing `bureau.reviews.list`; it adds no tool name.
+    const reviewList = tools.find((tool) => tool.name === 'bureau.reviews.list') as {
+      _meta?: unknown;
+    };
+    expect(reviewList._meta).toMatchObject({
+      ui: { resourceUri: 'ui://bureau/pending-review/v1' },
+    });
+    const review = await mcp(6, 'resources/read', { uri: 'ui://bureau/pending-review/v1' });
+    expect(review.result?.['contents']).toMatchObject([
+      { mimeType: 'text/html;profile=mcp-app', text: expect.stringContaining('<div id="root">') },
     ]);
     const page = await mcp(5, 'resources/read', { uri: 'ui://bureau/run-inspector/v1' });
     expect(page.result?.['contents']).toMatchObject([
