@@ -1,5 +1,6 @@
 import type { Component } from 'svelte';
 
+import { workflowDetailPath } from '../lib/router.svelte.ts';
 import { chatHomePath } from '../routes/chat/chat-home.ts';
 import type { ViewName } from './views.ts';
 
@@ -79,7 +80,7 @@ export const routes: readonly RouteDefinition[] = [
     pattern: '/tasks/:id',
     view: 'runs',
     load: placeholder,
-    redirect: ({ params }) => Promise.resolve(`/runs/${encodeURIComponent(params['id'] ?? '')}`),
+    redirect: ({ params }) => Promise.resolve(workflowDetailPath(params['id'] ?? '')),
   },
   { pattern: '/reviews', view: 'reviews', load: () => import('../routes/reviews/index.svelte') },
   { pattern: '/workers', view: 'workers', load: () => import('../routes/workers/index.svelte') },

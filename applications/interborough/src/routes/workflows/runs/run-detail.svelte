@@ -30,7 +30,7 @@
   import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
   import { chatSessionPath } from '../../../lib/identifier-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { router } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { taskStatePresentation } from '../../../lib/task-status.ts';
   import WorkflowDetail from '../detail/workflow-detail.svelte';
   import RunCancel from './run-cancel.svelte';
@@ -144,10 +144,7 @@
       search.delete('view');
       search.delete('tab');
     }
-    const query = search.toString();
-    router.navigate(`/runs/${encodeURIComponent(initialRunId)}${query === '' ? '' : `?${query}`}`, {
-      replace: true,
-    });
+    router.navigate(workflowDetailPath(initialRunId, search), { replace: true });
   }
 
   const chatHref = $derived(

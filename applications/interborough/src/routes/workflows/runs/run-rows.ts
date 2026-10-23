@@ -12,6 +12,7 @@ import { TASK_COPY } from '../../../app/copy.ts';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
 import { isTerminalState, type TaskState, type TaskView } from '../../../lib/bureau-tasks.ts';
+import { chatSessionPath } from '../../../lib/identifier-paths.ts';
 import { shorten } from '../../../lib/tool-text.ts';
 
 export type RunOrigin =
@@ -83,7 +84,7 @@ function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRo
         : {
             kind: 'chat',
             title: chat.title ?? '',
-            href: `/chat/${encodeURIComponent(chat.id)}`,
+            href: chatSessionPath(chat.id),
           },
     summary,
     startedAt,

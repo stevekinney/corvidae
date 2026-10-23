@@ -526,7 +526,7 @@ describe('a run that waits on a tool approval', () => {
       ]);
     }).restore;
     landAt('/chat/session-1');
-    const { container, findByRole, findByText } = mount({
+    const { container, findByRole } = mount({
       sessionId: 'session-1',
       title: 'Plan the week',
       agentName: 'assistant',

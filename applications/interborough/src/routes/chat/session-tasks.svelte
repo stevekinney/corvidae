@@ -13,7 +13,7 @@
   import { CHAT_COPY } from '../../app/copy.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
 
   interface SessionTasksProps {
     sessionId: string;
@@ -61,7 +61,7 @@
     wasStreaming = now;
   });
 
-  const runPath = (id: string): string => `/runs/${encodeURIComponent(id)}`;
+  const runPath = (id: string): string => workflowDetailPath(id);
 
   /** What the chat says of its runs, with the run to open; nothing when there is nothing to say. */
   const strip = $derived.by(() => {

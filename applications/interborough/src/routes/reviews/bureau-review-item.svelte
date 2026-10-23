@@ -29,7 +29,7 @@
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
   import BureauReviewOperation from './bureau-review-operation.svelte';
 
@@ -69,7 +69,7 @@
   );
   const target = $derived(
     review.sessionId === undefined
-      ? { path: `/runs/${encodeURIComponent(review.runId)}`, label: REVIEWS_COPY.openRun }
+      ? { path: workflowDetailPath(review.runId), label: REVIEWS_COPY.openRun }
       : { path: chatSessionPath(review.sessionId), label: REVIEWS_COPY.openChat },
   );
 

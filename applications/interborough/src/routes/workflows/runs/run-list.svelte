@@ -15,7 +15,7 @@
   import { listTasks, loadMoreTasks } from '../../../lib/bureau-tasks.ts';
   import { combinePages } from '../../../lib/combine-pages.ts';
   import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
-  import { router } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { taskStatePresentation, TASK_STATE_ORDER } from '../../../lib/task-status.ts';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
   import {
@@ -192,8 +192,8 @@
         <li class="ib-run-row" data-run={row.id} data-status={presentation.label}>
           <a
             class="ib-run-row__agent"
-            href={router.href(`/runs/${encodeURIComponent(row.id)}`)}
-            onclick={(event) => open(event, `/runs/${encodeURIComponent(row.id)}`)}
+            href={router.href(workflowDetailPath(row.id))}
+            onclick={(event) => open(event, workflowDetailPath(row.id))}
           >
             {#if row.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier"
                 >{row.agentName}</code
