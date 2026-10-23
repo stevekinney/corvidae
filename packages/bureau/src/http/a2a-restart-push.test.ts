@@ -326,6 +326,9 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
     expect(created.error.code).toBe(-32004);
     const listed = await served.call('ListTaskPushNotificationConfigs', { taskId });
     expect(listed.result.configs ?? []).toEqual([]);
+    // Nothing durable either: a refused Create leaves no checkpoint, pending or confirmed.
+    const checkpoints = await served.harness.bureau.kv?.list(A2A_PUSH_CHECKPOINT_KEY_PREFIX);
+    expect(checkpoints ?? []).toEqual([]);
     expect(world.receiver.requests).toEqual([]);
   }, 15_000);
 
