@@ -163,6 +163,11 @@ import {
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
+import {
+  humanInputEnabled,
+  humanInputSchemasOf,
+  validateHumanInputOption,
+} from './human-input-option';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
@@ -2003,6 +2008,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.sessionInput?.sessionBacklogLimit ?? DEFAULT_SESSION_INPUT_BACKLOG_LIMIT;
   const sessionInputPrincipalBacklogLimit =
     options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
+  // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
+  validateHumanInputOption(options.humanInput);
   validateAuditRetentionOption(options.auditRetention);
   validateRetentionWindowOption(options.eventRetention, 'eventRetention');
   validateRetentionWindowOption(options.taskRetention, 'taskRetention');
@@ -7361,7 +7368,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // one's `onServices` property in the `createActiveRun` options object
       // literal, silently breaking whichever tool composed first.
       const servicesRef: { current?: DurableRunDeps } = {};
-      const wantsHumanInput = !!(options.humanInput && runtime.durable);
+      const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
       const wantsWakeup = !!(options.wakeup && runtime.durable);
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
@@ -7371,6 +7378,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // (`runtime-composition.ts`), which used to omit it entirely.
       const runToolbox: BureauToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
+        inputSchemas: humanInputSchemasOf(options.humanInput),
         wakeup: wantsWakeup,
         runId,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
@@ -18359,7 +18367,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ),
     fileAgents,
     // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-    humanInput: options.humanInput === true && runtime.durable !== undefined,
+    humanInput: runtime.durable !== undefined ? options.humanInput : undefined,
     // COR-772 — a durable `bureau.run` parent aborted through its own handle
     // is a cancelled parent like any other. Once shutdown has begun, dispose
     // — not the policy — ends every live run, and boot recovery applies the
