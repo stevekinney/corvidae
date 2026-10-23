@@ -58,7 +58,7 @@ Unreadable or truncated required input blocks affected packages until it is retr
 
 ## Repository inspection
 
-Inspect each owning repository: instructions, working-tree state, worktree ownership, remote, exact base revision, manifests, pinned toolchain, validation scripts, release contracts, relevant source, and shared contracts between repositories. Reuse one compact repository packet with exact paths and commands across workers. For a whole Linear project, or work spanning more than one batch, read [program runs](references/program-runs.md) before planning.
+Inspect each owning repository: instructions, working-tree state, worktree ownership, remote, exact base revision, manifests, pinned toolchain, validation scripts, release contracts, relevant source, and shared contracts between repositories. Reuse one compact repository packet with exact paths and commands across workers. For a whole Linear project, or work spanning more than one batch, read [program runs](program-runs.md) before planning.
 
 ## Batching
 
