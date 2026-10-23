@@ -348,6 +348,7 @@ import {
   type FireReviewFollower,
   trackFireReviewFollower,
 } from './fire-review-follower';
+import { createBureauInteractiveSurfaces } from './interactive-surface/bureau-wiring';
 import {
   adoptRestoredScheduledFire,
   committedFireApprovalIds,
@@ -10232,6 +10233,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       status: 'revoked',
       principal: 'system:run-deletion',
     });
+    // COR-1631: the run's surfaces go after the fallible review revocation above, which leaves
+    // them intact if it fails, and before anything is removed, so a failure here leaves the run in
+    // place and a second delete retries, instead of orphaning the surfaces.
+    await surfaces?.removeTask(id);
     const sessionId = getRunSessionIdentifier(runState);
     const ownerPrincipal = runAttribution.get(id)?.principal;
     const ownerIncarnation = runSessionIncarnations.get(id);
@@ -11483,10 +11488,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // (a catalog run releases itself when it settles) age out here.
     // COR-1596: what a fire's decided approval keeps to fence a concurrent resolver ends with the
     // fire's task, which is the last thing that could name it.
-    let removed = await tasks.expire(cutoff, bound, async (record) => {
-      if (record.kind !== 'schedule-fire') return;
-      await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
-    });
+    let removed = await tasks.expire(
+      cutoff,
+      bound,
+      async (record) => {
+        if (record.kind !== 'schedule-fire') return;
+        await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
+      },
+      // COR-1631: a task's surfaces stay readable until its retention ends, and end with it. They
+      // go first: a failure keeps the task's record, so the next pass finds the task and retries.
+      async (record) => {
+        try {
+          await surfaces?.removeTask(record.taskId);
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'interactive-surfaces',
+            message: `[bureau] Could not remove the surfaces of expired task "${record.taskId}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          throw error;
+        }
+      },
+    );
     for (const runId of expired) {
       if (bound.has(runId)) continue;
       try {
@@ -17177,6 +17201,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // COR-1481 — the settlement and cleanup writes of tasks whose runs have just ended land
           // before the storage they write to is closed.
           await tasks.flush();
+          // COR-1631 — so do the freezes of the surfaces those settlements started.
+          await surfaces?.flush();
 
           emitter.dispatch(new BureauDisposedEvent());
           storeSubscription.unsubscribe();
@@ -17268,6 +17294,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // follows is awaited, with the writes it starts, before the backend closes under them.
           await catalogSettlements.settled();
           await tasks.idle();
+          // COR-1631 — those settlements freeze their tasks' surfaces too; the freezes land
+          // before the backend closes under them.
+          await surfaces?.flush();
         } finally {
           // A run that ended in the drain without a save leaves no one to settle its record.
           for (const runId of terminalSessionRecordSettlers.keys()) {
@@ -17389,6 +17418,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const eventHistoryInstance: DurableEventHistory | undefined = persistentDurableStorage
     ? createDurableEventHistory(persistentDurableStorage, runtimeServices, diagnose)
     : undefined;
+  // COR-1631 — a surface lives in its task's durable history, so a Bureau without one has none.
+  const surfaces = createBureauInteractiveSurfaces({
+    storage: persistentDurableStorage,
+    history: eventHistoryInstance,
+    tasks,
+    now: runtimeServices.clock.now,
+    diagnose,
+    // A review belongs to the run Bureau holds it for: this process's pending reviews, and a run's
+    // human waits derived from durable state when another process holds the run.
+    reviewIdsOf: async (taskId) => {
+      const local = [...listPendingReviews(), ...runHumanWaits.list()].filter(
+        (review) => review.runId === taskId,
+      );
+      const waits = await pendingHumanWaitsOfRun(taskId);
+      return new Set([...local, ...waits].map((review) => review.id));
+    },
+  });
   // COR-1621: a review another process closes is read from the shared history by one subscription
   // per process, whether or not any client follows a task.
   fireReviewFollower =
@@ -18335,6 +18381,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionStore: runtime.sessionStore,
     kv: runtime.kv,
     tasks,
+    surfaces,
     get lifecycle() {
       return bureau.completed ? 'stopped' : runAdmissionClosed ? 'draining' : 'ready';
     },

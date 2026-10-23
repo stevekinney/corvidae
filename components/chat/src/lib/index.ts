@@ -1,6 +1,17 @@
 import ChatComponent from './components/chat/index.ts';
 
 export default ChatComponent;
+export { default as A2uiSurface } from './a2ui/a2ui-surface.svelte';
+export type {
+  A2uiAction,
+  A2uiActionEvent,
+  A2uiAssetUrlResolver,
+  A2uiComponent,
+  A2uiDiagnostic,
+  A2uiDiagnosticCode,
+  A2uiJsonValue,
+  A2uiSurfaceProps,
+} from './a2ui/types.ts';
 export {
   deserializeChatComposerMention,
   parseChatComposerMentions,
@@ -53,14 +64,3 @@ export {
   type ChatStreamDecodeOptions,
   type ChatStreamEvent,
 } from './session/stream-event-codec.ts';
-export { default as A2uiSurface } from './a2ui/a2ui-surface.svelte';
-export type {
-  A2uiAction,
-  A2uiActionEvent,
-  A2uiAssetUrlResolver,
-  A2uiComponent,
-  A2uiDiagnostic,
-  A2uiDiagnosticCode,
-  A2uiJsonValue,
-  A2uiSurfaceProps,
-} from './a2ui/types.ts';

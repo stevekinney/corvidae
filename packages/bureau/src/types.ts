@@ -49,6 +49,7 @@ import type {
 } from '@lostgradient/operative';
 import type { SkillActivationRecord, SkillCatalogRevision } from './skills';
 import type { TaskRegistry } from './task-registry';
+import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type {
   ConditionalTextValueStore,
@@ -2244,6 +2245,14 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `task-registry.ts`.
    */
   readonly tasks: TaskRegistry;
+  /**
+   * COR-1631 — the task's interactive surfaces: create, compare-and-swap update,
+   * snapshot, action admission, close, owner abort, and cleanup, kept in the
+   * task's durable history (see `documentation/interactive-surface.md`).
+   * `undefined` for a Bureau without persistent durable execution
+   * (`durableExecution` over persistent storage), which keeps no durable history.
+   */
+  readonly surfaces: InteractiveSurfaces | undefined;
   /**
    * COR-1481 — where the Bureau is in its life: `ready`, `draining` once
    * `shutdown()` has closed admission, `stopped` once it has completed.

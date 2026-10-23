@@ -38,6 +38,10 @@ components/editor/src/lib/export/__fixtures__/diff-review/
 components/cinder/scripts/tokens/fixtures/theme-builder/interoperability/
 # CIN-588 raw measurement output, kept byte-for-byte as the harness wrote it (comparison-*.json is compare's text output).
 applications/playground/docs/decisions/cin-588-results/
+# A2UI specification schemas are vendored byte-for-byte and pinned by SHA-256 (PROVENANCE.json); formatting would change their bytes.
+components/cinder/scripts/a2ui/client_capabilities.json
+components/cinder/scripts/a2ui/common_types.json
+components/cinder/scripts/a2ui/server_to_client.json
 # The A2UI v0.9.1 basic catalog and its examples are vendored byte-for-byte and pinned by SHA-256 (PROVENANCE.json beside them).
 components/chat/src/lib/a2ui/basic-catalog.schema.json
 components/chat/src/lib/a2ui/examples/

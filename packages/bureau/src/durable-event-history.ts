@@ -132,6 +132,8 @@ import type {
 } from '@lostgradient/operative';
 import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from '@lostgradient/operative';
 import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
   createFleetEventFeed,
   type Cursor,
   decodeCursor,
@@ -212,6 +214,17 @@ export interface DurableEventRecordOptions {
    * (`AgentSession.incarnation` reserves `''` for a legacy body).
    */
   incarnation?: string | undefined;
+  /**
+   * COR-1631 — storage conditions the append also requires, checked in the SAME
+   * `conditionalBatch` as the event itself, so a caller can make the event
+   * conditional on state it keeps beside the history (an interactive surface's
+   * revision). When one fails, the append retries until Weft's attempt budget
+   * runs out and then throws: a caller distinguishes its own lost race from a
+   * storage failure by reading its state again.
+   */
+  conditions?: readonly ConditionalBatchCondition[] | undefined;
+  /** COR-1631 — storage writes committed in the same batch as the event. */
+  operations?: readonly BatchOperation[] | undefined;
 }
 
 /** The reserved storage-key prefix for {@link DurableEventRecordOptions.dedupeKey} markers — never a Weft-reserved prefix (see `WEFT_RESERVED_KEY_PREFIXES`). */
@@ -1096,12 +1109,10 @@ export function createDurableEventHistory(
         payload,
         ...incarnation,
       };
-      const appended = await feed.append({
-        kind,
-        workflowId: encodeOwner(owner),
-        emittedAtMs,
-        payload: stored,
-      });
+      const appended = await feed.append(
+        { kind, workflowId: encodeOwner(owner), emittedAtMs, payload: stored },
+        { conditions: options?.conditions ?? [], operations: options?.operations ?? [] },
+      );
       return toDurableEventEnvelope(appended, owner);
     }
     const stored: StoredDurableEventPayload = {
@@ -1134,8 +1145,11 @@ export function createDurableEventHistory(
       const appended = await feed.append(
         { kind, workflowId: encodeOwner(owner), emittedAtMs, payload: stored },
         {
-          conditions: [{ key: markerKey, expectedValue: null }],
-          operations: [{ type: 'put', key: markerKey, value: encode(true) }],
+          conditions: [{ key: markerKey, expectedValue: null }, ...(options?.conditions ?? [])],
+          operations: [
+            { type: 'put', key: markerKey, value: encode(true) },
+            ...(options?.operations ?? []),
+          ],
         },
       );
       return toDurableEventEnvelope(appended, owner);
