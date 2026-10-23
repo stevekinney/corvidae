@@ -111,8 +111,11 @@ describe('isHandoffCall', () => {
     expect(isHandoffCall('Write', { file_path: '/repo/src/index.ts' })).toBe(false);
     expect(isHandoffCall('Write', { file_path: '/repo/tmp/chef/../../src/a.ts' })).toBe(false);
     expect(isHandoffCall('mcp__ccd_session__start_session', {})).toBe(true);
-    expect(isHandoffCall('mcp__ccd_session__hand_off_to_session', {})).toBe(true);
-    expect(isHandoffCall('SendMessage', {})).toBe(true);
+    expect(isHandoffCall('mcp__ccd_session__hand_off_to_session', {})).toBe(false);
+    expect(isHandoffCall('SendMessage', { to: 'local_7aa567bf-be0e-46d8' })).toBe(true);
+    expect(isHandoffCall('SendMessage', { to: 'researcher' })).toBe(false);
+    expect(isHandoffCall('SendMessage', { to: 'a1b2c3-agent' })).toBe(false);
+    expect(isHandoffCall('SendMessage', {})).toBe(false);
     for (const command of [
       'git status',
       'git commit -m "wip (x)"',
@@ -139,11 +142,11 @@ describe('isHandoffCall for ToolSearch', () => {
   test.each([
     ['select of start_session', { query: 'select:mcp__ccd_session__start_session' }, true],
     [
-      'select of start_session and hand_off_to_session',
+      'select that adds hand_off_to_session',
       {
         query: 'select:mcp__ccd_session__start_session,mcp__ccd_session__hand_off_to_session',
       },
-      true,
+      false,
     ],
     [
       'select with spaces around the names',

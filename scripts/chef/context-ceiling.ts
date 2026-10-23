@@ -14,17 +14,20 @@
 //   - above the urgent threshold: allows the call and adds a stronger warning that the session is
 //     blocked at the block threshold and must write its brief and hand off now;
 //   - above the block threshold (default 400000): denies every call except what a handoff needs:
-//     writing a file under `tmp/chef/`, the session-start and handoff tools, `SendMessage`, the
-//     turn wrap-up tools, `git` status, add, commit, push, log, diff and rev-parse, and the
-//     `ToolSearch` that loads those deferred tools (a `select:` query naming only tools in that
-//     set; any keyword search or other name is denied).
+//     writing a file under `tmp/chef/`, the session-start tools, `SendMessage` to another session
+//     (a `local_` session id), the turn wrap-up tools, `git` status, add, commit, push, log, diff
+//     and rev-parse, and the `ToolSearch` that loads those deferred tools (a `select:` query naming
+//     only tools in that set; any keyword search or other name is denied). `hand_off_to_session`
+//     is denied: it forks this whole context, so the fork would be blocked on its first call. A
+//     `SendMessage` to a subagent or teammate is denied too, because resuming one would let an
+//     over-ceiling coordinator keep working through it.
 //
 // Environment: CHEF_CONTEXT_WARN_TOKENS, CHEF_CONTEXT_URGENT_TOKENS, CHEF_CONTEXT_BLOCK_TOKENS
 // (positive integers; an invalid value keeps the default; the urgent threshold is kept between
 // the warn and block thresholds) and CHEF_CONTEXT_CEILING=off to disable the hook.
 //
 // It fails open: an unreadable or missing transcript, a transcript with no model call, malformed
-// input, a subagent call (its own context is small; the transcript is the parent's), or any
+// input, a subagent's own call (its own context is small; the transcript is the parent's), or any
 // unexpected error allows the call. It runs on every tool call, so it reads only the tail of the
 // transcript, doubling the window until it holds a model call.
 //
@@ -104,7 +107,7 @@ export function currentContext(path: string): number | undefined {
 }
 
 const handoffTools = [
-  /^mcp__ccd_session__(start_session|hand_off_to_session|dismiss_task|list_start_targets)$/,
+  /^mcp__ccd_session__(start_session|dismiss_task|list_start_targets)$/,
   /^mcp__ccd_session_mgmt__(list_sessions|get_session|send_message)$/,
   /^mcp__ccd_turn__(update_plan|wrap_up)$/,
   /^SendMessage$/,
@@ -140,8 +143,10 @@ function insideChefTemporaryDirectory(path: unknown): boolean {
 
 /** Whether a call is one a handoff needs, and so passes above the block threshold. */
 export function isHandoffCall(toolName: string, toolInput: unknown): boolean {
-  if (handoffTools.some((pattern) => pattern.test(toolName))) return true;
   const input = (toolInput ?? {}) as Record<string, unknown>;
+  if (toolName === 'SendMessage')
+    return typeof input['to'] === 'string' && /^local_[\w-]+$/.test(input['to'].trim());
+  if (handoffTools.some((pattern) => pattern.test(toolName))) return true;
   if (toolName === 'ToolSearch') return loadsOnlyHandoffTools(input);
   if (writeTools.has(toolName)) return insideChefTemporaryDirectory(input['file_path']);
   if (toolName === 'Bash')
@@ -185,7 +190,7 @@ export function decide(
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: `This session's context is ${kilo(context)} tokens, past the ${kilo(block)} ceiling (AGENTS.md "Parallel runs"). Stop the work. Write a handoff brief under tmp/chef/ (the task, what is done, what is left, the branch, commit and pull request, the exact next commands and evidence paths), commit and push any work, then start a fresh session from that brief and end this one. Only that handoff is allowed now: Write or Edit under tmp/chef/, git status/add/commit/push/log/diff, SendMessage, the session-start and handoff tools, and a ToolSearch select: query that loads only those tools.`,
+        permissionDecisionReason: `This session's context is ${kilo(context)} tokens, past the ${kilo(block)} ceiling (AGENTS.md "Parallel runs"). Stop the work. Write a handoff brief under tmp/chef/ (the task, what is done, what is left, the branch, commit and pull request, the exact next commands and evidence paths), commit and push any work, then start a fresh session from that brief and end this one. Only that handoff is allowed now: Write or Edit under tmp/chef/, git status/add/commit/push/log/diff, SendMessage to another session's local_ id, the session-start tools (a fresh start_session, never hand_off_to_session, which forks this context), and a ToolSearch select: query that loads only those tools.`,
       },
     };
   if (context > urgent)
