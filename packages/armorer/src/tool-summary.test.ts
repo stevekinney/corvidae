@@ -83,7 +83,8 @@ describe('readToolShortDescription', () => {
     expect(readToolShortDescription(undefined)).toBeUndefined();
     expect(readToolShortDescription({ readOnly: true })).toBeUndefined();
     expect(readToolShortDescription({ shortDescription: '   ' })).toBeUndefined();
-    expect(readToolShortDescription({ shortDescription: 4 })).toBeUndefined();
+    // A tool whose metadata came from JSON may hold anything, whatever the type says.
+    expect(readToolShortDescription({ shortDescription: 4 } as never)).toBeUndefined();
   });
 
   it('is read from a tool built with createTool', () => {
