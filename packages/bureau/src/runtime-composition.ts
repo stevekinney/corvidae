@@ -359,6 +359,17 @@ export function wireDurableOptInTools(
 const requestAuthorityMetadataKey = 'lastRequestAuthority';
 const requestAuthoritiesMetadataKey = 'lastRequestAuthorities';
 const defaultBureauAgentName = 'bureau';
+
+/**
+ * What a run's runtime is composed from. `agentName` stays optional here: a recovered run with no
+ * stored agent and a scheduler task are internal callers that name none, and the memory
+ * collection falls back through the request context to the implicit Bureau agent.
+ */
+type RunRuntimeRequest = Omit<CreateRunRequest, 'agentName'> & {
+  agentName?: string;
+  sessionId: string;
+  runId?: string;
+};
 /**
  * How long a settled scheduler task outcome stays resolvable when the caller
  * sets no `scheduler.retentionWindowMs`: one hour, bounding memory in a
@@ -2275,7 +2286,7 @@ export interface RuntimeComposition {
   systemPrompt: string | undefined;
   getToolSummaries(): ToolSummary[];
   createRunRuntime(
-    request: CreateRunRequest & { sessionId: string; runId?: string },
+    request: RunRuntimeRequest,
     options?: {
       liveStreaming?: boolean;
       /**
@@ -3331,7 +3342,7 @@ async function buildRuntimeComposition(
   }
 
   function createRunRuntime(
-    request: CreateRunRequest & { sessionId: string; runId?: string },
+    request: RunRuntimeRequest,
     runtimeOptions?: {
       liveStreaming?: boolean;
       /**
@@ -3856,7 +3867,6 @@ async function buildRuntimeComposition(
     const sessionAgent = await resolveRecoveredSessionAgent(session, runId, agentName);
     const runRuntime = await createRunRuntime(
       {
-        agentName: 'bureau',
         message: typeof message === 'string' ? message : '',
         sessionId: session.id,
         // Thread the recovered run's id so the memory-persist hook's idempotency

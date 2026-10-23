@@ -1492,6 +1492,31 @@ describe('a composition built without a memory owner (COR-1546)', () => {
     expect(await contentsOf('owner-b')).toEqual(['owner-b remembers this']);
     expect(await contentsOf('anonymous:local')).toEqual([]);
   });
+
+  it('files a recovered run that names no agent under its request context’s agent, not "bureau"', async () => {
+    const { memory } = createGovernedMemoryFixture();
+    const runtime = await createRuntimeComposition({
+      id: 'bureau',
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory,
+    });
+    const runRuntime = await runtime.createRunRuntime({
+      message: 'test',
+      sessionId: 'session-recovered',
+      runId: 'run-recovered',
+      requestContext: { ...defaultRunRequestContext, agentId: 'context-agent' },
+    });
+    const entry = runRuntime.hooks
+      .getHandlers('onStep')
+      .find((candidate) => candidate.id === 'bureau:memory-persist');
+    await entry?.handler(stepOf('recovered remembers this'));
+
+    const owner = defaultRunRequestContext.authority.ownerId;
+    const contentsIn = async (collection: string) =>
+      (await memory.list(listerFor(owner), { collection })).map((record) => record.content);
+    expect(await contentsIn('context-agent')).toEqual(['recovered remembers this']);
+    expect(await contentsIn('bureau')).toEqual([]);
+  });
 });
 
 describe('effectful hook idempotency under crash replay (COR-1267)', () => {
