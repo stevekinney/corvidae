@@ -591,14 +591,14 @@ The target is an AI host that observes and steers existing work: Claude Desktop 
 
 Twenty-one operations are exposed, as tools of the same name:
 
-| Area | Tools |
-| --- | --- |
-| Tasks | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
-| Reviews | `bureau.reviews.list`, `get`, `resolve` |
-| Contexts | `bureau.contexts.list`, `get`, `input` |
-| Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get` |
-| Workflows | `bureau.workflows.list`, `get`; `bureau.workflows.runs.list`, `get` |
-| Agents | `bureau.agents.list` |
+| Area             | Tools                                                                |
+| ---------------- | -------------------------------------------------------------------- |
+| Tasks            | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
+| Reviews          | `bureau.reviews.list`, `get`, `resolve`                              |
+| Contexts         | `bureau.contexts.list`, `get`, `input`                               |
+| Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get`           |
+| Workflows        | `bureau.workflows.list`, `get`; `bureau.workflows.runs.list`, `get`  |
+| Agents           | `bureau.agents.list`                                                 |
 
 `bureau.tasks.events` is the one subscription: a call answers with the events recorded after its `fromCursor`, up to `maxEvents`, and the cursor to resume from, so a client polls it rather than holding a stream. `respond`, `cancel`, `resolve`, and `input` change state and carry the matching tool annotations. Nothing here starts a run, creates or edits a goal, schedule, or workflow, reads memory or assets, or touches agent definitions: those stay on the management plane, and `bureau.surfaces` commands have no MCP tool.
 
