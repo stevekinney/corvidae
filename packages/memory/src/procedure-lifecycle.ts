@@ -222,15 +222,13 @@ export async function recordProcedureOutcome(
     options.procedure.id,
   );
   const episode = { id: options.episodeId, revision: 1 };
-  // A retry after the demotion committed finds the procedure already demoted by
-  // this very episode, and resubmits the same demotion so its receipt replays.
-  const demotedByThisEpisode =
-    current?.transition.kind === 'demoted' &&
-    current.transition.demotedBy.id === episode.id &&
-    current.revision === options.procedure.revision + 1;
+  // A retry after the demotion committed finds its receipt, whatever revisions
+  // came later, and resubmits the same demotion so that receipt replays.
+  const demotionSettled =
+    (await engine.getReceipt(authority.tenantId, options.operationId)) !== undefined;
   const demote =
     options.outcome === 'failed' &&
-    (demotedByThisEpisode ||
+    (demotionSettled ||
       (current?.revision === options.procedure.revision && current.status === 'active'));
   if (demote) {
     proposals.push({

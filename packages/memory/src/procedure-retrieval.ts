@@ -1,4 +1,4 @@
-import { buildDerivedIndexes } from './derived-indexes';
+import { buildDerivedIndexes, readConsistently } from './derived-indexes';
 import type {
   EvidenceProjectionRecord,
   ProcedurePayloadV2,
@@ -93,17 +93,20 @@ function compatibility(
   payload: ProcedurePayloadV2,
 ): { reason: ProcedureExclusionReason; detail: string } | undefined {
   for (const dependency of payload.environment) {
-    const available = options.environment.find((entry) => entry.name === dependency.name);
-    if (available === undefined) {
+    // An environment may list a dependency more than once; any installed version that fits will do.
+    const versions = options.environment
+      .filter((entry) => entry.name === dependency.name)
+      .map((entry) => entry.version);
+    if (versions.length === 0) {
       return {
         reason: 'environment-missing',
         detail: `${dependency.name} is not in the environment.`,
       };
     }
-    if (!versionFits(dependency.version, available.version)) {
+    if (!versions.some((version) => versionFits(dependency.version, version))) {
       return {
         reason: 'environment-mismatch',
-        detail: `${dependency.name} ${available.version} does not fit the validated ${dependency.version}.`,
+        detail: `${dependency.name} ${versions.join(', ')} does not fit the validated ${dependency.version}.`,
       };
     }
   }
@@ -170,19 +173,18 @@ export async function retrieveProcedures(
   if (!hasMemoryCapability(authority, 'memory:search')) {
     return { matches: [], exclusions: [], stopReason: 'unavailable' };
   }
+  const limit = options.limit ?? 5;
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new RangeError(`A procedure retrieval limit is a positive integer, not ${limit}.`);
+  }
   const now = options.now();
-  const evidence = await storage.listEvidence({
-    tenantId: authority.tenantId,
-    includeSuperseded: true,
-  });
-  const supersessions = await storage.listEvidenceSupersessions({ tenantId: authority.tenantId });
-  const current = await storage.listProjections({
-    tenantId: authority.tenantId,
-    namespace,
-    status: ['active', 'demoted'],
-  });
-  const procedures = current.filter(
-    (record): record is ProcedureRecord => record.kind === 'procedure',
+  // One consistent read: a correction that lands between separate reads could
+  // pair old evidence with new projections and hide both revisions.
+  const read = await readConsistently(storage, authority.tenantId, namespace);
+  const { evidence, supersessions } = read;
+  const procedures = read.projections.filter(
+    (record): record is ProcedureRecord =>
+      record.kind === 'procedure' && (record.status === 'active' || record.status === 'demoted'),
   );
   const visible = new Set(
     buildDerivedIndexes({ evidence, supersessions, projections: procedures, authority })
@@ -206,7 +208,6 @@ export async function retrieveProcedures(
     if (misfit === undefined) fitting.push(record);
     else exclusions.push({ procedure: reference, ...misfit });
   }
-  const limit = options.limit ?? 5;
   const hits = buildDerivedIndexes({
     evidence,
     supersessions,

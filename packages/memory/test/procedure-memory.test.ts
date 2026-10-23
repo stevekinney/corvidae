@@ -1162,5 +1162,37 @@ describe('procedure retrieval (COR-770)', () => {
     expect(
       retried.results.every((result) => result.outcome === 'committed' && result.replayed),
     ).toBe(true);
+
+    // A demotion revised later still replays from its receipt.
+    await retireProcedure({
+      engine: harness.engine,
+      authority: searcher,
+      namespace: NAMESPACE,
+      procedure: { id: 'procedure-1', revision: 2 },
+      operationId: 'revoke-after-demotion',
+      change: 'revoke',
+      reason: 'superseded',
+    });
+    const afterRevocation = await recordProcedureOutcome(outcome);
+    expect(afterRevocation.demoted).toBe(true);
+    expect(afterRevocation.results).toHaveLength(3);
+  });
+
+  it('fits a dependency the environment lists more than once, by any of its versions', async () => {
+    await promoted('procedure-1');
+    const retrieval = await retrieve({
+      environment: [
+        { name: 'certbot', version: '2.10.1' },
+        { name: 'certbot', version: '2.11.4' },
+      ],
+    });
+    expect(retrieval.matches.map((match) => match.procedure.id)).toEqual(['procedure-1']);
+  });
+
+  it('refuses a limit that is not a positive integer', async () => {
+    for (const limit of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.NaN]) {
+      const error = await rejectionOf(retrieve({ limit }));
+      expect(error).toBeInstanceOf(RangeError);
+    }
   });
 });
