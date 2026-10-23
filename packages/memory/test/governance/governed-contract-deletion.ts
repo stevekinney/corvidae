@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { attenuateMemoryAuthority } from '../../src/governance/authority';
+import { DELETION_CLAIM_LEASE_MILLISECONDS } from '../../src/governance/deletion';
 import type { MemoryDeletionPropagator } from '../../src/governance/governed-memory-types';
 import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
 import { collectionNamespace } from '../../src/governance/record-governance';
@@ -363,13 +364,14 @@ export function registerDeletionContract(backend: GovernedBackend): void {
       const crashing = fixture.restart({
         ledger: {
           ...fixture.ledger,
+          openReceipt: () => Promise.reject(new Error('process died')),
           putReceipt: async (receipt) => {
             if (receipt.deletionId !== held.deletionId) throw new Error('process died');
             await fixture.ledger.putReceipt(receipt);
           },
         },
       });
-      // The process dies while persisting the re-queued receipt.
+      // The process dies while persisting the re-queued receipt, after claiming the record.
       expect(
         await throwingRejectionOf(crashing.releaseLegalHold(governancePrincipal, heldLocator)),
       ).toThrow('process died');
@@ -377,6 +379,12 @@ export function registerDeletionContract(backend: GovernedBackend): void {
         awaitingHoldRelease: true,
       });
 
+      // Its claim stands until its lease expires, and the held receipt keeps waiting.
+      expect(await fixture.restart().processDeletionPropagation()).toEqual([]);
+      expect(await fixture.ledger.getReceipt(held.deletionId)).toMatchObject({
+        awaitingHoldRelease: true,
+      });
+      await fixture.runtime.advance(DELETION_CLAIM_LEASE_MILLISECONDS);
       const [requeued] = await fixture.restart().processDeletionPropagation();
       expect(requeued?.trigger).toBe('hold-release');
       expect(await fixture.storage.get(recordId, scope)).toBeUndefined();
