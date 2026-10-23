@@ -67,9 +67,15 @@ export type AgUiA2uiDeclaration = {
   readonly supportedCatalogIds: readonly string[] | undefined;
 };
 
-function parseJson(text: string): unknown {
+function recordOf(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function parseRecord(text: string): Record<string, unknown> | undefined {
   try {
-    return JSON.parse(text) as unknown;
+    return recordOf(JSON.parse(text));
   } catch {
     return undefined;
   }
@@ -83,15 +89,14 @@ export function a2uiDeclarationOf(
   headers: Headers,
   forwardedProps?: unknown,
 ): AgUiA2uiDeclaration | undefined {
-  if (typeof forwardedProps === 'object' && forwardedProps !== null) {
-    const declared = (forwardedProps as Record<string, unknown>)[A2UI_CAPABILITIES_FORWARDED_PROP];
-    if (declared !== undefined && declared !== null) {
-      return { supportedCatalogIds: supportedCatalogIdsOf(declared) };
-    }
-  }
+  const declared = recordOf(forwardedProps)?.[A2UI_CAPABILITIES_FORWARDED_PROP];
+  if (recordOf(declared) !== undefined)
+    return { supportedCatalogIds: supportedCatalogIdsOf(declared) };
   const capabilities = headers.get(A2UI_CAPABILITIES_HEADER);
   if (capabilities !== null) {
-    return { supportedCatalogIds: supportedCatalogIdsOf(parseJson(capabilities)) };
+    // A header that is not a JSON object is no declaration, so it opts in to nothing.
+    const fromHeader = parseRecord(capabilities);
+    if (fromHeader !== undefined) return { supportedCatalogIds: supportedCatalogIdsOf(fromHeader) };
   }
   const extensions = headers.get(A2UI_EXTENSIONS_HEADER) ?? '';
   if (extensions.split(',').some((entry) => entry.trim() === A2UI_EXTENSION_URI)) {

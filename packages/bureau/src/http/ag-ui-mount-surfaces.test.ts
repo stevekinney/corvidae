@@ -7,7 +7,7 @@
  * here rather than assumed.
  */
 import { EventType } from '@ag-ui/core';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import {
   confirmAction,
@@ -295,6 +295,79 @@ describe('A2UI surfaces on the AG-UI stream', () => {
       expect(gone.content.messages.map((message) => Object.keys(message)[1])).toEqual([
         'deleteSurface',
       ]);
+      harness.generate.release('hold');
+      await reader.rest();
+    });
+  });
+  it('treats a malformed capabilities header as no opt-in', async () => {
+    await withHarness(async (harness) => {
+      const { reader, taskId } = await startHeld(harness);
+      await propose(harness, taskId, { commandId: 'create' });
+      const attached = new FrameReader(
+        await harness.handler(
+          attachRunRequest(taskId, { 'x-a2ui-client-capabilities': 'not json' }),
+        ),
+      );
+      await attached.until(EventType.STATE_SNAPSHOT);
+      harness.generate.release('hold');
+      const rest = await attached.rest();
+      expect(
+        [...attached.received, ...rest].some((f) => f.event.type === EventType.ACTIVITY_SNAPSHOT),
+      ).toBe(false);
+      await reader.rest();
+    });
+  });
+
+  it('leaves no subscription behind when the client goes away during the opening read', async () => {
+    await withHarness(async (harness) => {
+      const { reader, taskId } = await startHeld(harness);
+      const live = new Set<object>();
+      const subscribe = harness.bureau.subscribeEventHistory.bind(harness.bureau);
+      const subscribeSpy = spyOn(harness.bureau, 'subscribeEventHistory').mockImplementation(
+        (...args: Parameters<typeof subscribe>) => {
+          const subscription = subscribe(...args);
+          live.add(subscription);
+          return {
+            ...subscription,
+            unsubscribe: () => {
+              live.delete(subscription);
+              subscription.unsubscribe();
+            },
+          };
+        },
+      );
+      const history = harness.bureau.eventHistory.bind(harness.bureau);
+      let reading: (() => void) | undefined;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const readSpy = spyOn(harness.bureau, 'eventHistory').mockImplementation(
+        async (...args: Parameters<typeof history>) => {
+          reading?.();
+          await gate;
+          return history(...args);
+        },
+      );
+      try {
+        const reached = new Promise<void>((resolve) => {
+          reading = resolve;
+        });
+        const attached = new FrameReader(
+          await harness.handler(
+            attachRunRequest(taskId, { 'x-a2a-extensions': A2UI_EXTENSION_URI }),
+          ),
+        );
+        await reached;
+        await attached.cancel();
+        release();
+        await Bun.sleep(50);
+        expect(live.size).toBe(0);
+      } finally {
+        release();
+        readSpy.mockRestore();
+        subscribeSpy.mockRestore();
+      }
       harness.generate.release('hold');
       await reader.rest();
     });

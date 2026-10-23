@@ -755,6 +755,9 @@ export function openRunStream(
       return;
     }
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    // A client that went away during the read has already disposed the stream; a source started
+    // now would never be stopped.
+    if (ended) return;
     // The run's surfaces are the stream's second source. They share the run's durable history, so
     // the fence is the highest cursor just read: the source follows the history strictly after it
     // and reads the surfaces as they stand, and nothing falls between the two.
