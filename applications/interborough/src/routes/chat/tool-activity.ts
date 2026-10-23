@@ -79,9 +79,9 @@ export function toolGroups(conversation: ConversationHistory): {
   readonly absorbed: ReadonlySet<string>;
 } {
   const pairs = new Map(
-    pairToolCallsWithResults(
-      conversation.ids.flatMap((id) => conversation.messages[id] ?? []),
-    ).map((pair) => [pair.call.id, pair] as const),
+    pairToolCallsWithResults(conversation.ids.flatMap((id) => conversation.messages[id] ?? [])).map(
+      (pair) => [pair.call.id, pair] as const,
+    ),
   );
   const groups = new Map<string, ToolGroup>();
   const absorbed = new Set<string>();

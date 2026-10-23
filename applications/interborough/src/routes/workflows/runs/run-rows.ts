@@ -133,7 +133,8 @@ export function buildRunRows(input: {
 
 /** The rows a filter keeps. `now` is passed in so a range is the same for every row. */
 export function filterRunRows(rows: readonly RunRow[], filter: RunFilter, now: number): RunRow[] {
-  const earliest = filter.since === undefined ? undefined : now - SINCE_RANGES[filter.since].milliseconds;
+  const earliest =
+    filter.since === undefined ? undefined : now - SINCE_RANGES[filter.since].milliseconds;
   return rows.filter(
     (row) =>
       (filter.status === undefined ||

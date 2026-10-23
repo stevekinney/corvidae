@@ -33,8 +33,8 @@
     <Input
       id={`${id}-answer`}
       label={REVIEWS_COPY.answerLabel}
-        labelVisible={false}
-        placeholder={REVIEWS_COPY.answerLabel}
+      labelVisible={false}
+      placeholder={REVIEWS_COPY.answerLabel}
       bind:value={answer}
       disabled={sending}
     />

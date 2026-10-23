@@ -71,18 +71,28 @@
     const first = rows[0];
     if (first === undefined) return undefined;
     if (needing[0] !== undefined) {
-      return { text: CHAT_COPY.strip.waiting(needing.length), taskId: needing[0].id, tone: 'warning' };
+      return {
+        text: CHAT_COPY.strip.waiting(needing.length),
+        taskId: needing[0].id,
+        tone: 'warning',
+      };
     }
     if (going[0] !== undefined) {
       return { text: CHAT_COPY.strip.working(going.length), taskId: going[0].id, tone: 'info' };
     }
     if (rows.length === 1) {
-      if (first.status === 'failed') return { text: CHAT_COPY.strip.failedOne, taskId: first.id, tone: 'danger' };
-      if (first.status === 'canceled') return { text: CHAT_COPY.strip.canceledOne, taskId: first.id, tone: 'neutral' };
+      if (first.status === 'failed')
+        return { text: CHAT_COPY.strip.failedOne, taskId: first.id, tone: 'danger' };
+      if (first.status === 'canceled')
+        return { text: CHAT_COPY.strip.canceledOne, taskId: first.id, tone: 'neutral' };
       return undefined;
     }
     if (failed[0] !== undefined) {
-      return { text: CHAT_COPY.strip.failed(failed.length, rows.length), taskId: failed[0].id, tone: 'danger' };
+      return {
+        text: CHAT_COPY.strip.failed(failed.length, rows.length),
+        taskId: failed[0].id,
+        tone: 'danger',
+      };
     }
     return undefined;
   });

@@ -1,10 +1,10 @@
-import { renderToolSummary } from './tool-summary';
 import type {
   ToolMetadata,
   ToolPolicyContext,
   ToolPolicyDecision,
   ToolPolicyHooks,
 } from './is-tool';
+import { renderToolSummary } from './tool-summary';
 
 /**
  * What a tool may technically do — the capability axis of the two-axis

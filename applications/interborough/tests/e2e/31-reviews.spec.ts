@@ -57,10 +57,7 @@ test.describe('a tool approval', () => {
     await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
   });
 
-  test('denied from the inbox with a note never runs the tool', async ({
-    page,
-    request,
-  }) => {
+  test('denied from the inbox with a note never runs the tool', async ({ page, request }) => {
     const threadId = newThreadId('reviews-reject');
     await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
 

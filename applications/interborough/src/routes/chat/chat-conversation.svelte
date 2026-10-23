@@ -152,7 +152,8 @@
   }
 
   function openAgent(event: MouseEvent, name: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
+      return;
     event.preventDefault();
     router.navigate(agentPath(name));
   }
@@ -252,7 +253,9 @@
   // is no longer pending the thread is read again. Each set of vanished calls is read once.
   const REREAD_POLL_MILLISECONDS = 3_000;
   const waitingOnPerson = $derived(
-    !choosing && !session.streaming && (session.approvals.length > 0 || session.humanRequests.length > 0),
+    !choosing &&
+      !session.streaming &&
+      (session.approvals.length > 0 || session.humanRequests.length > 0),
   );
   const pendingReviews = createQuery(
     () => ({
@@ -272,7 +275,9 @@
     const shownCalls = approvals.map((entry) => entry.toolCallId);
     const gone = shownCalls.filter(
       (callId) =>
-        !mine.some((review) => review.kind === 'tool-approval' && review.approval.callId === callId),
+        !mine.some(
+          (review) => review.kind === 'tool-approval' && review.approval.callId === callId,
+        ),
     );
     const questionGone =
       session.humanRequests.length > 0 && !mine.some((review) => review.kind === 'human-wait');

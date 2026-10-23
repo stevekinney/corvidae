@@ -418,7 +418,9 @@ test('starts a run it does not release, reaches it from the chat’s run sentenc
 
   await page.getByRole('link', { name: '1 run is working' }).click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
-  await expect(page.locator('.ib-run__heading').getByText('Working', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('.ib-run__heading').getByText('Working', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel run', exact: true }).click();
 

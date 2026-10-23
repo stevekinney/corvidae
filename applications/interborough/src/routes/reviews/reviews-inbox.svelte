@@ -19,7 +19,11 @@
   import QueryFaultBanner from './query-fault-banner.svelte';
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
   import ReviewDetailPanel from './review-detail-panel.svelte';
-  import { partitionPendingReviews, pendingEntriesOnly, type ReviewQuery } from './review-domain.ts';
+  import {
+    partitionPendingReviews,
+    pendingEntriesOnly,
+    type ReviewQuery,
+  } from './review-domain.ts';
   import { mergePendingReviews } from './review-items.ts';
 
   interface ReviewsInboxProps {
@@ -76,7 +80,9 @@
     ),
   );
   const engineEntries = $derived(
-    weftEnabled ? partitionPendingReviews(pendingEntriesOnly(pendingQuery.data ?? []), now).pending : [],
+    weftEnabled
+      ? partitionPendingReviews(pendingEntriesOnly(pendingQuery.data ?? []), now).pending
+      : [],
   );
   $effect(() => {
     waiting = bureauItems.length + engineEntries.length;

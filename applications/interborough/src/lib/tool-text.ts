@@ -27,7 +27,8 @@ export function shorten(text: string, limit: number = LONGEST_SUMMARY): string {
 
 /** The keys and values of a call's arguments, in the order the tool took them. */
 export function argumentEntries(args: unknown): readonly (readonly [string, string])[] {
-  if (!isRecord(args)) return args === undefined || args === null ? [] : [['value', displayValue(args)]];
+  if (!isRecord(args))
+    return args === undefined || args === null ? [] : [['value', displayValue(args)]];
   return Object.entries(args).map(([key, value]) => [key, displayValue(value)] as const);
 }
 

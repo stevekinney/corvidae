@@ -25,7 +25,9 @@
 
   let open = $state(false);
   const folded = $derived(entries.length > 1 && !open);
-  const visible = $derived(folded ? entries.filter((entry) => entry.state === 'needs-you') : entries);
+  const visible = $derived(
+    folded ? entries.filter((entry) => entry.state === 'needs-you') : entries,
+  );
   let detailsOpen = $state<Readonly<Record<string, boolean>>>({});
 
   const STATE_LABEL = {
@@ -59,7 +61,12 @@
   {#each visible as entry (entry.callId)}
     <div class="ib-tool" data-tool-call-row={entry.callId} data-state={entry.state}>
       <div class="ib-tool__line">
-        <span class="ib-tool__glyph" data-state={entry.state} role="img" aria-label={STATE_LABEL[entry.state]}>
+        <span
+          class="ib-tool__glyph"
+          data-state={entry.state}
+          role="img"
+          aria-label={STATE_LABEL[entry.state]}
+        >
           {#if entry.state === 'done'}
             <Check aria-hidden="true" size={16} />
           {:else if entry.state === 'failed'}
@@ -84,7 +91,8 @@
           label={CHAT_COPY.tools.details}
           aria-expanded={detailsOpen[entry.callId] === true}
           aria-controls={`${id}-${entry.callId}-details`}
-          onclick={() => (detailsOpen = { ...detailsOpen, [entry.callId]: detailsOpen[entry.callId] !== true })}
+          onclick={() =>
+            (detailsOpen = { ...detailsOpen, [entry.callId]: detailsOpen[entry.callId] !== true })}
         />
       </div>
       {#if detailsOpen[entry.callId] === true}

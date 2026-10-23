@@ -166,7 +166,9 @@
     <header class="ib-run__header">
       <div class="ib-run__heading">
         <h1 id="ib-run-title" class="ib-run__title">
-          {#if current.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier">{current.agentName}</code>{/if}
+          {#if current.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier"
+              >{current.agentName}</code
+            >{/if}
         </h1>
         <Badge variant={presentation.variant}>{presentation.label}</Badge>
       </div>
@@ -178,7 +180,14 @@
             href={router.href(chatHref)}
             label={TASK_COPY.openChat}
             onclick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+              if (
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey ||
+                event.button !== 0
+              )
+                return;
               event.preventDefault();
               router.navigate(chatHref);
             }}
@@ -192,7 +201,14 @@
           <a
             href={router.href(chatSessionPath(current.contextId))}
             onclick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+              if (
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey ||
+                event.button !== 0
+              )
+                return;
               event.preventDefault();
               router.navigate(chatSessionPath(current.contextId));
             }}>{chat.data.title ?? TASK_COPY.untitledChat}</a
@@ -220,7 +236,9 @@
     )}
     <header class="ib-run__header">
       <div class="ib-run__heading">
-        <h1 id="ib-run-title" class="ib-run__title"><code class="ib-identifier">{attempt.goal.agentName}</code></h1>
+        <h1 id="ib-run-title" class="ib-run__title">
+          <code class="ib-identifier">{attempt.goal.agentName}</code>
+        </h1>
         <Badge variant={presentation.variant}>{presentation.label}</Badge>
       </div>
       <p class="ib-run__origin">
@@ -232,7 +250,8 @@
             router.navigate('/goals');
           }}>{attempt.goal.goalRunId}</a
         >
-        · <span title={attempt.attempt.startedAt}
+        ·
+        <span title={attempt.attempt.startedAt}
           >{formatRelativeTime(Date.parse(attempt.attempt.startedAt), Date.now())}</span
         >
       </p>
@@ -241,7 +260,9 @@
     <Skeleton height="2rem" width="40%" />
   {:else}
     <header class="ib-run__header">
-      <div class="ib-run__heading"><h1 id="ib-run-title" class="ib-run__title">{TASK_COPY.runTitle}</h1></div>
+      <div class="ib-run__heading">
+        <h1 id="ib-run-title" class="ib-run__title">{TASK_COPY.runTitle}</h1>
+      </div>
     </header>
   {/if}
 

@@ -534,7 +534,8 @@ export const CHAT_COPY = {
   strip: {
     waiting: (count: number): string =>
       `${String(count)} ${count === 1 ? 'run is' : 'runs are'} waiting on you`,
-    working: (count: number): string => `${String(count)} ${count === 1 ? 'run is' : 'runs are'} working`,
+    working: (count: number): string =>
+      `${String(count)} ${count === 1 ? 'run is' : 'runs are'} working`,
     finished: 'Run finished',
     failed: (failed: number, total: number): string =>
       `${String(total)} runs, ${String(failed)} failed`,
@@ -879,8 +880,10 @@ export const TASK_COPY = {
   runTitle: 'Run',
   tabsLabel: 'Run sections',
   tabs: { summary: 'Summary', engine: 'Engine' },
-  goalAttemptNote: 'A goal made this run, so the Bureau has no task for it. The Engine tab has what the engine recorded.',
-  engineOnlyNote: 'The Bureau has no task for this run. The Engine tab has what the engine recorded.',
+  goalAttemptNote:
+    'A goal made this run, so the Bureau has no task for it. The Engine tab has what the engine recorded.',
+  engineOnlyNote:
+    'The Bureau has no task for this run. The Engine tab has what the engine recorded.',
   answerTruncated: 'The answer was cut short.',
   followUnavailable:
     'This Bureau cannot follow a task live, so its answer and live updates are not shown here.',

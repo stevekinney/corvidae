@@ -22,7 +22,6 @@ export type {
   PermissionGateDecision,
 } from './approval-policy';
 export { combineToolboxes } from './combine-toolboxes';
-export { renderToolSummary } from './tool-summary';
 export * from './core';
 export { TOOLBOX_BUDGET_EXCEEDED_MARKER, isToolboxBudgetExceededToolError } from './core/errors';
 export type { ToolError, ToolErrorCategory, ToolboxBudgetExceededToolError } from './core/errors';
@@ -57,6 +56,7 @@ export type {
   ExecutionSnapshot,
   ExecutionState,
 } from './execution-lifecycle';
+export { renderToolSummary } from './tool-summary';
 // RuntimeServices is part of this package's public execution contract.
 // Its implementation and types have one source owner: @lostgradient/lifecycle.
 // Deterministic callers can use createManualRuntimeServices from that workspace.

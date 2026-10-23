@@ -682,3 +682,12 @@
 .ib-review__details {
   margin: 0;
 }
+
+/* The heading's count sits beside it, not across the page. */
+.weft-reviews-route__header {
+  justify-content: flex-start;
+}
+
+.ib-review__details .ib-tool__details {
+  padding-inline-start: 0;
+}

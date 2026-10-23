@@ -18,7 +18,7 @@
    * the call comes from the tool's own summary, or else from its name and arguments
    * (`lib/tool-text.ts`).
    */
-  import { Alert, Collapsible } from '@lostgradient/cinder';
+  import { Alert, Button } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
@@ -55,6 +55,8 @@
     undefined,
   );
 
+  let detailsOpen = $state(false);
+
   const agent = $derived(review.agentName ?? REVIEWS_COPY.unknownAgent);
   const question = $derived(
     review.kind === 'tool-approval'
@@ -88,7 +90,10 @@
       deciding={submitting}
       withNote
       onDecide={(decision, note) =>
-        onResolve(decision === 'deny' && note !== '' ? 'reject' : decision, note === '' ? undefined : note)}
+        onResolve(
+          decision === 'deny' && note !== '' ? 'reject' : decision,
+          note === '' ? undefined : note,
+        )}
     />
   {:else}
     <QuestionDecision
@@ -100,19 +105,30 @@
     />
   {/if}
   {#if review.kind === 'tool-approval'}
-    {@const operation = review.approval.action.type === 'approval' ? review.approval.action.operation : undefined}
+    {@const operation =
+      review.approval.action.type === 'approval' ? review.approval.action.operation : undefined}
     <div class="ib-review__details">
-      <Collapsible trigger={REVIEWS_COPY.details}>
-        <dl class="ib-tool__details">
-          {#each argumentEntries(review.approval.arguments) as [key, value] (key)}
-            <dt>{key}</dt>
-            <dd>{value}</dd>
-          {/each}
-        </dl>
-        {#if operation !== undefined}
-          <BureauReviewOperation {operation} />
-        {/if}
-      </Collapsible>
+      <Button
+        variant="ghost"
+        size="lg"
+        label={REVIEWS_COPY.details}
+        aria-expanded={detailsOpen}
+        aria-controls={`review-${review.id}-details`}
+        onclick={() => (detailsOpen = !detailsOpen)}
+      />
+      {#if detailsOpen}
+        <div id={`review-${review.id}-details`}>
+          <dl class="ib-tool__details">
+            {#each argumentEntries(review.approval.arguments) as [key, value] (key)}
+              <dt>{key}</dt>
+              <dd>{value}</dd>
+            {/each}
+          </dl>
+          {#if operation !== undefined}
+            <BureauReviewOperation {operation} />
+          {/if}
+        </div>
+      {/if}
     </div>
   {/if}
   <p class="ib-review__origin">
@@ -125,7 +141,9 @@
   </p>
   {#if outcome !== undefined}
     <Alert variant={outcome.tone}>
-      <p class="ib-decision__failure">{outcome.title}{outcome.message === '' ? '' : `: ${outcome.message}`}</p>
+      <p class="ib-decision__failure">
+        {outcome.title}{outcome.message === '' ? '' : `: ${outcome.message}`}
+      </p>
     </Alert>
   {/if}
 </li>

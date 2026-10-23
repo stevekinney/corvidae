@@ -6,7 +6,7 @@
    * the address's, so a filtered list can be shared. The engine's own table of workflows is the
    * Engine area's; it is not here.
    */
-  import { Avatar, Badge, Button, DataList, EmptyState, ErrorState, Select, Skeleton, StackedListItem } from '@lostgradient/cinder';
+  import { Badge, Button, EmptyState, ErrorState, Select, Skeleton } from '@lostgradient/cinder';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
@@ -76,9 +76,11 @@
     }),
   );
   const rows = $derived(filterRunRows(everyRun, filter, Date.now()));
-  const agentNames = $derived([
-    ...new Set(everyRun.flatMap((row) => (row.agentName === null ? [] : [row.agentName]))),
-  ].toSorted());
+  const agentNames = $derived(
+    [
+      ...new Set(everyRun.flatMap((row) => (row.agentName === null ? [] : [row.agentName]))),
+    ].toSorted(),
+  );
 
   const statusOptions = [
     { value: '', label: TASK_COPY.anyStatus },
@@ -124,10 +126,15 @@
 <section class="ib-runs" aria-labelledby="ib-runs-title">
   <header class="ib-runs__bar">
     <h1 id="ib-runs-title" class="ib-runs__title">{TASK_COPY.listHeading}</h1>
-    <form class="ib-runs__filters" aria-label={TASK_COPY.filtersLabel} onsubmit={(event) => event.preventDefault()}>
+    <form
+      class="ib-runs__filters"
+      aria-label={TASK_COPY.filtersLabel}
+      onsubmit={(event) => event.preventDefault()}
+    >
       <Select
         id="ib-runs-status"
         label={TASK_COPY.statusLabel}
+        labelVisible={false}
         options={statusOptions}
         value={filter.status ?? ''}
         onchange={(event) => change({ status: event.currentTarget.value })}
@@ -135,6 +142,7 @@
       <Select
         id="ib-runs-agent"
         label={TASK_COPY.agentLabel}
+        labelVisible={false}
         options={agentOptions}
         value={filter.agent ?? ''}
         onchange={(event) => change({ agent: event.currentTarget.value })}
@@ -142,6 +150,7 @@
       <Select
         id="ib-runs-started-by"
         label={TASK_COPY.startedByLabel}
+        labelVisible={false}
         options={startedByOptions}
         value={filter.startedBy ?? ''}
         onchange={(event) => change({ startedBy: event.currentTarget.value })}
@@ -149,6 +158,7 @@
       <Select
         id="ib-runs-since"
         label={TASK_COPY.sinceLabel}
+        labelVisible={false}
         options={sinceOptions}
         value={filter.since ?? ''}
         onchange={(event) => change({ since: event.currentTarget.value })}
@@ -176,19 +186,20 @@
       headingLevel={2}
     />
   {:else}
-    <DataList items={rows} key={(row) => row.id} class="ib-runs__list" aria-label={TASK_COPY.listHeading}>
-      {#snippet children(row)}
+    <ul class="ib-runs__list" aria-label={TASK_COPY.listHeading}>
+      {#each rows as row (row.id)}
         {@const presentation = taskStatePresentation(row.status)}
-        <StackedListItem
-          href={router.href(`/runs/${encodeURIComponent(row.id)}`)}
-          data-run={row.id}
-          data-status={presentation.label}
-        >
-          {#snippet leading()}
-            <Avatar size="sm" name={row.agentName ?? '?'} />
-          {/snippet}
-          {#snippet title()}{#if row.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier">{row.agentName}</code>{/if}{/snippet}
-          {#snippet description()}
+        <li class="ib-run-row" data-run={row.id} data-status={presentation.label}>
+          <a
+            class="ib-run-row__agent"
+            href={router.href(`/runs/${encodeURIComponent(row.id)}`)}
+            onclick={(event) => open(event, `/runs/${encodeURIComponent(row.id)}`)}
+          >
+            {#if row.agentName === null}{TASK_COPY.unknownAgent}{:else}<code class="ib-identifier"
+                >{row.agentName}</code
+              >{/if}
+          </a>
+          <span class="ib-run-row__what">
             {#if row.origin.kind === 'chat'}
               <a
                 href={router.href(row.origin.href)}
@@ -199,25 +210,23 @@
               <a
                 href={router.href(row.origin.href)}
                 onclick={(event) => open(event, row.origin.kind === 'goal' ? row.origin.href : '')}
-                >{row.origin.name} ({TASK_COPY.goal})</a
+                ><code class="ib-identifier">{row.origin.name}</code> ({TASK_COPY.goal})</a
               >
             {:else}
               {TASK_COPY.startedDirectly}
             {/if}
             {#if row.summary !== ''}<span class="ib-runs__summary"> · {row.summary}</span>{/if}
-          {/snippet}
-          {#snippet meta()}
+          </span>
+          <Badge variant={presentation.variant}>{presentation.label}</Badge>
+          <span class="ib-run-row__when">
             <span title={new Date(row.startedAt).toISOString()}
               >{formatRelativeTime(row.startedAt, Date.now())}</span
             >
             · {row.durationMs === null ? '—' : formatDuration(row.durationMs)}
-          {/snippet}
-          {#snippet trailing()}
-            <Badge variant={presentation.variant}>{presentation.label}</Badge>
-          {/snippet}
-        </StackedListItem>
-      {/snippet}
-    </DataList>
+          </span>
+        </li>
+      {/each}
+    </ul>
     {#if tasks.hasNextPage}
       <div class="ib-runs__more">
         <Button

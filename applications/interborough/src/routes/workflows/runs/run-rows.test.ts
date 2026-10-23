@@ -1,12 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
-import {
-  buildRunRows,
-  filterRunRows,
-  parseRunFilter,
-  serializeRunFilter,
-} from './run-rows.ts';
+import { buildRunRows, filterRunRows, parseRunFilter, serializeRunFilter } from './run-rows.ts';
 
 const chat = {
   id: 'chat-1',

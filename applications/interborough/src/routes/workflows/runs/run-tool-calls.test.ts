@@ -8,7 +8,11 @@ const thread = [
     id: 'run-1:step:0',
     role: 'assistant',
     toolCalls: [
-      { id: 'c1', type: 'function', function: { name: 'lookup-order', arguments: '{"orderId":"o1"}' } },
+      {
+        id: 'c1',
+        type: 'function',
+        function: { name: 'lookup-order', arguments: '{"orderId":"o1"}' },
+      },
     ],
   },
   {
@@ -22,7 +26,9 @@ const thread = [
   {
     id: 'run-1:step:1',
     role: 'assistant',
-    toolCalls: [{ id: 'c2', type: 'function', function: { name: 'issue-refund', arguments: '{}' } }],
+    toolCalls: [
+      { id: 'c2', type: 'function', function: { name: 'issue-refund', arguments: '{}' } },
+    ],
   },
   {
     id: 'run-1:step:1:result:c2',

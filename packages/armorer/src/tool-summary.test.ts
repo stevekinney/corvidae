@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createApprovalPolicyHooks } from './approval-policy';
 import { createToolCall } from './create-tool';
 import type { ToolPolicyContext } from './is-tool';
-import { createApprovalPolicyHooks } from './approval-policy';
 import { renderToolSummary } from './tool-summary';
 
 const metadata = { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}' };

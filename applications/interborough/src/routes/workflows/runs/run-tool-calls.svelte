@@ -22,7 +22,13 @@
 
   const thread = createQuery(
     () => ({
-      queryKey: ['bureau-tasks', 'thread', task.contextId, task.status, task.openWaits.length] as const,
+      queryKey: [
+        'bureau-tasks',
+        'thread',
+        task.contextId,
+        task.status,
+        task.openWaits.length,
+      ] as const,
       queryFn: ({ signal }) => getThreadMessages(task.contextId, { signal }),
       retry: false,
     }),
