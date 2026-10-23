@@ -298,7 +298,7 @@ describe('inputFormMessages', () => {
       const schema: HumanInputSchema = { type: 'string', minLength: 1 };
       const { components } = messagesOf(schema);
 
-      expect(components.find((component) => component.id === 'field-response')?.label).toBe(
+      expect(components.find((component) => component.id === 'field-response')?.['label']).toBe(
         'Answer',
       );
       expect(checkFormSubmission(schema, { response: 'Alice' })).toEqual({
