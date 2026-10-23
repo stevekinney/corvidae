@@ -407,9 +407,10 @@ export function openRunStream(
     if (flushing || !opened || ended || surfaceSource === undefined) return;
     flushing = true;
     try {
-      while (surfaceChanged && !ended) {
+      while (surfaceChanged) {
         surfaceChanged = false;
         writeEvents(await surfaceEvents());
+        if (ended) return;
       }
     } finally {
       flushing = false;
