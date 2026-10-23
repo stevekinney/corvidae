@@ -119,6 +119,16 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     expect(await fixture.outbox.list()).toHaveLength(2);
   });
 
+  test('a keyed replay whose payload drifted is still one delivery', async () => {
+    const fixture = await createPushFixture();
+    await createConfiguration(fixture);
+
+    await fixture.sender.sendKeyed(statusEvent(1), alice(), 'cursor-1');
+    // The replay rebuilds the event from a task view that has moved on.
+    await fixture.sender.sendKeyed(statusEvent(2), alice(), 'cursor-1');
+    expect(await fixture.outbox.list()).toHaveLength(1);
+  });
+
   test('the wrapped store checks a create through the underlying store', async () => {
     const fixture = await createPushFixture();
     const created = await createConfiguration(fixture);

@@ -193,9 +193,11 @@ export type OutboxPushNotificationSenderOptions = {
 export type OutboxPushNotificationSender = PushNotificationSender & {
   readonly pushStore: WeftPushNotificationStore;
   /**
-   * Send `streamResponse` as the event named by `eventKey`. The key joins the response in the
-   * delivery's identity, so two distinct events whose responses serialize identically are two
-   * deliveries, and only a replay of the same `eventKey` deduplicates.
+   * Send `streamResponse` as the event named by `eventKey`. The key alone is the delivery's
+   * identity, so two distinct events whose responses serialize identically are two deliveries, and
+   * a replay of the same `eventKey` deduplicates even when the response it builds now differs from
+   * the first (a payload that embeds the task's current view drifts between a crash and its
+   * replay): the first delivery stands.
    */
   sendKeyed(
     streamResponse: StreamResponse,
@@ -211,8 +213,8 @@ export type OutboxPushNotificationSender = PushNotificationSender & {
  *
  * - idempotency key `${tenant}:${owner}:${configId}:${taskId}:${digest}` (each
  *   identifier percent-encoded), where `digest` is the SHA-256 of the event's RFC 8785
- *   serialization, so one event is one delivery per configuration however often it is
- *   sent, and two callers whose task and configuration identifiers coincide never
+ *   serialization (for `sendKeyed`, of the event key alone), so one event is one delivery per
+ *   configuration however often it is sent, and two callers whose task and configuration identifiers coincide never
  *   share a key;
  * - `externalIdempotencyKey`, sent as `webhook-id`, derived from that key, so every
  *   attempt of one delivery carries the same `webhook-id`;
@@ -237,6 +239,8 @@ export function createOutboxPushNotificationSender(
     event: {
       readonly json: unknown;
       readonly digest: string;
+      /** Whether the digest names a caller-keyed event, whose replay may carry another payload. */
+      readonly keyed: boolean;
       readonly causation?: ApplicationDeliveryCausation;
     },
   ): Promise<string | null> {
@@ -257,6 +261,9 @@ export function createOutboxPushNotificationSender(
       causation: event.causation,
     });
     if (admission.status === 'rejected') return `${configId}: the outbox backlog is full`;
+    // A keyed event's identity is its key alone, so the same key bound to another payload is the
+    // replay of an event already enqueued, not a second event.
+    if (admission.status === 'conflict' && event.keyed) return null;
     if (admission.status === 'conflict')
       return `${configId}: idempotency key ${idempotencyKey} is bound to another delivery`;
     // A delete that ran between loading the configuration and this enqueue has
@@ -314,9 +321,8 @@ export function createOutboxPushNotificationSender(
     const traceparent = traceparentOf(context);
     const event = {
       json,
-      digest: sha256Hex(
-        eventKey === undefined ? canonicalJson(json) : `${eventKey}\0${canonicalJson(json)}`,
-      ),
+      digest: sha256Hex(eventKey === undefined ? canonicalJson(json) : `keyed\0${eventKey}`),
+      keyed: eventKey !== undefined,
       ...(traceparent === undefined ? {} : { causation: { traceparent } }),
     };
     const failures = await Promise.all(
