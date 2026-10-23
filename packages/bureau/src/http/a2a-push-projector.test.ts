@@ -30,6 +30,7 @@ import {
   type A2APushProjector,
   createA2APushProjector,
 } from './a2a-push-projector.ts';
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { eventually, Receiver, SIGNING_SECRET } from './a2a-push.test-support.ts';
 
 const VIEW: TaskView = {
@@ -630,5 +631,119 @@ describe('the push projector', () => {
     expect(await fixture.checkpoints.read('task-gone', 'config-1')).toBeUndefined();
     expect(await fixture.checkpoints.read('task-1', 'config-1')).toBeUndefined();
     expect(fixture.errors).toEqual([]);
+  });
+
+  it('sends no repair snapshot to a configuration that already got its terminal delivery', async () => {
+    const fixture = harness([started, requested(1), working(2), completed(3)]);
+    await fixture.configure('0');
+    await fixture.checkpoints.markTerminal('task-1', 'config-1', 'completed');
+    fixture.trim(3);
+    fixture.startDelivery();
+
+    await fixture.projector.pump('task-1', 'config-1');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(fixture.receiver.requests).toEqual([]);
+    expect(await cursorOf(fixture.checkpoints)).toBe('3');
+  });
+
+  it('keeps the registry’s settled state in a repair snapshot over an older retained status', async () => {
+    const fixture = harness([started, requested(1), working(2)]);
+    await fixture.configure('0');
+    fixture.trim(2);
+    // The task failed with no durable record, after the last retained event.
+    fixture.setView({ ...VIEW, status: 'failed', finishReason: 'error' });
+    fixture.startDelivery();
+
+    await fixture.projector.pump('task-1', 'config-1');
+    await eventually(() => fixture.receiver.requests.length === 1);
+
+    expect(fixture.receiver.requests[0]?.body.task.metadata).toEqual({ snapshotOf: 'failed' });
+  });
+
+  it('settles ready after one pass, and keeps retrying the task that failed', async () => {
+    const fixture = harness([started, requested(1)]);
+    await fixture.configure('0', 'config-1', 'task-1', 'committed');
+    await fixture.configure('0', 'config-1', 'task-gone');
+    let unreadable = true;
+    const flaky: A2APushCheckpoints = {
+      ...fixture.checkpoints,
+      listForTask: async (taskId) => {
+        if (taskId === 'task-1' && unreadable) throw new Error('unreadable');
+        return fixture.checkpoints.listForTask(taskId);
+      },
+    };
+
+    // The pass resolves although task-1 failed, and the other task was recovered.
+    await fixture.projectorOver(flaky).recoverUntilReady();
+    expect(await fixture.checkpoints.read('task-gone', 'config-1')).toBeUndefined();
+    const stillPending = await fixture.checkpoints.read('task-1', 'config-1');
+    expect(stillPending?.pending).toBe(true);
+    await eventually(() => fixture.errors.length >= 2);
+
+    unreadable = false;
+    await eventually(async () => {
+      const checkpoint = await fixture.checkpoints.read('task-1', 'config-1');
+      return checkpoint?.pending === undefined;
+    });
+  });
+
+  it('settles ready when the checkpoint listing itself fails, and retries it', async () => {
+    const fixture = harness([started, requested(1)]);
+    await fixture.configure('0', 'config-1', 'task-1', 'committed');
+    let failures = 2;
+    const flaky: A2APushCheckpoints = {
+      ...fixture.checkpoints,
+      listTaskIds: async () => {
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error('the checkpoint store is unavailable');
+        }
+        return fixture.checkpoints.listTaskIds();
+      },
+    };
+
+    await fixture.projectorOver(flaky).recoverUntilReady();
+    await eventually(async () => {
+      const checkpoint = await fixture.checkpoints.read('task-1', 'config-1');
+      return checkpoint?.pending === undefined;
+    });
+    expect(failures).toBe(0);
+  });
+
+  it('recovers the other tasks when one task’s recovery fails', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0', 'config-1', 'task-1', 'committed');
+    await fixture.configure('0', 'config-1', 'task-gone');
+    const failing: A2APushCheckpoints = {
+      ...fixture.checkpoints,
+      listTaskIds: async () => ['task-1', 'task-gone'],
+      listForTask: async (taskId) => {
+        if (taskId === 'task-1') throw new Error('unreadable');
+        return fixture.checkpoints.listForTask(taskId);
+      },
+    };
+    fixture.setView(VIEW);
+    expect(await rejectionOf(fixture.projectorOver(failing).recover())).toBeInstanceOf(Error);
+    expect(await fixture.checkpoints.read('task-gone', 'config-1')).toBeUndefined();
+  });
+
+  it('runs fenced work for one task in order, even when an earlier piece fails', async () => {
+    const fixture = harness();
+    const order: string[] = [];
+    const first = fixture.projector.fence('task-1', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      order.push('first');
+      throw new Error('first failed');
+    });
+    const second = fixture.projector.fence('task-1', async () => {
+      order.push('second');
+    });
+    const other = fixture.projector.fence('task-2', async () => {
+      order.push('other');
+    });
+    expect(((await rejectionOf(first)) as Error).message).toBe('first failed');
+    await Promise.all([second, other]);
+    expect(order).toEqual(['other', 'first', 'second']);
   });
 });
