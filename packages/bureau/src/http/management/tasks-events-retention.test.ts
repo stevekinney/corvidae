@@ -4,7 +4,7 @@
  * subscription that names no cursor is unaffected.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -21,6 +21,7 @@ import {
   subscribeRequest,
 } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import type { AgentDefinitions } from '../../agent-catalog';
 
 const ORIGIN = '2026-10-18T00:00:00.000Z';
 const DAY_MS = 86_400_000;
@@ -30,13 +31,16 @@ describe('bureau.tasks.events below the retention floor', () => {
   it('yields exactly one gap element for a resume below the floor, then the retained events', async () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'retention-bureau',
-      agents: {},
-      generate: finishes,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: createToolbox<readonly Tool[]>([]),
+      agents: {
+        default: createAgent({
+          generate: finishes,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: createToolbox<readonly Tool[]>([]),
+        }),
+      },
       runtime,
       storage: fixture.configuration,
       durableExecution: true,
@@ -46,7 +50,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     try {
       const handler = createBureauHandler(bureau, { authentication });
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'first',
         principal: OWNER.alice,
       });
@@ -63,7 +67,7 @@ describe('bureau.tasks.events below the retention floor', () => {
       runtime.setTime(Date.parse(ORIGIN) + 7 * DAY_MS + 1);
       await bureau.runDurableMaintenance();
       const second = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'second',
         principal: OWNER.alice,
       });
@@ -113,24 +117,27 @@ describe('bureau.tasks.events below the retention floor', () => {
     };
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'retention-bureau-two',
-      agents: {},
-      generate: parksThenAnswers,
-      toolbox: createToolbox<readonly Tool[]>([]),
+      agents: {
+        default: createAgent({
+          generate: parksThenAnswers,
+          toolbox: createToolbox<readonly Tool[]>([]),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
       runtime,
       storage: fixture.configuration,
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       durableOwnership: { ownership: 'none' },
       durableBackgroundTasks: 'manual',
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park',
         principal: OWNER.alice,
       });
@@ -193,16 +200,19 @@ describe('bureau.tasks.events below the retention floor', () => {
     const charges: number[] = [];
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'retention-bureau-three',
-      agents: {},
-      generate: chargesOnce,
-      toolbox: approvalToolbox(charges),
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
       runtime,
       storage: fixture.configuration,
       durableExecution: true,
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       // A short window, so the floor passes the settlement while the approval is still valid.
       eventRetention: { olderThan: 1_000 },
       durableOwnership: { ownership: 'none' },
@@ -211,7 +221,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     try {
       const handler = createBureauHandler(bureau, { authentication });
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'charge',
         principal: OWNER.alice,
       });

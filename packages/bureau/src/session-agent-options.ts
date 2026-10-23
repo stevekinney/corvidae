@@ -123,3 +123,22 @@ export function sessionExecuteOptions(
   const { requestContext: _ignored, ...rest } = agentOptions?.executeOptions ?? {};
   return requestContext === undefined ? rest : { ...rest, requestContext };
 }
+
+/**
+ * The run options a scheduled run (a scheduler task or a schedule's fire) takes from its named
+ * agent: every agent-owned option, the request's output-token cap and the agent's execute options
+ * under the scheduler-issued request context. Both scheduled adapters spread this one projection,
+ * so an option cannot reach one and miss the other.
+ */
+export function scheduledAgentRunOptions(
+  agentOptions: RunOptions | undefined,
+  requestContext: ToolRequestContext | undefined,
+): Partial<Pick<RunOptions, AgentOwnedKey | 'maximumTokens' | 'executeOptions'>> {
+  return {
+    ...copyAgentOwnedRunOptions(agentOptions),
+    ...(agentOptions?.maximumTokens === undefined
+      ? {}
+      : { maximumTokens: agentOptions.maximumTokens }),
+    executeOptions: sessionExecuteOptions(agentOptions, requestContext),
+  };
+}

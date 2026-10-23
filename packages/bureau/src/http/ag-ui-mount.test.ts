@@ -5,6 +5,7 @@ import { createBureau } from '../create-bureau.ts';
 import type { AgUiOptions } from './ag-ui-mount.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const AGENT_NAME = 'assistant';
 const THREAD_ID = 'thread-named-option';
@@ -13,11 +14,13 @@ const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [
 
 /** A Bureau with one published-able agent, with or without a durable engine. */
 async function buildBureau(options: { durable: boolean }) {
-  return createBureau({
+  return createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
     id: 'ag-ui-mount-test',
-    agents: { [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }) },
-    generate,
+    agents: {
+      [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }),
+      default: createAgent({ generate }),
+    },
     ...(options.durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
   });
 }
@@ -73,13 +76,17 @@ describe('the agUi option on createBureauHandler', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       assets: { storage: createMemoryAssetStorage() },
       id: 'ag-ui-mount-test',
-      agents: { [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }) },
-      generate: async () => {
-        await gate;
-        return { content: 'Done.', toolCalls: [] };
+      agents: {
+        [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }),
+        default: createAgent({
+          generate: async () => {
+            await gate;
+            return { content: 'Done.', toolCalls: [] };
+          },
+        }),
       },
       storage: { type: 'memory' },
       durableExecution: true,
@@ -90,7 +97,7 @@ describe('the agUi option on createBureauHandler', () => {
         publish: [AGENT_NAME],
         agUi: {},
       });
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'hold' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'hold' });
       const requests = mountRequests('/ag-ui', run.id);
 
       const cancel = await handler(requests['cancel'] as Request);

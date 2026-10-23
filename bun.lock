@@ -48,6 +48,7 @@
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@lucide/svelte": "catalog:",
+        "@modelcontextprotocol/ext-apps": "catalog:",
         "@shikijs/langs": "catalog:",
         "@shikijs/themes": "catalog:",
         "@tanstack/svelte-query": "catalog:",

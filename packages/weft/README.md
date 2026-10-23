@@ -587,6 +587,56 @@ Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller 
 
 Neither lane keeps a session. There is no `Mcp-Session-Id`, and `GET` and `DELETE` on `/mcp` answer `405`. Every request is authenticated on its own credential, so a caller can never continue another caller's exchange. Two consequences follow for 2025-era clients over HTTP: they cannot subscribe to resource updates, and a `notifications/cancelled` cannot reach a call that another request is running. A 2026-07-28 client subscribes through `subscriptions/listen`, and cancels a call by closing its request, which cancels the workflow the tool started. Over stdio (`weft-mcp`), the SDK pins one server instance for the connection, so a 2025-era stdio client subscribes with `resources/subscribe` and cancels with `notifications/cancelled`.
 
+#### MCP for an operation catalog
+
+An application that serves its own operation catalog through `createOperationHandler` can mount its `mcpExposable` operations as MCP tools with `createOperationMcpMount(options?)`, on the same two protocol lanes. Each such operation becomes a tool of its own name whose input schema is the operation's, and each call runs through the full catalog pipeline (transport `mcp`, access policy, parsing, `authorize`, output validation) as the principal the handler authenticated. A unary operation answers with its validated output as `structuredContent`; a `subscription` operation answers with the elements recorded after its `fromCursor`, up to `maxEvents` (default 100), and the cursor to resume from, so a client polls it instead of holding a stream; a catalog fault, a refused caller included, is a tool error result. The mount is stateless like `/mcp` and starts nothing the catalog does not.
+
+The options are `pathPrefix` (default `/mcp`), `maxBodyBytes`, `serverInfo`, `maxEvents`, `idleMs` (how long a `subscription` tool waits for the next element, default 250 ms), and two for MCP Apps. `resources` injects `OperationMcpResource` entries (a `ui://` page, say) that the server lists and reads, each optionally narrowed per caller by `authorize`, so a caller it refuses finds the resource neither listed nor readable; the `resources` capability is advertised only when there is at least one. `toolMeta` attaches `_meta` to a tool's listing by operation name, such as the `ui.resourceUri` that links a tool to a page. The mount knows nothing of what a resource holds: the application builds the page and hands it in.
+
+```ts
+import {
+  createOperationHandler,
+  createOperationMcpMount,
+  defineOperation,
+} from '@lostgradient/weft';
+import { z } from 'zod';
+
+const echo = defineOperation({
+  name: 'probe.echo',
+  mcpExposable: true,
+  summary: 'Echo a message',
+  destructive: false,
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ message: z.string() }),
+  access: { kind: 'public' },
+  transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ input }) => ({ message: input.message }),
+});
+
+export const handler = createOperationHandler({
+  operations: [echo],
+  host: {},
+  mounts: [
+    createOperationMcpMount({
+      serverInfo: { name: 'probe', title: 'Probe' },
+      resources: [
+        {
+          uri: 'ui://probe/page',
+          name: 'probe-page',
+          mimeType: 'text/html;profile=mcp-app',
+          text: '<!doctype html><title>probe</title>',
+          _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } },
+        },
+      ],
+      toolMeta: { 'probe.echo': { ui: { resourceUri: 'ui://probe/page' } } },
+    }),
+  ],
+});
+```
+
+Not supported: sessions (the mount is stateless, as above), MCP tasks, and prompts; the mount serves tools and the injected resources only, and nothing in it starts work the catalog does not. [`@lostgradient/bureau`](../bureau/README.md#mcp-adapter-cor-839-cor-910) is the consumer in this repository.
+
 ### Extra Routes
 
 `serve()` accepts `routes`, Bun's own route table, for anything else the same origin should serve. Bun matches those routes before Weft's API, so `serve()` throws before binding the port when a route would shadow one of Weft's endpoints: `/api` or `/v1` or anything under them, the root `/mcp` and `/jsonrpc` transports, a root discovery document such as `/openapi.json`, or a pattern such as `/*` that could match one of those.

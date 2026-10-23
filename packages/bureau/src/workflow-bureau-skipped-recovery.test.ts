@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -131,37 +131,45 @@ describe('a Bureau started without workflowDirectory over a store with workflow 
     );
     let reachedSecondStep = false;
     const crashed = await createBureau<AgentDefinitions>({
-      agents: scriptedAgents(['writer'], {}, []),
-      generate: async ({ step }) => {
-        if (step === 0) return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        reachedSecondStep = true;
-        return new Promise<never>(() => {});
+      agents: {
+        ...scriptedAgents(['writer'], {}, []),
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0)
+              return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            reachedSecondStep = true;
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([nextTool]),
       workflowDirectory,
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: () => undefined,
     });
     cleanups.push(() => crashed.dispose());
     await crashed.durableEngine()!.start('digest', null, { id: 'digest-run' });
-    const agentRun = await crashed.createRun({ agentName: 'bureau', message: 'Recover me' });
+    const agentRun = await crashed.createRun({ agentName: 'default', message: 'Recover me' });
     expect(await pollUntil(() => reachedSecondStep)).toBe(true);
 
     const steps: number[] = [];
     const recovering = await createBureau<AgentDefinitions>({
-      agents: {},
-      generate: async ({ step }) => {
-        steps.push(step);
-        return { content: `recovered step ${step}`, toolCalls: [] };
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            steps.push(step);
+            return { content: `recovered step ${step}`, toolCalls: [] };
+          },
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([nextTool]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
     cleanups.push(() => recovering.dispose());

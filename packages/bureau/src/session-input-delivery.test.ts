@@ -1,4 +1,9 @@
-import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  type GenerateContext,
+  type GenerateFunction,
+  stopWhen,
+  createAgent,
+} from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -8,6 +13,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 /**
  * COR-1476 — input `submitSessionInput` admits reaches the live durable run at
@@ -48,13 +54,16 @@ async function pollUntil(
 }
 
 async function openBureau(generate: GenerateFunction): Promise<Bureau> {
-  return createBureau({
-    agents: {},
-    generate,
-    toolbox: createToolbox([nextTool]),
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate,
+        toolbox: createToolbox([nextTool]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage: { type: 'memory' },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 
@@ -81,7 +90,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Start',
         principal: 'alice',
       });
@@ -164,7 +173,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -210,7 +219,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     try {
       runNumber = 1;
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'First',
         principal: 'alice',
       });
@@ -228,7 +237,7 @@ describe('createBureau delivers admitted session input at the next step boundary
 
       runNumber = 2;
       const second = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Second',
         principal: 'alice',
         sessionId: first.sessionId,
@@ -254,7 +263,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     try {
       const longId = 's'.repeat(300);
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Start',
         principal: 'alice',
         sessionId: longId,
@@ -287,7 +296,7 @@ describe('createBureau delivers admitted session input at the next step boundary
     try {
       const longId = `session-${'x'.repeat(300)}`;
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Start',
         principal: 'alice',
         sessionId: longId,
@@ -316,27 +325,30 @@ describe('createBureau delivers admitted session input at the next step boundary
     const stepOneStarted = deferred();
     const releaseStepOne = deferred();
     const prompts: string[][] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context: GenerateContext) => {
-        prompts.push(userTexts(context.conversation));
-        if (context.step === 0) {
-          stepZeroStarted.resolve();
-          await releaseStepZero.promise;
-          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        stepOneStarted.resolve();
-        await releaseStepOne.promise;
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context: GenerateContext) => {
+            prompts.push(userTexts(context.conversation));
+            if (context.step === 0) {
+              stepZeroStarted.resolve();
+              await releaseStepZero.promise;
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            stepOneStarted.resolve();
+            await releaseStepOne.promise;
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([nextTool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([nextTool]),
       storage,
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Start',
         principal: 'alice',
       });

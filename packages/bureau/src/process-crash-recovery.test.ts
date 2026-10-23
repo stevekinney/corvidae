@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
 import type { Subprocess } from 'bun';
@@ -36,6 +36,7 @@ import {
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 
@@ -76,17 +77,20 @@ interface Racer {
 async function startRacer(backend: Backend, storagePath: string): Promise<Racer> {
   let stepsAtOrAfterOne = 0;
   let stepZeroCalls = 0;
-  const bureau = await createBureau({
-    agents: {},
-    generate: async ({ step }) => {
-      if (step === 0) stepZeroCalls += 1;
-      else stepsAtOrAfterOne += 1;
-      return { content: `recovered step ${step}`, toolCalls: [] };
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => {
+          if (step === 0) stepZeroCalls += 1;
+          else stepsAtOrAfterOne += 1;
+          return { content: `recovered step ${step}`, toolCalls: [] };
+        },
+        toolbox: createToolbox([createNextTool()]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
     },
-    toolbox: createToolbox([createNextTool()]),
     storage: { type: backend, path: storagePath },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

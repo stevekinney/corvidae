@@ -39,9 +39,13 @@ describe('a schedule fire’s human wait', () => {
   it('is a pending review of the fire, answerable through bureau.tasks.respond', async () => {
     const seen: string[] = [];
     const bureau = await open({
-      generate: askingGenerate('answer', seen),
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      agents: {
+        default: createAgent({
+          generate: askingGenerate('answer', seen),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau);
 
@@ -101,9 +105,13 @@ describe('a schedule fire’s tool approval', () => {
   it('is a pending review of the fire, and approving it runs the tool and releases the task', async () => {
     const charges: number[] = [];
     const bureau = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau);
 
@@ -157,9 +165,13 @@ describe('a schedule fire’s tool approval', () => {
   it('is denied without running the tool', async () => {
     const charges: number[] = [];
     const bureau = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau);
     const review = await reviewOf(bureau, fireId);
@@ -198,7 +210,11 @@ describe('a schedule fire’s human wait after a restart', () => {
       humanInput: true,
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     };
-    const crashed = await open({ ...humanInputOptions, generate: askingGenerate(), storage });
+    const crashed = await open({
+      ...humanInputOptions,
+      storage,
+      agents: { default: createAgent({ generate: askingGenerate() }) },
+    });
     const { fireId } = await fireOnce(crashed);
     const original = await reviewOf(crashed, fireId);
     // The first Bureau is not disposed: a graceful shutdown would cancel the parked fire and
@@ -207,8 +223,8 @@ describe('a schedule fire’s human wait after a restart', () => {
     const seen: string[] = [];
     const restarted = await open({
       ...humanInputOptions,
-      generate: askingGenerate('answer', seen),
       storage,
+      agents: { default: createAgent({ generate: askingGenerate('answer', seen) }) },
     });
     const restored = await reviewOf(restarted, fireId);
 
@@ -294,9 +310,13 @@ describe('a schedule fire’s tool approval after a restart', () => {
 describe('a schedule fire’s reviews end with the fire', () => {
   it('drops a human wait once the fire is canceled', async () => {
     const bureau = await open({
-      generate: askingGenerate(),
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      agents: {
+        default: createAgent({
+          generate: askingGenerate(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau);
     await reviewOf(bureau, fireId);
@@ -311,8 +331,12 @@ describe('a schedule fire’s reviews end with the fire', () => {
 
   it('offers a fire no requestHumanInput without the option, so it cannot park', async () => {
     const bureau = await open({
-      generate: askingGenerate(),
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      agents: {
+        default: createAgent({
+          generate: askingGenerate(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau);
 

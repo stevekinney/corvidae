@@ -64,6 +64,12 @@ export type ReproductionArtifact = OperativeReproductionArtifact<
  * artifact's actual union because it is forwarded verbatim.
  */
 export interface AssembleReproductionArtifactOptions {
+  /**
+   * The model the run was scripted against (AB-92 AC8). A caller names it, because nothing on the
+   * Bureau does: every run belongs to a catalog agent, which owns its own model, so there is no
+   * Bureau-wide provider to read it from (COR-323).
+   */
+  readonly effectiveModel: ReproductionArtifact['effectiveModel'];
   readonly terminalResult: unknown;
   readonly cleanupReport: ReproductionArtifact['cleanupReport'];
 }
@@ -173,34 +179,8 @@ async function readPackageVersions(): Promise<Readonly<Record<string, string>>> 
 }
 
 /**
- * Reads the harness's Bureau-level `effectiveModel` off `getConfiguration()`
- * — the same redacted (`apiKey`-stripped) provider configuration the
- * gateway's own `/api/v1/config` endpoint serves. `effort` is left
- * unpopulated: Bureau's `ProviderConfiguration` carries no effort field on
- * this baseline (AB-155, related but not blocking, is the fix for
- * `effectiveModel.effort` records). Throws rather than inventing a provider
- * or model name (matching `generation-profile.ts`'s "never invented"
- * rollback trigger) when the harness was constructed without a `provider`
- * — a scripted `generate` double still needs `BureauOptions.provider` set
- * alongside it for a caller that wants a reproduction artifact.
- */
-function resolveEffectiveModel<D extends AgentDefinitions>(
-  harness: BureauTestHarness<D>,
-): ReproductionArtifact['effectiveModel'] {
-  const provider = harness.bureau.getConfiguration().provider;
-  if (!provider) {
-    throw new Error(
-      'assembleReproductionArtifact: harness bureau has no configured `provider`; ' +
-        'ReproductionArtifact.effectiveModel (AB-92 AC8) requires BureauOptions.provider — ' +
-        'pass one alongside a scripted `generate` double when a reproduction artifact is needed.',
-    );
-  }
-  return { provider: provider.provider, model: provider.model };
-}
-
-/**
  * Assembles a {@link ReproductionArtifact} from a harness run: `harness`
- * supplies the source revision's runtime context (seeds, effective model),
+ * supplies the source revision's runtime context (seeds),
  * `recorder` supplies `causalTrace` via `EventRecorder.normalize()` and
  * nothing else (AB-263's own acceptance criteria), and `options` supplies
  * the run's own terminal result and cleanup report.
@@ -234,7 +214,7 @@ export async function assembleReproductionArtifact<D extends AgentDefinitions = 
   return Object.freeze({
     sourceRevision,
     packageVersions,
-    effectiveModel: resolveEffectiveModel(harness),
+    effectiveModel: options.effectiveModel,
     clockOrigin: harness.runtime.clockOrigin,
     identifierSeed: harness.runtime.identifierSeed,
     randomSeed: harness.runtime.randomSeed,

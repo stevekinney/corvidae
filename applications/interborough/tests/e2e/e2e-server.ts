@@ -49,7 +49,6 @@ import {
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { createEchoAgents, IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
-import { createFireQuestionGenerate } from './fire-question.ts';
 import {
   createJourneyProviderResolver,
   createRecallAgents,
@@ -111,8 +110,6 @@ let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // is its own. Two more again (`question-agents.ts`) ask the person more than one thing.
 const barrier = createBarrier();
 const host = await startHost({
-  // A schedule's fire runs this, not its agent's script: it asks a question for one input.
-  generate: createFireQuestionGenerate(),
   extraAgents: {
     agents: {
       ...createBarrierAgents(barrier),

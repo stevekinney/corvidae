@@ -2,12 +2,13 @@
  * `Bureau.durableEngine` hands out the engine that owns the bureau's runs, so a host serves Weft's
  * API over those runs through it instead of building a second engine over the same storage.
  */
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 
@@ -16,13 +17,16 @@ afterEach(async () => {
 });
 
 async function bureauWith(options: { readonly durableExecution: boolean }): Promise<Bureau> {
-  const bureau = await createBureau({
-    agents: {},
-    generate: async () => ({ content: 'done', toolCalls: [] }),
-    toolbox: createToolbox([]),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async () => ({ content: 'done', toolCalls: [] }),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage: { type: 'memory' },
     durableExecution: options.durableExecution,
-    stopWhen: stopWhen.noToolCalls(),
   });
   bureaus.push(bureau);
   return bureau;
@@ -31,7 +35,7 @@ async function bureauWith(options: { readonly durableExecution: boolean }): Prom
 describe('Bureau.durableEngine', () => {
   it('is the engine that holds the bureau’s runs', async () => {
     const bureau = await bureauWith({ durableExecution: true });
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
     await bureau.waitForDurableRun(run.id);
 
     const engine = bureau.durableEngine();

@@ -22,6 +22,7 @@ import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const PRINCIPAL = 'api-key:alice';
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
@@ -222,7 +223,7 @@ describe('a recovered child run', () => {
           };
     };
     const open = (gate?: Promise<void>) =>
-      createBureau({
+      createBureau<AgentDefinitions>({
         id: 'recovered-child',
         agents: {
           worker: createAgent({
@@ -230,20 +231,25 @@ describe('a recovered child run', () => {
             toolbox: createToolbox([]),
             stopWhen: stopWhen.noToolCalls(),
           }),
+          default: createAgent({
+            generate: parentGenerate,
+            toolbox: createToolbox([]),
+            stopWhen: stopWhen.some(
+              stopWhen.toolCalled('requestHumanInput'),
+              stopWhen.noToolCalls(),
+            ),
+          }),
         },
-        generate: parentGenerate,
-        toolbox: createToolbox([]),
         storage: { type: 'sqlite', path },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         onDiagnostic: () => undefined,
       });
     const first = await open();
     cleanups.push(() => first.dispose());
     const parent = await first.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'parent',
       principal: PRINCIPAL,
     });

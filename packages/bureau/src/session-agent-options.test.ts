@@ -7,6 +7,7 @@
  */
 import {
   createAgent,
+  type RunOptions,
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   stopWhen,
@@ -18,6 +19,7 @@ import { z } from 'zod';
 import {
   AGENT_OWNED_RUN_OPTION_KEYS,
   copyAgentOwnedRunOptions,
+  scheduledAgentRunOptions,
   SESSION_AGENT_OPTION_DISPOSITIONS,
 } from './session-agent-options';
 
@@ -72,5 +74,24 @@ describe('session agent options', () => {
 
   it('leaves out an option the agent left unset', () => {
     expect(copyAgentOwnedRunOptions({ schemaRetries: undefined } as never)).toEqual({});
+  });
+});
+
+describe('scheduledAgentRunOptions', () => {
+  it('carries every agent-owned option, the token cap, and the execute options under the scheduler context', () => {
+    const agentOptions = {
+      maximumTokens: 5,
+      executeOptions: { concurrency: 2, requestContext: { principal: 'agent' } as never },
+    } as never as RunOptions;
+    for (const key of AGENT_OWNED_RUN_OPTION_KEYS) Object.assign(agentOptions, { [key]: key });
+
+    const projected = scheduledAgentRunOptions(agentOptions, { principal: 'scheduler' } as never);
+
+    for (const key of AGENT_OWNED_RUN_OPTION_KEYS) expect(projected[key]).toBe(key as never);
+    expect(projected.maximumTokens).toBe(5);
+    expect(projected.executeOptions as unknown).toEqual({
+      concurrency: 2,
+      requestContext: { principal: 'scheduler' },
+    });
   });
 });

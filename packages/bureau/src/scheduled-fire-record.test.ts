@@ -1,4 +1,4 @@
-import { stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import { stopWhen, type GenerateFunction, createAgent } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
@@ -10,6 +10,7 @@ import {
   recordScheduleFired,
   releaseScheduledFire,
 } from './scheduled-fire-record';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -26,7 +27,7 @@ describe('the attribution of a schedule fire (COR-718)', () => {
   it('holds an entry while the fire runs, and none once it has settled, however many fires there are', () => {
     const runAttribution = new Map<string, RunAttribution>();
     const firedRunIds = new Set<string>();
-    runAttribution.set('interactive-run', { agentName: 'bureau', principal: 'api-key:bob' });
+    runAttribution.set('interactive-run', { agentName: 'default', principal: 'api-key:bob' });
 
     for (let index = 0; index < 100; index += 1) {
       attributeScheduledFire(runAttribution, firedRunIds, fireOf(index));
@@ -44,7 +45,7 @@ describe('the attribution of a schedule fire (COR-718)', () => {
   it('never releases an attribution that a fire did not record', () => {
     const runAttribution = new Map<string, RunAttribution>();
     const firedRunIds = new Set<string>();
-    runAttribution.set('interactive-run', { agentName: 'bureau', principal: 'api-key:bob' });
+    runAttribution.set('interactive-run', { agentName: 'default', principal: 'api-key:bob' });
 
     releaseScheduledFire(runAttribution, firedRunIds, 'interactive-run');
 
@@ -54,11 +55,11 @@ describe('the attribution of a schedule fire (COR-718)', () => {
 
 describe('the schedule.fired entry (COR-718)', () => {
   it('is written once when the same fire is recorded concurrently, as two instances rebuilding it would', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate,
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const trail = bureau.auditTrail!;

@@ -5,12 +5,14 @@ import {
   SchedulePausedEvent,
   ScheduleResumedEvent,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 // ---------------------------------------------------------------------------
 // D6 scheduled-fire E2E (#109)
@@ -81,21 +83,24 @@ describe('D6 scheduled-fire path (#109)', () => {
     'fires a stateless interval schedule and runs the agent with a fresh session per fire',
     async () => {
       const calls: RecordedCall[] = [];
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate(calls),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate(calls),
+            toolbox: createEmptyToolbox(),
+            instructions: 'You are a scheduled agent.',
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        systemPrompt: 'You are a scheduled agent.',
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         // A bare duration shorthand ('1s') is registered as an interval
         // ({ every: '1s' }), not cron — see toScheduleSpec.
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'stateless tick prompt',
           spec: '1s',
         });
@@ -128,19 +133,22 @@ describe('D6 scheduled-fire path (#109)', () => {
     async () => {
       const sessionId = 'daily-digest';
       const calls: RecordedCall[] = [];
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate(calls),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate(calls),
+            toolbox: createEmptyToolbox(),
+            instructions: 'You are a scheduled agent.',
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        systemPrompt: 'You are a scheduled agent.',
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'digest prompt',
           spec: '1s',
           sessionId,
@@ -181,10 +189,13 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
   it(
     'dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent from Bureau.pauseSchedule/resumeSchedule/cancelSchedule',
     async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate([]),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate([]),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -198,7 +209,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(ScheduleCancelledEvent.type, (event) => cancelled.push(event));
 
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'paused forever',
           spec: '1h',
         });
@@ -221,10 +232,13 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
   it(
     'dispatches AgentScheduledEvent (schedule.created) exactly once from Bureau.createSchedule, carrying scheduleId and the definition summary (AB-298)',
     async () => {
-      const bureau = await createBureau({
-        agents: {},
-        generate: createRecordingGenerate([]),
-        toolbox: createEmptyToolbox(),
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: createRecordingGenerate([]),
+            toolbox: createEmptyToolbox(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
       });
@@ -234,7 +248,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(AgentScheduledEvent.type, (event) => created.push(event));
 
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'daily digest',
           spec: '1h',
           sessionId: 'daily-digest',
@@ -243,7 +257,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
 
         expect(created.map((event) => event.type)).toEqual(['schedule.created']);
         expect(created[0]).toMatchObject({
-          agentName: 'researcher',
+          agentName: 'default',
           scheduleId: summary!.id,
           spec: { every: '1h' },
           sessionId: 'daily-digest',

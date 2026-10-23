@@ -13,15 +13,16 @@ import { describe, expect, it } from 'bun:test';
 import { BureauError, createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
 async function openBureau() {
-  return createBureau({
-    agents: {},
-    generate,
+  return createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     storage: { type: 'memory' },
-    stopWhen: stopWhen.noToolCalls(),
   });
 }
 
@@ -37,7 +38,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hello',
         principal: 'api-key:alice',
       });
@@ -58,7 +59,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('gives a run created with no principal the owner anonymous:local', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await settle(bureau, run.id);
 
       expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
@@ -86,7 +87,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'mine',
         principal: 'api-key:alice',
       });
@@ -94,7 +95,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
 
       for (const principal of ['api-key:bob', undefined]) {
         const attempt = bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'yours now',
           sessionId: first.sessionId,
           ...(principal === undefined ? {} : { principal }),
@@ -116,13 +117,13 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const first = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'one',
         principal: 'api-key:alice',
       });
       await settle(bureau, first.id);
       const second = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'two',
         sessionId: first.sessionId,
         principal: 'api-key:alice',
@@ -139,18 +140,18 @@ describe('the owner of a run and of its session (COR-718)', () => {
 
   it('refuses to read the history of a session another principal owns', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-history-'));
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'owner-history',
-      agents: {},
-      generate,
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'mine',
         principal: 'api-key:alice',
       });
@@ -178,7 +179,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
       expect(
         await rejectionOf(
           bureau.createRun({
-            agentName: 'bureau',
+            agentName: 'default',
             message: 'x',
             runCreationRequestId: 'request-1',
           }),
@@ -196,13 +197,13 @@ describe('two principals racing to create one new session (COR-718)', () => {
     try {
       const outcomes = await Promise.allSettled([
         bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'from alice',
           sessionId: 'raced',
           principal: 'api-key:alice',
         }),
         bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'from bob',
           sessionId: 'raced',
           principal: 'api-key:bob',
@@ -267,14 +268,14 @@ describe('the owner of a catalog run (COR-718)', () => {
 describe('durable history follows the owner of record (COR-718)', () => {
   async function openDurableBureau() {
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-history-owners-'));
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       id: 'owner-history-owners',
-      agents: {},
-      generate,
+      agents: {
+        default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+      },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     return { bureau, directory };
   }
@@ -284,7 +285,7 @@ describe('durable history follows the owner of record (COR-718)', () => {
   it('reads a run created with no principal as owned by anonymous:local, and by no one else', async () => {
     const { bureau, directory } = await openDurableBureau();
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'no principal' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'no principal' });
       await settle(bureau, run.id);
 
       const asLocal = await bureau.eventHistory(

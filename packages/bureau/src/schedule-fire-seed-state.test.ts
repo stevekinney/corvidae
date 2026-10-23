@@ -2,7 +2,7 @@
  * COR-1622 — a fire's seed state is bounded: held while the fire is in flight, gone once it has
  * settled.
  */
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { fireReviewSeedsOf } from './fire-review-seeds';
@@ -24,10 +24,14 @@ afterEach(async () => {
 describe('a fire’s seed state', () => {
   it('is held while the fire is in flight and gone once it has settled', async () => {
     const bureau = await harness.open({
-      generate: askingGenerate(),
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
+      agents: {
+        default: createAgent({
+          generate: askingGenerate(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const seeds = fireReviewSeedsOf(bureau);
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'closes-seed-bounded');

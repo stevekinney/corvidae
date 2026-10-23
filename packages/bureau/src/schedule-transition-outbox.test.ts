@@ -43,9 +43,10 @@ function newFixture() {
 async function open(fixture: ReturnType<typeof newFixture>): Promise<Bureau<AgentDefinitions>> {
   const generate = finishes;
   const bureau = await createBureau<AgentDefinitions>({
-    agents: { researcher: createAgent({ generate, toolbox: createToolbox([]) }) },
-    generate,
-    toolbox: createToolbox([]),
+    agents: {
+      researcher: createAgent({ generate, toolbox: createToolbox([]) }),
+      default: createAgent({ generate, toolbox: createToolbox([]) }),
+    },
     storage: fixture.configuration,
     durableExecution: true,
     durableOwnership: { ownership: 'none' },

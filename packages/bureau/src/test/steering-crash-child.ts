@@ -29,8 +29,11 @@ import { writeFileSync } from 'node:fs';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
 
+import { STEERABLE_MODELS } from '../testing/default-agent.test-support';
 import { createBureau } from '../create-bureau';
 import type { SteeringCommandRequest } from '../steering';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const COMMANDS = {
   pause: { id: 'crash-cmd-1', principal: 'alice', requestedValue: { target: 'pause' } },
@@ -69,10 +72,14 @@ if (
   process.exit(2);
 }
 
-const bureau = await createBureau({
-  agents: {},
-  generate: () => new Promise<never>(() => {}),
-  toolbox: createToolbox([]),
+const bureau = await createBureau<AgentDefinitions>({
+  agents: {
+    default: createAgent({
+      allowedCandidates: STEERABLE_MODELS,
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+    }),
+  },
   storage: { type: 'sqlite', path: storagePath },
   durableExecution: true,
   // A short workflow claim, so a later process can recover this one's run
@@ -91,7 +98,7 @@ if (mode === 'retry') {
   sessionId = sessionArgument ?? '';
 } else {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'Wait forever',
     principal: 'alice',
   });

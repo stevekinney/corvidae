@@ -11,11 +11,12 @@ import {
   createMemoryGovernancePolicy,
   createMockEmbedder,
 } from '@lostgradient/memory';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 /** The test's own timeout, which is the same as the other scheduled-fire tests'. */
 const FIRE_TIMEOUT_MS = 20_000;
@@ -41,13 +42,16 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
         embedder: createMockEmbedder(64),
         policy: createMemoryGovernancePolicy({ revision: 'governance:scheduled-fire' }),
       });
-      const bureau = await createBureau({
+      const bureau = await createBureau<AgentDefinitions>({
         id: 'scheduled-memory-bureau',
-        agents: {},
-        generate: async () => ({ content: 'The digest is ready.', toolCalls: [] }),
+        agents: {
+          default: createAgent({
+            generate: async () => ({ content: 'The digest is ready.', toolCalls: [] }),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'memory' },
         durableExecution: true,
-        stopWhen: stopWhen.noToolCalls(),
         memory,
       });
       const as = (ownerId: string) =>

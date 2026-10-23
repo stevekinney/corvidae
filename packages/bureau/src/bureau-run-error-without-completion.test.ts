@@ -10,12 +10,14 @@ import {
   BudgetThresholdEvent,
   type GenerateFunction,
   type RunFrame,
+  createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 const ORIGIN = '2026-10-04T00:00:00.000Z';
 
@@ -105,10 +107,10 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
     };
     const base = await resolveStorage({ type: 'memory' });
     const race = loseFirstCheckpointCommitAfter(base, () => generateRejected);
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      toolbox: createToolbox<readonly Tool[]>([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate, toolbox: createToolbox<readonly Tool[]>([]) }),
+      },
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
       storage: race.storage,
       durableExecution: true,
@@ -119,7 +121,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
       bureau.subscribeLiveFrames((frame) => {
         if (frame.type === 'run-envelope') frames.push(frame.frame);
       });
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Go.' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Go.' });
       await race.lost;
       await settle();
       addListener.mockRestore();

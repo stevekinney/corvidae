@@ -25,7 +25,7 @@ export type {
 export { McpEndpoint, createMcpEndpoint, handleMcpHttpRequest } from './http.ts';
 export type { McpEndpointOptions, McpHttpRequestOptions } from './http.ts';
 export { createOperationMcpMount } from './operation-tools.ts';
-export type { OperationMcpMountOptions } from './operation-tools.ts';
+export type { OperationMcpMountOptions, OperationMcpResource } from './operation-tools.ts';
 export {
   DEFAULT_MCP_MAX_BODY_BYTES,
   MCP_LEGACY_PROTOCOL_VERSION,

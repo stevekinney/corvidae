@@ -12,11 +12,10 @@
  */
 import { writeFileSync } from 'node:fs';
 
-import { stopWhen } from '@lostgradient/operative';
-
 import { createBureau } from '../create-bureau';
 import { lookupTool } from '../testing/agent-file-fixtures.test-support';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const [storagePath, agentDirectory, markerPath] = process.argv.slice(2);
 if (storagePath === undefined || agentDirectory === undefined || markerPath === undefined) {
@@ -29,7 +28,7 @@ if (storagePath === undefined || agentDirectory === undefined || markerPath === 
 const RUNS_EXPECTED = 4;
 let parked = 0;
 
-const bureau = await createBureau({
+const bureau = await createBureau<AgentDefinitions>({
   agents: {},
   agentDirectory,
   agentTools: { 'lookup-order': lookupTool },
@@ -43,7 +42,6 @@ const bureau = await createBureau({
       parked += 1;
       return new Promise<never>(() => {});
     },
-  stopWhen: stopWhen.noToolCalls(),
   storage: { type: 'sqlite', path: storagePath },
   durableExecution: true,
   durableOwnership: {

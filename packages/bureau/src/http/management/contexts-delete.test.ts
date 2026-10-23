@@ -40,7 +40,7 @@ async function startRun(
   options: { principal?: string; sessionId?: string; message?: string } = {},
 ) {
   const run = await opened.bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: options.message ?? 'work',
     principal: options.principal ?? OWNER.alice,
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
@@ -64,12 +64,12 @@ describe('bureau.contexts.delete access', () => {
   it('deletes a context the caller owns, and any context for bureau.contexts:write', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const mine = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'mine',
         principal: OWNER.alice,
       });
       const theirs = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'theirs',
         principal: OWNER.bob,
       });
@@ -111,7 +111,7 @@ describe('bureau.contexts.delete access', () => {
   it('answers a context the caller may not delete exactly as it answers one that does not exist', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'mine',
         principal: OWNER.alice,
       });
@@ -359,7 +359,7 @@ describe('the fence around a context being deleted', () => {
       const deletion = opened.bureau.deleteSession(run.sessionId);
       const refused = await opened.bureau
         .createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'late',
           principal: OWNER.alice,
           sessionId: run.sessionId,
@@ -373,7 +373,7 @@ describe('the fence around a context being deleted', () => {
       expect(refused).toBeInstanceOf(BureauError);
       expect((refused as BureauError).code).toBe('NOT_FOUND');
       const again = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'fresh start',
         principal: OWNER.alice,
         sessionId: run.sessionId,
@@ -466,7 +466,7 @@ describe('the fence around a context being deleted', () => {
       admission.arm();
       const creating = rejectionOf(
         opened.bureau.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'overtaken',
           principal: OWNER.alice,
           sessionId: 'overtaken',
@@ -514,7 +514,7 @@ describe('erasing the originating messages of a deleted context', () => {
     const opened = await openBureau({ storage: fixture.configuration, generate: answering() });
     try {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'ERASE-ME',
         principal: OWNER.alice,
       });
@@ -567,7 +567,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       async () => {
         await bureau!.deleteSession(contextId);
         bobsRun = await bureau!.createRun({
-          agentName: 'bureau',
+          agentName: 'default',
           message: 'BOB-PRIVATE-OPENING',
           principal: OWNER.bob,
           sessionId: contextId,
@@ -579,7 +579,7 @@ describe('a context id that is reused while a request for it is in flight', () =
     bureau = opened.bureau;
     try {
       await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'alice opening',
         principal: OWNER.alice,
         sessionId: contextId,

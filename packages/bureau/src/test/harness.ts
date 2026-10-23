@@ -270,24 +270,6 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
   awaitSchedulerTask(taskId: string): Promise<RunResult | null>;
 }
 
-/**
- * Bounded, event-driven wait for `bureau.ready` — `createBureau` already
- * awaits its own recovery barrier before resolving on the common path
- * (no deferred gateway-authority recovery pending), so this settles on the
- * very first check in that case. It exists so the harness's own contract
- * ("resolves only after `bureau.ready` is `true` and boot recovery has
- * completed") holds even on the less common deferred-recovery path,
- * without asserting anything about `createBureau`'s internals. Bounded via
- * `waitForCondition`'s own macrotask-yield loop — never a real timer, never
- * a fixed wall-clock sleep.
- */
-async function waitForBureauReady(bureau: Bureau): Promise<void> {
-  await waitForCondition(
-    () => bureau.ready,
-    'Bureau test harness: bureau.ready never became true after boot recovery',
-  );
-}
-
 function throwUnsupported(capability: BureauHarnessCapability): never {
   throw new BureauHarnessUnsupportedError(capability);
 }
@@ -310,17 +292,14 @@ async function disposeQuietly(disposable: { dispose(): Promise<void> } | undefin
 
 /**
  * Constructs a real `Bureau` over deterministic runtime services and an
- * owned storage fixture, resolving only after `bureau.ready` is `true` and
- * boot recovery has completed.
+ * owned storage fixture, resolving once `createBureau` has finished its boot
+ * recovery.
  *
- * On failure — `createBureau` itself rejects, or `bureau.ready` never
- * settles true — this cleans up whatever it already constructed before
- * rethrowing: the storage fixture is disposed (releasing an
- * allocated-but-never-returned sqlite/lmdb path so it can't accumulate
- * under repeated failing test runs) and, if `createBureau` DID produce a
- * `Bureau` before the readiness wait failed, that bureau is disposed too.
- * A caller never receives a partially-constructed harness to clean up
- * itself.
+ * On failure — `createBureau` itself rejects — this cleans up whatever it
+ * already constructed before rethrowing: the storage fixture is disposed
+ * (releasing an allocated-but-never-returned sqlite/lmdb path so it can't
+ * accumulate under repeated failing test runs). A caller never receives a
+ * partially-constructed harness to clean up itself.
  */
 export async function createBureauTestHarness<D extends AgentDefinitions = AgentDefinitions>(
   options: BureauTestHarnessOptions<D>,
@@ -335,8 +314,6 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
       runtime,
       storage: storage.configuration,
     });
-
-    await waitForBureauReady(bureau as unknown as Bureau);
   } catch (error) {
     await disposeQuietly(bureau);
     await disposeQuietly(storage);

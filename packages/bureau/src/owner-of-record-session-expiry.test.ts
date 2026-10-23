@@ -13,6 +13,7 @@ import {
   type DurableEventEnvelope,
   type GenerateFunction,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
@@ -20,6 +21,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const ALICE = 'api-key:alice';
@@ -28,14 +30,14 @@ const SIDE_RECORD_PREFIX = 'session-deletion-owner:v1:';
 
 async function openBureau() {
   const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-expiry-'));
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: 'session-expiry',
-    agents: {},
-    generate,
+    agents: {
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    stopWhen: stopWhen.noToolCalls(),
   });
   return { bureau, directory };
 }
@@ -44,7 +46,7 @@ type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'hello',
     sessionId,
     principal,
@@ -285,7 +287,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
   const bureau = await open(generate);
   try {
     const aliceRun = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'ALICE-SECRET-PROMPT',
       sessionId: 'shared',
       principal: ALICE,
@@ -296,7 +298,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     // The session store knows nothing of runs: the expiry is Bureau's to handle.
     expect(await bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
     const bobRun = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'bob prompt',
       sessionId: 'shared',
       principal: BOB,
@@ -331,11 +333,11 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
 describe('a run whose session expired and was recreated while it ran (COR-718)', () => {
   it('writes nothing into the new owner’s session on a KV-only Bureau, and settles as aborted', async () => {
     await expiryDuringRun((generate) =>
-      createBureau({
-        agents: {},
-        generate,
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+        },
         persistence: textValueStore(new MemoryStorage()),
-        stopWhen: stopWhen.noToolCalls(),
       }),
     );
   });
@@ -344,14 +346,14 @@ describe('a run whose session expired and was recreated while it ran (COR-718)',
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-expiry-durable-'));
     try {
       await expiryDuringRun((generate) =>
-        createBureau({
+        createBureau<AgentDefinitions>({
           id: 'session-expiry',
-          agents: {},
-          generate,
+          agents: {
+            default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+          },
           storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
-          stopWhen: stopWhen.noToolCalls(),
         }),
       );
     } finally {
