@@ -88,6 +88,7 @@ describe('a continuation whose receipt could not be recorded', () => {
         definitionRevision: 1,
         skillDescriptors: undefined,
         security: undefined,
+        durableHistory: false,
       });
       const handler = createBureauA2ARequestHandler({
         agentName: 'asker',
@@ -163,6 +164,7 @@ describe('a completed task whose reply this instance cannot read yet', () => {
         definitionRevision: 1,
         skillDescriptors: undefined,
         security: undefined,
+        durableHistory: false,
       });
       const handler = createBureauA2ARequestHandler({
         agentName: 'asker',
