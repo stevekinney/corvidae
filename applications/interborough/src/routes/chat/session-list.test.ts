@@ -109,6 +109,101 @@ describe('the list of sessions', () => {
     expect(today?.querySelectorAll('.cinder-badge')).toHaveLength(0);
   });
 
+  test('lists a waiting chat from a page that is not loaded under Needs you, read on its own', async () => {
+    const waitingReview = (sessionId: string, id: string) => ({
+      id,
+      runId: `run-${id}`,
+      kind: 'human-wait',
+      sessionId,
+      signalName: 'environment',
+      prompt: `Question of ${sessionId}?`,
+      requestedAt: 1,
+      ageMilliseconds: 1,
+      status: 'pending',
+    });
+    const served = bureau({
+      // Twenty newer chats fill the first page; the waiting ones are older, past it.
+      'bureau.contexts.list': () => page(0, 20, true),
+      'bureau.reviews.list': () => ({
+        reviews: [
+          waitingReview('late-waiting', 'review-1'),
+          waitingReview('late-goal', 'review-2'),
+          waitingReview('session-3', 'review-3'),
+        ],
+      }),
+      'bureau.contexts.get': (params) => {
+        const contextId = String(params['contextId']);
+        return {
+          ...CONTEXT,
+          id: contextId,
+          title: `Late ${contextId}`,
+          agentName: 'request-human-input',
+          activity: 'awaiting-input',
+          updatedAt: '2026-09-01T09:00:00.000Z',
+          // A goal's session is not one of the chats Chat lists.
+          origin: contextId === 'late-goal' ? 'goal' : 'chat',
+        };
+      },
+    });
+    restore = served.restore;
+    landAt('/chat');
+
+    const { findByRole } = mount();
+
+    const list = await findByRole('navigation', { name: 'Chats' });
+    await waitFor(() => expect(list.textContent).toContain('Late late-waiting'));
+    const needs = list.querySelector('[data-group="needs-you"]');
+    expect(needs?.textContent).toContain('Question of late-waiting?');
+    expect(needs?.querySelectorAll('li')).toHaveLength(1);
+    expect(list.textContent).not.toContain('late-goal');
+    // Only the chats the loaded pages lack are read: `session-3` is already on the page.
+    const reads = served.calls
+      .filter((call) => call.method === 'bureau.contexts.get')
+      .map((call) => String(call.params['contextId']))
+      .toSorted((left, right) => left.localeCompare(right));
+    expect(reads).toEqual(['late-goal', 'late-waiting']);
+  });
+
+  test('marks an idle chat whose latest run failed with a Failed chip, and none whose latest run recovered', async () => {
+    const run = (id: string, contextId: string, status: string, updatedAt: string) => ({
+      id,
+      contextId,
+      agentName: 'assistant',
+      owner: 'anonymous:local',
+      actor: null,
+      status,
+      finishReason: null,
+      statusMessage: null,
+      createdAt: updatedAt,
+      updatedAt,
+      cleanup: null,
+      openWaits: [],
+    });
+    const served = bureau({
+      'bureau.contexts.list': () => page(0, 3, false),
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({
+        tasks: [
+          run('t-1', 'session-0', 'failed', '2026-10-23T09:00:00.000Z'),
+          run('t-2', 'session-1', 'failed', '2026-10-23T08:00:00.000Z'),
+          run('t-3', 'session-1', 'completed', '2026-10-23T09:30:00.000Z'),
+        ],
+        nextPageToken: null,
+      }),
+    });
+    restore = served.restore;
+    landAt('/chat');
+
+    const { findByRole } = mount();
+
+    const list = await findByRole('navigation', { name: 'Chats' });
+    await waitFor(() =>
+      expect(list.querySelector('[data-session="session-0"]')?.textContent).toContain('Failed'),
+    );
+    expect(list.querySelector('[data-session="session-1"]')?.textContent).not.toContain('Failed');
+    expect(list.querySelector('[data-session="session-2"]')?.textContent).not.toContain('Failed');
+  });
+
   test('falls back to the last message for a waiting chat when the reviews cannot be read', async () => {
     const served = bureau({
       'bureau.contexts.list': () => ({

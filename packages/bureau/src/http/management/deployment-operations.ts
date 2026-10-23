@@ -15,6 +15,7 @@ import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { AgentMediaCapabilities } from '../../agent-catalog.ts';
+import { agentExamplesSchema } from '../../agent-examples.ts';
 import { mayDiscloseUnpublishedAgents } from '../agent-access.ts';
 import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
@@ -172,7 +173,7 @@ const agentsListOutput = z.object({
         })
         .nullable(),
       tools: z.array(z.string()).optional(),
-      examples: z.array(z.string()).optional(),
+      examples: agentExamplesSchema.optional(),
     }),
   ),
 });

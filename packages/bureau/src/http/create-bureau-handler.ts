@@ -58,6 +58,7 @@ import {
   type BureauAgentCatalog,
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
+import { agentExamplesSchema } from '../agent-examples.ts';
 import { readFileAgentBinding } from '../agent-file-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
 import {
@@ -725,10 +726,12 @@ function examplesOf(prompts: readonly string[] | undefined): {
  * object with a `run`, so the property is checked rather than trusted.
  */
 function readCodeExamples(agent: object): readonly string[] | undefined {
-  const prompts = (agent as { readonly examples?: unknown }).examples;
-  return Array.isArray(prompts) && prompts.every((prompt) => typeof prompt === 'string')
-    ? prompts
-    : undefined;
+  // The same bounds `createAgent` enforces: a runnable that states more, or longer, says nothing,
+  // so one odd agent cannot make the whole list fail its output schema.
+  const prompts = agentExamplesSchema.safeParse(
+    (agent as { readonly examples?: unknown }).examples,
+  );
+  return prompts.success ? prompts.data : undefined;
 }
 
 /**

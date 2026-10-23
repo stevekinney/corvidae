@@ -10,6 +10,7 @@ import {
   pendingQuestions,
   sessionRow,
   type SessionRow,
+  waitingChatIds,
 } from './session-groups.ts';
 
 const context: ChatContext = {
@@ -97,6 +98,20 @@ describe('the question a waiting chat asks', () => {
   });
 });
 
+describe('the chats that wait on you', () => {
+  test('are the sessions of the pending reviews, oldest first, each once', () => {
+    expect(
+      waitingChatIds([
+        humanWait('b', 'Second', 20),
+        humanWait('a', 'First', 10),
+        humanWait('b', 'Again', 30),
+        { ...humanWait('c', 'Decided'), status: 'approved' },
+        humanWait(undefined, 'No session'),
+      ]),
+    ).toEqual(['a', 'b']);
+  });
+});
+
 describe('a session as a row', () => {
   test('shows the latest message, the title, the agent and when it changed', () => {
     expect(sessionRow(context, new Map())).toEqual({
@@ -106,7 +121,20 @@ describe('a session as a row', () => {
       agentName: 'assistant',
       updatedAt: Date.parse('2026-10-19T09:00:00.000Z'),
       needsYou: false,
+      failed: false,
     });
+  });
+
+  test('is failed only for an idle chat whose latest run failed', () => {
+    const failed = new Set(['session-1']);
+
+    expect(sessionRow(context, new Map(), failed).failed).toBe(true);
+    expect(sessionRow(context, new Map(), new Set(['other'])).failed).toBe(false);
+    // A chat that waits on you or is running again is not a failure to report.
+    expect(sessionRow({ ...context, activity: 'awaiting-input' }, new Map(), failed).failed).toBe(
+      false,
+    );
+    expect(sessionRow({ ...context, activity: 'running' }, new Map(), failed).failed).toBe(false);
   });
 
   test('shows the question a waiting chat asks in place of the last message, and only while it waits', () => {

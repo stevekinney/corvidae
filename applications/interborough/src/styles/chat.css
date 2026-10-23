@@ -330,6 +330,17 @@
   margin-block-start: var(--cinder-space-3);
 }
 
+/* A prompt is a sentence, not a label: it wraps inside its button (Cinder's buttons never wrap) and
+   a word too long for the line breaks, so a long prompt cannot widen the page. */
+.ib-agent-card__prompts .ib-agent-card__prompt {
+  max-inline-size: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+  line-height: 1.3;
+  padding-block: var(--cinder-space-1);
+}
+
 .ib-agent-card__try {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);

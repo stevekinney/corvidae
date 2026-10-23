@@ -120,6 +120,26 @@ describe('bureau.agents.list examples', () => {
     expect('examples' in (byName.get('empty') ?? {})).toBe(false);
   });
 
+  it('lists no examples for a runnable that states more than the bounds allow, and still lists the others', async () => {
+    const odd = Object.assign(createAgent({ name: 'odd', generate }), {
+      examples: ['a', 'b', 'c', 'd'],
+    });
+    const served = await serve({
+      agents: { odd, alpha: createAgent({ name: 'alpha', generate, examples: ['Fine'] }) },
+    });
+
+    const byName = new Map(
+      listOf(await callAs(served.local, 'bureau.agents.list', {}), 'agents').map((entry) => [
+        entry['name'],
+        entry,
+      ]),
+    );
+
+    expect(byName.get('alpha')?.['examples']).toEqual(['Fine']);
+    expect(byName.has('odd')).toBe(true);
+    expect('examples' in (byName.get('odd') ?? {})).toBe(false);
+  });
+
   it('lists a file agent’s examples frontmatter, and an update that does not carry them keeps them', async () => {
     const served = await serve();
     await served.put(
@@ -209,7 +229,17 @@ describe('the bureau.agents.list output schema examples', () => {
     expect(parses(['Refund order 1234'])).toBe(true);
   });
 
-  it.each([['Refund'], [1], [[1]], [null]])('refuses examples of %j', (examples) => {
-    expect(parses(examples)).toBe(false);
+  it.each([['Refund'], [1], [[1]], [null], [['']], [['  ']]])(
+    'refuses examples of %j',
+    (examples) => {
+      expect(parses(examples)).toBe(false);
+    },
+  );
+
+  it('refuses more than three prompts, and a prompt over 200 characters', () => {
+    expect(parses(['a', 'b', 'c'])).toBe(true);
+    expect(parses(['a'.repeat(200)])).toBe(true);
+    expect(parses(['a', 'b', 'c', 'd'])).toBe(false);
+    expect(parses(['a'.repeat(201)])).toBe(false);
   });
 });

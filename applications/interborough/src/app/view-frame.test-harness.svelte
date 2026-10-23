@@ -5,7 +5,7 @@
    * by production code.
    */
   import type { HttpClient } from '@lostgradient/weft';
-  import { QueryClientProvider } from '@tanstack/svelte-query';
+  import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { provideClient } from '../lib/client.ts';
@@ -27,9 +27,19 @@
     pattern?: string;
     /** Receives the principal store the frame reads, so a test can watch a scope being revoked. */
     onStore?: (store: PrincipalStore) => void;
+    /** Receives the query client the frame reads, so a test can wait on a query's own state. */
+    onQueryClient?: (client: QueryClient) => void;
   }
 
-  let { client, scopes, view, parameters = {}, pattern, onStore }: ViewFrameHarnessProps = $props();
+  let {
+    client,
+    scopes,
+    view,
+    parameters = {},
+    pattern,
+    onStore,
+    onQueryClient,
+  }: ViewFrameHarnessProps = $props();
 
   provideClient(untrack(() => client));
   const store = providePrincipalStore();
@@ -40,6 +50,7 @@
   });
   untrack(() => onStore)?.(store);
   const queryClient = createQueryClient();
+  untrack(() => onQueryClient)?.(queryClient);
 </script>
 
 <QueryClientProvider client={queryClient}>

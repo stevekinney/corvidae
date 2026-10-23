@@ -461,6 +461,49 @@ for (const width of [375, 1280] as const) {
       await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
     });
 
+    test('wraps a long example prompt inside its button, and the outlet does not scroll sideways', async ({
+      page,
+    }) => {
+      // The longest prompt the Bureau allows, with a word too long for any line.
+      const prompt = `Look up ${'x'.repeat(150)} and refund it`;
+      expect(prompt.length).toBeLessThanOrEqual(200);
+      await page.route('**/bureau/jsonrpc', async (route) => {
+        if (!(route.request().postData() ?? '').includes('"bureau.agents.list"')) {
+          await route.fallback();
+          return;
+        }
+        const response = await route.fetch();
+        const body = await response.json();
+        for (const agent of body.result.agents) {
+          if (agent.name === 'tool-runner') agent.examples = [prompt];
+        }
+        await route.fulfill({ response, json: body });
+      });
+      await page.goto('/chat/new?agent=tool-runner');
+
+      const button = page.getByTestId('agent-card').getByRole('button', { name: prompt });
+      await expect(button).toBeVisible();
+      const outlet = page.locator('main.weft-shell-outlet');
+      const outletBox = await outlet.boundingBox();
+      const buttonBox = await button.boundingBox();
+      expect(buttonBox?.x ?? 0).toBeGreaterThanOrEqual((outletBox?.x ?? 0) - 1);
+      expect((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0)).toBeLessThanOrEqual(
+        (outletBox?.x ?? 0) + (outletBox?.width ?? 0) + 1,
+      );
+      // It wrapped: taller than a line and a half of its own text.
+      expect(
+        await button.evaluate(
+          (element) =>
+            element.clientHeight > parseFloat(getComputedStyle(element).lineHeight) * 1.5,
+        ),
+      ).toBe(true);
+      // Neither the outlet nor the page scrolls sideways.
+      expect(await outlet.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    });
+
     test('offers the other agents as cards until one is chosen, and choosing one selects it', async ({
       page,
       checkA11y,

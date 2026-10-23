@@ -45,6 +45,8 @@ export const queryKeys = {
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+    /** The chats a pending review names that the list's loaded pages do not hold, by id. */
+    waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
     /** Every session the caller owns, read to count and date each agent's chats. */
     usage: () => ['contexts', 'usage'] as const,
   },

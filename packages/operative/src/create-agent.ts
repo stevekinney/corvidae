@@ -52,6 +52,14 @@ import type {
  * Split out from `CreateAgentOptions` so the exclusive tool-configuration
  * union below can be intersected with it.
  */
+/**
+ * How many example prompts an agent may suggest, and how long each may be. One definition for every
+ * place that checks them: `createAgent`, an agent file's `examples` frontmatter, and the Bureau's
+ * `bureau.agents.list` output. A prompt is a button label on a new chat, so a long one is a
+ * paragraph in a button, not a suggestion.
+ */
+export const AGENT_EXAMPLE_LIMITS = Object.freeze({ maxPrompts: 3, maxLength: 200 });
+
 export interface CreateAgentOptionsBase {
   /**
    * The LLM provider function. REQUIRED — no bureau to inherit from.
@@ -81,7 +89,9 @@ export interface CreateAgentOptionsBase {
    * Prompts that show what a person might ask this agent, for a host that offers them as buttons
    * on a new chat. Pure description: they are never sent to the model on their own and do not
    * affect a run. Not the same as an A2A skill's `examples`, which belong to one skill; these
-   * describe the agent as a whole. Left out, the agent suggests none.
+   * describe the agent as a whole. Left out, the agent suggests none. At most
+   * {@link AGENT_EXAMPLE_LIMITS}`.maxPrompts` prompts, each non-blank and at most
+   * {@link AGENT_EXAMPLE_LIMITS}`.maxLength` characters; `createAgent` throws otherwise.
    */
   examples?: readonly string[] | undefined;
 
@@ -435,6 +445,26 @@ function freezeAllowedCandidates(
  * Validates the mutually-exclusive option combinations in
  * `CreateAgentOptions` once, at `createAgent()` call time (not per-run).
  */
+function validateExamples(examples: readonly string[] | undefined): void {
+  if (examples === undefined) return;
+  const { maxPrompts, maxLength } = AGENT_EXAMPLE_LIMITS;
+  if (examples.length > maxPrompts) {
+    throw new Error(
+      `createAgent: \`examples\` holds at most ${String(maxPrompts)} prompts; received ${String(examples.length)}.`,
+    );
+  }
+  for (const prompt of examples) {
+    if (typeof prompt !== 'string' || prompt.trim() === '') {
+      throw new Error('createAgent: each of `examples` must be a non-empty string.');
+    }
+    if (prompt.length > maxLength) {
+      throw new Error(
+        `createAgent: each of \`examples\` is at most ${String(maxLength)} characters; received ${String(prompt.length)}.`,
+      );
+    }
+  }
+}
+
 function validateCreateAgentOptions(options: CreateAgentOptions): void {
   if (options.tools && options.toolbox) {
     throw new Error(
@@ -454,6 +484,8 @@ function validateCreateAgentOptions(options: CreateAgentOptions): void {
       `createAgent: \`revision\` must be a positive safe integer; received ${String(options.revision)}.`,
     );
   }
+
+  validateExamples(options.examples);
 
   if (options.toolbox && options.permissions) {
     throw new Error(

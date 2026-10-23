@@ -180,10 +180,14 @@
     router.navigate(`/chat/new?agent=${encodeURIComponent(value)}`, { replace: true });
   }
 
-  /** Puts a suggested prompt in the composer for the person to send or change; it sends nothing. */
+  /**
+   * Puts a suggested prompt in the composer for the person to send or change; it sends nothing.
+   * The prompt replaces whatever was typed, in one operation on the textarea's own range, because
+   * the composer's value only catches up with a cleared textarea after the next render.
+   */
   function fillComposer(prompt: string): void {
-    chat?.clearInput();
-    chat?.insertAtRange({ start: 0, end: 0 }, prompt);
+    const typed = chat?.getEditorElement()?.value ?? chat?.getComposerValue() ?? '';
+    chat?.insertAtRange({ start: 0, end: typed.length }, prompt);
     chat?.focusInput();
   }
 

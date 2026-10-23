@@ -30,6 +30,7 @@ import type { AgentSkillDescriptor } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
 
+import { agentExamplesSchema } from './agent-examples';
 import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 
 /** What an agent's identifier must look like: it doubles as a path segment later. */
@@ -141,7 +142,7 @@ export const agentFileFrontmatterSchema = z
      * Prompts that show what a person might ask the agent, which a new chat offers as buttons. Read
      * only: it is not in {@link AGENT_FILE_KNOWN_KEYS}, so a rewrite of the file keeps it as it is.
      */
-    examples: z.array(z.string().min(1)).nullish(),
+    examples: agentExamplesSchema.nullish(),
   })
   .superRefine((frontmatter, context) => checkModelsList(frontmatter, context));
 
@@ -208,7 +209,7 @@ export const agentFileDefinitionSchema = z.object({
   skills: z.array(agentSkillDescriptorSchema).default([]),
   published: z.boolean().default(false),
   /** Prompts a new chat offers (see the frontmatter's `examples`); absent for a file that has none. */
-  examples: z.array(z.string().min(1)).optional(),
+  examples: agentExamplesSchema.optional(),
   instructions: z.string(),
 });
 

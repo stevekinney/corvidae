@@ -214,6 +214,29 @@ describe('a new chat', () => {
     expect(router.current.search.get('agent')).toBe('researcher');
   });
 
+  test('replaces a draft in the composer with the prompt, however many times it is clicked', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({ agents: [{ ...AGENT, examples: ['Say hello'] }] }),
+    }).restore;
+    landAt('/chat/new');
+    const { container, findByRole } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+    const box = container.querySelector('textarea');
+    if (box === null) throw new Error('The composer did not render.');
+    await fireEvent.input(box, { target: { value: 'half a thought' } });
+    const prompt = await findByRole('button', { name: 'Say hello' });
+
+    await fireEvent.click(prompt);
+    await waitFor(() => expect(box.value).toBe('Say hello'));
+    await fireEvent.click(prompt);
+
+    expect(box.value).toBe('Say hello');
+  });
+
   test('replaces ?agent= when the agent is changed, without adding a history entry', async () => {
     restore = served().restore;
     landAt('/chat/new');

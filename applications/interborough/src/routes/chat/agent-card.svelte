@@ -48,8 +48,12 @@
     >
       <span class="ib-agent-card__try" aria-hidden="true">{CHAT_COPY.newChatWelcome.try}</span>
       {#each prompts as { key, item: prompt } (key)}
-        <Button type="button" variant="secondary" size="sm" onclick={() => onExample(prompt)}
-          >{prompt}</Button
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          class="ib-agent-card__prompt"
+          onclick={() => onExample(prompt)}>{prompt}</Button
         >
       {/each}
     </div>

@@ -260,10 +260,20 @@ describe('serializeUpdatedAgentFile', () => {
 
   it('has no examples for a file that lists none, and refuses a list that is not text', () => {
     expect('examples' in parsed('a', '---\nmodel: a/b\n---\n').definition).toBe(false);
-    for (const value of ['3', '[1]', '[""]', '{ a: b }']) {
+    for (const value of ['3', '[1]', '[""]', '["  "]', '{ a: b }']) {
       const result = parseAgentFile('a', `---\nmodel: a/b\nexamples: ${value}\n---\n`);
       expect(result.ok, value).toBe(false);
     }
+  });
+
+  it('holds examples to the bounds createAgent enforces: three prompts of 200 characters', () => {
+    const list = (prompts: readonly string[]) =>
+      `---\nmodel: a/b\nexamples: ${JSON.stringify(prompts)}\n---\n`;
+
+    expect(parseAgentFile('a', list(['a', 'b', 'c'])).ok).toBe(true);
+    expect(parseAgentFile('a', list(['a'.repeat(200)])).ok).toBe(true);
+    expect(parseAgentFile('a', list(['a', 'b', 'c', 'd'])).ok).toBe(false);
+    expect(parseAgentFile('a', list(['a'.repeat(201)])).ok).toBe(false);
   });
 
   it('keeps a byte order mark and the line ending', () => {

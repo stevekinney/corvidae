@@ -17,6 +17,8 @@ export type SessionRow = {
   readonly updatedAt: number | null;
   /** Whether the chat's run waits on the person: the Bureau's `awaiting-input` activity. */
   readonly needsYou: boolean;
+  /** Whether the chat is idle and its latest run failed (`chatsWithFailedRun`). */
+  readonly failed: boolean;
 };
 
 export type SessionGroup = {
@@ -64,6 +66,19 @@ export function pendingQuestions(reviews: readonly BureauReview[]): ReadonlyMap<
 }
 
 /**
+ * The chats a pending review names, in the order the reviews were asked: the chats that wait on the
+ * person, which the list must show whichever page of it they are on. A review with no session names
+ * none, and a settled review waits on no one.
+ */
+export function waitingChatIds(reviews: readonly BureauReview[]): readonly string[] {
+  const ids = new Set<string>();
+  for (const review of reviews.toSorted((left, right) => left.requestedAt - right.requestedAt)) {
+    if (review.status === 'pending' && review.sessionId !== undefined) ids.add(review.sessionId);
+  }
+  return [...ids];
+}
+
+/**
  * A session as a row. The snippet is the latest message the Bureau records; while the chat waits on
  * the person it is the question being asked instead, because the last thing said is then the
  * person's own message, which the title already is. A chat with nothing to show says how many
@@ -72,6 +87,7 @@ export function pendingQuestions(reviews: readonly BureauReview[]): ReadonlyMap<
 export function sessionRow(
   context: ChatContext,
   questions: ReadonlyMap<string, string>,
+  failedChats: ReadonlySet<string> = new Set(),
 ): SessionRow {
   const needsYou = context.activity === 'awaiting-input';
   const preview = context.lastMessagePreview?.trim();
@@ -87,6 +103,7 @@ export function sessionRow(
     agentName: context.agentName,
     updatedAt: Number.isNaN(updated) ? null : updated,
     needsYou,
+    failed: context.activity === 'idle' && failedChats.has(context.id),
   };
 }
 
