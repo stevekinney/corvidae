@@ -232,4 +232,31 @@ describe('push configurations on a withdrawn agent’s tombstone mount', () => {
       expect(reply.error.code).toBe(-32001);
     }
   });
+
+  it('replays a configuration created while the task was live, once the task has ended', async () => {
+    const served = await serve();
+    const taskId = await parked(served);
+    const params = { taskId, id: 'hook', ...webhook(served) };
+    const first = await served.call('CreateTaskPushNotificationConfig', params);
+    expect(first.result.id).toBe('hook');
+    await withdraw(served);
+    await served.call('CancelTask', { id: taskId });
+    await eventually(async () => {
+      const task = await served.call('GetTask', { id: taskId });
+      return task.result.status.state === 'TASK_STATE_CANCELED';
+    });
+
+    const retried = await served.call('CreateTaskPushNotificationConfig', params);
+    expect(retried.error).toBeUndefined();
+    expect(retried.result.id).toBe('hook');
+    const listed = await served.call('ListTaskPushNotificationConfigs', { taskId });
+    expect(listed.result.configs).toHaveLength(1);
+
+    const other = await served.call('CreateTaskPushNotificationConfig', {
+      taskId,
+      id: 'other',
+      ...webhook(served),
+    });
+    expect(other.error.code).toBe(-32004);
+  });
 });

@@ -17474,10 +17474,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             steeringCursors.clear();
           } finally {
             try {
-              runtime.disposeStorage?.();
+              // An agent-directory scan in flight records file revisions in storage, so the
+              // watcher stops and drains before storage closes under it (COR-1669).
+              await fileAgents?.files.close();
             } finally {
-              if (ownsStore) {
-                store.dispose();
+              try {
+                runtime.disposeStorage?.();
+              } finally {
+                if (ownsStore) {
+                  store.dispose();
+                }
               }
             }
           }
