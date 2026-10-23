@@ -206,4 +206,34 @@ describe('the push install', () => {
     expect(checkpoint?.cursor).toBe('6');
     expect(checkpoint?.pending).toBeUndefined();
   });
+
+  it('keys the stored fingerprint with a per-store secret, not a bare digest of the webhook', async () => {
+    const input = { ...configuration('cfg'), token: 'hunter2' };
+    const bytes = new TextEncoder().encode(JSON.stringify([input.url, input.token, null]));
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const plain = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const first = setup(fakeStore({}));
+    const second = setup(fakeStore({}));
+    await first.install('1', input);
+    await second.install('1', input);
+
+    const oneCheckpoint = await first.checkpoints.read('task-1', 'cfg');
+    const twoCheckpoint = await second.checkpoints.read('task-1', 'cfg');
+    const one = oneCheckpoint?.fingerprint;
+    const two = twoCheckpoint?.fingerprint;
+    expect(one).toMatch(/^[0-9a-f]{64}$/);
+    expect(one).not.toBe(plain);
+    expect(one).not.toBe(two);
+  });
+
+  it('computes the same fingerprint across restarts of one store', async () => {
+    const storage = new MemoryStorage();
+    const before = await createA2APushCheckpoints(textValueStore(storage)).fingerprint(
+      configuration(),
+    );
+    const after = await createA2APushCheckpoints(textValueStore(storage)).fingerprint(
+      configuration(),
+    );
+    expect(after).toBe(before);
+  });
 });
