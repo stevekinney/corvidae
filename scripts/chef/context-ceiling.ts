@@ -10,7 +10,7 @@
 // model call in the transcript at `transcript_path` (`lastContext` in `transcript-usage.ts`), and
 // answers:
 //   - at or below the warn threshold (default 250000): allows the call, prints nothing;
-//   - above it, up to the urgent threshold (default 325000): allows the call and adds context
+//   - above it, up to the urgent threshold (default 350000): allows the call and adds context
 //     telling the agent to write its handoff brief and hand off at the next natural boundary;
 //   - above the urgent threshold: allows the call and adds a stronger warning to hand off as soon as
 //     the step in hand is finished.
@@ -33,7 +33,7 @@ import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { claudeCodeCalls, contextOf } from './transcript-usage.ts';
 
 export const defaultWarnTokens = 250_000;
-export const defaultUrgentTokens = 325_000;
+export const defaultUrgentTokens = 350_000;
 const initialWindowBytes = 256 * 1024;
 const maximumWindowBytes = 16 * 1024 * 1024;
 

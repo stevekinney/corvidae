@@ -53,7 +53,7 @@ describe('thresholdsFrom', () => {
   test.each([
     ['an override above warn', { CHEF_CONTEXT_URGENT_TOKENS: '300000' }, 300_000],
     ['an override below warn is raised to warn', { CHEF_CONTEXT_URGENT_TOKENS: '10' }, 250_000],
-    ['an invalid override keeps the default', { CHEF_CONTEXT_URGENT_TOKENS: 'x' }, 325_000],
+    ['an invalid override keeps the default', { CHEF_CONTEXT_URGENT_TOKENS: 'x' }, 350_000],
   ])('the urgent threshold: %s', (_label, environment, expected) => {
     expect(thresholdsFrom(environment).urgent).toBe(expected);
   });
@@ -102,8 +102,8 @@ describe('decide', () => {
 
   test.each([
     ['just above warn', 250_001, 'handoff threshold'],
-    ['at the urgent threshold', 325_000, 'handoff threshold'],
-    ['just above urgent', 325_001, 'URGENT'],
+    ['at the urgent threshold', 350_000, 'handoff threshold'],
+    ['just above urgent', 350_001, 'URGENT'],
     ['far above the old 400K block', 900_000, 'URGENT'],
   ])('escalates the warning by band and never denies: %s', (_label, tokens, expected) => {
     for (const call of [
