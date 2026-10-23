@@ -74,11 +74,14 @@ interface World {
   dirty?: boolean;
   /** HEAD before and after the merge into the branch. */
   headAfterMerge?: string;
+  /** The results of successive fetches; the last repeats, and an unset one succeeds. */
+  fetchResults?: { code: number; stderr: string }[];
 }
 
 function fake(world: World = {}) {
   const calls: string[][] = [];
   let head = HEAD;
+  let fetchCall = 0;
   const runner: Runner = (command) => {
     calls.push(command);
     const [program, ...rest] = command;
@@ -86,8 +89,12 @@ function fake(world: World = {}) {
       return { code: world.installCode ?? 0, stdout: '', stderr: 'install failed' };
     if (program !== 'git') return { code: 0, stdout: '', stderr: '' };
     switch (rest[0]) {
-      case 'fetch':
-        return { code: 0, stdout: '', stderr: '' };
+      case 'fetch': {
+        const results = world.fetchResults ?? [];
+        const result = results[Math.min(fetchCall, results.length - 1)] ?? { code: 0, stderr: '' };
+        fetchCall += 1;
+        return { ...result, stdout: '' };
+      }
       case 'status':
         return { code: 0, stdout: world.dirty ? ' M file.ts\n' : '', stderr: '' };
       case 'rev-parse':
@@ -186,7 +193,7 @@ function seams(
   return {
     record,
     partial: {
-      gate: (gateOptions: { log: string }) => {
+      gate: async (gateOptions: { log: string }) => {
         record.gates.push(gateOptions.log);
         mkdirSync(dirname(gateOptions.log), { recursive: true });
         writeFileSync(gateOptions.log, '');
@@ -291,6 +298,56 @@ describe('deliver', () => {
     const report = await deliver(options, { ...partial, runner });
     expect(report.failedStep).toBe('base');
     expect(calls.some((command) => command[1] === 'merge')).toBe(false);
+  });
+
+  test('a fetch that loses a ref-lock race is retried, with a backoff, and then succeeds', async () => {
+    const lock = {
+      code: 1,
+      stderr: "fatal: cannot lock ref 'refs/remotes/origin/main': is at a but expected b",
+    };
+    const { runner, calls } = fake({
+      contains: true,
+      fetchResults: [lock, lock, { code: 0, stderr: '' }],
+    });
+    const { partial } = seams();
+    const sleeps: number[] = [];
+    const report = await deliver(options, {
+      ...partial,
+      runner,
+      sleep: (milliseconds) => sleeps.push(milliseconds),
+    });
+    expect(report.failedStep).toBeNull();
+    expect(calls.filter((call) => call[1] === 'fetch')).toHaveLength(3);
+    expect(sleeps).toHaveLength(2);
+    for (const milliseconds of sleeps) {
+      expect(milliseconds).toBeGreaterThanOrEqual(1_000);
+      expect(milliseconds).toBeLessThan(2_000);
+    }
+  });
+
+  test('a fetch that keeps losing the race stops after three tries, and any other error at once', async () => {
+    const lock = { code: 1, stderr: "fatal: cannot lock ref 'refs/remotes/origin/main'" };
+    const stuck = fake({ contains: true, fetchResults: [lock] });
+    const first = await deliver(options, {
+      ...seams().partial,
+      runner: stuck.runner,
+      sleep: () => undefined,
+    });
+    expect(first.failedStep).toBe('fetch');
+    expect(stuck.calls.filter((call) => call[1] === 'fetch')).toHaveLength(3);
+    const refused = fake({
+      contains: true,
+      fetchResults: [{ code: 128, stderr: 'fatal: unable to access the remote' }],
+    });
+    const sleeps: number[] = [];
+    const second = await deliver(options, {
+      ...seams().partial,
+      runner: refused.runner,
+      sleep: (milliseconds) => sleeps.push(milliseconds),
+    });
+    expect(second.failedStep).toBe('fetch');
+    expect(refused.calls.filter((call) => call[1] === 'fetch')).toHaveLength(1);
+    expect(sleeps).toEqual([]);
   });
 
   test('a failed gate stops before the merge', async () => {
@@ -505,8 +562,8 @@ describe('a base that moves during the gate', () => {
     const { partial, record } = movingBase(world, 1);
     const failing = {
       ...partial,
-      gate: (gateOptions: { log: string }) => ({
-        ...seams().partial.gate(gateOptions),
+      gate: async (gateOptions: { log: string }) => ({
+        ...(await seams().partial.gate(gateOptions)),
         code: 1,
       }),
     };

@@ -11,7 +11,7 @@
 //                               [--max-attempts <n>] [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
-//   fetch      `git fetch origin <default>`;
+//   fetch      `git fetch origin <default>`, retried up to three times when Git cannot lock the ref;
 //   base       `merge-gate.ts`'s base check on the worktree's head. When the head may not be merged
 //              as it is, `origin/<default>` is merged into the branch (`git merge --no-edit`). A
 //              conflict runs `git merge --abort` and refuses with step `conflict`, leaving the tree
@@ -43,6 +43,7 @@
 
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fetchWithRetry } from './fetch-retry.ts';
 import { readGateLog, runGate, type GateRunOptions, type GateRunResult } from './gate-run.ts';
 import { createClient, LinearError, postComment, setState, type LinearClient } from './linear.ts';
 import {
@@ -108,7 +109,7 @@ export interface DeliverDependencies {
   /** Runs git and the install command; defaults to the real process runner. */
   runner: Runner;
   /** Runs the gate into a log, as `gate-run.ts run` does. */
-  gate: (options: GateRunOptions) => GateRunResult;
+  gate: (options: GateRunOptions) => Promise<GateRunResult>;
   /** Merges through the merge gate, under the cross-session merge lock. */
   merge: (options: MergeGateOptions) => Promise<MergeGateReport>;
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
@@ -116,6 +117,8 @@ export interface DeliverDependencies {
   remove: (options: RemoveOptions) => RemoveResult;
   /** Receives one progress line per attempt; the command line writes it to standard error. */
   log: (line: string) => void;
+  /** Blocks between fetch retries; defaults to `Bun.sleepSync`. */
+  sleep: (milliseconds: number) => void;
 }
 
 function firstLine(text: string): string {
@@ -179,7 +182,9 @@ export async function deliver(
   for (let attempt = 1; ; attempt++) {
     report.attempts = attempt;
     // fetch
-    const fetched = git('fetch', 'origin', defaultBranch);
+    const fetched = fetchWithRetry(() => git('fetch', 'origin', defaultBranch), {
+      sleep: partial.sleep,
+    });
     if (fetched.code !== 0)
       return fail(
         'fetch',
@@ -245,7 +250,7 @@ export async function deliver(
       report.gateLog = gateLog;
       const gate = partial.gate;
       if (gate === undefined) return fail('gate', 'no gate runner was provided.');
-      const result = gate({
+      const result = await gate({
         configPath: options.configPath,
         worktree: options.worktree,
         log: gateLog,
