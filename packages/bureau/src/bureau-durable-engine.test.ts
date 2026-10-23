@@ -31,7 +31,7 @@ async function bureauWith(options: { readonly durableExecution: boolean }): Prom
 describe('Bureau.durableEngine', () => {
   it('is the engine that holds the bureau’s runs', async () => {
     const bureau = await bureauWith({ durableExecution: true });
-    const run = await bureau.createRun({ message: 'go' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
     await bureau.waitForDurableRun(run.id);
 
     const engine = bureau.durableEngine();

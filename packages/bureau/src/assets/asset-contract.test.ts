@@ -955,6 +955,7 @@ describe('conversation state holds references, not bytes', () => {
     const reference = JSON.stringify(admission.source);
     for (let turn = 0; turn < 2; turn++) {
       const run = await harness.startSession({
+        agentName: 'bureau',
         message: `turn ${turn}: describe ${reference}`,
         sessionId,
       });

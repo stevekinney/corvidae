@@ -40,7 +40,12 @@ async function finishedRunWithHeldTerminalWrite() {
     onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
   });
   const held = seam.holdWrite(savesSessionAs('completed'));
-  const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'First',
+    principal: 'alice',
+    maximumSteps: 1,
+  });
   await held.reached;
   return { seam, bureau, run, held, diagnostics };
 }
@@ -126,7 +131,11 @@ describe('submitSessionInput marks the session again once its admission commits 
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await started.promise;
       const kv = textValueStore(real, { disposeUnderlyingStorage: false });
       const admission = seam.holdWrite(admitsSessionInput);
@@ -170,7 +179,11 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await started.promise;
       // One admission is committed and held at the engine read that follows.
       const held = seam.holdRead(readsWorkflows, seam.awaitWrite(admitsSessionInput));
@@ -235,7 +248,11 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
       stopWhen: stopWhen.noToolCalls(),
     });
     try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'First',
+        principal: 'alice',
+      });
       await started.promise;
       const outcome = await bureau.submitSessionInput(run.sessionId, input);
       expect(outcome.outcome).toBe('admitted');
@@ -264,7 +281,7 @@ async function parkingBureau() {
   const startRun = async (request: { message: string; sessionId?: string }) => {
     const started = deferred();
     starts.push(started.resolve);
-    const run = await bureau.createRun({ ...request, principal: 'alice' });
+    const run = await bureau.createRun({ agentName: 'bureau', ...request, principal: 'alice' });
     await started.promise;
     return run;
   };

@@ -74,7 +74,7 @@ async function collectRunFrames(
     const unsubscribe = bureau.subscribeLiveFrames((frame) => {
       if (frame.type === 'run-envelope') frames.push(frame.frame);
     });
-    const summary = await bureau.createRun({ message: 'Go.' });
+    const summary = await bureau.createRun({ agentName: 'bureau', message: 'Go.' });
     const settled = await waitForRunState(bureau, summary.id);
     unsubscribe();
     return { frames, finishReason: settled.finishReason };
@@ -184,7 +184,7 @@ describe.each(failureShapes)(
           durableExecution: true,
           durableOwnership: { ownership: 'none' },
         });
-        const run = await bureauA.createRun({ message: 'Go.' });
+        const run = await bureauA.createRun({ agentName: 'bureau', message: 'Go.' });
         await crashed.reached;
         replayed = holdFirstTerminalRunCommit(
           await resolveStorage({ type: 'sqlite', path: databasePath }),

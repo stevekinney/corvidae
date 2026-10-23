@@ -42,10 +42,16 @@ describe('a principal that is not text (COR-718)', () => {
       const bureau = await openDurableBureau();
       try {
         const plain = await rejectionOf(
-          bureau.createRun({ message: 'x', sessionId: 'refused', principal: principal as never }),
+          bureau.createRun({
+            agentName: 'bureau',
+            message: 'x',
+            sessionId: 'refused',
+            principal: principal as never,
+          }),
         );
         const withReceipt = await rejectionOf(
           bureau.createRun({
+            agentName: 'bureau',
             message: 'x',
             sessionId: 'refused',
             principal: principal as never,
@@ -124,7 +130,7 @@ describe('a principal that is not text (COR-718)', () => {
         generate: () => new Promise<never>(() => {}),
       });
       try {
-        const parent = await bureau.createRun({ message: 'plan' });
+        const parent = await bureau.createRun({ agentName: 'bureau', message: 'plan' });
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -161,7 +167,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
       const bureau = await openDurableBureau();
       try {
         const refusal = await rejectionOf(
-          bureau.createRun({ message: 'x', sessionId: 'reserved', principal }),
+          bureau.createRun({ agentName: 'bureau', message: 'x', sessionId: 'reserved', principal }),
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
@@ -228,7 +234,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
         generate: () => new Promise<never>(() => {}),
       });
       try {
-        const parent = await bureau.createRun({ message: 'plan' });
+        const parent = await bureau.createRun({ agentName: 'bureau', message: 'plan' });
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -250,6 +256,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
     const bureau = await openDurableBureau();
     try {
       const run = await bureau.createRun({
+        agentName: 'bureau',
         message: 'x',
         sessionId: 'local',
         principal: 'anonymous:local',

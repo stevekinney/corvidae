@@ -57,7 +57,7 @@ async function durableBureau(
 describe('Bureau.waitForDurableRun', () => {
   it('resolves with the terminal state once this bureau commits the run', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
-    const run = await bureau.createRun({ message: 'go' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
 
     const state = await bureau.waitForDurableRun(run.id);
 
@@ -68,7 +68,7 @@ describe('Bureau.waitForDurableRun', () => {
 
   it('resolves immediately for a run that is already terminal', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
-    const run = await bureau.createRun({ message: 'go' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
     await bureau.waitForDurableRun(run.id);
 
     const again = await bureau.waitForDurableRun(run.id);
@@ -105,7 +105,7 @@ describe('Bureau.waitForDurableRun', () => {
       },
       { storagePath },
     );
-    const run = await owner.createRun({ message: 'go' });
+    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
     const observer = await durableBureau(async () => ({ content: 'unused', toolCalls: [] }), {
       storagePath,
     });
@@ -178,7 +178,7 @@ describe('Bureau.waitForDurableRun', () => {
       durableBackgroundTasks: 'manual',
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ message: 'go' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
 
     const refusal = await bureau.waitForDurableRun(run.id).then(
       () => undefined,

@@ -69,7 +69,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
       },
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ message: 'go' });
+    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
     await reachedStepOne.promise;
 
     // The second bureau reclaims it while its composition is held open.

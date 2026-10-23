@@ -44,6 +44,7 @@ import {
 import type { Bureau, BureauDiagnostic, CreateRunRequest } from './types';
 
 const REQUEST: CreateRunRequest = {
+  agentName: 'bureau',
   message: 'Reconcile the ledger.',
   principal: 'alice',
   runCreationRequestId: 'request-1',

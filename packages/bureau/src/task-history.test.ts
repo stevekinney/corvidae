@@ -36,6 +36,7 @@ describe('a task’s own message history', () => {
     });
     try {
       const session = await bureau.createRun({
+        agentName: 'bureau',
         message: 'plan my trip',
         principal: 'api-key:alice',
       });
@@ -75,6 +76,7 @@ describe('a task’s own message history', () => {
     try {
       const first = await open();
       const run = await first.createRun({
+        agentName: 'bureau',
         message: 'before the restart',
         principal: 'api-key:alice',
       });
@@ -113,7 +115,11 @@ describe('a task’s own message history', () => {
       stopWhen: stopWhen.noToolCalls(),
     });
     try {
-      const run = await bureau.createRun({ message: 'short lived', principal: 'api-key:alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'short lived',
+        principal: 'api-key:alice',
+      });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
 
       await bureau.deleteRun(run.id);
@@ -138,7 +144,11 @@ describe('a task’s own message history', () => {
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     try {
-      const run = await bureau.createRun({ message: 'short lived', principal: 'api-key:alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'short lived',
+        principal: 'api-key:alice',
+      });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
       await bureau.kv?.set(
         `${TASK_RECORD_KEY_PREFIX}${encodeStorageKeyComponent(run.id)}`,
@@ -172,7 +182,11 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open();
-      const run = await first.createRun({ message: 'hold', principal: 'api-key:alice' });
+      const run = await first.createRun({
+        agentName: 'bureau',
+        message: 'hold',
+        principal: 'api-key:alice',
+      });
       await waitForCondition(() => first.getRun(run.id)?.status === 'running', 'running');
       await first.shutdown({ policy: 'abort' });
 
@@ -226,7 +240,11 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open(slowSettlements);
-      const run = await first.createRun({ message: 'finish at once', principal: 'api-key:alice' });
+      const run = await first.createRun({
+        agentName: 'bureau',
+        message: 'finish at once',
+        principal: 'api-key:alice',
+      });
       await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
       await first.dispose();
 

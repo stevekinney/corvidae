@@ -288,7 +288,7 @@ describe('the limits the documentation names', () => {
       durableExecution: true,
     });
     try {
-      const run = await bureau.createRun({ message: 'Wait for a signal' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'Wait for a signal' });
       await waitForCondition(async () => {
         const session = await bureau.getSession(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
@@ -310,7 +310,7 @@ describe('the limits the documentation names', () => {
   it('answers bureau.tasks.events with UnsupportedCapability when there is no persistent storage', async () => {
     const { bureau, handler } = await servedBureau(answers);
     try {
-      const run = await bureau.createRun({ message: 'Hello' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
 
       const stream = await handler(
@@ -333,7 +333,7 @@ describe('the limits the documentation names', () => {
   it('answers bureau.contexts.input with Unavailable when the Bureau has no durable mailbox', async () => {
     const { bureau, handler } = await servedBureau(never);
     try {
-      const run = await bureau.createRun({ message: 'Hello' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'running', 'the run began');
 
       const answer = await localCall(handler, 'bureau.contexts.input', {

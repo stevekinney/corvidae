@@ -64,7 +64,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
     const first = await openBureau(path);
     let reopened: Awaited<ReturnType<typeof openBureau>> | undefined;
     try {
-      const run = await first.createRun({ message: 'park', principal: ALICE });
+      const run = await first.createRun({ agentName: 'bureau', message: 'park', principal: ALICE });
       await waitForCondition(
         () => first.listPendingReviews().some((review) => review.runId === run.id),
         'the run never parked on a human wait',

@@ -407,7 +407,11 @@ async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
     toolbox: chargeApprovalToolbox([]),
     storage: { type: 'sqlite', path },
   });
-  const run = await first.createRun({ message: 'charge, then lock', principal: OWNER.alice });
+  const run = await first.createRun({
+    agentName: 'bureau',
+    message: 'charge, then lock',
+    principal: OWNER.alice,
+  });
   const review = await pollUntil(
     () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
     'the session run’s approval',
@@ -608,7 +612,11 @@ describe('a restored approval of a run that never activated a skill', () => {
       toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
     });
-    const run = await first.createRun({ message: 'charge', principal: OWNER.alice });
+    const run = await first.createRun({
+      agentName: 'bureau',
+      message: 'charge',
+      principal: OWNER.alice,
+    });
     const review = await pollUntil(
       () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',

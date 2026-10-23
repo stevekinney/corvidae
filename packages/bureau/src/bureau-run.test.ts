@@ -1222,7 +1222,7 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
     });
 
     try {
-      const run = await bureau.createRun({ message: 'hi' });
+      const run = await bureau.createRun({ agentName: 'bureau', message: 'hi' });
       for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
         await waitOneTimerTurn();
       }

@@ -37,7 +37,7 @@ describe('a bureau’s own event feed', () => {
   it('records the events it dispatches, without being pumped by a host', async () => {
     const bureau = await buildBureau();
     try {
-      await bureau.createRun({ message: 'hello' });
+      await bureau.createRun({ agentName: 'bureau', message: 'hello' });
 
       const seen: BureauEventEnvelope[] = [];
       for await (const envelope of bureau.eventFeed.feed.replay()) seen.push(envelope);
@@ -89,7 +89,7 @@ describe('a bureau’s own event feed', () => {
     // Wait for the subscription to finish replay and reach the live phase —
     // `subscribe` awaits a tail snapshot and drains replay first, so a bare
     // microtask yield would test a different thing.
-    const summary = await bureau.createRun({ message: 'hello' });
+    const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
     await waitForRunState(bureau, summary.id);
     await waitForCondition(() => seen.length > 0, 'the watcher never received an event');
 
@@ -115,7 +115,7 @@ describe('the run feeds a bureau owns', () => {
   it('registers a feed for a run it creates and fills it from the run', async () => {
     const bureau = await buildBureau();
     try {
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       const runFeed = bureau.runEventFeeds.get(summary.id);
@@ -147,7 +147,7 @@ describe('the run feeds a bureau owns', () => {
         observed.push({ runId, feedPresent: bureau.runEventFeeds.get(runId) !== undefined });
       });
 
-      await bureau.createRun({ message: 'hello' });
+      await bureau.createRun({ agentName: 'bureau', message: 'hello' });
 
       expect(observed.length).toBeGreaterThan(0);
       for (const entry of observed) {
@@ -164,7 +164,7 @@ describe('the run feeds a bureau owns', () => {
     // completion, so a terminal run's log is intact and replayable.
     const bureau = await buildBureau();
     try {
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       const runFeed = bureau.runEventFeeds.get(summary.id);
@@ -195,7 +195,7 @@ describe('the run feeds a bureau owns', () => {
       },
     });
     try {
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       const runFeed = bureau.runEventFeeds.get(summary.id);
@@ -213,7 +213,7 @@ describe('the run feeds a bureau owns', () => {
   it('reaps the feed when the run is deleted, ending a live reader', async () => {
     const bureau = await buildBureau();
     try {
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForRunState(bureau, summary.id);
       const runFeed = bureau.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
@@ -245,7 +245,7 @@ describe('the run feeds a bureau owns', () => {
     // reaches the transcript frames and never an `events:read` subscriber.
     const bureau = await buildBureau(CANARY);
     try {
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForRunState(bureau, summary.id);
       const runFeed = bureau.runEventFeeds.get(summary.id);
 
@@ -285,7 +285,7 @@ describe('the event-feed pump’s isolation', () => {
         throw new Error('feed exploded');
       };
 
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
       // The run still ran, and the failure was reported rather than swallowed.
@@ -326,7 +326,7 @@ describe('the event-feed pump’s isolation', () => {
         poisoned = true;
       });
 
-      const summary = await bureau.createRun({ message: 'hello' });
+      const summary = await bureau.createRun({ agentName: 'bureau', message: 'hello' });
       expect(poisoned).toBe(true);
 
       // Settles rather than hanging — the whole point.

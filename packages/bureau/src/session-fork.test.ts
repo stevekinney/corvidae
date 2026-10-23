@@ -392,7 +392,7 @@ describe('a message that is not a branch point', () => {
       durableExecution: true,
     });
     cleanups.push(() => bureau.dispose());
-    const run = await bureau.createRun({ message: 'go', principal: ALICE });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'go', principal: ALICE });
     await waitForRunState(bureau, run.id);
 
     expect(await refusalOf(fork(bureau, run.sessionId, `${run.id}:step:0`))).toBe(

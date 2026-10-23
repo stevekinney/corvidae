@@ -56,7 +56,7 @@ function parksThenAnswers(signalName = 'human-response'): GenerateFunction {
 }
 
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ message: 'park', principal });
+  const run = await opened.bureau.createRun({ agentName: 'bureau', message: 'park', principal });
   await waitForCondition(
     () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
     'the run never parked',
@@ -83,7 +83,7 @@ function recording(opened: OpenedBureau) {
 }
 
 async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ message: 'charge', principal });
+  const run = await opened.bureau.createRun({ agentName: 'bureau', message: 'charge', principal });
   await waitForCondition(
     () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
     'the approval never became pending',
@@ -278,7 +278,11 @@ describe('bureau.tasks.respond answering a human wait', () => {
 
   it('answers a task that is not awaiting input as a conflict, and claims nothing', async () => {
     await withBureau({}, async (opened) => {
-      const run = await opened.bureau.createRun({ message: 'busy', principal: OWNER.alice });
+      const run = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'busy',
+        principal: OWNER.alice,
+      });
       await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'running');
       const { resolved, handler } = recording(opened);
 

@@ -137,7 +137,11 @@ describe('bureau.deployment.get', () => {
   it('reports draining while shutdown waits for a run, and the deployment as ready before', async () => {
     const opened = await openBureau({});
     try {
-      const run = await opened.bureau.createRun({ message: 'hold', principal: 'api-key:alice' });
+      const run = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'hold',
+        principal: 'api-key:alice',
+      });
       await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'running');
       const before = await rpc(opened.handler, 'bureau.deployment.get', {}, 'alice-key');
       const shutdown = opened.bureau.shutdown({ policy: 'drain' });
