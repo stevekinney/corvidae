@@ -19,6 +19,8 @@
   import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
+  import { stepChord } from '../../lib/navigation-shortcuts.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
@@ -73,6 +75,39 @@
     return () => engineStatus.dispose();
   });
 
+  // A host problem is named in the bell as well as by the status dot: the dot turns red or amber,
+  // and the bell says which problem it is and keeps saying it until the engine answers again.
+  $effect(() => {
+    notifications.reportEngineStatus(engineStatus.status, Date.now());
+  });
+
+  // `g`, then a letter, opens a view (`../../lib/navigation-shortcuts.ts`); the sidebar's tooltips
+  // name the same keys.
+  $effect(() => {
+    let armedAtMs: number | null = null;
+    function onKeydown(event: KeyboardEvent): void {
+      const target = event.target;
+      const editable =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName));
+      const step = stepChord(
+        armedAtMs,
+        {
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          editable,
+        },
+        Date.now(),
+      );
+      armedAtMs = step.armedAtMs;
+      if (step.path !== null) router.navigate(step.path);
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  });
+
   // A dead-lettered or delivered task result refreshes the task evidence on screen and the
   // Dashboard's alerts without a manual refresh. This rides the one shared fleet subscription.
   const queryClient = useQueryClient();
@@ -111,7 +146,6 @@
   <Sidebar {client} engineStatus={engineStatus.status} bind:collapsed={sidebarCollapsed} />
   <div class="weft-shell-main">
     <Topbar
-      principal={principalStore}
       {notifications}
       liveStatus={engineStatus.fleetSource.status}
       {theme}

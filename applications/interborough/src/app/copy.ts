@@ -90,6 +90,16 @@ export const ROUTE_LOAD_FAILURE_COPY = {
   action: 'Reload the page',
 } as const;
 
+/**
+ * The words for an address no route matches. It is not one of a view's states: no view owns the
+ * address, so the outlet shows this in its own frame (`data-view="not-found"`).
+ */
+export const NOT_FOUND_ROUTE_COPY = {
+  title: 'This page does not exist',
+  description: 'That address is not a page in Interborough.',
+  action: { label: 'Go to chats', href: '/chat' },
+} as const;
+
 /** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:id/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',
@@ -498,6 +508,29 @@ export const AUDIT_COPY = {
   },
 } as const;
 
+/**
+ * The words the agent list and an agent's page use for what an agent is and has: its model, its
+ * tools, how much it has been used, and the one badge an agent can carry.
+ * Where an agent is defined, and that it is published, are facts for the developer or the normal
+ * state, so neither is worded: only an agent that is not published says so.
+ */
+export const AGENTS_COPY = {
+  notPublished: 'Not published',
+  notPublishedHint: 'This agent is not published, so no one can start a chat with it.',
+  modelLabel: 'Model',
+  toolsLabel: 'Tools',
+  skillsLabel: 'Skills',
+  noTools: 'No tools',
+  toolCount: (count: number): string => (count === 1 ? '1 tool' : `${count} tools`),
+  chatCount: (count: number): string => (count === 1 ? '1 chat' : `${count} chats`),
+  noChats: 'No chats yet',
+  lastChat: (when: string): string => `Last chat ${when}`,
+  /** The Memory action with the agent's memory count; `more` is true when pages of it are unread. */
+  memoryWithCount: (shown: number, more: boolean): string => `Memory (${shown}${more ? '+' : ''})`,
+  fileVersion: 'File version',
+  history: 'History',
+} as const;
+
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
@@ -509,14 +542,6 @@ export const CHAT_COPY = {
   loadMore: 'Load more',
   noSessions: 'No chats yet',
   loadingSessions: 'Loading chats',
-  agentKind: { code: 'Defined in code', file: 'Defined in a file' },
-  agentNotPublished: 'Not published',
-  agentPublished: 'Published',
-  agentModel: 'Model',
-  agentTools: 'Tools',
-  agentSkills: 'Skills',
-  agentRevision: 'Revision',
-  noneListed: 'None',
   agentsTitle: 'Agents',
   tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',
@@ -1045,6 +1070,35 @@ export const REVIEWS_COPY = {
   answerFailed: 'The answer was not sent',
   superseded:
     'The approval was gated again, so the tool did not run. A replacement approval is waiting.',
+} as const;
+
+/** The words of the ⌘K palette. */
+export const PALETTE_COPY = {
+  label: 'Command palette',
+  placeholder: 'Search chats, agents, workflows…',
+  untitledChat: CHAT_COPY.untitled,
+  emptyTitle: 'Search the console',
+  emptyDescription: 'Type the name of a chat or an agent, or an id, to jump to it.',
+  noMatchesTitle: 'No matches',
+  noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
+} as const;
+
+/** The words of the navigation: its two groups of views, and what the engine status says. */
+export const NAVIGATION_COPY = {
+  /** The views for working with agents. */
+  workGroup: 'Work',
+  /** The views for operating the engine. */
+  engineGroup: 'Engine',
+  engineLink: 'Engine',
+  /** What the engine status dot says, by the state of the live feed. */
+  engineStatus: {
+    connecting: 'Engine connecting',
+    live: 'Engine healthy',
+    reconnecting: 'Engine reconnecting',
+    polling: 'Engine healthy (polling)',
+    stale: 'Engine status stale',
+    closed: 'Engine unreachable',
+  },
 } as const;
 
 /**

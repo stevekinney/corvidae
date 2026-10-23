@@ -10,7 +10,9 @@ import type { ViewName } from './views.ts';
  * (`src/lib/router.svelte.ts`) owns matching semantics, and the first matching pattern wins.
  *
  * The host serves `index.html` for exactly these patterns (`src/host/host.ts`), so a route added
- * here is served there with no second list to edit.
+ * here is served there with no second list to edit. It also serves it for any other address a
+ * browser navigates to (`src/host/shell-request.ts`), and the route outlet renders the not-found
+ * view for the ones that match no pattern here.
  */
 export interface RouteDefinition {
   /** Path pattern, e.g. `/runs/:id`. */

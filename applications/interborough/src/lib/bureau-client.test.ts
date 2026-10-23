@@ -394,6 +394,47 @@ describe('the lists and details the chat and agents views read', () => {
     expect(agents[0]?.media).toEqual(media);
   });
 
+  test('listAgents carries each agent’s tool names, and keeps an empty list apart from none stated', async () => {
+    const base = {
+      displayName: 'Agent',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+    };
+    const wire = [
+      { ...base, name: 'busy', tools: ['search-web', 'send-mail'] },
+      { ...base, name: 'bare', tools: [] },
+      { ...base, name: 'silent' },
+    ];
+
+    const agents = await withStub(answering(result({ agents: wire })).fetch, () => listAgents());
+
+    expect(agents.map((agent) => [agent.name, agent.tools])).toEqual([
+      ['busy', ['search-web', 'send-mail']],
+      ['bare', []],
+      ['silent', undefined],
+    ]);
+  });
+
+  test.each(['search-web', [1], [null], null])('listAgents refuses tools of %j', async (tools) => {
+    const agent = {
+      name: 'busy',
+      displayName: 'Busy',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+      tools,
+    };
+
+    const refusal = await rejectionOf(
+      withStub(answering(result({ agents: [agent] })).fetch, () => listAgents()),
+    );
+
+    expect(refusal).toBeInstanceOf(Error);
+  });
+
   test('getThreadMessages returns the messages the mount gives for a thread', async () => {
     const urls: string[] = [];
     const stub: Fetcher = async (input) => {

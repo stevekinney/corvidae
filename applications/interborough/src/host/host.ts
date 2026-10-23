@@ -94,6 +94,7 @@ import {
   SEEDED_AGENT_NAMES,
   type SeededAgents,
 } from './seed.ts';
+import { isShellNavigation } from './shell-request.ts';
 
 /** The application name Bungalow keys the state directory, `INTERBOROUGH_HOME`, and lock on. */
 export const APPLICATION_NAME = 'interborough';
@@ -238,20 +239,28 @@ async function assetResponse(buildDirectory: string, pathname: string): Promise<
   });
 }
 
-type PublicRoutes = Bun.Serve.Routes<WebSocketRelayData, string>;
-
-/**
- * The route table for the application: `index.html` for every client route, and the build's
- * assets. The routes are the client router's own patterns, so a route added there is served here.
- */
-function applicationRoutes(buildDirectory: string, refuse: Guard): PublicRoutes {
-  const shell = async (): Promise<Response> => {
+/** The application's one page, `index.html`, which the client router takes over. */
+function shellResponder(buildDirectory: string): () => Promise<Response> {
+  return async () => {
     const page = Bun.file(join(buildDirectory, 'index.html'));
     if (!(await page.exists())) return missingBuild();
     return new Response(page, {
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
     });
   };
+}
+
+type PublicRoutes = Bun.Serve.Routes<WebSocketRelayData, string>;
+
+/**
+ * The route table for the application: `index.html` for every client route, and the build's
+ * assets. The routes are the client router's own patterns, so a route added there is served here.
+ */
+function applicationRoutes(
+  buildDirectory: string,
+  refuse: Guard,
+  shell: () => Promise<Response>,
+): PublicRoutes {
   const table: PublicRoutes = {
     '/assets/*': {
       GET: (request) =>
@@ -381,11 +390,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<WebSocketRelayData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
+    const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
+    const shell = shellResponder(buildDirectory);
     const publicServer = Bun.serve<WebSocketRelayData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
+      // Bun closes a connection that sends nothing for 10 seconds by default. The pages hold
+      // streams that are quiet for longer: the engine's event feed pings every 15 seconds, and a
+      // chat run waiting on a person's answer sends nothing at all. A stream cut that way ends
+      // without its terminating chunk, and Chromium logs `ERR_INCOMPLETE_CHUNKED_ENCODING` for each
+      // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
+      // that stays open costs nothing a timeout would save.
+      idleTimeout: 0,
       routes: {
-        ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY, refuse),
+        ...applicationRoutes(buildDirectory, refuse, shell),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
           refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
@@ -399,6 +417,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
         if (!isEngineRequestPath(new URL(request.url).pathname)) {
+          // An address no client route names: the router renders its not-found view inside the
+          // shell. A miss on an asset, the engine, or the Bureau stays a 404.
+          if (isShellNavigation(request)) return shell();
           return new Response('Not found', { status: 404 });
         }
         const { url, key } = await upstream;

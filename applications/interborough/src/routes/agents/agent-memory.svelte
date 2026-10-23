@@ -17,7 +17,12 @@
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
-  import { listMemories, searchMemories, type Memory } from '../../lib/memory-client.ts';
+  import {
+    listMemories,
+    MEMORY_PAGE_SIZE,
+    searchMemories,
+    type Memory,
+  } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
@@ -25,7 +30,6 @@
   import { matchesQuery } from './memory-presentation.ts';
   import MemoryRow from './memory-row.svelte';
 
-  const PAGE_SIZE = 20;
   /** The most memories a search ranks: the Bureau's own ceiling, so a match is rarely left out. */
   const SEARCH_LIMIT = 100;
   const agentId = untrack(() => router.current.params['id'] ?? '');
@@ -45,7 +49,7 @@
     () => ({
       queryKey: queryKeys.memory.list(agentId),
       queryFn: ({ pageParam, signal }) =>
-        listMemories(agentId, { limit: PAGE_SIZE, offset: pageParam }, { signal }),
+        listMemories(agentId, { limit: MEMORY_PAGE_SIZE, offset: pageParam }, { signal }),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
       // Kept current while a search is applied: the header's count and the match total read it.

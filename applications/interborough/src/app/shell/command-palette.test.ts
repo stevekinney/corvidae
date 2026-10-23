@@ -27,6 +27,49 @@ function stubEngine(): void {
     const url = new URL(text, 'http://localhost');
     if (typeof init?.body === 'string') {
       const call = JSON.parse(init.body) as { id?: unknown; method?: string };
+      if (call.method === 'bureau.contexts.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            nextOffset: null,
+            contexts: [
+              {
+                id: 'echo-chat',
+                owner: null,
+                agentName: 'echo',
+                title: 'Hello echo, say this back',
+                lastMessagePreview: 'Hello echo, say this back',
+                parentContextId: null,
+                forkedFromMessageId: null,
+                messageCount: 2,
+                createdAt: '2026-10-23T14:00:00.000Z',
+                updatedAt: '2026-10-23T14:00:00.000Z',
+                activity: 'idle',
+              },
+            ],
+          },
+        });
+      }
+      if (call.method === 'bureau.agents.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            agents: [
+              {
+                name: 'echo',
+                displayName: 'echo',
+                description: 'Repeats the last message it was sent.',
+                definitionRevision: 1,
+                kind: 'code',
+                publishState: 'published',
+                media: null,
+              },
+            ],
+          },
+        });
+      }
       const items =
         call.method === 'weft.workers.list' ? [{ id: 'worker-7', queue: 'default' }] : [];
       return Response.json({ jsonrpc: '2.0', id: call.id, result: { items } });
@@ -79,6 +122,85 @@ describe('the command palette', () => {
   test('opens the reviews page for a review, which has no page of its own', async () => {
     await choose('review-7', /review-7/);
     await waitFor(() => expect(router.pathname).toBe('/reviews'));
+  });
+});
+
+describe('the chats, agents, and commands', () => {
+  test('lists the chat, then the agent, then the command, and nothing else, for a few letters', async () => {
+    stubEngine();
+    landAt('/chat');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+    expect(view.getByPlaceholderText('Search chats, agents, workflows…')).not.toBeNull();
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'ech' } });
+
+    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
+    expect(view.getAllByRole('option').map((option) => option.getAttribute('aria-label'))).toEqual([
+      'Hello echo, say this back, echo',
+      'echo, Repeats the last message it was sent.',
+      'New chat with echo',
+    ]);
+    expect(view.getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Chats',
+      'Agents',
+      'Commands',
+    ]);
+  });
+
+  test('opens the chat the title names', async () => {
+    await choose('ech', /^Hello echo, say this back/);
+    await waitFor(() => expect(router.pathname).toBe('/chat/echo-chat'));
+  });
+
+  test('opens the agent’s page', async () => {
+    await choose('ech', /^echo, Repeats/);
+    await waitFor(() => expect(router.pathname).toBe('/agents/echo'));
+  });
+
+  test('New chat with echo opens a new chat with that agent', async () => {
+    await choose('ech', /^New chat with echo$/);
+    await waitFor(() =>
+      expect(router.pathname + '?' + router.search.toString()).toBe('/chat/new?agent=echo'),
+    );
+  });
+
+  test('Go to Reviews opens the reviews page', async () => {
+    await choose('go to rev', /^Go to Reviews$/);
+    await waitFor(() => expect(router.pathname).toBe('/reviews'));
+  });
+});
+
+describe('choosing with the keyboard', () => {
+  test('Enter opens the first result, the chat', async () => {
+    stubEngine();
+    landAt('/chat');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+    const input = await view.findByRole('combobox');
+    await fireEvent.input(input, { target: { value: 'ech' } });
+    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(router.pathname).toBe('/chat/echo-chat'));
+  });
+});
+
+describe('the engine pages and the empty states', () => {
+  test('an engine page opens by name', async () => {
+    await choose('go to storage', /^Storage$/);
+    await waitFor(() => expect(router.pathname).toBe('/storage'));
+  });
+
+  test('says what to type before anything is typed, and when nothing matches', async () => {
+    stubEngine();
+    landAt('/chat');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+    expect(await view.findByText('Search the console')).not.toBeNull();
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'zzzqqq' } });
+    expect(await view.findByText('No matches')).not.toBeNull();
   });
 });
 

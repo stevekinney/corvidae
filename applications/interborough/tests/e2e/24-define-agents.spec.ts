@@ -228,9 +228,15 @@ test.describe('an agent that exists', () => {
     const afterSave = await readAgent(request, 'e2e-publish');
     expect(afterSave.published).toBe(true);
     expect(afterSave.definition?.published).toBe(true);
-    // Its page says it is published, and offers a chat with it.
-    await expect(page.getByText('Published').first()).toBeVisible();
+    // Its page offers a chat with it and carries no badge: published is the normal state, and it
+    // shows the file's own model, tools and version.
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
+    await expect(page.getByText('Not published')).toHaveCount(0);
+    await expect(page.getByText('Published', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('agent-facts')).toContainText('anthropic/sonnet');
+    await expect(page.getByTestId('agent-file-version')).toContainText(
+      afterSave.hash?.slice(0, 8) ?? '',
+    );
 
     await page.goto('/agents/e2e-publish/edit');
     const again = page.getByRole('switch', { name: copy.publishedLabel });
