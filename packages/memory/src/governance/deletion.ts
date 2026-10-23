@@ -25,6 +25,7 @@ import { resolveTenantPolicy } from './policy';
 import type {
   DerivedRecordKind,
   MemoryAttribution,
+  MemoryDeletionClaim,
   MemoryRecordSourceReference,
 } from './record-governance';
 
@@ -63,8 +64,27 @@ export interface DeletionRequest {
  * every pass over its open receipt and by a new request to delete the same
  * record, which reruns the failed receipt instead of opening another.
  */
+/**
+ * What a deletion request did. Several processes sharing one store can request
+ * the same deletion at once, as concurrent retention sweeps do, and only one
+ * of them opens a receipt.
+ *
+ * - `requested`: this request opened the receipt (or re-ran a failed one) and
+ *   ran it.
+ * - `owned`: another deletion's receipt owns the record, open or waiting on a
+ *   legal hold; this request opened nothing.
+ * - `pending`: another deletion holds a live claim on the record and has not
+ *   opened its receipt yet, or took this request's claim over before it
+ *   opened one, or the record is gone; this request opened nothing, and there
+ *   is no receipt to report yet.
+ */
+export type DeletionRequestOutcome =
+  | { readonly status: 'requested' | 'owned'; readonly receipt: MemoryDeletionReceipt }
+  | { readonly status: 'pending' };
+
 export interface DeletionEngine {
-  requestDeletion(request: DeletionRequest): Promise<MemoryDeletionReceipt>;
+  /** Claims the record and, under a winning, unexpired claim, opens and runs its deletion. */
+  requestDeletion(request: DeletionRequest): Promise<DeletionRequestOutcome>;
   requeueAfterRelease(receipt: MemoryDeletionReceipt): Promise<MemoryDeletionReceipt | undefined>;
   /**
    * Resumes every open deletion, and re-queues any held deletion whose hold was
@@ -101,6 +121,24 @@ const RECORD_TARGETS: ReadonlySet<MemoryDeletionTarget> = new Set([
  * lane fails and the next propagation pass tries again.
  */
 const SYNCHRONOUS_DELETION_ATTEMPTS = 3;
+
+/**
+ * How long a deletion's claim on its record lets it open the receipt. The
+ * claim-to-receipt path reads lineage, stamps what it reaches, and inspects
+ * holds, which takes milliseconds to seconds; a claimant that dies on it
+ * leaves the record unclaimable for this long, after which another claimant
+ * takes the claim over. A lease that runs out under a claimant that is merely
+ * slow is safe, because both build their receipt under the same `deletionId`
+ * and only one can create it.
+ */
+export const DELETION_CLAIM_LEASE_MILLISECONDS = 60_000;
+
+/**
+ * How many times a claim re-reads the record after another claimant changed
+ * its claim between this one reading it and writing it. Past this, it yields
+ * to the others.
+ */
+const DELETION_CLAIM_ATTEMPTS = 8;
 
 /** What a deletion saw of the records it names, just before it acts on them. */
 interface Inspection {
@@ -305,13 +343,126 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     return links;
   }
 
-  /** Marks one record as claimed by a deletion; a record already gone needs no claim. */
-  async function claim(resolved: ResolvedRecord): Promise<void> {
+  /**
+   * Stamps a record a deletion's plan reaches, so nothing new can be derived
+   * from it; a record already gone needs no stamp. The record the deletion
+   * names is claimed through {@link claimRecord} instead.
+   */
+  async function stamp(resolved: ResolvedRecord): Promise<void> {
     await context.updateGovernance(resolved, (governance) =>
       governance.deletionRequestedAt === undefined
         ? { deletionRequestedAt: context.now() }
         : undefined,
     );
+  }
+
+  /**
+   * Whether `receipt` still owns its record's deletion: it is open, or it
+   * waits on a legal hold whose release (and only that) re-queues it.
+   */
+  function owns(receipt: MemoryDeletionReceipt, request: DeletionRequest): boolean {
+    return receipt.open || (receipt.awaitingHoldRelease && request.trigger !== 'hold-release');
+  }
+
+  /**
+   * The claim this request should write over `current`, or the outcome that
+   * stops it: a receipt that owns the record, under the current claim's
+   * `deletionId` or (for a record claimed before claims carried one) any
+   * receipt for it, wins outright. A claim whose receipt was never stored is
+   * live until its lease expires, then taken over under the same
+   * `deletionId`. Anything else starts a new deletion with a new one.
+   */
+  async function nextClaim(
+    request: DeletionRequest,
+    current: MemoryDeletionClaim | undefined,
+    receiptsForRecord: readonly MemoryDeletionReceipt[],
+  ): Promise<MemoryDeletionClaim | DeletionRequestOutcome> {
+    const owner = receiptsForRecord.find((receipt) => owns(receipt, request));
+    if (owner !== undefined) return { status: 'owned', receipt: owner };
+    const now = context.now();
+    const fresh = {
+      token: context.runtime.identifiers.next('memory-deletion-claim'),
+      leaseExpiresAt: now + DELETION_CLAIM_LEASE_MILLISECONDS,
+    };
+    if (current === undefined) {
+      return { deletionId: context.runtime.identifiers.next('memory-deletion'), ...fresh };
+    }
+    const stored = await context.ledger.getReceipt(current.deletionId);
+    if (stored === undefined) {
+      return now < current.leaseExpiresAt
+        ? { status: 'pending' }
+        : { deletionId: current.deletionId, ...fresh };
+    }
+    if (owns(stored, request)) return { status: 'owned', receipt: stored };
+    return { deletionId: context.runtime.identifiers.next('memory-deletion'), ...fresh };
+  }
+
+  /**
+   * Claims the record a deletion names, as a compare-and-swap on its version,
+   * and reports whether this request won: the claim it wrote, or the outcome
+   * when another deletion owns the record or the record is gone. Two
+   * claimants that read the same claim cannot both replace it, because the
+   * swap that lands second finds the record's version moved and re-reads it.
+   */
+  async function claimRecord(
+    request: DeletionRequest,
+    reference: MemoryRecordSourceReference,
+    receiptsForRecord: readonly MemoryDeletionReceipt[],
+  ): Promise<MemoryDeletionClaim | DeletionRequestOutcome> {
+    const tenantId = request.resolved.scope.tenantId;
+    for (let attempt = 0; attempt < DELETION_CLAIM_ATTEMPTS; attempt++) {
+      const current = await context.load(tenantId, reference);
+      if (current === undefined) return { status: 'pending' };
+      const observed = current.read.governance.deletionClaim;
+      const claim = await nextClaim(request, observed, receiptsForRecord);
+      if ('status' in claim) return claim;
+      let changed = false;
+      const stored = await context.updateGovernance(current, (governance) => {
+        // Decided against the claim read above: if another claimant replaced
+        // it since, decide again against theirs.
+        changed = governance.deletionClaim?.token !== observed?.token;
+        if (changed) return undefined;
+        return {
+          deletionRequestedAt: governance.deletionRequestedAt ?? context.now(),
+          deletionClaim: claim,
+        };
+      });
+      if (!stored) return { status: 'pending' };
+      if (!changed) return claim;
+    }
+    return { status: 'pending' };
+  }
+
+  /**
+   * Whether `claim` still lets this request open its receipt: the record
+   * still carries it, under this claimant's token, with a lease that has not
+   * run out. A claimant whose lease ran out while nobody took the claim over
+   * renews it, by the same compare-and-swap a takeover would make, so it opens
+   * under an unexpired claim either way. This saves a claimant that lost its
+   * claim the work of opening a receipt; the conditional write in
+   * `ledger.openReceipt` is what keeps one that lost it after this check from
+   * opening a second.
+   */
+  async function stillHolds(
+    tenantId: string,
+    reference: MemoryRecordSourceReference,
+    claim: MemoryDeletionClaim,
+  ): Promise<boolean> {
+    const current = await context.load(tenantId, reference);
+    if (current?.read.governance.deletionClaim?.token !== claim.token) return false;
+    if (context.now() < current.read.governance.deletionClaim.leaseExpiresAt) return true;
+    let held = false;
+    const stored = await context.updateGovernance(current, (governance) => {
+      held = governance.deletionClaim?.token === claim.token;
+      if (!held) return undefined;
+      return {
+        deletionClaim: {
+          ...claim,
+          leaseExpiresAt: context.now() + DELETION_CLAIM_LEASE_MILLISECONDS,
+        },
+      };
+    });
+    return stored && held;
   }
 
   /**
@@ -321,14 +472,14 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
    * storing and linking its record: one that re-checks after a claim withdraws
    * its record, and one that re-checked before it had already written its
    * link, which the next read finds. A projection deletion removes one
-   * derived record, so it claims only that one.
+   * derived record, so it claims only that one. The record itself is already
+   * claimed by {@link claimRecord}; what its lineage reaches is stamped.
    */
   async function claimPlan(
     request: DeletionRequest,
     reference: MemoryRecordSourceReference,
   ): Promise<MemoryDeletionPlan> {
     const { resolved } = request;
-    await claim(resolved);
     if (request.scope === 'projection') {
       return planForProjection(resolved.read.governance.lineage!.kind, reference);
     }
@@ -341,7 +492,7 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       for (const link of unclaimed) {
         claimed.add(referenceKey(link.derived));
         const derived = await context.load(tenantId, link.derived);
-        if (derived !== undefined) await claim(derived);
+        if (derived !== undefined) await stamp(derived);
       }
     }
   }
@@ -370,6 +521,26 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     attribution: MemoryAttribution = receipt.requestedBy,
   ): Promise<MemoryDeletionReceipt> {
     await context.ledger.putReceipt(receipt);
+    return recorded(receipt, type, attribution);
+  }
+
+  /**
+   * Opens a new receipt: stores it only if no receipt is stored under its
+   * `deletionId` yet. Returns `undefined`, recording nothing, when one is.
+   */
+  async function open(
+    receipt: MemoryDeletionReceipt,
+    attribution: MemoryAttribution = receipt.requestedBy,
+  ): Promise<MemoryDeletionReceipt | undefined> {
+    if (!(await context.ledger.openReceipt(receipt))) return undefined;
+    return recorded(receipt, 'memory.deletion.requested', attribution);
+  }
+
+  async function recorded(
+    receipt: MemoryDeletionReceipt,
+    type: string,
+    attribution: MemoryAttribution,
+  ): Promise<MemoryDeletionReceipt> {
     await context.recordEvent({
       tenantId: receipt.tenantId,
       type,
@@ -627,20 +798,27 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
    * it failed, leaving it stored. A held deletion is not one: its release
    * re-queues it.
    */
-  async function failedDeletion(
+  function failedDeletion(
     request: DeletionRequest,
-    reference: MemoryRecordSourceReference,
-  ): Promise<MemoryDeletionReceipt | undefined> {
-    const receipts = await context.ledger.listReceipts({
-      tenantId: request.resolved.scope.tenantId,
-    });
-    return receipts.find(
+    receiptsForRecord: readonly MemoryDeletionReceipt[],
+  ): MemoryDeletionReceipt | undefined {
+    return receiptsForRecord.find(
       (receipt) =>
         receipt.scope === request.scope &&
-        receipt.record.id === reference.id &&
-        receipt.record.namespace === reference.namespace &&
         !receipt.awaitingHoldRelease &&
         deletionOutcome(receipt) === 'failed',
+    );
+  }
+
+  /** Every stored receipt for the record `reference` names. */
+  async function receiptsFor(
+    tenantId: string,
+    reference: MemoryRecordSourceReference,
+  ): Promise<MemoryDeletionReceipt[]> {
+    const receipts = await context.ledger.listReceipts({ tenantId });
+    return receipts.filter(
+      (receipt) =>
+        receipt.record.id === reference.id && receipt.record.namespace === reference.namespace,
     );
   }
 
@@ -671,13 +849,18 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     return run(receipt);
   }
 
-  async function requestDeletion(request: DeletionRequest): Promise<MemoryDeletionReceipt> {
+  async function requestDeletion(request: DeletionRequest): Promise<DeletionRequestOutcome> {
     const { resolved } = request;
     const { governance } = resolved.read;
     const tenantId = resolved.scope.tenantId;
     const reference = { id: resolved.record.id, namespace: resolved.scope.namespace };
-    const failed = await failedDeletion(request, reference);
-    if (failed !== undefined) return retryDeletion(failed, request.attribution);
+    const receiptsForRecord = await receiptsFor(tenantId, reference);
+    const failed = failedDeletion(request, receiptsForRecord);
+    if (failed !== undefined) {
+      return { status: 'requested', receipt: await retryDeletion(failed, request.attribution) };
+    }
+    const claim = await claimRecord(request, reference, receiptsForRecord);
+    if ('status' in claim) return claim;
     const requestedAt = context.now();
     const bound = resolveTenantPolicy(context.policy(), tenantId).deletionBoundMilliseconds;
     const plan = await claimPlan(request, reference);
@@ -694,7 +877,7 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     const receipt: MemoryDeletionReceipt = withOpen(
       {
         version: 1,
-        deletionId: context.runtime.identifiers.next('memory-deletion'),
+        deletionId: claim.deletionId,
         tenantId,
         scope: request.scope,
         trigger: request.trigger,
@@ -718,8 +901,15 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       },
       requestedAt,
     );
-    await persist(receipt, 'memory.deletion.requested');
-    return held ? receipt : run(receipt);
+    // A claimant that lost its claim stops here, or, if it lost it after
+    // this check, at the conditional write: whoever took the claim over
+    // builds its receipt under the same `deletionId`, so only one is opened.
+    if (!(await stillHolds(tenantId, reference, claim))) return { status: 'pending' };
+    if ((await open(receipt)) === undefined) {
+      const owner = await context.ledger.getReceipt(receipt.deletionId);
+      return owner === undefined ? { status: 'pending' } : { status: 'owned', receipt: owner };
+    }
+    return { status: 'requested', receipt: held ? receipt : await run(receipt) };
   }
 
   /**
@@ -727,13 +917,17 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
    * removed: a new receipt, over the same plan, runs every target the hold
    * exempted and carries over what had already settled.
    */
-  async function resumeDeletion(held: MemoryDeletionReceipt): Promise<MemoryDeletionReceipt> {
+  async function resumeDeletion(
+    held: MemoryDeletionReceipt,
+  ): Promise<MemoryDeletionReceipt | undefined> {
     const requestedAt = context.now();
     const bound = resolveTenantPolicy(context.policy(), held.tenantId).deletionBoundMilliseconds;
     const receipt = withOpen(
       {
         ...held,
-        deletionId: context.runtime.identifiers.next('memory-deletion'),
+        // Named after the held receipt, so two passes resuming it at once
+        // build the same receipt and only one of them opens it.
+        deletionId: `${held.deletionId}:resumed`,
         trigger: 'hold-release',
         requestedAt,
         boundMilliseconds: bound,
@@ -744,8 +938,10 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       },
       requestedAt,
     );
-    await persist(receipt, 'memory.deletion.requested');
-    return run(receipt);
+    const opened = await open(receipt);
+    if (opened !== undefined) return run(opened);
+    // Another pass resumed it first; its receipt is the one to report.
+    return context.ledger.getReceipt(receipt.deletionId);
   }
 
   /**
@@ -754,7 +950,9 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
    * it partway. The new receipt is recorded before the held one closes, so a
    * crash in between leaves the held receipt waiting, and
    * {@link DeletionEngine.processOpen} re-queues it again (finding the record
-   * already gone if the new deletion ran).
+   * already gone if the new deletion ran). So does a re-queue that finds
+   * another deletion's claim on the record with no receipt behind it yet: the
+   * held receipt keeps waiting until a receipt owns the record.
    */
   async function requeueAfterRelease(
     receipt: MemoryDeletionReceipt,
@@ -763,12 +961,14 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
     const partial = receipt.targets.some((target) => target.status !== 'exempt');
     let next: MemoryDeletionReceipt | undefined;
     if (resolved !== undefined) {
-      next = await requestDeletion({
+      const outcome = await requestDeletion({
         attribution: receipt.requestedBy,
         resolved,
         trigger: 'hold-release',
         scope: receipt.scope,
       });
+      if (outcome.status === 'pending') return undefined;
+      if (outcome.status === 'requested') next = outcome.receipt;
     } else if (partial) {
       next = await resumeDeletion(receipt);
     }

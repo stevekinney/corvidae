@@ -100,13 +100,15 @@ async function deleteExpired(
       namespace: resolved.scope.namespace,
     });
     if (current === undefined || awaiting.has(current.record.id)) continue;
-    const receipt = await deletion.requestDeletion({
+    const outcome = await deletion.requestDeletion({
       attribution: context.attribution(authority, operationId),
       resolved: current,
       trigger: 'retention-expiry',
       scope: current.read.governance.lineage === undefined ? 'source' : 'projection',
     });
-    deletionIds.push(receipt.deletionId);
+    // Otherwise another deletion (another sweep sharing this store, say)
+    // claimed the record first, and its receipt is the record's one.
+    if (outcome.status === 'requested') deletionIds.push(outcome.receipt.deletionId);
   }
   return deletionIds;
 }

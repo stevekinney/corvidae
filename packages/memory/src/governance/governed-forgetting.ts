@@ -231,12 +231,19 @@ export async function deleteLocated(
       return { operationId, status: 'rejected', reason: 'not-expired' };
     }
   }
-  const receipt = await deletion.requestDeletion({
+  const requested = await deletion.requestDeletion({
     attribution: context.attribution(authority, operationId),
     resolved: located.resolved,
     trigger: options.trigger ?? 'request',
     scope,
   });
+  // Another deletion holds a claim on the record and has not opened its
+  // receipt yet, so there is nothing to report but that nothing changed.
+  if (requested.status === 'pending') {
+    return { operationId, status: 'unchanged', recordIds: [locator.id] };
+  }
+  // An `owned` outcome reports the receipt of the deletion that owns the record.
+  const { receipt } = requested;
   // Only a deletion that removed its record took effect; a held or failed one
   // left the record stored, and its receipt says which.
   const outcome = deletionOutcome(receipt);
