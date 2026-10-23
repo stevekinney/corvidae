@@ -26,6 +26,7 @@ import type {
   FlowControlPolicy,
   FreshAttemptSourceResolver,
   GenerateFunction,
+  HumanInputSchema,
   LivenessSnapshot,
   RunFrame,
   RunReport,
@@ -957,6 +958,11 @@ export interface PendingHumanWaitReview {
   agentName: string | undefined;
   signalName: string;
   prompt: string | undefined;
+  /**
+   * The JSON Schema (2020-12) the agent's author configured for the signal, when one is: the
+   * shape of the answer the wait expects. An A2A task projects it as a form.
+   */
+  inputSchema?: HumanInputSchema | undefined;
   /** Epoch-ms timestamp the run parked. */
   requestedAt: number;
   /** Milliseconds elapsed since `requestedAt`, computed at read time. */
