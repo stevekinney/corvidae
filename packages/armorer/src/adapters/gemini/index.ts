@@ -43,13 +43,6 @@ type GeminiToolCallSource =
 export interface GeminiFormatToolResultsOptions {
   toolNameByCallId?: Record<string, string> | ((callId: string) => string | undefined);
   defaultToolName?: string;
-  /**
-   * The call ids Gemini itself issued on its `functionCall` parts (Gemini 3 always sends one;
-   * earlier models may send none, and Armorer then generates the call id). A response echoes
-   * `functionResponse.id` only for an id listed here, because Google defines that field as the
-   * originating call's id. Omit it and no response carries an id.
-   */
-  providerCallIds?: ReadonlySet<string> | ((callId: string) => boolean);
 }
 
 /**
@@ -92,6 +85,29 @@ export function fromGeminiTools(
   return declarations.map(convertFromGeminiDeclaration);
 }
 
+/**
+ * Ids Gemini issued on `functionCall` parts, recorded by {@link parseGeminiToolCalls}. Google
+ * defines `functionResponse.id` as the originating call's id, so a response echoes an id only when
+ * it is in here; an Armorer-generated id is never sent. It is process-local, and bounded so a
+ * long-running process does not grow it without limit (the oldest id is dropped first).
+ */
+const providerIssuedCallIds = new Set<string>();
+const PROVIDER_ISSUED_CALL_ID_LIMIT = 10_000;
+
+function recordProviderIssuedCallId(id: string): void {
+  providerIssuedCallIds.delete(id);
+  providerIssuedCallIds.add(id);
+  if (providerIssuedCallIds.size > PROVIDER_ISSUED_CALL_ID_LIMIT) {
+    const oldest = providerIssuedCallIds.values().next().value;
+    if (oldest !== undefined) providerIssuedCallIds.delete(oldest);
+  }
+}
+
+/**
+ * Parses `functionCall` parts into tool calls, keeping the id Gemini issued (Gemini 3 always sends
+ * one; earlier models may send none, and execution then generates it). The formatters echo that id
+ * as `functionResponse.id` with no further wiring, so two calls to one function pair correctly.
+ */
 export function parseGeminiToolCalls(parts: GeminiToolCallSource): ToolCallInput[] {
   const resolvedParts = extractGeminiParts(parts);
   if (!resolvedParts || !Array.isArray(resolvedParts)) {
@@ -136,7 +152,7 @@ export async function formatGeminiToolResultsAsync(
       const content = normalizeAsyncContent(await collectAsyncIterable(stream));
       return {
         functionResponse: {
-          ...geminiResponseId(result, options),
+          ...geminiResponseId(result),
           name: resolveGeminiToolName(result, options),
           response: normalizeGeminiResponse({ ...result, content }),
         },
@@ -187,6 +203,7 @@ function transformToGeminiSchema(schema: Record<string, unknown>): GeminiSchema 
 function convertFunctionCall(
   functionCall: NonNullable<GeminiResponsePart['functionCall']> & { name: string },
 ): ToolCallInput {
+  if (typeof functionCall.id === 'string') recordProviderIssuedCallId(functionCall.id);
   return {
     ...(typeof functionCall.id === 'string' ? { id: functionCall.id } : {}),
     name: functionCall.name,
@@ -199,7 +216,7 @@ function toFunctionResponsePart(
   options: GeminiFormatToolResultsOptions,
 ): GeminiFunctionResponsePart {
   const name = resolveGeminiToolName(result, options);
-  const id = geminiResponseId(result, options);
+  const id = geminiResponseId(result);
   const parts = toolResultParts(result);
   if (parts === undefined) {
     return { functionResponse: { ...id, name, response: normalizeGeminiResponse(result) } };
@@ -218,14 +235,9 @@ function toFunctionResponsePart(
 }
 
 /** The `id` field to echo: the call id, only when Gemini issued it. */
-function geminiResponseId(
-  result: ToolResultLike,
-  options: GeminiFormatToolResultsOptions,
-): { id: string } | Record<never, never> {
+function geminiResponseId(result: ToolResultLike): { id: string } | Record<never, never> {
   const callId = 'toolCallId' in result ? result.toolCallId : result.callId;
-  const issued = options.providerCallIds;
-  const fromProvider = typeof issued === 'function' ? issued(callId) : issued?.has(callId) === true;
-  return fromProvider ? { id: callId } : {};
+  return providerIssuedCallIds.has(callId) ? { id: callId } : {};
 }
 
 function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown> {

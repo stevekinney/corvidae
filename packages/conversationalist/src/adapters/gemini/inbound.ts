@@ -12,6 +12,7 @@ import {
   isCanonicalToolResultPayload,
   toJSONValue,
 } from '../shared';
+import { GEMINI_FUNCTION_CALL_ID_METADATA_KEY } from './content';
 import type {
   GeminiConversation,
   GeminiFileDataPart,
@@ -137,6 +138,8 @@ function toMessageInputs(payload: GeminiConversation): MessageInput[] {
   const inputs: MessageInput[] = [];
   let syntheticToolCallCount = 0;
   const pendingToolCalls = new Map<string, string[]>();
+  // Gemini-issued function-call id -> internal call id, to pair a response by id.
+  const callIdByGeminiId = new Map<string, string>();
 
   const queueToolCall = (name: string, callId: string) => {
     const queued = pendingToolCalls.get(name) ?? [];
@@ -158,6 +161,17 @@ function toMessageInputs(payload: GeminiConversation): MessageInput[] {
     return callId;
   };
 
+  // Pairs by the Gemini-issued id when the response carries one, and removes
+  // the call from its name queue so a later same-name response skips it.
+  const takeToolCallById = (id: string | undefined, name: string): string | undefined => {
+    const callId = id === undefined ? undefined : callIdByGeminiId.get(id);
+    if (callId === undefined) return undefined;
+    const queued = pendingToolCalls.get(name);
+    const index = queued?.indexOf(callId) ?? -1;
+    if (queued && index !== -1) queued.splice(index, 1);
+    return callId;
+  };
+
   const systemContent = payload.systemInstruction
     ? toSystemInstructionContent(payload.systemInstruction.parts)
     : undefined;
@@ -175,9 +189,17 @@ function toMessageInputs(payload: GeminiConversation): MessageInput[] {
       if ('functionCall' in part) {
         const callId = `gemini-call-${++syntheticToolCallCount}`;
         queueToolCall(part.functionCall.name, callId);
+        const issuedId =
+          typeof part.functionCall.id === 'string' && part.functionCall.id !== ''
+            ? part.functionCall.id
+            : undefined;
+        if (issuedId !== undefined) callIdByGeminiId.set(issuedId, callId);
         inputs.push({
           role: 'tool-call',
           content: '',
+          ...(issuedId !== undefined
+            ? { metadata: { [GEMINI_FUNCTION_CALL_ID_METADATA_KEY]: issuedId } }
+            : {}),
           toolCall: {
             id: callId,
             name: part.functionCall.name,
@@ -189,7 +211,9 @@ function toMessageInputs(payload: GeminiConversation): MessageInput[] {
 
       if ('functionResponse' in part) {
         const callId =
-          dequeueToolCall(part.functionResponse.name) ?? `gemini-call-${++syntheticToolCallCount}`;
+          takeToolCallById(part.functionResponse.id, part.functionResponse.name) ??
+          dequeueToolCall(part.functionResponse.name) ??
+          `gemini-call-${++syntheticToolCallCount}`;
         inputs.push({
           role: 'tool-result',
           content: '',

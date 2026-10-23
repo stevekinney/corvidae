@@ -83,7 +83,7 @@ describe('bureau.schedules on a workflow’s schedule', () => {
       },
     });
     const summary = await harness.bureau.createSchedule({
-      agentName: 'writer',
+      agentName: 'default',
       input: 'tick',
       spec: '1h',
     });

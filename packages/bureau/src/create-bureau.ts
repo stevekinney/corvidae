@@ -1106,6 +1106,26 @@ export class ScheduleLocatorUnavailableError extends Error {
   }
 }
 
+/**
+ * Thrown by `createSchedule` (COR-1667) when `agentName` is not in the agent catalog, instead of
+ * registering a schedule whose every fire would be refused with `missing-agent`. A `NOT_FOUND`
+ * {@link BureauError}, so the management plane answers it as a client error; the name is on
+ * `agentName`.
+ */
+export class UnknownScheduleAgentError extends BureauError {
+  /** The catalog name no agent resolves. */
+  readonly agentName: string;
+
+  constructor(agentName: string) {
+    super(
+      `Unknown agent "${agentName}": a schedule can only run an agent in the catalog`,
+      'NOT_FOUND',
+    );
+    this.name = 'UnknownScheduleAgentError';
+    this.agentName = agentName;
+  }
+}
+
 function toBadRequest(message: string): never {
   throw new BureauError(message, 'BAD_REQUEST');
 }
@@ -16463,6 +16483,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
     if (!runtime.durable) return undefined;
+    // COR-1667 — resolve the name the way a fire does (`agentCatalog.find`, which includes file
+    // agents), so a typo is refused now instead of as `missing-agent` at the first fire. An agent
+    // that goes missing later still fails at fire time, unchanged.
+    if (agentCatalog.find(definition.agentName) === undefined) {
+      throw new UnknownScheduleAgentError(definition.agentName);
+    }
     // Register a native weft schedule that fires the `agentRun` workflow on each
     // tick. The fire path is wired through `resolveRunServices`' scheduled-fire
     // branch (see runtime-composition.ts): each tick builds fresh run deps from

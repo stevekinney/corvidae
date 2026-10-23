@@ -147,9 +147,25 @@ function toGeminiMediaPart(
 }
 
 /**
- * Converts an internal ToolCall to Gemini functionCall part.
+ * Message metadata key under which a tool-call message records the id Gemini
+ * issued on its `functionCall` part. Gemini 3 always sends one; earlier models
+ * may send none. `toGeminiMessages` echoes it as `functionCall.id` and on the
+ * matching `functionResponse.id`, and never sends an id Gemini did not issue
+ * (the internal `toolCall.id` is not one).
  */
-export function toFunctionCallPart(toolCall: ToolCall): GeminiFunctionCallPart {
+export const GEMINI_FUNCTION_CALL_ID_METADATA_KEY = 'geminiFunctionCallId';
+
+/** The Gemini-issued id recorded on a tool-call message, if any. */
+export function geminiIssuedCallId(message: Message): string | undefined {
+  const value = message.metadata[GEMINI_FUNCTION_CALL_ID_METADATA_KEY];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/**
+ * Converts an internal ToolCall to Gemini functionCall part. Pass `geminiId`
+ * only when Gemini issued it.
+ */
+export function toFunctionCallPart(toolCall: ToolCall, geminiId?: string): GeminiFunctionCallPart {
   let args: Record<string, unknown>;
 
   if (typeof toolCall.arguments === 'string') {
@@ -175,6 +191,7 @@ export function toFunctionCallPart(toolCall: ToolCall): GeminiFunctionCallPart {
 
   return {
     functionCall: {
+      ...(geminiId !== undefined ? { id: geminiId } : {}),
       name: toolCall.name,
       args,
     },
@@ -195,6 +212,7 @@ function toMultimodalFunctionResponsePart(
   parts: NonNullable<ToolResult['parts']>,
   functionName: string,
   context: MediaExportContext,
+  geminiId?: string,
 ): GeminiFunctionResponsePart {
   const media: Array<{ inlineData: { mimeType: string; data: string; displayName: string } }> = [];
   const output = parts.map((part, partIndex) => {
@@ -218,7 +236,14 @@ function toMultimodalFunctionResponsePart(
           ...(toolResult.error ? { error: toolResult.error } : {}),
           ...(toolResult.action ? { action: toolResult.action } : {}),
         };
-  return { functionResponse: { name: functionName, response, parts: media } };
+  return {
+    functionResponse: {
+      ...(geminiId !== undefined ? { id: geminiId } : {}),
+      name: functionName,
+      response,
+      parts: media,
+    },
+  };
 }
 
 /**
@@ -229,6 +254,7 @@ export function toFunctionResponsePart(
   toolResult: ToolResult,
   functionName: string,
   context?: MediaExportContext,
+  geminiId?: string,
 ): GeminiFunctionResponsePart {
   if (toolResult.parts !== undefined) {
     return toMultimodalFunctionResponsePart(
@@ -242,10 +268,12 @@ export function toFunctionResponsePart(
           [],
           undefined,
         ),
+      geminiId,
     );
   }
   return {
     functionResponse: {
+      ...(geminiId !== undefined ? { id: geminiId } : {}),
       name: functionName,
       response: normalizeGeminiResponse(toolResult),
     },
