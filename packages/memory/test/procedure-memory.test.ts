@@ -577,6 +577,33 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       expect(error).toBeInstanceOf(TransitionIdentifierConflictError);
     });
 
+    it('acts on the procedure it was given, whatever the caller changes while it runs', async () => {
+      await promote(await candidateFrom(1), { validator: validator() });
+      const procedure = { id: 'procedure-1', revision: 1 };
+      const pending = recordProcedureOutcome({
+        engine: harness.engine,
+        authority,
+        namespace: NAMESPACE,
+        procedure,
+        operationId: 'outcome-mutated',
+        episodeId: 'episode-mutated',
+        outcome: 'failed',
+        summary: 'Failed, and the caller then pointed elsewhere.',
+        projectorRevision: 'episode-projector:1',
+        at: harness.clock.now(),
+      });
+      procedure.id = 'episode-0';
+      const record = await pending;
+      expect(record.demoted).toBe(true);
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toMatchObject({
+        status: 'demoted',
+      });
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'episode-0')).toMatchObject({
+        status: 'active',
+        revision: 1,
+      });
+    });
+
     it('refuses an outcome for another owner’s private procedure, writing nothing', async () => {
       await promote(await candidateFrom(1), { validator: validator() });
       const error = await rejectionOf(

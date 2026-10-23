@@ -105,6 +105,16 @@ async function assertWritable(
   }
 }
 
+/**
+ * The caller's options copied before the first await, so the revision the
+ * guards check is the one every later read and write names, whatever the caller
+ * changes meanwhile. Only the engine stays live.
+ */
+function snapshotOf<T extends { readonly engine: TransitionEngine }>(options: T): T {
+  const { engine, ...data } = options;
+  return { ...structuredClone(data), engine } as T;
+}
+
 async function submitAll(
   engine: TransitionEngine,
   proposals: Parameters<TransitionEngine['submit']>[0][],
@@ -129,8 +139,9 @@ async function submitAll(
  * {@link retireProcedure}'s.
  */
 export async function recordProcedureOutcome(
-  options: RecordProcedureOutcomeOptions,
+  input: RecordProcedureOutcomeOptions,
 ): Promise<ProcedureOutcomeRecord> {
+  const options = snapshotOf(input);
   const { authority, engine, namespace } = options;
   const { at } = options;
   const target = await assertProcedure(engine, authority.tenantId, namespace, options.procedure);
@@ -251,7 +262,8 @@ export interface RetireProcedureOptions {
  * transition. Throws {@link ProcedureLifecycleError} when the reference names
  * anything but a procedure revision, before anything is written.
  */
-export async function retireProcedure(options: RetireProcedureOptions): Promise<TransitionResult> {
+export async function retireProcedure(input: RetireProcedureOptions): Promise<TransitionResult> {
+  const options = snapshotOf(input);
   const { authority } = options;
   await assertProcedure(options.engine, authority.tenantId, options.namespace, options.procedure);
   const prefix = options.change === 'quarantine' ? 'quarantined' : 'revoked';
