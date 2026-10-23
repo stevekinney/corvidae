@@ -17,10 +17,12 @@ const viewOf = (reviewId: string) =>
     openWaits: [{ kind: 'human-wait', reviewId, signalName: 'deploy' }],
   }) as unknown as TaskView;
 
-function messagesOf(reviewId: string): Record<string, any>[] {
-  const message = waitingMessage(viewOf(reviewId), [
-    { reviewId, signalName: 'deploy', prompt: 'Where?', inputSchema: schema },
-  ]);
+function messagesOf(reviewId: string, previousReviewId?: string): Record<string, any>[] {
+  const message = waitingMessage(
+    viewOf(reviewId),
+    [{ reviewId, signalName: 'deploy', prompt: 'Where?', inputSchema: schema, previousReviewId }],
+    true,
+  );
   const part = message.parts.find((candidate) => candidate.content?.$case === 'data');
   return part?.content?.$case === 'data' ? (part.content.value as Record<string, any>[]) : [];
 }
@@ -37,7 +39,7 @@ describe('waitingMessage form surfaces', () => {
   });
 
   it('gives a second wait on the same signal a new surface and closes the first', () => {
-    const messages = messagesOf('human-wait:run-1:deploy:1');
+    const messages = messagesOf('human-wait:run-1:deploy:1', 'human-wait:run-1:deploy:0');
 
     expect(messages[0]).toEqual({
       version: 'v0.9',
@@ -47,5 +49,21 @@ describe('waitingMessage form surfaces', () => {
     expect(messages[2]?.['updateComponents'].surfaceId).toBe(
       'input-form:human-wait:run-1:deploy:1',
     );
+  });
+
+  it('closes the previous review’s surface, whatever signal it waited on', () => {
+    const messages = messagesOf('human-wait:run-1:region:1', 'human-wait:run-1:deploy:0');
+
+    expect(messages[0]?.['deleteSurface'].surfaceId).toBe('input-form:human-wait:run-1:deploy:0');
+  });
+
+  it('sends the prompt without form parts to a request that did not activate A2UI', () => {
+    const reviewId = 'human-wait:run-1:deploy:0';
+    const message = waitingMessage(viewOf(reviewId), [
+      { reviewId, signalName: 'deploy', prompt: 'Where?', inputSchema: schema },
+    ]);
+
+    expect(message.parts).toHaveLength(1);
+    expect(message.parts[0]?.content?.$case).toBe('text');
   });
 });

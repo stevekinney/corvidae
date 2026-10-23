@@ -20,6 +20,7 @@ import {
 import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import { waitForCondition } from '../test';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -135,8 +136,14 @@ async function open(schema: HumanInputSchema | undefined) {
     respond: (principal, input) => respondToTask(host, principal, input),
   });
   const principal = principalFromApiKey({ subject: 'alice', scopes: [] });
-  const context = () =>
-    new ServerCallContext({ user: new BureauA2AUser(principal), requestedVersion: '1.0' });
+  const context = (requestedExtensions: string[] = [A2UI_EXTENSION_URI]) =>
+    new ServerCallContext({
+      user: new BureauA2AUser(principal),
+      requestedVersion: '1.0',
+      requestedExtensions,
+    });
+  const read = (id: string, extensions: string[]) =>
+    handler.getTask({ tenant: '', id, historyLength: undefined }, context(extensions));
   const send = (message: Message) =>
     handler.sendMessage(
       { tenant: '', message, configuration: undefined, metadata: undefined },
@@ -150,7 +157,7 @@ async function open(schema: HumanInputSchema | undefined) {
     expect(parked.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
     return parked;
   };
-  return { opened, bureau, host, principal, handler, send, start, seen, context };
+  return { opened, bureau, host, principal, handler, send, start, read, seen, context };
 }
 
 describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
@@ -178,6 +185,49 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
         update?.['updateComponents'].components.map((c: { component: string }) => c.component),
       ).toEqual(['ChoicePicker', 'TextField', 'Text', 'Button', 'Column']);
       expect(message?.metadata).toEqual({ signalNames: ['deploy'] });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('projects only the prompt text to a request that did not activate A2UI', async () => {
+    const fixture = await open(deploySchema);
+    try {
+      const task = await fixture.start();
+
+      const read = await fixture.read(task.id, []);
+
+      expect(read.status?.message?.parts).toHaveLength(1);
+      expect(read.status?.message?.parts[0]?.content?.$case).toBe('text');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('closes the form’s surface on the status message once the task leaves input-required', async () => {
+    const fixture = await open(deploySchema);
+    try {
+      const task = await fixture.start();
+      await fixture.send(userMessage('m-submit', task.id, { data: { environment: 'staging' } }));
+      await waitForCondition(
+        async () => (await statusOf(fixture.bureau, task.id)) === 'completed',
+        'the answered task never completed',
+      );
+
+      const activated = await fixture.read(task.id, [A2UI_EXTENSION_URI]);
+      const plain = await fixture.read(task.id, []);
+
+      const deletions = (candidate: Task) =>
+        (candidate.status?.message?.parts ?? [])
+          .filter((part) => part.content?.$case === 'data')
+          .flatMap((part) => (part.content?.$case === 'data' ? (part.content.value as any[]) : []));
+      expect(deletions(activated)).toEqual([
+        {
+          version: 'v0.9',
+          deleteSurface: { surfaceId: `input-form:human-wait:${task.id}:deploy:0` },
+        },
+      ]);
+      expect(deletions(plain)).toEqual([]);
     } finally {
       await fixture.opened.dispose();
     }

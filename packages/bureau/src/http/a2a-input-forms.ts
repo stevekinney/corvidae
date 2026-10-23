@@ -19,17 +19,68 @@ export type WaitForm = {
   readonly signalName: string;
   readonly prompt: string | undefined;
   readonly inputSchema: HumanInputSchema;
+  /**
+   * The review of the run's previous form wait, whose surface this one replaces: a repeated park
+   * closes the surface before it, whatever signal it waited on. `undefined` for the first form.
+   */
+  readonly previousReviewId?: string | undefined;
 };
+
+/** The part of a Bureau the forms read: a review, and the audit trail that holds the closed ones. */
+type FormsBureau = Pick<Bureau, 'getReview'> & Partial<Pick<Bureau, 'auditTrail'>>;
+
+/** The ordinal a human-wait review id ends in; ordinals count the parks of a whole run. */
+function parkOrdinalOf(reviewId: string): number {
+  return Number(reviewId.slice(reviewId.lastIndexOf(':') + 1));
+}
+
+/** The run's human-wait reviews the audit trail recorded, oldest first; none without a trail. */
+async function recordedHumanWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
+  const records = await bureau.auditTrail?.query({ runId, limit: 10_000 }).catch(() => undefined);
+  const found = new Set<string>();
+  for (const record of records ?? []) {
+    if (!record.type.startsWith('review.')) continue;
+    const review = (record.detail as { review?: Record<string, unknown> } | null)?.review;
+    const id = review?.['id'];
+    if (review?.['kind'] === 'human-wait' && typeof id === 'string') {
+      if (Number.isInteger(parkOrdinalOf(id))) found.add(id);
+    }
+  }
+  return [...found].toSorted((left, right) => parkOrdinalOf(left) - parkOrdinalOf(right));
+}
+
+/** The latest of the run's recorded human waits before `ordinal` that asked for a form. */
+async function formReviewBefore(
+  bureau: FormsBureau,
+  runId: string,
+  ordinal: number,
+): Promise<string | undefined> {
+  const recorded = await recordedHumanWaitIds(bureau, runId);
+  const earlier = recorded.filter((id) => parkOrdinalOf(id) < ordinal);
+  for (const id of earlier.toReversed()) {
+    const review = await bureau.getReview(id).catch(() => undefined);
+    if (review?.kind === 'human-wait' && review.inputSchema !== undefined) return id;
+  }
+  return undefined;
+}
+
+/**
+ * The review id of the form wait that closed last, for a task that is no longer waiting on a form:
+ * the surface it opened is still on the client's screen until something deletes it.
+ */
+export async function lastClosedFormReviewId(
+  bureau: FormsBureau,
+  view: TaskView,
+): Promise<string | undefined> {
+  return formReviewBefore(bureau, view.id, Number.POSITIVE_INFINITY);
+}
 
 /**
  * The forms a task's open human waits ask for, in wait order. A task that is not waiting, or whose
  * waits carry no schema, has none. A review that cannot be read leaves its wait without a form: the
  * task is still projected, with the text that names the wait.
  */
-export async function formsOf(
-  bureau: Pick<Bureau, 'getReview'>,
-  view: TaskView,
-): Promise<WaitForm[]> {
+export async function formsOf(bureau: FormsBureau, view: TaskView): Promise<WaitForm[]> {
   if (view.status !== 'input-required') return [];
   const forms = await Promise.all(
     view.openWaits.map(async (wait): Promise<WaitForm | undefined> => {
@@ -41,6 +92,7 @@ export async function formsOf(
         signalName: wait.signalName,
         prompt: review.prompt,
         inputSchema: review.inputSchema,
+        previousReviewId: await formReviewBefore(bureau, view.id, parkOrdinalOf(wait.reviewId)),
       };
     }),
   );
@@ -50,16 +102,4 @@ export async function formsOf(
 /** The surface id of a wait's form: one per review, so a repeated wait on a signal is a new surface. */
 export function formSurfaceId(reviewId: string): string {
   return `input-form:${reviewId}`;
-}
-
-/**
- * The review id of the wait that parked on the same signal just before this one, or `undefined`
- * for the first park. Review ids end in the park ordinal (`human-wait:<run>:<signal>:<n>`), and a
- * wait on a signal opens only once the previous park on it has closed.
- */
-export function previousParkReviewId(reviewId: string): string | undefined {
-  const split = reviewId.lastIndexOf(':');
-  const ordinal = Number(reviewId.slice(split + 1));
-  if (split < 0 || !Number.isInteger(ordinal) || ordinal < 1) return undefined;
-  return `${reviewId.slice(0, split)}:${ordinal - 1}`;
 }
