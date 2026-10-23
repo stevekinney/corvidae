@@ -161,7 +161,8 @@ export async function searchConsole(
   const idPrefix = WORKFLOW_ID_PREFIX_PATTERN.test(query) ? query : undefined;
 
   const [contexts, agents, workflows, schedules, workers, reviews] = await Promise.all([
-    listContexts({ limit: CHATS_SEARCHED }).then(
+    // Chats a person started: a goal's or a schedule's session is reached from its run.
+    listContexts({ origin: 'chat', limit: CHATS_SEARCHED }).then(
       (page) => page.contexts,
       () => [] as ChatContext[],
     ),
