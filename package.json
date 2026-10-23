@@ -131,7 +131,7 @@
   "scripts": {
     "build": "bun scripts/run-exclusively.ts 'turbo run build'",
     "audit": "bun scripts/check-audit-exceptions.ts",
-    "check": "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
+    "check": "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
     "clean": "turbo run clean",
     "coverage": "bun scripts/run-exclusively.ts 'turbo run test:coverage'",
     "dev": "turbo run dev",
