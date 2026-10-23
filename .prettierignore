@@ -44,4 +44,6 @@ components/cinder/scripts/a2ui/common_types.json
 components/cinder/scripts/a2ui/server_to_client.json
 # The A2UI v0.9.1 basic catalog and its examples are vendored byte-for-byte and pinned by SHA-256 (PROVENANCE.json beside them).
 components/chat/src/lib/a2ui/basic-catalog.schema.json
+packages/bureau/src/a2ui/common-types.schema.json
+packages/bureau/src/a2ui/server-to-client.schema.json
 components/chat/src/lib/a2ui/examples/
