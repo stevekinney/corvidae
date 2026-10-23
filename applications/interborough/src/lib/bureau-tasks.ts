@@ -68,6 +68,18 @@ export const taskViewSchema = z.object({
 
 export type TaskView = z.infer<typeof taskViewSchema>;
 
+/** The service principal the Bureau records as the `actor` of a run a schedule's fire started. */
+export const SCHEDULER_ACTOR = 'system:scheduler';
+
+/**
+ * Whether a schedule's fire started the task. The task says so itself (`actor`), because the
+ * session a fire runs in is not a reliable witness: a schedule may continue an existing chat
+ * session, which keeps its `chat` origin.
+ */
+export function isScheduleFire(task: Pick<TaskView, 'actor'>): boolean {
+  return task.actor === SCHEDULER_ACTOR;
+}
+
 const taskPageSchema = z.object({
   tasks: z.array(taskViewSchema),
   /** Opaque; `null` when the listing has no more tasks. */

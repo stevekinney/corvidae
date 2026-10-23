@@ -88,6 +88,8 @@ const goalViewSchema = z.object({
       attemptId: z.string(),
       attemptIndex: z.number().int(),
       runId: z.string(),
+      /** The context (session) the attempt ran in, which `bureau.contexts.get` reads. */
+      sessionId: z.string(),
       status: z.enum(['running', 'evaluating', 'passed', 'failed', 'aborted']),
       startedAt: z.string(),
       completedAt: z.string().nullable(),
@@ -136,6 +138,7 @@ function viewOf(goal: GoalState): GoalView {
       attemptId: attempt.attemptId,
       attemptIndex: attempt.attemptIndex,
       runId: attempt.runId,
+      sessionId: attempt.sessionId,
       status: attempt.status,
       startedAt: attempt.startedAt,
       completedAt: attempt.completedAt ?? null,

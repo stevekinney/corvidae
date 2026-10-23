@@ -41,6 +41,8 @@ describe('the list of sessions', () => {
     expect(titles[0]).toContain('Chat 0');
     expect(titles[2]).toContain('Chat 2');
     expect(served.calls.find((call) => call.method === 'bureau.contexts.list')?.params).toEqual({
+      // Only the chats a person started: a goal's or a schedule's session is reached from its run.
+      origin: 'chat',
       limit: 20,
       offset: 0,
     });

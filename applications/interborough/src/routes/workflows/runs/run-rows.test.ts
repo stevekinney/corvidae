@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
+import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
 import { buildRunRows, filterRunRows, parseRunFilter, serializeRunFilter } from './run-rows.ts';
 
 const chat = {
@@ -11,6 +12,7 @@ const chat = {
   lastMessagePreview: 'Refund order 1234',
   parentContextId: null,
   forkedFromMessageId: null,
+  origin: 'chat',
   messageCount: 2,
   createdAt: '2026-10-23T00:00:00.000Z',
   updatedAt: '2026-10-23T00:00:00.000Z',
@@ -25,6 +27,7 @@ const goal = {
       attemptId: 'a',
       attemptIndex: 0,
       runId: 'goal-seeded-goal-a0',
+      sessionId: 'goal-seeded-goal-s0',
       status: 'passed',
       startedAt: '2026-10-23T00:00:00.000Z',
       completedAt: '2026-10-23T00:00:01.000Z',
@@ -66,6 +69,133 @@ describe('buildRunRows', () => {
       status: 'completed',
       origin: { kind: 'goal', name: 'seeded-goal', href: '/goals' },
       durationMs: 1000,
+    });
+  });
+});
+
+describe('the session a run ran in', () => {
+  const fire = { ...chat, id: 'fire-1', title: 'Check in', origin: 'schedule' } as const;
+  const goalSession = {
+    ...chat,
+    id: 'goal-seeded-goal-s0',
+    title: 'Say hello.',
+    origin: 'goal',
+  } as const;
+
+  test('is linked from a goal’s row while the Bureau still has it, which Chat does not list', () => {
+    const [row] = buildRunRows({ tasks: [], goals: [goal], chats: [goalSession] });
+
+    expect(row?.origin).toEqual({
+      kind: 'goal',
+      name: 'seeded-goal',
+      href: '/goals',
+      session: { title: 'Say hello.', href: '/chat/goal-seeded-goal-s0' },
+    });
+  });
+
+  test('is linked from a goal’s row by the attempt’s own session, even when the caller lists none', () => {
+    // A principal with operator reach sees every owner's goals, and lists only its own sessions.
+    const [row] = buildRunRows({ tasks: [], goals: [goal], chats: [] });
+
+    expect(row?.origin).toEqual({
+      kind: 'goal',
+      name: 'seeded-goal',
+      href: '/goals',
+      session: { title: '', href: '/chat/goal-seeded-goal-s0' },
+    });
+  });
+
+  test('is linked from a schedule fire’s row, which a chat did not start', () => {
+    const [row] = buildRunRows({
+      tasks: [
+        taskFixture({
+          id: 'run-fire',
+          contextId: 'fire-1',
+          agentName: 'assistant',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
+      goals: [],
+      chats: [fire],
+    });
+
+    expect(row?.origin).toEqual({ kind: 'schedule', title: 'Check in', href: '/chat/fire-1' });
+  });
+
+  test('is a schedule’s even when the fire continued a chat session, which keeps its chat origin', () => {
+    const rows = buildRunRows({
+      tasks: [
+        taskFixture({ id: 'run-fire', contextId: 'chat-1', actor: SCHEDULER_ACTOR }),
+        taskFixture({ id: 'run-person', contextId: 'chat-1' }),
+      ],
+      goals: [],
+      chats: [chat],
+    });
+
+    expect(rows.find((row) => row.id === 'run-fire')?.origin).toEqual({
+      kind: 'schedule',
+      title: 'Refund order 1234',
+      href: '/chat/chat-1',
+    });
+    expect(rows.find((row) => row.id === 'run-person')?.origin).toMatchObject({ kind: 'chat' });
+    expect(filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id)).toEqual(
+      ['run-fire'],
+    );
+    expect(filterRunRows(rows, { startedBy: 'chat' }, Date.now()).map((row) => row.id)).toEqual([
+      'run-person',
+    ]);
+  });
+
+  test('is not a schedule’s because the session says so: the task decides', () => {
+    const [row] = buildRunRows({
+      tasks: [taskFixture({ id: 'run-person', contextId: 'fire-1' })],
+      goals: [],
+      chats: [fire],
+    });
+
+    expect(row?.origin).toMatchObject({ kind: 'chat' });
+  });
+
+  test('is linked from a schedule fire’s row by the task’s own session, even when the caller lists none', () => {
+    // An operator sees every owner's fires and lists only their own sessions.
+    const [row] = buildRunRows({
+      tasks: [
+        taskFixture({ id: 'run-fire', contextId: 'other-owner-fire', actor: SCHEDULER_ACTOR }),
+      ],
+      goals: [],
+      chats: [chat],
+    });
+
+    expect(row?.origin).toEqual({ kind: 'schedule', title: '', href: '/chat/other-owner-fire' });
+  });
+
+  test('says another owner’s chat started directly, because a chat cannot be told from a run handle', () => {
+    // The wire task has no kind, and a catalog run's `contextId` is a handle no chat has: linking
+    // a task whose session the caller does not list would send every catalog run to a missing chat.
+    const [row] = buildRunRows({
+      tasks: [taskFixture({ id: 'run-other', contextId: 'other-owner-chat' })],
+      goals: [],
+      chats: [chat],
+    });
+
+    expect(row?.origin).toEqual({ kind: 'none' });
+  });
+
+  test('lets the list be narrowed to the runs a schedule started', () => {
+    const rows = buildRunRows({
+      tasks: [
+        taskFixture({ id: 'run-fire', contextId: 'fire-1', actor: SCHEDULER_ACTOR }),
+        taskFixture({ id: 'run-chat', contextId: 'chat-1' }),
+      ],
+      goals: [goal],
+      chats: [fire, chat],
+    });
+
+    expect(filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id)).toEqual(
+      ['run-fire'],
+    );
+    expect(parseRunFilter(new URLSearchParams('startedBy=schedule'))).toEqual({
+      startedBy: 'schedule',
     });
   });
 });
