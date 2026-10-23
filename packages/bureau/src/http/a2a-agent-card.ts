@@ -31,8 +31,11 @@ import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 
-/** The A2UI A2A extension of the pinned A2UI release (`v0.9.1`). */
-export const A2UI_EXTENSION_URI = 'https://a2ui.org/a2a-extension/a2ui/v0.9.1';
+import {
+  A2UI_BASIC_CATALOG_ID,
+  A2UI_CINDER_CATALOG_ID,
+  A2UI_EXTENSION_URI,
+} from '../a2ui/catalogs.ts';
 
 /** The media types every Bureau agent reads over A2A: text, and a data part (an approval's decision). */
 export const A2A_INPUT_MODES: readonly string[] = ['text/plain', 'application/json'];
@@ -164,9 +167,17 @@ const COMMAND_RECEIPTS_EXTENSION: AgentExtension = {
 
 const A2UI_EXTENSION: AgentExtension = {
   uri: A2UI_EXTENSION_URI,
-  description: 'Carries A2UI surfaces to a client that renders them.',
+  description:
+    'Carries A2UI surfaces to a client that renders them. Experimental: pinned to A2UI v0.9.1.',
   required: false,
-  params: {},
+  // `supportedCatalogIds` and `acceptsInlineCatalogs` are the A2UI extension's own parameter names
+  // (the basic catalog is offered by default; Cinder's only to a client that lists it), and
+  // `experimental` marks Bureau's support until a stable A2UI 1.0 compatibility review.
+  params: {
+    supportedCatalogIds: [A2UI_BASIC_CATALOG_ID, A2UI_CINDER_CATALOG_ID],
+    acceptsInlineCatalogs: false,
+    experimental: true,
+  },
 };
 
 /** The URIs of the extensions a card declares: the ones a request may activate. */
@@ -227,7 +238,7 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
         ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION] : []),
         COMMAND_RECEIPTS_EXTENSION,
         A2UI_EXTENSION,
-      ].map((extension) => ({ ...extension, params: {} })),
+      ],
     },
     securitySchemes: { ...source.security?.securitySchemes },
     securityRequirements: [...(source.security?.securityRequirements ?? [])],

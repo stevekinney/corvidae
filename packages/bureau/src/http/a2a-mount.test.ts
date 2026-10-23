@@ -10,7 +10,7 @@ import {
   openBureau,
   parkingUntilAborted,
 } from './management/management-fixtures.test-support.ts';
-import { A2UI_EXTENSION_URI } from './a2a-agent-card.ts';
+import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { inclusiveBoundary, LISTED_HISTORY_BYTES } from './a2a-request-handler.ts';
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';

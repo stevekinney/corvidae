@@ -87,7 +87,9 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
+import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
+import { surfaceActionOf } from './a2a-surface-actions.ts';
+import { declaredExtensionsOf } from './a2a-agent-card.ts';
 import {
   type AdmittedAsset,
   admitInline,
@@ -179,6 +181,12 @@ export type A2ASendClaim = {
    * assets again, so an asset that expired in between cannot fail it.
    */
   readonly inbound?: InboundProjection | undefined;
+  /**
+   * For an A2UI surface action: the answer it was admitted as, derived once before the claim. A
+   * retry of a claim left pending replays it instead of reading the action against the task's
+   * live state, which the answer has already moved past.
+   */
+  readonly answer?: TasksRespondInput | undefined;
 };
 
 /** Which path a send took: a new task, an answer to a wait, or input to a working task. */
@@ -256,6 +264,7 @@ export type A2ABureau = Pick<
   | 'addEventListener'
   | 'removeEventListener'
   | 'assets'
+  | 'surfaces'
 > & {
   readonly tasks: Pick<
     TaskRegistry,
@@ -541,6 +550,24 @@ function submittedValuesOf(data: unknown, form: WaitForm): Record<string, unknow
     throw invalid('A form submission must be a JSON object.');
   }
   return data as Record<string, unknown>;
+}
+
+/**
+ * The answer an A2UI surface action stands for, or `undefined` when the message is not one. A
+ * refusal is thrown before the ledger is touched; a stale revision is typed `STALE_REVISION`.
+ */
+async function surfaceAnswerOf(
+  options: Parameters<typeof surfaceActionOf>[0],
+): Promise<TasksRespondInput | undefined> {
+  const found = await surfaceActionOf(options);
+  if (found === undefined) return undefined;
+  if (found.ok) return found.input;
+  if (found.stale === undefined) throw invalid(found.message);
+  throw new CommandReceiptError('STALE_REVISION', found.message, {
+    taskId: options.message.taskId,
+    surfaceId: found.stale.surfaceId,
+    currentRevision: String(found.stale.currentRevision),
+  });
 }
 
 /** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
@@ -1199,6 +1226,9 @@ export function createBureauA2ARequestHandler(
       historyLength: params.configuration?.historyLength,
       includeArtifacts: true,
       activated,
+      supportedCatalogIds: supportedCatalogIdsOf(
+        message.metadata?.[A2UI_CLIENT_CAPABILITIES_METADATA_KEY],
+      ),
     };
     const receiptsActive = activated.has(COMMAND_RECEIPTS_EXTENSION_URI);
     // Extension fields are ignored unless the request activated the extension.
@@ -1279,10 +1309,25 @@ export function createBureauA2ARequestHandler(
       continued === undefined
         ? undefined
         : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
-    const command =
-      continued === undefined || path === undefined
+    // An A2UI action on one of the task's surfaces is admitted by the surface store first; the
+    // answer it stands for then travels the same path as any other answer.
+    const answerOwed =
+      continued === undefined || path !== 'answer'
         ? undefined
-        : parseContinuation(message, path, continued, await formsOf(bureau, continued), inputModes);
+        : (pending?.answer ??
+          (await surfaceAnswerOf({ bureau, message, view: continued, activated })));
+    const command: ContinuationCommand | undefined =
+      answerOwed !== undefined
+        ? { path: 'answer', input: answerOwed }
+        : continued === undefined || path === undefined
+          ? undefined
+          : parseContinuation(
+              message,
+              path,
+              continued,
+              await formsOf(bureau, continued),
+              inputModes,
+            );
     // The message's parts, read and authorized before anything is admitted. An answer to a wait
     // reads no file, so only a new task and input to a working task plan any.
     const inboundContextOfCaller = inboundContext(user.principal, owner);
@@ -1353,6 +1398,7 @@ export function createBureauA2ARequestHandler(
         ...(owed === undefined ? {} : owed),
         ...(mine.length === 0 ? {} : { assets: mine }),
         ...(projection === undefined ? {} : { inbound: projection }),
+        ...(answerOwed === undefined ? {} : { answer: answerOwed }),
       });
     } catch (error) {
       await discardMine();
