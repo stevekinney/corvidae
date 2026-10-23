@@ -574,6 +574,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.schedules.update',
         'bureau.tasks.cancel',
         'bureau.tasks.get',
+        'bureau.tasks.inspect',
         'bureau.tasks.list',
         'bureau.tasks.respond',
         'bureau.workflows.create',

@@ -66,6 +66,41 @@ async function main(): Promise<number> {
     if (!/connected/i.test(line) || /failed|not connected/i.test(line)) {
       problems.push(`claude mcp list did not report ${serverName} as connected`);
     }
+    // The MCP Apps (COR-910): the endpoint reads each `ui://` resource as an MCP App page and links
+    // a tool to it.
+    const rpc = async (id: number, method: string, params: Record<string, unknown>) => {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-06-18',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+      });
+      const text = await response.text();
+      return JSON.parse(text.startsWith('{') ? text : (text.match(/^data: (.*)$/m)?.[1] ?? 'null'));
+    };
+    const apps = [
+      { uri: 'ui://bureau/run-inspector/v1', tool: 'bureau.tasks.inspect' },
+      { uri: 'ui://bureau/pending-review/v1', tool: 'bureau.reviews.list' },
+    ];
+    const tools = await rpc(3, 'tools/list', {});
+    let id = 10;
+    for (const { uri, tool } of apps) {
+      const read = await rpc((id += 1), 'resources/read', { uri });
+      const content = read?.result?.contents?.[0];
+      if (content?.mimeType !== 'text/html;profile=mcp-app' || typeof content?.text !== 'string') {
+        problems.push(`resources/read ${uri} did not answer an MCP App page`);
+      }
+      const linked = tools?.result?.tools?.find(
+        (candidate: { name: string }) => candidate.name === tool,
+      );
+      if (linked?._meta?.ui?.resourceUri !== uri) {
+        problems.push(`${tool} is not linked to ${uri}`);
+      }
+      console.log(`[smoke:claude-code-mcp] ${uri} -> ${content?.text?.length ?? 0} bytes`);
+    }
     await claude(['mcp', 'remove', serverName, '-s', 'local'], configDirectory);
   } finally {
     await host.close();

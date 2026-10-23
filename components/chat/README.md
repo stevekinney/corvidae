@@ -102,6 +102,75 @@ The Mermaid snippet has type `Snippet<[content: string, type: 'mermaid']>`. `Art
 
 This is a deliberate difference from `@lostgradient/editor`'s `DiffViewer`, whose `toolbar` override is total replacement with no `renderDefault`—the [Editor README](../editor/README.md#diffviewer-toolbar-override) explains why. Message-part and row rendering carry built-in behavior (streaming state, tool-call presentation, artifact resolution) that most wrappers want to keep and only augment. That is what `renderDefault` is for.
 
+## MCP Apps
+
+`McpApp` hosts an [MCP App](https://github.com/modelcontextprotocol/ext-apps) (`@modelcontextprotocol/ext-apps` 2.0) inline: a `ui://` page that a tool links to through `_meta.ui.resourceUri`. The component owns no MCP client and no credentials. The application supplies two callbacks, and everything the app can reach goes through them.
+
+- `loadResource(uri, { signal })` fetches the `ui://` resource and returns `{ html, ui? }`, where `ui` is the resource's declared `_meta.ui` (its `csp` and `permissions`). It runs when `resourceUri` or `loadResource` changes, and an in-flight load is aborted when either changes again or the component unmounts.
+- `onToolCall(params, { signal })` receives every `tools/call` the app makes and returns its `CallToolResult`. Without it, the host advertises no tool capability and such calls are rejected. A throw becomes a generic error result (`The host could not complete the tool call.`), so a failure never leaks a message from the host's backend into the page.
+
+```ts
+import type { McpAppResourceLoader, McpAppToolCallHandler } from '@lostgradient/chat';
+import type { Client } from '@modelcontextprotocol/client';
+
+declare const client: Client;
+
+export const loadResource: McpAppResourceLoader = async (uri) => {
+  const { contents } = await client.readResource({ uri });
+  const content = contents.find((item) => item.uri === uri);
+  if (content === undefined || !('text' in content)) throw new Error(`No HTML for ${uri}.`);
+  const ui = content._meta?.['ui'];
+  return { html: content.text, ...(typeof ui === 'object' && ui !== null ? { ui } : {}) };
+};
+
+// Forward only what the application means to expose: this is the app's whole reach.
+export const onToolCall: McpAppToolCallHandler = (params, { signal }) =>
+  client.callTool(params, { signal });
+```
+
+```svelte
+<script lang="ts">
+  import { McpApp } from '@lostgradient/chat';
+  import { loadResource, onToolCall } from './mcp-host';
+
+  let { resourceUri, toolInput, toolResult } = $props();
+</script>
+
+<McpApp
+  {resourceUri}
+  {loadResource}
+  {onToolCall}
+  {toolInput}
+  {toolResult}
+  title="Run inspector"
+  onRequestTeardown={() => console.log('the app asked to be closed')}
+/>
+```
+
+`toolInput` (the arguments of the call that produced the app) is sent once after the app's handshake; `toolResult` is sent after it and again whenever it changes.
+
+### Lifecycle
+
+1. `loadResource` runs; until it resolves the container is `data-state="loading"`.
+2. The frame mounts with the page as its `srcdoc`, and the bridge starts listening in the same step, before the page's scripts run, so the app's first message is not missed.
+3. The app sends `ui/initialize`; the host answers with its capabilities and a host context. `toolInput`, then `toolResult`, are sent only after `ui/notifications/initialized`.
+4. The app reports its size and the frame follows it, never above `maxHeight` (default 600 pixels). Host context changes (`hostContext`, `maxHeight`) reach the app after initialization.
+5. Teardown: unmounting asks the app to tear down, synchronously removes the window `message` listener, and aborts every in-flight app-initiated `tools/call`. The app can also ask: `onRequestTeardown` is called, and the application decides whether to unmount.
+
+A failure to load the resource, connect the bridge, or keep the frame on its document sets `data-state="error"`, shows "This app could not be loaded.", and calls `onError`. The frame remounts, and the app re-handshakes, when the permissions it would be granted, or whether `onToolCall` is set, changes.
+
+### Security boundary
+
+- **Sandbox.** The iframe is `sandbox="allow-scripts"` and nothing else: no `allow-same-origin`, so the page has an opaque origin and no access to the host's cookies, storage, or DOM; no forms, popups, or top navigation. It has a `srcdoc` and no `src`.
+- **Content-security policy.** The resource's declared `csp` becomes a `<meta http-equiv="Content-Security-Policy">` that comes before the app's first byte. With no declaration, the policy is deny-all apart from the document's own inline script and style and `data:`/`blob:` media: no network origin, no frames, no base URI, no plugins, no form submission. `connectDomains` opens `connect-src`; `resourceDomains` opens script, style, image, font, and media sources; `frameDomains` opens `frame-src`; `baseUriDomains` opens `base-uri`. Only well-formed `http`, `https`, `ws`, and `wss` sources survive; anything that could end the directive or smuggle in another source is dropped. `buildMcpAppContentSecurityPolicy` and `buildMcpAppDocument` are exported for tests.
+- **Permissions.** Camera, microphone, geolocation, and clipboard-write reach the iframe's `allow` attribute only when the resource requests the permission and the application grants it in `grantedPermissions`. Both must say yes; a request nobody granted and a grant nobody requested are both denied.
+- **Credentials.** The component has none to give. The bridge is built with no MCP client; the app can reach the host only through `ui/*` messages, and the only handler that reaches outside the page is `tools/call`, which goes to `onToolCall`. `ui/open-link`, `ui/message`, `resources/read`, sampling, and every other request get the protocol's method-not-found error. The host context offered to the app holds only what `hostContext` and the component's fixed display fields hold (`displayMode: 'inline'`, `availableDisplayModes: ['inline']`, `platform: 'web'`, the container height cap); do not put tokens in it.
+- **Navigation.** If the frame loads a second document, the bridge closes, the app is marked failed, and `onError` is called, because that document would not carry the CSP.
+
+### Unsupported
+
+The host renders inline only: no fullscreen or picture-in-picture display mode. It does not open links, send messages to the conversation, read resources on the app's behalf, or serve any request except `tools/call`. It does not fetch `ui://` resources itself (use [`readUiResource`](../../packages/armorer/documentation/mcp.md#mcp-apps) from Armorer, or your own client) or decide which tool results deserve an app. `McpApp` is the only MCP Apps host in this repository.
+
 ## AG-UI transport
 
 `createChatSessionController` can be driven by an [AG-UI](https://docs.ag-ui.com) 1.0 event stream without changing the native chat wire. `createAGUIChatTransport` returns a chat session transport that maps each event onto the version 3 wire, and `mapAGUIEventsToChatStream` is the same mapping over any iterable of events.

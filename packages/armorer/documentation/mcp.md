@@ -243,6 +243,33 @@ Results keep their content blocks in both directions: a remote result with any n
 
 A remote tool's JSON `inputSchema` is converted strictly (JSON Schema 2020-12, `MCP_JSON_SCHEMA_DIALECT`): local `$ref`/`$defs` resolve, while a remote reference, a missing definition, another `$schema` dialect, or a keyword the validator cannot enforce throws `McpToolSchemaError` instead of falling back to a schema that accepts anything. Outbound schemas are published by the SDK as JSON Schema 2020-12 and every call's arguments are validated against them.
 
+## MCP Apps
+
+[MCP Apps](https://github.com/modelcontextprotocol/ext-apps) lets a tool point at an interactive page. A server declares the page as a `ui://` resource and links a tool to it with `_meta.ui.resourceUri`; a host that understands MCP Apps fetches the resource and renders it in a sandbox. Armorer carries that metadata and reads the resource; it renders nothing. Rendering is the host's job (in this repository, `McpApp` in [`@lostgradient/chat`](../../../components/chat/README.md#mcp-apps)).
+
+- **Importing keeps `_meta` whole.** `fromMcpTools` and `fromMcpClientTools` preserve a remote tool's `_meta`, including `_meta.ui`, unchanged under `tool.metadata.mcp.meta`. `toMcpTools` and `createMCP` write it back out as the tool's `_meta`, so a tool imported from one server and served from another still points at its page.
+- **`mcpUiResourceUri(source)`** returns the `ui://` URI a tool declares, from an imported `Tool` or a raw `_meta` record: `_meta.ui.resourceUri` first, then the deprecated `_meta["ui/resourceUri"]`. It returns `undefined` when there is none or when the value is not a `ui://` URI.
+- **`readUiResource(client, uri)`** reads a `ui://` resource through any client with `readResource` (an SDK `Client` qualifies). It rejects a URI that is not `ui://` before any request goes out, a response without a content item for that URI, and a content item whose MIME type is not `text/html;profile=mcp-app`. The result carries the `html`, the resource's `_meta.ui` (declared CSP and permissions) as `ui`, and the whole `_meta` as `meta`. When the client also offers `listResources`, the listing entry's `_meta.ui` is merged under the content item's, field by field, with the content item winning, as the MCP Apps specification orders them.
+
+```typescript
+import { Client } from '@modelcontextprotocol/client';
+import { fromMcpTools, mcpUiResourceUri, readUiResource } from 'armorer';
+
+declare const client: Client;
+
+const { tools } = await client.listTools();
+const imported = fromMcpTools(tools, { callTool: (request) => client.callTool(request) });
+
+for (const tool of imported) {
+  const uri = mcpUiResourceUri(tool);
+  if (uri === undefined) continue;
+  const app = await readUiResource(client, uri);
+  console.log(tool.name, app.mimeType, app.ui?.csp, app.html.length);
+}
+```
+
+What Armorer does not do for MCP Apps: it does not render a page, enforce the declared CSP or permissions (the host's sandbox does), proxy an app's `tools/call`, or serve `ui://` resources from `createMCP` (an application registers those through the `resources` registrar described under [Resources and prompts](#resources-and-prompts)). `readUiResource` reads only `ui://` URIs and only the MCP Apps media type.
+
 ## OAuth client support
 
 When connecting to an MCP server that requires authorization, `armorer` provides an `OAuthClientProvider` implementation and thin connection orchestration on top of `@modelcontextprotocol/client` (PKCE, RFC 9728/8414 discovery, dynamic client registration, token refresh, and `StreamableHTTPClientTransport`). This module never persists anything itself—you supply a `McpOAuthTokenStorage` hook (in-memory, a database row, an encrypted session, and so on) and it reads/writes exclusively through that interface.
