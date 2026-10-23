@@ -25,7 +25,7 @@
         <Siren aria-hidden="true" size={15} class="weft-critical-strip__icon" />
         <span class="weft-critical-strip__message">
           <strong>{item.title}:</strong>
-          {item.body}
+          {item.detail}
         </span>
         <a
           href={router.href(item.href)}

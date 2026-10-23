@@ -1087,6 +1087,30 @@ export const PALETTE_COPY = {
   noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
 } as const;
 
+/**
+ * The words of the notification bell: what needs the person, and what finished. Each sentence
+ * names the agent and is followed by the chat or schedule it is about, never a run.
+ */
+export const NOTIFICATION_COPY = {
+  panelTitle: 'Notifications',
+  markAllRead: 'Mark all read',
+  empty: 'Nothing needs you right now.',
+  /** What the bell button is called; the count says how many items need the person. */
+  bellLabel: (count: number): string =>
+    count === 0 ? 'Notifications' : `Notifications, ${count} need${count === 1 ? 's' : ''} you`,
+  needsApproval: (agent: string): string => `${agent} needs your approval`,
+  askedQuestion: (agent: string): string => `${agent} asked a question`,
+  answered: (agent: string): string => `${agent} answered`,
+  failed: (subject: string): string => `${subject} failed`,
+  /** What an agent is called when the Bureau names none. */
+  unnamedAgent: 'An agent',
+  /** Read between a sentence and the chat it is about, by a screen reader only. */
+  inJoiner: ' in ',
+  /** Read between a failed schedule and the first line of its error. */
+  errorJoiner: ': ',
+  noErrorText: 'No reason was given',
+} as const;
+
 /** The words of the navigation: its two groups of views, and what the engine status says. */
 export const NAVIGATION_COPY = {
   /** The views for working with agents. */

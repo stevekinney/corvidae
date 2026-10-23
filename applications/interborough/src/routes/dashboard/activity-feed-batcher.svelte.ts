@@ -7,15 +7,14 @@
  * so it can be unit-tested without one (PROJECT-BRIEF).
  *
  * Rows reuse `classifyFleetEvent`'s output shape (`../../app/
- * notifications.svelte.ts`) rather than re-deriving the 31-kind → icon/
- * text/href mapping, so the dashboard feed and the notification center
- * agree on copy for the same event.
+ * fleet-event-classification.ts`) rather than re-deriving the 31-kind → icon/
+ * text/href mapping.
  */
-import type { NotificationTier } from '../../app/notifications.svelte.ts';
+import type { FleetEventTier } from '../../app/fleet-event-classification.ts';
 
 export interface ActivityFeedRow {
   readonly id: string;
-  readonly tier: NotificationTier;
+  readonly tier: FleetEventTier;
   readonly icon: string;
   readonly title: string;
   readonly body: string;
@@ -26,7 +25,7 @@ export interface ActivityFeedRow {
 export interface ActivityFeedBatcherOptions {
   /** Batch flush window in ms. Defaults to 100 (plan §5). Overridable for deterministic tests. */
   readonly batchWindowMs?: number;
-  /** Visible row cap. Defaults to 30 (mirrors `NotificationStore`'s 50-item history cap at a slightly smaller size, since this is a compact dashboard card, not the full notification center). */
+  /** Visible row cap. Defaults to 30 (a compact dashboard card). */
   readonly visibleCap?: number;
   /** Held-while-paused row cap, to bound memory during a long read pause. Defaults to 200. */
   readonly heldCap?: number;

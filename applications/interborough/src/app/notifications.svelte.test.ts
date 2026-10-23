@@ -1,145 +1,90 @@
 /**
- * `classifyFleetEvent`/`NotificationStore` unit tests (plan §13 T1.6,
- * design `Weft New Surfaces.dc.html` §C). Covers the full 31-kind
- * `EVENTS_READ_EVENT_TYPES` → tier mapping (verified against
- * `weft/src/server/runtime/client-visible-events.ts`, v0.11.0) plus the
- * store's ingest/read/dismiss behavior.
+ * `NotificationStore`: the read state kept apart from the derived items, the badge that counts only
+ * what needs the person, and the host's own problem.
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { FleetEventFrame } from '../lib/live-source/fleet-event-source.svelte.ts';
-import {
-  classifyFleetEvent,
-  ENGINE_STATUS_ITEM_ID,
-  NotificationStore,
-  type NotificationTier,
-} from './notifications.svelte.ts';
+import type { NotificationEntry } from './notification-items.ts';
+import { READ_ID_LIMIT } from './notification-read-state.ts';
+import { memoryStorage } from './notification-store.test-support.ts';
+import { ENGINE_STATUS_ITEM_ID, NotificationStore } from './notifications.svelte.ts';
 
-function frame(kind: string, overrides: Partial<FleetEventFrame> = {}): FleetEventFrame {
+function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
   return {
-    kind,
-    sequence: 1,
-    cursor: 'cursor-1',
+    id: 'review:one',
+    kind: 'approval',
+    tier: 'warning',
+    icon: 'shield-question-mark',
+    title: 'tool-runner needs your approval',
+    identifiers: ['tool-runner'],
+    detail: 'Refund order 1234',
+    joiner: ' in ',
+    sessionId: 'session-refund',
+    href: '/chat/session-refund',
     emittedAtMs: 1_000,
-    payload: {},
     ...overrides,
   };
 }
 
-/** Every client-visible fleet event kind (`EVENTS_READ_EVENT_TYPES`, weft v0.11.0) mapped to its expected tier per this module's documented severity principle. */
-const EXPECTED_TIERS: Readonly<Record<string, NotificationTier>> = {
-  'alert:fired': 'critical',
-  'task:dead-lettered': 'critical',
-  'schedule:missed-fire': 'warning',
-  'constraint:violated': 'warning',
-  'checkpoint:size-warning': 'warning',
-  'human-review:requested': 'info',
-  'alert:resolved': 'info',
-  'worker:connected': 'info',
-  'worker:disconnected': 'warning',
-  'workflow:started': 'info',
-  'workflow:completed': 'info',
-  'workflow:failed': 'warning',
-  'workflow:cancelled': 'warning',
-  'workflow:timed-out': 'warning',
-  'workflow:resumed': 'info',
-  'workflow:suspended': 'info',
-  'workflow:teardown': 'info',
-  'activity:started': 'info',
-  'activity:completed': 'info',
-  'activity:failed': 'warning',
-  'activity:async-pending': 'info',
-  'signal:received': 'info',
-  'signal:waiting': 'info',
-  'signal:delivered': 'info',
-  'attributes:changed': 'info',
-  'update:received': 'info',
-  'update:completed': 'info',
-  'schedule:fired': 'info',
-  'development:warning': 'warning',
-  'cleanup:warning': 'warning',
-  'storage:size-reported': 'warning',
-  'human-review:completed': 'info',
-};
-
-describe('classifyFleetEvent', () => {
-  test('maps every client-visible fleet event kind to a tier — no gaps', () => {
-    for (const [kind, tier] of Object.entries(EXPECTED_TIERS)) {
-      const classified = classifyFleetEvent(frame(kind));
-      expect(classified).not.toBeNull();
-      expect(classified?.tier).toBe(tier);
-    }
-  });
-
-  test('returns null for an unrecognized kind', () => {
-    expect(classifyFleetEvent(frame('not-a-real-kind'))).toBeNull();
-  });
-
-  test('embeds a truncated workflow id in the body when workflowId is present', () => {
-    const classified = classifyFleetEvent(
-      frame('workflow:started', { workflowId: 'wf_1234567890abcdef1234' }),
-    );
-    expect(classified?.body).toBe('Workflow wf_12345…1234');
-    expect(classified?.href).toBe('/runs/wf_1234567890abcdef1234');
-  });
-
-  test('encodes URL delimiters in workflow notification links', () => {
-    const classified = classifyFleetEvent(
-      frame('workflow:started', { workflowId: 'wf/orders?region=west#retry' }),
-    );
-
-    expect(classified?.href).toBe('/runs/wf%2Forders%3Fregion%3Dwest%23retry');
-  });
-
-  test('falls back to a generic body/href when workflowId is absent', () => {
-    const classified = classifyFleetEvent(frame('worker:connected', { payload: {} }));
-    expect(classified?.body).toBe('A worker joined the fleet');
-    expect(classified?.href).toBe('/workers');
-  });
-
-  test('reads a string payload field into the title/body when present', () => {
-    const classified = classifyFleetEvent(
-      frame('alert:fired', { payload: { name: 'dead-letter-threshold' } }),
-    );
-    expect(classified?.body).toBe('dead-letter-threshold');
-  });
-
-  test('non-workflow kinds route to their owning domain list', () => {
-    expect(classifyFleetEvent(frame('schedule:missed-fire'))?.href).toBe('/schedules');
-    expect(classifyFleetEvent(frame('human-review:requested'))?.href).toBe('/reviews');
-    expect(classifyFleetEvent(frame('storage:size-reported'))?.href).toBe('/storage');
-    expect(classifyFleetEvent(frame('development:warning'))?.href).toBe('/system');
-  });
-});
+function storeWith(...entries: NotificationEntry[]): NotificationStore {
+  const store = new NotificationStore({ storage: memoryStorage() });
+  store.setActivity(entries);
+  return store;
+}
 
 describe('NotificationStore', () => {
-  test('ingest() classifies and prepends; returns null for an unmapped kind without mutating state', () => {
-    const store = new NotificationStore();
+  test('a new store has no items and no unread count', () => {
+    const store = new NotificationStore({ storage: memoryStorage() });
 
-    const item = store.ingest(frame('workflow:started', { workflowId: 'wf-1' }));
-    expect(item).not.toBeNull();
-    expect(store.items).toHaveLength(1);
-    expect(store.items[0]?.read).toBe(false);
-
-    const unmapped = store.ingest(frame('not-a-real-kind'));
-    expect(unmapped).toBeNull();
-    expect(store.items).toHaveLength(1);
+    expect(store.items).toEqual([]);
+    expect(store.unreadCount).toBe(0);
   });
 
-  test('unreadCount reflects only unread items', () => {
-    const store = new NotificationStore();
-    store.ingest(frame('workflow:started', { cursor: 'c1' }));
-    store.ingest(frame('workflow:completed', { cursor: 'c2' }));
-    expect(store.unreadCount).toBe(2);
+  test('the badge counts approvals, questions and failures, and never an answer', () => {
+    const store = storeWith(
+      entry({ id: 'review:a' }),
+      entry({ id: 'review:b', kind: 'question' }),
+      entry({ id: 'task:c', kind: 'failed' }),
+      entry({ id: 'task:d', kind: 'answered', tier: 'info' }),
+    );
 
-    store.markRead('c1');
+    expect(store.items).toHaveLength(4);
+    expect(store.unreadCount).toBe(3);
+  });
+
+  test('reading an item takes it off the count and keeps it listed', () => {
+    const store = storeWith(entry({ id: 'review:a' }), entry({ id: 'review:b' }));
+
+    store.markRead('review:a');
+
+    expect(store.unreadCount).toBe(1);
+    expect(store.items.map((item) => [item.id, item.read])).toEqual([
+      ['review:a', true],
+      ['review:b', false],
+    ]);
+  });
+
+  test('an item stays read when the items are derived again', () => {
+    const store = storeWith(entry({ id: 'review:a' }));
+    store.markRead('review:a');
+
+    store.setActivity([entry({ id: 'review:a', emittedAtMs: 2_000 })]);
+
+    expect(store.items[0]?.read).toBe(true);
+    expect(store.unreadCount).toBe(0);
+  });
+
+  test('an item the Bureau no longer reports leaves the list and the count', () => {
+    const store = storeWith(entry({ id: 'review:a' }), entry({ id: 'review:b' }));
+
+    store.setActivity([entry({ id: 'review:b' })]);
+
+    expect(store.items.map((item) => item.id)).toEqual(['review:b']);
     expect(store.unreadCount).toBe(1);
   });
 
-  test('markAllRead() marks every item read', () => {
-    const store = new NotificationStore();
-    store.ingest(frame('workflow:started', { cursor: 'c1' }));
-    store.ingest(frame('workflow:failed', { cursor: 'c2' }));
+  test('"mark all read" reads every item', () => {
+    const store = storeWith(entry({ id: 'review:a' }), entry({ id: 'task:b', kind: 'failed' }));
 
     store.markAllRead();
 
@@ -147,97 +92,137 @@ describe('NotificationStore', () => {
     expect(store.items.every((item) => item.read)).toBe(true);
   });
 
-  test('critical/warning/info getters partition items by tier', () => {
-    const store = new NotificationStore();
-    store.ingest(frame('alert:fired', { cursor: 'c1' }));
-    store.ingest(frame('workflow:failed', { cursor: 'c2' }));
-    store.ingest(frame('workflow:started', { cursor: 'c3' }));
+  test('"mark all read" with more items than the buffer holds keeps the newest read, not the oldest', () => {
+    const count = READ_ID_LIMIT + 1;
+    // Listed newest first, the way the bell lists them.
+    const entries = Array.from({ length: count }, (_, index) =>
+      entry({ id: `review:${count - index}`, emittedAtMs: (count - index) * 1_000 }),
+    );
+    const store = storeWith(...entries);
 
-    expect(store.critical).toHaveLength(1);
-    expect(store.warning).toHaveLength(1);
-    expect(store.info).toHaveLength(1);
+    store.markAllRead();
+
+    const unread = store.items.filter((item) => !item.read).map((item) => item.id);
+    expect(unread).toEqual(['review:1']);
+    expect(store.unreadCount).toBe(1);
+    expect(store.items.find((item) => item.id === `review:${count}`)?.read).toBe(true);
   });
 
-  test('criticalUnread excludes dismissed critical items but they remain in critical/items', () => {
-    const store = new NotificationStore();
-    store.ingest(frame('alert:fired', { cursor: 'c1' }));
-    expect(store.criticalUnread).toHaveLength(1);
+  test('opening a chat reads the items about it and no others', () => {
+    const store = storeWith(
+      entry({ id: 'review:a', sessionId: 'session-refund' }),
+      entry({ id: 'task:b', kind: 'answered', tier: 'info', sessionId: 'session-refund' }),
+      entry({ id: 'review:c', sessionId: 'session-release' }),
+    );
 
-    store.dismissCritical('c1');
+    store.markSessionRead('session-refund');
 
-    expect(store.criticalUnread).toHaveLength(0);
-    expect(store.critical).toHaveLength(1);
+    expect(store.items.map((item) => [item.id, item.read])).toEqual([
+      ['review:a', true],
+      ['task:b', true],
+      ['review:c', false],
+    ]);
+    expect(store.unreadCount).toBe(1);
+  });
+
+  test('read ids are kept for the next page load', () => {
+    const storage = memoryStorage();
+    const first = new NotificationStore({ storage });
+    first.setActivity([entry({ id: 'review:a' })]);
+    first.markRead('review:a');
+
+    const second = new NotificationStore({ storage });
+    second.setActivity([entry({ id: 'review:a' })]);
+
+    expect(second.items[0]?.read).toBe(true);
+  });
+
+  test('a storage that refuses to write leaves the read state in memory', () => {
+    const store = new NotificationStore({
+      storage: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error('QuotaExceededError');
+        },
+      },
+    });
+    store.setActivity([entry({ id: 'review:a' })]);
+
+    store.markRead('review:a');
+
     expect(store.items[0]?.read).toBe(true);
   });
 
-  test('dismissCritical() is a no-op for a non-critical or unknown id', () => {
-    const store = new NotificationStore();
-    store.ingest(frame('workflow:started', { cursor: 'c1' }));
+  describe('the host’s own problem', () => {
+    test('an unreachable engine is one critical item, ahead of the rest', () => {
+      const store = storeWith(entry({ id: 'review:a' }));
 
-    store.dismissCritical('c1');
-    expect(store.items[0]?.read).toBe(false);
+      store.reportEngineStatus('closed', 5_000);
 
-    store.dismissCritical('does-not-exist');
-    expect(store.items).toHaveLength(1);
+      expect(store.items.map((item) => item.id)).toEqual([ENGINE_STATUS_ITEM_ID, 'review:a']);
+      expect(store.items[0]).toMatchObject({
+        kind: 'engine',
+        tier: 'critical',
+        title: 'Engine unreachable',
+        href: '/engine',
+        emittedAtMs: 5_000,
+      });
+      expect(store.unreadCount).toBe(2);
+      expect(store.criticalUnread).toHaveLength(1);
+    });
+
+    test('a connection that flaps between states replaces the item and does not stack another', () => {
+      const store = storeWith();
+
+      store.reportEngineStatus('closed', 1);
+      store.reportEngineStatus('stale', 2);
+      store.reportEngineStatus('closed', 3);
+
+      expect(store.items).toHaveLength(1);
+      expect(store.items[0]?.emittedAtMs).toBe(3);
+    });
+
+    test('the same state again leaves the item, and whether it was read, as it was', () => {
+      const store = storeWith();
+      store.reportEngineStatus('closed', 1);
+      store.markRead(ENGINE_STATUS_ITEM_ID);
+
+      store.reportEngineStatus('closed', 2);
+
+      expect(store.items[0]).toMatchObject({ emittedAtMs: 1, read: true });
+    });
+
+    test('a recovery removes the item, and the next problem is unread again', () => {
+      const store = storeWith();
+      store.reportEngineStatus('closed', 1);
+      store.markRead(ENGINE_STATUS_ITEM_ID);
+
+      store.reportEngineStatus('live', 2);
+      expect(store.items).toEqual([]);
+
+      store.reportEngineStatus('closed', 3);
+      expect(store.items[0]?.read).toBe(false);
+    });
+
+    test('a healthy engine, connecting, reconnecting or polling is not a problem', () => {
+      const store = storeWith();
+
+      for (const status of ['connecting', 'live', 'reconnecting', 'polling'] as const) {
+        store.reportEngineStatus(status, 1);
+        expect(store.items).toEqual([]);
+      }
+    });
   });
 
-  test('history is bounded to the most recent 50 items', () => {
-    const store = new NotificationStore();
-    for (let index = 0; index < 55; index += 1) {
-      store.ingest(frame('workflow:started', { cursor: `c${index}`, workflowId: `wf-${index}` }));
-    }
+  test('dismissCritical reads a critical item and leaves any other alone', () => {
+    const store = storeWith(entry({ id: 'review:a' }));
+    store.reportEngineStatus('closed', 1);
 
-    expect(store.items).toHaveLength(50);
-    // Most recent (`c54`) is first — the list is newest-first.
-    expect(store.items[0]?.id).toBe('c54');
-  });
-});
+    store.dismissCritical('review:a');
+    expect(store.items.find((item) => item.id === 'review:a')?.read).toBe(false);
 
-describe('NotificationStore.reportEngineStatus', () => {
-  test('names an unreachable engine as one critical item, and a stale one as a warning', () => {
-    const store = new NotificationStore();
-
-    store.reportEngineStatus('closed', 1_000);
-    expect(store.items.map((item) => [item.id, item.tier, item.title])).toEqual([
-      [ENGINE_STATUS_ITEM_ID, 'critical', 'Engine unreachable'],
-    ]);
-
-    store.reportEngineStatus('stale', 2_000);
-    expect(store.items.map((item) => [item.id, item.tier, item.title])).toEqual([
-      [ENGINE_STATUS_ITEM_ID, 'warning', 'Engine status stale'],
-    ]);
-  });
-
-  test('adds nothing for a state that is not a problem, and removes the item on recovery', () => {
-    const store = new NotificationStore();
-    for (const status of ['connecting', 'live', 'reconnecting', 'polling'] as const) {
-      store.reportEngineStatus(status, 1_000);
-    }
-    expect(store.items).toHaveLength(0);
-
-    store.reportEngineStatus('closed', 1_000);
-    expect(store.items).toHaveLength(1);
-    store.reportEngineStatus('live', 2_000);
-    expect(store.items).toHaveLength(0);
-  });
-
-  test('a connection that keeps dropping leaves one item, and keeps it read once it was read', () => {
-    const store = new NotificationStore();
-    store.ingest(frame('workflow:started', { cursor: 'c1', workflowId: 'wf-1' }));
-    store.reportEngineStatus('closed', 1_000);
-    store.markRead(ENGINE_STATUS_ITEM_ID);
-
-    store.reportEngineStatus('closed', 2_000);
-    store.reportEngineStatus('closed', 3_000);
-
-    const engine = store.items.filter((item) => item.id === ENGINE_STATUS_ITEM_ID);
-    expect(engine).toHaveLength(1);
-    expect(engine[0]?.read).toBe(true);
-    expect(engine[0]?.emittedAtMs).toBe(1_000);
-    expect(store.items).toHaveLength(2);
-
-    store.reportEngineStatus('live', 4_000);
-    store.reportEngineStatus('closed', 5_000);
-    expect(store.items.find((item) => item.id === ENGINE_STATUS_ITEM_ID)?.read).toBe(false);
+    store.dismissCritical(ENGINE_STATUS_ITEM_ID);
+    expect(store.criticalUnread).toEqual([]);
+    expect(store.items.find((item) => item.id === ENGINE_STATUS_ITEM_ID)?.read).toBe(true);
   });
 });
