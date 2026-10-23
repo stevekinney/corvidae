@@ -43,10 +43,13 @@ beforeEach(() => {
   resetLocation();
 });
 
-afterEach(() => {
+/** Puts back the `fetch` the last render scripted. */
+function restoreScripted(): void {
   scripted?.restore();
   scripted = undefined;
-});
+}
+
+afterEach(restoreScripted);
 
 async function renderSystemRoute(
   registry: RegistrySnapshotSource = {
@@ -93,6 +96,8 @@ describe('System route', () => {
       'Scopes',
     ]);
     unmount();
+    // Each render installs its own scripted `fetch` over the last, so the one before is put back first.
+    restoreScripted();
 
     // `registry` and `health` are what the tabs were called, and addresses that name them still work.
     for (const [value, name] of [
@@ -104,6 +109,7 @@ describe('System route', () => {
       const tab = await opened.findByRole('tab', { name });
       expect(tab.getAttribute('aria-selected')).toBe('true');
       opened.unmount();
+      restoreScripted();
     }
   });
 

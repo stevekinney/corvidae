@@ -37,10 +37,10 @@
      * The non-reserved prefixes found in storage. With some, the prefix is picked from them (or typed
      * under Other); with none, as before the picker, the prefix is a field to type into.
      */
-    knownPrefixes?: readonly string[];
+    knownPrefixes: readonly string[];
   }
 
-  let { client, knownPrefixes = [] }: ScanPanelProps = $props();
+  let { client, knownPrefixes }: ScanPanelProps = $props();
 
   /** The picker's value for "a prefix that is not in the list", which brings a field to type it in. */
   const OTHER_PREFIX = '__other__';

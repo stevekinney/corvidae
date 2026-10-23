@@ -27,7 +27,7 @@ await worker.connect();`;
   <p class="weft-workers-in-process__sentence">
     This engine runs its work in-process. Remote workers are not configured.
   </p>
-  <Collapsible trigger="Learn how to connect one">
+  <Collapsible trigger="Learn how to connect one" animated={false}>
     <div class="weft-workers-in-process__how">
       <p class="weft-workers-in-process__text">
         A remote worker takes the engine’s activities when the engine is created with

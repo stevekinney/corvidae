@@ -317,14 +317,13 @@
   // No worker, deployment, or queue: the engine runs in-process, and the page says so instead of
   // showing five tabs of zeros. A fleet that has not been read yet, or could not be, is not that.
   // Until the workers are read the page is a skeleton, so the tabs do not appear and then go; a
-  // slow queue list leaves the tabs (and their own skeletons) up until it answers.
+  // slow queue list leaves the tabs (and the queues tab's own skeleton) up until it answers.
   const fleetSettling = $derived(workersQuery.isPending);
   const inProcessOnly = $derived(
     workersQuery.data !== undefined &&
       queuesQuery.data !== undefined &&
       runsInProcessOnly(workersQuery.data, queuesQuery.data, router.search),
   );
-  const fleetLoading = $derived(workersQuery.isPending);
   const fleetError = $derived(workersQuery.error ?? null);
   const queuesLoading = $derived(queuesQuery.isPending);
   const queuesError = $derived(queuesQuery.error ?? null);
@@ -367,17 +366,7 @@
       </TabList>
 
       <TabPanel value="fleet">
-        {#if fleetLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading fleet"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if fleetError}
+        {#if fleetError}
           <EmptyState
             title={FAULT_TREATMENT_TITLE[faultTreatment(fleetError).kind]}
             description={faultTreatment(fleetError).message}
@@ -400,17 +389,7 @@
       </TabPanel>
 
       <TabPanel value="list">
-        {#if fleetLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading workers"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if fleetError}
+        {#if fleetError}
           <EmptyState
             title={FAULT_TREATMENT_TITLE[faultTreatment(fleetError).kind]}
             description={faultTreatment(fleetError).message}

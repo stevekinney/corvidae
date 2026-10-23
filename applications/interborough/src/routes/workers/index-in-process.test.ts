@@ -3,7 +3,7 @@
  * the page says so in one sentence and shows no tabs, and the full page is back as soon as there is
  * a worker, a deployment, a task queue, or an address that names one of them.
  */
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -71,6 +71,20 @@ describe('Workers route with no connected worker', () => {
 
     const trigger = await view.findByRole('button', { name: 'Learn how to connect one' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('shows how to connect a worker once the disclosure is opened: the engine option and a snippet for this host', async () => {
+    scripted = emptyFleet();
+
+    const view = renderRoute();
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Learn how to connect one' }));
+
+    expect(view.getByText("activityExecution: { mode: 'remote' }")).not.toBeNull();
+    expect(view.getByText(/remote-workers\.md/)).not.toBeNull();
+    const snippet = view.container.querySelector('pre')?.textContent ?? '';
+    expect(snippet).toContain("import { RemoteWorker } from '@lostgradient/weft';");
+    expect(snippet).toContain('ws://localhost/v1/tasks/default/stream');
   });
 
   test('is the loading skeleton, not the sentence, until the workers have been read', () => {
