@@ -153,7 +153,8 @@
       <Button variant="secondary" onclick={() => onCorrect(memory)}
         >{MEMORY_COPY.correct.action}</Button
       >
-      <Button variant="danger" onclick={() => onForget(memory.id)}>{MEMORY_COPY.forget.action}</Button
+      <Button variant="danger" onclick={() => onForget(memory.id)}
+        >{MEMORY_COPY.forget.action}</Button
       >
     </div>
   {/if}

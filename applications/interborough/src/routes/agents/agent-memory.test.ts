@@ -135,10 +135,12 @@ describe('the list and the search', () => {
 
     expect(view.queryByRole('button', { name: /^Details/ })).toBeNull();
     const row = text.closest('li') as HTMLElement;
-    expect(within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(AISLE.content) }))
-      .not.toBeNull();
-    expect(within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }))
-      .not.toBeNull();
+    expect(
+      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(AISLE.content) }),
+    ).not.toBeNull();
+    expect(
+      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }),
+    ).not.toBeNull();
     expect(served.callsTo('bureau.memory.get')).toEqual([]);
 
     await fireEvent.click(text.closest('button') as HTMLElement);
@@ -162,9 +164,9 @@ describe('the list and the search', () => {
       MEMORY_COPY.kind.episodic.description,
     );
     expect(
-      within(view.container.querySelector('[data-memory="memory-window"]') as HTMLElement).getByText(
-        MEMORY_COPY.kind.operator.label,
-      ),
+      within(
+        view.container.querySelector('[data-memory="memory-window"]') as HTMLElement,
+      ).getByText(MEMORY_COPY.kind.operator.label),
     ).not.toBeNull();
   });
 
