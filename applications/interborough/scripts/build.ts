@@ -343,7 +343,7 @@ export async function buildApplication(
  */
 export function exitWhenStandardInputCloses(
   input: ReadableStream<Uint8Array> = Bun.stdin.stream(),
-  exit: (code: number) => void = process.exit,
+  exit: (code: number) => void = process.exit.bind(process),
 ): void {
   void (async () => {
     // Nothing is ever sent; reading only waits for the end of the stream.
@@ -408,7 +408,7 @@ export async function runBuildCommand(
 /** The process entry: parse the command line, watch standard input when asked, and build. */
 export async function runBuildMain(
   argv: readonly string[],
-  exit: (code: number) => void = process.exit,
+  exit: (code: number) => void = process.exit.bind(process),
   log: (line: string) => void = console.log,
   runBuild: typeof buildApplication = buildApplication,
   input?: ReadableStream<Uint8Array>,

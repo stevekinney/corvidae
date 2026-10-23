@@ -546,10 +546,10 @@ describe('the output directory guard', () => {
 });
 
 describe('the build process entry', () => {
-  const fakeBuild = (async () =>
+  const fakeBuild: typeof buildApplication = async () =>
     ({ directory: 'x', files: [], metafile: {} }) as unknown as Awaited<
       ReturnType<typeof buildApplication>
-    >) as typeof buildApplication;
+    >;
 
   it('builds and does not exit by itself when the parent is not watched', async () => {
     const exits: number[] = [];
@@ -582,7 +582,7 @@ describe('the build process entry', () => {
     expect(exits).toEqual([0]);
 
     closeInput();
-    await new Promise((resolveTick) => setTimeout(resolveTick, 10));
+    await Bun.sleep(10);
     expect(exits).toEqual([0, 1]);
   });
 
@@ -595,7 +595,7 @@ describe('the build process entry', () => {
       },
     });
     exitWhenStandardInputCloses(input, (code) => void exits.push(code));
-    await new Promise((resolveTick) => setTimeout(resolveTick, 10));
+    await Bun.sleep(10);
     expect(exits).toEqual([1]);
   });
 });
