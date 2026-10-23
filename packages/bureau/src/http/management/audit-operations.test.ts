@@ -249,13 +249,13 @@ describe('filters and paging', () => {
     cleanups.push(() => opened.dispose());
     const trail = opened.bureau.auditTrail!;
     const alice = await opened.bureau.createSchedule({
-      agentName: 'x',
+      agentName: 'default',
       spec: '1h',
       input: 'tick',
       principal: OWNER.alice,
     });
     const bob = await opened.bureau.createSchedule({
-      agentName: 'x',
+      agentName: 'default',
       spec: '1h',
       input: 'tick',
       principal: OWNER.bob,

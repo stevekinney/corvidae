@@ -10,6 +10,7 @@ import {
 } from '../media';
 import {
   extractSystemInstruction,
+  geminiIssuedCallId,
   toFunctionCallPart,
   toFunctionResponsePart,
   toGeminiParts,
@@ -52,9 +53,13 @@ export function toGeminiMessages(
 
   // Build a map of tool call IDs to function names for tool results
   const toolCallNames = new Map<string, string>();
+  // Ids Gemini itself issued, keyed by the internal call id.
+  const geminiCallIds = new Map<string, string>();
   for (const message of ordered) {
     if (message.role === 'tool-call' && message.toolCall) {
       toolCallNames.set(message.toolCall.id, message.toolCall.name);
+      const issued = geminiIssuedCallId(message);
+      if (issued !== undefined) geminiCallIds.set(message.toolCall.id, issued);
     }
   }
 
@@ -76,7 +81,7 @@ export function toGeminiMessages(
   };
 
   for (const message of ordered) {
-    const converted = convertGeminiMessage(message, toolCallNames, lineage, options);
+    const converted = convertGeminiMessage(message, toolCallNames, geminiCallIds, lineage, options);
     if (!converted) continue;
     const { role: targetRole, parts } = converted;
 
@@ -106,6 +111,7 @@ export function toGeminiMessages(
 function convertGeminiMessage(
   message: Message,
   toolCallNames: ReadonlyMap<string, string>,
+  geminiCallIds: ReadonlyMap<string, string>,
   lineage: ContentPartLineage[],
   options: MediaExportOptions | undefined,
 ): { role: 'user' | 'model'; parts: GeminiPart[] } | undefined {
@@ -129,6 +135,7 @@ function convertGeminiMessage(
       return convertToolGeminiMessage(
         message,
         toolCallNames,
+        geminiCallIds,
         createMediaExportContext('gemini', message, lineage, options),
       );
     default:
@@ -143,11 +150,15 @@ function shouldSkipGeminiMessage(message: Message): boolean {
 function convertToolGeminiMessage(
   message: Message,
   toolCallNames: ReadonlyMap<string, string>,
+  geminiCallIds: ReadonlyMap<string, string>,
   context: MediaExportContext,
 ): { role: 'user' | 'model'; parts: GeminiPart[] } | undefined {
   if (message.role === 'tool-call') {
     return message.toolCall
-      ? { role: 'model', parts: [toFunctionCallPart(message.toolCall)] }
+      ? {
+          role: 'model',
+          parts: [toFunctionCallPart(message.toolCall, geminiCallIds.get(message.toolCall.id))],
+        }
       : undefined;
   }
   return message.toolResult
@@ -158,6 +169,7 @@ function convertToolGeminiMessage(
             message.toolResult,
             toolCallNames.get(message.toolResult.callId) ?? 'unknown',
             context,
+            geminiCallIds.get(message.toolResult.callId),
           ),
         ],
       }

@@ -32,6 +32,8 @@ export interface GeminiFileDataPart {
  */
 export interface GeminiFunctionCallPart {
   functionCall: {
+    /** The id Gemini issued for this call; present only when the history recorded one. */
+    id?: string;
     name: string;
     args: Record<string, unknown>;
   };
@@ -42,6 +44,8 @@ export interface GeminiFunctionCallPart {
  */
 export interface GeminiFunctionResponsePart {
   functionResponse: {
+    /** The originating `functionCall.id`; present only when Gemini issued one, never synthesized. */
+    id?: string;
     name: string;
     response: Record<string, unknown>;
     /** Ordered media for a result that carries parts; inline bytes only. */
