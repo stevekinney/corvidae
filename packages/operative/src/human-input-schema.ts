@@ -57,7 +57,13 @@ export function checkHumanInputSchema(signalName: string, schema: unknown): Huma
       `a schema may take at most ${HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES} bytes serialized.`,
     );
   }
-  const copy = JSON.parse(serialized) as HumanInputSchema;
+  // `toJSON()` may return anything: re-check the serialized copy, not just the input. A `true`
+  // schema would otherwise compile as accept-all and a `null` would leak a raw TypeError.
+  const parsed: unknown = serialized === undefined ? undefined : JSON.parse(serialized);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new HumanInputSchemaError(signalName, 'a schema must serialize as a JSON object.');
+  }
+  const copy = parsed as HumanInputSchema;
   if (depthOf(copy, 1) > HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH) {
     throw new HumanInputSchemaError(
       signalName,
