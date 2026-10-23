@@ -1,10 +1,12 @@
 <script lang="ts">
   /**
    * One memory in the list: its text, how long ago it was learned, and what kind of memory it is.
-   * The whole row opens the memory's details; Forget and Correct sit beside it and appear when the
+   * The whole row opens the memory's details, and its time and kind are part of that opener, so a
+   * screen reader hears them with the text. Forget and Correct sit beside it and appear when the
    * row is hovered or holds focus (always, on a screen that cannot hover), so neither is behind a
-   * second click. The kind chip carries a sentence in plain words, for a person who did not choose
-   * the kind and for a screen reader (`aria-describedby`, through the tooltip).
+   * second click. The kind carries a sentence in plain words, for a person who did not choose it:
+   * a tooltip anchored to the opener, so a keyboard user who focuses the row sees it, and the
+   * opener's `aria-describedby` for a screen reader.
    */
   import { Badge, Button, RelativeTime, SelectableRow, Tooltip } from '@lostgradient/cinder';
 
@@ -19,12 +21,15 @@
     /** The search's relevance for this memory, or `null` when the list is not a search. */
     score: number | null;
     selected: boolean;
+    /** True while a forget is being saved: it is asked once, so the action waits for it. */
+    forgetPending: boolean;
     onOpen: (id: string) => void;
     onForget: (id: string) => void;
     onCorrect: (memory: Memory) => void;
   };
 
-  let { memory, query, score, selected, onOpen, onForget, onCorrect }: Props = $props();
+  let { memory, query, score, selected, forgetPending, onOpen, onForget, onCorrect }: Props =
+    $props();
 
   const kind = $derived(kindOf(memory));
   const segments = $derived(highlightSegments(memory.content, query));
@@ -32,10 +37,16 @@
   const when = $derived(formatMemoryTime(memory.createdAt));
   /** The row's full text, which says what its actions are for when two excerpts are alike. */
   const textId = $props.id();
-  let chip = $state<HTMLElement | null>(null);
+  let row = $state<HTMLElement | null>(null);
+  /** The row's opener, which the row component renders: the kind's tooltip is anchored to it. */
+  let opener = $state<HTMLElement | null>(null);
+
+  $effect(() => {
+    opener = row?.querySelector<HTMLElement>('.cinder-selectable-row__primary') ?? null;
+  });
 </script>
 
-<li class="weft-memory__row" data-memory={memory.id} data-selected={selected}>
+<li class="weft-memory__row" data-memory={memory.id} data-selected={selected} bind:this={row}>
   <SelectableRow
     density="condensed"
     {selected}
@@ -50,16 +61,17 @@
       >
     {/snippet}
     {#snippet meta()}
-      {#if score !== null}
-        <span>{MEMORY_COPY.relevance}: {score.toFixed(2)}</span>
-      {/if}
+      <span class="weft-memory__facts">
+        {#if score !== null}
+          <span>{MEMORY_COPY.relevance}: {score.toFixed(2)}</span>
+        {/if}
+        <RelativeTime class="weft-memory__time" date={memory.createdAt} title={when} />
+        <span class="weft-memory__kind">
+          <Badge variant="neutral" size="sm">{kind.label}</Badge>
+        </span>
+      </span>
     {/snippet}
     {#snippet trailingActions()}
-      <RelativeTime class="weft-memory__time" date={memory.createdAt} title={when} />
-      <span class="weft-memory__kind" bind:this={chip}>
-        <Badge variant="neutral" size="sm">{kind.label}</Badge>
-      </span>
-      <Tooltip text={kind.description} triggerRef={chip} />
       <span class="weft-memory__actions">
         <Button
           variant="ghost"
@@ -71,6 +83,7 @@
         <Button
           variant="ghost"
           size="sm"
+          disabled={forgetPending}
           aria-label={MEMORY_COPY.rowAction.forget(name, when)}
           aria-describedby={textId}
           onclick={() => onForget(memory.id)}>{MEMORY_COPY.forget.action}</Button
@@ -78,6 +91,7 @@
       </span>
     {/snippet}
   </SelectableRow>
+  <Tooltip text={kind.description} triggerRef={opener} />
 </li>
 
 <style>
@@ -102,13 +116,32 @@
     border-radius: var(--cinder-radius-sm);
   }
 
-  .weft-memory__row :global(.weft-memory__time) {
-    color: var(--cinder-text-muted);
+  /* The text and its facts share a line on a wide screen, and stack on a narrow one. */
+  .weft-memory__row :global(.cinder-selectable-row__body) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+  }
+
+  .weft-memory__row :global(.cinder-selectable-row__title) {
+    flex: 1 1 14rem;
+  }
+
+  .weft-memory__row :global(.cinder-selectable-row__meta) {
+    flex: 0 0 auto;
     font-size: var(--cinder-text-sm);
+  }
+
+  .weft-memory__facts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
     white-space: nowrap;
   }
 
-  /* One width for every kind, so the times and the actions line up down the list. */
   .weft-memory__kind {
     display: inline-flex;
   }
@@ -138,7 +171,7 @@
     }
   }
 
-  /* The trailing group sits beside the text on a wide screen and under it on a narrow one. */
+  /* The actions sit beside the text on a wide screen and under it on a narrow one. */
   @media (max-width: 40rem) {
     .weft-memory__row :global(.cinder-selectable-row--has-trailing-actions) {
       grid-template-columns: minmax(0, 1fr);
@@ -150,13 +183,8 @@
     }
 
     .weft-memory__row :global(.cinder-selectable-row__trailing-actions) {
-      flex-wrap: wrap;
+      justify-content: flex-end;
       padding-block-end: var(--cinder-space-2);
-      padding-inline-start: var(--cinder-space-3);
-    }
-
-    .weft-memory__actions {
-      margin-inline-start: auto;
     }
   }
 </style>

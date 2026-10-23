@@ -635,15 +635,17 @@ export const MEMORY_COPY = {
   count: (shown: number, more: boolean): string =>
     `${shown}${more ? '+' : ''} ${shown === 1 && !more ? 'memory' : 'memories'}`,
   /**
-   * What a search found. The Bureau ranks every memory the agent has and has no score floor, so
-   * one that shares nothing with the query comes back with a relevance of 0: only the memories
-   * with a relevance above 0 are matches. `total` is the agent's memory count when every page of
-   * it has been read, and `more` says the search filled its page, so more may match than are shown.
+   * What a search found. The Bureau ranks every memory the agent has and has no score floor, so a
+   * memory matches when it holds a word of the query, and its relevance only orders the matches.
+   * `total` is the agent's memory count when every page of it has been read, and `more` says the
+   * search filled its page, so more may match than are shown, unless every memory already does.
    */
-  matchCount: (matched: number, total: number | undefined, more: boolean): string =>
-    total !== undefined
-      ? `${matched}${more ? '+' : ''} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
-      : `${matched}${more ? '+' : ''} ${matched === 1 && !more ? 'memory matches' : 'memories match'}`,
+  matchCount: (matched: number, total: number | undefined, more: boolean): string => {
+    const plus = more && matched !== total ? '+' : '';
+    return total !== undefined
+      ? `${matched}${plus} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
+      : `${matched}${plus} ${matched === 1 && plus === '' ? 'memory matches' : 'memories match'}`;
+  },
   noMatch: (query: string): string => `No memory matches “${query}”`,
   /** The action under an empty search that lists everything again. */
   clearMatch: 'Show all memories',

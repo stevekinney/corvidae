@@ -9,6 +9,7 @@ import {
   kindOf,
   labelFor,
   lineageFields,
+  matchesQuery,
 } from './memory-presentation.ts';
 
 const MEMORY: Memory = {
@@ -179,5 +180,25 @@ describe('excerpt', () => {
   test('collapses whitespace and cuts a long memory short', () => {
     expect(excerpt('  one\n two  ')).toBe('one two');
     expect(excerpt('x'.repeat(60))).toBe(`${'x'.repeat(48)}…`);
+  });
+});
+
+describe('matchesQuery', () => {
+  test('is true when the text holds a word of the query, ignoring case, and false otherwise', () => {
+    expect(matchesQuery('The staging database is called orca', 'ORCA tiger')).toBe(true);
+    expect(matchesQuery('The staging database is called orca', 'india')).toBe(false);
+    expect(matchesQuery('anything', '   ')).toBe(false);
+  });
+
+  test('agrees with the marks, so a count of matches is a count of marked memories', () => {
+    for (const [text, query] of [
+      ['echo is support priority database on mode', 'echo build'],
+      ['Deploys go out on Fridays', 'india'],
+      ['costs $5 (maybe)', '$5 ('],
+    ] as const) {
+      expect(matchesQuery(text, query)).toBe(
+        highlightSegments(text, query).some((segment) => segment.match),
+      );
+    }
   });
 });

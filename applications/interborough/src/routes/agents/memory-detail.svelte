@@ -35,6 +35,8 @@
     id: string;
     /** Whether a forget of this memory was answered with a legal hold. */
     legalHold: boolean;
+    /** True while a forget is being saved: it is asked once, so the action waits for it. */
+    forgetPending: boolean;
     /** Opens another memory of the agent, such as the one this corrects. */
     onOpen: (id: string) => void;
     onClose: () => void;
@@ -42,7 +44,8 @@
     onCorrect: (memory: Memory) => void;
   };
 
-  let { agentId, id, legalHold, onOpen, onClose, onForget, onCorrect }: Props = $props();
+  let { agentId, id, legalHold, forgetPending, onOpen, onClose, onForget, onCorrect }: Props =
+    $props();
 
   const detail = createQuery(
     () => ({
@@ -158,7 +161,7 @@
       <Button variant="secondary" onclick={() => onCorrect(memory)}
         >{MEMORY_COPY.correct.action}</Button
       >
-      <Button variant="danger" onclick={() => onForget(memory.id)}
+      <Button variant="danger" disabled={forgetPending} onclick={() => onForget(memory.id)}
         >{MEMORY_COPY.forget.action}</Button
       >
     </div>

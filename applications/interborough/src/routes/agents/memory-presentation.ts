@@ -127,6 +127,16 @@ export function highlightSegments(text: string, query: string): HighlightSegment
     .map((part) => ({ text: part, match: words.includes(part.toLowerCase()) }));
 }
 
+/**
+ * Whether `text` holds one of the words of `query`: the same test that marks the text
+ * (`highlightSegments`), so the count of matches, the marks, and an empty result always agree.
+ * The Bureau's relevance cannot say this: it has no floor, a memory that shares no word with the
+ * query can score above 0, and one that shares a word can score below it.
+ */
+export function matchesQuery(text: string, query: string): boolean {
+  return highlightSegments(text, query).some((segment) => segment.match);
+}
+
 /** A short excerpt of a memory, to name the actions of its row. */
 export function excerpt(content: string): string {
   const text = content.trim().replace(/\s+/g, ' ');

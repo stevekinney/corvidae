@@ -39,6 +39,8 @@
      * dismiss, a hold the Bureau confirmed stays known.
      */
     held?: readonly string[];
+    /** True while a forget is being saved, for the page to hold every Forget until it settles. */
+    forgetPending?: boolean;
     /**
      * Called once a change has landed, so the page can look at the list again. `select` is false
      * for a correction that finished after the person had moved on to another memory.
@@ -50,7 +52,13 @@
     }) => void;
   };
 
-  let { agentId, outcome = $bindable(), held = $bindable([]), onChanged }: Props = $props();
+  let {
+    agentId,
+    outcome = $bindable(),
+    held = $bindable([]),
+    forgetPending = $bindable(false),
+    onChanged,
+  }: Props = $props();
 
   const queryClient = useQueryClient();
 
@@ -99,8 +107,13 @@
     },
   }));
 
-  /** Asks whether to forget the memory `id`. */
+  $effect(() => {
+    forgetPending = forget.isPending;
+  });
+
+  /** Asks whether to forget the memory `id`, unless a forget is already being saved. */
   export function askToForget(id: string): void {
+    if (forget.isPending) return;
     forgetting = id;
     confirmingForget = true;
   }
@@ -115,7 +128,7 @@
 
   /** Asks the Bureau to forget, with the last refusal and receipt forgotten first. */
   function confirmForget(): void {
-    if (forgetting === undefined) return;
+    if (forgetting === undefined || forget.isPending) return;
     failure = undefined;
     outcome = undefined;
     forget.mutate(forgetting);

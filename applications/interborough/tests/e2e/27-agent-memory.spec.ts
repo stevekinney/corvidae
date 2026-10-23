@@ -70,12 +70,15 @@ test.describe('the memory page', () => {
     // of the agent's memories match, and marks the words it was given.
     await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
     await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
-    await expect(page.locator('[data-memory]').first()).toContainText(label);
-    await expect(page.locator('[data-memory]').first()).toContainText(MEMORY_COPY.relevance);
+    // The memory with the unique label matches, and shows its relevance; which row ranks first
+    // is the Bureau's business and is not asserted.
+    await expect(rowOf(page, label)).toHaveCount(1);
+    await expect(rowOf(page, label)).toContainText(MEMORY_COPY.relevance);
     await expect(page.getByTestId('memory-match-count')).toHaveText(
       /^\d+\+? (of \d+ )?memor(y matches|ies match)$/,
     );
-    await expect(page.locator('mark').first()).toHaveText(label.split(' ')[0] ?? '');
+    await expect(rowOf(page, label).locator('mark').first()).toHaveText(label.split(' ')[0] ?? '');
+    // A memory that holds none of the words searched for is not a match, whatever it scored.
     await expect(page.locator('[data-memory]', { hasText: 'Aisle' })).toHaveCount(0);
 
     await openDetails(page, label);
@@ -167,10 +170,15 @@ test.describe('the memory page', () => {
     await rowAction(row, MEMORY_COPY.correct.action).focus();
     await expect(actions).toHaveCSS('opacity', '1');
 
-    // The kind reads in plain words and says what it means to a screen reader.
-    await expect(row.locator('.weft-memory__kind')).toHaveAccessibleDescription(
-      MEMORY_COPY.kind.episodic.description,
-    );
+    // The kind reads in plain words, is part of the opener, and says what it means to a screen
+    // reader; a keyboard user who focuses the row sees the same sentence.
+    const opener = row.locator('.cinder-selectable-row__primary');
+    await expect(opener).toContainText(MEMORY_COPY.kind.episodic.label);
+    await expect(opener).toHaveAccessibleDescription(MEMORY_COPY.kind.episodic.description);
+    await opener.focus();
+    await expect(
+      page.getByRole('tooltip', { name: MEMORY_COPY.kind.episodic.description }),
+    ).toBeVisible();
 
     await row.locator('.weft-memory__content').click();
     await expect(detailOf(page)).toBeVisible();

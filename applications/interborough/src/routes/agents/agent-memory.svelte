@@ -22,9 +22,12 @@
   import { router } from '../../lib/router.svelte.ts';
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
+  import { matchesQuery } from './memory-presentation.ts';
   import MemoryRow from './memory-row.svelte';
 
   const PAGE_SIZE = 20;
+  /** The most memories a search ranks: the Bureau's own ceiling, so a match is rarely left out. */
+  const SEARCH_LIMIT = 100;
   const agentId = untrack(() => router.current.params['id'] ?? '');
 
   /** What is typed, and what the last search applied. A blank applied search lists. */
@@ -35,6 +38,7 @@
   let outcome = $state<ForgetOutcome | undefined>(undefined);
   /** The memories a forget answered with a legal hold, which stays known when the receipt goes. */
   let held = $state<readonly string[]>([]);
+  let forgetPending = $state(false);
   let changes = $state<ReturnType<typeof MemoryChanges> | undefined>(undefined);
 
   const list = createInfiniteQuery(
@@ -53,7 +57,8 @@
   const search = createQuery(
     () => ({
       queryKey: queryKeys.memory.search(agentId, applied),
-      queryFn: ({ signal }) => searchMemories(agentId, applied, { limit: PAGE_SIZE }, { signal }),
+      queryFn: ({ signal }) =>
+        searchMemories(agentId, applied, { limit: SEARCH_LIMIT }, { signal }),
       enabled: applied !== '',
       retry: false,
     }),
@@ -71,8 +76,10 @@
         (memory) => memory.id,
       ).map((memory) => ({ memory, score: null }));
     }
+    // The Bureau ranks every memory and has no floor, so its order is kept and its score is not a
+    // verdict: a memory is a match when it holds a word of the query, as the marks show.
     return (search.data ?? [])
-      .filter((hit) => hit.score > 0)
+      .filter((hit) => matchesQuery(hit.memory.content, applied))
       .map((hit) => ({ memory: hit.memory, score: hit.score }));
   });
 
@@ -125,8 +132,8 @@
   /** The agent's memory count once every page of it has been read, and unknown before. */
   const total = $derived(list.hasNextPage || loaded === 0 ? undefined : loaded);
 
-  /** Whether the search filled its page with matches, so more may match than are shown. */
-  const searchFilled = $derived(rows.length >= PAGE_SIZE);
+  /** Whether the search ranked as many memories as it can, so more may match than are shown. */
+  const searchFilled = $derived((search.data?.length ?? 0) >= SEARCH_LIMIT);
 
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -174,7 +181,14 @@
     </Alert>
   {/if}
 
-  <MemoryChanges bind:this={changes} {agentId} bind:outcome bind:held onChanged={changed} />
+  <MemoryChanges
+    bind:this={changes}
+    {agentId}
+    bind:outcome
+    bind:held
+    bind:forgetPending
+    onChanged={changed}
+  />
 
   <div class="weft-memory__body" data-has-detail={selectedId !== null}>
     <div class="weft-memory__results">
@@ -220,6 +234,7 @@
               query={applied}
               score={row.score}
               selected={row.memory.id === selectedId}
+              {forgetPending}
               onOpen={open}
               onForget={(id) => changes?.askToForget(id)}
               onCorrect={(memory) => changes?.startCorrecting(memory)}
@@ -242,6 +257,7 @@
           {agentId}
           id={selectedId}
           legalHold={held.includes(selectedId)}
+          {forgetPending}
           onOpen={open}
           onClose={() => (selectedId = null)}
           onForget={(id) => changes?.askToForget(id)}
