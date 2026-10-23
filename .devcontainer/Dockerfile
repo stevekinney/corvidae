@@ -23,11 +23,13 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # and `g++` are node-gyp's toolchain: on linux/arm64, `better-sqlite3` and
 # `msgpackr-extract` find no prebuilt binary for the Node version Bun 1.4.2 reports, and
 # their install scripts fall back to compiling, which fails `bun install` without it.
+# `lsof` is what `scripts/chef/leftovers.ts` uses to find processes still running inside a
+# worktree; without it every worktree reads as unchecked in the container.
 # `sudo` lets the `onCreateCommand` hand the root-owned `node_modules` volume to `bun`.
 RUN mkdir -p /etc/postgresql-common \
   && echo 'create_main_cluster = false' > /etc/postgresql-common/createcluster.conf \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates g++ git make postgresql-17 python3 sudo \
+  && apt-get install -y --no-install-recommends ca-certificates g++ git lsof make postgresql-17 python3 sudo \
   && rm -rf /var/lib/apt/lists/* \
   && echo 'bun ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/bun \
   && chmod 0440 /etc/sudoers.d/bun

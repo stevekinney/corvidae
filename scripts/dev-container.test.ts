@@ -39,6 +39,11 @@ describe('the Dev Container', () => {
     expect(dockerfile).toContain(`ENV PATH=/usr/lib/postgresql/${major}/bin:$PATH`);
   });
 
+  test("installs lsof, which chef's leftover check needs to find processes in a worktree", () => {
+    const install = /apt-get install[^\n]*/u.exec(dockerfile)?.[0] ?? '';
+    expect(install).toMatch(/\blsof\b/u);
+  });
+
   test('provides a real Node.js for the native SQLite suite', () => {
     expect(dockerfile).toMatch(/^FROM node:\d+\.\d+\.\d+-trixie-slim AS node$/mu);
     expect(dockerfile).toContain('COPY --from=node /usr/local/bin/node /usr/local/bin/node');
