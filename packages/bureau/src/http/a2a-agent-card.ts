@@ -8,7 +8,8 @@
  *   is the catalog name its interface URL ends in plus `version`, its definition revision.
  * - `description` is the agent's, else a sentence naming it.
  * - Input modes are `text/plain` and `application/json` (an approval's decision travels as a
- *   data part); output is `text/plain`. Multimodal parts are COR-788's.
+ *   data part) and output is `text/plain`, plus the media types of every modality the agent's
+ *   backend descriptors put out (COR-788); see {@link mediaOutputModesOf}.
  * - `skills` are the agent's skill descriptors, or one skill standing for the agent itself.
  * - `capabilities.streaming` is `true`; `pushNotifications` is `true` only where the Bureau composes both an outbox and the durable
  *   event history (COR-1543),
@@ -31,11 +32,43 @@ import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 /** The A2UI A2A extension of the pinned A2UI release (`v0.9.1`). */
 export const A2UI_EXTENSION_URI = 'https://a2ui.org/a2a-extension/a2ui/v0.9.1';
 
-/** The media types a Bureau agent reads over A2A. */
+/** The media types every Bureau agent reads over A2A: text, and a data part (an approval's decision). */
 export const A2A_INPUT_MODES: readonly string[] = ['text/plain', 'application/json'];
 
-/** The media types a Bureau agent answers with over A2A. */
+/** The media types every Bureau agent answers with over A2A. */
 export const A2A_OUTPUT_MODES: readonly string[] = ['text/plain'];
+
+/** The media types a modality stands for on the wire, as `type/*` families or the one exact type. */
+const MODALITY_MEDIA_TYPES: Readonly<Record<string, readonly string[]>> = {
+  image: ['image/*'],
+  audio: ['audio/*'],
+  video: ['video/*'],
+  document: ['application/pdf'],
+  file: ['application/octet-stream'],
+};
+
+/**
+ * The media types an agent answers with: the text mode every agent has, then each modality some
+ * backend descriptor behind its `generate` puts out (`BackendDescriptor.modalities`). An agent
+ * whose `generate` carries no descriptor is text-only. Generated JSON is a document, so a document
+ * or file output also advertises `application/json`. Input modes stay {@link A2A_INPUT_MODES}: a
+ * message's file parts are not read yet (COR-788, part 2).
+ */
+export function mediaOutputModesOf(
+  descriptors: readonly {
+    readonly modalities: Readonly<Record<string, { output: boolean }>>;
+  }[],
+): readonly string[] {
+  const output = new Set(A2A_OUTPUT_MODES);
+  for (const descriptor of descriptors) {
+    for (const [modality, support] of Object.entries(descriptor.modalities)) {
+      if (!support.output) continue;
+      for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) output.add(type);
+      if (modality === 'document' || modality === 'file') output.add('application/json');
+    }
+  }
+  return [...output];
+}
 
 /** What the card of one agent is built from. */
 export type A2AAgentCardSource = {
@@ -46,6 +79,8 @@ export type A2AAgentCardSource = {
   /** The agent definition's revision, published as `version`. */
   readonly definitionRevision: number;
   readonly skillDescriptors: readonly AgentSkillDescriptor[] | undefined;
+  /** The media types the agent answers with, from its backend descriptors; text-only when it has none. */
+  readonly outputModes?: readonly string[] | undefined;
   /** The credentials the handler enforces; `undefined` when every request is the local caller. */
   readonly security: A2ASecurityDeclaration | undefined;
   /** Whether the Bureau keeps a durable event history, which the durable-history extension needs. */
@@ -150,7 +185,7 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
     securitySchemes: { ...source.security?.securitySchemes },
     securityRequirements: [...(source.security?.securityRequirements ?? [])],
     defaultInputModes: [...A2A_INPUT_MODES],
-    defaultOutputModes: [...A2A_OUTPUT_MODES],
+    defaultOutputModes: [...(source.outputModes ?? A2A_OUTPUT_MODES)],
     skills,
     iconUrl: undefined,
   };

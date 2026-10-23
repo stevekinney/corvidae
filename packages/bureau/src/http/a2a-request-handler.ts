@@ -86,12 +86,7 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import {
-  A2A_INPUT_MODES,
-  A2A_OUTPUT_MODES,
-  A2UI_EXTENSION_URI,
-  declaredExtensionsOf,
-} from './a2a-agent-card.ts';
+import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
 import { type A2ATaskRecord, type A2ATaskRecords, type A2AWireMessage } from './a2a-task-record.ts';
 import {
   bureauStateOf,
@@ -222,6 +217,7 @@ export type A2ABureau = Pick<
   | 'subscribeEventHistory'
   | 'addEventListener'
   | 'removeEventListener'
+  | 'assets'
 > & {
   readonly tasks: Pick<
     TaskRegistry,
@@ -243,6 +239,8 @@ export type BureauA2ARequestHandlerOptions = {
   readonly card: () => AgentCard;
   readonly bureau: A2ABureau;
   readonly records: A2ATaskRecords;
+  /** The handler's public origin and base path: generated media is served from its asset route. */
+  readonly publicUrl: string;
   readonly ledger: A2ASendLedger;
   /** Answers a task's open wait as `principal`: `bureau.tasks.respond`'s own body. */
   readonly respond: (principal: Principal, input: TasksRespondInput) => Promise<unknown>;
@@ -326,6 +324,17 @@ function activate(
   }
   for (const uri of activated) context?.addActivatedExtension(uri);
   return activated;
+}
+
+/** Whether a media type `requested` is one of the `offered` ones, a `type/*` family included. */
+function modeAccepted(offered: readonly string[], requested: string): boolean {
+  const wanted = requested.split(';', 1)[0]!.trim().toLowerCase();
+  return offered.some((mode) => {
+    if (mode === wanted) return true;
+    const family = (value: string) => (value.endsWith('/*') ? value.slice(0, -1) : undefined);
+    const prefix = family(mode) ?? family(wanted);
+    return prefix !== undefined && mode.startsWith(prefix) && wanted.startsWith(prefix);
+  });
 }
 
 /** A message's text parts, joined with a newline. */
@@ -601,8 +610,8 @@ export function createBureauA2ARequestHandler(
     return view;
   }
 
-  const reader = createTaskReader({ bureau, records });
-  const replyOf = (view: TaskView): Promise<string | undefined> => reader.replyOf(view);
+  const reader = createTaskReader({ bureau, records, publicUrl: options.publicUrl });
+  const replyOf = (view: TaskView) => reader.replyOf(view);
   const push = options.card().capabilities?.pushNotifications === true ? options.push : undefined;
 
   /** The push support the card declares, or the answer a deployment without it gives. */
@@ -829,7 +838,29 @@ export function createBureauA2ARequestHandler(
       history: [historyEntryOf(message, run.id, run.sessionId)],
       replyRecorded: false,
     });
+    recordReplyWhenSettled(run.id);
     return run.id;
+  }
+
+  /**
+   * Records a task's reply (its generated media included) in its A2A record when the task
+   * settles, on the instance that ran it: a restart before anyone reads the task then loses
+   * nothing. A failure leaves the lazy fold of a later read to do it.
+   */
+  function recordReplyWhenSettled(taskId: string): void {
+    let stop: (() => void) | undefined;
+    // Returned to the registry, so the settlement that announced it (and a shutdown's idle) waits
+    // for the fold; a failure leaves the lazy fold of a later read to do it.
+    const record = async (view: TaskView): Promise<void> => {
+      stop?.();
+      await reader.recordSettled(view).catch(() => undefined);
+    };
+    stop = bureau.tasks.onSettled(taskId, record);
+    // A task that settled before the listener was added is not announced.
+    void (async () => {
+      const view = await bureau.tasks.get(taskId);
+      if (view !== undefined && isTerminal(view.status)) await record(view);
+    })().catch(() => undefined);
   }
 
   /**
@@ -1112,9 +1143,10 @@ export function createBureauA2ARequestHandler(
       }
     }
     const outputModes = params.configuration?.acceptedOutputModes ?? [];
-    if (outputModes.length > 0 && !outputModes.some((mode) => A2A_OUTPUT_MODES.includes(mode))) {
+    const answers = options.card().defaultOutputModes;
+    if (outputModes.length > 0 && !outputModes.some((mode) => modeAccepted(answers, mode))) {
       throw new ContentTypeNotSupportedError(
-        `This agent answers only in ${A2A_OUTPUT_MODES.join(', ')}, which acceptedOutputModes excludes.`,
+        `This agent answers only in ${answers.join(', ')}, which acceptedOutputModes excludes.`,
       );
     }
     const continued = !continuing

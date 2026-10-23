@@ -277,7 +277,7 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     );
   });
 
-  test('a configuration deleted between loading and enqueueing has its delivery cancelled', async () => {
+  test('a configuration deleted between loading and enqueueing has its delivery cancelled and purged', async () => {
     const fixture = await createPushFixture();
     await createConfiguration(fixture);
     const stale = await fixture.pushStore.load('task-1', alice());
@@ -289,8 +289,8 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
 
     await sender.send(statusEvent(1), alice());
 
-    const [receipt] = await fixture.outbox.list();
-    expect(receipt?.state).toBe('cancelled');
+    // Cancelled, then purged: no settled record of the gone configuration remains.
+    expect(await fixture.outbox.list()).toEqual([]);
     expect(await fixture.outbox.deliverNext()).toMatchObject({ status: 'empty' });
     expect(fixture.receiver.requests).toHaveLength(0);
   });
@@ -340,6 +340,29 @@ describe('createOutboxPushNotificationSender store wrapper', () => {
     await createConfiguration(fixture, { id: 'task-1' });
     await fixture.sender.pushStore.delete('task-1', alice());
     expect(await fixture.pushStore.get('task-1', 'task-1', alice())).toBeUndefined();
+  });
+});
+
+describe('createOutboxPushNotificationSender delete purge', () => {
+  test('a delete purges that configuration’s settled records and no other’s', async () => {
+    const fixture = await createPushFixture();
+    await createConfiguration(fixture, { id: 'config-1' });
+    await fixture.sender.sendKeyed(statusEvent(1), alice(), 'event-1');
+    expect(await fixture.outbox.deliverNext()).toMatchObject({ status: 'settled' });
+    // Another configuration's settled record is not touched.
+    await createConfiguration(fixture, { id: 'config-2' });
+    await fixture.sender.sendKeyed(statusEvent(2), alice(), 'event-2');
+    await fixture.outbox.drain({ timeoutMs: 0 });
+
+    await fixture.sender.pushStore.delete('task-1', alice(), 'config-1');
+
+    const remaining = await fixture.outbox.list();
+    expect(
+      remaining.every(
+        (receipt) => receipt.destinationRef !== pushDestinationRef(alice(), 'task-1', 'config-1'),
+      ),
+    ).toBe(true);
+    expect(remaining.length).toBeGreaterThan(0);
   });
 });
 
