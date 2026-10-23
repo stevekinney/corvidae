@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { deliver, renderDeliver, run, type DeliverOptions } from './deliver.ts';
 import { LinearError, type LinearClient } from './linear.ts';
-import type { MergeGateReport } from './merge-gate.ts';
+import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
 import { Refusal } from './worktree.ts';
 
@@ -406,8 +406,8 @@ describe('spend record', () => {
   test('--usage-log and --transcript reach the merge gate', async () => {
     const { runner } = fake({ contains: true });
     const { partial } = seams();
-    const received: { usageLog?: string | undefined; transcripts?: string[] | undefined }[] = [];
-    const merge = async (mergeOptions: { usageLog?: string; transcripts?: string[] }) => {
+    const received: MergeGateOptions[] = [];
+    const merge = async (mergeOptions: MergeGateOptions) => {
       received.push(mergeOptions);
       return mergedReport();
     };
@@ -441,8 +441,8 @@ describe('spend record', () => {
   test('without the flags the merge gate gets no spend record', async () => {
     const { runner } = fake({ contains: true });
     const { partial } = seams();
-    const received: object[] = [];
-    const merge = async (mergeOptions: object) => {
+    const received: MergeGateOptions[] = [];
+    const merge = async (mergeOptions: MergeGateOptions) => {
       received.push(mergeOptions);
       return mergedReport();
     };
