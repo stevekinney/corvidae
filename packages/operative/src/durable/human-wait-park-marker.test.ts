@@ -63,8 +63,9 @@ function makeParkWorkflow(storage: Storage, options: { hangAfterPark: boolean })
       const state = {
         snapshot: new Conversation(createConversationHistory()).snapshot(),
         cursor: { step: 1 },
-        finishReason: 'maximum-steps',
-        stoppedEarly: false,
+        // A loop that broke out to park carries no finish reason yet (COR-1627).
+        finishReason: undefined,
+        stoppedEarly: true,
         runId: RUN_ID,
         pendingHumanWait: { signalName: PARK_SIGNAL, prompt: 'Approve?' },
       };

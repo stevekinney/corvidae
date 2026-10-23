@@ -69,6 +69,7 @@ import {
   createStepBasedStrategy,
   DEFAULT_MAXIMUM_STEPS,
   isAgentRunWorkflowInput,
+  isFailureFinishReason,
   isScheduledAgentRunInput,
   isSessionInputPayload,
   payloadText,
@@ -665,24 +666,6 @@ function resolvePersistenceOptions(options: RuntimeCompositionOptions): {
     persistenceObservability: undefined,
     persistenceOnLog: undefined,
   };
-}
-
-/**
- * Whether a `RunResult.finishReason` (or a Weft `WorkflowCompletedEvent.result`
- * carrying one) represents a failure outcome rather than a clean stop. Shared
- * by `monitorRecoveredScheduledFire` (create-bureau.ts, diagnostic logging for
- * a recovered fire) and the fire-terminal `schedule.completed`/`schedule.failed`
- * dispatch below (AB-223) — both must agree on what "failed" means for a
- * scheduled fire, so this lives in exactly one place.
- */
-export function isRunFailureFinishReason(finishReason: unknown): boolean {
-  return (
-    finishReason === 'error' ||
-    finishReason === 'tripwire' ||
-    finishReason === 'maximum-steps' ||
-    finishReason === 'elicitation-denied' ||
-    finishReason === 'budget-exceeded'
-  );
 }
 
 /** COR-41 — what Bureau delegates to a run when the deployment configures nothing else. */
@@ -2975,7 +2958,7 @@ async function buildRuntimeComposition(
       // static `type` widens to `string`) — using the typed `dispatch` wrapper
       // (not the untyped inherited `dispatchEvent`) needs single-type call
       // sites.
-      const failed = isRunFailureFinishReason(finishReason);
+      const failed = isFailureFinishReason(finishReason);
       const content =
         typeof result === 'object' && result !== null && 'content' in result
           ? result.content

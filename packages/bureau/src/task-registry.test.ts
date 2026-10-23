@@ -1109,6 +1109,33 @@ describe('a schedule fire in the registry (COR-1482)', () => {
     expect(told).toEqual(['fire-1:failed', 'fire-2:canceled']);
   });
 
+  it('tells a listener once when two settlements are written back to back (COR-1627)', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    const told: string[] = [];
+    registry.onSettled('fire-1', (view) => told.push(`${view.id}:${view.status}`));
+
+    // Two writers record the same task's end without waiting for each other, as the action that
+    // ends a run and the catalog hook that carries its answer do. Each announces after its own
+    // awaits, and the second finds the first has already told the listeners.
+    await Promise.all([
+      registry.recordSettled('fire-1', {
+        at: '2026-10-18T00:00:01.000Z',
+        status: 'failed',
+        finishReason: null,
+        message: 'it failed',
+      }),
+      registry.recordSettled('fire-1', {
+        at: '2026-10-18T00:00:02.000Z',
+        status: 'failed',
+        finishReason: 'maximum-steps',
+        message: 'it failed',
+      }),
+    ]);
+
+    expect(told).toEqual(['fire-1:failed']);
+  });
+
   it('flushes a settlement only after its listeners have heard it', async () => {
     const { registry } = build();
     await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });

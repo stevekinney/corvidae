@@ -451,6 +451,33 @@ describe('the task event projection', () => {
     expect(canceled.ended).toBe(true);
   });
 
+  it('ends a failed run on its run.error with the finish reason the event carries (COR-1627)', () => {
+    const limited = createTaskEventProjector('run-1');
+    expect(
+      limited.project(
+        at(
+          'run.error',
+          { error: 'Agent run exceeded maximumSteps (2).', finishReason: 'maximum-steps' },
+          '2',
+        ),
+      ),
+    ).toMatchObject({
+      status: 'failed',
+      finishReason: 'maximum-steps',
+      message: 'Agent run exceeded maximumSteps (2).',
+    });
+    expect(limited.ended).toBe(true);
+
+    // A `run.error` recorded before the payload carried the reason, or one that is the only
+    // end the history has, still ends the stream, with the reason unknown.
+    const legacy = createTaskEventProjector('run-1');
+    expect(legacy.project(at('run.error', { error: 'boom' }, '2'))).toMatchObject({
+      status: 'failed',
+      finishReason: null,
+    });
+    expect(legacy.ended).toBe(true);
+  });
+
   it('serves a removal and ends, and a retention gap as one element', () => {
     const removed = createTaskEventProjector('run-1');
     expect(removed.project(at('run.removed', { runId: 'run-1' }))).toMatchObject({

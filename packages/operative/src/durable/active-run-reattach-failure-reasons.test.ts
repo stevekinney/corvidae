@@ -7,6 +7,7 @@ import {
   BudgetExceededError,
   ElicitationDeniedError,
   GuardrailTripwireError,
+  MaximumStepsExceededError,
 } from '../errors';
 import {
   RunAbortedEvent,
@@ -63,7 +64,7 @@ function observeLifecycle(emitter: CompletableEventTarget<CombinedOperativeEvent
 type FailureCase = {
   readonly finishReason: Extract<
     FinishReason,
-    'error' | 'budget-exceeded' | 'tripwire' | 'elicitation-denied'
+    'error' | 'budget-exceeded' | 'tripwire' | 'elicitation-denied' | 'maximum-steps'
   >;
   readonly summary: Record<string, unknown>;
   readonly errorClass: string;
@@ -132,6 +133,14 @@ const failureCases: readonly FailureCase[] = [
     stepError: () => new ElicitationDeniedError('the user declined'),
     lifecycle: ['run.error', 'run.completed'],
   },
+  {
+    // COR-1627: a run that ended at its step limit is a failure like the rest.
+    finishReason: 'maximum-steps',
+    summary: summaryFor('reattach-maximum-steps', { finishReason: 'maximum-steps' }),
+    errorClass: 'MaximumStepsExceededError',
+    stepError: () => new MaximumStepsExceededError(1),
+    lifecycle: ['run.error', 'run.completed'],
+  },
 ];
 
 function reattach(
@@ -189,11 +198,36 @@ describe('a reattached run whose summary carries a failure finish reason', () =>
     });
   }
 
+  it('announces the step-limit error a step threw, with the limit that error named', async () => {
+    // COR-1627: the summary of a step that threw `new MaximumStepsExceededError(9)` carries its
+    // message; the announcement and the result report that error, not one rebuilt from the
+    // count of steps the run committed.
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const observed = observeLifecycle(emitter);
+
+    const result = await reattach(
+      summaryFor('reattach-thrown-maximum-steps', {
+        finishReason: 'maximum-steps',
+        errorMessage: 'Agent run exceeded maximumSteps (9).',
+        errorKind: 'policy',
+        errorCode: 'MAXIMUM_STEPS',
+      }),
+      emitter,
+    );
+
+    expect(observed.map(({ type }) => type)).toEqual(['run.error', 'run.completed']);
+    expect(observed[0]).toEqual({
+      type: RunErrorEvent.type,
+      reconstructed: true,
+      errorName: 'MaximumStepsExceededError',
+    });
+    expect((result.error as Error).message).toBe('Agent run exceeded maximumSteps (9).');
+  });
+
   it('announces no run.error for a run that ended without failing', async () => {
     // An in-band abort ends with its own `run.aborted`, never `run.completed`.
     const endings = [
       ['stop-condition', 'run.completed'],
-      ['maximum-steps', 'run.completed'],
       ['aborted', 'run.aborted'],
     ] as const;
     for (const [finishReason, terminal] of endings) {

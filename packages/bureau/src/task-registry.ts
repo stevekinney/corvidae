@@ -29,10 +29,11 @@
  */
 
 import type { RuntimeIdentifiers } from '@lostgradient/lifecycle';
-import type {
-  AgentInput,
-  CleanupAcknowledgement,
-  CleanupAcknowledgementReason,
+import {
+  type AgentInput,
+  type CleanupAcknowledgement,
+  type CleanupAcknowledgementReason,
+  isFailureFinishReason,
 } from '@lostgradient/operative';
 import { messageText } from 'conversationalist';
 import {
@@ -43,7 +44,6 @@ import {
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 
-import { isRunFailureFinishReason } from './runtime-composition';
 import {
   compareListingKeys,
   createTaskListingStore,
@@ -495,7 +495,7 @@ export function settledTaskState(
   if (status === 'aborted') return 'canceled';
   if (status === 'error') return 'failed';
   if (finishReason === 'aborted') return 'canceled';
-  return isRunFailureFinishReason(finishReason) ? 'failed' : 'completed';
+  return isFailureFinishReason(finishReason) ? 'failed' : 'completed';
 }
 
 /** The cleanup state an acknowledgement stands for. */
@@ -1107,8 +1107,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   }
 
   /**
-   * Tells whoever waits that the task has settled. A listener is told once, and a task not yet
-   * settled (a write that changed something else) tells no one. A listener that throws is its
+   * Tells whoever waits that the task has settled. A listener is told once, however many
+   * settlements are written back to back, and a task not yet settled (a write that changed
+   * something else) tells no one. A listener that throws is its
    * own failure, never the write's.
    */
   async function recordSettlement(
@@ -1149,6 +1150,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     if (view.status !== 'completed' && view.status !== 'failed' && view.status !== 'canceled') {
       return;
     }
+    // A settlement written while this call awaited was announced by its own call, which took
+    // these listeners: two back-to-back settlements tell each listener once, not twice.
+    if (settledListeners.get(taskId) !== waiting) return;
     settledListeners.delete(taskId);
     for (const listener of waiting) {
       try {

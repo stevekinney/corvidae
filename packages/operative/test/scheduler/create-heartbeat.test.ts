@@ -291,6 +291,97 @@ describe('createHeartbeat', () => {
     expect(failureError).toBeDefined();
   });
 
+  it.each(['maximum-steps', 'budget-exceeded', 'elicitation-denied'] as const)(
+    'counts a tick that ends with %s as a failure, calls onFailure, and stops at maxConsecutiveFailures (COR-1627)',
+    async (finishReason) => {
+      const failingScheduler = {
+        submit: async () =>
+          ({
+            conversation: new Conversation(),
+            steps: [],
+            content: '',
+            parts: [],
+            usage: { prompt: 0, completion: 0, total: 0 },
+            finishReason,
+            error: new Error(`tick ended with ${finishReason}`),
+          }) satisfies RunResult,
+      } as unknown as Scheduler;
+      const manualSleep = createManualSleep();
+      const failures: unknown[] = [];
+
+      const heartbeat = createHeartbeat({
+        scheduler: failingScheduler,
+        interval: 5,
+        maxConsecutiveFailures: 2,
+        sleepFunction: manualSleep.sleepFunction,
+        createHeartbeatRun: () => ({
+          generate: createMockGenerate([textResponse('unreachable')]),
+          toolbox: createTestToolbox([]),
+          conversation: new Conversation(),
+          maximumSteps: 1,
+        }),
+        onFailure: (error) => {
+          failures.push(error);
+        },
+      });
+
+      heartbeat.start();
+      await flushAsyncWork();
+      await manualSleep.advanceOne();
+      await flushAsyncWork();
+      // One failed tick is under the budget: still running, nothing reported.
+      expect(heartbeat.consecutiveFailures).toBe(1);
+      expect(failures).toHaveLength(0);
+      await manualSleep.advanceOne();
+
+      expect(heartbeat.isRunning).toBe(false);
+      expect(heartbeat.consecutiveFailures).toBe(2);
+      expect(failures).toHaveLength(1);
+      expect((failures[0] as Error).message).toBe(`tick ended with ${finishReason}`);
+    },
+  );
+
+  it('does not count an aborted tick as a failure', async () => {
+    const abortedScheduler = {
+      submit: async () =>
+        ({
+          conversation: new Conversation(),
+          steps: [],
+          content: '',
+          parts: [],
+          usage: { prompt: 0, completion: 0, total: 0 },
+          finishReason: 'aborted',
+        }) satisfies RunResult,
+    } as unknown as Scheduler;
+    const manualSleep = createManualSleep();
+    const failures: unknown[] = [];
+    const heartbeat = createHeartbeat({
+      scheduler: abortedScheduler,
+      interval: 5,
+      maxConsecutiveFailures: 1,
+      sleepFunction: manualSleep.sleepFunction,
+      createHeartbeatRun: () => ({
+        generate: createMockGenerate([textResponse('unreachable')]),
+        toolbox: createTestToolbox([]),
+        conversation: new Conversation(),
+        maximumSteps: 1,
+      }),
+      onFailure: (error) => {
+        failures.push(error);
+      },
+    });
+
+    heartbeat.start();
+    await flushAsyncWork();
+    await manualSleep.advanceOne();
+    await flushAsyncWork();
+
+    expect(heartbeat.consecutiveFailures).toBe(0);
+    expect(failures).toHaveLength(0);
+    expect(heartbeat.isRunning).toBe(true);
+    await heartbeat.stop();
+  });
+
   it('a successful tick resets consecutiveFailures', async () => {
     const scheduler = createTestScheduler();
     const manualSleep = createManualSleep();

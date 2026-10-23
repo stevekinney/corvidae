@@ -12,6 +12,7 @@ import {
   type GuardrailsOptions,
   type ScriptedGenerate,
   type ScriptedGenerateStep,
+  type StepContext,
   type StopCondition,
   stopWhen,
   withBackendDescriptors,
@@ -77,6 +78,10 @@ export type HarnessOptions = {
   readonly script: readonly ScriptedGenerateStep[];
   readonly toolbox?: Toolbox;
   readonly stopWhen?: StopCondition;
+  /** The agents' step cap, where a test needs a run to reach it (COR-1627). */
+  readonly maximumSteps?: number;
+  /** The agents' answer for a run that reaches its step cap. */
+  readonly onMaximumSteps?: (context: StepContext) => Promise<string | void>;
   readonly humanInput?: boolean;
   /** Further published agents, each running the same script as `assistant`. */
   readonly otherAgents?: readonly string[];
@@ -182,6 +187,10 @@ async function build(
             : { mediaCostEstimator: options.mediaCostEstimator }),
           stopWhen:
             options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+          ...(options.maximumSteps === undefined ? {} : { maximumSteps: options.maximumSteps }),
+          ...(options.onMaximumSteps === undefined
+            ? {}
+            : { onMaximumSteps: options.onMaximumSteps }),
         }),
       ]),
     ),

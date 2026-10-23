@@ -4,18 +4,11 @@ import type { AgentRun } from '../agent-run';
 import type { SessionInputPayload } from '../durable/types';
 import type { OperativeEventMap } from '../events';
 import { SessionMonitorDoneEvent, SessionMonitorTickEvent } from '../events';
+import { isFailureFinishReason } from '../finish-reason';
 import type { DeclaredWait, StallWatchdog, StallWatchdogClock } from '../liveness';
 import { createStallWatchdog, sessionMonitorPolicy } from '../liveness';
 import type { RunResult } from '../types';
 import type { MonitorOptions } from './session-handle-types';
-
-const FAILURE_FINISH_REASONS = new Set([
-  'error',
-  'aborted',
-  'budget-exceeded',
-  'elicitation-denied',
-  'tripwire',
-]);
 
 export interface SessionMonitorDependencies {
   sessionId: string;
@@ -177,7 +170,7 @@ export function createSessionMonitor(dependencies: SessionMonitorDependencies) {
         // Surface terminal run FAILURES as errors instead of feeding them to the
         // predicate. `run.result()` resolves (it does not throw) for normal
         // operative failures — `error`, `aborted`, `budget-exceeded`,
-        // `elicitation-denied` — so the catch above never runs for these. Without
+        // `elicitation-denied`, `maximum-steps` — so the catch above never runs for these. Without
         // this check a predicate that returns false would keep sleeping and
         // re-running after a provider/tool failure instead of surfacing it, the
         // same way the catch block does for thrown errors (PRRT_kwDORvupsc6MddwB).
@@ -185,9 +178,10 @@ export function createSessionMonitor(dependencies: SessionMonitorDependencies) {
           emitter.dispatchEvent(new SessionMonitorDoneEvent(sessionId, false, tick + 1));
           throw processLocalAbortError();
         }
-        if (FAILURE_FINISH_REASONS.has(result.finishReason)) {
+        if (isFailureFinishReason(result.finishReason) || result.finishReason === 'aborted') {
           emitter.dispatchEvent(new SessionMonitorDoneEvent(sessionId, false, tick + 1));
-          // Prefer the run's own error; otherwise synthesize one naming the
+          // Prefer the run's own error (a step-limit run carries its
+          // `MaximumStepsExceededError`); otherwise synthesize one naming the
           // finish reason ('aborted'/'budget-exceeded'/'elicitation-denied'
           // typically carry no `error`).
           throw result.error instanceof Error

@@ -8,12 +8,11 @@
 
 import { createHash } from 'node:crypto';
 
-import type { RunResult } from '@lostgradient/operative';
+import { isFailureFinishReason, type RunResult } from '@lostgradient/operative';
 import type { JSONValue, WorkflowState } from '@lostgradient/weft';
 import { isJSONValue } from '@lostgradient/weft';
 
 import { serializeUnknownError } from './serialization';
-import { isRunFailureFinishReason } from './runtime-composition';
 import { type AgentStepResult, WorkflowAgentStepError } from './workflow-host';
 
 /**
@@ -54,7 +53,7 @@ export function agentStepResultFromRun(
   result: RunResult<unknown, true>,
 ): AgentStepResult {
   const finishReason = result.finishReason;
-  if (finishReason === 'aborted' || isRunFailureFinishReason(finishReason)) {
+  if (finishReason === 'aborted' || isFailureFinishReason(finishReason)) {
     throw failed(
       agent,
       finishReason,
@@ -101,7 +100,7 @@ export function agentStepResultFromState(
     );
   }
   const recorded = summary as { content: string; finishReason: string; output?: unknown };
-  if (recorded.finishReason === 'aborted' || isRunFailureFinishReason(recorded.finishReason)) {
+  if (recorded.finishReason === 'aborted' || isFailureFinishReason(recorded.finishReason)) {
     throw failed(agent, recorded.finishReason, undefined);
   }
   return {

@@ -11,7 +11,7 @@ import {
   type ManualRuntimeServices,
   type RuntimeServices,
 } from '@lostgradient/lifecycle';
-import type { GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -75,6 +75,7 @@ async function withBureau(
   const bureau = await createBureau({
     agents: {},
     generate: finishes,
+    stopWhen: stopWhen.noToolCalls(),
     toolbox: createToolbox<readonly Tool[]>([]),
     runtime,
     storage: fixture.configuration,
