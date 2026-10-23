@@ -79,13 +79,13 @@ describe('createRequestHumanInputTool inputSchemas', () => {
     expect('inputSchema' in result).toBe(false);
   });
 
-  it.each([null, true, undefined, ['a']])(
+  it.each([[null], [true], [undefined], [['a']]])(
     'refuses a schema whose toJSON() returns %p',
     (returned) => {
       const schema = { toJSON: () => returned } as unknown as HumanInputSchema;
       expect(() =>
         createRequestHumanInputTool({ context: makeContext(), inputSchemas: { deploy: schema } }),
-      ).toThrow(HumanInputSchemaError);
+      ).toThrow(/must serialize as a JSON object/);
     },
   );
 
