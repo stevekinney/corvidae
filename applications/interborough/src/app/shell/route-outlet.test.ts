@@ -131,6 +131,27 @@ describe('the route outlet', () => {
   });
 });
 
+describe('a route that no view owns', () => {
+  test('renders its page without a view frame', async () => {
+    restore = installFetchImplementation(async () => Response.json({}));
+    const agents = routes.find((route) => route.pattern === '/agents');
+    if (agents === undefined) throw new Error('Expected an /agents route.');
+    const { view } = agents;
+    const load = spyOn(agents, 'load').mockResolvedValue({ default: Placeholder });
+    agents.view = undefined;
+    try {
+      landAt('/agents');
+      const { container } = mount();
+      await waitFor(() => expect(container.querySelector('.weft-shell-outlet__skeleton')).toBeNull());
+      expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
+      expect(container.querySelector('.weft-view')).toBeNull();
+    } finally {
+      agents.view = view;
+      load.mockRestore();
+    }
+  });
+});
+
 describe('a route that redirects', () => {
   const context = (id: string) => ({
     id,

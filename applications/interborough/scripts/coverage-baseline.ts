@@ -139,11 +139,23 @@ const DARWIN_BASELINE: CoverageBaseline = {
     // a file that now runs in under 2 s. Compilation stays covered by `svelte-check` and
     // `build.slow.test.ts`. The other 18 unhit functions in `src/app` are unchanged, and the lines floor
     // held. `OVERALL` functions fall by the same 9, 14298 to 14289, because it rolls these up.
+    //
+    // Re-measured at `main` after COR-1657 (#528) and the work around it, which merged on `check`
+    // and so skipped this gate. Lines rise to 4495 of 4552 (98.75%) with new tests for the palette's
+    // engine pages and empty states, the keyboard path, a route no view owns, and the narrow
+    // viewport's drawer. Functions are 771 of 806 (95.66%), below the 95.95% they held. 35 are unhit:
+    // the 18 in `command-palette.svelte` are nine pairs, the `CommandItem` thunk that
+    // `add_svelte_meta` wraps in the compiled development output and the item's `value` getter, one
+    // pair per result group (chats, agents, runs, schedules, workers, reviews, engine pages, and the
+    // two kinds of command). The tests render and choose an item from every group, so the code runs,
+    // yet Bun's coverage reports those lines unhit; #528 added four of the nine groups. The other 17
+    // (7 route loaders, 2 in `copy.ts`, 2 in `fault-boundary.svelte`, and one apiece in the rest) are
+    // unchanged apart from the drawer's setter, which a test now covers.
     'src/app': {
-      linesFound: 3873,
-      linesHit: 3806,
-      functionsFound: 667,
-      functionsHit: 640,
+      linesFound: 4552,
+      linesHit: 4495,
+      functionsFound: 806,
+      functionsHit: 771,
     },
     'src/lib': { linesFound: 4193, linesHit: 4176, functionsFound: 643, functionsHit: 639 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
