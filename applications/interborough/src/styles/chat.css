@@ -24,6 +24,8 @@
 }
 
 .weft-chat-header__agent {
+  color: var(--cinder-text-muted);
+  text-decoration: none;
   margin: 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
@@ -91,4 +93,18 @@
 
 .weft-chat-header__origin-link {
   color: inherit;
+}
+
+/* One sentence about the chat's runs, under the header. */
+.weft-chat-strip {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-chat-strip[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+.weft-chat-strip[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
 }
