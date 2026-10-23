@@ -44,6 +44,7 @@ describe('Schedules index router', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
@@ -52,7 +53,7 @@ describe('Schedules index router', () => {
 
     try {
       const { getByText, queryByRole } = render(IndexHarness, { props: { client } });
-      await waitFor(() => expect(getByText('nightly-rollup')).not.toBeNull());
+      await waitFor(() => expect(getByText('Nightly rollup', { selector: 'h1' })).not.toBeNull());
       expect(queryByRole('heading', { name: 'Schedules' })).toBeNull();
     } finally {
       await server.stop();
@@ -78,6 +79,7 @@ describe('Schedules index router', () => {
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'nightly-rollup',
+      description: 'Nightly rollup',
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
@@ -86,7 +88,7 @@ describe('Schedules index router', () => {
 
     try {
       const { getByText, getByRole } = render(IndexHarness, { props: { client } });
-      await waitFor(() => expect(getByText('nightly-rollup')).not.toBeNull());
+      await waitFor(() => expect(getByText('Nightly rollup', { selector: 'h1' })).not.toBeNull());
       expect(getByRole('dialog')).not.toBeNull();
       expect(getByRole('heading', { name: 'Edit schedule' })).not.toBeNull();
     } finally {

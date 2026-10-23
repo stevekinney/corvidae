@@ -18,9 +18,13 @@
  * `StaleRevision` fault carrying the revision now current, and nothing is written. Bureau never
  * compares it itself.
  *
- * What a schedule's views omit: its input, which is the prompt each fire runs. A view does name
- * the agent each fire runs (`agentName`, `null` for a workflow file's schedule, which runs none),
- * because that names a resource and carries no content.
+ * What a schedule's views carry of its input, which is the prompt each fire runs: `inputPreview`,
+ * its start, at most 500 characters and ending in `…` when cut, so a schedule can be told by what it
+ * says (`null` for a workflow file's schedule and for an input of media alone). It is served to
+ * whoever may see the schedule, as `bureau.contexts` serves `title` and `lastMessagePreview`; the
+ * rest of the input, and its session, stay in storage. A view also names the agent each fire runs
+ * (`agentName`, `null` for a workflow file's schedule, which runs none), because that names a
+ * resource and carries no content.
  *
  * @module schedules-operations
  */
@@ -66,6 +70,8 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost & {
     readonly owner: (scheduleId: string) => Promise<string | undefined>;
     /** The agent an agent schedule runs, or `undefined` for one that runs none, a workflow file's. */
     readonly agentName: (scheduleId: string) => Promise<string | undefined>;
+    /** The start of the text an agent schedule sends each fire, or `undefined` when it has none. */
+    readonly inputPreview: (scheduleId: string) => Promise<string | undefined>;
     /** Whether the Bureau's agent catalog holds an agent named `name`. */
     readonly hasAgent: (name: string) => boolean;
   };
@@ -80,6 +86,8 @@ const scheduleViewSchema = z.object({
   owner: z.string(),
   /** The catalog agent each fire runs; `null` for a schedule that runs none, a workflow file's. */
   agentName: z.string().nullable(),
+  /** The start of the text each fire sends, at most 500 characters; `null` when the schedule sends none. */
+  inputPreview: z.string().nullable(),
   workflowType: z.string(),
   description: z.string().nullable(),
   /** Set for a cron schedule, `null` for an interval one. */
@@ -114,11 +122,13 @@ function viewOf(
   summary: ScheduleSummary,
   owner: string,
   agentName: string | undefined,
+  inputPreview: string | undefined,
 ): z.infer<typeof scheduleViewSchema> {
   return {
     id: summary.id,
     owner,
     agentName: agentName ?? null,
+    inputPreview: inputPreview ?? null,
     workflowType: summary.workflowType,
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
@@ -254,7 +264,7 @@ export const schedulesListOperation = defineOperation<
   mcpExposable: true,
   summary: 'List schedules',
   description:
-    'Lists the caller’s own schedules, oldest first; a caller holding `bureau.schedules:read` lists every owner’s, including the native schedule of a workflow file, which belongs to the deployment’s owner. `status` narrows to one status. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A view carries the schedule’s `revision` and never its input.',
+    'Lists the caller’s own schedules, oldest first; a caller holding `bureau.schedules:read` lists every owner’s, including the native schedule of a workflow file, which belongs to the deployment’s owner. `status` narrows to one status. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A view carries the schedule’s `revision` and `inputPreview`, the start of the text each fire sends (at most 500 characters).',
   destructive: false,
   tags: ['Schedules'],
   inputSchema: listInput,
@@ -280,7 +290,14 @@ export const schedulesListOperation = defineOperation<
       for (const summary of page.items) {
         const owner = await host.schedules.owner(summary.id);
         if (owner !== undefined && (everyOwner || owner === caller)) {
-          visible.push(viewOf(summary, owner, await host.schedules.agentName(summary.id)));
+          visible.push(
+            viewOf(
+              summary,
+              owner,
+              await host.schedules.agentName(summary.id),
+              await host.schedules.inputPreview(summary.id),
+            ),
+          );
         }
       }
       if (offset + page.items.length >= page.total || page.items.length === 0) break;
@@ -305,7 +322,7 @@ export const schedulesGetOperation = defineOperation<
   mcpExposable: true,
   summary: 'Read one schedule',
   description:
-    'Returns one of the caller’s own schedules; a caller holding `bureau.schedules:read` reads any owner’s. Another owner’s schedule answers as a missing one does. The view carries the schedule’s `revision`, to pass back as `expectedRevision`, and never its input.',
+    'Returns one of the caller’s own schedules; a caller holding `bureau.schedules:read` reads any owner’s. Another owner’s schedule answers as a missing one does. The view carries the schedule’s `revision`, to pass back as `expectedRevision`, and `inputPreview`, the start of the text each fire sends (at most 500 characters).',
   destructive: false,
   tags: ['Schedules'],
   inputSchema: getInput,
@@ -321,7 +338,12 @@ export const schedulesGetOperation = defineOperation<
     if (summary === null || summary === undefined) {
       throw resourceNotFound('schedule', input.scheduleId);
     }
-    return viewOf(summary, owner, await host.schedules.agentName(input.scheduleId));
+    return viewOf(
+      summary,
+      owner,
+      await host.schedules.agentName(input.scheduleId),
+      await host.schedules.inputPreview(input.scheduleId),
+    );
   },
 });
 
@@ -383,7 +405,7 @@ export const schedulesCreateOperation = defineOperation<
         principal: owner,
       });
       if (summary === undefined) throw unsupported();
-      return viewOf(summary, owner, input.agentName);
+      return viewOf(summary, owner, input.agentName, await host.schedules.inputPreview(summary.id));
     } catch (error) {
       return faultOf(error, input.agentName);
     }

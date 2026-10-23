@@ -6,8 +6,9 @@
  * read, which Weft compares inside its serialized write: a schedule that changed since is
  * `StaleRevision`, and nothing is written.
  *
- * A schedule's view never carries its input, the prompt each fire runs. It does name the agent
- * (`agentName`), which is `null` for the schedule of a workflow file, because that runs none.
+ * A schedule's view carries the start of its input, the prompt each fire runs (`inputPreview`, at
+ * most 500 characters), and names the agent (`agentName`). Both are `null` for the schedule of a
+ * workflow file, because that runs no agent and sends no prompt.
  */
 import type { ScheduleSpec } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -22,6 +23,7 @@ const viewSchema = z.object({
   id: z.string(),
   owner: z.string(),
   agentName: z.string().nullable(),
+  inputPreview: z.string().nullable(),
   workflowType: z.string(),
   description: z.string().nullable(),
   cronExpression: z.string().nullable(),
