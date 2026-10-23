@@ -164,15 +164,16 @@ export interface ToolCall {
   id: string;
   name: string;
   arguments: JSONValue;
-  /** The id the model provider issued for this call, when `id` is that id (see `ToolCallInput`). */
+  /** The identifier the model provider issued for this call, independent of `id` (see `ToolCallInput`). */
   providerCallId?: string | undefined;
 }
 
 export interface ToolCallInput {
   id?: string | undefined;
   /**
-   * Marks `id` as one the model provider issued, so a provider formatter may echo it back (Gemini's
-   * `functionResponse.id`). Absent when Armorer generated the id. Execution carries it onto the
+   * The identifier the model provider issued for this call, independent of `id` (which may be the
+   * same string or an Armorer-generated one). A provider formatter echoes it (Gemini's
+   * `functionResponse.id`); it is never inferred from `id`. Execution carries it onto the
    * result's `providerCallId`.
    */
   providerCallId?: string | undefined;
@@ -194,7 +195,7 @@ export interface ToolResult {
   action?: ToolAction | undefined;
   inputDigest?: string | undefined;
   outputDigest?: string | undefined;
-  /** The id the model provider issued for the originating call; absent for an Armorer-generated id. */
+  /** The identifier the model provider issued for the originating call, independent of `callId`. */
   providerCallId?: string | undefined;
 }
 
@@ -207,7 +208,7 @@ export interface ToolResultInput {
   action?: ToolActionInput | undefined;
   inputDigest?: string | undefined;
   outputDigest?: string | undefined;
-  /** The id the model provider issued for the originating call; absent for an Armorer-generated id. */
+  /** The identifier the model provider issued for the originating call, independent of `callId`. */
   providerCallId?: string | undefined;
   result?: unknown;
   stream?: AsyncIterable<unknown> | undefined;

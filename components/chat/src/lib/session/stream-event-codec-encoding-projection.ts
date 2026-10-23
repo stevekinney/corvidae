@@ -176,7 +176,7 @@ export function projectChatToolResult(rawResult: ChatToolResult): Record<string,
   if (result.action !== undefined) projected['action'] = projectChatToolAction(result.action);
   if (result.inputDigest !== undefined) projected['inputDigest'] = result.inputDigest;
   if (result.outputDigest !== undefined) projected['outputDigest'] = result.outputDigest;
-  if (result.providerCallId !== undefined) projected['providerCallId'] = result.providerCallId;
+  // `providerCallId` is provider provenance the chat UI does not need; it is never put on a frame.
   if (result.pendingApproval !== undefined)
     projected['pendingApproval'] = assertFiniteJSONValue(
       result.pendingApproval,

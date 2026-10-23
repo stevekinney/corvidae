@@ -5,6 +5,7 @@ import type { AnyToolDefinition } from '../../core';
 import { createRegistry, defineTool, serializeToolDefinition } from '../../core';
 import { createTool } from '../../create-tool';
 import { createToolbox } from '../../create-toolbox';
+import type { ToolExecutionResult } from '../../types';
 import {
   formatGeminiToolResults,
   formatGeminiToolResultsAsync,
@@ -292,6 +293,31 @@ describe('formatGeminiToolResults', () => {
       'gem-id',
     ]);
     expect(results[3]).not.toHaveProperty('providerCallId');
+  });
+
+  it('stamps providerCallId on a copy when a wrapped tool returns a frozen result', async () => {
+    const base = createTool({
+      name: 'frozen',
+      version: '1.0.0',
+      description: 'Returns a frozen result',
+      input: z.object({}),
+      execute: async () => 'fine',
+    });
+    const frozen = new Proxy(base, {
+      get(target, property, receiver) {
+        if (property !== 'execute') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof target.execute>) => {
+          const settled = (await target.execute(...args)) as unknown as ToolExecutionResult;
+          return Object.freeze({ ...settled });
+        };
+      },
+    });
+    const toolbox = createToolbox([frozen]);
+    const [result] = await toolbox.execute(
+      parseGeminiToolCalls([{ functionCall: { id: 'gem-frozen', name: 'frozen', args: {} } }]),
+    );
+    expect(result?.outcome).toBe('success');
+    expect(result?.providerCallId).toBe('gem-frozen');
   });
 
   it('echoes a provider-issued id on a result with parts and never an Armorer-generated id', () => {

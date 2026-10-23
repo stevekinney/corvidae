@@ -1,6 +1,6 @@
 /**
  * The `providerCallId` field to spread into a call or result that is derived from `source`: the id
- * the model provider issued for the call, or nothing when Armorer generated the id. Every
+ * the model provider issued for the call, or nothing when the call carries none. Every
  * projection that rebuilds a call or a result spreads this, so the marker is not dropped on the way
  * to a provider formatter.
  */

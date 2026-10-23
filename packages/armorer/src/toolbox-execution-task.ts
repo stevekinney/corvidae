@@ -171,10 +171,16 @@ async function runToolInvocation(
       durableOperationKey === undefined
         ? { ...baseInvocationOptions, executionId: childExecutionId }
         : { ...baseInvocationOptions, durableOperationKey, executionId: childExecutionId };
-    const result = await tool.execute(toolCall, invocationOptions);
+    const executed = await tool.execute(toolCall, invocationOptions);
     // A wrapped tool (idempotency, a custom proxy) may rebuild the result; the marker must be on
-    // it before approval binding, settlement, and the events read it.
-    Object.assign(result, providerCallIdField(toolCall));
+    // it before approval binding, settlement, and the events read it. The tool owns its result
+    // (it may be frozen), so a missing marker is added to a copy.
+    const providerMarker = providerCallIdField(toolCall);
+    const result: ToolExecutionResult =
+      'providerCallId' in providerMarker &&
+      executed.providerCallId !== providerMarker.providerCallId
+        ? { ...executed, ...providerMarker }
+        : executed;
     bindPendingApproval({
       result,
       tool,
