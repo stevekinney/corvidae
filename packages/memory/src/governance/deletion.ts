@@ -419,8 +419,13 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       let changed = false;
       const stored = await context.updateGovernance(current, (governance) => {
         // Decided against the claim read above: if another claimant replaced
-        // it since, decide again against theirs.
-        changed = governance.deletionClaim?.token !== observed?.token;
+        // or renewed it since (a renewal keeps the token and moves the lease),
+        // decide again against what is stored now.
+        const latest = governance.deletionClaim;
+        changed =
+          latest?.token !== observed?.token ||
+          latest?.leaseExpiresAt !== observed?.leaseExpiresAt ||
+          latest?.deletionId !== observed?.deletionId;
         if (changed) return undefined;
         return {
           deletionRequestedAt: governance.deletionRequestedAt ?? context.now(),
