@@ -1415,7 +1415,7 @@ export function createBureauA2ARequestHandler(
         // A failure that is not a refusal may have come after the run or the mailbox record was
         // committed: the claim then stays, with the assets it names, for the retry to finish.
         const refused = isRefusal(error);
-        if (refused || delivered.length === 0) {
+        if (refused || (delivered.length === 0 && recorded === undefined)) {
           const released = await ledger.release(entry).catch(() => false);
           // Deleted only when this send provably took no effect and the claim is really gone:
           // otherwise another attempt may have completed it and its rows name these assets.

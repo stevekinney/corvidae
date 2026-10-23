@@ -803,3 +803,39 @@ describe('the card under a policy spelled loosely', () => {
     );
   });
 });
+
+describe('a retry of a URL-only input', () => {
+  it('completes from the recorded projection when the mailbox committed and then threw, even if the asset is gone', async () => {
+    await withAgents({ asker: parked() }, async (opened) => {
+      const assetId = await admit(opened, png(95));
+      const working = await send(opened, 'asker', messageWith([{ text: 'start' }]), undefined, {
+        configuration: { returnImmediately: true },
+      });
+      const taskId = (working.result.task ?? working.result).id;
+      const real = opened.bureau.submitSessionInput.bind(opened.bureau);
+      let failures = 1;
+      opened.bureau.submitSessionInput = async (sessionId: string, request: Json) => {
+        const outcome = await real(sessionId, request);
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error('the mailbox record was committed, then the identity write failed');
+        }
+        return outcome;
+      };
+      const message = messageWith(
+        [{ text: 'and this' }, { url: routeOf(assetId), mediaType: 'image/png' }],
+        { taskId },
+      );
+      const options = { configuration: { returnImmediately: true } };
+
+      const lost = await send(opened, 'asker', message, undefined, options);
+      expect(lost.error).toBeDefined();
+      await opened.bureau.assets!.delete(assetId, { id: ALICE }).result();
+      const retried = await send(opened, 'asker', message, undefined, options);
+
+      expect(retried.error).toBeUndefined();
+      const task = retried.result.task ?? retried.result;
+      expect(task.history.at(-1).parts[1].url).toBe(routeOf(assetId));
+    });
+  });
+});
