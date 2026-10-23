@@ -83,6 +83,20 @@ export interface WeftPushNotificationStore extends PushNotificationStore {
     context: ServerCallContext,
     pushNotificationConfig: TaskPushNotificationConfig,
   ): Promise<TaskPushNotificationConfig>;
+  /**
+   * Refuse, without writing, a create that {@link WeftPushNotificationStore.create}
+   * would refuse: the same checks against the task's stored configurations, so a
+   * caller can decline before it takes an effect that a later create could not undo.
+   * Resolves the live configuration a create would return unchanged, or `undefined` when it
+   * would store a new one.
+   *
+   * @throws {A2APushConfigurationConflictError} As `create` does.
+   */
+  check(
+    taskId: string,
+    context: ServerCallContext,
+    pushNotificationConfig: TaskPushNotificationConfig,
+  ): Promise<TaskPushNotificationConfig | undefined>;
   /** One live configuration, or `undefined` for a missing or deleted one. */
   get(
     taskId: string,
@@ -334,6 +348,15 @@ export function createWeftPushNotificationStore(
 
   const store: WeftPushNotificationStore = {
     create,
+
+    async check(taskId, context, input) {
+      const resolution = resolveCreate(
+        taskId,
+        await readTaskConfigurations(storage, callerScope(namespace, context), taskId),
+        input,
+      );
+      return 'existing' in resolution ? resolution.existing : undefined;
+    },
 
     async save(taskId, context, pushNotificationConfig): Promise<void> {
       const stored = await create(taskId, context, pushNotificationConfig);

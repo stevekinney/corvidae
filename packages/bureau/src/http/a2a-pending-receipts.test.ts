@@ -105,6 +105,7 @@ async function withCrashedAnswer(
       skillDescriptors: undefined,
       security: undefined,
       durableHistory: true,
+      pushNotifications: false,
     });
     const handler = createBureauA2ARequestHandler({
       agentName: 'asker',

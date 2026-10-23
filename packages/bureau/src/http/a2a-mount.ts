@@ -22,6 +22,7 @@ import {
   type A2ASecurityDeclaration,
   type A2ASigningOptions,
   createA2AHandler,
+  withRedactedPushConfigurations,
 } from '@lostgradient/weft/a2a';
 
 import { type A2AAgentCardSource, createBureauAgentCard } from './a2a-agent-card.ts';
@@ -32,6 +33,8 @@ import {
   BureauA2AUser,
   createBureauA2ARequestHandler,
 } from './a2a-request-handler.ts';
+import type { A2APushCheckpoints } from './a2a-push-checkpoint.ts';
+import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
 import type { A2ATaskRecords } from './a2a-task-record.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
@@ -62,7 +65,7 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
   /** The card source of a catalog agent, or `undefined` when the catalog has none. */
   readonly describe: (
     agentName: string,
-  ) => Omit<A2AAgentCardSource, 'security' | 'durableHistory'> | undefined;
+  ) => Omit<A2AAgentCardSource, 'security' | 'durableHistory' | 'pushNotifications'> | undefined;
   /** The credentials the handler enforces; `undefined` when every request is the local caller. */
   readonly security: A2ASecurityDeclaration | undefined;
   readonly records: A2ATaskRecords;
@@ -70,6 +73,19 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
   /** The handler's request-body bound, applied to A2A requests too. */
   readonly maxRequestBodyBytes?: number | undefined;
   readonly respond: BureauA2ARequestHandlerOptions['respond'];
+  /**
+   * Push notification delivery (COR-1543): the sender and outbox, the checkpoints the projector
+   * keeps, and the projector. Omitted, no card declares push.
+   */
+  readonly push?:
+    | {
+        readonly delivery: A2APushDelivery;
+        readonly checkpoints: A2APushCheckpoints;
+        readonly projector: A2APushProjector;
+        /** Settles once the start-up recovery has: no install runs before it, so none races it. */
+        readonly ready: Promise<void>;
+      }
+    | undefined;
 };
 
 function trimTrailingSlash(url: string): string {
@@ -112,12 +128,13 @@ const probeCard = createBureauAgentCard({
   skillDescriptors: undefined,
   security: undefined,
   durableHistory: false,
+  pushNotifications: false,
 });
 
 /** The card source a tombstone's handler is built with: its card is never served. */
 function tombstoneSource(
   agentName: string,
-): Omit<A2AAgentCardSource, 'security' | 'durableHistory'> {
+): Omit<A2AAgentCardSource, 'security' | 'durableHistory' | 'pushNotifications'> {
   return {
     catalogName: agentName,
     displayName: undefined,
@@ -176,10 +193,13 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     if (held !== undefined && (!published || held.revision === source.definitionRevision)) {
       return held.handler;
     }
+    const keepsHistory = await keepsDurableHistory();
     const agentCard = createBureauAgentCard({
       ...source,
       security: options.security,
-      durableHistory: await keepsDurableHistory(),
+      durableHistory: keepsHistory,
+      // A push notification is a projection of durable history: both must be composed.
+      pushNotifications: keepsHistory && options.push !== undefined,
     });
     const requestHandler = createBureauA2ARequestHandler({
       agentName,
@@ -189,9 +209,11 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       ledger: options.ledger,
       respond: options.respond,
       acceptsNewTasks: () => options.publication.includes(agentName),
+      push: options.push,
     });
     const handler = createA2AHandler({
-      requestHandler,
+      // Reads of a configuration never echo its credentials back.
+      requestHandler: withRedactedPushConfigurations(requestHandler),
       agentCard,
       // The name is one path segment, encoded, so the route's decode recovers it exactly.
       publicUrl: `${publicUrl}${A2A_MOUNT_PREFIX}/${encodeURIComponent(agentName)}`,
