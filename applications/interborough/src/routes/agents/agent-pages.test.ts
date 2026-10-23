@@ -179,6 +179,24 @@ describe('the list of agents', () => {
     expect(router.current.search.get('agent')).toBe('assistant');
     expect(router.pathname).toBe('/chat/new');
   });
+
+  test('opens an agent file’s editor, its memory, and the new agent form', async () => {
+    const file = { ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' } as const;
+    restore = bureau({ 'bureau.agents.list': () => ({ agents: [file] }) }).restore;
+    landAt('/agents');
+    const { findByRole } = mount(AgentList);
+
+    (await findByRole('link', { name: 'Edit' })).click();
+    expect(router.pathname).toBe('/agents/researcher/edit');
+
+    landAt('/agents');
+    (await findByRole('link', { name: 'Memory' })).click();
+    expect(router.pathname).toBe('/agents/researcher/memory');
+
+    landAt('/agents');
+    (await findByRole('link', { name: 'New agent' })).click();
+    expect(router.pathname).toBe('/agents/new');
+  });
 });
 
 const INVALID_LISTING = {
