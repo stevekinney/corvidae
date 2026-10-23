@@ -322,6 +322,46 @@ describe('SubscribeToTask with a surface', () => {
     });
   });
 
+  it.each([
+    ['fewer components', [{ id: 'solo', component: 'Text', text: 'Solo' }], ['Solo']],
+    ['no components', [], []],
+  ])(
+    'deletes and begins a surface again when a replacement leaves %s',
+    async (_name, components, expected) => {
+      await withTask(async (kit) => {
+        const taskId = await kit.park();
+        const stream = serverSentEvents(await kit.subscribe(taskId));
+        const opening = await stream.next();
+        await kit.apply(taskId);
+        const created = await stream.next();
+        const principal = await kit.owner(taskId);
+        const [held] = await kit.surfaces.list(taskId, { principal });
+        if (held?.representation?.kind !== 'a2ui') throw new Error('expected an A2UI surface');
+        const updated = await kit.surfaces.update(
+          {
+            type: 'surface.update',
+            contractVersion: INTERACTIVE_SURFACE_CONTRACT_VERSION,
+            commandId: 'shrink-1',
+            taskId,
+            surfaceId: 'panel',
+            baseRevision: held.revision,
+            representation: { ...held.representation, components },
+          },
+          { principal },
+        );
+        expect(updated.outcome).toBe('accepted');
+        const changed = await stream.next();
+        const kinds = surfaceDataOf(changed).flatMap((part) =>
+          (part.data as Json[]).map((message) => Object.keys(message).find((k) => k !== 'version')),
+        );
+        expect(kinds[0]).toBe('deleteSurface');
+        expect(kinds[1]).toBe('createSurface');
+        expect(replayed([opening, created, changed])).toEqual({ panel: expected });
+        await stream.cancel();
+      });
+    },
+  );
+
   it('replays an opening snapshot, an update, and a delete as valid A2UI', async () => {
     await withTask(async (kit) => {
       const taskId = await kit.park();

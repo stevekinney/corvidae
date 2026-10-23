@@ -663,6 +663,8 @@ type SentSurface = {
   readonly data: boolean;
   /** The `createSurface` message sent, which holds the properties only it can carry. */
   readonly created: string;
+  /** The ids of the components sent, which an update can add or replace but never remove. */
+  readonly components: ReadonlySet<string>;
 };
 
 /**
@@ -693,6 +695,11 @@ function createSurfaceReconciler(
     revision: surface.revision,
     data: delivered(surface),
     created: createdOf(surface),
+    components: new Set(
+      surface.representation?.kind === 'a2ui'
+        ? surface.representation.components.map((component) => JSON.stringify(component['id']))
+        : [],
+    ),
   });
   const sent = new Map<string, SentSurface>();
   for (const surface of shown) {
@@ -712,7 +719,12 @@ function createSurfaceReconciler(
         const before = sent.get(surface.surfaceId);
         if (before !== undefined && before.revision >= surface.revision) continue;
         if (surface.representation === null) {
-          sent.set(surface.surfaceId, { revision: surface.revision, data: false, created: '' });
+          sent.set(surface.surfaceId, {
+            revision: surface.revision,
+            data: false,
+            created: '',
+            components: new Set(),
+          });
           // A client that never held the surface learns nothing of its end.
           if (before?.data !== true) continue;
           parts.push(deleteSurfacePart(surface));
@@ -723,9 +735,14 @@ function createSurfaceReconciler(
           // A surface the client already holds is continued with its whole current state and no
           // second `createSurface`, which A2UI v0.9.1 forbids for an existing surface id.
           if (before?.data !== true) parts.push(...whole);
-          else if (next.data && before.created !== next.created) {
-            // `theme` and `sendDataModel` travel only in `createSurface`, so a surface whose
-            // replacement changed them is deleted and begun again, whole.
+          else if (
+            next.data &&
+            (before.created !== next.created ||
+              [...before.components].some((id) => !next.components.has(id)))
+          ) {
+            // `theme` and `sendDataModel` travel only in `createSurface`, and an
+            // `updateComponents` only adds or replaces components, so a surface whose replacement
+            // changed the first or dropped a component is deleted and begun again, whole.
             parts.push(deleteSurfacePart(surface), ...whole);
           } else parts.push(...whole.map(withoutCreateSurface));
         }
