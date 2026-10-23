@@ -365,9 +365,9 @@ export function registerDeletionContract(backend: GovernedBackend): void {
         ledger: {
           ...fixture.ledger,
           openReceipt: () => Promise.reject(new Error('process died')),
-          putReceipt: async (receipt) => {
-            if (receipt.deletionId !== held.deletionId) throw new Error('process died');
-            await fixture.ledger.putReceipt(receipt);
+          replaceReceipt: async (current, next) => {
+            if (next.deletionId !== held.deletionId) throw new Error('process died');
+            return fixture.ledger.replaceReceipt(current, next);
           },
         },
       });
@@ -397,9 +397,9 @@ export function registerDeletionContract(backend: GovernedBackend): void {
       const crashing = fixture.restart({
         ledger: {
           ...fixture.ledger,
-          putReceipt: async (receipt) => {
-            if (receipt.deletionId === held.deletionId) throw new Error('process died');
-            await fixture.ledger.putReceipt(receipt);
+          replaceReceipt: async (current, next) => {
+            if (next.deletionId === held.deletionId) throw new Error('process died');
+            return fixture.ledger.replaceReceipt(current, next);
           },
         },
       });
