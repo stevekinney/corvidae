@@ -110,6 +110,7 @@ export type {
 export type {
   CreateMemoryGovernanceLedgerOptions,
   MemoryGovernanceLedger,
+  StoredMemoryDeletionReceipt,
 } from './governance/ledger';
 export type {
   AsynchronousDeletionTarget,
