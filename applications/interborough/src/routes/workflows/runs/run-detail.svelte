@@ -178,6 +178,11 @@
     if (asked === 'engine' || asked === 'summary') return asked;
     return engineOnly ? 'engine' : 'summary';
   });
+  // A run only the engine knows has no header of its own while its Engine tab is open: the workflow's
+  // title is then the page's one level-1 heading. On its Summary tab the page still names itself.
+  const leadsWithEngine = $derived(
+    engineOnly && task.data === undefined && !task.isPending && view === 'engine',
+  );
   let tab = $state(untrack(() => view));
   $effect(() => {
     tab = view;
@@ -225,7 +230,12 @@
     onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
   />
 {:else}
-  <article class="ib-run" aria-labelledby="ib-run-title">
+  <!-- A run only the engine knows has no heading of its own: the workflow it holds leads the page. -->
+  <article
+    class="ib-run"
+    aria-labelledby={leadsWithEngine ? undefined : 'ib-run-title'}
+    aria-label={leadsWithEngine ? TASK_COPY.runTitle : undefined}
+  >
     {#if task.data}
       {@const current = task.data}
       {@const presentation = taskStatePresentation(current.status)}
@@ -349,7 +359,7 @@
       </header>
     {:else if task.isPending}
       <Skeleton height="2rem" width="40%" />
-    {:else}
+    {:else if !leadsWithEngine}
       <header class="ib-run__header">
         <div class="ib-run__heading">
           <h1 id="ib-run-title" class="ib-run__title">{TASK_COPY.runTitle}</h1>
@@ -400,7 +410,9 @@
       </Tabs.Panel>
       {#if engineAllowed}
         <Tabs.Panel value="engine">
-          {#if tab === 'engine'}<WorkflowDetail />{/if}
+          {#if tab === 'engine'}<WorkflowDetail
+              headingLevel={leadsWithEngine ? 1 : 2}
+            />{/if}
         </Tabs.Panel>
       {/if}
     </Tabs>

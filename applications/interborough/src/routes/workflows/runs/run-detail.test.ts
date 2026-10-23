@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
+import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
 import {
   contextDetailFixture,
   goalAttemptFixture,
@@ -49,6 +50,8 @@ function open(
     tasks?: TaskView[];
     goals?: readonly Goal[];
     scopes?: readonly AuthorizationScope[];
+    /** Provides the fleet feed the engine's workflow page reads, for a test that opens it. */
+    withEngine?: boolean;
   } = {},
 ) {
   stub = installBureauWorld(emptyBureauWorld({ tasks: options.tasks ?? [] }));
@@ -57,7 +60,7 @@ function open(
   stub.on('bureau.contexts.list', () => ({ contexts: [], nextOffset: null }));
   stub.on('bureau.agents.list', () => ({ agents: [] }));
   landAt(path);
-  return render(RouteOutletHarness, {
+  return render(options.withEngine === true ? RunDetailEngineHarness : RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: options.scopes ?? AUTHORIZATION_SCOPES,
@@ -272,6 +275,24 @@ describe('a run that cannot be followed live', () => {
     stub?.refuseStreams('offline');
 
     expect(await view.findByText(TASK_COPY.followReconnecting)).not.toBeNull();
+  });
+});
+
+describe('a run only the engine knows', () => {
+  test('has no heading of its own on its Engine tab, so the workflow it holds is the one title', async () => {
+    const view = open('/runs/engine-run-1', { withEngine: true });
+
+    await view.findByRole('tab', { name: TASK_COPY.tabs.engine });
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.list').length).toBeGreaterThan(0));
+    expect(view.queryByRole('heading', { level: 1, name: TASK_COPY.runTitle })).toBeNull();
+    expect(view.getByRole('article', { name: TASK_COPY.runTitle })).not.toBeNull();
+  });
+
+  test('names itself on its Summary tab, where the workflow is not shown', async () => {
+    const view = open('/runs/engine-run-1?view=summary');
+
+    await view.findByRole('heading', { level: 1, name: TASK_COPY.runTitle });
+    expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
   });
 });
 

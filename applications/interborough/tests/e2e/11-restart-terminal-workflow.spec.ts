@@ -78,8 +78,9 @@ test('a run that is not terminal offers no Restart action', async ({ page }) => 
   const id = ((await running.json()) as { items: Array<{ id: string }> }).items[0]?.id;
   if (id === undefined) throw new Error('The seeded engine has no running workflow.');
   await page.goto(`/runs/${encodeURIComponent(id)}`);
-  // The run's own page and the workflow it holds each have a title; the workflow's is the one asked.
+  // A run only the engine knows has no title of its own: the workflow's is the page's one level-1 heading.
   await expect(page.locator('h1.weft-workflow-detail__title')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Restart' })).toHaveCount(0);
 });
 

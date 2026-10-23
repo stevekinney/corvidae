@@ -55,8 +55,35 @@ describe('OverviewTab', () => {
     });
 
     expect(getByText('Revision')).not.toBeNull();
-    expect(getByText(/^sha256:deadbeef/)).not.toBeNull();
+    expect(getByText('sha256:deadbeef')).not.toBeNull();
   });
+
+  test('sets the type, version, and revision in monospace, and lets a long revision wrap', async () => {
+    const { container } = render(OverviewTabHarness, {
+      props: {
+        client: baseClient(),
+        workflow: workflow({
+          type: 'order-fulfillment',
+          revision: `sha256:${'f'.repeat(64)}`,
+          versionTuple: { workflowVersion: '2' },
+        }),
+      },
+    });
+
+    const code = [...container.querySelectorAll('dd code.ib-identifier')].map(
+      (element) => element.textContent,
+    );
+    expect(code).toEqual(['order-fulfillment', 'wf 2', `sha256:${'f'.repeat(64)}`]);
+    expect(container.querySelector('dd code.weft-overview-tab__code')).not.toBeNull();
+  });
+
+  /** The text of the Revision row's definition: the hash, and the words that compare it to the active one. */
+  function revisionText(container: HTMLElement): string | undefined {
+    const term = [...container.querySelectorAll('dt')].find(
+      (element) => element.textContent?.trim() === 'Revision',
+    );
+    return term?.nextElementSibling?.textContent?.trim();
+  }
 
   describe('Revision row active-comparison text (WFT-117)', () => {
     const ACTIVE: WorkflowCatalogActivePointerLike = {
@@ -75,7 +102,7 @@ describe('OverviewTab', () => {
     });
 
     test('reads "— active" when workflow.revision matches the active pointer', async () => {
-      const { getByText } = render(OverviewTabHarness, {
+      const { container } = render(OverviewTabHarness, {
         props: {
           client: baseClient(),
           workflow: workflow({ revision: ACTIVE.revision }),
@@ -83,11 +110,11 @@ describe('OverviewTab', () => {
         },
       });
 
-      expect(getByText(`${ACTIVE.revision} — active`)).not.toBeNull();
+      expect(revisionText(container)).toBe(`${ACTIVE.revision} — active`);
     });
 
     test('reads "— differs from active" when workflow.revision differs from the active pointer', async () => {
-      const { getByText } = render(OverviewTabHarness, {
+      const { container } = render(OverviewTabHarness, {
         props: {
           client: baseClient(),
           workflow: workflow({ revision: 'sha256:stale000' }),
@@ -95,11 +122,11 @@ describe('OverviewTab', () => {
         },
       });
 
-      expect(getByText('sha256:stale000 — differs from active')).not.toBeNull();
+      expect(revisionText(container)).toBe('sha256:stale000 — differs from active');
     });
 
     test('reads "— active revision unknown" when activeRevision is null (never activated)', async () => {
-      const { getByText } = render(OverviewTabHarness, {
+      const { container } = render(OverviewTabHarness, {
         props: {
           client: baseClient(),
           workflow: workflow({ revision: ACTIVE.revision }),
@@ -107,18 +134,18 @@ describe('OverviewTab', () => {
         },
       });
 
-      expect(getByText(`${ACTIVE.revision} — active revision unknown`)).not.toBeNull();
+      expect(revisionText(container)).toBe(`${ACTIVE.revision} — active revision unknown`);
     });
 
     test('reads "— active revision unknown" when activeRevision is omitted (denied/loading)', async () => {
-      const { getByText } = render(OverviewTabHarness, {
+      const { container } = render(OverviewTabHarness, {
         props: {
           client: baseClient(),
           workflow: workflow({ revision: ACTIVE.revision }),
         },
       });
 
-      expect(getByText(`${ACTIVE.revision} — active revision unknown`)).not.toBeNull();
+      expect(revisionText(container)).toBe(`${ACTIVE.revision} — active revision unknown`);
     });
   });
 
@@ -176,13 +203,13 @@ describe('OverviewTab', () => {
       },
     };
 
-    const { getByLabelText, getByRole } = render(OverviewTabHarness, {
+    const { getByPlaceholderText } = render(OverviewTabHarness, {
       props: { client, workflow: workflow() },
     });
 
-    const input = getByLabelText('Add tag');
+    const input = getByPlaceholderText('Add tag');
     await fireEvent.input(input, { target: { value: '  urgent  ' } });
-    await fireEvent.click(getByRole('button', { name: 'Add tag' }));
+    await fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(added.tag).toBe('urgent');
   });
@@ -242,7 +269,7 @@ describe('OverviewTab', () => {
       props: { client, workflow: workflow({ tags: ['prod'] }) },
     });
 
-    await fireEvent.click(getByRole('button', { name: 'Remove tag prod' }));
+    await fireEvent.click(getByRole('button', { name: 'Remove prod' }));
 
     expect(removed.tag).toBe('prod');
   });
@@ -256,11 +283,11 @@ describe('OverviewTab', () => {
       },
     };
 
-    const { getByLabelText } = render(OverviewTabHarness, {
+    const { getByPlaceholderText } = render(OverviewTabHarness, {
       props: { client, workflow: workflow() },
     });
 
-    const input = getByLabelText('Add tag');
+    const input = getByPlaceholderText('Add tag');
     await fireEvent.input(input, { target: { value: '   ' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     expect(added).toEqual([]);
@@ -300,7 +327,7 @@ describe('OverviewTab', () => {
   });
 
   test('disables adding and removing tags when the principal lacks tags:write', async () => {
-    const { getByRole } = render(OverviewTabHarness, {
+    const { getByPlaceholderText, getByText, queryByRole } = render(OverviewTabHarness, {
       props: {
         client: baseClient(),
         workflow: workflow({ tags: ['vip'] }),
@@ -308,7 +335,9 @@ describe('OverviewTab', () => {
       },
     });
 
-    expect(getByRole('button', { name: 'Remove tag vip' }).hasAttribute('disabled')).toBe(true);
-    expect(getByRole('button', { name: 'Add tag' }).hasAttribute('disabled')).toBe(true);
+    // The tag is still shown, but it cannot be removed and nothing can be added.
+    expect(getByText('vip')).not.toBeNull();
+    expect(queryByRole('button', { name: 'Remove vip' })).toBeNull();
+    expect(getByPlaceholderText('Add tag').hasAttribute('disabled')).toBe(true);
   });
 });

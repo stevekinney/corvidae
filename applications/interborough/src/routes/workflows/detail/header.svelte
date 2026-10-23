@@ -110,6 +110,8 @@
     readonly actionGate?: ScopeGate | undefined;
     /** Whether the principal holds `queries:read`, which `weft.workflows.query` requires. */
     readonly queryGate?: ScopeGate | undefined;
+    /** The level of the run's title: 1 when it leads the page, 2 under a heading the page already has. */
+    readonly headingLevel?: 1 | 2;
   }
 
   let {
@@ -125,6 +127,7 @@
     onRestart,
     actionGate = { disabled: false, title: undefined },
     queryGate = { disabled: false, title: undefined },
+    headingLevel = 1,
   }: WorkflowDetailHeaderProps = $props();
 
   const presentation = $derived(finalizerStatusPresentation(workflow.status, finalizerStatus));
@@ -246,13 +249,13 @@
   <div class="weft-workflow-detail__title-row">
     <div class="weft-workflow-detail__identity">
       <div class="weft-workflow-detail__badges">
-        <h1 class="weft-workflow-detail__title">
+        <svelte:element this={`h${headingLevel}`} class="weft-workflow-detail__title">
           <a
-            class="weft-workflow-detail__type-link"
+            class="weft-workflow-detail__type-link ib-identifier"
             href={router.href(workflowTypePath(workflow.type))}
             onclick={openWorkflowType}>{workflow.type}</a
           >
-        </h1>
+        </svelte:element>
         <Badge variant="accent" monospace>v{workflow.versionTuple.workflowVersion}</Badge>
         {#if workflow.revision !== undefined}
           <Tooltip
