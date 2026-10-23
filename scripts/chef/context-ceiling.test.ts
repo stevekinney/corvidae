@@ -6,9 +6,8 @@ import { runWithHangGuard } from '../hang-guard.ts';
 import {
   currentContext,
   decide,
-  defaultBlockTokens,
+  defaultUrgentTokens,
   defaultWarnTokens,
-  isHandoffCall,
   thresholdsFrom,
 } from './context-ceiling.ts';
 
@@ -42,24 +41,21 @@ function withTranscript(lines: string[], body: (path: string) => void): void {
 
 describe('thresholdsFrom', () => {
   test('defaults, overrides, and invalid values', () => {
-    expect(thresholdsFrom({})).toEqual({ warn: defaultWarnTokens, block: defaultBlockTokens });
+    expect(thresholdsFrom({})).toEqual({ warn: defaultWarnTokens, urgent: defaultUrgentTokens });
     expect(
-      thresholdsFrom({ CHEF_CONTEXT_WARN_TOKENS: '100', CHEF_CONTEXT_BLOCK_TOKENS: '200' }),
-    ).toEqual({ warn: 100, block: 200 });
+      thresholdsFrom({ CHEF_CONTEXT_WARN_TOKENS: '100', CHEF_CONTEXT_URGENT_TOKENS: '200' }),
+    ).toEqual({ warn: 100, urgent: 200 });
     expect(
-      thresholdsFrom({ CHEF_CONTEXT_WARN_TOKENS: 'abc', CHEF_CONTEXT_BLOCK_TOKENS: '-4' }),
-    ).toEqual({
-      warn: defaultWarnTokens,
-      block: defaultBlockTokens,
-    });
+      thresholdsFrom({ CHEF_CONTEXT_WARN_TOKENS: 'abc', CHEF_CONTEXT_URGENT_TOKENS: '-4' }),
+    ).toEqual({ warn: defaultWarnTokens, urgent: defaultUrgentTokens });
   });
 
-  test('a block threshold below the warn threshold never blocks before it warns', () => {
-    const { warn, block } = thresholdsFrom({
-      CHEF_CONTEXT_WARN_TOKENS: '500000',
-      CHEF_CONTEXT_BLOCK_TOKENS: '300000',
-    });
-    expect(block).toBeGreaterThanOrEqual(warn);
+  test.each([
+    ['an override above warn', { CHEF_CONTEXT_URGENT_TOKENS: '300000' }, 300_000],
+    ['an override below warn is raised to warn', { CHEF_CONTEXT_URGENT_TOKENS: '10' }, 250_000],
+    ['an invalid override keeps the default', { CHEF_CONTEXT_URGENT_TOKENS: 'x' }, 350_000],
+  ])('the urgent threshold: %s', (_label, environment, expected) => {
+    expect(thresholdsFrom(environment).urgent).toBe(expected);
   });
 });
 
@@ -86,36 +82,6 @@ describe('currentContext', () => {
   });
 });
 
-describe('isHandoffCall', () => {
-  test('allows the brief file, session tools, and git handoff commands only', () => {
-    expect(isHandoffCall('Write', { file_path: '/repo/tmp/chef/briefs/COR-1.md' })).toBe(true);
-    expect(isHandoffCall('Write', { file_path: '/repo/src/index.ts' })).toBe(false);
-    expect(isHandoffCall('Write', { file_path: '/repo/tmp/chef/../../src/a.ts' })).toBe(false);
-    expect(isHandoffCall('mcp__ccd_session__start_session', {})).toBe(true);
-    expect(isHandoffCall('mcp__ccd_session__hand_off_to_session', {})).toBe(true);
-    expect(isHandoffCall('SendMessage', {})).toBe(true);
-    for (const command of [
-      'git status',
-      'git commit -m "wip (x)"',
-      'git push origin HEAD',
-      'git -C /a/b log',
-    ]) {
-      expect(isHandoffCall('Bash', { command })).toBe(true);
-    }
-    for (const command of [
-      'git status; rm -rf x',
-      'git push && bun test',
-      'git commit -m "$(cat f)"',
-      'git reset --hard',
-      'bun run check',
-      'git status | tee f',
-    ]) {
-      expect(isHandoffCall('Bash', { command })).toBe(false);
-    }
-    expect(isHandoffCall('Read', { file_path: '/repo/a.ts' })).toBe(false);
-  });
-});
-
 describe('decide', () => {
   const input = (tool: string, toolInput: unknown = {}) => ({
     transcript_path: '/t.jsonl',
@@ -134,22 +100,35 @@ describe('decide', () => {
     expect(decision?.hookSpecificOutput.additionalContext).toContain('handoff brief');
   });
 
-  test('denies other calls above the block threshold and allows a handoff', () => {
-    const denied = decide(input('Read', { file_path: '/a' }), {}, at(400_001));
-    expect(denied?.hookSpecificOutput.permissionDecision).toBe('deny');
-    expect(denied?.hookSpecificOutput.permissionDecisionReason).toContain('tmp/chef/');
-    const allowed = decide(input('Bash', { command: 'git status' }), {}, at(400_001));
-    expect(allowed?.hookSpecificOutput.permissionDecision).toBe('allow');
+  test.each([
+    ['just above warn', 250_001, 'handoff threshold'],
+    ['at the urgent threshold', 350_000, 'handoff threshold'],
+    ['just above urgent', 350_001, 'URGENT'],
+    ['far above the old 400K block', 900_000, 'URGENT'],
+  ])('escalates the warning by band and never denies: %s', (_label, tokens, expected) => {
+    for (const call of [
+      input('Bash', { command: 'bun run check' }),
+      input('Read'),
+      input('Agent'),
+    ]) {
+      const decision = decide(call, {}, at(tokens));
+      expect(decision?.hookSpecificOutput.permissionDecision).toBe('allow');
+      const text = decision?.hookSpecificOutput.additionalContext ?? '';
+      expect(text).toContain(expected);
+      if (expected === 'URGENT') expect(text).toContain('never hand_off_to_session');
+      else expect(text).not.toContain('URGENT');
+    }
   });
 
   test('honors the environment thresholds and the off switch', () => {
-    const environment = { CHEF_CONTEXT_WARN_TOKENS: '10', CHEF_CONTEXT_BLOCK_TOKENS: '20' };
-    expect(decide(input('Read'), environment, at(15))?.hookSpecificOutput.permissionDecision).toBe(
-      'allow',
-    );
-    expect(decide(input('Read'), environment, at(25))?.hookSpecificOutput.permissionDecision).toBe(
-      'deny',
-    );
+    const environment = { CHEF_CONTEXT_WARN_TOKENS: '10', CHEF_CONTEXT_URGENT_TOKENS: '20' };
+    expect(decide(input('Read'), environment, at(10))).toBeUndefined();
+    expect(
+      decide(input('Read'), environment, at(15))?.hookSpecificOutput.additionalContext,
+    ).toContain('handoff threshold');
+    expect(
+      decide(input('Read'), environment, at(25))?.hookSpecificOutput.additionalContext,
+    ).toContain('URGENT');
     expect(
       decide(input('Read'), { ...environment, CHEF_CONTEXT_CEILING: 'off' }, at(25)),
     ).toBeUndefined();
@@ -185,9 +164,11 @@ const overTheCeiling = await (async () => {
 const garbage = await runHook('not json');
 
 describe('command line', () => {
-  test('denies over the ceiling', () => {
+  test('warns and allows over the old ceiling', () => {
     expect(overTheCeiling.code).toBe(0);
-    expect(JSON.parse(overTheCeiling.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+    const output = JSON.parse(overTheCeiling.stdout).hookSpecificOutput;
+    expect(output.permissionDecision).toBe('allow');
+    expect(output.additionalContext).toContain('URGENT');
   });
 
   test('fails open on garbage input', () => {
