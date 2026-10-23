@@ -1285,15 +1285,6 @@ export function createBureauA2ARequestHandler(
       located.state === 'retained' && located.entry.state === 'pending'
         ? located.entry.claim
         : undefined;
-    // A pending binding of another payload refuses this send at the claim; it is refused here
-    // too, before anything (an A2UI action, an asset) is admitted on a send that cannot apply.
-    if (
-      located.state === 'retained' &&
-      located.entry.state === 'pending' &&
-      located.entry.payloadDigest !== digest
-    ) {
-      throw conflict(undefined);
-    }
     const passed = () => request.deadline !== undefined && runtime.clock.now() >= request.deadline;
     // An expired command applies nothing, so it admits nothing: a surface action admitted before
     // the claim would leave an admitted event with no answer applied to the task (COR-1681).
