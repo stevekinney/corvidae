@@ -28,6 +28,7 @@
 import {
   AssetAdmissionError,
   AssetHeldError,
+  AssetRecordCorruptError,
   AssetUnavailableError,
   AssetWorkAbortedError,
 } from './errors';
@@ -50,6 +51,7 @@ import type { AssetStorageOperation } from './storage';
 import type {
   AssetDescriptor,
   AssetGarbageCollectionReport,
+  AssetHeldClaim,
   AssetPrincipal,
   AssetProviderCopy,
   AssetWorkHandle,
@@ -170,6 +172,30 @@ export async function release(
     holderId,
   });
   return projectFor(record, principal);
+}
+
+export async function heldClaims(
+  internals: AssetInternals,
+  holderPrefix: string,
+): Promise<readonly AssetHeldClaim[]> {
+  const claims: AssetHeldClaim[] = [];
+  for (const key of await internals.storage.list(KEYS.recordPrefix)) {
+    const assetId = key.slice(KEYS.recordPrefix.length);
+    let loaded: LoadedRecord | undefined;
+    try {
+      loaded = await loadRecord(internals.storage, assetId);
+    } catch (error) {
+      if (error instanceof AssetRecordCorruptError) continue;
+      throw error;
+    }
+    if (loaded === undefined) continue;
+    for (const reference of loaded.record.references) {
+      if (reference.holderId.startsWith(holderPrefix)) {
+        claims.push({ assetId, ownerId: loaded.record.ownerId, holderId: reference.holderId });
+      }
+    }
+  }
+  return claims;
 }
 
 export async function placeHold(

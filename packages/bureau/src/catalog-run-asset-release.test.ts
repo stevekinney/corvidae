@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { runRowHolderId } from './assets/row-asset-claims';
-import type { AssetService } from './assets/types';
+import type { AssetHeldClaim, AssetService } from './assets/types';
 import {
   type CatalogRunAssetReleaserDependencies,
   createCatalogRunAssetReleaser,
@@ -51,12 +51,19 @@ function conversationOf(rows: ReadonlyArray<ReturnType<typeof imageRow>>) {
 function setup(
   overrides: Partial<CatalogRunAssetReleaserDependencies> & {
     references?: Record<string, string[]>;
+    /** What the asset side holds, for the prefix lookup compaction needs (COR-1664). */
+    claims?: AssetHeldClaim[];
     withoutAssets?: boolean;
   } = {},
 ) {
   const references = overrides.references ?? {};
   const released: Array<[string, string]> = [];
+  const listed: string[] = [];
   const assets = {
+    async heldClaims({ holderPrefix }: { holderPrefix: string }) {
+      listed.push(holderPrefix);
+      return (overrides.claims ?? []).filter((claim) => claim.holderId.startsWith(holderPrefix));
+    },
     async inspect(assetId: string) {
       return {
         projection: 'privileged',
@@ -87,7 +94,7 @@ function setup(
     isClosed: overrides.isClosed ?? (() => false),
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
-  return { releaser, released, diagnostics, reads };
+  return { releaser, released, diagnostics, reads, listed };
 }
 
 const result = (finishReason: string, rows = [imageRow('row-1', 'photo')]) =>
@@ -359,6 +366,40 @@ describe('releasing a run’s claims', () => {
     expect(diagnostics[0]?.message).toContain(RUN);
     expect(diagnostics[0]?.message).toContain('row-1');
     expect(diagnostics[0]?.message).toContain('broken');
+  });
+
+  it('releases the claim of a row that compaction removed, found from the asset side', async () => {
+    const gone = { assetId: 'removed', ownerId: 'alice', holderId: held('row-gone') };
+    const others = [
+      { assetId: 'removed', ownerId: 'alice', holderId: 'session-row:s:i:row-gone' },
+      { assetId: 'removed', ownerId: 'alice', holderId: runRowHolderId('agent-run-2', 'row-gone') },
+    ];
+    const { releaser, released, listed } = setup({
+      references: { photo: [held('row-1')] },
+      claims: [gone, ...others],
+    });
+    const summary = { ...imageRow('row-s', 'photo'), metadata: { compactionSummary: true } };
+
+    await releaser.releaseConversation({
+      runId: RUN,
+      principalId: 'alice',
+      conversation: conversationOf([summary]),
+    });
+
+    expect(listed).toEqual([`run-row:${RUN}:`]);
+    expect(released).toEqual([['removed', held('row-gone')]]);
+  });
+
+  it('does not read the asset side for a conversation compaction has not touched', async () => {
+    const { releaser, listed } = setup({ references: { photo: [held('row-1')] } });
+
+    await releaser.releaseConversation({
+      runId: RUN,
+      principalId: 'alice',
+      conversation: conversationOf([imageRow('row-1', 'photo')]),
+    });
+
+    expect(listed).toEqual([]);
   });
 
   it('reads an ended run’s conversation, for a goal attempt whose goal ended first', async () => {

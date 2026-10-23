@@ -97,6 +97,7 @@ export type {
   AssetFetcher,
   AssetGarbageCollectionReport,
   AssetHold,
+  AssetHeldClaim,
   AssetHostResolver,
   AssetLifecycleState,
   AssetMediaFacts,

@@ -504,6 +504,14 @@ export interface AssetShutdownReport {
   }[];
 }
 
+/** One retention claim as {@link AssetService.heldClaims} reports it: who holds it and whose asset it is. */
+export interface AssetHeldClaim {
+  readonly assetId: string;
+  /** The principal id that owns the asset, and so the principal that can release the claim. */
+  readonly ownerId: string;
+  readonly holderId: string;
+}
+
 /** The asset service — see `asset-service.ts` for the contract of each operation. */
 export interface AssetService {
   readonly durability: 'process-local' | 'durable';
@@ -566,6 +574,15 @@ export interface AssetService {
     reference: { readonly holderId: string; readonly until: string },
   ): Promise<AssetDescriptor>;
   release(assetId: string, principal: AssetPrincipal, holderId: string): Promise<AssetDescriptor>;
+  /**
+   * Every retention claim whose holder id starts with `holderPrefix`, found by reading each stored
+   * asset record (the asset side), for the management plane to reconcile claims whose holder is
+   * gone: a row that compaction removed, a run that ended in a process that died before it
+   * released, a session deleted mid-handoff. It reads and changes nothing. A record that cannot be
+   * read as one (corrupt) holds no claim anyone can release, so it is skipped. Release a claim
+   * with {@link AssetService.release}, as the claim's `ownerId`.
+   */
+  heldClaims(filter: { readonly holderPrefix: string }): Promise<readonly AssetHeldClaim[]>;
   placeHold(
     assetId: string,
     principal: AssetPrincipal,

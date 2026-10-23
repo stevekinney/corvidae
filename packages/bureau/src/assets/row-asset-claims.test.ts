@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { AssetAccessDeniedError, AssetNotFoundError, AssetUnavailableError } from './errors';
 import {
   claimRowAssets,
+  hasCompactedRows,
   managedAssetIdsOf,
   releaseHeldRowAssetClaims,
   releaseRowAssetClaims,
@@ -249,5 +251,32 @@ describe('releasing only the claims a run holds (COR-1630)', () => {
     );
 
     expect(released.map((call) => call.assetId)).toEqual(['tool-asset']);
+  });
+});
+
+describe('rows that history compaction replaced (COR-1664)', () => {
+  async function compacted(): Promise<Conversation> {
+    const conversation = new Conversation(createConversationHistory({ id: 'conversation-1' }));
+    for (let turn = 0; turn < 6; turn += 1) {
+      conversation.appendUserMessage(`question ${turn}`);
+      conversation.appendAssistantMessage(`answer ${turn}`);
+    }
+    await conversation.compact(async () => 'a summary', { preserveRecentCount: 2 });
+    return conversation;
+  }
+
+  it('is recognized in the conversation a checkpoint restores, hidden rows included', async () => {
+    const conversation = await compacted();
+    // The checkpoint stores a snapshot and a run reads it back with `Conversation.from`.
+    const restored = Conversation.from(conversation.snapshot());
+
+    expect(hasCompactedRows(restored.getMessages({ includeHidden: true }))).toBe(true);
+  });
+
+  it('is not claimed of a conversation compaction has not touched', () => {
+    const conversation = new Conversation(createConversationHistory({ id: 'conversation-2' }));
+    conversation.appendUserMessage('hello');
+
+    expect(hasCompactedRows(conversation.getMessages({ includeHidden: true }))).toBe(false);
   });
 });

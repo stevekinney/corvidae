@@ -248,6 +248,9 @@ export function createAttemptForwarder(
    * run's own claims on them. Never rejects: a claim or a release only changes how long an asset
    * lives, so a failure is diagnosed and the signal still goes out. A claim that fails keeps the
    * run's claims, so the next attempt's seed is never left without one.
+   * A session deleted before or during the claim is not claimed for (COR-1664): `claimSessionAssets`
+   * releases what it took once it finds the session gone, and the run's claims are released as
+   * usual, because no later attempt will seed from a session that no longer exists.
    */
   async function handOverClaims(
     record: { readonly principal?: string | undefined; readonly goalRunId: string },
