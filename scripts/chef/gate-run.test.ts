@@ -2,7 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fakeSignals, finishedGate, manualTimer, pendingGate } from './gate-child.test-support.ts';
+import {
+  fakeSignals,
+  fakeTree,
+  finishedGate,
+  manualTimer,
+  pendingGate,
+} from './gate-child.test-support.ts';
 import { readGateLog, renderGateSummary, run, runCommand, runGate } from './gate-run.ts';
 import type { Runner } from './process-runner.ts';
 
@@ -297,6 +303,7 @@ describe('runGate and signals', () => {
     const { sandbox, configPath, log } = sandboxWithConfig();
     try {
       const child = pendingGate(900);
+      const tree = fakeTree([901]);
       const signals = fakeSignals();
       const timer = manualTimer();
       const kills: [number, string][] = [];
@@ -308,6 +315,7 @@ describe('runGate and signals', () => {
           spawnGate: () => child,
           killGroup: (pid, signal) => kills.push([pid, signal]),
           signals,
+          ...tree.seams,
           schedule: timer.schedule,
           graceMilliseconds: 5_000,
         },
@@ -318,14 +326,19 @@ describe('runGate and signals', () => {
       signals.emit('SIGTERM');
       expect(kills).toEqual([[900, 'SIGTERM']]);
       expect(timer.state.milliseconds).toBe(5_000);
-      // The grace period passes with the group still alive.
+      // The wrapper exits, but turbo (901, in a session of its own) is still draining.
+      child.finish(143);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(timer.state.cancelled).toBe(false);
+      // The grace period passes: the group and every collected process get SIGKILL.
       timer.fire();
       expect(kills).toEqual([
         [900, 'SIGTERM'],
         [900, 'SIGKILL'],
       ]);
-      child.finish(143);
       const result = await running;
+      expect(tree.signalled).toContainEqual([901, 'SIGKILL']);
+      expect(tree.alive.size).toBe(0);
       expect(result.code).toBe(143);
       expect(result.interrupted).toBe('SIGTERM');
       expect(signals.registered()).toBe(0);
@@ -357,6 +370,7 @@ describe('runGate and signals', () => {
             spawnGate: () => child,
             killGroup: (pid, name) => kills.push([pid, name]),
             signals,
+            ...fakeTree().seams,
             schedule: manualTimer().schedule,
           },
         );
@@ -393,6 +407,7 @@ describe('runGate and signals', () => {
           spawnGate: () => finishedGate(7),
           killGroup: (pid, signal) => kills.push([pid, signal]),
           signals,
+          ...fakeTree().seams,
           schedule: timer.schedule,
         },
       );
@@ -421,6 +436,7 @@ describe('runGate and signals', () => {
           spawnGate: () => child,
           killGroup: () => undefined,
           signals,
+          ...fakeTree().seams,
           schedule: manualTimer().schedule,
         },
       );
@@ -449,6 +465,7 @@ describe('runGate and signals', () => {
           spawnGate: () => child,
           killGroup: () => undefined,
           signals,
+          ...fakeTree().seams,
           schedule: manualTimer().schedule,
         },
       );

@@ -61,3 +61,27 @@ export function manualTimer() {
     state,
   };
 }
+
+/**
+ * A fake process table for the interrupt path. `descendants` are the pids below the gate child
+ * (turbo and its workers, which a real wrapper runs in sessions of their own); they stay alive until
+ * a SIGKILL names them, or until `die(pid)`. A pid in `ignoresTerm` survives everything but SIGKILL.
+ */
+export function fakeTree(descendants: number[] = []) {
+  const alive = new Set<number>(descendants);
+  const signalled: [number, string][] = [];
+  return {
+    alive,
+    signalled,
+    die: (pid: number) => alive.delete(pid),
+    seams: {
+      descendantsOf: (roots: number[]) => [...new Set([...roots, ...descendants])],
+      signalProcess: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => {
+        signalled.push([pid, signal]);
+        if (signal === 'SIGKILL') alive.delete(pid);
+      },
+      isAlive: (pid: number) => alive.has(pid),
+      pause: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
+    },
+  };
+}

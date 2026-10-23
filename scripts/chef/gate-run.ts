@@ -41,8 +41,10 @@
 //
 // The gate runs as an asynchronous child in its own process group, so a signal to `run` (or to
 // `deliver.ts` and `batch-validate.ts`, which call it) is handled instead of orphaning the gate's
-// turbo and test workers. On SIGTERM, SIGINT or SIGHUP it sends SIGTERM to the whole group, then
-// SIGKILL after a short grace (or at once on a second signal), writes `GATE_INTERRUPTED <signal>`,
+// turbo and test workers. On SIGTERM, SIGINT or SIGHUP it collects the descendant tree by parent pid
+// (`run-exclusively.ts` starts turbo in a session of its own, outside the group), sends SIGTERM to the
+// group, then SIGKILL to the group and every collected process after a short grace (or at once on a
+// second signal), waits until every collected process is gone, writes `GATE_INTERRUPTED <signal>`,
 // and records `GATE_RC=128+signal`, never 0. An interrupted batch validate is not recorded as main's
 // health, because a run someone stopped says nothing about `main`.
 //
@@ -259,10 +261,64 @@ export interface GateDependencies {
   /** Sends `signal` to the whole process group led by `pid`. */
   killGroup: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
   signals: SignalSource;
+  /**
+   * Every live descendant of `roots` (and the roots themselves), found by parent pid, so a process
+   * that started its own session or group, as `run-exclusively.ts` does for turbo, is included.
+   */
+  descendantsOf: (roots: number[]) => number[];
+  /** Sends `signal` to one process. */
+  signalProcess: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void;
+  /** Whether a process still exists. */
+  isAlive: (pid: number) => boolean;
+  /** Waits `milliseconds` while the interrupted tree drains. */
+  pause: (milliseconds: number) => Promise<void>;
   /** Runs `callback` after `milliseconds` and returns a function that cancels it. */
   schedule: (callback: () => void, milliseconds: number) => () => void;
   graceMilliseconds: number;
 }
+
+/** `ps -A -o pid=,ppid=`'s table, walked down from `roots`; the roots are included. */
+export const processTreeOf: GateDependencies['descendantsOf'] = (roots) => {
+  const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid='], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  const children = new Map<number, number[]>();
+  for (const line of result.stdout.toString().split('\n')) {
+    const [pid, parent] = line.trim().split(/\s+/).map(Number);
+    if (pid === undefined || parent === undefined || !Number.isInteger(pid)) continue;
+    children.set(parent, [...(children.get(parent) ?? []), pid]);
+  }
+  const seen = new Set<number>(roots);
+  const queue = [...roots];
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    for (const child of children.get(next) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      queue.push(child);
+    }
+  }
+  return [...seen];
+};
+
+/** Send a signal to one process; one that has already gone is not an error. */
+export const signalOneProcess: GateDependencies['signalProcess'] = (pid, signal) => {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // ESRCH: already gone.
+  }
+};
+
+/** Whether `pid` exists (a process this user may not signal still exists). */
+export const processExists: GateDependencies['isAlive'] = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as { code?: string }).code === 'EPERM';
+  }
+};
 
 function signalExitCode(signal: string | null | undefined): number {
   const number = (signalConstants.signals as Record<string, number | undefined>)[signal ?? ''];
@@ -307,6 +363,10 @@ function resolveDependencies(partial: Partial<GateDependencies>): GateDependenci
     spawnGate: partial.spawnGate ?? spawnGateProcess,
     killGroup: partial.killGroup ?? killProcessGroup,
     signals: partial.signals ?? process,
+    descendantsOf: partial.descendantsOf ?? processTreeOf,
+    signalProcess: partial.signalProcess ?? signalOneProcess,
+    isAlive: partial.isAlive ?? processExists,
+    pause: partial.pause ?? ((milliseconds) => Bun.sleep(milliseconds)),
     schedule:
       partial.schedule ??
       ((callback, milliseconds) => {
@@ -317,10 +377,18 @@ function resolveDependencies(partial: Partial<GateDependencies>): GateDependenci
   };
 }
 
+/** How often the interrupted tree is checked, and how many checks follow the final SIGKILL. */
+const drainPollMilliseconds = 50;
+const drainPollsAfterKill = 100;
+
 /**
- * Run the gate child and wait for it, killing its whole process group on SIGTERM, SIGINT or SIGHUP.
- * The first signal sends SIGTERM and arms a SIGKILL after the grace period; a second signal sends
- * SIGKILL at once. An interrupted gate never reports 0.
+ * Run the gate child and wait for it, stopping its whole process tree on SIGTERM, SIGINT or SIGHUP.
+ * The gate's wrapper (`run-exclusively.ts`) starts turbo in a session of its own, so the process
+ * group alone does not reach it; the tree is collected by parent pid, before the first signal and
+ * again before the SIGKILL, and every member is waited for. The first signal sends SIGTERM to the
+ * group and arms a SIGKILL of the group and of every collected process after the grace period; a
+ * second signal sends that SIGKILL at once. The run does not end while any collected process
+ * lives, and an interrupted gate never reports 0.
  */
 async function runGateChild(
   script: string,
@@ -330,19 +398,30 @@ async function runGateChild(
   const child = dependencies.spawnGate(script, cwd);
   let interrupted: GateSignal | undefined;
   let cancelKill: (() => void) | undefined;
+  let killed = false;
+  const tracked = new Set<number>();
+  /** Add every live descendant of the child and of anything already collected. */
+  const collect = (): void => {
+    if (child.pid === undefined) return;
+    for (const pid of dependencies.descendantsOf([child.pid, ...tracked])) tracked.add(pid);
+  };
+  const escalate = (): void => {
+    if (child.pid === undefined) return;
+    killed = true;
+    collect();
+    dependencies.killGroup(child.pid, 'SIGKILL');
+    for (const pid of tracked) dependencies.signalProcess(pid, 'SIGKILL');
+  };
   const handlers = gateSignals.map((signal) => {
     const handler = () => {
       if (child.pid === undefined) return;
       if (interrupted === undefined) {
         interrupted = signal;
+        collect();
         dependencies.killGroup(child.pid, 'SIGTERM');
-        const pid = child.pid;
-        cancelKill = dependencies.schedule(
-          () => dependencies.killGroup(pid, 'SIGKILL'),
-          dependencies.graceMilliseconds,
-        );
+        cancelKill = dependencies.schedule(escalate, dependencies.graceMilliseconds);
       } else {
-        dependencies.killGroup(child.pid, 'SIGKILL');
+        escalate();
       }
     };
     dependencies.signals.on(signal, handler);
@@ -350,7 +429,20 @@ async function runGateChild(
   });
   try {
     const code = await child.exited;
-    // The leader can exit while a worker of its group survives; the group is stopped either way.
+    if (interrupted !== undefined) {
+      // The wrapper can exit while its turbo and workers are still draining; wait for all of them.
+      let pollsAfterKill = 0;
+      for (;;) {
+        collect();
+        if (![...tracked].some((pid) => dependencies.isAlive(pid))) break;
+        if (killed) {
+          pollsAfterKill += 1;
+          if (pollsAfterKill > drainPollsAfterKill) break;
+          escalate();
+        }
+        await dependencies.pause(drainPollMilliseconds);
+      }
+    }
     return {
       code: interrupted !== undefined && code === 0 ? signalExitCode(interrupted) : code,
       interrupted,

@@ -244,6 +244,60 @@ scenarios.describe('runGate', () => {
     },
   );
 
+  scenarios.scenario(
+    'a double signal leaves no descendant alive, even one in a session of its own',
+    async () => {
+      // The middle process stands in for `run-exclusively.ts`: it ignores SIGTERM and starts its
+      // worker (turbo) in a new session, outside the gate's process group.
+      const middle = join(sandbox, 'middle.ts');
+      writeFileSync(
+        middle,
+        [
+          "process.on('SIGTERM', () => undefined);",
+          "const worker = Bun.spawn(['sleep', '300'], { detached: true, stdio: ['ignore', 'ignore', 'ignore'] });",
+          `await Bun.write(${JSON.stringify(join(sandbox, 'pids'))}, process.pid + ' ' + worker.pid);`,
+          'await Bun.sleep(300_000);',
+        ].join('\n'),
+      );
+      const pidFile = join(sandbox, 'pids');
+      const signals = fakeSignals();
+      const running = runGate(
+        {
+          configPath,
+          worktree: repository,
+          log: join(sandbox, 'gate.log'),
+          command: `bun ${middle}`,
+        },
+        { signals, graceMilliseconds: 60_000 },
+      );
+      const deadline = Date.now() + 10_000;
+      while (!existsSync(pidFile) || readFileSync(pidFile, 'utf8').trim() === '') {
+        if (Date.now() > deadline) throw new Error('the gate never started its worker');
+        await Bun.sleep(20);
+      }
+      const pids = readFileSync(pidFile, 'utf8').trim().split(' ').map(Number);
+      const alive = (pid: number) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      expect(pids.every(alive)).toBe(true);
+      signals.emit('SIGTERM');
+      await Bun.sleep(200);
+      // The middle process ignored SIGTERM and the grace period is long: the second signal kills.
+      expect(pids.some(alive)).toBe(true);
+      signals.emit('SIGINT');
+      const result = await running;
+      expect(result.interrupted).toBe('SIGTERM');
+      expect(result.code).not.toBe(0);
+      for (let waited = 0; waited < 50 && pids.some(alive); waited += 1) await Bun.sleep(20);
+      expect(pids.filter(alive)).toEqual([]);
+    },
+  );
+
   scenarios.scenario('rejects a directory that is not a worktree', async () => {
     const plain = join(sandbox, 'plain');
     mkdirSync(plain);
