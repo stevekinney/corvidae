@@ -217,6 +217,70 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
     }
   });
 
+  it('accepts the A2UI client-to-server action envelope as Chat’s renderer sends it', async () => {
+    const fixture = await open(deploySchema);
+    try {
+      const task = await fixture.start();
+      const envelope = [
+        {
+          version: 'v0.9',
+          action: {
+            name: 'submit-input',
+            surfaceId: `input-form:human-wait:${task.id}:deploy:0`,
+            sourceComponentId: 'submit',
+            timestamp: '2026-10-23T12:00:00.000Z',
+            // A ChoicePicker writes a list, and a number field writes text.
+            context: { environment: ['staging'], replicas: '3' },
+          },
+        },
+      ];
+
+      await fixture.send(userMessage('m-envelope', task.id, { data: envelope }));
+
+      await waitForCondition(
+        async () => (await statusOf(fixture.bureau, task.id)) === 'completed',
+        'the answered task never completed',
+      );
+      expect(fixture.seen.resumed.join('\n')).toContain('staging');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
+  it('refuses an envelope that is not a submit action for this wait’s surface', async () => {
+    const fixture = await open(deploySchema);
+    try {
+      const task = await fixture.start();
+      const action = (overrides: Record<string, unknown>) => [
+        {
+          version: 'v0.9',
+          action: {
+            name: 'submit-input',
+            surfaceId: `input-form:human-wait:${task.id}:deploy:0`,
+            context: { environment: 'staging' },
+            ...overrides,
+          },
+        },
+      ];
+
+      for (const [index, data] of [
+        [],
+        [{ version: 'v0.9', error: { code: 'x' } }],
+        action({ name: 'other' }),
+        action({ surfaceId: 'input-form:elsewhere' }),
+        action({ context: 'staging' }),
+      ].entries()) {
+        const refusal = await rejectionOf(
+          fixture.send(userMessage(`m-env-${index}`, task.id, { data })),
+        );
+        expect(refusal).toBeInstanceOf(RequestMalformedError);
+      }
+      expect((await fixture.bureau.tasks.get(task.id))?.status).toBe('input-required');
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+
   it('names the wait to answer in metadata.signalName', async () => {
     const fixture = await open(deploySchema);
     try {

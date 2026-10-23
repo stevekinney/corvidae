@@ -460,6 +460,27 @@ describe('checkFormSubmission', () => {
       expect(checkFormSubmission(typed, { stage: [], replicas: '4' }).ok).toBe(false);
     });
 
+    it('drops the renderer’s null placeholder for an optional field and keeps it for a required one', () => {
+      const optional: HumanInputSchema = {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          note: { type: 'string' },
+          when: { type: 'string', format: 'date' },
+          urgent: { type: 'boolean' },
+        },
+        required: ['name'],
+        additionalProperties: false,
+      };
+
+      expect(
+        checkFormSubmission(optional, { name: 'a', note: null, when: null, urgent: null }),
+      ).toEqual({ ok: true, value: { name: 'a' } });
+      expect(
+        checkFormSubmission(optional, { name: null, note: null, when: null, urgent: null }).ok,
+      ).toBe(false);
+    });
+
     it('still refuses what normalising cannot make valid', () => {
       expect(checkFormSubmission(typed, { stage: ['staging', 'x'], replicas: '3' }).ok).toBe(false);
       expect(checkFormSubmission(typed, { stage: 'staging', replicas: 'many' }).ok).toBe(false);

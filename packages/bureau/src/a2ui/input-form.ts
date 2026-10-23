@@ -264,8 +264,14 @@ export function inputFormMessages(surfaceId: string, schema: HumanInputSchema): 
 function normalisedSubmission(fields: readonly FormField[], submitted: unknown): unknown {
   if (!isRecord(submitted)) return submitted;
   const value: Record<string, unknown> = { ...submitted };
-  for (const { name, property } of fields) {
+  for (const { name, property, required } of fields) {
     const held = value[name];
+    // The renderer writes `null` for a control nothing was entered in; for an optional field that
+    // is the field left out, and for a required one it stays, so validation refuses it.
+    if (held === null && !required) {
+      delete value[name];
+      continue;
+    }
     if (Array.isArray(property['enum'])) {
       if (Array.isArray(held) && held.length === 0) delete value[name];
       else if (Array.isArray(held) && held.length === 1 && typeof held[0] === 'string') {

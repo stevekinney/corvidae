@@ -123,7 +123,16 @@ export type TasksRespondResult = z.infer<typeof tasksRespondOutput>;
  * advances its round, so the round is what tells a retry that its decision was about an earlier
  * one. Absent for a human wait, and in an entry written before the round was recorded.
  */
-export type TasksRespondClaim = { readonly reviewId: string; readonly round?: number };
+export type TasksRespondClaim = {
+  readonly reviewId: string;
+  readonly round?: number;
+  /**
+   * A structured answer, as admitted: validated against the wait's schema and normalised once, when
+   * the command was claimed. A retry of a pending claim delivers it, or finds the review already
+   * resolved by this command, without validating again.
+   */
+  readonly submission?: { readonly value: unknown };
+};
 
 /** The ledger this command records its receipts in. */
 export type TasksRespondLedger = CommandLedger<TasksRespondClaim, TasksRespondResult>;
@@ -395,6 +404,7 @@ async function respond({
       claimed = await host.respondLedger.claim(identity, digest, {
         reviewId: wait?.reviewId ?? '',
         ...(readRound === undefined ? {} : { round: readRound }),
+        ...(submission === undefined || submissionRefusal !== undefined ? {} : { submission }),
       });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
@@ -417,23 +427,18 @@ async function respond({
     // another attempt made belongs to it: that attempt may be resolving the review right
     // now, possibly in another process, and deleting its claim would lose its receipt.
     const ownClaim = claimed.outcome === 'claimed';
-    // The payload belongs to the review the claim names, not to the wait selected now: a retry
-    // can select a different wait, or none, and must still deliver the data it was sent with.
-    if (reviewId !== '' && reviewId !== wait?.reviewId) {
-      submission = undefined;
-      submissionRefusal = undefined;
-      try {
-        submission = await checkedSubmission(host, reviewId, input);
-      } catch (error) {
-        submissionRefusal = error;
-      }
-    }
+    // A retry completes from the claim, not from current state: the submission was validated and
+    // normalised once, at the admission that made the claim, and is recorded in it. Revalidating
+    // here would judge the same command against a review that may since have closed, lost its
+    // schema in the audit record, or been joined by another wait.
+    const replay = !ownClaim && entry.claim.submission !== undefined;
+    const delivered = replay ? entry.claim.submission : submission;
     const refuse = async (fault: unknown): Promise<never> => {
       // The Bureau refused it before changing anything, so a retry may claim afresh.
       if (ownClaim) await host.respondLedger.release(entry);
       throw fault;
     };
-    if (submissionRefusal !== undefined) return refuse(submissionRefusal);
+    if (!replay && submissionRefusal !== undefined) return refuse(submissionRefusal);
     // Nothing was addressed and nothing was applied: leave no claim of ours behind.
     if (reviewId === '') return refuse(notAwaiting ?? conflict('The task is not awaiting input'));
     let result: TasksRespondResult;
@@ -482,8 +487,8 @@ async function respond({
           id: reviewId,
           decision,
           principal: actor,
-          ...(submission !== undefined
-            ? { payload: submission.value }
+          ...(delivered !== undefined
+            ? { payload: delivered.value }
             : answerText === undefined
               ? {}
               : { payload: answerText }),

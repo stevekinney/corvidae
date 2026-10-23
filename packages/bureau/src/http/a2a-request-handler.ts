@@ -112,7 +112,8 @@ import {
 import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
-import { formsOf, type WaitForm } from './a2a-input-forms.ts';
+import { INPUT_FORM_SUBMIT_EVENT } from '../a2ui/input-form.ts';
+import { formsOf, formSurfaceId, type WaitForm } from './a2a-input-forms.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
@@ -470,10 +471,40 @@ function formSubmissionOf(
   if (addressed === undefined) return undefined;
   const data = dataOf(message);
   if (data === undefined) return undefined;
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+  return { data: submittedValuesOf(data, addressed), signalName: addressed.signalName };
+}
+
+/**
+ * The form values a data part carries: the standard A2UI client-to-server envelope (an array
+ * holding one `action` message, the values under `action.context`), or the values as a bare JSON
+ * object. The envelope is checked for its shape, its event name, and the surface it was raised on.
+ */
+function submittedValuesOf(data: unknown, form: WaitForm): Record<string, unknown> {
+  if (Array.isArray(data)) {
+    const actions = data.filter(
+      (entry): entry is Record<string, unknown> =>
+        typeof entry === 'object' && entry !== null && 'action' in entry,
+    );
+    const action: unknown = actions.length === 1 ? actions[0]?.['action'] : undefined;
+    if (typeof action !== 'object' || action === null || Array.isArray(action)) {
+      throw invalid('A form submission array must hold one A2UI `action` message.');
+    }
+    const { name, surfaceId, context } = action as Record<string, unknown>;
+    if (name !== INPUT_FORM_SUBMIT_EVENT) {
+      throw invalid(`The A2UI action must be "${INPUT_FORM_SUBMIT_EVENT}".`);
+    }
+    if (surfaceId !== undefined && surfaceId !== formSurfaceId(form.reviewId)) {
+      throw invalid('The A2UI action was raised on a surface that is not this wait\u2019s form.');
+    }
+    if (typeof context !== 'object' || context === null || Array.isArray(context)) {
+      throw invalid('The A2UI action must carry the form values as an object in `context`.');
+    }
+    return context as Record<string, unknown>;
+  }
+  if (typeof data !== 'object' || data === null) {
     throw invalid('A form submission must be a JSON object.');
   }
-  return { data: data as Record<string, unknown>, signalName: addressed.signalName };
+  return data as Record<string, unknown>;
 }
 
 /** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
