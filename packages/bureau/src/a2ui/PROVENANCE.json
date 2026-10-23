@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/a2ui-project/a2ui",
+  "commit": "c07134caf2f63e3356c4439d248afc9eb04f310e",
+  "note": "Vendored byte-for-byte from A2UI's closed v0.9.1 specification, the same copy @lostgradient/chat renders against. components/chat/src/lib/a2ui/basic-catalog.schema.json is the source of truth: scripts/a2ui-catalog-copies.test.ts keeps the two byte-identical. Re-vendor both together.",
+  "files": {
+    "basic-catalog.schema.json": {
+      "sourcePath": "specification/v0_9_1/catalogs/basic/catalog.json",
+      "sha256": "8cc94d0a482e67048f9fc989964ca5da56fe42f531d919315a508989fb22e13e"
+    }
+  }
+}

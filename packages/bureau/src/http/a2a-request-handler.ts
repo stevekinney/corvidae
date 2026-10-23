@@ -112,6 +112,7 @@ import {
 import { DURABLE_HISTORY_EXTENSION_URI, followTask } from './a2a-task-stream.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
+import { formsOf, type WaitForm } from './a2a-input-forms.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
@@ -216,6 +217,7 @@ export type A2ABureau = Pick<
   | 'getOwner'
   | 'submitSessionInput'
   | 'eventHistory'
+  | 'getReview'
   | 'subscribeEventHistory'
   | 'addEventListener'
   | 'removeEventListener'
@@ -448,6 +450,32 @@ function boundedTask(task: unknown): unknown {
   return { ...record, history: history.slice(kept) };
 }
 
+/**
+ * The form submission a message makes, or `undefined` when it makes none: its data part, when the
+ * wait it addresses (named by `metadata.signalName`, or the only open wait) asks for a form. Whether the data satisfies that schema is decided when the answer is delivered, by the
+ * same check `bureau.tasks.respond` applies to every caller.
+ */
+function formSubmissionOf(
+  message: Message,
+  view: TaskView,
+  forms: readonly WaitForm[],
+): { readonly data: Record<string, unknown>; readonly signalName: string } | undefined {
+  const named = message.metadata?.[SIGNAL_NAME_METADATA_KEY];
+  const addressed =
+    typeof named === 'string'
+      ? forms.find((form) => form.signalName === named)
+      : view.openWaits.length === 1
+        ? forms[0]
+        : undefined;
+  if (addressed === undefined) return undefined;
+  const data = dataOf(message);
+  if (data === undefined) return undefined;
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    throw invalid('A form submission must be a JSON object.');
+  }
+  return { data: data as Record<string, unknown>, signalName: addressed.signalName };
+}
+
 /** A continuation as the boundary parsed it: everything it needs, validated before any effect. */
 type ContinuationCommand =
   | { readonly path: 'answer'; readonly input: TasksRespondInput }
@@ -460,8 +488,10 @@ type ContinuationCommand =
 function parseContinuation(
   message: Message,
   path: 'answer' | 'input',
-  taskId: string,
+  view: TaskView,
+  forms: readonly WaitForm[],
 ): ContinuationCommand {
+  const taskId = view.id;
   const text = textOf(message);
   if (path === 'input') {
     const mode = message.metadata?.[DELIVERY_MODE_METADATA_KEY] ?? 'queue';
@@ -470,6 +500,19 @@ function parseContinuation(
     }
     if (text === '') throw invalid('A message to a working task needs a text part.');
     return { path, mode, text };
+  }
+  const form = formSubmissionOf(message, view, forms);
+  if (form !== undefined) {
+    const submitted = tasksRespondInput.safeParse({
+      taskId,
+      messageId: message.messageId,
+      data: form.data,
+      signalName: form.signalName,
+    });
+    if (!submitted.success) {
+      throw invalid(submitted.error.issues[0]?.message ?? 'The submission is not valid.');
+    }
+    return { path, input: submitted.data };
   }
   const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
   const decision = data?.decision;
@@ -879,7 +922,7 @@ export function createBureauA2ARequestHandler(
     if (stored.path !== 'input' || stored.reason !== undefined) return stored;
     try {
       const view = await ownTask(stored.taskId, owner);
-      const command = parseContinuation(message, 'input', view.id);
+      const command = parseContinuation(message, 'input', view, []);
       if (command.path !== 'input') return stored;
       const outcome = await submitInput(message, view, owner, deadline, command);
       return { ...stored, state: inputReceiptState(outcome.receipt.state) };
@@ -1055,7 +1098,7 @@ export function createBureauA2ARequestHandler(
     const command =
       continued === undefined || path === undefined
         ? undefined
-        : parseContinuation(message, path, continued.id);
+        : parseContinuation(message, path, continued, await formsOf(bureau, continued));
     // A pending claim's effect may already have moved the revision it was checked against.
     if (
       pending === undefined &&

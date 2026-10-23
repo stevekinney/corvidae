@@ -14,12 +14,16 @@
  * @module human-wait-parks
  */
 
+import { type HumanInputSchema, humanInputSchemaOf } from './human-input-schema';
+
 type ParkableResult = { readonly toolName?: string | undefined; readonly result?: unknown };
 
 /** What a parked `requestHumanInput` result holds: the signal it waits on, and the prompt it asked with if any. */
 export type ParkedHumanWait = {
   readonly signalName: string;
   readonly prompt?: string | undefined;
+  /** The schema the author configured for the signal, when the park carries one. */
+  readonly inputSchema?: HumanInputSchema | undefined;
 };
 
 /**
@@ -32,11 +36,18 @@ export function parkedHumanWait(result: ParkableResult): ParkedHumanWait | undef
   if (result.toolName !== 'requestHumanInput') return undefined;
   const value = result.result;
   if (typeof value !== 'object' || value === null) return undefined;
-  const candidate = value as { parked?: unknown; signalName?: unknown; prompt?: unknown };
+  const candidate = value as {
+    parked?: unknown;
+    signalName?: unknown;
+    prompt?: unknown;
+    inputSchema?: unknown;
+  };
   if (candidate.parked !== true || typeof candidate.signalName !== 'string') return undefined;
+  const inputSchema = humanInputSchemaOf(candidate.inputSchema);
   return {
     signalName: candidate.signalName,
     ...(typeof candidate.prompt === 'string' ? { prompt: candidate.prompt } : {}),
+    ...(inputSchema === undefined ? {} : { inputSchema }),
   };
 }
 
@@ -49,6 +60,7 @@ export function parkedSignalName(result: ParkableResult): string | undefined {
 export type HumanWaitPark = {
   readonly signalName: string;
   readonly prompt: string | undefined;
+  readonly inputSchema?: HumanInputSchema | undefined;
 };
 
 /**
@@ -64,7 +76,11 @@ export function humanWaitParks(results: ReadonlyArray<ParkableResult>): HumanWai
     const park = parkedHumanWait(result);
     if (park === undefined) continue;
     if (previous !== park.signalName) {
-      parks.push({ signalName: park.signalName, prompt: park.prompt });
+      parks.push({
+        signalName: park.signalName,
+        prompt: park.prompt,
+        ...(park.inputSchema === undefined ? {} : { inputSchema: park.inputSchema }),
+      });
     }
     previous = park.signalName;
   }

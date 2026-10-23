@@ -26,6 +26,8 @@ import type {
   TaskState as BureauTaskState,
   TaskView,
 } from '../task-registry.ts';
+import type { WaitForm } from './a2a-input-forms.ts';
+import { A2UI_MEDIA_TYPE, inputFormMessages } from '../a2ui/input-form.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
 
 /** The cleanup extension's URI (`packages/weft/documentation/a2a/extensions/cleanup-v1.md`). */
@@ -106,7 +108,7 @@ export function replyMessageId(taskId: string): string {
 }
 
 /** What an `INPUT_REQUIRED` task's status message names, so a continuation can address it. */
-export function waitingMessage(view: TaskView): Message {
+export function waitingMessage(view: TaskView, forms: readonly WaitForm[] = []): Message {
   const signalNames = view.openWaits
     .filter(
       (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',
@@ -118,14 +120,38 @@ export function waitingMessage(view: TaskView): Message {
         wait.kind === 'tool-approval',
     )
     .map((wait) => wait.callId);
-  const text =
+  let text =
     callIds.length > 0 && signalNames.length === 0
       ? 'Waiting for an approval: answer with a data part {"decision": "approve" | "deny" | "reject"}.'
       : 'Waiting for input: answer with a message; name the wait in metadata.signalName when several are open.';
-  return agentMessage(view, `${view.id}:waiting:${view.updatedAt}`, text, {
+  if (forms.length > 0) {
+    // A wait with an input schema is answered with the form's values, not with text: the prompt
+    // tells a client without A2UI what is asked, and the form parts render it for one with.
+    const prompts = forms.flatMap((form) => (form.prompt === undefined ? [] : [form.prompt]));
+    text = [
+      ...prompts,
+      "Answer with a data part holding the form's values as one JSON object keyed by field name; name the wait in metadata.signalName when several are open.",
+    ].join('\n');
+  }
+  const message = agentMessage(view, `${view.id}:waiting:${view.updatedAt}`, text, {
     ...(signalNames.length === 0 ? {} : { signalNames }),
     ...(callIds.length === 0 ? {} : { callIds }),
   });
+  // One A2UI message per data part, as the A2UI extension carries them.
+  for (const form of forms) {
+    for (const a2ui of inputFormMessages(
+      `input-form:${view.id}:${form.signalName}`,
+      form.inputSchema,
+    )) {
+      message.parts.push({
+        content: { $case: 'data', value: a2ui },
+        metadata: undefined,
+        filename: '',
+        mediaType: A2UI_MEDIA_TYPE,
+      });
+    }
+  }
+  return message;
 }
 
 /** The cleanup extension's namespace for a task, or `undefined` when it has nothing to report. */
@@ -165,6 +191,8 @@ export type ProjectionInput = {
   readonly reply: string | undefined;
   /** The cleanup acknowledgement recorded for the task, when one was. */
   readonly acknowledgement: TaskCleanupAcknowledgement | undefined;
+  /** The input forms the task's open waits ask for; none when it is not waiting on one. */
+  readonly forms?: readonly WaitForm[] | undefined;
 };
 
 /** How much of a task a response carries. */
@@ -204,7 +232,7 @@ export function projectTask(input: ProjectionInput, shape: ProjectionShape): Tas
       view.statusMessage ?? view.finishReason ?? 'The task failed.',
     );
   } else if (view.status === 'input-required') {
-    statusMessage = waitingMessage(view);
+    statusMessage = waitingMessage(view, input.forms);
   }
   const history = (record?.history ?? []).map(historyMessage);
   const shownHistory =

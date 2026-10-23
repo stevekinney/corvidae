@@ -99,6 +99,7 @@ import {
   createStepGeneratedMediaAdmitter,
   isFailureFinishReason,
   readDurableRunResult,
+  humanInputSchemaOf,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -6069,6 +6070,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             id: target.id,
             signalName: described.signalName,
             prompt: described.prompt,
+            ...(described.inputSchema === undefined ? {} : { inputSchema: described.inputSchema }),
           };
     };
     const kindOf = (id: string): CanceledReviewTarget['kind'] =>
@@ -8158,6 +8160,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runId,
       parkOrdinal: parks.outstanding.ordinal,
       ...(parks.outstanding.prompt !== undefined ? { prompt: parks.outstanding.prompt } : {}),
+      ...(parks.outstanding.inputSchema !== undefined
+        ? { inputSchema: parks.outstanding.inputSchema }
+        : {}),
     });
   }
 
@@ -15142,6 +15147,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (!resolvedReviewIds.has(id)) {
             const promptValue = detail?.['prompt'];
             const prompt = typeof promptValue === 'string' ? promptValue : undefined;
+            const inputSchema = humanInputSchemaOf(detail?.['inputSchema']);
             reviews.push({
               kind: 'human-wait',
               id,
@@ -15150,6 +15156,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               agentName,
               signalName,
               prompt,
+              ...(inputSchema === undefined ? {} : { inputSchema }),
               requestedAt: parkedAction.timestamp,
               ageMilliseconds: now - parkedAction.timestamp,
               status: 'pending',
@@ -16070,7 +16077,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runId: review.runId,
       type: `review.${review.kind}.${decisionSuffix}`,
       detail: {
-        review,
+        // The audit record names the review as it was asked, not the schema it asked with (COR-1487):
+        // that already lives in the checkpoint, and up to 32 KiB of it would repeat in every record.
+        review:
+          review.kind === 'human-wait'
+            ? (Object.fromEntries(
+                Object.entries(review).filter(([key]) => key !== 'inputSchema'),
+              ) as unknown as PendingReview)
+            : review,
         decision,
         ...(reason !== undefined ? { reason } : {}),
       },

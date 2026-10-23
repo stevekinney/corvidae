@@ -429,6 +429,7 @@
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@opentelemetry/api": "catalog:",
+        "ajv": "catalog:",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
         "openai": "catalog:",
