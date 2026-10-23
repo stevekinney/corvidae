@@ -70,6 +70,27 @@ describe('buildRunRows', () => {
   });
 });
 
+describe('a run’s summary', () => {
+  const summaryOf = (task: Parameters<typeof taskFixture>[0]): string | undefined =>
+    buildRunRows({
+      tasks: [taskFixture({ id: 'run-9', contextId: 'chat-1', ...task })],
+      goals: [],
+      chats: [chat],
+    })[0]?.summary;
+
+  test('is never the chat’s last message, which the run did not write', () => {
+    expect(summaryOf({ status: 'completed' })).toBe('');
+    expect(summaryOf({ status: 'working' })).toBe('');
+  });
+
+  test('is why a run failed or was canceled, in its own words', () => {
+    expect(summaryOf({ status: 'failed', statusMessage: 'The tool broke.' })).toBe(
+      'The tool broke.',
+    );
+    expect(summaryOf({ status: 'canceled', finishReason: 'canceled' })).toBe('canceled');
+  });
+});
+
 describe('filterRunRows', () => {
   const rows = buildRunRows({
     tasks: [taskFixture({ id: 'run-1', contextId: 'chat-1', status: 'submitted' })],

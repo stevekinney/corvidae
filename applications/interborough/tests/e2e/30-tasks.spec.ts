@@ -166,6 +166,51 @@ test.describe('the runs of a chat', () => {
   });
 });
 
+test.describe('the runs of a caller who may not read the engine', () => {
+  test('are the Bureau’s: the list and a run’s page are there, the Engine tab is not, and the engine-only views say so', async ({
+    page,
+    request,
+  }) => {
+    const threadId = newThreadId('runs-no-engine');
+    await runToEnd(request, 'assistant', threadId, 'Say hello');
+    const task = await taskOfSession(request, threadId);
+    // The principal holds a scope, but not `workflows:read`.
+    const scopes = ['system:read'];
+    await page.route('**/api/v1/principal', async (route) => {
+      await route.fulfill({ json: { method: 'api-key', subject: 'anonymous:local', scopes } });
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postData() ?? '';
+      if (body.includes('"weft.system.principal"')) {
+        await route.fulfill({
+          json: {
+            jsonrpc: '2.0',
+            id: JSON.parse(body).id,
+            result: { method: 'api-key', subject: 'anonymous:local', scopes },
+          },
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/runs');
+    await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
+    const row = page.locator(`[data-run="${task.id}"]`);
+    await expect(row).toBeVisible();
+    await row.getByRole('link', { name: 'assistant' }).click();
+
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('assistant');
+    await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Summary' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Engine' })).toHaveCount(0);
+
+    await page.goto('/runs?view=start');
+    await expect(page.getByRole('heading', { level: 1, name: 'Runs are locked' })).toBeVisible();
+    await expect(page.getByText('Requires workflows:read')).toBeVisible();
+  });
+});
+
 test.describe('a run that waits on a question', () => {
   test('is answered with one text field, and the task goes on', async ({
     page,

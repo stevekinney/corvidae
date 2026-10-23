@@ -62,6 +62,7 @@
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
+  import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import ModelPicker from './model-picker.svelte';
   import { toolGroups } from './tool-activity.ts';
   import ToolCalls from './tool-calls.svelte';
@@ -249,8 +250,12 @@
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
-  // the Bureau's pending reviews are read every few seconds, and when one this conversation shows
-  // is no longer pending the thread is read again. Each set of vanished calls is read once.
+  // the Bureau's pending reviews are read every few seconds, and when a review this page has seen
+  // pending is no longer pending, the thread is read again. A review is decided only if it was seen
+  // pending first: the list is shared with the navigation's count, so a read can predate the review
+  // (a chat that has just started the run) and say nothing about a decision. Each set of decided
+  // reviews is read once, and the record is cleared when nothing is decided, so the next decision
+  // of the same kind is read again.
   const REREAD_POLL_MILLISECONDS = 3_000;
   const waitingOnPerson = $derived(
     !choosing &&
@@ -268,24 +273,41 @@
     undefined,
   );
   let rereadFor = '';
+  const seen = new SeenReviews();
   $effect(() => {
     const reviews = pendingReviews.data;
-    if (reviews === undefined || !waitingOnPerson) return;
-    const mine = reviews.filter((review) => review.sessionId === sessionId);
-    const shownCalls = approvals.map((entry) => entry.toolCallId);
-    const gone = shownCalls.filter(
-      (callId) =>
-        !mine.some(
-          (review) => review.kind === 'tool-approval' && review.approval.callId === callId,
-        ),
+    if (!waitingOnPerson) {
+      // Nothing is owed, so what was seen belongs to a wait that is over.
+      seen.clear();
+      rereadFor = '';
+      return;
+    }
+    if (reviews === undefined) return;
+    const decided = seen.observe(
+      reviews.filter((review) => review.sessionId === sessionId),
+      {
+        shownCalls: approvals.map((entry) => entry.toolCallId),
+        questionOpen: session.humanRequests.length > 0,
+      },
     );
-    const questionGone =
-      session.humanRequests.length > 0 && !mine.some((review) => review.kind === 'human-wait');
-    const key = [...gone, questionGone ? 'question' : ''].join('|');
-    if ((gone.length === 0 && !questionGone) || key === rereadFor) return;
+    const key = decidedKey(decided);
+    if (key === '') {
+      rereadFor = '';
+      return;
+    }
+    if (key === rereadFor) return;
     rereadFor = key;
     untrack(() => {
-      void session.refresh();
+      // A read the page could not make (a turn is going) is tried again at the next poll.
+      void (async () => {
+        const read = await session.refresh();
+        if (read) {
+          // The thread now says what is decided, so these reviews are not watched for any longer.
+          seen.forget(decided);
+        } else if (rereadFor === key) {
+          rereadFor = '';
+        }
+      })();
       // The strip of runs under the header reads the same decision.
       void queryClient.invalidateQueries({ queryKey: ['bureau-tasks'] });
     });

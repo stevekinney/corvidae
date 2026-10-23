@@ -882,6 +882,14 @@ export const TASK_COPY = {
   tabs: { summary: 'Summary', engine: 'Engine' },
   goalAttemptNote:
     'A goal made this run, so the Bureau has no task for it. The Engine tab has what the engine recorded.',
+  /** The same, for a caller who may not read the engine, so there is no Engine tab to point to. */
+  goalAttemptNoteBureauOnly: 'A goal made this run, so the Bureau has no task for it.',
+  /** A run the Bureau does not know, to a caller who may not read the engine either. */
+  notFound: {
+    title: 'This run was not found',
+    description:
+      'It may have been removed, or it may belong to someone else. Open a run from the list.',
+  },
   engineOnlyNote:
     'The Bureau has no task for this run. The Engine tab has what the engine recorded.',
   answerTruncated: 'The answer was cut short.',
@@ -1134,15 +1142,15 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   },
   runs: {
     label: 'Runs',
-    loading: { title: 'Loading runs', description: 'Reading the engine’s workflow runs.' },
+    loading: { title: 'Loading runs', description: 'Reading what your agents have run.' },
     empty: {
       title: 'No runs yet',
-      description: 'Nothing has run on this engine. Start a workflow to see it here.',
+      description: 'Nothing has run yet. Start a chat or a workflow to see it here.',
       action: { label: 'Start a run', href: '/runs?view=start' },
     },
     error: {
       title: 'Runs are unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Runs are locked' },
   },

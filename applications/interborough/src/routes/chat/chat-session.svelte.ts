@@ -272,12 +272,18 @@ export class ChatSessionState {
    * made somewhere else (`/reviews`, a run's page, another tab) is written into the conversation by
    * the Bureau, and the rows here still show the approval as parked. A turn that is going, or a read
    * in progress, is left alone: it is the page's own.
+   *
+   * What the run waits on is not in the transcript, so it is read again the way the page reads it
+   * when it opens (`attach`): a question answered elsewhere is no longer owed, and one the run still
+   * waits on comes back. Without that, the person's next message would be sent as the answer to a
+   * question the Bureau has settled, and the Bureau would refuse it.
    */
   async refresh(): Promise<boolean> {
     if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
     const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
     if (history === undefined || this.streaming || this.attaching) return false;
     this.conversation = history;
+    await this.attach({ rereading: true });
     return true;
   }
 

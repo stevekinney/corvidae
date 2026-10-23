@@ -74,9 +74,18 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
         ? { workflows: [], nextOffset: null }
         : { definitions: [] },
   },
+  // The runs are the Bureau's: the view asks it for one task and one goal, and is empty only when
+  // it has neither. The list that follows asks for a hundred of each.
   runs: {
-    matches: (url) => url.pathname === '/v1/workflows' && url.searchParams.get('limit') === '1',
-    empty: { items: [], total: 0 },
+    matches: (url, body) =>
+      url.pathname === '/bureau/jsonrpc' &&
+      /"bureau\.(tasks|goals)\.list"/.test(body) &&
+      /"limit":1[,}]/.test(body),
+    empty: { tasks: [], nextPageToken: null },
+    emptyFor: (body) =>
+      body.includes('"bureau.tasks.list"')
+        ? { tasks: [], nextPageToken: null }
+        : { goals: [], nextOffset: null },
   },
   schedules: { matches: (url) => url.pathname === '/v1/schedules', empty: { items: [], total: 0 } },
   reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),

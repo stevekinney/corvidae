@@ -16,6 +16,30 @@ import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 
+const composer = (page: Page) => page.getByRole('textbox');
+
+async function send(page: Page, text: string): Promise<void> {
+  await composer(page).fill(text);
+  await composer(page).press('Enter');
+}
+
+/** The session a new chat became once its first run began: the address replaces `/chat/new`. */
+async function sessionOf(page: Page): Promise<string> {
+  await expect(page).toHaveURL(/\/chat\/(?!new)[^/?]+$/);
+  return decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
+}
+
+/** The AG-UI start requests a page makes, each as the JSON it sent. */
+function recordStarts(page: Page): Array<{ messages: unknown[]; resume?: unknown[] }> {
+  const starts: Array<{ messages: unknown[]; resume?: unknown[] }> = [];
+  page.on('request', (outgoing) => {
+    if (outgoing.method() === 'POST' && outgoing.url().includes('/ag-ui/agents/')) {
+      starts.push(outgoing.postDataJSON());
+    }
+  });
+  return starts;
+}
+
 /** The Bureau's row for a session's review: the one list item that links to that session's chat. */
 const rowOfSession = (page: Page, threadId: string) =>
   page.locator('.ib-review').filter({
@@ -136,6 +160,63 @@ test.describe('a tool approval', () => {
     // The page that was already open reads the decision within five seconds.
     await expect(page.locator('.ib-decision')).toHaveCount(0, { timeout: 5_000 });
     await expect(page.getByText('1 run is waiting on you')).toHaveCount(0, { timeout: 5_000 });
+  });
+});
+
+test.describe('a decision made in the inbox', () => {
+  test('reaches the chat tab that started the run, which was never reloaded', async ({
+    page,
+    context,
+  }) => {
+    // The run is started from this page, not found waiting: its first read of the pending reviews
+    // can be the shared, cached one that predates the review, and must not take the call as decided.
+    await page.goto('/chat/new?agent=tool-runner');
+    await send(page, 'Refund order 1234');
+    await expect(page.locator('.ib-decision')).toBeVisible();
+    const threadId = await sessionOf(page);
+
+    const inbox = await context.newPage();
+    await inbox.goto('/reviews');
+    await rowOfSession(inbox, threadId).getByRole('button', { name: 'Approve' }).click();
+    await expect(rowOfSession(inbox, threadId)).toHaveCount(0);
+
+    await expect(page.locator('.ib-decision')).toHaveCount(0, { timeout: 5_000 });
+  });
+
+  test('settles a question in a chat that never reloaded: it is gone, the next message is a normal turn, and a second question is settled the same way', async ({
+    page,
+    context,
+  }) => {
+    const starts = recordStarts(page);
+    const asked = page.getByRole('alert').filter({ hasText: HUMAN_INPUT_PROMPT });
+    await page.goto('/chat/new?agent=request-human-input');
+    await send(page, 'Release it');
+    await expect(asked).toBeVisible();
+    const threadId = await sessionOf(page);
+
+    const inbox = await context.newPage();
+    await inbox.goto('/reviews');
+    const answer = async (text: string) => {
+      const row = rowOfSession(inbox, threadId);
+      await row.getByLabel('Your answer').fill(text);
+      await row.getByRole('button', { name: 'Send answer' }).click();
+      await expect(row).toHaveCount(0);
+    };
+    await answer('staging');
+    await expect(asked).toHaveCount(0, { timeout: 5_000 });
+
+    // The question is settled, so this is a message and not its answer: no resume, no refusal.
+    await send(page, 'Another one');
+    await expect(asked).toBeVisible();
+    const last = starts.at(-1);
+    expect(last?.resume ?? []).toEqual([]);
+    expect(JSON.stringify(last?.messages)).toContain('Another one');
+    await expect(page.getByText(/was not found/)).toHaveCount(0);
+
+    // The second question is settled elsewhere too, and the chat reads it again.
+    await inbox.reload();
+    await answer('production');
+    await expect(asked).toHaveCount(0, { timeout: 5_000 });
   });
 });
 

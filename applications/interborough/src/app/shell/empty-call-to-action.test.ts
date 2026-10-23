@@ -8,6 +8,7 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -20,14 +21,30 @@ afterEach(() => {
   restore = undefined;
 });
 
-/** An engine with nothing in it: every list is empty. */
+/**
+ * What every list answers when it is empty: the engine's (`items`) and the Bureau's tasks and
+ * goals, which the runs view asks. One body serves them all, because each reads only its own field.
+ */
+const EMPTY = { items: [], total: 0, tasks: [], nextPageToken: null, goals: [], nextOffset: null };
+
+/** The same, with one item in each list. */
+const ONE = {
+  items: [{ id: 'first-item' }],
+  total: 1,
+  tasks: [taskFixture({ id: 'first-item' })],
+  nextPageToken: null,
+  goals: [],
+  nextOffset: null,
+};
+
+/** An engine and a Bureau with nothing in them: every list is empty. */
 function stubEmptyEngine(): void {
   restore = installFetchImplementation(async (_input, init) => {
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as { id?: unknown }) : {};
     if (typeof init?.body === 'string') {
-      return Response.json({ jsonrpc: '2.0', id: body.id, result: { items: [], total: 0 } });
+      return Response.json({ jsonrpc: '2.0', id: body.id, result: EMPTY });
     }
-    return Response.json({ items: [], total: 0 });
+    return Response.json(EMPTY);
   });
 }
 
@@ -97,10 +114,9 @@ describe('an empty view’s call to action', () => {
       restore = installFetchImplementation(async (_input, init) => {
         const body =
           typeof init?.body === 'string' ? (JSON.parse(init.body) as { id?: unknown }) : {};
-        const one = { items: [{ id: 'first-item' }], total: 1 };
         return typeof init?.body === 'string'
-          ? Response.json({ jsonrpc: '2.0', id: body.id, result: one })
-          : Response.json(one);
+          ? Response.json({ jsonrpc: '2.0', id: body.id, result: ONE })
+          : Response.json(ONE);
       });
       router.navigate(flow.path);
       await waitFor(() => {

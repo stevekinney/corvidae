@@ -10,8 +10,8 @@
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
-  import { listContexts } from '../../../lib/bureau-client.ts';
-  import { listGoals } from '../../../lib/bureau-goals.ts';
+  import { listAgents, listContexts } from '../../../lib/bureau-client.ts';
+  import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listTasks, loadMoreTasks } from '../../../lib/bureau-tasks.ts';
   import { combinePages } from '../../../lib/combine-pages.ts';
   import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
@@ -30,12 +30,22 @@
   const PAGE_SIZE = 100;
   const filter = $derived(parseRunFilter(router.current.search));
 
+  // The status and the agent are asked of the Bureau, so a page holds the runs that match and Load
+  // more goes on from there. "Working" is two of the Bureau's states (a submitted task is working
+  // too), so it is narrowed here instead. The rest (what started a run, how recently) the Bureau
+  // cannot narrow, and are applied to what the pages hold.
+  const serverStatus = $derived(filter.status === 'working' ? undefined : filter.status);
   const tasks = createInfiniteQuery(
     () => ({
-      queryKey: ['bureau-tasks', 'runs'] as const,
+      queryKey: ['bureau-tasks', 'runs', serverStatus ?? '', filter.agent ?? ''] as const,
       queryFn: ({ pageParam, signal }) =>
         listTasks(
-          { limit: PAGE_SIZE, ...(pageParam === '' ? {} : { pageToken: pageParam }) },
+          {
+            limit: PAGE_SIZE,
+            ...(serverStatus === undefined ? {} : { status: serverStatus }),
+            ...(filter.agent === undefined ? {} : { agentName: filter.agent }),
+            ...(pageParam === '' ? {} : { pageToken: pageParam }),
+          },
           { signal },
         ),
       initialPageParam: '',
@@ -45,11 +55,22 @@
     }),
     undefined,
   );
+  // Every goal, a page at a time: a run past the first hundred is still a run.
   const goals = createQuery(
     () => ({
       queryKey: ['goals', 'runs'] as const,
-      queryFn: ({ signal }) => listGoals({ limit: PAGE_SIZE }, { signal }),
+      queryFn: ({ signal }) => listAllGoals({ signal }),
       refetchInterval: REVIEW_POLL_MILLISECONDS,
+      retry: false,
+    }),
+    undefined,
+  );
+  // The agents to filter by come from the catalog, because the runs on screen are already narrowed
+  // to the agent chosen and would leave nothing else to choose.
+  const agents = createQuery(
+    () => ({
+      queryKey: ['agents', 'runs'] as const,
+      queryFn: () => listAgents(),
       retry: false,
     }),
     undefined,
@@ -71,14 +92,18 @@
         (page) => page.tasks,
         (task) => task.id,
       ),
-      goals: goals.data?.goals ?? [],
+      goals: goals.data ?? [],
       chats: chats.data?.contexts ?? [],
     }),
   );
   const rows = $derived(filterRunRows(everyRun, filter, Date.now()));
   const agentNames = $derived(
     [
-      ...new Set(everyRun.flatMap((row) => (row.agentName === null ? [] : [row.agentName]))),
+      ...new Set([
+        ...(agents.data ?? []).map((agent) => agent.name),
+        ...everyRun.flatMap((row) => (row.agentName === null ? [] : [row.agentName])),
+        ...(filter.agent === undefined ? [] : [filter.agent]),
+      ]),
     ].toSorted(),
   );
 
@@ -227,15 +252,17 @@
         </li>
       {/each}
     </ul>
-    {#if tasks.hasNextPage}
-      <div class="ib-runs__more">
-        <Button
-          variant="secondary"
-          label={TASK_COPY.loadMore}
-          loading={tasks.isFetchingNextPage}
-          onclick={() => void loadMoreTasks(tasks)}
-        />
-      </div>
-    {/if}
+  {/if}
+  <!-- Narrowing what the pages hold can leave none of them showing a run while the Bureau has more
+       pages, so Load more does not wait for a row to sit beside. -->
+  {#if !loading && !failed && tasks.hasNextPage}
+    <div class="ib-runs__more">
+      <Button
+        variant="secondary"
+        label={TASK_COPY.loadMore}
+        loading={tasks.isFetchingNextPage}
+        onclick={() => void loadMoreTasks(tasks)}
+      />
+    </div>
   {/if}
 </section>

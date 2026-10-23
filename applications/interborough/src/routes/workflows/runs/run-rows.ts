@@ -13,7 +13,6 @@ import type { ChatContext } from '../../../lib/bureau-client.ts';
 import type { Goal } from '../../../lib/bureau-goals.ts';
 import { isTerminalState, type TaskState, type TaskView } from '../../../lib/bureau-tasks.ts';
 import { chatSessionPath } from '../../../lib/identifier-paths.ts';
-import { shorten } from '../../../lib/tool-text.ts';
 
 export type RunOrigin =
   | { readonly kind: 'chat'; readonly title: string; readonly href: string }
@@ -25,7 +24,11 @@ export type RunRow = {
   readonly agentName: string | null;
   readonly status: TaskState;
   readonly origin: RunOrigin;
-  /** One line about how it stands: the question it waits on, its last words, or why it failed. */
+  /**
+   * One line about how it stands: what it waits on, or why it failed or was canceled. Nothing for a
+   * run that is working or finished well: the chat's last message is the person's or another run's
+   * words, not this run's.
+   */
   readonly summary: string;
   readonly startedAt: number;
   readonly updatedAt: number;
@@ -75,7 +78,7 @@ function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRo
       ? waitSummary(task)
       : task.status === 'failed' || task.status === 'canceled'
         ? (task.statusMessage ?? task.finishReason ?? '')
-        : shorten(chat?.lastMessagePreview ?? '');
+        : '';
   return {
     id: task.id,
     agentName: task.agentName,
