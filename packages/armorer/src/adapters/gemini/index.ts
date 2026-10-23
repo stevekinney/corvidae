@@ -129,6 +129,7 @@ export async function formatGeminiToolResultsAsync(
       const content = normalizeAsyncContent(await collectAsyncIterable(stream));
       return {
         functionResponse: {
+          id: geminiCallId(result),
           name: resolveGeminiToolName(result, options),
           response: normalizeGeminiResponse({ ...result, content }),
         },
@@ -191,9 +192,10 @@ function toFunctionResponsePart(
   options: GeminiFormatToolResultsOptions,
 ): GeminiFunctionResponsePart {
   const name = resolveGeminiToolName(result, options);
+  const id = geminiCallId(result);
   const parts = toolResultParts(result);
   if (parts === undefined) {
-    return { functionResponse: { name, response: normalizeGeminiResponse(result) } };
+    return { functionResponse: { id, name, response: normalizeGeminiResponse(result) } };
   }
   const { output, parts: media } = geminiToolResultParts(parts);
   const response =
@@ -205,7 +207,12 @@ function toFunctionResponsePart(
           ...(result.error ? { error: result.error } : {}),
           ...(result.action ? { action: result.action } : {}),
         };
-  return { functionResponse: { name, response, parts: media } };
+  return { functionResponse: { id, name, response, parts: media } };
+}
+
+/** The call id Gemini pairs a response with: the originating call's id echoed back. */
+function geminiCallId(result: ToolResultLike): string {
+  return 'toolCallId' in result ? result.toolCallId : result.callId;
 }
 
 function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown> {

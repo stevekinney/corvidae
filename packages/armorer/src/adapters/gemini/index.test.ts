@@ -203,12 +203,14 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
+          id: 'call-1',
           name: 'search',
           response: { ok: true },
         },
       },
       {
         functionResponse: {
+          id: 'call-2',
           name: 'approve',
           response: {
             outcome: 'action_required',
@@ -218,6 +220,30 @@ describe('formatGeminiToolResults', () => {
         },
       },
     ]);
+  });
+
+  it('echoes each call id on two calls to the same function, with and without parts', () => {
+    const responses = formatGeminiToolResults(
+      [
+        { callId: 'call-a', outcome: 'success', content: { n: 1 }, toolName: 'lookup' },
+        { callId: 'call-b', outcome: 'success', content: { n: 2 }, toolName: 'lookup' },
+        {
+          callId: 'call-c',
+          outcome: 'success',
+          content: 'text',
+          toolName: 'lookup',
+          parts: [{ type: 'text', text: 'three' }],
+        },
+      ],
+      {},
+    );
+    expect(responses.map((part) => [part.functionResponse.name, part.functionResponse.id])).toEqual(
+      [
+        ['lookup', 'call-a'],
+        ['lookup', 'call-b'],
+        ['lookup', 'call-c'],
+      ],
+    );
   });
 
   it('resolves tool names from explicit mappings and defaults', () => {
@@ -236,6 +262,7 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
+          id: 'call-function',
           name: 'function-mapped',
           response: { ok: true },
         },
@@ -256,6 +283,7 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
+          id: 'call-object',
           name: 'object-mapped',
           response: { ok: true },
         },
@@ -276,6 +304,7 @@ describe('formatGeminiToolResults', () => {
     ).toEqual([
       {
         functionResponse: {
+          id: 'call-default',
           name: 'fallback-name',
           response: { ok: true },
         },
@@ -313,12 +342,14 @@ describe('formatGeminiToolResultsAsync', () => {
     ).toEqual([
       {
         functionResponse: {
+          id: 'call-stream',
           name: 'unknown',
           response: { result: ['alpha', 'beta'] },
         },
       },
       {
         functionResponse: {
+          id: 'call-symbol',
           name: 'unknown',
           response: { result: ['Symbol(chunk)'] },
         },
