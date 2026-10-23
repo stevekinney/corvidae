@@ -18,6 +18,7 @@
   // actions delivered to the host.
   let {
     surfaceId,
+    surfaceRevision,
     components,
     dataModel,
     onAction,
@@ -104,7 +105,10 @@
       return displayTimeZone(timeZone, mounted);
     },
     idPrefix: `a2ui${idPrefix}`,
-    dispatch: (action) => onAction?.(action, action.context),
+    dispatch: (action) => {
+      const revised = surfaceRevision === undefined ? action : { ...action, surfaceRevision };
+      onAction?.(revised, revised.context);
+    },
     get resolveAssetUrl() {
       return resolveAssetUrl;
     },
