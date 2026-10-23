@@ -160,6 +160,10 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     durableHistory ??= options.bureau
       .eventHistory({ kind: 'run', id: '' }, { limit: 1 })
       .then((answer) => !('outcome' in answer && answer.outcome === 'unsupported-capability'));
+    // A transient storage fault is not a capability: ask again on the next request.
+    durableHistory.catch(() => {
+      durableHistory = undefined;
+    });
     return durableHistory;
   };
 

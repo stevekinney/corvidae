@@ -248,7 +248,9 @@ async function readRetained(
   bureau: A2AStreamBureau,
   taskId: string,
   requested: string | undefined,
-): Promise<{ events: DurableEventEnvelope[]; gap: Gap | undefined } | undefined> {
+): Promise<
+  { events: DurableEventEnvelope[]; gap: Gap | undefined; reached: string | undefined } | undefined
+> {
   const owner = { kind: 'run', id: taskId } as const;
   let gap: Gap | undefined;
   if (requested !== undefined) {
@@ -283,7 +285,7 @@ async function readRetained(
     if (!page.hasMore) break;
     since = page.nextCursor ?? since;
   }
-  return { events, gap };
+  return { events, gap, reached: since };
 }
 
 /**
@@ -308,14 +310,19 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     status: terminalRetained || !isTerminal(initial.status) ? 'working' : initial.status,
     finishReason: initial.finishReason,
     statusMessage: initial.statusMessage,
-    openWaits: [],
+    // Retention can drop the event that opened a review and keep later ones: the task's own
+    // open waits seed the fold, which is a set, so a retained event never counts one twice.
+    openWaits: initial.openWaits,
   });
   let folded: Extract<TaskEvent, { kind: 'task.status' }> | undefined;
   for (const event of retained?.events ?? []) {
     const element = projector.project(event);
     if (element?.kind === 'task.status') folded = element;
   }
-  const cursor = retained === undefined ? undefined : (retained.events.at(-1)?.cursor ?? '-1');
+  const cursor =
+    retained === undefined
+      ? undefined
+      : (retained.events.at(-1)?.cursor ?? retained.reached ?? '-1');
   const snapshotView: TaskView =
     folded === undefined
       ? initial
@@ -475,6 +482,9 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         }
         if (element.kind !== 'task.status') return;
         lastStatus = element.status;
+        // Whether this element ended the task, read now: a later event may end it before this
+        // one is mapped.
+        const endsTask = projector.ended;
         // Events are mapped one after another, so a slow reply lookup never lets a later event
         // overtake an earlier one.
         mapping = chained(mapping, async () => {
@@ -487,12 +497,17 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
             queue.push({
               event: mapped,
               ...(index === events.length - 1 ? { cursor: event.cursor } : {}),
-              ends: projector.ended && index === events.length - 1,
+              ends: endsTask && index === events.length - 1,
             });
           }
         }).catch((error: unknown) => queue.fail(error));
       },
-      { since: cursor ?? '-1', signal: controller.signal },
+      {
+        since: cursor ?? '-1',
+        signal: controller.signal,
+        // A storage fault closes the subscription; the client reconnects instead of hanging.
+        onClosed: (error) => queue.fail(error),
+      },
     );
     stops.push(() => subscription.unsubscribe());
   }

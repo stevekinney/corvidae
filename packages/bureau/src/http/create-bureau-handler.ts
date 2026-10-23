@@ -759,9 +759,18 @@ function createA2AMount(
     ...(options.signing === undefined ? {} : { signing: options.signing }),
     bureau,
     publication: createPublication(bureau, publish),
+    // Only a task A2A served has a record, so an agent that was never published, whose tasks
+    // came through Bureau's other surfaces, never gets a tombstone.
     hasTasks: async (agentName) => {
-      const page = await bureau.tasks.enumerate({ agentName, limit: 1, offset: 0 });
-      return page.tasks.length > 0;
+      for (let offset = 0; ; offset += TOMBSTONE_SCAN_PAGE) {
+        const page = await bureau.tasks.enumerate({
+          agentName,
+          limit: TOMBSTONE_SCAN_PAGE,
+          offset,
+        });
+        for (const task of page.tasks) if ((await records.read(task.id)) !== undefined) return true;
+        if (page.tasks.length < TOMBSTONE_SCAN_PAGE) return false;
+      }
     },
     describe: (agentName) => {
       const described = publishedAgentsOf(bureau, publish).find(
@@ -793,6 +802,9 @@ function createA2AMount(
 
 /** How often the respond ledger drops its expired bindings, at most. */
 const RESPOND_LEDGER_PRUNE_INTERVAL_MS = 3_600_000;
+
+/** How many of a withdrawn agent's tasks one tombstone check reads at a time. */
+const TOMBSTONE_SCAN_PAGE = 50;
 
 function createRespondLedger(bureau: BureauHandlerSource): TasksRespondLedger {
   return createPrunedLedger<TasksRespondClaim, TasksRespondResult>(

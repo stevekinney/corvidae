@@ -11,6 +11,7 @@ import {
   parkingUntilAborted,
 } from './management/management-fixtures.test-support.ts';
 import { A2UI_EXTENSION_URI } from './a2a-agent-card.ts';
+import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { inclusiveBoundary, LISTED_HISTORY_BYTES } from './a2a-request-handler.ts';
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
 
@@ -157,7 +158,7 @@ describe('the A2A Agent Card', () => {
         expect(card.capabilities.pushNotifications ?? false).toBe(false);
         expect(card.capabilities.extendedAgentCard ?? false).toBe(false);
         expect(card.capabilities.extensions.map((entry: Json) => entry.uri).toSorted()).toEqual(
-          [A2UI_EXTENSION_URI, CLEANUP_EXTENSION_URI].toSorted(),
+          [A2UI_EXTENSION_URI, CLEANUP_EXTENSION_URI, COMMAND_RECEIPTS_EXTENSION_URI].toSorted(),
         );
         expect(card.capabilities.extensions.every((entry: Json) => entry.required !== true)).toBe(
           true,

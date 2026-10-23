@@ -220,4 +220,22 @@ describe('a withdrawn agent with tasks', () => {
     const response = await rpc(served, 'GetTask', { id: 'anything' });
     expect(response.status).toBe(404);
   });
+
+  it('reads as not found when its only tasks never came through A2A', async () => {
+    const served = await serveWriter();
+    const run = await served.harness.bureau.createRun({
+      agentName: 'writer',
+      principal: 'api-key:alice',
+      message: 'quick',
+    });
+    await waitForCondition(async () => {
+      const view = await served.harness.bureau.tasks.get(run.id);
+      return view?.status === 'completed';
+    }, 'the run never completed');
+    await withdraw(served);
+
+    // A task another surface made is not A2A's to serve, so no tombstone is kept for it.
+    const response = await rpc(served, 'GetTask', { id: run.id });
+    expect(response.status).toBe(404);
+  });
 });

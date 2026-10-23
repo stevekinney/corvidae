@@ -309,8 +309,20 @@ describe('SubscribeToTask', () => {
         const again = await resumed.next();
         await resumed.cancel();
         const malformed = await opened.handler(
-          rpc('SubscribeToTask', { id: parked.id }, { 'Last-Event-ID': 'not a cursor' }),
+          rpc(
+            'SubscribeToTask',
+            { id: parked.id },
+            { ...extensions, 'Last-Event-ID': 'not a cursor' },
+          ),
         );
+        // Without the extension the header means nothing, so it is ignored, never refused.
+        const ignored = serverSentEvents(
+          await opened.handler(
+            rpc('SubscribeToTask', { id: parked.id }, { 'Last-Event-ID': 'not a cursor' }),
+          ),
+        );
+        expect((await ignored.next())?.data.result.task.id).toBe(parked.id);
+        await ignored.cancel();
 
         const metadata = again?.data.result.task.metadata[DURABLE_HISTORY_EXTENSION_URI];
         expect(metadata.requestedCursor).toBe(opening?.id);

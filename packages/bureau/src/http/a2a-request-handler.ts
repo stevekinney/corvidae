@@ -617,7 +617,8 @@ export function createBureauA2ARequestHandler(
     signal?.addEventListener('abort', forward, { once: true });
     try {
       const view = await settledView(taskId, controller.signal);
-      if (timedOut && !isSettled(view.status)) {
+      // Once the deadline has fired, only a settlement that happened by it counts.
+      if (timedOut && !(isSettled(view.status) && Date.parse(view.updatedAt) <= deadline)) {
         throw new CommandTimeoutError('The command’s deadline passed before the task settled.', {
           commandId,
           taskId,
@@ -630,12 +631,8 @@ export function createBureauA2ARequestHandler(
     }
   }
 
-  async function createTask(
-    message: Message,
-    owner: Owner,
-    version: string,
-    onEffect: () => void,
-  ): Promise<string> {
+  /** The checks a message that starts a task passes before anything is admitted. Resolves its text. */
+  async function checkNewTask(message: Message, owner: Owner): Promise<string> {
     if (message.contextId !== '') {
       const contextOwner = await bureau.getOwner({ kind: 'session', id: message.contextId });
       // A context another caller owns is answered as if it did not exist, before anything loads it.
@@ -653,6 +650,16 @@ export function createBureauA2ARequestHandler(
     }
     const text = textOf(message);
     if (text === '') throw invalid('A message that starts a task must hold a text part.');
+    return text;
+  }
+
+  async function createTask(
+    message: Message,
+    owner: Owner,
+    version: string,
+    onEffect: () => void,
+  ): Promise<string> {
+    const text = await checkNewTask(message, owner);
     let run;
     try {
       run = await bureau.createRun({
@@ -690,8 +697,22 @@ export function createBureauA2ARequestHandler(
    * A task whose creating command's deadline passed before it could start: recorded as failed
    * with a deadline reason, and no run is created for it.
    */
-  async function createExpiredTask(message: Message, owner: Owner): Promise<string> {
-    const taskId = runtime.identifiers.next('run');
+  async function createExpiredTask(
+    message: Message,
+    owner: Owner,
+    version: string,
+  ): Promise<string> {
+    await checkNewTask(message, owner);
+    // The identifier follows from the command, so a retry after a lost receipt finds this task
+    // instead of recording a second one.
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(`${owner}\0${version}\0${message.messageId}`),
+    );
+    const taskId = `agent-run-expired-${[...new Uint8Array(digest).slice(0, 16)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')}`;
+    if ((await bureau.tasks.get(taskId)) !== undefined) return taskId;
     const contextId =
       message.contextId === '' ? runtime.identifiers.next('session') : message.contextId;
     await bureau.tasks.recordAdmission({
@@ -982,7 +1003,7 @@ export function createBureauA2ARequestHandler(
       if (continued === undefined) {
         result = expired
           ? {
-              taskId: await createExpiredTask(message, owner),
+              taskId: await createExpiredTask(message, owner, version),
               path: 'create',
               state: 'expired',
               reason: 'deadline-exceeded',
@@ -1029,12 +1050,17 @@ export function createBureauA2ARequestHandler(
     shape: ProjectionShape,
     context: ServerCallContext | undefined,
     receipt?: Receipt,
+    resuming = false,
   ): AsyncGenerator<StreamResponse> {
+    const durableHistoryActive = shape.activated.has(DURABLE_HISTORY_EXTENSION_URI);
     return followTask({
       bureau,
       taskId,
-      lastEventId: headerOf(context, 'last-event-id'),
-      durableHistoryActive: shape.activated.has(DURABLE_HISTORY_EXTENSION_URI),
+      // Only an activated SubscribeToTask resumes: a send, or a request that did not activate
+      // the extension, ignores the header, and so can never be refused for it after an effect.
+      lastEventId:
+        resuming && durableHistoryActive ? headerOf(context, 'last-event-id') : undefined,
+      durableHistoryActive,
       snapshot: (view) => respondWith(view, shape, receipt),
       replyOf,
       timers,
@@ -1108,7 +1134,7 @@ export function createBureauA2ARequestHandler(
           `Task '${view.id}' is ${view.status}: read it with GetTask.`,
         );
       }
-      yield* follow(view.id, { includeArtifacts: true, activated }, context);
+      yield* follow(view.id, { includeArtifacts: true, activated }, context, undefined, true);
     },
 
     async getTask(params: GetTaskRequest, context) {

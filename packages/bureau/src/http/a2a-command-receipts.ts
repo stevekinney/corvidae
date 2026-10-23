@@ -40,6 +40,18 @@ export type CommandReceiptsRequest = {
 
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+/** Whether the timestamp parses and names a day that exists, which `Date.parse` rolls over. */
+function isRealDate(timestamp: string): boolean {
+  if (Number.isNaN(Date.parse(timestamp))) return false;
+  const [year, month, day] = timestamp.slice(0, 10).split('-').map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 /** Reads the extension's request namespace, refusing a malformed one with `-32602`. */
 export function readCommandReceiptsRequest(
   metadata: Record<string, unknown> | undefined,
@@ -63,7 +75,10 @@ export function readCommandReceiptsRequest(
   ) {
     throw new RequestMalformedError('expectedRevision must be a non-empty string.');
   }
-  if (deadline !== undefined && (typeof deadline !== 'string' || !RFC3339.test(deadline))) {
+  if (
+    deadline !== undefined &&
+    (typeof deadline !== 'string' || !RFC3339.test(deadline) || !isRealDate(deadline))
+  ) {
     throw new RequestMalformedError('deadline must be an RFC 3339 timestamp with an offset.');
   }
   return {

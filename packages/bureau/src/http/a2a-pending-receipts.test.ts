@@ -65,6 +65,8 @@ async function withCrashedAnswer(
     skewClock: (milliseconds: number) => void;
     answer: (receipts: object) => Promise<{ failed: unknown; message: Message }>;
     retry: (message: Message) => Promise<any>;
+    failNextComplete: () => void;
+    bureau: Awaited<ReturnType<typeof openBureau>>['bureau'];
     completed: () => Promise<void>;
   }) => Promise<void>,
 ): Promise<void> {
@@ -143,6 +145,10 @@ async function withCrashedAnswer(
         return { failed: await rejectionOf(send(message)), message };
       },
       retry: send,
+      failNextComplete: () => {
+        failNextComplete = true;
+      },
+      bureau: opened.bureau,
       completed: () =>
         waitForCondition(async () => {
           const view = await opened.bureau.tasks.get(parked.id);
@@ -183,6 +189,41 @@ describe('a retried continuation whose claim was left pending', () => {
       expect(
         retried.history.filter((entry: Message) => entry.messageId === 'm-answer'),
       ).toHaveLength(1);
+    });
+  });
+});
+
+describe('a send whose deadline has already passed', () => {
+  const past = { deadline: '2000-01-01T00:00:00Z' };
+
+  it('records one expired task, however many times its lost receipt is retried', async () => {
+    await withCrashedAnswer(async (run) => {
+      const message = userMessage('m-late', 'too late', '', past);
+      run.failNextComplete();
+      const failed = await rejectionOf(run.retry(message));
+      expect((failed as Error).message).toBe('the ledger write failed');
+      const retried = await run.retry(message);
+      const again = await run.retry(message);
+
+      expect(again.id).toBe(retried.id);
+      const expired = (
+        await run.bureau.tasks.enumerate({ agentName: 'asker', limit: 50, offset: 0 })
+      ).tasks.filter((task) => task.finishReason === 'deadline-exceeded');
+      expect(expired.map((task) => task.id)).toEqual([retried.id]);
+    });
+  });
+
+  it('is refused like any other send when its message holds no text', async () => {
+    await withCrashedAnswer(async (run) => {
+      const empty = Message.fromJSON({
+        messageId: 'm-empty',
+        taskId: '',
+        role: 'ROLE_USER',
+        parts: [{ data: { not: 'text' } }],
+        metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: past },
+      });
+      const refused = await rejectionOf(run.retry(empty));
+      expect((refused as Error).message).toMatch(/text part/);
     });
   });
 });

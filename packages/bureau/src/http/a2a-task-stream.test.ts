@@ -37,39 +37,65 @@ function envelope(sequence: number, kind: string, payload: unknown = {}): Durabl
 }
 
 /** A Bureau whose history holds nothing yet, and whose tail is driven by the test. */
-function standIn() {
+function standIn(
+  overrides: {
+    view?: TaskView;
+    eventHistory?: A2AStreamBureau['eventHistory'];
+    getDelayMs?: number;
+  } = {},
+) {
   let deliver: ((event: DurableEventEnvelope) => void) | undefined;
+  let closed: ((error: unknown) => void) | undefined;
   const bureau: A2AStreamBureau = {
-    eventHistory: async () => ({ events: [], hasMore: false, nextCursor: undefined }),
-    subscribeEventHistory: (_owner, listener) => {
+    eventHistory:
+      overrides.eventHistory ??
+      (async () => ({ events: [], hasMore: false, nextCursor: undefined })),
+    subscribeEventHistory: (_owner, listener, options) => {
       deliver = listener;
+      closed = options?.onClosed ?? undefined;
       return { unsubscribe: () => undefined } as never;
     },
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
     tasks: {
-      get: async () => VIEW,
+      get: async () => {
+        if (overrides.getDelayMs !== undefined) {
+          await new Promise((resolve) => setTimeout(resolve, overrides.getDelayMs));
+        }
+        return overrides.view ?? VIEW;
+      },
       onSettled: () => () => undefined,
       onChanged: () => () => undefined,
     },
   };
-  return { bureau, deliver: (event: DurableEventEnvelope) => deliver?.(event) };
+  return {
+    bureau,
+    deliver: (event: DurableEventEnvelope) => deliver?.(event),
+    close: (error: unknown) => closed?.(error),
+  };
 }
 
-function follow(bureau: A2AStreamBureau, buffer?: number) {
+function follow(
+  bureau: A2AStreamBureau,
+  buffer?: number,
+  seen: { view?: TaskView; metadata?: unknown } = {},
+) {
   return followTask({
     bureau,
     taskId: 'task-1',
     lastEventId: undefined,
     durableHistoryActive: true,
-    snapshot: async (view) => ({
-      id: view.id,
-      contextId: view.contextId,
-      status: undefined,
-      artifacts: [],
-      history: [],
-      metadata: undefined,
-    }),
+    snapshot: async (view) => {
+      seen.view = view;
+      return {
+        id: view.id,
+        contextId: view.contextId,
+        status: undefined,
+        artifacts: [],
+        history: [],
+        metadata: undefined,
+      };
+    },
     replyOf: async () => undefined,
     timers: createDefaultRuntimeServices().timers,
     signal: undefined,
@@ -131,5 +157,76 @@ describe('followTask', () => {
     // which a reconnect's snapshot covers, is never sent.
     expect(read.value?.payload?.$case).toBe('statusUpdate');
     expect(rest).toEqual([]);
+  });
+
+  it('keeps a review open that retention left only the later events of', async () => {
+    const view: TaskView = {
+      ...VIEW,
+      status: 'input-required',
+      openWaits: [{ kind: 'human-wait', reviewId: 'review-1', signalName: 'human-response' }],
+    };
+    const seen: { view?: TaskView } = {};
+    const { bureau } = standIn({
+      view,
+      // The event that opened the review is gone; a later, unrelated one survives.
+      eventHistory: async () => ({
+        events: [envelope(4, 'run.completed', {})],
+        hasMore: false,
+        nextCursor: undefined,
+      }),
+    });
+    const stream = follow(bureau, undefined, seen);
+    const opening = await stream.next();
+    expect(opening.value?.payload?.$case).toBe('task');
+    expect(seen.view?.status).toBe('input-required');
+    await stream.return(undefined);
+  });
+
+  it('resumes from the cursor retention advanced to when the task kept no event', async () => {
+    let calls = 0;
+    const { bureau } = standIn({
+      eventHistory: async () => {
+        calls += 1;
+        return calls === 1
+          ? ({ outcome: 'gap', firstRetainedSequence: 5 } as never)
+          : { events: [], hasMore: false, nextCursor: undefined };
+      },
+    });
+    const stream = follow(bureau);
+    const opening = await stream.next();
+    const task = (opening.value?.payload as { value: { metadata: Record<string, any> } }).value;
+    expect(Object.values(task.metadata)[0]?.cursor).toBe('4');
+    await stream.return(undefined);
+  });
+
+  it('sends every event before the one that ends the task, however fast they arrive', async () => {
+    const { bureau, deliver } = standIn({ getDelayMs: 20 });
+    const stream = follow(bureau);
+    await stream.next();
+    const second = stream.next();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    deliver(envelope(1, 'review.requested', { reviewId: 'review-1' }));
+    deliver(envelope(2, 'review.approved', { reviewId: 'review-1' }));
+    deliver(envelope(3, 'run.error', { message: 'boom' }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const read = await second;
+    const rest = await drain(stream);
+    const states = [read.value, ...rest].map(
+      (event) => (event?.payload as { value: { status?: { state: number } } }).value.status?.state,
+    );
+    // The review opening and its closing both arrive ahead of the failure that ends the stream.
+    expect(states.length).toBe(3);
+  });
+
+  it('fails the stream when its history subscription closes on an error', async () => {
+    const { bureau, close } = standIn();
+    const stream = follow(bureau);
+    await stream.next();
+    const second = stream.next();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    close(new Error('the history failed'));
+    await expect(second).rejects.toThrow('the history failed');
   });
 });

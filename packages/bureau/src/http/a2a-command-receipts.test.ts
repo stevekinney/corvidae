@@ -11,7 +11,10 @@ import {
   openBureau,
   parkingUntilAborted,
 } from './management/management-fixtures.test-support.ts';
-import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
+import {
+  COMMAND_RECEIPTS_EXTENSION_URI,
+  readCommandReceiptsRequest,
+} from './a2a-command-receipts.ts';
 
 // A JSON-RPC body read back from the wire: each test asserts the shape it needs.
 type Json = any;
@@ -248,5 +251,22 @@ describe('the command-receipts extension', () => {
       });
       expect(refused.error.code).toBe(-32602);
     });
+  });
+});
+
+describe('readCommandReceiptsRequest', () => {
+  const read = (deadline: string) =>
+    readCommandReceiptsRequest({ [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline } });
+
+  it('refuses a deadline whose fields are out of range or name a day that does not exist', () => {
+    for (const deadline of [
+      '2026-13-01T00:00:00Z',
+      '2026-01-01T99:00:00Z',
+      '2026-02-30T00:00:00Z',
+      '2026-01-01T00:00:00+25:00',
+    ]) {
+      expect(() => read(deadline)).toThrow(/RFC 3339/);
+    }
+    expect(read('2026-02-28T12:30:00+02:00').deadline).toBe(Date.parse('2026-02-28T10:30:00Z'));
   });
 });

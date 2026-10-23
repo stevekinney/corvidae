@@ -136,7 +136,8 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
       extendedAgentCard: false,
       extensions: [
         CLEANUP_EXTENSION,
-        ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION, COMMAND_RECEIPTS_EXTENSION] : []),
+        ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION] : []),
+        COMMAND_RECEIPTS_EXTENSION,
         A2UI_EXTENSION,
       ].map((extension) => ({ ...extension, params: {} })),
     },
