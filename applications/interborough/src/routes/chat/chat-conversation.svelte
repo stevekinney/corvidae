@@ -237,16 +237,6 @@
     new Map(approvals.map((entry) => [entry.toolCallId, entry.question] as const)),
   );
   const activity = $derived(toolGroups(session.conversation));
-  // An approval whose call is in no group has no row to sit under, so it is still shown, above the
-  // transcript, rather than lost.
-  const orphanApprovals = $derived(
-    approvals.filter(
-      (entry) =>
-        !Array.from(activity.groups.values()).some((group) =>
-          group.entries.some((call) => call.callId === entry.toolCallId),
-        ),
-    ),
-  );
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -362,16 +352,6 @@
   {#if !choosing}
     <SessionTasks {sessionId} streaming={session.streaming} />
   {/if}
-
-  <!-- A decision continues the run, which the controller refuses while another turn is going. -->
-  {#each orphanApprovals as entry (entry.toolCallId)}
-    <ApprovalDecision
-      id={`orphan-${entry.toolCallId}`}
-      question={entry.question}
-      deciding={deciding || session.streaming}
-      onDecide={(decision) => void decide(entry.toolCallId, decision)}
-    />
-  {/each}
 
   <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
        message sent in between would be a follow-up, so the question waits for the turn's end. -->

@@ -203,13 +203,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 2106,
       functionsHit: 2076,
     },
-    // COR-1491, measured on darwin: the Tasks view.
-    'src/routes/tasks': {
-      linesFound: 1883,
-      linesHit: 1790,
-      functionsFound: 368,
-      functionsHit: 354,
-    },
+    // COR-1491's `src/routes/tasks` floor is gone: #509 (COR-1648) removed the Tasks view into `src/routes/workflows/runs`, so the area has no files (COR-1676).
     'src/routes/workers': {
       linesFound: 12913,
       linesHit: 12778,
