@@ -278,7 +278,7 @@ describe('createAuditTrail', () => {
     trail.dispose();
   });
 
-  it('selects the newest limit matches of a type prefix, returned oldest first', async () => {
+  it('selects the newest limit matches of a filter, returned oldest first', async () => {
     const kv = textValueStore(new MemoryStorage());
     const { bureau } = createStubBureau();
 
@@ -296,7 +296,7 @@ describe('createAuditTrail', () => {
     const trail = createAuditTrail(bureau, kv);
     const result = await trail.query({
       runId: 'run-X',
-      typePrefix: 'review.human-wait.',
+      filter: (record) => record.type.startsWith('review.human-wait.'),
       select: 'newest',
       limit: 2,
     });

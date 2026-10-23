@@ -322,8 +322,8 @@ export interface AuditQueryOptions {
   runId?: string;
   /** Only records whose `type` equals this string. */
   type?: string;
-  /** Only records whose `type` starts with this string. */
-  typePrefix?: string;
+  /** Only records this predicate accepts; it runs before `limit` counts a record. */
+  filter?: (record: AuditRecord) => boolean;
   /** Maximum number of records to return. Defaults to 500. */
   limit?: number;
   /**
@@ -2475,7 +2475,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     async query(options: AuditQueryOptions = {}): Promise<AuditRecord[]> {
       if (!kv) return [];
 
-      const { since, runId, type, typePrefix, limit = 500, after, select = 'oldest' } = options;
+      const { since, runId, type, filter, limit = 500, after, select = 'oldest' } = options;
 
       // AB-228 (Codex P2 review findings, PR #566: "Wait for schedule audit
       // writes before returning success", then "Avoid blocking every audit
@@ -2580,7 +2580,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         if (after !== undefined && !isAfterPosition(record, after)) continue;
         if (runId !== undefined && record.runId !== runId) continue;
         if (type !== undefined && record.type !== type) continue;
-        if (typePrefix !== undefined && !record.type.startsWith(typePrefix)) continue;
+        if (filter !== undefined && !filter(record)) continue;
 
         records.push(record);
 

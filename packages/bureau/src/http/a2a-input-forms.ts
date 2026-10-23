@@ -9,6 +9,7 @@
 
 import type { HumanInputSchema } from '@lostgradient/operative';
 
+import type { AuditRecord } from '../audit-trail.ts';
 import type { TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
 
@@ -34,30 +35,37 @@ function parkOrdinalOf(reviewId: string): number {
   return Number(reviewId.slice(reviewId.lastIndexOf(':') + 1));
 }
 
-/** How many of a run's newest human-wait review records the previous-form lookup reads. */
-const FORM_LOOKUP_LIMIT = 50;
+/** How many of a run's newest closed form waits the previous-form lookup reads. */
+const FORM_LOOKUP_LIMIT = 10;
+
+/** The review id of the form wait a trail record closed, or `undefined` for any other record. */
+function closedFormWaitId(record: AuditRecord): string | undefined {
+  if (!record.type.startsWith('review.human-wait.')) return undefined;
+  const detail = record.detail as { review?: { id?: unknown }; inputForm?: unknown } | null;
+  const id = detail?.review?.id;
+  if (detail?.inputForm !== true || typeof id !== 'string') return undefined;
+  return Number.isInteger(parkOrdinalOf(id)) ? id : undefined;
+}
 
 /**
- * The run's recent human-wait reviews that showed a form, oldest first, as the audit trail recorded them
- * when they closed (the record carries an `inputForm` marker, not the schema). Empty without a
- * trail.
+ * The run's newest closed human-wait reviews that showed a form, oldest first, as the audit trail
+ * recorded them when they closed (the record carries an `inputForm` marker, not the schema). The
+ * form filter runs in the query before its limit counts, so plain waits never crowd a form out.
+ * Empty without a trail.
  */
 async function recordedFormWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
   const records = await bureau.auditTrail
     ?.query({
       runId,
-      typePrefix: 'review.human-wait.',
+      filter: (record) => closedFormWaitId(record) !== undefined,
       select: 'newest',
       limit: FORM_LOOKUP_LIMIT,
     })
     .catch(() => undefined);
   const found = new Set<string>();
   for (const record of records ?? []) {
-    if (!record.type.startsWith('review.human-wait.')) continue;
-    const detail = record.detail as { review?: { id?: unknown }; inputForm?: unknown } | null;
-    const id = detail?.review?.id;
-    if (detail?.inputForm !== true || typeof id !== 'string') continue;
-    if (Number.isInteger(parkOrdinalOf(id))) found.add(id);
+    const id = closedFormWaitId(record);
+    if (id !== undefined) found.add(id);
   }
   return [...found].toSorted((left, right) => parkOrdinalOf(left) - parkOrdinalOf(right));
 }
@@ -75,7 +83,7 @@ async function formReviewBefore(
 /**
  * Adds to each form the review of the run's previous form wait, whose surface the form replaces.
  * Only a client that renders forms needs it, so a read that activated A2UI calls it and no other
- * caller pays for it. It reads only the run's newest human-wait review records, a bounded number,
+ * caller pays for it. It reads only the run's newest closed form waits, a bounded number,
  * and no review.
  */
 export async function withPreviousForms(
