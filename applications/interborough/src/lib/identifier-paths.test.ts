@@ -40,4 +40,15 @@ describe('the source', () => {
 
     expect(offenders).toEqual([]);
   });
+  test('builds no run path of its own, so a dot-only run identifier is escaped', async () => {
+    const root = join(import.meta.dir, '..');
+    const offenders: string[] = [];
+    for await (const file of new Glob('**/*.{ts,svelte}').scan({ cwd: root })) {
+      if (file.includes('.test.') || file.endsWith('.test-support.ts')) continue;
+      const text = await Bun.file(join(root, file)).text();
+      if (/[`'"]\/runs\/\$\{/.test(text)) offenders.push(file);
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });

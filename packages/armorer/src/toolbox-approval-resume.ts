@@ -8,6 +8,7 @@ import type { ToolError, ToolErrorCategory } from './core/errors';
 import type { ToolRequestContext } from './execution-context';
 import { approvalConsumeSymbol, approvalResumeSymbol } from './internal/approval-resume';
 import type { Tool } from './is-tool';
+import { providerCallIdField } from './provider-call-id';
 import { verifyAndSnapshotPendingApproval } from './toolbox-approval';
 import {
   createApprovalConsumption,
@@ -112,7 +113,12 @@ async function executeResumedCall(
   context: ApprovalResumeContext,
 ): Promise<ToolExecutionResult> {
   const result = await context.execute(
-    { id: approval.callId, name: approval.toolName, arguments: executeArguments },
+    {
+      id: approval.callId,
+      ...providerCallIdField(approval),
+      name: approval.toolName,
+      arguments: executeArguments,
+    },
     {
       ...executeOptions,
       ...(consumption ? { [approvalConsumeSymbol]: consumption.consume } : {}),

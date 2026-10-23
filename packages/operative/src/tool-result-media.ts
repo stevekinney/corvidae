@@ -92,6 +92,7 @@ function refusedResult(result: ToolExecutionResult, error: unknown): ToolExecuti
     },
     ...(result.inputDigest === undefined ? {} : { inputDigest: result.inputDigest }),
     ...(result.outputDigest === undefined ? {} : { outputDigest: result.outputDigest }),
+    ...(result.providerCallId === undefined ? {} : { providerCallId: result.providerCallId }),
   };
 }
 

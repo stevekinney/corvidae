@@ -102,6 +102,8 @@ export type SatisfiedPolicyPause = {
 
 export type PendingToolApproval = {
   callId: string;
+  /** The id the model provider issued for the call (see `ToolCallInput`); signed with the rest. */
+  providerCallId?: string;
   toolName: string;
   arguments: JSONValue;
   action: ToolAction;

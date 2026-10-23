@@ -1,22 +1,19 @@
 <script lang="ts">
   /**
-   * The tasks of one chat session (`bureau.tasks.list` with the session's `contextId`, a page of fifty at a time with Load more), each linking
-   * to its page at `/tasks/:id`. A run in the session is a task, so the list is read again when a
+   * The tasks of one chat session (`bureau.tasks.list` with the session's `contextId`, a page of fifty at a time with Load more), reduced to one sentence about the chat's runs
+   * that links to the run to open (`/runs/:id`). A run in the session is a task, so the list is read again when a
    * run ends. A session with no task, and a Bureau that cannot say, show nothing: the conversation
    * does not wait on this.
    */
   import { untrack } from 'svelte';
 
-  import { Badge, Button } from '@lostgradient/cinder';
   import { createInfiniteQuery } from '@tanstack/svelte-query';
 
+  import { listTasks } from '../../lib/bureau-tasks.ts';
   import { CHAT_COPY } from '../../app/copy.ts';
-  import { listTasks, loadMoreTasks } from '../../lib/bureau-tasks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
-  import { truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
-  import { taskStatePresentation } from '../tasks/task-presentation.ts';
+  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
 
   interface SessionTasksProps {
     sessionId: string;
@@ -64,6 +61,42 @@
     wasStreaming = now;
   });
 
+  const runPath = (id: string): string => workflowDetailPath(id);
+
+  /** What the chat says of its runs, with the run to open; nothing when there is nothing to say. */
+  const strip = $derived.by(() => {
+    const needing = rows.filter((task) => task.status === 'input-required');
+    const going = rows.filter((task) => task.status === 'working' || task.status === 'submitted');
+    const failed = rows.filter((task) => task.status === 'failed');
+    const first = rows[0];
+    if (first === undefined) return undefined;
+    if (needing[0] !== undefined) {
+      return {
+        text: CHAT_COPY.strip.waiting(needing.length),
+        taskId: needing[0].id,
+        tone: 'warning',
+      };
+    }
+    if (going[0] !== undefined) {
+      return { text: CHAT_COPY.strip.working(going.length), taskId: going[0].id, tone: 'info' };
+    }
+    if (rows.length === 1) {
+      if (first.status === 'failed')
+        return { text: CHAT_COPY.strip.failedOne, taskId: first.id, tone: 'danger' };
+      if (first.status === 'canceled')
+        return { text: CHAT_COPY.strip.canceledOne, taskId: first.id, tone: 'neutral' };
+      return undefined;
+    }
+    if (failed[0] !== undefined) {
+      return {
+        text: CHAT_COPY.strip.failed(failed.length, rows.length),
+        taskId: failed[0].id,
+        tone: 'danger',
+      };
+    }
+    return undefined;
+  });
+
   function open(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
@@ -73,31 +106,12 @@
   }
 </script>
 
-{#if rows.length > 0}
-  <section class="weft-chat-tasks" aria-labelledby="weft-chat-tasks-title">
-    <h2 id="weft-chat-tasks-title" class="weft-chat-tasks__title">{CHAT_COPY.tasksTitle}</h2>
-    <ul class="weft-chat-tasks__list">
-      {#each rows as task (task.id)}
-        {@const presentation = taskStatePresentation(task.status)}
-        <li class="weft-chat-tasks__item">
-          <a
-            class="weft-chat-tasks__link"
-            href={router.href(`/tasks/${encodeURIComponent(task.id)}`)}
-            onclick={(event) => open(event, `/tasks/${encodeURIComponent(task.id)}`)}
-            ><code title={task.id}>{truncateId(task.id)}</code></a
-          >
-          <Badge variant={presentation.variant} size="sm">{presentation.label}</Badge>
-        </li>
-      {/each}
-    </ul>
-    {#if tasks.hasNextPage}
-      <Button
-        variant="secondary"
-        size="sm"
-        label={CHAT_COPY.loadMore}
-        loading={tasks.isFetchingNextPage}
-        onclick={() => void loadMoreTasks(tasks)}
-      />
-    {/if}
-  </section>
+{#if strip !== undefined}
+  <p class="weft-chat-strip" data-tone={strip.tone}>
+    <a
+      class="weft-chat-tasks__link"
+      href={router.href(runPath(strip.taskId))}
+      onclick={(event) => open(event, runPath(strip.taskId))}>{strip.text}</a
+    >
+  </p>
 {/if}

@@ -152,6 +152,7 @@ export type {
   GovernedMemoryRecord,
   LegalHoldState,
   MemoryAttribution,
+  MemoryDeletionClaim,
   MemoryRecordLineage,
   MemoryRecordSourceReference,
   RecordGovernance,
@@ -272,6 +273,7 @@ export {
   createMemoryRetrievalPlan,
 } from './governance/retrieval-plan';
 // The default governance key prefix is public for custom ledger storage.
+export { DELETION_CLAIM_LEASE_MILLISECONDS } from './governance/deletion';
 export { DEFAULT_MEMORY_GOVERNANCE_KEY_PREFIX } from './governance/ledger';
 export {
   ASYNCHRONOUS_DELETION_TARGETS,

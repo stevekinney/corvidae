@@ -6,6 +6,7 @@ import type {
 import type { ToolError, ToolErrorCategory } from './core/errors';
 import type { LoopDetector } from './core/loop-detection';
 import type { Tool, ToolConfiguration } from './is-tool';
+import { providerCallIdField } from './provider-call-id';
 import { resolveFuzzyToolName } from './resolution/index';
 import { checkBudget } from './toolbox-budget';
 import type { ToolboxEventType, ToolboxEvents, ToolboxOptions } from './toolbox-contracts';
@@ -204,6 +205,7 @@ function failedResult(toolCall: ToolCall, error: ToolError): ToolExecutionResult
     outcome: 'error',
     content: error.message,
     toolCallId: toolCall.id,
+    ...providerCallIdField(toolCall),
     toolName: toolCall.name,
     result: undefined,
     error,

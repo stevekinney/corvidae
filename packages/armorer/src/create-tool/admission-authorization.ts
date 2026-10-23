@@ -3,6 +3,7 @@ import {
   policyAuthorizationOnlySymbol,
   policyAuthorizationResultSymbol,
 } from '../internal/approval-resume';
+import { providerCallIdField } from '../provider-call-id';
 import type { ToolExecutionResult } from '../types';
 import type {
   AdmissionOutcome,
@@ -91,6 +92,7 @@ function authorizationOnlyResult<TInput>(
     outcome: 'success',
     content: '',
     toolCallId: callId,
+    ...providerCallIdField(parsedState.typedToolCall),
     toolName: input.name,
     result: undefined,
     executedArgumentsEdited: policyState.executedArgumentsEdited,

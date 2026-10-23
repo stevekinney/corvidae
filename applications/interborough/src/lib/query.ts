@@ -141,6 +141,8 @@ export const queryKeys = {
   bureauReviews: {
     list: () => ['bureau-reviews', 'list'] as const,
     detail: (reviewId: string) => ['bureau-reviews', 'detail', reviewId] as const,
+    /** Every review read by its id: an approval superseded at a new round keeps its id. */
+    details: () => ['bureau-reviews', 'detail'] as const,
   },
   /** Raw `weft.system.registry` response (and projections of it) for consumers that read it unvalidated. */
   registry: () => ['registry'] as const,

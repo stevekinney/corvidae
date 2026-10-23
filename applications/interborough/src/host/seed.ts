@@ -270,7 +270,7 @@ function createToolRunnerToolbox(approvalSecret: string) {
     version: '1.0.0',
     description: 'Refund an order. An operator approves each refund before it runs.',
     input: z.object({ orderId: z.string(), cents: z.number() }),
-    metadata: { mutates: true },
+    metadata: { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}' },
     execute: async ({ orderId, cents }) => ({ orderId, refundedCents: cents }),
   });
   return createToolbox([lookupOrder, issueRefund], {

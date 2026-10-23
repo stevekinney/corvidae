@@ -4,6 +4,7 @@ import type {
   ToolPolicyDecision,
   ToolPolicyHooks,
 } from './is-tool';
+import { renderToolSummary } from './tool-summary';
 
 /**
  * What a tool may technically do — the capability axis of the two-axis
@@ -167,6 +168,20 @@ export function approvalStatusToDecision(
 }
 
 /**
+ * A tool that declares `metadata.summary` tells the person deciding what this call does, in the
+ * call's own words, as the approval's message. The policy's reason stays the reason. A decision
+ * that is not an approval, or a tool with no template that can be written, is returned as it was.
+ */
+export function withToolSummary(
+  decision: ToolPolicyDecision,
+  context: Pick<ToolPolicyContext, 'metadata' | 'params'>,
+): ToolPolicyDecision {
+  if (decision.status !== 'needs_approval') return decision;
+  const summary = renderToolSummary(context.metadata, context.params);
+  return summary === undefined ? decision : { ...decision, action: { message: summary } };
+}
+
+/**
  * Creates a `ToolPolicyHooks.beforeExecute` implementing the two-axis
  * approval model: capability tier (what a tool may technically do) x
  * approval mode (when a human must be asked), with `deny > ask > allow`
@@ -186,7 +201,7 @@ export function createApprovalPolicyHooks(
   return {
     beforeExecute(context: ToolPolicyContext): ToolPolicyDecision {
       const result = evaluateCapabilityApproval(context, configuration);
-      return approvalStatusToDecision(context.toolName, result);
+      return withToolSummary(approvalStatusToDecision(context.toolName, result), context);
     },
   };
 }

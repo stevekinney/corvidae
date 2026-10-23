@@ -213,6 +213,27 @@ export async function listContexts(
   return contextPageSchema.parse(await callBureau('bureau.contexts.list', input, options));
 }
 
+/** How many sessions one request of {@link listAllContexts} asks for. */
+const CONTEXTS_PAGE_SIZE = 100;
+
+/**
+ * Every session the caller owns: pages are read, `nextOffset` followed, until the Bureau has no
+ * more. An offset that does not move forward ends the read, so a Bureau that repeats itself cannot
+ * loop it.
+ */
+export async function listAllContexts(options?: {
+  readonly signal?: AbortSignal;
+}): Promise<ChatContext[]> {
+  const contexts: ChatContext[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await listContexts({ limit: CONTEXTS_PAGE_SIZE, offset }, options);
+    contexts.push(...page.contexts);
+    if (page.nextOffset === null || page.nextOffset <= offset) return contexts;
+    offset = page.nextOffset;
+  }
+}
+
 /** What an agent's model takes in the way of media (`bureau.agents.list`'s `media`). */
 export const agentMediaSchema = z.object({
   modalities: z.record(z.string(), z.object({ input: z.boolean(), output: z.boolean() })),
