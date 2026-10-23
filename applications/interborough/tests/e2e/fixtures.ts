@@ -1,7 +1,8 @@
 /**
  * Playwright fixtures shared by every persona-flow spec (plan §11.4). The host serves one local
- * caller and asks for no sign-in, so the page needs no credential: the only fixture is the axe
- * gate, `checkA11y`.
+ * caller and asks for no sign-in, so the page needs no credential. There are two fixtures: the axe
+ * gate, `checkA11y`, and an automatic one that fails a test whose page logged a console error,
+ * threw, or had a request fail, unless `ALLOWED_PAGE_ERRORS` names it.
  */
 import PlaywrightAxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type Page } from '@playwright/test';
@@ -122,10 +123,110 @@ async function assertNoSeriousAxeViolations(page: Page, screenLabel: string): Pr
   ).toEqual([]);
 }
 
-export const test = base.extend<{ checkA11y: (screenLabel: string) => Promise<void> }>({
+/**
+ * A report a test may leave unfixed. The suite-wide list, `ALLOWED_PAGE_ERRORS`, starts empty and
+ * every entry is a reviewed edit: a page that reports an error, or a request that dies, is a
+ * defect (AGENTS.md), so the way to clear one is to fix its cause. An entry is only for a cause
+ * outside Interborough, and names it in `reason`. A test that makes the server fail on purpose
+ * declares the failure it caused through `pageErrors.expect(...)` instead.
+ */
+export type PageErrorAllowance = {
+  /** Matched against the line the page reported (see `describePageError`). */
+  readonly pattern: RegExp;
+  /** Why this report is expected: the cause outside Interborough, or the failure the test caused. */
+  readonly reason: string;
+};
+
+export const ALLOWED_PAGE_ERRORS: readonly PageErrorAllowance[] = [];
+
+/** Playwright's `errorText` for a request the page itself cancelled. */
+const ABORTED_BY_THE_PAGE = 'net::ERR_ABORTED';
+
+/** One line for a console error or a failed request, the way a person would read it. */
+export function describePageError(
+  report:
+    | { readonly kind: 'console'; readonly text: string; readonly location: string }
+    | {
+        readonly kind: 'request';
+        readonly method: string;
+        readonly url: string;
+        readonly error: string;
+      },
+): string {
+  return report.kind === 'console'
+    ? `console error: ${report.text} (${report.location})`
+    : `request failed: ${report.method} ${report.url} (${report.error})`;
+}
+
+/**
+ * What Chromium logs for a response whose status is an error, which is all it logs for one. A test
+ * that answers a request with this status on purpose expects exactly this line.
+ */
+export function loggedFailedResponse(status: number, urlPattern: RegExp): RegExp {
+  return new RegExp(
+    `^console error: Failed to load resource: the server responded with a status of ${status} .*${urlPattern.source}`,
+  );
+}
+
+/** What a page reported during one test, and which of it the test expects. */
+export class PageErrorLog {
+  readonly #reports: string[] = [];
+  readonly #allowed: PageErrorAllowance[] = [...ALLOWED_PAGE_ERRORS];
+
+  constructor(page: Page) {
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return;
+      const { url, lineNumber } = message.location();
+      this.#reports.push(
+        describePageError({
+          kind: 'console',
+          text: message.text(),
+          location: url === '' ? 'no source' : `${url}:${lineNumber}`,
+        }),
+      );
+    });
+    page.on('pageerror', (error) => {
+      this.#reports.push(`uncaught exception: ${error.message}`);
+    });
+    page.on('requestfailed', (request) => {
+      const error = request.failure()?.errorText ?? 'unknown';
+      // An abort is the page cancelling a request it no longer wants (a query whose view was left,
+      // a run the person stopped). Chromium does not log it, and it is how a stream is meant to end
+      // (COR-1643), so it is not a failure. Every other way a request dies is.
+      if (error === ABORTED_BY_THE_PAGE) return;
+      this.#reports.push(
+        describePageError({ kind: 'request', method: request.method(), url: request.url(), error }),
+      );
+    });
+  }
+
+  /** Declares a report this test causes on purpose, such as a request it answers with a 500. */
+  expect(allowance: PageErrorAllowance): void {
+    this.#allowed.push(allowance);
+  }
+
+  /** What the page reported that nothing allows. */
+  unexpected(): string[] {
+    return this.#reports.filter((line) => !this.#allowed.some((entry) => entry.pattern.test(line)));
+  }
+}
+
+export const test = base.extend<{
+  checkA11y: (screenLabel: string) => Promise<void>;
+  pageErrors: PageErrorLog;
+}>({
   checkA11y: async ({ page }, use) => {
     await use((screenLabel: string) => assertNoSeriousAxeViolations(page, screenLabel));
   },
+  // Every test fails when its page reported an error: the suite used to pass over them.
+  pageErrors: [
+    async ({ page }, use) => {
+      const log = new PageErrorLog(page);
+      await use(log);
+      expect(log.unexpected(), 'the page reported errors the test did not expect').toEqual([]);
+    },
+    { auto: true },
+  ],
 });
 
 export { expect };

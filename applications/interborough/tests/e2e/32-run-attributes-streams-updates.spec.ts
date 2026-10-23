@@ -21,7 +21,7 @@ import {
   UPDATE_DESK_REPLAY_RUN_ID,
   UPDATE_DESK_RUN_ID,
 } from '../../fixtures/engine-console-ids.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 function attributes(page: Page): Locator {
   return page.getByRole('region', { name: 'Search attributes' });
@@ -169,7 +169,12 @@ test('operator reads a run’s update history, then sends an update that outlast
 test('a browser that sends an update over REST and sees it time out does not send it again', async ({
   page,
   request,
+  pageErrors,
 }) => {
+  pageErrors.expect({
+    pattern: loggedFailedResponse(504, /\/update\/slow/),
+    reason: 'the test sends an update that outlasts its wait, which the route answers with a 504',
+  });
   // The console sends over JSON-RPC, so this goes straight to the REST route with a browser's `fetch`.
   // A request answered `Request Timeout` is replayed by the browser, each replay a new update; the
   // route answers a timeout `504`, which no user agent replays.

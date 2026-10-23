@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { DEFAULT_SSE_HEARTBEAT_INTERVAL_MS } from './operations/sse-stream.ts';
 import {
   minimalServeOptions,
   minimalServerContext,
@@ -12,6 +13,7 @@ import {
   clampWorkerReconnectGracePeriod,
   registerStackDisposers,
   resolveNetworkConfig,
+  SERVER_IDLE_TIMEOUT_SECONDS,
   WEBSOCKET_MAX_PAYLOAD_BYTES,
 } from './serve-internals.ts';
 
@@ -254,6 +256,21 @@ describe('registerStackDisposers', () => {
     expect(response).toBeInstanceOf(Response);
     expect(response?.status).toBe(503);
     expect(await response?.text()).toBe('Server not ready');
+  });
+
+  it('keeps a connection open longer than the event streams stay quiet between pings', () => {
+    const config = buildBunServeConfig(
+      7233,
+      '127.0.0.1',
+      false,
+      {},
+      undefined,
+      async () => new Response('ok'),
+      { open() {}, message() {}, close() {} },
+    );
+    // Bun's default of 10 seconds cut a stream between two 15 second pings.
+    expect(config.idleTimeout).toBe(SERVER_IDLE_TIMEOUT_SECONDS);
+    expect(SERVER_IDLE_TIMEOUT_SECONDS * 1000).toBeGreaterThan(DEFAULT_SSE_HEARTBEAT_INTERVAL_MS);
   });
 
   it('adds tls to the Bun serve config only when tls options exist', () => {

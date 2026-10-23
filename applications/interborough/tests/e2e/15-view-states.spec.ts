@@ -10,7 +10,7 @@ import type { Page, Route } from '@playwright/test';
 import { VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test, type PageErrorLog } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
 
@@ -96,8 +96,21 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
 };
 
 /** Answer the view's probe as the server would for `outcome`; every other request goes through. */
-async function drive(page: Page, view: ViewName, outcome: Outcome): Promise<void> {
+async function drive(
+  page: Page,
+  pageErrors: PageErrorLog,
+  view: ViewName,
+  outcome: Outcome,
+): Promise<void> {
   if (outcome === 'ready') return;
+  if (outcome === 'error' || outcome === 'forbidden') {
+    // The test answers the probe with an error status, and Chromium logs every such response.
+    const status = outcome === 'error' ? 500 : 403;
+    pageErrors.expect({
+      pattern: loggedFailedResponse(status, /./),
+      reason: `the test answers the ${view} probe with a ${status}`,
+    });
+  }
   const probe = PROBES[view];
   await page.route('**/*', async (route: Route) => {
     const request = route.request();
@@ -153,6 +166,7 @@ for (const view of VIEW_NAMES) {
         page,
         request,
         checkA11y,
+        pageErrors,
       }) => {
         await page.setViewportSize({ width, height: 900 });
         // The chat list has something to show once the caller has a session,
@@ -160,7 +174,7 @@ for (const view of VIEW_NAMES) {
         if (view === 'chat' && outcome === 'ready') {
           await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
         }
-        await drive(page, view, outcome);
+        await drive(page, pageErrors, view, outcome);
         await page.goto(PATHS[view]);
 
         const frame = page.locator(`[data-view="${view}"]`);

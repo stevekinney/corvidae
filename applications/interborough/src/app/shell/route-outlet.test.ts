@@ -13,6 +13,7 @@ import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Placeholder from '../../routes/placeholder/index.svelte';
 import { ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
 import { routes } from '../routes.ts';
+import { CHUNK_RELOAD_KEY } from './chunk-reload.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -106,6 +107,66 @@ describe('the route outlet', () => {
     } finally {
       load.mockRestore();
     }
+  });
+});
+
+describe('a route whose chunk is gone after a rebuild', () => {
+  const MISSING = () =>
+    new TypeError('Failed to fetch dynamically imported module: http://localhost/assets/a-1.js');
+
+  async function openAgentsWithLoad(load: () => Promise<never>) {
+    restore = installFetchImplementation(emptyTrail());
+    landAt('/audit');
+    const page = mount();
+    await page.findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
+    const agents = routes.find((route) => route.pattern === '/agents');
+    if (agents === undefined) throw new Error('Expected an /agents route.');
+    return { page, loading: spyOn(agents, 'load').mockImplementation(load) };
+  }
+
+  test('reloads the page once, and keeps the loading state while it goes', async () => {
+    window.sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    const reload = spyOn(window.location, 'reload').mockImplementation(() => {});
+    const { page, loading } = await openAgentsWithLoad(() => Promise.reject(MISSING()));
+    try {
+      router.navigate('/agents');
+      await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+      expect(
+        page.queryByRole('heading', { level: 1, name: ROUTE_LOAD_FAILURE_COPY.title }),
+      ).toBeNull();
+      expect(page.container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    } finally {
+      loading.mockRestore();
+      reload.mockRestore();
+      window.sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    }
+  });
+
+  test('shows the failure when the reload did not help, rather than reloading again', async () => {
+    const reload = spyOn(window.location, 'reload').mockImplementation(() => {});
+    const { page, loading } = await openAgentsWithLoad(() => Promise.reject(MISSING()));
+    try {
+      // The guard a first reload left behind: the chunk is still missing after it.
+      window.sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+      router.navigate('/agents');
+      expect(
+        await page.findByRole('heading', { level: 1, name: ROUTE_LOAD_FAILURE_COPY.title }),
+      ).not.toBeNull();
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      loading.mockRestore();
+      reload.mockRestore();
+      window.sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    }
+  });
+
+  test('lifts the guard once a route loads, so a later rebuild reloads again', async () => {
+    window.sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+    restore = installFetchImplementation(emptyTrail());
+    landAt('/audit');
+    const { findByRole } = mount();
+    await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
+    expect(window.sessionStorage.getItem(CHUNK_RELOAD_KEY)).toBeNull();
   });
 });
 

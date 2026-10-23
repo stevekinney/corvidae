@@ -104,6 +104,17 @@ const MAX_CANCELLATION_GRACE_PERIOD_MS = 300_000;
  * @internal Exported only for test assertions.
  */
 export const WEBSOCKET_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024; // 4 MiB
+
+/**
+ * Seconds a connection may send and receive nothing before Bun closes it. Bun's own default is 10,
+ * which is shorter than the event streams' 15 second heartbeat
+ * (`DEFAULT_SSE_HEARTBEAT_INTERVAL_MS`): a quiet stream was cut between pings, ending without its
+ * terminating chunk, so a browser logged `ERR_INCOMPLETE_CHUNKED_ENCODING` and a client reconnected
+ * every 10 seconds. It must stay above the heartbeat.
+ *
+ * @internal Exported only for test assertions.
+ */
+export const SERVER_IDLE_TIMEOUT_SECONDS = 60;
 const AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE = 'WEFT_SERVER_AUTHENTICATION_REQUIRED';
 /**
  * @internal
@@ -484,6 +495,7 @@ export function buildBunServeConfig(
     development,
     routes,
     fetch: fetchHandler,
+    idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
     websocket: { ...websocketCallbacks, maxPayloadLength: WEBSOCKET_MAX_PAYLOAD_BYTES },
   };
   if (tlsOptions) {

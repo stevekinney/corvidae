@@ -258,6 +258,18 @@ describe('a run’s page', () => {
     await findByRole('heading', { level: 1, name: TASK_COPY.notFound.title });
   });
 
+  test('opens no stream for a run the Bureau does not know, which would answer it with a 404', async () => {
+    const { findByRole } = open('/runs/run-9', { scopes: WITHOUT_ENGINE });
+    await findByRole('heading', { level: 1, name: TASK_COPY.notFound.title });
+    expect(stub?.streamRequests).toEqual([]);
+  });
+
+  test('follows a task the Bureau has, once it has read it', async () => {
+    const { findByRole } = open('/runs/run-1', { world: { tasks: [TASK] } });
+    await findByRole('heading', { level: 1, name: 'echo' });
+    await waitFor(() => expect(stub?.streamRequests).toEqual(['run-1']));
+  });
+
   test('is a goal’s attempt even when the goal is past the first page of goals', async () => {
     const goals = ['goal-1', 'goal-2', 'goal-3'].map((id) =>
       goalFixture(id, { attempts: [goalAttemptFixture(`${id}-a0`)] }),

@@ -384,6 +384,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const publicServer = Bun.serve<WebSocketRelayData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
+      // Bun closes a connection that sends nothing for 10 seconds by default. The pages hold
+      // streams that are quiet for longer: the engine's event feed pings every 15 seconds, and a
+      // chat run waiting on a person's answer sends nothing at all. A stream cut that way ends
+      // without its terminating chunk, and Chromium logs `ERR_INCOMPLETE_CHUNKED_ENCODING` for each
+      // one (COR-1643). The listener is loopback-only behind the request guard, so a connection
+      // that stays open costs nothing a timeout would save.
+      idleTimeout: 0,
       routes: {
         ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY, refuse),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>

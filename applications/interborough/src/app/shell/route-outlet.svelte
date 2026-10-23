@@ -14,6 +14,7 @@
 
   import { router } from '../../lib/router.svelte.ts';
   import { ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
+  import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
   import FaultBoundary from '../fault-boundary.svelte';
   import ViewFrame from '../view-frame.svelte';
 
@@ -71,10 +72,14 @@
         activeComponent = loadedModule.default;
         loadedKey = key;
         loading = false;
+        clearChunkReloadGuard();
         return undefined;
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return undefined;
+        // The host was rebuilt since this tab loaded, so the chunk's name is gone: fetch the new
+        // page once instead of showing the failure. The skeleton stays up while the page goes.
+        if (reloadOnceForMissingChunk(error)) return undefined;
         // The previous route's component must not stay on screen under the new address.
         activeComponent = null;
         loading = false;
