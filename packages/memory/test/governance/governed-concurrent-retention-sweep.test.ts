@@ -284,10 +284,17 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
 
     describe('a rival receipt that changes between the sweep reading the record and claiming it', () => {
       const snapshots = ['absent', 'open-pending', 'open-failed'] as const;
-      const decisions = ['open', 'closed-failed', 'closed-succeeded', 'absent'] as const;
+      const decisions = [
+        'open',
+        'open-failed',
+        'closed-failed',
+        'closed-succeeded',
+        'absent',
+      ] as const;
       type Decision = (typeof decisions)[number];
       const actions = {
         open: 'owned',
+        'open-failed': 'retry',
         'closed-failed': 'retry',
         'closed-succeeded': 'done',
         absent: 'take-over',
@@ -369,6 +376,20 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
                 pending.push(a.delete(principalA, { id: recordId, collection: 'notes' }));
                 await lane.parked.reached;
               }
+            }
+            if (decision === 'open-failed') {
+              // A's synchronous lane failed, and its bounded-async rows are still pending.
+              if (snapshot === 'absent') {
+                lane.behavior = 'fail';
+                await a.sweepRetention(retentionService);
+              }
+              if (snapshot === 'open-pending') {
+                releaseA('fail');
+                await Promise.all(pending.splice(0));
+              }
+              const [failed] = await receiptsFor(fixture, recordId);
+              expect(failed?.open).toBe(true);
+              expect(statusOf(failed, 'source-evidence')).toBe('failed');
             }
             if (decision === 'closed-failed') {
               if (snapshot === 'absent') {
