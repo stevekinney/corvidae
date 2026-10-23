@@ -2,7 +2,12 @@
  * COR-1577 — the module that derives a `bureau.run()` run's human-wait reviews, exercised with
  * fakes for the engine and the checkpoint, where a read can be made to fail on demand.
  */
-import type { DurableRunDeps } from '@lostgradient/operative';
+import {
+  createRequestHumanInputTool,
+  type DurableRunDeps,
+  HumanWaitParkedEvent,
+  type HumanInputSchema,
+} from '@lostgradient/operative';
 import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
@@ -20,14 +25,18 @@ const PARKED_STEP = {
   ],
 };
 
-function build(engine: Pick<RegistryAgnosticEngine, 'get'>, clock = { now: 1_000 }) {
+function build(
+  engine: Pick<RegistryAgnosticEngine, 'get'>,
+  clock = { now: 1_000 },
+  steps: readonly (typeof PARKED_STEP)[] = [PARKED_STEP],
+) {
   const diagnostics: Diagnostic[] = [];
   const dependencies: RunHumanWaitsDependencies = {
     store: { getRun: () => undefined },
     catalogRunIds: new Set(),
     runAttribution: new Map(),
     engine: () => engine as RegistryAgnosticEngine,
-    checkpointSteps: async () => [PARKED_STEP],
+    checkpointSteps: async () => steps,
     now: () => clock.now,
     recordDecision: async () => undefined,
     createError: (message) => new Error(message),
@@ -88,6 +97,60 @@ describe('attach', () => {
     expect(diagnostics[0]).toMatchObject({ level: 'error', scope: 'recovery' });
     expect(diagnostics[0]?.message).toContain('run-1');
     expect(diagnostics[0]?.message).toContain('storage read failed');
+  });
+});
+
+describe('a wait with an input schema (COR-1487)', () => {
+  const schema: HumanInputSchema = {
+    type: 'object',
+    properties: { environment: { type: 'string', enum: ['staging', 'production'] } },
+    required: ['environment'],
+  };
+  const engine = {
+    get: async () => ({ status: 'suspended', waitingForSignals: ['answer'] }) as never,
+  };
+
+  /** The step the checkpoint commits for a real tool call, read back from its JSON form. */
+  function committedStep(inputSchemas: Record<string, HumanInputSchema>): typeof PARKED_STEP {
+    const tool = createRequestHumanInputTool({
+      context: { pendingHumanWait: undefined, pendingWakeup: undefined, durable: true },
+      inputSchemas,
+    });
+    const result = tool.execute({ signalName: 'answer', prompt: 'Which environment?' });
+    return JSON.parse(JSON.stringify({ results: [{ toolName: 'requestHumanInput', result }] }));
+  }
+
+  it('lists the schema of a park a restart restores from the checkpoint', async () => {
+    const { waits } = build(engine, undefined, [committedStep({ answer: schema })]);
+
+    await waits.attach('run-1', { agentName: 'asker' }, {} as DurableRunDeps);
+
+    expect(waits.list()).toMatchObject([
+      { id: 'human-wait:run-1:answer:0', prompt: 'Which environment?', inputSchema: schema },
+    ]);
+  });
+
+  it('lists no schema for a park committed without one', async () => {
+    const { waits } = build(engine, undefined, [committedStep({})]);
+
+    await waits.attach('run-1', { agentName: 'asker' }, {} as DurableRunDeps);
+
+    expect(waits.list()).toHaveLength(1);
+    expect(waits.list()[0]).not.toHaveProperty('inputSchema');
+  });
+
+  it('lists the schema of a park the run makes after it is attached', async () => {
+    const { waits } = build(engine, undefined, []);
+    const services = {} as DurableRunDeps;
+    await waits.attach('run-2', { agentName: 'asker' }, services);
+
+    (services.emitter as unknown as EventTarget).dispatchEvent(
+      new HumanWaitParkedEvent('answer', 'run-2', 'Which?', schema),
+    );
+
+    expect(waits.list()).toMatchObject([
+      { id: 'human-wait:run-2:answer:0', prompt: 'Which?', inputSchema: schema },
+    ]);
   });
 });
 

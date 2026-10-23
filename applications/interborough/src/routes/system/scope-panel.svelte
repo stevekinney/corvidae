@@ -93,7 +93,7 @@
     display: flex;
     align-items: baseline;
     gap: 12px;
-    padding: 11px 16px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border-bottom: 1px solid var(--cinder-border-muted);
   }
 

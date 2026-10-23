@@ -227,6 +227,7 @@ export const PROFILE_RULES: readonly ProfileRule[] = [
   { category: 'layout', path: /(^|[.-])(width|slide-size)(\.|$)/, profile: 'width' },
   { category: 'layout', path: /aspect-ratio$/, profile: 'aspect-ratio' },
   { category: 'typography', path: /(^|[.-])font[.-]size(\.|$)/, profile: 'font-size' },
+  { category: 'typography', path: /^type-role\./, profile: 'font-size' },
   { category: 'typography', path: /^tracking\./, profile: 'letter-spacing' },
   { category: 'typography', path: /^leading\.|(^|\.)line-height$/, profile: 'line-height' },
   { category: 'typography', path: /tab-size$/, profile: 'tab-size' },

@@ -20,6 +20,7 @@
     "conversationalist": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
+    "ajv": "catalog:",
     "zod": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@google/genai": "catalog:",

@@ -131,7 +131,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 9px 0;
+    padding: var(--cinder-space-2) 0;
     border-top: 1px solid var(--cinder-border);
     list-style: none;
   }

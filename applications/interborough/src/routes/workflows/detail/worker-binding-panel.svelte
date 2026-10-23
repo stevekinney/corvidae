@@ -220,7 +220,7 @@
 
   .weft-worker-binding__history {
     margin: 0;
-    padding-inline-start: 18px;
+    padding-inline-start: var(--cinder-space-4);
     font-size: var(--cinder-text-xs);
   }
 

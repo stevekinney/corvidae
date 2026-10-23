@@ -117,7 +117,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 12px;
+    padding: var(--cinder-density-pad-card);
     overflow-x: auto;
   }
 

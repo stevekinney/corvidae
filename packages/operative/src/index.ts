@@ -505,6 +505,13 @@ export type {
   ScheduleSelfTool,
 } from './create-schedule-self-tool';
 export * from './create-schedule-wakeup-tool';
+export {
+  HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES,
+  HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH,
+  HumanInputSchemaError,
+  humanInputSchemaOf,
+  type HumanInputSchema,
+} from './human-input-schema';
 export type { RefusedParkRequest } from './park-refusal';
 // F3/D6 — thrown by scheduleWakeup/requestHumanInput when invoked outside a
 // durable run (AB-41's decision record, implemented by AB-43).

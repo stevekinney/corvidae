@@ -157,7 +157,7 @@
   .weft-bulk-dialog__chip {
     display: block;
     margin-bottom: 12px;
-    padding: 8px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-sm);
     font-family: var(--cinder-font-mono);

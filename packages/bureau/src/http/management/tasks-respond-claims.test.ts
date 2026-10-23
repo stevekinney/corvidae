@@ -415,3 +415,107 @@ describe('bureau.tasks.respond and a retry after the approval was gated again', 
     expect(await ledger.read(decisionIdentity)).toMatchObject({ claim: { round: 2 } });
   });
 });
+
+describe('bureau.tasks.respond completes a form submission from its claim', () => {
+  const schema = {
+    type: 'object',
+    properties: { name: { type: 'string' } },
+    required: ['name'],
+  };
+  const otherReviewId = 'human-wait:run-1:other:1';
+  const otherWait = { kind: 'human-wait' as const, reviewId: otherReviewId, signalName: 'other' };
+  const submit = { taskId: 'run-1', messageId: 'm1', data: { name: 'x' } };
+  const submitDigest = digestCommandPayload({ data: JSON.stringify({ name: 'x' }) });
+  const claimWithSubmission = (ledger: ReturnType<typeof newLedger>) =>
+    ledger.claim(identity, submitDigest, { reviewId, submission: { value: { name: 'x' } } });
+  const applied = {
+    id: reviewId,
+    kind: 'human-wait' as const,
+    decision: 'approve' as const,
+    result: { outcome: 'completed' },
+  };
+
+  it('delivers the recorded payload when the retry now sees two waits and no signal name', async () => {
+    const ledger = newLedger();
+    await claimWithSubmission(ledger);
+    const delivered: unknown[] = [];
+
+    const result = await tasksRespondOperation.invoke({
+      input: submit,
+      host: hostOver(ledger, {
+        openWaits: [openWait, otherWait],
+        getReview: async (id: string) => ({ ...resolved('pending', undefined), id }),
+        resolveReview: async (request) => {
+          delivered.push(request);
+          return applied;
+        },
+      }),
+      principal,
+    } as never);
+
+    expect(result).toMatchObject({ reviewId, receipt: 'applied' });
+    expect(delivered).toEqual([expect.objectContaining({ id: reviewId, payload: { name: 'x' } })]);
+  });
+
+  it('returns the applied receipt when the signal was delivered and the review no longer has its schema', async () => {
+    const ledger = newLedger();
+    await claimWithSubmission(ledger);
+
+    // The audit record of a resolved review omits the schema, so a retry must not judge the data
+    // against what it now finds.
+    const result = await tasksRespondOperation.invoke({
+      input: submit,
+      host: hostOver(ledger, {
+        openWaits: [],
+        getReview: async () => resolved('approved', owner),
+      }),
+      principal,
+    } as never);
+
+    expect(result).toMatchObject({ reviewId, receipt: 'applied' });
+    expect(await ledger.read(identity)).toMatchObject({ state: 'completed' });
+  });
+
+  it('delivers the recorded payload even when the review now carries a different schema', async () => {
+    const ledger = newLedger();
+    await claimWithSubmission(ledger);
+    const delivered: unknown[] = [];
+
+    await tasksRespondOperation.invoke({
+      input: submit,
+      host: hostOver(ledger, {
+        openWaits: [openWait],
+        getReview: async () =>
+          ({
+            ...resolved('pending', undefined),
+            inputSchema: { type: 'object', properties: { age: { type: 'integer' } } },
+          }) as never,
+        resolveReview: async (request) => {
+          delivered.push(request);
+          return applied;
+        },
+      }),
+      principal,
+    } as never);
+
+    expect(delivered).toEqual([expect.objectContaining({ payload: { name: 'x' } })]);
+  });
+
+  it('records the validated payload in the claim it makes', async () => {
+    const ledger = newLedger();
+    await tasksRespondOperation.invoke({
+      input: { ...submit, data: { name: ' x' } },
+      host: hostOver(ledger, {
+        openWaits: [openWait],
+        getReview: async () =>
+          ({ ...resolved('pending', undefined), inputSchema: schema }) as never,
+        resolveReview: async () => applied,
+      }),
+      principal,
+    } as never);
+
+    expect(await ledger.read({ ...identity })).toMatchObject({
+      claim: { reviewId, submission: { value: { name: ' x' } } },
+    });
+  });
+});

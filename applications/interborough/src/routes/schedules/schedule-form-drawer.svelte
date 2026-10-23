@@ -449,7 +449,7 @@
   }
 
   .weft-schedule-drawer__title {
-    font-size: var(--cinder-text-md, 15px);
+    font-size: var(--cinder-text-md);
     font-weight: 600;
   }
 
@@ -484,7 +484,7 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 6px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);

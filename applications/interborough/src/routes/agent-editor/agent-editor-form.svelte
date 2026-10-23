@@ -56,25 +56,27 @@
 </script>
 
 <form class="weft-agent-form" aria-label={copy.formLabel} onsubmit={submit}>
-  <Input
-    id="agent-name"
-    label={copy.nameLabel}
-    description={copy.nameDescription}
-    bind:value={editor.name}
-  />
+  <div class="weft-agent-form__pair">
+    <Input
+      id="agent-name"
+      label={copy.nameLabel}
+      description={copy.nameDescription}
+      bind:value={editor.name}
+    />
 
-  <Input
-    id="agent-identifier"
-    label={copy.identifierLabel}
-    description={editor.mode === 'create'
-      ? copy.identifierCreateDescription
-      : copy.identifierEditDescription}
-    variant="code"
-    readonly={editor.mode === 'edit'}
-    value={editor.identifier}
-    onValueChange={(next) => (editor.identifier = next)}
-    error={editor.identifierError}
-  />
+    <Input
+      id="agent-identifier"
+      label={copy.identifierLabel}
+      description={editor.mode === 'create'
+        ? copy.identifierCreateDescription
+        : copy.identifierEditDescription}
+      variant="code"
+      readonly={editor.mode === 'edit'}
+      value={editor.identifier}
+      onValueChange={(next) => (editor.identifier = next)}
+      error={editor.identifierError}
+    />
+  </div>
 
   <Input
     id="agent-description"
@@ -99,6 +101,14 @@
     disabled={!editor.hasModels}
   />
 
+  <Textarea
+    id="agent-instructions"
+    label={copy.instructionsLabel}
+    description={copy.instructionsDescription}
+    rows={8}
+    bind:value={editor.instructions}
+  />
+
   <CheckboxGroup label={copy.toolsLabel} description={copy.toolsDescription}>
     {#each editor.toolChoices as tool (tool.name)}
       <Checkbox
@@ -112,14 +122,6 @@
       <p class="weft-agent-form__note">{copy.noTools}</p>
     {/each}
   </CheckboxGroup>
-
-  <Textarea
-    id="agent-instructions"
-    label={copy.instructionsLabel}
-    description={copy.instructionsDescription}
-    rows={12}
-    bind:value={editor.instructions}
-  />
 
   {#if editor.mode === 'edit'}
     <div class="weft-agent-form__published">
@@ -149,14 +151,21 @@
   .weft-agent-form {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    max-inline-size: 48rem;
+    gap: var(--cinder-space-4);
+  }
+
+  /* The name and the identifier it follows are one thought: side by side where there is room. */
+  .weft-agent-form__pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: var(--cinder-space-4);
+    align-items: start;
   }
 
   .weft-agent-form__published {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--cinder-space-1);
   }
 
   .weft-agent-form__note {
@@ -168,6 +177,6 @@
   .weft-agent-form__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--cinder-space-2);
   }
 </style>
