@@ -6,7 +6,7 @@ import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
-import { getTask, listTasks } from '../lib/bureau-tasks.ts';
+import { listTasks } from '../lib/bureau-tasks.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
 import { listMemories } from '../lib/memory-client.ts';
@@ -66,6 +66,18 @@ async function probeAudit(): Promise<ViewProbeResult> {
 async function probeGoals(): Promise<ViewProbeResult> {
   const page = await listGoals({ limit: 1 });
   return { empty: page.goals.length === 0 };
+}
+
+/**
+ * The runs: empty when the Bureau has neither a task nor a goal to list. It never asks the engine,
+ * which a caller without `workflows:read` may not, and whose own list does not hold what the Bureau's
+ * does (the page lists tasks and goals).
+ */
+async function probeRuns(): Promise<ViewProbeResult> {
+  const [tasks, goals] = await Promise.all([listTasks({ limit: 1 }), listGoals({ limit: 1 })]);
+  const empty = tasks.tasks.length === 0 && goals.goals.length === 0;
+  // A first run can arrive while the page is open, so an empty page asks again.
+  return empty ? { empty, recheckMs: RUNS_RECHECK_MS } : { empty };
 }
 
 /** The editor for a new agent needs the models and tools it may offer, so it asks for them. */
@@ -192,30 +204,13 @@ export function probeFor(
     }
     case 'runs':
       if (parameters['id'] !== undefined) return undefined;
-      return async (client) => {
-        const page = await client.list({ limit: 1 });
-        return { empty: page.items.length === 0 };
-      };
+      return probeRuns;
     case 'schedules':
       // One schedule's page asks for that schedule, and says in its own words when it is not there.
       if (parameters['id'] !== undefined) return undefined;
       return async (client) => {
         const page = await client.listSchedules({});
         return { empty: page.items.length === 0 };
-      };
-    case 'tasks':
-      // One task's page asks for that task, which settles whether it exists and may be seen. The
-      // list is empty when the caller has no task.
-      if (parameters['id'] !== undefined) {
-        const taskId = parameters['id'];
-        return async () => {
-          await getTask(taskId);
-          return { empty: false };
-        };
-      }
-      return async () => {
-        const page = await listTasks({ limit: 1 });
-        return { empty: page.tasks.length === 0 };
       };
     case 'reviews':
       // The Bureau's list is what the view can be refused, and nothing else it says is the view's

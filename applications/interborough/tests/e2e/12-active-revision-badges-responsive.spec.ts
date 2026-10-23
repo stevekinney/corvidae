@@ -24,14 +24,14 @@ test('list-row active-revision badges fit across widths and themes', async ({ pa
       const noOverflow = () =>
         page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
-      await page.goto('/runs?type=order-processing');
+      await page.goto('/workflows/order-processing/runs');
       const row = page.getByRole('row', { name: /order-processing/ }).first();
       await expect(row).toBeVisible();
       await expect(row.getByText(BADGE).first()).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(await noOverflow()).toBe(true);
 
-      await page.goto('/runs?type=fulfillment-parent');
+      await page.goto('/workflows/fulfillment-parent/runs');
       const parentLink = page.getByRole('table', { name: 'Workflows' }).getByRole('link').first();
       await expect(parentLink).toBeVisible();
       await parentLink.click();

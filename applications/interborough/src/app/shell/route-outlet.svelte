@@ -50,7 +50,7 @@
     if (definition.redirect !== undefined) {
       // The route renders nothing: it names where to go, and a failure to say lands on the
       // chat list, which shows what is wrong in its own words.
-      definition.redirect().then(
+      definition.redirect({ params: match.params }).then(
         (path) => {
           if (!cancelled) router.navigate(path, { replace: true });
           return undefined;

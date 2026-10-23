@@ -1,7 +1,15 @@
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { cancelGoal, createGoal, GOAL_STATUSES, goalHasEnded, listGoals } from './bureau-goals.ts';
+import { goalFixture } from './bureau-fixtures.test-support.ts';
+import {
+  cancelGoal,
+  createGoal,
+  GOAL_STATUSES,
+  goalHasEnded,
+  listAllGoals,
+  listGoals,
+} from './bureau-goals.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
 
 let stub: BureauStub | undefined;
@@ -70,5 +78,35 @@ describe('the Bureau’s goals', () => {
       { goalRunId: 'g-1', expectedRevision: 8 },
       { goalRunId: 'g-1' },
     ]);
+  });
+});
+
+describe('every goal the Bureau holds', () => {
+  test('is read a page at a time, following the offset until the Bureau has no more', async () => {
+    const all = Array.from({ length: 5 }, (_, index) => goalFixture(`goal-${String(index)}`));
+    stub = installBureauStub({
+      'bureau.goals.list': (params) => {
+        const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
+        // The Bureau answers no more than two to a page, however many are asked for.
+        const page = all.slice(offset, offset + 2);
+        return { goals: page, nextOffset: offset + 2 < all.length ? offset + 2 : null };
+      },
+    });
+
+    const goals = await listAllGoals();
+
+    expect(goals.map((goal) => goal.goalRunId)).toEqual(all.map((goal) => goal.goalRunId));
+    expect(stub.callsTo('bureau.goals.list').map((call) => call.params['offset'])).toEqual([
+      0, 2, 4,
+    ]);
+  });
+
+  test('is not read for ever from a Bureau whose offset does not move', async () => {
+    stub = installBureauStub({
+      'bureau.goals.list': () => ({ goals: [goalFixture('goal-0')], nextOffset: 0 }),
+    });
+
+    expect(await listAllGoals()).toHaveLength(1);
+    expect(stub.callsTo('bureau.goals.list')).toHaveLength(1);
   });
 });

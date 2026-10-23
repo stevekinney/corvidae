@@ -13,7 +13,6 @@ export const VIEW_NAMES = [
   'workflows',
   'runs',
   'schedules',
-  'tasks',
   'reviews',
   'workers',
   'storage',
@@ -59,8 +58,11 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // The catalog of definitions, and under it one type's page, its runs, and its editor. It can be
   // empty when neither the engine nor the Bureau lists a workflow, and a type's runs can be empty.
   workflows: { scopes: ['workflows:read'], canBeEmpty: true },
+  // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
+  // the Engine tab of a run, the start wizard, and the aggregate view read the engine, and they say
+  // so themselves when the caller may not.
   runs: {
-    scopes: ['workflows:read'],
+    scopes: [],
     canBeEmpty: true,
     creating: (search) => search.get('view') === 'start',
   },
@@ -69,9 +71,6 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
     creating: (search) => search.get('create') === '1',
   },
-  // The tasks the Bureau shows the caller, and one task's page. It is not in the navigation: a
-  // task is reached from the chat session it belongs to, from a run's page, and from a review.
-  tasks: { scopes: [], canBeEmpty: true },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because
   // the engine's reviews are listed beside the Bureau's and the probe asks only the Bureau.

@@ -95,7 +95,7 @@ test.describe('a run that asks a question and then for an approval', () => {
 
     await send(page, 'staging');
 
-    const approval = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
+    const approval = page.locator('.ib-decision');
     await expect(approval).toBeVisible();
     await expect(question(page, ENVIRONMENT_QUESTION)).toHaveCount(0);
     await expect(page.getByText('staging', { exact: true })).toHaveCount(1);

@@ -1,13 +1,13 @@
 /**
- * The tasks of a chat session (`bureau.tasks.list` with the session's `contextId`), each linking
- * to its page at `/tasks/:id`.
+ * The runs of a chat session (`bureau.tasks.list` with the session's `contextId`), said as one
+ * sentence that links to the run to open (`/runs/:id`): what waits on the person, what is going,
+ * what failed, and nothing when every run finished well.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
-import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -38,142 +38,79 @@ function mount(sessionId: string, tasks = [taskFixture()], streaming = false) {
   } as never);
 }
 
-describe('the tasks of a chat session', () => {
-  test('are read again when a run in the session ends, because the run is a task that has just finished', async () => {
-    stub = installBureauWorld(emptyBureauWorld({ tasks: [taskFixture({ id: 'run-1' })] }));
+const sentence = (container: HTMLElement) =>
+  container.querySelector<HTMLAnchorElement>('.weft-chat-strip a');
+
+describe('the runs of a chat session', () => {
+  test('say how many wait on the person, and link to the first that does', async () => {
+    const { container } = mount('session-1', [
+      taskFixture({ id: 'run-1', contextId: 'session-1', status: 'completed' }),
+      taskFixture({ id: 'run-2', contextId: 'session-1', status: 'input-required' }),
+      taskFixture({ id: 'run-3', contextId: 'session-other' }),
+    ]);
+    await waitFor(() => expect(sentence(container)).not.toBeNull());
+    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
+      contextId: 'session-1',
+      limit: 50,
+    });
+    expect(sentence(container)?.textContent).toBe('1 run is waiting on you');
+    expect(sentence(container)?.getAttribute('href')).toBe('/runs/run-2');
+    // No run identifier is shown to the person.
+    expect(container.textContent).not.toContain('run-2');
+  });
+
+  test('say that a run is working, then are read again when the run ends', async () => {
+    stub = installBureauWorld(
+      emptyBureauWorld({ tasks: [taskFixture({ id: 'run-1', status: 'working' })] }),
+    );
     const view = render(QueryPage, {
       props: { page: SessionTasks, pageProps: { sessionId: 'session-1', streaming: true } },
     } as never);
-    await waitFor(() => expect(view.container.querySelectorAll('li').length).toBe(1));
+    await waitFor(() => expect(sentence(view.container)?.textContent).toBe('1 run is working'));
     expect(stub.callsTo('bureau.tasks.list').length).toBe(1);
 
     stub.on('bureau.tasks.list', () => ({
-      tasks: [taskFixture({ id: 'run-1' }), taskFixture({ id: 'run-2' })],
+      tasks: [taskFixture({ id: 'run-1', status: 'failed' })],
       nextPageToken: null,
     }));
     await view.rerender({
       page: SessionTasks,
       pageProps: { sessionId: 'session-1', streaming: false },
     } as never);
-    await waitFor(() => expect(view.container.querySelectorAll('li').length).toBe(2));
+    await waitFor(() => expect(sentence(view.container)?.textContent).toBe('Run failed'));
   });
 
-  test('page past fifty with Load more, as the task list does', async () => {
-    const many = Array.from({ length: 51 }, (_, index) =>
-      taskFixture({ id: `run-${String(index).padStart(2, '0')}`, contextId: 'session-1' }),
-    );
-    const { container, getByRole, queryByRole } = mount('session-1', many);
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
-    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
-      contextId: 'session-1',
-      limit: 50,
-    });
-
-    await fireEvent.click(getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(51));
-    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
-      contextId: 'session-1',
-      limit: 50,
-      pageToken: '50',
-    });
-    expect(queryByRole('button', { name: 'Load more' })).toBeNull();
-  });
-
-  test('start the listing again when Load more’s page token was refused, and page on from there', async () => {
-    const many = Array.from({ length: 51 }, (_, index) =>
-      taskFixture({ id: `run-${String(index).padStart(2, '0')}`, contextId: 'session-1' }),
-    );
-    const { container, getByRole, queryByRole } = mount('session-1', many);
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
-    // Fifteen minutes later the token has expired: the Bureau refuses it once.
-    let refused = false;
-    stub?.on('bureau.tasks.list', (params) => {
-      if (params['pageToken'] !== undefined && !refused) {
-        refused = true;
-        throw new StubFault('InvalidParams', 400, 'The page token has expired.', {
-          issues: [{ path: ['pageToken'], message: 'expired', code: 'page-token-expired' }],
-        });
-      }
-      const start = typeof params['pageToken'] === 'string' ? Number(params['pageToken']) : 0;
-      const page = many.slice(start, start + 50);
-      return { tasks: page, nextPageToken: start + 50 < many.length ? String(start + 50) : null };
-    });
-
-    await fireEvent.click(getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(refused).toBe(true));
-    await waitFor(() => expect(getByRole('button', { name: 'Load more' })).not.toBeNull());
-    await fireEvent.click(getByRole('button', { name: 'Load more' }));
-
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(51));
-    expect(queryByRole('button', { name: 'Load more' })).toBeNull();
-    const firstPages = stub
-      ?.callsTo('bureau.tasks.list')
-      .filter((call) => call.params['pageToken'] === undefined);
-    expect(firstPages?.length).toBeGreaterThanOrEqual(2);
-  });
-
-  test('do not repeat a task that arrived after the first page, when Load more reads the next', async () => {
-    const world = emptyBureauWorld({
-      tasks: Array.from({ length: 51 }, (_, index) =>
-        taskFixture({ id: `run-${String(index).padStart(2, '0')}`, contextId: 'session-1' }),
-      ),
-    });
-    stub = installBureauWorld(world);
-    const { container, getByRole } = render(QueryPage, {
-      props: { page: SessionTasks, pageProps: { sessionId: 'session-1', streaming: false } },
-    } as never);
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
-
-    // A run starts in the session. The stub's token is a position in the live list, unlike the
-    // Bureau's snapshot, so the next page begins with the row the first page ended with; the
-    // pages are joined by id all the same.
-    world.tasks = [taskFixture({ id: 'run-new', contextId: 'session-1' }), ...world.tasks];
-    await fireEvent.click(getByRole('button', { name: 'Load more' }));
-
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(51));
-    expect(container.textContent).not.toContain('Something went wrong');
-    const ids = [...container.querySelectorAll('li code')].map((code) =>
-      code.getAttribute('title'),
-    );
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  test('are the Bureau’s tasks of that session, each linking to its page', async () => {
+  test('count the runs that failed among several', async () => {
     const { container } = mount('session-1', [
-      taskFixture({ id: 'run-1', contextId: 'session-1', status: 'completed' }),
-      taskFixture({ id: 'run-2', contextId: 'session-1', status: 'input-required' }),
-      taskFixture({ id: 'run-3', contextId: 'session-other' }),
+      taskFixture({ id: 'run-1', status: 'completed' }),
+      taskFixture({ id: 'run-2', status: 'failed' }),
     ]);
-    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(2));
-    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
-      contextId: 'session-1',
-      limit: 50,
-    });
-    const links = [...container.querySelectorAll<HTMLAnchorElement>('li a')];
-    expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/tasks/run-1',
-      '/tasks/run-2',
-    ]);
-    expect(container.textContent).toContain('Completed');
-    expect(container.textContent).toContain('Waiting for input');
+    await waitFor(() => expect(sentence(container)?.textContent).toBe('2 runs, 1 failed'));
+    expect(sentence(container)?.getAttribute('href')).toBe('/runs/run-2');
   });
 
-  test('open the task in place when followed, and leave a modified click to the browser', async () => {
-    const { container } = mount('session-1');
-    await waitFor(() => expect(container.querySelector('li a')).not.toBeNull());
-    const link = container.querySelector<HTMLAnchorElement>('li a');
-    if (link === null) throw new Error('Expected the task to link');
+  test('say nothing when the only run finished well', async () => {
+    const { container } = mount('session-1', [taskFixture({ id: 'run-1', status: 'completed' })]);
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
+    expect(container.querySelector('.weft-chat-strip')).toBeNull();
+  });
+
+  test('open the run in place when followed, and leave a modified click to the browser', async () => {
+    const { container } = mount('session-1', [taskFixture({ id: 'run-1', status: 'working' })]);
+    await waitFor(() => expect(sentence(container)).not.toBeNull());
+    const link = sentence(container);
+    if (link === null) throw new Error('Expected the sentence to link');
     // A modified click is the browser's, so the page does not prevent it.
     expect(await fireEvent.click(link, { button: 0, metaKey: true })).toBe(true);
     expect(router.pathname).toBe('/');
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/tasks/run-1');
+    expect(router.pathname).toBe('/runs/run-1');
   });
 
-  test('show nothing for a session with no task, and nothing when the Bureau cannot say', async () => {
+  test('say nothing for a session with no run, and nothing when the Bureau cannot say', async () => {
     const none = mount('session-1', []);
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
-    expect(none.container.querySelector('section')).toBeNull();
+    expect(none.container.querySelector('.weft-chat-strip')).toBeNull();
     none.unmount();
     stub?.restore();
 
@@ -185,6 +122,6 @@ describe('the tasks of a chat session', () => {
       props: { page: SessionTasks, pageProps: { sessionId: 'session-1', streaming: false } },
     } as never);
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
-    expect(failing.container.querySelector('section')).toBeNull();
+    expect(failing.container.querySelector('.weft-chat-strip')).toBeNull();
   });
 });

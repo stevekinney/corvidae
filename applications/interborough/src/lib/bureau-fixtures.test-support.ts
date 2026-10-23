@@ -3,6 +3,7 @@
  * `/reviews`. Each is the whole wire shape, so a test changes only what it is about.
  */
 import type { ChatContext, ContextDetail } from './bureau-client.ts';
+import type { Goal } from './bureau-goals.ts';
 import type { BureauHumanWait, BureauToolApproval } from './bureau-reviews.ts';
 import type { TaskView } from './bureau-tasks.ts';
 
@@ -93,4 +94,48 @@ export function contextDetailFixture(
   overrides: Partial<ContextDetail> = {},
 ): ContextDetail {
   return { ...contextFixture(id), model: null, configVersion: 0, ...overrides };
+}
+
+/** A goal as `bureau.goals.list` shows it, with no attempts unless a test gives some. */
+export function goalFixture(id: string, overrides: Partial<Goal> = {}): Goal {
+  return {
+    goalRunId: id,
+    owner: 'anonymous:local',
+    agentName: 'assistant',
+    status: 'running',
+    terminalReason: null,
+    revision: 2,
+    createdAt: '2026-10-19T08:00:00.000Z',
+    updatedAt: '2026-10-19T08:05:00.000Z',
+    closedAt: null,
+    cancellation: null,
+    bounds: {
+      maximumAttempts: 3,
+      maximumTotalDurationMs: null,
+      maximumTotalSteps: null,
+      maximumTotalTokens: null,
+      maximumTotalCostUsd: null,
+    },
+    usage: { attempts: 1, steps: 2, tokens: 10, costUsd: null, durationMs: 100 },
+    attempts: [],
+    ...overrides,
+  };
+}
+
+/** One attempt of a goal, as it shows in the goal's `attempts`. */
+export function goalAttemptFixture(
+  runId: string,
+  overrides: Partial<Goal['attempts'][number]> = {},
+): Goal['attempts'][number] {
+  return {
+    attemptId: `attempt-${runId}`,
+    attemptIndex: 0,
+    runId,
+    status: 'passed',
+    startedAt: '2026-10-19T08:00:00.000Z',
+    completedAt: '2026-10-19T08:00:01.000Z',
+    finishReason: null,
+    usage: { steps: 1, tokens: 0, costUsd: null },
+    ...overrides,
+  };
 }
