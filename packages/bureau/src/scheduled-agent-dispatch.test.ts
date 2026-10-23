@@ -197,7 +197,7 @@ describe('a fire into a session another agent began', () => {
       agentName: 'other',
       sessionId: 'shared',
       principal: OWNER.alice,
-    } as Parameters<typeof bureau.createRun>[0]);
+    });
     await pollUntil(async () => {
       const run = await bureau.getRun(begun.id);
       return run?.status === 'completed' ? true : undefined;
