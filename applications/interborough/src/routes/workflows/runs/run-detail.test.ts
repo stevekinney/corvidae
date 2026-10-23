@@ -159,6 +159,28 @@ describe('where a run came from', () => {
     );
   });
 
+  test('a fire whose session the caller cannot read is still said to be a schedule’s', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          contextId: 'other-owner-fire',
+          agentName: 'echo',
+          actor: SCHEDULER_ACTOR,
+        }),
+      ],
+    });
+    stub?.on('bureau.contexts.get', () => {
+      throw new Error('No such chat');
+    });
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
+    );
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedFromChat);
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedDirectly);
+  });
+
   test('a run no chat has is said to have started directly, and an unnamed agent is “An agent”', async () => {
     const view = open('/runs/run-1', {
       tasks: [taskFixture({ id: 'run-1', contextId: 'handle-1', agentName: null })],

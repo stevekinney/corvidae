@@ -32,9 +32,10 @@ export type RunOrigin =
   /**
    * A schedule's fire (the task's own `actor`, not the session's origin, which a fire that
    * continues a chat keeps as `chat`): the session it ran in, named by the text the schedule
-   * delivered, or no link when the Bureau no longer has the session.
+   * delivered when the caller lists that session, and empty when it does not (an operator sees
+   * every owner's fires and lists only their own sessions).
    */
-  | { readonly kind: 'schedule'; readonly title: string; readonly href: string | null }
+  | { readonly kind: 'schedule'; readonly title: string; readonly href: string }
   | { readonly kind: 'none' };
 
 export type RunRow = {
@@ -91,11 +92,18 @@ function waitSummary(task: TaskView): string {
 function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
   // The task says what started it. A schedule may continue a chat session, which keeps its `chat`
   // origin, so the session cannot be asked.
+  // A fire always runs in a session, and its link comes from the task: the caller-owned sessions
+  // listed are only a source of the title. `bureau.contexts.get` decides whether it opens.
   if (isScheduleFire(task)) {
-    return chat === undefined
-      ? { kind: 'schedule', title: '', href: null }
-      : { kind: 'schedule', title: chat.title ?? '', href: chatSessionPath(chat.id) };
+    return {
+      kind: 'schedule',
+      title: chat?.title ?? '',
+      href: chatSessionPath(task.contextId),
+    };
   }
+  // A task that is not a fire is a chat's only when a session the caller lists has its `contextId`:
+  // the wire task does not say whether that id is a session or a catalog run's handle, which no
+  // chat has, so another owner's chat cannot be told from a handle and reads as started directly.
   if (chat === undefined) return { kind: 'none' };
   return { kind: 'chat', title: chat.title ?? '', href: chatSessionPath(chat.id) };
 }

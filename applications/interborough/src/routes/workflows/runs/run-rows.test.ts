@@ -156,14 +156,29 @@ describe('the session a run ran in', () => {
     expect(row?.origin).toMatchObject({ kind: 'chat' });
   });
 
-  test('is a schedule’s with no link when the fire’s session is gone', () => {
+  test('is linked from a schedule fire’s row by the task’s own session, even when the caller lists none', () => {
+    // An operator sees every owner's fires and lists only their own sessions.
     const [row] = buildRunRows({
-      tasks: [taskFixture({ id: 'run-fire', contextId: 'gone', actor: SCHEDULER_ACTOR })],
+      tasks: [
+        taskFixture({ id: 'run-fire', contextId: 'other-owner-fire', actor: SCHEDULER_ACTOR }),
+      ],
       goals: [],
-      chats: [],
+      chats: [chat],
     });
 
-    expect(row?.origin).toEqual({ kind: 'schedule', title: '', href: null });
+    expect(row?.origin).toEqual({ kind: 'schedule', title: '', href: '/chat/other-owner-fire' });
+  });
+
+  test('says another owner’s chat started directly, because a chat cannot be told from a run handle', () => {
+    // The wire task has no kind, and a catalog run's `contextId` is a handle no chat has: linking
+    // a task whose session the caller does not list would send every catalog run to a missing chat.
+    const [row] = buildRunRows({
+      tasks: [taskFixture({ id: 'run-other', contextId: 'other-owner-chat' })],
+      goals: [],
+      chats: [chat],
+    });
+
+    expect(row?.origin).toEqual({ kind: 'none' });
   });
 
   test('lets the list be narrowed to the runs a schedule started', () => {
