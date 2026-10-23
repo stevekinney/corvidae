@@ -34,6 +34,7 @@ const ORIGIN_MS = Date.parse(ORIGIN);
 const DAY_MS = 86_400_000;
 
 const REQUEST: CreateRunRequest = {
+  agentName: 'bureau',
   message: 'Summarize the quarter.',
   principal: 'alice',
   runCreationRequestId: 'request-1',

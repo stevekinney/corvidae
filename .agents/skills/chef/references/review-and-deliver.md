@@ -6,7 +6,13 @@ Read this when reviewing a submission, choosing or reading a gate, triaging a fa
 
 Keep one implementation owner and one primary reviewer through each correction cycle. Review actual diffs and acceptance evidence for correctness, scope, tests, failure handling, interfaces, and local conventions. Preserve independent review: the coordinator may review a worker's implementation; direct coordinator implementation needs an independent reviewer when review is required. Add specialists only for a named unresolved risk or required gate. Consolidate findings into one correction request to the owner. Re-review correction diffs and affected interfaces; widen review when changes invalidate earlier assumptions. Worker success is a submission, not delivery.
 
-Read the worker's defect-class report against [the defect classes](defect-classes.md) first: a class the worker marked as applying is where review starts, and a class the diff plainly touches but the report omits is a finding.
+Apply AGENTS.md "Review guidelines" to every review, including specialist reviews, and include these rules in each reviewer charter:
+
+- Before posting a finding or suggesting a correction, read linked COR issues and search the COR backlog across projects for the affected behavior, symbols, and proposed work. Read plausible matches for scope, status, acceptance criteria, and recorded decisions. Cite an existing ticket's identifier and link instead of duplicating work or expanding this pull request to implement it. A matching ticket does not excuse a concrete blocker introduced by this diff; explain why that failure must be fixed before merge. If Linear is unavailable, disclose the incomplete check without claiming no match exists or blocking solely on the lookup.
+- Accept breaking changes in this pre-release workspace. Check affected in-repository callers and update them directly; do not demand compatibility wrappers, deprecation periods, or retention of obsolete APIs. Remove deprecated code in the replaced path. Continue scrutinizing persisted data, wire protocols, and published contracts for concrete defects.
+- Report a blocker only with a supported input or reachable interleaving, the wrong result, and its concrete consequence. Review the changed behavior and honor recorded decisions. Omit naming, style, optional refactoring, speculative hardening, and unsupported edge cases. Touching a one-way door or deliberately breaking an old API is not itself a blocker.
+
+Read the worker's defect-class report against [the defect classes](defect-classes.md) first: a class the worker marked as applying is where review starts. An omitted class is a prompt to inspect the changed behavior, not a finding by itself; report only a concrete defect that meets the policy above.
 
 Keep review cheaper than the work it checks.
 

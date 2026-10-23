@@ -201,7 +201,7 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.createRun', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({ message: 'hello session' });
+      const summary = await harness.startSession({ agentName: 'bureau', message: 'hello session' });
       await waitForRunState(harness.bureau, summary.id);
 
       expect(summary.sessionId).toBeDefined();
@@ -218,7 +218,7 @@ describe('createBureauTestHarness', () => {
         },
       });
 
-      const parent = await harness.startSession({ message: 'parent' });
+      const parent = await harness.startSession({ agentName: 'bureau', message: 'parent' });
       const child = harness.startChild(parent.id, 'helper', 'child input');
 
       expect(child.parentRunId).toBe(parent.id);
@@ -258,7 +258,10 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.getDurableRun, returning undefined without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({ message: 'no durable engine here' });
+      const summary = await harness.startSession({
+        agentName: 'bureau',
+        message: 'no durable engine here',
+      });
       await waitForRunState(harness.bureau, summary.id);
 
       expect(await harness.reattachDurable(summary.id)).toBeUndefined();
@@ -269,7 +272,10 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.signalSession, propagating its NOT_CONFIGURED error without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({ message: 'no durable engine here' });
+      const summary = await harness.startSession({
+        agentName: 'bureau',
+        message: 'no durable engine here',
+      });
       await waitForRunState(harness.bureau, summary.id);
 
       expect(
@@ -315,7 +321,10 @@ describe('createBureauTestHarness', () => {
         stopWhen: stopWhen.toolOutcome('action_required'),
       });
 
-      const summary = await harness.startSession({ message: 'trigger approval' });
+      const summary = await harness.startSession({
+        agentName: 'bureau',
+        message: 'trigger approval',
+      });
       await waitForRunState(harness.bureau, summary.id);
 
       const reviews = harness.bureau.listPendingReviews();
@@ -396,7 +405,7 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
       expect(schedule?.id).toBeDefined();
       expect(schedule?.status).toBe('active');
 
-      const summary = await harness.startSession({ message: 'durable run' });
+      const summary = await harness.startSession({ agentName: 'bureau', message: 'durable run' });
       await waitForRunState(harness.bureau, summary.id);
 
       const durableRun = await harness.reattachDurable(summary.id);
@@ -482,8 +491,8 @@ describe('two concurrent harnesses are fully isolated', () => {
       // frame from firing later, during the event-isolation hook's
       // subscription window, and being mistaken for cross-harness leakage.
       beforeAll(async () => {
-        runA = await harnessA.startSession({ message: 'on A' });
-        runB = await harnessB.startSession({ message: 'on B' });
+        runA = await harnessA.startSession({ agentName: 'bureau', message: 'on A' });
+        runB = await harnessB.startSession({ agentName: 'bureau', message: 'on B' });
         await waitForTerminalSnapshot(harnessA.bureau, runA.id);
       });
 
@@ -507,7 +516,10 @@ describe('two concurrent harnesses are fully isolated', () => {
         // harnessA into afterAll's teardown, which could mask the real
         // failure behind an unrelated dispose-time symptom.
         try {
-          const runOnBOnly = await harnessB.startSession({ message: 'B-only run' });
+          const runOnBOnly = await harnessB.startSession({
+            agentName: 'bureau',
+            message: 'B-only run',
+          });
           await waitForTerminalSnapshot(harnessB.bureau, runOnBOnly.id);
         } finally {
           unsubscribeA();

@@ -205,7 +205,7 @@ async function sessionParkedInA(
   const charges = newCharges();
   const b = await open(asking({ resumed: [] }, parks), charges);
   const a = await open(asking(seenByA, parks), charges, aOptions);
-  const run = await a.bureau.createRun({ message: 'deploy', ...runOptions });
+  const run = await a.bureau.createRun({ agentName: 'bureau', message: 'deploy', ...runOptions });
   const review = await listed(a.bureau, run.id);
   await derived(b.bureau, run.id);
   return { a, b, run, review, seenByA };
@@ -223,7 +223,11 @@ async function settledApproval(charges: Charges) {
     durableOwnership: OWNERSHIP,
     stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
   });
-  const run = await setup.bureau.createRun({ message: 'Charge the customer', principal: 'alice' });
+  const run = await setup.bureau.createRun({
+    agentName: 'bureau',
+    message: 'Charge the customer',
+    principal: 'alice',
+  });
   await setup.bureau.waitForDurableRun(run.id);
   await pollUntil(async () => {
     const session = await setup.bureau.getSession(run.sessionId);
@@ -265,7 +269,11 @@ describe('the by-run derivation (COR-1579)', () => {
     };
     const b = await open(asking({ resumed: [] }), charges, { agents });
     const a = await open(asking({ resumed: [] }), charges, { agents });
-    const sessionRun = await a.bureau.createRun({ message: 'deploy', principal: 'alice' });
+    const sessionRun = await a.bureau.createRun({
+      agentName: 'bureau',
+      message: 'deploy',
+      principal: 'alice',
+    });
     const catalogRun = a.bureau.run('asker', 'deploy', { principal: 'api-key:alice' });
 
     for (const runId of [sessionRun.id, catalogRun.id]) {
@@ -559,7 +567,11 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
     });
     composition.mockRestore();
     try {
-      const run = await bureau.createRun({ message: 'deploy', principal: 'alice' });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'deploy',
+        principal: 'alice',
+      });
       const review = await listed(bureau, run.id);
       const decision = {
         id: review.id,

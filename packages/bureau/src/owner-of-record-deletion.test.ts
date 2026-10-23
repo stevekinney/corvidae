@@ -25,6 +25,7 @@ async function createdSession(
   sessionId: string,
 ) {
   const run = await bureau.createRun({
+    agentName: 'bureau',
     message: 'hello',
     sessionId,
     ...(principal === undefined ? {} : { principal }),

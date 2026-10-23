@@ -22,7 +22,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauError, createBureau } from './create-bureau';
 import { waitForRunState } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau, BureauOptions, CreateRunRequest } from './types';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 
@@ -208,7 +208,7 @@ describe('createRun with a named agent', () => {
       systemPrompt: 'BUREAU PROMPT',
     });
 
-    const run = await bureau.createRun({ message: 'hello' });
+    const run = await bureau.createRun({ message: 'hello' } as CreateRunRequest);
     await finish(bureau, run.id);
 
     expect(await replies(bureau, run.sessionId)).toEqual(['bureau speaking']);
@@ -258,7 +258,7 @@ describe('an agent that is not in the catalog', () => {
     const before = await bureau.getSession('session-orphan');
 
     const refusal = await rejectionOf(
-      bureau.createRun({ message: 'hello', sessionId: 'session-orphan' }),
+      bureau.createRun({ message: 'hello', sessionId: 'session-orphan' } as CreateRunRequest),
     );
 
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
@@ -294,7 +294,7 @@ describe('a session’s agent', () => {
       generate: scripted('bureau speaking'),
       toolbox: createToolbox([]),
     });
-    const first = await bureau.createRun({ message: 'one' });
+    const first = await bureau.createRun({ agentName: 'bureau', message: 'one' });
     await finish(bureau, first.id);
 
     const promotion = await rejectionOf(
@@ -314,7 +314,10 @@ describe('a session’s agent', () => {
     });
     const first = await bureau.createRun({ message: 'one', agentName: 'alpha' });
     await finish(bureau, first.id);
-    const second = await bureau.createRun({ message: 'two', sessionId: first.sessionId });
+    const second = await bureau.createRun({
+      message: 'two',
+      sessionId: first.sessionId,
+    } as CreateRunRequest);
     await finish(bureau, second.id);
     const third = await bureau.createRun({
       message: 'three',
@@ -450,7 +453,7 @@ describe('two runs creating one new session', () => {
 
     const outcomes = await Promise.allSettled([
       bureau.createRun({ message: 'a', agentName: 'alpha', sessionId: 'mixed' }),
-      bureau.createRun({ message: 'b', sessionId: 'mixed' }),
+      bureau.createRun({ message: 'b', sessionId: 'mixed' } as CreateRunRequest),
     ]);
 
     const [namedOutcome, unnamedOutcome] = outcomes;
@@ -615,7 +618,7 @@ describe('a Bureau with only catalog agents', () => {
 
     const named = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
     await finish(bureau, named.id);
-    const unnamed = await rejectionOf(bureau.createRun({ message: 'hello' }));
+    const unnamed = await rejectionOf(bureau.createRun({ message: 'hello' } as CreateRunRequest));
 
     expect(await replies(bureau, named.sessionId)).toEqual(['alpha speaking']);
     expect((unnamed as BureauError).code).toBe('NOT_CONFIGURED');

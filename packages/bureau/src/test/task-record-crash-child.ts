@@ -84,7 +84,11 @@ const kill = (runId: string): never => {
 };
 
 if (mode === 'settlement') {
-  const run = await bureau.createRun({ message: 'finish me', principal: 'api-key:alice' });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'finish me',
+    principal: 'api-key:alice',
+  });
   for (;;) {
     const durable = await bureau.getDurableRun(run.id);
     if (held && durable?.status === 'completed') kill(run.id);

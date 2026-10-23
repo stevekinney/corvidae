@@ -53,7 +53,9 @@ describe('a session id a browser would resolve away', () => {
   it.each(UNOPENABLE)('may not be the new session %s of createRun', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau.createRun({ message: 'hello', sessionId }).catch((e: unknown) => e);
+    const error = await bureau
+      .createRun({ agentName: 'bureau', message: 'hello', sessionId })
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
     expect(error).toMatchObject({ code: 'BAD_REQUEST' });
@@ -76,7 +78,7 @@ describe('a session id a browser would resolve away', () => {
   it('is still free when it only contains dots', async () => {
     const bureau = await boot();
 
-    const run = await bureau.createRun({ message: 'hello', sessionId: '...' });
+    const run = await bureau.createRun({ agentName: 'bureau', message: 'hello', sessionId: '...' });
 
     expect(run.sessionId).toBe('...');
   });
@@ -136,7 +138,11 @@ describe('a session that already holds an id a browser would resolve away', () =
       );
       const bureau = await bootOver(storage);
 
-      const run = await bureau.createRun({ message: 'hello again', sessionId });
+      const run = await bureau.createRun({
+        agentName: 'bureau',
+        message: 'hello again',
+        sessionId,
+      });
       const schedule = await bureau.createSchedule({
         agentName: 'worker',
         input: 'x',

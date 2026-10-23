@@ -105,7 +105,9 @@ describe('an id an ordinary caller chooses', () => {
   it.each(RESERVED)('may not be the session id %s of createRun', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau.createRun({ message: 'hello', sessionId }).catch((e: unknown) => e);
+    const error = await bureau
+      .createRun({ agentName: 'bureau', message: 'hello', sessionId })
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
     expect(error).toMatchObject({ code: 'BAD_REQUEST' });
@@ -137,7 +139,11 @@ describe('an id an ordinary caller chooses', () => {
   it('is still free when it only resembles a goal prefix', async () => {
     const bureau = await boot();
 
-    const run = await bureau.createRun({ message: 'hello', sessionId: 'goalpost' });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'hello',
+      sessionId: 'goalpost',
+    });
 
     expect(run.sessionId).toBe('goalpost');
   });

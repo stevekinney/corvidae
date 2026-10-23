@@ -48,6 +48,7 @@ async function finishedSession(
   options: { principal: string; message: string; agentName?: string },
 ) {
   const run = await opened.bureau.createRun({
+    agentName: 'bureau',
     message: options.message,
     principal: options.principal,
     ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
@@ -288,8 +289,16 @@ describe('bureau.contexts.list activity', () => {
   it('is running for a working session, awaiting-input for one waiting on a human, and idle otherwise', async () => {
     await withBureau({ generate: byMessage, humanInput: true }, async (opened) => {
       const idle = await finishedSession(opened, { principal: OWNER.alice, message: 'idle' });
-      const running = await opened.bureau.createRun({ message: 'hold', principal: OWNER.alice });
-      const waiting = await opened.bureau.createRun({ message: 'park', principal: OWNER.alice });
+      const running = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'hold',
+        principal: OWNER.alice,
+      });
+      const waiting = await opened.bureau.createRun({
+        agentName: 'bureau',
+        message: 'park',
+        principal: OWNER.alice,
+      });
       await waitForCondition(
         () => opened.bureau.getRun(running.id)?.status === 'running',
         'running',

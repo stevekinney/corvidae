@@ -262,7 +262,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({ message: 'Start', principal: alice.id });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Start',
+      principal: alice.id,
+    });
     await stepZeroStarted.promise;
     const { source, bytes } = await admitImage(bureau);
     const payload = [
@@ -386,7 +390,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       releaseStepZero.resolve();
       await bureau.dispose();
     });
-    const run = await bureau.createRun({ message: 'Start', principal: alice.id });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Start',
+      principal: alice.id,
+    });
     await stepZeroStarted.promise;
     const payload: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
@@ -425,7 +433,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       hold.resolve();
       await bureau.dispose();
     });
-    const run = await bureau.createRun({ message: 'Start', principal: alice.id });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'Start',
+      principal: alice.id,
+    });
     await yieldToPortableEventLoop();
 
     for (const payload of [

@@ -63,7 +63,11 @@ describe('a session-run approval whose approve is in flight', () => {
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
     });
-    const run = await bureau.createRun({ message: 'charge', principal: OWNER.alice });
+    const run = await bureau.createRun({
+      agentName: 'bureau',
+      message: 'charge',
+      principal: OWNER.alice,
+    });
     const review = await pollUntil(
       () => bureau.listPendingReviews().find((candidate) => candidate.runId === run.id),
       'the approval',

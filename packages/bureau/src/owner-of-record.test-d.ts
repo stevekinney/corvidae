@@ -16,8 +16,12 @@ import type {
 declare const bureau: Bureau;
 
 // `CreateRunRequest.principal` is the owner of record, and optional.
-export const withOwner: CreateRunRequest = { message: 'hello', principal: 'api-key:alice' };
-export const withoutOwner: CreateRunRequest = { message: 'hello' };
+export const withOwner: CreateRunRequest = {
+  agentName: 'bureau',
+  message: 'hello',
+  principal: 'api-key:alice',
+};
+export const withoutOwner: CreateRunRequest = { agentName: 'bureau', message: 'hello' };
 // @ts-expect-error -- the owner is text
 export const numericOwner: CreateRunRequest = { message: 'hello', principal: 7 };
 

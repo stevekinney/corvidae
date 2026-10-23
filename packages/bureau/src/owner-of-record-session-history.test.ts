@@ -40,7 +40,12 @@ async function openBureau() {
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
-  const run = await bureau.createRun({ message: 'hello', sessionId, principal });
+  const run = await bureau.createRun({
+    agentName: 'bureau',
+    message: 'hello',
+    sessionId,
+    principal,
+  });
   await waitForCondition(
     () => bureau.getRun(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
@@ -388,6 +393,7 @@ describe('the history of a deleted session (COR-718)', () => {
       await claimReached.promise;
       expect(await store.load('pending')).toBeUndefined();
       const run = await bureau.createRun({
+        agentName: 'bureau',
         message: 'hello',
         sessionId: 'pending',
         principal: BOB,

@@ -37,6 +37,7 @@ async function crashAndRecover(principal: string | undefined) {
     stopWhen: stopWhen.noToolCalls(),
   });
   const run = await crashed.createRun({
+    agentName: 'bureau',
     message: 'Be recovered',
     ...(principal === undefined ? {} : { principal }),
   });
