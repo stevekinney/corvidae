@@ -233,4 +233,3 @@ describe('the sidebar on a narrow viewport', () => {
     }
   });
 });
-

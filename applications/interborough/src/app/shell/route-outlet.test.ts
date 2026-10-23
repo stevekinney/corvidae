@@ -142,7 +142,9 @@ describe('a route that no view owns', () => {
     try {
       landAt('/agents');
       const { container } = mount();
-      await waitFor(() => expect(container.querySelector('.weft-shell-outlet__skeleton')).toBeNull());
+      await waitFor(() =>
+        expect(container.querySelector('.weft-shell-outlet__skeleton')).toBeNull(),
+      );
       expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
       expect(container.querySelector('.weft-view')).toBeNull();
     } finally {
