@@ -49,6 +49,13 @@ export interface A2APushCheckpoint {
    */
   readonly installId?: string;
   /**
+   * A digest of the webhook (URL, token, authentication) the installing configuration names. Two
+   * installs of one configuration id with the same fingerprint are one configuration; with
+   * different fingerprints, the older pending checkpoint is a failed install's leftover and is
+   * replaced, never confirmed for the new webhook.
+   */
+  readonly fingerprint?: string;
+  /**
    * The terminal status already enqueued for this configuration, from whichever source fired
    * first (the durable history's event or the registry's settled state). A configuration gets one
    * terminal delivery, across restarts.
@@ -87,6 +94,20 @@ export interface A2APushCheckpoints {
    * `undefined` when the configuration has none.
    */
   advance(taskId: string, configId: string, cursor: string): Promise<A2APushCheckpoint | undefined>;
+  /**
+   * Writes an install's pending checkpoint ahead of its configuration. A missing checkpoint is
+   * written; a pending one left by an install of a different webhook is replaced; any other
+   * existing checkpoint is kept. Resolves the stored checkpoint.
+   */
+  claim(checkpoint: A2APushCheckpoint): Promise<A2APushCheckpoint>;
+  /**
+   * Settles an install's checkpoint after its configuration committed, whatever happened to the
+   * pending one meanwhile: a missing checkpoint is written confirmed at the install's own cursor
+   * (another instance's delete may have removed it), a pending one for the same webhook is
+   * confirmed (keeping its earlier cursor), one for a different webhook is replaced, and a
+   * confirmed one is kept. Resolves the stored checkpoint.
+   */
+  settle(own: A2APushCheckpoint): Promise<A2APushCheckpoint>;
   /** Clears a checkpoint's `pending` mark. Resolves the stored checkpoint, or `undefined`. */
   confirm(taskId: string, configId: string): Promise<A2APushCheckpoint | undefined>;
   /** Records that a terminal status was enqueued. Resolves the stored checkpoint, or `undefined`. */
@@ -137,6 +158,39 @@ export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APush
     return raw === null ? undefined : parse(taskId, configId, raw);
   }
 
+  /** The install writes behind `claim` (pending) and `settle` (confirmed). */
+  async function write(own: A2APushCheckpoint, pending: boolean): Promise<A2APushCheckpoint> {
+    const key = keyOf(own.taskId, own.configId);
+    const { pending: _pending, ...confirmed } = own;
+    const mine: A2APushCheckpoint = pending ? { ...own, pending: true } : confirmed;
+    for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+      const raw = await kv.get(key);
+      let next: A2APushCheckpoint;
+      if (raw === null) next = mine;
+      else {
+        const current = parse(own.taskId, own.configId, raw);
+        if (current.pending !== true) return current;
+        const sameWebhook =
+          current.installId === own.installId ||
+          current.fingerprint === undefined ||
+          own.fingerprint === undefined ||
+          current.fingerprint === own.fingerprint;
+        if (!sameWebhook) next = mine;
+        else if (pending) return current;
+        else {
+          const { pending: _stillPending, ...kept } = current;
+          next = kept;
+        }
+      }
+      const written = await kv.conditionalBatch(
+        [{ key, expectedValue: raw }],
+        [{ type: 'set', key, value: JSON.stringify(next) }],
+      );
+      if (written) return next;
+    }
+    throw new Error(`The push checkpoint of configuration "${own.configId}" could not be written.`);
+  }
+
   return {
     read,
 
@@ -154,6 +208,14 @@ export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APush
       throw new Error(
         `The push checkpoint of configuration "${checkpoint.configId}" could not be written.`,
       );
+    },
+
+    async claim(checkpoint) {
+      return write(checkpoint, true);
+    },
+
+    async settle(own) {
+      return write(own, false);
     },
 
     async advance(taskId, configId, cursor) {
