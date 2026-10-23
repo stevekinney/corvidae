@@ -208,6 +208,38 @@ test.describe('the pending-review MCP App', () => {
     expect(resolves).toHaveLength(1);
   });
 
+  test('reports a decision that took effect when only the outcome write failed', async ({
+    page,
+  }) => {
+    const { app } = await open(page, [review('a')]);
+    await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
+    await page.evaluate(() => {
+      window.referenceHost.handlers['bureau.reviews.resolve'] = () => {
+        throw new Error('Conflict: APPROVAL_OUTCOME_NOT_WRITTEN: session write failed');
+      };
+    });
+    await app.getByRole('button', { name: 'Approve' }).click();
+    await expect(app.getByRole('status')).toContainText('Approved. Warning');
+    await expect(app.getByRole('status')).not.toContainText('refused');
+  });
+
+  test('lists a human wait without offering to approve it', async ({ page }) => {
+    const wait = {
+      id: 'w',
+      runId: 'run-w',
+      kind: 'human-wait',
+      status: 'pending',
+      agentName: 'worker',
+      requestedAt: 1,
+      ageMilliseconds: 1,
+      signalName: 'answer',
+      prompt: 'Which region?',
+    };
+    const { app } = await open(page, [wait]);
+    await expect(app.getByText('Which region?')).toBeVisible();
+    await expect(app.getByRole('button', { name: 'Approve' })).toBeDisabled();
+  });
+
   test('offers no decision for an expired review', async ({ page }) => {
     const expired = review('a');
     (expired.approval.action as Record<string, unknown>)['expiresAt'] = '2020-01-01T00:00:00Z';

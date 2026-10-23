@@ -13,6 +13,7 @@ const STYLES = `${MCP_APP_BASE_STYLES}
 section{border-top:1px solid GrayText;margin-top:1rem}
 textarea{font:inherit;width:100%;box-sizing:border-box;display:block;margin:.25rem 0;color:FieldText;background:Field}
 label{font-weight:600}
+li{white-space:pre-wrap;overflow-wrap:anywhere}
 button+button{margin-left:.5rem}
 `;
 

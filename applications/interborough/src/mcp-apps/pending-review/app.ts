@@ -15,6 +15,7 @@ import { App } from '@modelcontextprotocol/ext-apps';
 import {
   describeResolution,
   describeStatus,
+  isOutcomeNotWritten,
   isReview,
   isReviewList,
   type Review,
@@ -132,6 +133,10 @@ async function start(): Promise<void> {
       name: 'bureau.reviews.resolve',
       arguments: { id: seen.id, decision, ...(reason === undefined ? {} : { reason }) },
     });
+    // The decision took effect and only the write of its outcome failed: it is not a refusal.
+    if (receipt.isError === true && isOutcomeNotWritten(receipt)) {
+      return `${describeResolution(decision, 'applied')} Warning: the outcome could not be written into the session; check the run.`;
+    }
     const answer = receipt.isError === true ? undefined : receipt.structuredContent;
     return typeof answer === 'object' && answer !== null && 'receipt' in answer
       ? describeResolution(decision, String(answer.receipt))

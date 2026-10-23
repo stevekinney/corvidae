@@ -25,7 +25,12 @@ export type Review = {
       readonly message?: string;
       readonly risk?: string;
       readonly expiresAt?: string;
-      readonly operation?: { readonly kind: string; readonly command?: string };
+      readonly operation?: {
+        readonly kind: string;
+        readonly command?: string;
+        readonly diff?: string;
+        readonly filesTouched?: readonly string[];
+      };
     };
   };
 };
@@ -99,9 +104,13 @@ export function viewReview(review: Review, now: number): ReviewView {
     const action = review.approval?.action;
     if (action?.type === 'approval') {
       detail.push(`Risk: ${action.risk ?? 'unknown'}`);
-      if (action.operation?.command !== undefined) {
-        detail.push(`Command: ${action.operation.command}`);
+      const operation = action.operation;
+      if (operation?.command !== undefined) detail.push(`Command: ${operation.command}`);
+      // The whole change a reviewer approves: every path and the full patch, never a prefix.
+      if (operation?.filesTouched !== undefined && operation.filesTouched.length > 0) {
+        detail.push(`Files: ${operation.filesTouched.join(', ')}`);
       }
+      if (operation?.diff !== undefined) detail.push(`Patch:\n${operation.diff}`);
       if (action.message !== undefined) detail.push(action.message);
     }
     if (review.approval?.reason !== undefined) {
@@ -113,6 +122,9 @@ export function viewReview(review: Review, now: number): ReviewView {
   } else {
     title = `${agent} is waiting for ${review.signalName ?? 'an answer'}`;
     if (review.prompt !== undefined) detail.push(review.prompt);
+    detail.push(
+      'This wait needs an answer. Reply to it through its task; it cannot be approved here.',
+    );
   }
   if (expiry !== undefined) {
     detail.push(expired ? 'Expired' : `Expires ${new Date(expiry).toISOString()}`);
@@ -123,7 +135,9 @@ export function viewReview(review: Review, now: number): ReviewView {
     detail,
     round: review.round ?? 0,
     expired,
-    decidable: review.status === 'pending' && !expired,
+    // A human wait needs the answer it asks for, which `bureau.reviews.resolve` cannot carry: it is
+    // shown, and answered through the task, never approved from here.
+    decidable: review.kind === 'tool-approval' && review.status === 'pending' && !expired,
   };
 }
 
@@ -146,6 +160,18 @@ export function describeStatus(status: string): string {
       return 'revoked';
     default:
       return status;
+  }
+}
+
+/** The token `bureau.reviews.resolve` puts in a Conflict whose decision took effect but whose outcome was not written. */
+export const OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
+
+/** Whether an error result from `resolve` says the decision took effect and only recording it failed. */
+export function isOutcomeNotWritten(result: unknown): boolean {
+  try {
+    return JSON.stringify(result)?.includes(OUTCOME_NOT_WRITTEN) ?? false;
+  } catch {
+    return false;
   }
 }
 

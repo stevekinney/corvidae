@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   describeResolution,
   describeStatus,
+  isOutcomeNotWritten,
   isReview,
   isReviewList,
   type Review,
@@ -75,6 +76,52 @@ describe('the pending-review model', () => {
     );
     expect(wait.title).toBe('agent is waiting for go');
     expect(wait.detail).toContain('Proceed?');
+  });
+
+  it('shows every path and the whole patch before a decision', () => {
+    const patch = viewReview(
+      {
+        ...approval,
+        approval: {
+          toolName: 'apply_patch',
+          arguments: {},
+          action: {
+            type: 'approval',
+            risk: 'high',
+            operation: {
+              kind: 'patch',
+              diff: `--- a\n+++ b\n${'+line\n'.repeat(500)}`,
+              filesTouched: ['a.ts', 'b.ts'],
+            },
+          },
+        },
+      },
+      0,
+    );
+    expect(patch.detail).toContain('Files: a.ts, b.ts');
+    expect(patch.detail.find((line) => line.startsWith('Patch:'))).toHaveLength(
+      'Patch:\n'.length + `--- a\n+++ b\n${'+line\n'.repeat(500)}`.length,
+    );
+  });
+
+  it('never offers a decision on a human wait, which needs an answer', () => {
+    const wait = viewReview(
+      { id: 'w', runId: 'r', kind: 'human-wait', status: 'pending', requestedAt: 0 },
+      0,
+    );
+    expect(wait.decidable).toBe(false);
+  });
+
+  it('recognizes a decision that took effect but whose outcome was not written', () => {
+    expect(
+      isOutcomeNotWritten({
+        isError: true,
+        content: [{ type: 'text', text: 'Conflict: APPROVAL_OUTCOME_NOT_WRITTEN: x' }],
+      }),
+    ).toBe(true);
+    expect(
+      isOutcomeNotWritten({ isError: true, content: [{ type: 'text', text: 'NotFound' }] }),
+    ).toBe(false);
   });
 
   it('words each outcome, and says a superseded decision did not resolve the review', () => {
