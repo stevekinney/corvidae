@@ -848,14 +848,18 @@ export function createBureauA2ARequestHandler(
    * nothing. A failure leaves the lazy fold of a later read to do it.
    */
   function recordReplyWhenSettled(taskId: string): void {
-    const record = (view: TaskView): void => {
-      void reader.recordSettled(view).catch(() => undefined);
+    let stop: (() => void) | undefined;
+    // Returned to the registry, so the settlement that announced it (and a shutdown's idle) waits
+    // for the fold; a failure leaves the lazy fold of a later read to do it.
+    const record = async (view: TaskView): Promise<void> => {
+      stop?.();
+      await reader.recordSettled(view).catch(() => undefined);
     };
-    bureau.tasks.onSettled(taskId, record);
+    stop = bureau.tasks.onSettled(taskId, record);
     // A task that settled before the listener was added is not announced.
     void (async () => {
       const view = await bureau.tasks.get(taskId);
-      if (view !== undefined && isTerminal(view.status)) record(view);
+      if (view !== undefined && isTerminal(view.status)) await record(view);
     })().catch(() => undefined);
   }
 

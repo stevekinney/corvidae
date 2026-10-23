@@ -81,6 +81,12 @@ export function createTaskReader(options: {
   async function resolveReply(view: TaskView): Promise<Reply | undefined> {
     if (view.status !== 'completed') return undefined;
     const context = { publicUrl: options.publicUrl, assets: bureau.assets, owner: view.owner };
+    // Once the reply is folded into the task's record, that message is the reply, whatever the run
+    // holds or has since forgotten: a later read replays the same wire result.
+    const recorded = await recordedReplyOf(view);
+    if (recorded !== undefined && recorded.length > 0) {
+      return { parts: recorded, textOnlyFallback: false };
+    }
     const run = bureau.getRun(view.id);
     const final = run?.stepDetails.findLast((step) => step.final);
     if (final !== undefined) {
@@ -89,12 +95,6 @@ export function createTaskReader(options: {
         parts: projected.length > 0 ? projected : textOf(final.content),
         textOnlyFallback: false,
       };
-    }
-    // Once the reply is folded into the task's record, that message is the reply, whatever the run
-    // has since forgotten (a restart).
-    const recorded = await recordedReplyOf(view);
-    if (recorded !== undefined && recorded.length > 0) {
-      return { parts: recorded, textOnlyFallback: false };
     }
     // Otherwise the run's durable `run.completed` event: its parts hold generated media as managed
     // assets, so a task completed before a restart, or by another process, keeps its media.

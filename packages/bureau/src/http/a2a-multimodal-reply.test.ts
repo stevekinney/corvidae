@@ -299,7 +299,29 @@ describe('a generated JSON document', () => {
 
   it('stays a file part when the asset cannot be read, and never fails the projection', async () => {
     await withAgents({ reporter: replying([jsonDocument({ ok: true })]) }, async (opened) => {
+      const assets = opened.bureau.assets!;
+      const inspect = assets.inspect.bind(assets);
+      (assets as { inspect: typeof assets.inspect }).inspect = async () => {
+        throw new Error('storage fault');
+      };
+      try {
+        const task = await sendTask(opened, 'reporter');
+        const read = await getTask(opened, 'reporter', task.id);
+        expect(read.status.state).toBe('TASK_STATE_COMPLETED');
+        expect(read.artifacts[0].parts).toHaveLength(1);
+        expect(read.artifacts[0].parts[0].url).toMatch(/\/assets\/[^/]+\/content$/);
+      } finally {
+        (assets as { inspect: typeof assets.inspect }).inspect = inspect;
+      }
+    });
+  });
+
+  it('keeps the recorded data part when a later read cannot inspect the asset', async () => {
+    await withAgents({ reporter: replying([jsonDocument({ ok: true })]) }, async (opened) => {
       const task = await sendTask(opened, 'reporter');
+      await opened.bureau.tasks.idle();
+      const first = await getTask(opened, 'reporter', task.id);
+      expect(first.artifacts[0].parts[0].data).toEqual({ ok: true });
       const assets = opened.bureau.assets!;
       const inspect = assets.inspect.bind(assets);
       (assets as { inspect: typeof assets.inspect }).inspect = async () => {
@@ -307,9 +329,9 @@ describe('a generated JSON document', () => {
       };
       try {
         const read = await getTask(opened, 'reporter', task.id);
-        expect(read.status.state).toBe('TASK_STATE_COMPLETED');
-        expect(read.artifacts[0].parts).toHaveLength(1);
-        expect(read.artifacts[0].parts[0].url).toMatch(/\/assets\/[^/]+\/content$/);
+        expect(read.artifacts[0].parts[0].data).toEqual({ ok: true });
+        expect(read.artifacts[0].parts[0].url).toBeUndefined();
+        expect(read.history.at(-1).parts).toEqual(read.artifacts[0].parts);
       } finally {
         (assets as { inspect: typeof assets.inspect }).inspect = inspect;
       }
@@ -426,5 +448,125 @@ describe('a media task nobody read before a restart', () => {
     } finally {
       await opened.dispose();
     }
+  });
+});
+
+describe('the text bound on a reply', () => {
+  const limit = 64 * 1024;
+  const longText = 'x'.repeat(limit + 5000);
+  const image = {
+    type: 'image' as const,
+    mimeType: 'image/png',
+    source: {
+      kind: 'inline' as const,
+      data: base64Of(pngBytes(4, 3)),
+      encoding: 'base64' as const,
+    },
+  };
+
+  async function streamedParts(opened: OpenedBureau, agent: string): Promise<Json[]> {
+    counter += 1;
+    const streamed = await call(opened, agent, 'SendStreamingMessage', {
+      message: { messageId: `multimodal-${counter}`, role: 'ROLE_USER', parts: [{ text: 'go' }] },
+    });
+    const raw = await streamed.text();
+    const events = raw
+      .split('\n\n')
+      .map((block) => block.split('\n').find((line) => line.startsWith('data:')))
+      .filter((line): line is string => line !== undefined)
+      .map((line) => JSON.parse(line.slice(5)).result);
+    const update = events.find((event) => event.artifactUpdate !== undefined);
+    const status = events.find((event) => event.statusUpdate?.status?.message !== undefined);
+    expect(status.statusUpdate.status.message.parts).toEqual(update.artifactUpdate.artifact.parts);
+    return update.artifactUpdate.artifact.parts;
+  }
+
+  const textLength = (parts: Json[]) =>
+    parts.reduce((total, part) => total + (part.text?.length ?? 0), 0);
+
+  it('bounds the text of a reply that also holds media, on a read and on a stream alike', async () => {
+    await withAgents(
+      { painter: replying([{ type: 'text', text: longText }, image]) },
+      async (opened) => {
+        const parts = await streamedParts(opened, 'painter');
+        expect(textLength(parts)).toBeLessThanOrEqual(limit);
+        expect(parts.some((part) => part.mediaType === 'image/png')).toBe(true);
+        const task = await sendTask(opened, 'painter');
+        expect(textLength(task.artifacts[0].parts)).toBeLessThanOrEqual(limit);
+        expect(task.artifacts[0].parts.some((part: Json) => part.mediaType === 'image/png')).toBe(
+          true,
+        );
+      },
+    );
+  });
+
+  it('streams the same bounded parts that a read returns for a text-only reply', async () => {
+    await withAgents({ writer: replying([{ type: 'text', text: longText }]) }, async (opened) => {
+      const parts = await streamedParts(opened, 'writer');
+      expect(textLength(parts)).toBeLessThanOrEqual(limit);
+      const task = await sendTask(opened, 'writer');
+      expect(textLength(task.artifacts[0].parts)).toBeLessThanOrEqual(limit);
+    });
+  });
+});
+
+describe('the settlement fold', () => {
+  it('leaves no settled listener behind for a task that has settled', async () => {
+    await withAgents({ writer: replying([{ type: 'text', text: 'Done.' }]) }, async (opened) => {
+      const tasks = opened.bureau.tasks as unknown as {
+        onSettled: (taskId: string, listener: never) => () => void;
+      };
+      const original = tasks.onSettled.bind(tasks);
+      let held = 0;
+      tasks.onSettled = (taskId, listener) => {
+        held += 1;
+        const stop = original(taskId, listener);
+        let released = false;
+        return () => {
+          if (!released) held -= 1;
+          released = true;
+          stop();
+        };
+      };
+      await sendTask(opened, 'writer');
+      await opened.bureau.tasks.idle();
+      expect(held).toBe(0);
+    });
+  });
+
+  it('is awaited by the registry’s idle, which a shutdown runs before storage closes', async () => {
+    await withAgents({ painter: replying([jsonDocument({ ok: true })]) }, async (opened) => {
+      const assets = opened.bureau.assets!;
+      const inspect = assets.inspect.bind(assets);
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let reached = false;
+      (assets as { inspect: typeof assets.inspect }).inspect = async (...args) => {
+        reached = true;
+        await gate;
+        return inspect(...args);
+      };
+      counter += 1;
+      const response = await call(opened, 'painter', 'SendMessage', {
+        message: { messageId: `multimodal-${counter}`, role: 'ROLE_USER', parts: [{ text: 'go' }] },
+        configuration: { returnImmediately: true },
+      });
+      const body: Json = await response.json();
+      const id = (body.result?.task ?? body.result).id as string;
+      await waitForCondition(() => reached, 'the fold reading the asset');
+      let drained = false;
+      const idle = opened.bureau.tasks.idle().then(() => {
+        drained = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(drained).toBe(false);
+      release();
+      await idle;
+      (assets as { inspect: typeof assets.inspect }).inspect = inspect;
+      const read = await getTask(opened, 'painter', id);
+      expect(read.history.at(-1).parts[0].data).toEqual({ ok: true });
+    });
   });
 });

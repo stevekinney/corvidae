@@ -26,6 +26,7 @@ import type {
   TaskState as BureauTaskState,
   TaskView,
 } from '../task-registry.ts';
+import { TASK_ARTIFACT_TEXT_LIMIT } from '../task-registry.ts';
 import { formSurfaceId, previousParkReviewId, type WaitForm } from './a2a-input-forms.ts';
 import { A2UI_MEDIA_TYPE, inputFormDeletion, inputFormMessages } from '../a2ui/input-form.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
@@ -90,25 +91,25 @@ export function textPart(text: string): Part {
  */
 export type ReplyParts = readonly Part[];
 
-/** The text a reply's text parts hold, joined with a newline. */
-function replyTextOf(reply: ReplyParts): string {
-  return reply
-    .flatMap((part) => (part.content?.$case === 'text' ? [part.content.value] : []))
-    .join('\n');
-}
-
 /**
- * The parts a completed task publishes, from its reply and the answer text the task registry
- * recorded. A reply that holds media is published as it is; a text-only reply is the registry's
- * answer text when it recorded one, which is bounded.
+ * The parts a completed task publishes. With a reply, its parts as they are: media whole, and its
+ * text parts bounded together by one {@link TASK_ARTIFACT_TEXT_LIMIT} budget. Without one, the
+ * answer text the task registry recorded, as one text part.
  */
 export function publishedReplyParts(
   reply: ReplyParts | undefined,
   recordedText?: string,
 ): ReplyParts {
-  if (reply?.some((part) => part.content?.$case !== 'text') === true) return reply;
-  const text = recordedText ?? (reply === undefined ? '' : replyTextOf(reply));
-  return text === '' ? [] : [textPart(text)];
+  if (reply === undefined) {
+    return recordedText === undefined || recordedText === '' ? [] : [textPart(recordedText)];
+  }
+  let budget = TASK_ARTIFACT_TEXT_LIMIT;
+  return reply.flatMap((part) => {
+    if (part.content?.$case !== 'text') return [part];
+    const text = part.content.value.slice(0, budget);
+    budget -= text.length;
+    return text === '' ? [] : [{ ...part, content: { $case: 'text' as const, value: text } }];
+  });
 }
 
 /** An agent message on a task: a text, or the given parts. */
@@ -242,7 +243,9 @@ function historyMessage(wire: A2AWireMessage): Message {
 
 /** A Bureau task as an A2A `Task`, shaped for one response. */
 export function projectTask(input: ProjectionInput, shape: ProjectionShape): Task {
-  const { view, record, reply } = input;
+  const { view, record } = input;
+  // The same bounded parts a stream publishes, so a stream and a read agree.
+  const reply = input.reply === undefined ? undefined : publishedReplyParts(input.reply);
   const task = { id: view.id, contextId: view.contextId };
   let statusMessage: Message | undefined;
   const artifacts: Artifact[] = [];
