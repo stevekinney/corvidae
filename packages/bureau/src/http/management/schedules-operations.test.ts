@@ -92,6 +92,7 @@ describe('each schedule operation, as the owner', () => {
     expect(created.result).toMatchObject({
       owner: OWNER.alice,
       agentName: 'writer',
+      inputPreview: 'PROMPT-SENTINEL-7c1d',
       status: 'active',
       revision: 1,
       description: 'hourly tick',
@@ -103,7 +104,6 @@ describe('each schedule operation, as the owner', () => {
 
     const read = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
     expect(read.result).toEqual(created.result);
-    expect(JSON.stringify(read.result)).not.toContain('PROMPT-SENTINEL-7c1d');
     const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
     expect((listed.result!['schedules'] as Array<{ id: string }>).map((entry) => entry.id)).toEqual(
       [id],
@@ -176,7 +176,7 @@ describe('each schedule operation, as the owner', () => {
 });
 
 describe('the agent a schedule runs', () => {
-  it('is named by the view of every read, and the view carries none of the input', async () => {
+  it('is named by the view of every read, and the view carries only the start of the input', async () => {
     const opened = await serve();
     const id = await createdBy(opened, 'alice-key', { description: 'hourly tick' });
 
@@ -189,10 +189,109 @@ describe('the agent a schedule runs', () => {
         entry.agentName,
       ]),
     ).toEqual([[id, 'writer']]);
-    // The name is the only thing of the stored input that leaves: its text, the prompt each fire
-    // runs, and a session it continues do not.
-    expect(JSON.stringify(read.result)).not.toContain('PROMPT-SENTINEL-7c1d');
-    expect(JSON.stringify(listed.result)).not.toContain('PROMPT-SENTINEL-7c1d');
+    // The name and the start of the text leave the stored input; a session it continues does not.
+    expect(read.result).toMatchObject({ inputPreview: 'PROMPT-SENTINEL-7c1d' });
+    expect(
+      (listed.result!['schedules'] as Array<{ inputPreview: string }>).map(
+        (entry) => entry.inputPreview,
+      ),
+    ).toEqual(['PROMPT-SENTINEL-7c1d']);
+  });
+
+  it('cuts a long input to 500 characters ending in an ellipsis, and keeps a short one whole', async () => {
+    const opened = await serve();
+    const long = `${'x'.repeat(600)}-TAIL-SENTINEL`;
+    const created = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...NEW_SCHEDULE, input: long },
+      'alice-key',
+    );
+    const preview = created.result!['inputPreview'] as string;
+    expect(preview).toBe(`${'x'.repeat(499)}…`);
+    const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
+    expect(JSON.stringify(listed.result)).not.toContain('TAIL-SENTINEL');
+  });
+
+  it('cuts on a character, never through an emoji, so the preview is well formed on the wire', async () => {
+    const opened = await serve();
+    // The emoji's code units sit at 498 and 499, the place a code-unit slice used to split it.
+    const created = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...NEW_SCHEDULE, input: `${'x'.repeat(498)}😀${'y'.repeat(50)}` },
+      'alice-key',
+    );
+    const preview = created.result!['inputPreview'] as string;
+    expect(preview.isWellFormed()).toBe(true);
+    expect(preview).toBe(`${'x'.repeat(498)}😀…`);
+    expect(Array.from(preview)).toHaveLength(500);
+    const id = created.result!['id'] as string;
+    const read = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+    expect(read.result!['inputPreview']).toBe(preview);
+  });
+
+  it('answers a create from its own request, and reads no stored input back to build the preview', async () => {
+    const opened = await serve();
+    const reads: string[] = [];
+    const watched = new Proxy(opened.bureau, {
+      get(target, key) {
+        if (key !== 'getScheduleInputPreview') return Reflect.get(target, key, target) as unknown;
+        return async (scheduleId: string) => {
+          reads.push(scheduleId);
+          throw new Error('a create must not read the stored input back');
+        };
+      },
+    });
+    const handler = createBureauHandler(watched, { authentication });
+
+    const created = await rpc(handler, 'bureau.schedules.create', NEW_SCHEDULE, 'alice-key');
+
+    expect(created.error).toBeUndefined();
+    expect(created.result).toMatchObject({ inputPreview: 'PROMPT-SENTINEL-7c1d' });
+    expect(reads).toEqual([]);
+  });
+
+  it('has no preview for a schedule whose input is media alone', async () => {
+    const opened = await serve();
+    const summary = await opened.bureau.createSchedule({
+      agentName: 'writer',
+      spec: '1h',
+      input: [{ type: 'image', source: { kind: 'managed-asset', assetId: 'asset-media-only' } }],
+      principal: OWNER.alice,
+    });
+    const id = summary!.id;
+
+    const read = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+    expect(read.error).toBeUndefined();
+    expect(read.result).toMatchObject({ id, agentName: 'writer', inputPreview: null });
+    const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
+    expect(
+      (listed.result!['schedules'] as Array<{ inputPreview: string | null }>).map(
+        (entry) => entry.inputPreview,
+      ),
+    ).toEqual([null]);
+  });
+
+  it('never exposes the session a schedule continues in any field of create, get, or list', async () => {
+    const opened = await serve();
+    const session = 'SESSION-SENTINEL-4e2a';
+    const created = await rpc(
+      opened.handler,
+      'bureau.schedules.create',
+      { ...NEW_SCHEDULE, sessionId: session },
+      'alice-key',
+    );
+    expect(created.error).toBeUndefined();
+    const id = created.result!['id'] as string;
+    const read = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+    const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
+
+    for (const body of [created, read, listed]) {
+      expect(JSON.stringify(body.result)).not.toContain(session);
+    }
+    expect(Object.keys(created.result!)).not.toContain('sessionId');
+    expect(Object.keys(read.result!)).not.toContain('sessionId');
   });
 
   it('is still named after the schedule is paused or its cadence changes, and for a cancelled one', async () => {
@@ -395,6 +494,7 @@ describe('a workflow file’s schedule', () => {
       status: 'active',
       owner: 'anonymous:local',
       agentName: null,
+      inputPreview: null,
     });
     const listed = await rpc(served.keyed, 'bureau.schedules.list', {}, 'operator-key');
     expect((listed.result!['schedules'] as Array<{ id: string }>).map((entry) => entry.id)).toEqual(

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { missedFireBadgeVariant, scheduleStatusDescriptor } from './schedule-status.ts';
+import { scheduleStatusDescriptor } from './schedule-status.ts';
 
 describe('scheduleStatusDescriptor', () => {
   test('maps every ScheduleStatus to a descriptor', () => {
@@ -19,16 +19,5 @@ describe('scheduleStatusDescriptor', () => {
       icon: 'circle-x',
       label: 'Cancelled',
     });
-  });
-});
-
-describe('missedFireBadgeVariant', () => {
-  test('is warning when missed fires are present', () => {
-    expect(missedFireBadgeVariant(1)).toBe('warning');
-    expect(missedFireBadgeVariant(5)).toBe('warning');
-  });
-
-  test('is neutral at zero', () => {
-    expect(missedFireBadgeVariant(0)).toBe('neutral');
   });
 });

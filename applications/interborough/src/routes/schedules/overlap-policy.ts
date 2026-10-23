@@ -60,10 +60,6 @@ function overlapDescriptor(policy: ScheduleOverlapPolicy): OverlapPolicyDescript
   return OVERLAP_POLICY_BY_VALUE.get(policy) ?? SKIP_DESCRIPTOR;
 }
 
-export function overlapLabel(policy: ScheduleOverlapPolicy): string {
-  return overlapDescriptor(policy).label;
-}
-
 export function overlapConsequence(policy: ScheduleOverlapPolicy): string {
   return overlapDescriptor(policy).consequence;
 }

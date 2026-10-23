@@ -6,7 +6,7 @@
    * workflow picker), submission, and the Drawer chrome; field rendering is
    * `schedule-form-fields.svelte`.
    */
-  import { Alert, Button, Drawer, RadioGroup, Skeleton } from '@lostgradient/cinder';
+  import { Alert, Button, Collapsible, Drawer, Skeleton } from '@lostgradient/cinder';
   import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
   import { CalendarPlus, Lock } from '@lucide/svelte';
 
@@ -107,8 +107,12 @@
     return registryQuery.data.filter((type) => !reserved.has(type));
   });
 
-  /** Which fields a create shows: `agent`'s, or a `workflow` type's. A radio group's value is a plain string. */
-  let starts = $state('workflow');
+  /**
+   * A new schedule runs an agent. Starting a code-defined workflow instead is under an "Advanced"
+   * disclosure, which swaps the agent's fields for a workflow type's while it is open.
+   */
+  let workflowOpen = $state(false);
+  const starts = $derived<'agent' | 'workflow'>(workflowOpen ? 'workflow' : 'agent');
 
   const editDetailQuery = createQuery(() => ({
     queryKey: scheduleDetailQueryKey(scheduleId ?? ''),
@@ -357,25 +361,6 @@
       >
     </Alert>
   {:else if draft !== undefined}
-    {#if mode === 'create'}
-      <RadioGroup
-        name="weft-schedule-starts"
-        label={SCHEDULE_COPY.form.startsLabel}
-        variant="card"
-        bind:value={starts}
-      >
-        <RadioGroup.Option
-          id="weft-schedule-starts-workflow"
-          value="workflow"
-          label={SCHEDULE_COPY.form.startsWorkflow}
-        />
-        <RadioGroup.Option
-          id="weft-schedule-starts-agent"
-          value="agent"
-          label={SCHEDULE_COPY.form.startsAgent}
-        />
-      </RadioGroup>
-    {/if}
     {#if mode === 'edit' ? editKind?.kind === 'agent-run' : starts === 'agent'}
       <!-- A new draft is a fresh mount, as the Weft fields below need. -->
       {#key agentForm}
@@ -383,14 +368,14 @@
           <AgentScheduleFields form={agentForm} agents={agentNames} />
         {/if}
       {/key}
-    {:else if form}
+    {:else if form && mode === 'edit'}
       <!--
         Keyed on `form` itself (WFT-117, Codex review round 2): the `$effect`
         above can reconstruct `form` as a brand-new `ScheduleFormState` while
         this drawer stays open (e.g. a background `editDetailQuery` refetch).
         `ScheduleFormFields` captures `form.revisionPolicy` into a one-shot
         local draft at mount, which is correct only if a NEW `form` instance
-        always gets a FRESH mount — `{#key}` guarantees that instead of
+        always gets a FRESH mount: `{#key}` guarantees that instead of
         leaving a stale draft to silently overwrite the new form's value.
       -->
       {#key form}
@@ -401,15 +386,28 @@
           registeredTypeCount={registryQuery.isSuccess ? registryQuery.data.length : 0}
         />
       {/key}
-      {#if mode === 'create' && starts === 'workflow'}
-        {#if overlayQuery.data?.failed && overlayQuery.data.files === undefined}
-          <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
-        {:else if overlayQuery.isPending}
-          <p class="weft-schedule-drawer__note">{SCHEDULE_COPY.form.overlayLoading}</p>
-        {:else}
-          <p class="weft-schedule-drawer__note">{SCHEDULE_COPY.form.registryNote}</p>
+    {/if}
+    {#if mode === 'create'}
+      <Collapsible bind:open={workflowOpen} trigger={SCHEDULE_COPY.form.advancedWorkflowLabel}>
+        {#if form}
+          <!-- Mounted only while the disclosure is open, so each opening is a fresh mount of the fields. -->
+          {#key form}
+            <ScheduleFormFields
+              {form}
+              {mode}
+              {workflowTypeOptions}
+              registeredTypeCount={registryQuery.isSuccess ? registryQuery.data.length : 0}
+            />
+          {/key}
+          {#if overlayQuery.data?.failed && overlayQuery.data.files === undefined}
+            <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
+          {:else if overlayQuery.isPending}
+            <p class="weft-schedule-drawer__note">{SCHEDULE_COPY.form.overlayLoading}</p>
+          {:else}
+            <p class="weft-schedule-drawer__note">{SCHEDULE_COPY.form.registryNote}</p>
+          {/if}
         {/if}
-      {/if}
+      </Collapsible>
     {/if}
     {#if stale && scheduleId !== undefined}
       <Alert variant="warning" data-testid="schedule-notice" data-notice="stale">

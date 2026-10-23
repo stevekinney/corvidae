@@ -33,6 +33,7 @@ function schedule(id: string, description: string | null, agentName: string | nu
     id,
     owner: 'anonymous:local',
     agentName,
+    inputPreview: null,
     workflowType: 'agentRun',
     description,
     cronExpression: '0 9 * * *',

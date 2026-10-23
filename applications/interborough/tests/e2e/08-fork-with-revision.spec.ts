@@ -93,9 +93,10 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   // Second half: a pinned schedule shows "Pinned (rev X)" on its own detail
   // page (WFT-117's schedule create/edit surface).
   await page.goto('/schedules');
-  await page.getByRole('button', { name: 'Create schedule' }).click();
+  await page.getByRole('button', { name: 'New schedule' }).click();
   const drawer = page.getByRole('dialog', { name: 'Create schedule' });
   await expect(drawer).toBeVisible();
+  await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
 
   const workflowTypeField = drawer.getByRole('combobox', { name: 'Workflow type' });
   await expect(workflowTypeField).toBeVisible();
@@ -110,6 +111,8 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(drawer).not.toBeVisible();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
+  // The revision policy is the engine's, so it is under the Engine disclosure.
+  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
   await checkA11y('schedule detail — pinned revision policy shown');
 });

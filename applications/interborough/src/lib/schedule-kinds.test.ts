@@ -22,6 +22,7 @@ const FILE: WorkflowFileListing = {
 
 const overlay = (overrides: Partial<ScheduleOverlay> = {}): ScheduleOverlay => ({
   agents: new Map([['daily', 'assistant']]),
+  inputs: new Map([['daily', 'Summarize what happened yesterday.']]),
   fileSchedules: new Map([['bureau-workflow-schedule:digest:1', 'digest']]),
   files: new Map([['digest', FILE]]),
   origins: new Map([
@@ -33,7 +34,13 @@ const overlay = (overrides: Partial<ScheduleOverlay> = {}): ScheduleOverlay => (
 });
 
 /** What the Bureau left unsaid when it did not answer either list. */
-const BUREAU_DOWN = { agents: undefined, fileSchedules: undefined, files: undefined, failed: true };
+const BUREAU_DOWN = {
+  agents: undefined,
+  inputs: undefined,
+  fileSchedules: undefined,
+  files: undefined,
+  failed: true,
+};
 
 describe('the kind of a schedule', () => {
   test('is of no known kind until the Bureau has said', () => {
@@ -95,7 +102,12 @@ describe('the kind of a schedule', () => {
   });
 
   test('is a file’s type with no known schedule, and so of no known kind, when only the Bureau’s schedules did not answer', () => {
-    const partial = overlay({ agents: undefined, fileSchedules: undefined, failed: true });
+    const partial = overlay({
+      agents: undefined,
+      inputs: undefined,
+      fileSchedules: undefined,
+      failed: true,
+    });
     expect(
       kindOf({ id: 'bureau-workflow-schedule:digest:1', workflowType: 'digest' }, partial),
     ).toEqual({
@@ -142,6 +154,7 @@ describe('what the Bureau knows of the schedules', () => {
       id,
       owner: 'anonymous:local',
       agentName,
+      inputPreview: agentName === null ? null : 'Summarize what happened yesterday.',
       workflowType,
       description: null,
       cronExpression: '0 9 * * *',
@@ -170,6 +183,8 @@ describe('what the Bureau knows of the schedules', () => {
     const loaded = await loadScheduleOverlay(engine);
 
     expect([...(loaded.agents ?? [])]).toEqual([['daily', 'assistant']]);
+    // Only a schedule that sends a prompt has the start of it.
+    expect([...(loaded.inputs ?? [])]).toEqual([['daily', 'Summarize what happened yesterday.']]);
     expect([...(loaded.fileSchedules ?? [])]).toEqual([
       ['bureau-workflow-schedule:digest:1', 'digest'],
     ]);

@@ -63,11 +63,68 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         // Nor does it run an agent that can be named: only a valid agent schedule does.
         expect(await bureau.getScheduleAgentName('heartbeat')).toBeUndefined();
         expect(await bureau.getScheduleAgentName('no-such-schedule')).toBeUndefined();
+        expect(await bureau.getScheduleInputPreview('heartbeat')).toBeUndefined();
+        expect(await bureau.getScheduleInputPreview('no-such-schedule')).toBeUndefined();
         for (const principal of ['anonymous:local', 'api-key:alice']) {
           expect(
             await bureau.eventHistory({ kind: 'schedule', id: 'heartbeat' }, { principal }),
           ).toEqual({ outcome: 'not-found' });
         }
+      } finally {
+        await bureau.dispose();
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the start of the text a schedule sends (COR-1654)', () => {
+  it('is the whole text when it is short, the text parts joined when it is a list, and cut when it is long', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'schedule-input-preview-'));
+    try {
+      const bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate,
+            toolbox: createToolbox([], { context: {} }),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
+        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      try {
+        const short = await bureau.createSchedule({
+          agentName: 'default',
+          input: 'Summarize what happened yesterday.',
+          spec: '24h',
+        });
+        const parts = await bureau.createSchedule({
+          agentName: 'default',
+          input: [
+            { type: 'text', text: 'Summarize' },
+            { type: 'text', text: 'the week.' },
+          ],
+          spec: '24h',
+        });
+        const long = await bureau.createSchedule({
+          agentName: 'default',
+          input: `${'y'.repeat(600)}-TAIL`,
+          spec: '24h',
+        });
+        if (short === undefined || parts === undefined || long === undefined) {
+          throw new Error('expected the schedules to be created');
+        }
+
+        expect(await bureau.getScheduleInputPreview(short.id)).toBe(
+          'Summarize what happened yesterday.',
+        );
+        expect(await bureau.getScheduleInputPreview(parts.id)).toBe('Summarize the week.');
+        const preview = await bureau.getScheduleInputPreview(long.id);
+        expect(preview).toBe(`${'y'.repeat(499)}…`);
+        expect(preview).not.toContain('TAIL');
       } finally {
         await bureau.dispose();
       }
