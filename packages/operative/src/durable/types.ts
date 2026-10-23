@@ -6,6 +6,7 @@ import type {
   MultiModalContent,
   TextContent,
 } from 'conversationalist';
+import type { HumanInputSchema } from '../human-input-schema';
 
 import type { AccumulatedCost } from '../cost-estimation';
 import type { GeneratedMediaAdmission } from '../generated-media';
@@ -156,6 +157,11 @@ export interface PendingHumanWait {
   signalName: string;
   /** Optional prompt to surface to the human reviewer. */
   prompt?: string | undefined;
+  /**
+   * The JSON Schema (2020-12) the agent's author configured for this signal, when one is: the
+   * shape of the answer the wait expects. It is persisted with the wait, so a restart reads it back.
+   */
+  inputSchema?: HumanInputSchema | undefined;
 }
 
 /**

@@ -276,7 +276,7 @@
   {/if}
 
   {#if timelineQuery.isPending}
-    <div style="padding: 15px;"><Skeleton height="8rem" /></div>
+    <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="8rem" /></div>
   {:else if entries.length === 0}
     <EmptyState
       title="No timeline entries yet"
@@ -446,7 +446,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 15px;
+    padding: var(--cinder-density-pad-card);
   }
 
   .weft-timeline-tab__unattached {
@@ -459,7 +459,7 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 8px 12px;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-xs);
@@ -517,7 +517,7 @@
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 7px 10px;
+    padding: var(--cinder-space-2) var(--cinder-space-2);
     background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-2xs);

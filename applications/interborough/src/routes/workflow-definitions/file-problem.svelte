@@ -33,7 +33,7 @@
 
   .weft-workflow-issues {
     margin: 4px 0 0;
-    padding-inline-start: 20px;
+    padding-inline-start: var(--cinder-space-6);
     font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
   }

@@ -225,7 +225,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px;
+    padding: var(--cinder-density-pad-card);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }

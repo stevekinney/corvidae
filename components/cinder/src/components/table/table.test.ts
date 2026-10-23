@@ -107,6 +107,10 @@ describe('Table semantics', () => {
     expect(wrapper.tabIndex).toBe(0);
   });
 
+  test('the scroll wrapper contains absolutely positioned descendants, so a hidden label in a cell cannot widen the page', () => {
+    expect(tableCss).toMatch(/\.cinder-table-scroll\s*\{[^}]*position:\s*relative;/);
+  });
+
   test('scrollContainerProps forwards attributes to the generated scroll wrapper', () => {
     const { container } = render(Wrapper, {
       columns,

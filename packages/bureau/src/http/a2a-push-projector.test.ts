@@ -74,6 +74,7 @@ function standIn(initial: DurableEventEnvelope[] = []) {
   let getFailures = 0;
   const bureau: A2APushBureau = {
     lifecycle: 'ready',
+    getReview: async () => undefined,
     eventHistory: (async (_owner: unknown, options?: { since?: string; limit?: number }) => {
       if (options?.limit !== 1 && beforeReplay !== undefined) {
         const hook = beforeReplay;

@@ -80,11 +80,11 @@
   <div class="weft-send-tab__history">
     <div class="weft-send-tab__history-header">Received signals</div>
     {#if timelineQuery.isPending}
-      <div style="padding: 15px;"><Skeleton height="2rem" /></div>
+      <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="2rem" /></div>
     {:else if receivedSignals.length === 0}
       <p
         class="weft-send-tab__error"
-        style="color: var(--cinder-text-subtle); padding: 15px; margin: 0;"
+        style="color: var(--cinder-text-subtle); padding: var(--cinder-density-pad-card); margin: 0;"
       >
         No signals delivered to a wait point yet.
       </p>

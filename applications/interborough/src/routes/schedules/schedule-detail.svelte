@@ -386,10 +386,7 @@
   .weft-schedule-detail {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-4, 1rem);
-    max-width: 1040px;
-    margin: 0 auto;
-    padding: 18px 24px 60px;
+    gap: var(--cinder-space-4);
   }
 
   .weft-schedule-detail__back {
@@ -460,7 +457,7 @@
   }
 
   .weft-schedule-detail__next-fires {
-    padding-top: 11px;
+    padding-top: var(--cinder-space-3);
     margin-top: 11px;
     border-top: 1px solid var(--cinder-border-muted);
   }

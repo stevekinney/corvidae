@@ -440,7 +440,7 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: 14px;
+    padding: var(--cinder-density-pad-card);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -456,7 +456,7 @@
   }
 
   .weft-fork-dialog__picker {
-    padding: 10px;
+    padding: var(--cinder-space-2);
     background: var(--cinder-surface);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
@@ -482,7 +482,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 9px 12px;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     background: var(--cinder-status-warning-background);
     border: 1px solid var(--cinder-status-warning-border);
     border-radius: var(--cinder-radius-md);
@@ -498,7 +498,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 12px;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
     background: var(--cinder-status-success-background);
     border: 1px solid var(--cinder-status-success-border);
     border-radius: var(--cinder-radius-md);

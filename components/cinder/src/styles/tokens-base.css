@@ -157,6 +157,8 @@
   --cinder-content-width: 72rem;
   /* Tighter centered column width. */
   --cinder-content-width-narrow: 40rem;
+  /* Reading column width (760px). The width of a page of text, forms, and lists: wide enough for a row of controls, narrow enough to read. */
+  --cinder-content-width-reading: 47.5rem;
   /* Roomier centered column width. */
   --cinder-content-width-wide: 90rem;
   /* Prose column width, 65ch — caps line length at a readable measure. Expressed as a unitless number with a ch recipe because DTCG dimension units are limited to px and rem. */
@@ -350,6 +352,26 @@
   --cinder-pad-control: var(--cinder-space-2-5);
   /* Default card padding. */
   --cinder-pad-card: var(--cinder-space-4);
+  /* Page side gutter: the inline padding a shell puts around a page of content. */
+  --cinder-pad-page: var(--cinder-space-6);
+  /* Row height: 56px comfortable, 40px compact. */
+  --cinder-density-row-height: 3.5rem;
+  /* Block padding of a row: 12px comfortable, 8px compact. */
+  --cinder-density-pad-block: var(--cinder-space-3);
+  /* Inline padding of a row: 16px comfortable, 12px compact. */
+  --cinder-density-pad-inline: var(--cinder-space-4);
+  /* Padding of a card or panel: 16px comfortable, 12px compact. */
+  --cinder-density-pad-card: var(--cinder-space-4);
+  /* Page title size (20px); set it at semibold. */
+  --cinder-text-page-title: var(--cinder-text-2xl);
+  /* Section title size (16px); set it at semibold. */
+  --cinder-text-section-title: var(--cinder-text-lg);
+  /* Body text size (14px). */
+  --cinder-text-body: var(--cinder-text-base);
+  /* Secondary text size (13px); set it in the muted text color. */
+  --cinder-text-secondary: var(--cinder-text-sm);
+  /* Code size (13px), in the mono font stack. */
+  --cinder-text-code: var(--cinder-text-sm);
   /* Label color for solid success fills. */
   --cinder-status-success-contrast: light-dark(oklch(15% 0.03 148), oklch(15% 0.03 145));
   /* Success status fill color. */

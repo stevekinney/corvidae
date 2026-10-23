@@ -108,6 +108,7 @@ export function* runWorkflowPark(
         runId: state.runId,
         signalName,
         prompt: state.pendingHumanWait.prompt,
+        inputSchema: state.pendingHumanWait.inputSchema,
         emitter: deps.emitter,
       });
     }

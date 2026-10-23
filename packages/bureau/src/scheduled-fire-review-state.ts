@@ -13,7 +13,12 @@
  * @module scheduled-fire-review-state
  */
 
-import { humanWaitParks, humanWaitParkSignalNames, type JSONValue } from '@lostgradient/operative';
+import {
+  type HumanInputSchema,
+  humanWaitParks,
+  humanWaitParkSignalNames,
+  type JSONValue,
+} from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
 import type { BureauToolbox } from './runtime-composition';
@@ -274,6 +279,7 @@ export type CommittedFireReview =
       readonly kind: 'human-wait';
       readonly signalName: string;
       readonly prompt: string | undefined;
+      readonly inputSchema?: HumanInputSchema | undefined;
     };
 
 /**
@@ -311,6 +317,7 @@ export function committedFireReviews(
         kind: 'human-wait',
         signalName: park.signalName,
         prompt: park.prompt,
+        ...(park.inputSchema === undefined ? {} : { inputSchema: park.inputSchema }),
       });
       ordinal += 1;
     }

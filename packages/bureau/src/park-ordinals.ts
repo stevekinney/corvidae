@@ -10,6 +10,7 @@
  * @module park-ordinals
  */
 
+import type { HumanInputSchema } from '@lostgradient/operative';
 import {
   countHumanWaitParks,
   HumanWaitParkedEvent,
@@ -32,6 +33,7 @@ export type CheckpointParks = {
   readonly outstanding?: {
     readonly signalName: string;
     readonly prompt: string | undefined;
+    readonly inputSchema?: HumanInputSchema | undefined;
     readonly ordinal: number;
   };
 };
@@ -55,7 +57,12 @@ export function countCheckpointParks(steps: readonly CheckpointStep[]): Checkpoi
     if (park === undefined) continue;
     return {
       baseline,
-      outstanding: { signalName: park.signalName, prompt: park.prompt, ordinal: priorParks },
+      outstanding: {
+        signalName: park.signalName,
+        prompt: park.prompt,
+        ...(park.inputSchema === undefined ? {} : { inputSchema: park.inputSchema }),
+        ordinal: priorParks,
+      },
     };
   }
   return { baseline };

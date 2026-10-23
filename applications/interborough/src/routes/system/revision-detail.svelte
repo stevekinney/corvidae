@@ -71,7 +71,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px 14px;
+    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
@@ -99,7 +99,7 @@
   }
 
   .weft-revision-detail__malformed {
-    padding: 10px 12px;
+    padding: var(--cinder-density-pad-block) var(--cinder-space-3);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-status-warning-background);
     border: 1px solid var(--cinder-status-warning-border);

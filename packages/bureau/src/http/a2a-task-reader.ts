@@ -10,6 +10,7 @@ import { Message, type Task } from '@a2a-js/sdk';
 
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
+import { formsOf } from './a2a-input-forms.ts';
 import {
   type A2ATaskRecord,
   type A2ATaskRecords,
@@ -25,7 +26,7 @@ import {
 } from './a2a-task-projection.ts';
 
 /** The part of a Bureau the reader needs. */
-export type A2ATaskReaderBureau = Pick<Bureau, 'getRun' | 'eventHistory'> & {
+export type A2ATaskReaderBureau = Pick<Bureau, 'getRun' | 'eventHistory' | 'getReview'> & {
   readonly tasks: Pick<TaskRegistry, 'record'>;
 };
 
@@ -115,7 +116,13 @@ export function createTaskReader(options: {
       );
     }
     const task = projectTask(
-      { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
+      {
+        view,
+        record,
+        reply,
+        acknowledgement: stored?.cleanupAcknowledgement,
+        forms: await formsOf(bureau, view),
+      },
       shape,
     );
     return { task, record };
