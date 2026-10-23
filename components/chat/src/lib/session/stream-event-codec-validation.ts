@@ -85,8 +85,9 @@ export function requireEnvelopeFromV2(envelope: OptionalWireEnvelope): WireEnvel
  */
 export function requireEnvelopeFromV3(envelope: OptionalWireEnvelope): WireEnvelopeFromV3 {
   const required = requireWireEnvelope(envelope);
-  if (required.wireVersion !== 3) throw new Error('Invalid chat stream event');
-  return { wireVersion: 3, sequence: required.sequence };
+  if (required.wireVersion !== 3 && required.wireVersion !== 4)
+    throw new Error('Invalid chat stream event');
+  return { wireVersion: required.wireVersion, sequence: required.sequence };
 }
 
 /**

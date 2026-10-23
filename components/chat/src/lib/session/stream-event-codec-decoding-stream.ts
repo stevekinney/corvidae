@@ -75,7 +75,7 @@ function decodeTextDelta(parsed: Record<string, unknown>, required: WireEnvelope
   const { content, accumulated } = parsed;
   // `messageId` exists only from wire version 3, where it is required. A
   // version 1 or 2 frame decodes without one, exactly as it always has.
-  if (required.wireVersion !== 3) {
+  if (required.wireVersion === 1 || required.wireVersion === 2) {
     return {
       type: 'stream:text-delta',
       content,
