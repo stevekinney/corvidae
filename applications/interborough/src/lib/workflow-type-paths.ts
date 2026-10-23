@@ -15,6 +15,11 @@ export function workflowRunsPath(type: string): string {
   return `${workflowTypePath(type)}/runs`;
 }
 
+/** The page that makes a workflow. It is a literal segment, so a workflow called `new` has no page. */
+export function workflowNewPath(): string {
+  return '/workflows/new';
+}
+
 /** The editor for one agent-authored workflow's file. */
 export function workflowEditPath(type: string): string {
   return `${workflowTypePath(type)}/edit`;

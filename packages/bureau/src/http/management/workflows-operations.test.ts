@@ -4,10 +4,10 @@
  * list so a later operation is covered without editing it), and each operation's results and
  * typed faults.
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from '../../create-bureau.ts';
 import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
@@ -224,6 +224,167 @@ describe('results', () => {
     expect(second.result?.['nextOffset']).toBeNull();
   });
 
+  it('lists each file with its description, its trigger, and the counts of its instances', async () => {
+    const served = await serve();
+    const described = { ...DEFINITION, description: 'Writes the daily digest.' };
+    await served.bureau.workflows!.create('digest', described);
+    await served.bureau.workflows!.create('bare', DEFINITION);
+    const before = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+    const byId = (response: RpcBody, id: string) =>
+      listOf(response, 'workflows').find((entry) => entry.id === id) as
+        Record<string, unknown> | undefined;
+    expect(byId(before, 'digest')).toMatchObject({
+      description: 'Writes the daily digest.',
+      trigger: FAST_SCHEDULE,
+      runs: { active: 0, last24Hours: 0, lastRunAt: null },
+    });
+    expect(byId(before, 'bare')).toMatchObject({ description: null });
+
+    const run = await served.bureau.durableEngine()!.start('digest', null, { id: 'digest-run' });
+    await run.result();
+    const after = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+    const counted = byId(after, 'digest')?.['runs'] as {
+      active: number;
+      last24Hours: number;
+      lastRunAt: string | null;
+    };
+    expect(counted.active).toBe(0);
+    expect(counted.last24Hours).toBe(1);
+    expect(Number.isNaN(Date.parse(counted.lastRunAt ?? ''))).toBe(false);
+    expect(byId(after, 'bare')?.['runs']).toMatchObject({ last24Hours: 0, lastRunAt: null });
+  });
+
+  it('counts an instance that has not finished as active, and counts it among the day’s', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('waiting', {
+      trigger: FAST_SCHEDULE,
+      steps: [{ kind: 'await-signal', signal: 'never-sent' }],
+    });
+    await served.bureau.durableEngine()!.start('waiting', null, { id: 'waiting-run' });
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+    expect(listed.result?.['workflows']).toMatchObject([
+      { id: 'waiting', runs: { active: 1, last24Hours: 1 } },
+    ]);
+  });
+
+  it('still lists every file, with no counts for the one whose engine read fails', async () => {
+    const diagnostics: string[] = [];
+    const served = await serve((event) => diagnostics.push(`${event.level}: ${event.message}`));
+    for (const id of ['a-flow', 'b-flow', 'c-flow']) {
+      await served.bureau.workflows!.create(id, DEFINITION);
+    }
+    const engine = served.bureau.durableEngine()!;
+    const original = engine.list.bind(engine);
+    const failing = spyOn(engine, 'list').mockImplementation(async (filter, options) => {
+      if (filter?.type === 'b-flow') throw new Error('engine unavailable');
+      return original(filter, options);
+    });
+    try {
+      const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      expect(listed.error).toBeUndefined();
+      expect(listed.result?.['workflows']).toMatchObject([
+        { id: 'a-flow', runs: { active: 0, last24Hours: 0, lastRunAt: null } },
+        { id: 'b-flow', state: 'ready', runs: null },
+        { id: 'c-flow', runs: { active: 0, last24Hours: 0, lastRunAt: null } },
+      ]);
+      expect(failing).toHaveBeenCalled();
+    } finally {
+      failing.mockRestore();
+    }
+    expect(
+      diagnostics.some((line) => line.includes('Could not count') && line.includes('b-flow')),
+    ).toBe(true);
+  });
+
+  it('widens the window for a quiet workflow, and reads its whole history only as a last resort', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('digest', DEFINITION);
+    const engine = served.bureau.durableEngine()!;
+    const DAY = 24 * 60 * 60 * 1000;
+    const longAgo = Date.now() - 400 * DAY;
+    const reads: Array<{ ageInDays: number | null }> = [];
+    // The engine's clock is its own, so answer the windowed reads here: nothing in the last day or
+    // the last 30 days, and one instance, 400 days old, in the history.
+    const stub = spyOn(engine, 'list').mockImplementation(async (filter) => {
+      const gte = filter?.createdAt?.gte;
+      reads.push({ ageInDays: gte === undefined ? null : Math.round((Date.now() - gte) / DAY) });
+      const found = gte === undefined && filter?.status === undefined;
+      return {
+        items: found ? [{ createdAt: longAgo }] : [],
+        total: found ? 1 : 0,
+      } as never;
+    });
+    try {
+      const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      const files = (listed.result?.['workflows'] ?? []) as Array<{ runs: unknown }>;
+      const file = files[0];
+      expect(file?.runs).toEqual({
+        active: 0,
+        last24Hours: 0,
+        lastRunAt: new Date(longAgo).toISOString(),
+      });
+    } finally {
+      stub.mockRestore();
+    }
+    // The count of the day, then 30 days, then the whole history; the active read has no window.
+    expect(reads.filter((read) => read.ageInDays !== null)).toEqual([
+      { ageInDays: 1 },
+      { ageInDays: 30 },
+    ]);
+    expect(reads.filter((read) => read.ageInDays === null).length).toBe(2);
+  });
+
+  it('leaves the counts out unless the caller asks for them, because each one reads the engine', async () => {
+    const served = await serve();
+    await seed(served);
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', {});
+    expect(listed.result?.['workflows']).toMatchObject([
+      { id: 'digest', state: 'ready', description: null, runs: null },
+    ]);
+    const counted = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+    expect(listed.result?.['workflows']).not.toEqual(counted.result?.['workflows']);
+    expect(counted.result?.['workflows']).toMatchObject([
+      { id: 'digest', runs: { active: 0, last24Hours: 1 } },
+    ]);
+  });
+
+  it('lists a file that cannot be used with no counts', async () => {
+    const served = await serve();
+    await writeFile(join(served.directory, 'broken.json'), '{ not json');
+    await served.bureau.workflows!.refresh();
+    const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+    expect(listed.result?.['workflows']).toMatchObject([
+      { id: 'broken', state: 'invalid', description: null, trigger: null, runs: null },
+    ]);
+  });
+
+  it('keeps the description through a pause and a resume, and replaces it on an update', async () => {
+    const served = await serve();
+    const created = await served.bureau.workflows!.create('digest', {
+      ...DEFINITION,
+      description: 'Writes the daily digest.',
+    });
+    const paused = await ownerRpc(served.owner, 'bureau.workflows.pause', {
+      id: 'digest',
+      expectedHash: created.hash,
+    });
+    const resumed = await ownerRpc(served.owner, 'bureau.workflows.resume', {
+      id: 'digest',
+      expectedHash: paused.result?.['hash'],
+    });
+    const kept = JSON.parse(await readFile(join(served.directory, 'digest.json'), 'utf8'));
+    expect(kept).toMatchObject({ description: 'Writes the daily digest.', paused: false });
+
+    const updated = await ownerRpc(served.owner, 'bureau.workflows.update', {
+      id: 'digest',
+      expectedHash: resumed.result?.['hash'],
+      definition: { ...DEFINITION, description: 'Writes the weekly digest.' },
+    });
+    expect(updated.error).toBeUndefined();
+    const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
+    expect(got.result).toMatchObject({ description: 'Writes the weekly digest.' });
+  });
+
   it('pauses and resumes through the file and the schedule, adds no revision, and deletes', async () => {
     const served = await serve();
     const created = await seed(served);
@@ -334,6 +495,19 @@ describe('faults', () => {
     });
     expect(response.error?.data?.httpStatus).toBe(422);
     expect(response.error?.data).toMatchObject({ reason: 'invalid-document' });
+    expect(served.bureau.workflows?.list()).toEqual([]);
+  });
+
+  it('Unprocessable for a description that is empty or too long for a list row, and writes nothing', async () => {
+    const served = await serve();
+    for (const description of ['   ', 'x'.repeat(281)]) {
+      const response = await ownerRpc(served.owner, 'bureau.workflows.create', {
+        id: 'described',
+        definition: { ...DEFINITION, description },
+      });
+      expect(response.error?.data?.httpStatus).toBe(422);
+      expect(response.error?.data).toMatchObject({ reason: 'invalid-document' });
+    }
     expect(served.bureau.workflows?.list()).toEqual([]);
   });
 

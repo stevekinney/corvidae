@@ -65,6 +65,12 @@ import {
 /** The statuses of an instance that has not finished: the runs whose revision must stay loadable. */
 const IN_FLIGHT_STATUSES: readonly WorkflowStatus[] = ['pending', 'running', 'suspended'];
 
+/** How far back a workflow's recent instances are counted: the 24 hours the list shows. */
+const RECENT_RUN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** The wider window a quiet workflow's newest instance is looked for in before its whole history is. */
+const QUIET_RUN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 /** The most runs of one workflow `runs.list` reads, so a long history cannot make one call unbounded. */
 const RUNS_READ_LIMIT_PER_WORKFLOW = 1000;
 
@@ -97,6 +103,16 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
   readonly result?: unknown;
   /** Why the instance failed, for a run that did, including a failed agent step. */
   readonly error?: string;
+}
+
+/** How busy one workflow is: what the workflow list shows beside each row. */
+export interface WorkflowRunCounts {
+  /** Instances that have not finished: pending, running, or suspended. */
+  readonly active: number;
+  /** Instances created in the last 24 hours. */
+  readonly last24Hours: number;
+  /** When the newest instance was created, or `null` when the workflow has had none. */
+  readonly lastRunAt: string | null;
 }
 
 export interface WorkflowRunFilter {
@@ -174,6 +190,11 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
+  /**
+   * The counts of `id`'s instances, read from the engine's own totals, or `null` when the engine
+   * could not be read (the failure is reported through the Bureau's diagnostics).
+   */
+  readonly runCounts: (id: string) => Promise<WorkflowRunCounts | null>;
   /** Rescan the directory; resolves once the engine and the schedules match it. */
   readonly refresh: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
@@ -900,6 +921,42 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         nextOffset:
           ordered.length > filter.offset + filter.limit ? filter.offset + filter.limit : null,
       };
+    },
+
+    async runCounts(id) {
+      try {
+        const now = Date.now();
+        // Two index-narrowed reads answer the counts. The engine intersects the type index with the
+        // status or created-at index before it loads any state, so each read loads only the
+        // instances it counts, and `limit: 1` bounds the reply.
+        const [active, recent] = await Promise.all([
+          engine.list({ type: id, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
+          engine.list({ type: id, createdAt: { gte: now - RECENT_RUN_WINDOW_MS }, limit: 1 }),
+        ]);
+        // The engine lists newest first, so the first item of a page is the newest in its window.
+        // A workflow that ran today already has its newest instance; only a quiet one widens the
+        // window, and an unfiltered read of its whole history is the last resort.
+        let newest = recent.items[0];
+        for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
+          if (newest !== undefined) break;
+          const page = await engine.list({
+            type: id,
+            ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
+            limit: 1,
+          });
+          newest = page.items[0];
+        }
+        return {
+          active: active.total,
+          last24Hours: recent.total,
+          lastRunAt: newest === undefined ? null : new Date(newest.createdAt).toISOString(),
+        };
+      } catch (error) {
+        // A count the engine would not give is left out, never shown as zero, and never withholds
+        // the workflow list it was asked for.
+        options.diagnose(`Could not count the instances of workflow "${id}".`, error);
+        return null;
+      }
     },
 
     async getRun(runId) {
