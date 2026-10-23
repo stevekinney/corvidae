@@ -100,10 +100,13 @@
     },
   });
 
-  onMount(() => {
-    follower.start();
-    return () => follower.dispose();
+  // The stream is opened once the Bureau has answered for the task. A run the Bureau does not know
+  // (an engine run, or a goal's attempt) has no task to follow, and its subscription answers 404,
+  // which the browser logs as a failed request (COR-1643).
+  $effect(() => {
+    if (task.data !== undefined) follower.start();
   });
+  onMount(() => () => follower.dispose());
 
   $effect(() => {
     if (follower.state !== 'ended') return;

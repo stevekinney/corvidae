@@ -30,6 +30,7 @@ import {
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
+import { SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import type { ServeOptions } from './index.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
 import { closeJsonRpcSessionsForShutdown } from './json-rpc-websocket-runtime.ts';
@@ -104,6 +105,7 @@ const MAX_CANCELLATION_GRACE_PERIOD_MS = 300_000;
  * @internal Exported only for test assertions.
  */
 export const WEBSOCKET_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024; // 4 MiB
+
 const AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE = 'WEFT_SERVER_AUTHENTICATION_REQUIRED';
 /**
  * @internal
@@ -484,6 +486,7 @@ export function buildBunServeConfig(
     development,
     routes,
     fetch: fetchHandler,
+    idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
     websocket: { ...websocketCallbacks, maxPayloadLength: WEBSOCKET_MAX_PAYLOAD_BYTES },
   };
   if (tlsOptions) {

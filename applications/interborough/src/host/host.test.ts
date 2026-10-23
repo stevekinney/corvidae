@@ -295,8 +295,29 @@ describe('the built application', () => {
     expect(await response.text()).toContain('bun run --filter=@lostgradient/interborough build');
   });
 
-  test('answers an unknown path with 404', async () => {
+  test('serves the shell for an unknown address a browser navigates to, so the router can say so', async () => {
     const host = await start(await createBuild());
+    for (const path of ['/nowhere/at/all', '/nonsense/route', '/chat/new/extra', '/gone.html']) {
+      const response = await fetch(new URL(path, host.url), { headers: { accept: 'text/html' } });
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get('content-type'), path).toBe('text/html; charset=utf-8');
+      expect(await response.text(), path).toContain('<div id="app"></div>');
+    }
+  });
+
+  test('answers a miss that is not a page navigation with 404', async () => {
+    const host = await start(await createBuild());
+    // A script's fetch, an asset, and every prefix the engine, the Bureau, or the host owns.
     expect(await statusOf(host, '/nowhere/at/all')).toBe(404);
+    expect(await statusOf(host, '/favicon.ico')).toBe(404);
+    for (const path of ['/assets/missing.js', '/bureau/missing', '/host/missing']) {
+      const response = await fetch(new URL(path, host.url), { headers: { accept: 'text/html' } });
+      expect(response.status, path).toBe(404);
+    }
+    const post = await fetch(new URL('/nowhere/at/all', host.url), {
+      method: 'POST',
+      headers: { accept: 'text/html' },
+    });
+    expect(post.status).toBe(404);
   });
 });
