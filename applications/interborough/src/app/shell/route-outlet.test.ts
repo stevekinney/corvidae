@@ -155,7 +155,7 @@ describe('a route that no view owns', () => {
     if (agents === undefined) throw new Error('Expected an /agents route.');
     const { view } = agents;
     const load = spyOn(agents, 'load').mockResolvedValue({ default: Placeholder });
-    agents.view = undefined;
+    Reflect.deleteProperty(agents, 'view');
     try {
       landAt('/agents');
       const { container } = mount();
@@ -167,7 +167,7 @@ describe('a route that no view owns', () => {
       expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
       expect(container.querySelector('.weft-view')).toBeNull();
     } finally {
-      agents.view = view;
+      Reflect.set(agents, 'view', view);
       load.mockRestore();
     }
   });
