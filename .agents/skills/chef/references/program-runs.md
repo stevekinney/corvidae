@@ -18,6 +18,17 @@ Read this when chef's scope is a whole Linear project, or any body of work that 
 - Keep one implementation slot for corrections to open pull requests. A correction waits at the head of the queue for a slot; it is never done in the coordinator's context.
 - Re-query the project after every merge. A new issue, a changed blocker, or a revised description updates the batch table, with a one-line decision record.
 
+## Batch validate on a timer
+
+`bun scripts/chef/batch-validate.ts` runs the batch validate (`repository.json`'s `batchCommand`, here `bun run validate`) on `origin/main` in the dedicated worktree `<worktree root>/batch-validate`, through `gate-run.ts`, so the result lands in `main`'s health record and `merge-gate.ts` can refuse a merge into a red `main`. It runs only when `main` has moved since the last recorded batch head and either at least five merges have landed since that head or two hours have passed, and only while the one-minute load average is under 8; otherwise it prints why it did not run and exits 0. `--dry-run` says what it would do. It runs for as long as the validate takes, so schedule it as a background command.
+
+The script adds no scheduler, and this repository takes no CI, cron files, or launchd plists (AGENTS.md). The coordinator schedules it from its own session:
+
+- **Claude Code scheduled task:** create one that runs `bun scripts/chef/batch-validate.ts --json` from the main checkout every 20 to 30 minutes, with a prompt that reads the one-line result, and on a failure (exit 1) runs `bun scripts/chef/gate-run.ts triage <log> --base <last green head>` and routes each mapped task to the pull request's owner as a fix forward.
+- **`/loop`:** `/loop 30m bun scripts/chef/batch-validate.ts --json`, ended with the run.
+
+A skipped run costs nothing but the tick, so a short interval is fine; do not start a second timer while one is live. When a run fails, merge nothing except the fix, passed to `merge-gate.ts` with `--fixes-main`; the next scheduled batch validate clears the record once it passes at a later head.
+
 ## Promote Backlog issues to Ready
 
 - Before claiming an issue, check it against the Definition of Ready in [the Linear policy](linear-policy.md). When it holds and every blocker is Done or Canceled, move it to Ready with a comment naming what was checked, then claim it (In Progress). In a program run, chef promotes issues itself; a separate draining workflow, such as the `drain-linear-project` skill where it is installed, only drains issues that are already Ready and keeps its own rule.

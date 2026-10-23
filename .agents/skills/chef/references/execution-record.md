@@ -53,6 +53,8 @@ Primary reviewer and inherited correction-attempt counts:
 Merge gate (corvidae: `bun run check` per pull request, run shared, launched with `scripts/chef/gate-run.ts run`; a full `validate` only for a one-way door, lock or concurrency infrastructure, or `turbo.json` and root scripts, and the coordinator merges those):
 Merge command with every path filled in (`bun scripts/chef/merge-gate.ts ... --usage-log <file> --transcript <path>`), or "coordinator merges" with the reason:
 Parallel-run limits (AGENTS.md "Parallel runs"): at most three sessions or workers on the host; at most one full validate queued per session, and only for an exception.
+Session start: one fresh session for this issue, started from its brief (`bun scripts/chef/brief.ts <ID>` writes `tmp/chef/briefs/<ID>.md`), Sonnet by default; the session ends when its pull request merges. The context-ceiling hook warns at 250K tokens and blocks all but the handoff at 400K.
+Main health: `merge-gate.ts` refuses to merge while `main`'s last batch validate failed, unless this pull request is the fix and the merge command carries `--fixes-main`.
 Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically, so batch a round's fixes into one push; do not re-answer a re-reported comment.
 Delivery artifact and review boundary:
 
@@ -104,7 +106,7 @@ or (including a CPU load generator) when this charter requires it; record
 every PID, collect or kill each before returning, and report a
 `pgrep -fl "<pattern>"` that prints nothing.
 
-Keep your context small. Every gate writes its full output to a log under the
+Keep your context small; past about 250K tokens, write a handoff brief under `tmp/chef/` and hand off to a fresh session. Every gate writes its full output to a log under the
 evidence directory and prints only its exit code and a short summary; read a
 failure with a targeted search, never by printing the log. Run one
 consolidated gate command per stage. Commit only after the package's lint and

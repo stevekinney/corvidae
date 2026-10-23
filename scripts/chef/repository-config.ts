@@ -34,6 +34,8 @@ export interface RepositoryConfig {
   installCommand: string;
   gateCommand: string;
   affectedCheckCommand: string;
+  /** The batch validate; `gate-run.ts run` records its result as main's health. Omit to record none. */
+  batchCommand?: string;
   /** Command prefix for a gate run, such as `caffeinate -ims`; omit on a host without it. */
   gateWrapper?: string;
   /** Extended regular expression for `pgrep -f`; with none, no lock wait happens. */
@@ -51,6 +53,7 @@ const knownFields = [
   'installCommand',
   'gateCommand',
   'affectedCheckCommand',
+  'batchCommand',
   'gateWrapper',
   'lockPattern',
   'mergeMethod',
@@ -120,6 +123,8 @@ export function validateRepositoryConfig(
     affectedCheckCommand: text(source, record, 'affectedCheckCommand'),
     mergeMethod: mergeMethod as MergeMethod,
   };
+  if (record['batchCommand'] !== undefined)
+    config.batchCommand = text(source, record, 'batchCommand');
   if (record['gateWrapper'] !== undefined) config.gateWrapper = text(source, record, 'gateWrapper');
   if (record['lockPattern'] !== undefined) {
     config.lockPattern = text(source, record, 'lockPattern');
