@@ -381,6 +381,23 @@ export interface MemoryDeletionPropagationResult {
   readonly detail?: string;
 }
 
+/**
+ * Deletes one bounded-async target's copies of a deletion's records.
+ *
+ * For each target a deletion propagates, it is called at least once per
+ * `deletionId`, not exactly once. A target that is exempt (the deletion opened
+ * under a legal hold) or that goes overdue before its record-removal rows
+ * complete is never propagated, so the propagator is not called for it. When
+ * it is called:
+ * a process that dies between `propagate()` returning and the receipt write
+ * that records its result leaves the target pending, and the next pass calls
+ * it again; two passes running one open receipt at once can both call it,
+ * and only one of their receipt writes lands. An implementation must
+ * therefore be idempotent per `deletionId`: a repeat call is safe and deletes
+ * nothing twice, but it reports current progress, so a call that returned
+ * `pending` while an asynchronous purge ran may return `completed` once it
+ * finishes.
+ */
 export interface MemoryDeletionPropagator {
   propagate(request: MemoryDeletionPropagationRequest): Promise<MemoryDeletionPropagationResult>;
 }

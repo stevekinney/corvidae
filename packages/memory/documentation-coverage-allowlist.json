@@ -69,7 +69,6 @@
     ". MemoryClass",
     ". MemoryDeletionPlan",
     ". MemoryDeletionPropagationRequest",
-    ". MemoryDeletionPropagator",
     ". MemoryDeletionTarget",
     ". MemoryDeletionTargetReceipt",
     ". MemoryDenialReason",
