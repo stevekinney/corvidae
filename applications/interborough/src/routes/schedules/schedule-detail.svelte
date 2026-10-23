@@ -227,10 +227,10 @@
       {/if}
       {#if allowed.editInWorkflow}
         <Button
-            variant="secondary"
-            size="md"
-            onclick={() => openWorkflowEditor(schedule.workflowType)}
-          >
+          variant="secondary"
+          size="md"
+          onclick={() => openWorkflowEditor(schedule.workflowType)}
+        >
           <Pencil aria-hidden="true" size={14} />
           {SCHEDULE_COPY.editWorkflowAction}
         </Button>

@@ -417,7 +417,6 @@ export const SCHEDULE_COPY = {
   },
   moreActions: 'More actions',
   backToList: 'Back to schedules',
-  startsLabel: 'Starts',
   /** The action that opens the editor of the workflow whose file holds a schedule's trigger. */
   editWorkflowAction: 'Edit workflow',
   editWorkflowNote:
@@ -439,9 +438,6 @@ export const SCHEDULE_COPY = {
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
   form: {
-    startsLabel: 'Start',
-    startsAgent: 'An agent run',
-    startsWorkflow: 'A workflow type',
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
     agentDescription: 'The agent each fire runs. It must be in this installation’s catalog.',

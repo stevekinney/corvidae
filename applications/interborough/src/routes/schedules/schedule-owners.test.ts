@@ -668,9 +668,8 @@ describe('a schedule is named by what it does', () => {
     // A schedule with no description is named by what it starts.
     const code = within(row(container, CODE_SCHEDULE) as HTMLElement);
     expect(code.getByRole('link', { name: 'Schedule for order-processing' })).not.toBeNull();
-    expect(
-      (await openMenu(container, AGENT_SCHEDULE)).getByRole('menuitem', { name: 'Copy id' }),
-    ).not.toBeNull();
+    const menu = await openMenu(container, AGENT_SCHEDULE);
+    expect(menu.getByRole('menuitem', { name: 'Copy id' })).not.toBeNull();
   });
 
   test('the Agent filter narrows the list to that agent’s schedules, and the address carries it', async () => {
@@ -682,15 +681,15 @@ describe('a schedule is named by what it does', () => {
     });
 
     await waitFor(() => expect(router.search.get('agent')).toBe('assistant'));
-    await waitFor(() => expect(row(container, CODE_SCHEDULE)).toBeNull());
+    // Only the agent's schedule is left of the three.
+    await waitFor(() => expect(container.querySelectorAll('li[data-schedule]').length).toBe(1));
     expect(row(container, AGENT_SCHEDULE)).not.toBeNull();
   });
 
   test('one schedule’s page says what it sends', async () => {
     const { findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
 
-    expect((await findByTestId('schedule-input')).textContent).toContain(
-      '“Summarize what happened yesterday.”',
-    );
+    const input = await findByTestId('schedule-input');
+    expect(input.textContent).toContain('“Summarize what happened yesterday.”');
   });
 });

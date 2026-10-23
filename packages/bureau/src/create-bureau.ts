@@ -10057,7 +10057,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * storage. A workflow file's schedule runs no agent of its own, so it has none.
    */
   async function getScheduleAgentName(scheduleId: string): Promise<string | undefined> {
-    return (await readScheduledAgentInput(scheduleId))?.agentName;
+    const stored = await readScheduledAgentInput(scheduleId);
+    return stored?.agentName;
   }
 
   /**
