@@ -220,6 +220,35 @@ describe('formatGeminiToolResults', () => {
     ]);
   });
 
+  it('echoes only provider-issued call ids, on two calls to the same function', () => {
+    const results = [
+      { callId: 'call-a', outcome: 'success', content: { n: 1 }, toolName: 'lookup' },
+      { callId: 'call-b', outcome: 'success', content: { n: 2 }, toolName: 'lookup' },
+      {
+        callId: 'call-c',
+        outcome: 'success',
+        content: 'text',
+        toolName: 'lookup',
+        parts: [{ type: 'text', text: 'three' }],
+      },
+      { callId: 'generated-d', outcome: 'success', content: { n: 4 }, toolName: 'lookup' },
+    ] as const;
+    const ids = (providerCallIds: ReadonlySet<string> | undefined) =>
+      formatGeminiToolResults([...results], providerCallIds ? { providerCallIds } : {}).map(
+        (part) => part.functionResponse.id,
+      );
+
+    expect(ids(new Set(['call-a', 'call-b', 'call-c']))).toEqual([
+      'call-a',
+      'call-b',
+      'call-c',
+      undefined,
+    ]);
+    expect(ids(undefined)).toEqual([undefined, undefined, undefined, undefined]);
+    const part = formatGeminiToolResults(results[3], { providerCallIds: () => false })[0];
+    expect(part?.functionResponse).not.toHaveProperty('id');
+  });
+
   it('resolves tool names from explicit mappings and defaults', () => {
     expect(
       formatGeminiToolResults(
