@@ -93,7 +93,7 @@ export function readWorkspaceGraph(source: GraphSource): WorkspaceGraph {
   for (const directory of directories) {
     const manifest = parseJson(source.read(`${directory}/package.json`)) ?? {};
     manifests.set(directory, manifest);
-    if (typeof manifest.name === 'string') directoryByName.set(manifest.name, directory);
+    if (typeof manifest['name'] === 'string') directoryByName.set(manifest['name'], directory);
   }
   const dependencies = new Map<string, Set<string>>();
   for (const [directory, manifest] of manifests) {
