@@ -1,7 +1,7 @@
 import type { FleetEventFrame } from '../lib/live-source/fleet-event-source.svelte.ts';
-import { numberField, stringField, workflowBody, workflowHref } from './notification-format.ts';
+import { numberField, stringField, workflowBody, workflowHref } from './fleet-event-format.ts';
 
-type NotificationRule = {
+type FleetEventRule = {
   readonly tier: 'critical' | 'warning' | 'info';
   readonly icon: string;
   readonly title: (frame: FleetEventFrame) => string;
@@ -9,8 +9,8 @@ type NotificationRule = {
   readonly href: (frame: FleetEventFrame) => string;
 };
 
-/** Every client-visible fleet event kind mapped to its notification treatment. */
-export const NOTIFICATION_RULES: Readonly<Record<string, NotificationRule>> = {
+/** Every client-visible fleet event kind mapped to how the Engine view's activity feed shows it. */
+export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
   'alert:fired': {
     tier: 'critical',
     icon: 'siren',

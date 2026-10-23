@@ -95,6 +95,7 @@
     <QuestionDecision
       id={`run-wait-${wait.reviewId}`}
       question={review.data.prompt ?? TASK_COPY.humanWaitFallback}
+      identifiers={[]}
       sending={working}
       {failure}
       onSend={answer}
@@ -103,6 +104,7 @@
     {@const approval = review.data.approval}
     <ApprovalDecision
       id={`run-wait-${wait.reviewId}`}
+      identifiers={[approval.toolName]}
       question={approvalQuestion({
         toolName: approval.toolName,
         arguments: approval.arguments,

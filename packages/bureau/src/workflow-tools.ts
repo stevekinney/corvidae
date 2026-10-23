@@ -263,6 +263,9 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description:
       'Create a workflow: a JSON file of a trigger and steps that Bureau runs. `name` is what the workflow is called, and its identifier is derived from it (lowercase, with runs of other characters turned into one hyphen) unless you give `id`. A taken identifier is a conflict. The workflow is yours to change and starts working as soon as the call returns.',
     input: createInput,
+    metadata: {
+      shortDescription: 'Create a workflow Bureau runs on a schedule or a signal.',
+    },
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const derived = input.id === undefined ? deriveWorkflowIdentifier(input.name) : undefined;
       const provisional =
@@ -294,6 +297,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description:
       'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, and you become the agent that wrote it. Leave `paused` out to leave the workflow running.',
     input: updateInput,
+    metadata: { shortDescription: 'Replace a workflow’s trigger and steps.' },
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const calling = await caller(context, input.id);
       if ('refusal' in calling) return calling.refusal;
@@ -318,6 +322,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         ? 'Pause a workflow, if its file still has the `hash` workflows-list returned. A paused workflow starts nothing new; instances already running finish.'
         : 'Resume a paused workflow, if its file still has the `hash` workflows-list returned.',
       input: guardedInput,
+      metadata: {
+        shortDescription: paused
+          ? 'Pause a workflow so it starts nothing new.'
+          : 'Resume a paused workflow.',
+      },
       execute: async (input, context): Promise<WorkflowToolResult> => {
         const calling = await caller(context, input.id);
         if ('refusal' in calling) return calling.refusal;
@@ -341,6 +350,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description:
       'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, and its trigger kind. A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
+    metadata: { shortDescription: 'List the workflows and their state.' },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
       const calling = await caller(context, '');
       if ('refusal' in calling) {

@@ -58,6 +58,7 @@ import {
   eventsOf,
   readRetained,
   type RetainedEvents,
+  statusElementOf,
 } from './a2a-task-stream.ts';
 import type { TaskEvent } from './management/tasks-events-operation.ts';
 
@@ -257,16 +258,6 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     const retained = await readRetained(bureau, taskId, undefined);
     if (retained === undefined) return undefined;
     return retained.events.at(-1)?.cursor ?? retained.reached ?? '-1';
-  }
-
-  /** A status element, or a resync read as one; `undefined` for any other element. */
-  function statusElementOf(
-    element: ReturnType<ReturnType<typeof createFoldProjector>['project']>,
-  ): Extract<TaskEvent, { kind: 'task.status' }> | undefined {
-    if (element?.kind === 'task.status') return element;
-    if (element?.kind !== 'task.resynced') return undefined;
-    const { revision: _revision, ...status } = element;
-    return { ...status, kind: 'task.status' };
   }
 
   /** Enqueues what the configuration is owed. Resolves whether the task's story has ended. */

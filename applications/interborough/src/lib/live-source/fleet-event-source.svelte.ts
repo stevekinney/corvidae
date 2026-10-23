@@ -6,7 +6,7 @@
  * **Fan-out model.** Plan §5.2 is explicit that the app keeps exactly one
  * fleet SSE connection (the ≤3-connection budget in plan §5), while feeding
  * genuinely different consumers (dashboard activity feed, list-row
- * liveness, the notification center, worker fleet views). Those consumers
+ * liveness, task evidence, worker fleet views). Those consumers
  * want *different* subsets of the 32-kind feed, so the shared connection
  * itself opens **unfiltered** (unless a caller passes a constructor-level
  * `filter` for a narrower, standalone connection) and each `subscribe()`

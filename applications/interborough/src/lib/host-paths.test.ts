@@ -1,7 +1,12 @@
 /** Where the host keeps what a person edits by hand: the request, and the path of an agent's file. */
 import { describe, expect, test } from 'bun:test';
 
-import { urlOf } from './bureau-stub.test-support.ts';
+import {
+  STUB_CONFIGURATION_FILE,
+  STUB_PROVIDERS,
+  stubHostPaths,
+  urlOf,
+} from './bureau-stub.test-support.ts';
 import { agentFilePath, getHostPaths, HOST_PATHS_ROUTE, workflowFilePath } from './host-paths.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
 
@@ -11,15 +16,16 @@ describe('getHostPaths', () => {
     const paths = await getHostPaths({
       fetch: async (input) => {
         seen.push(urlOf(input));
-        return Response.json({
-          agentDirectory: '/home/me/.interborough/agents',
-          workflowDirectory: '/home/me/.interborough/workflows',
-        });
+        return Response.json(
+          stubHostPaths('/home/me/.interborough/agents', '/home/me/.interborough/workflows'),
+        );
       },
     });
     expect(seen).toEqual([HOST_PATHS_ROUTE]);
     expect(paths.agentDirectory).toBe('/home/me/.interborough/agents');
     expect(paths.workflowDirectory).toBe('/home/me/.interborough/workflows');
+    expect(paths.configurationFile).toBe(STUB_CONFIGURATION_FILE);
+    expect(paths.providers).toEqual(STUB_PROVIDERS);
   });
 
   test('passes an abort signal through, and uses the global fetch by default', async () => {
@@ -27,7 +33,7 @@ describe('getHostPaths', () => {
     const signals: (AbortSignal | null | undefined)[] = [];
     const restore = installFetchImplementation(async (_input, init) => {
       signals.push(init?.signal);
-      return Response.json({ agentDirectory: '/agents', workflowDirectory: '/workflows' });
+      return Response.json(stubHostPaths('/agents', '/workflows'));
     });
     try {
       await getHostPaths({ signal: controller.signal });
@@ -60,6 +66,15 @@ describe('getHostPaths', () => {
       (error: unknown) => error,
     );
     expect(partial).toBeInstanceOf(Error);
+    // Nor is one that does not say where the providers are configured.
+    const unconfigurable = await getHostPaths({
+      fetch: async () =>
+        Response.json({ agentDirectory: '/agents', workflowDirectory: '/workflows' }),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(unconfigurable).toBeInstanceOf(Error);
   });
 });
 

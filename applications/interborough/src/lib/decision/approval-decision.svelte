@@ -13,6 +13,8 @@
   interface ApprovalDecisionProps {
     /** What is being asked, ending in a question mark. */
     question: string;
+    /** The parts of the question that are identifiers (the tool's name), which are set in monospace. */
+    identifiers: readonly string[];
     /** Whether a decision is being sent, which holds both buttons. */
     deciding: boolean;
     onDecide: (decision: 'approve' | 'deny', note: string) => void;
@@ -21,12 +23,21 @@
     id: string;
   }
 
-  let { question, deciding, onDecide, withNote = false, id }: ApprovalDecisionProps = $props();
+  let {
+    question,
+    identifiers,
+    deciding,
+    onDecide,
+    withNote = false,
+    id,
+  }: ApprovalDecisionProps = $props();
   let note = $state('');
 </script>
 
 <div class="ib-decision" data-kind="approval">
-  <p class="ib-decision__question" id={`${id}-question`}><IdentifierText text={question} /></p>
+  <p class="ib-decision__question" id={`${id}-question`}>
+    <IdentifierText text={question} {identifiers} />
+  </p>
   {#if withNote}
     <div class="ib-decision__note">
       <Input

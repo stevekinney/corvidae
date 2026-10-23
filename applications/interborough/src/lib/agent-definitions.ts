@@ -93,7 +93,15 @@ const catalogSchema = z.object({
       aliases: z.array(z.object({ alias: z.string(), resolvesTo: z.string() })),
     }),
   ),
-  tools: z.array(z.object({ name: z.string(), description: z.string() })),
+  tools: z.array(
+    z.object({
+      name: z.string(),
+      /** What the model is told about the tool: a prompt, which can run to several paragraphs. */
+      description: z.string(),
+      /** The one line a person is shown for the tool, or `null` when the tool declares none. */
+      shortDescription: z.string().nullable(),
+    }),
+  ),
 });
 
 /** The models and tools an agent may name, as `bureau.agents.catalog` lists them. */

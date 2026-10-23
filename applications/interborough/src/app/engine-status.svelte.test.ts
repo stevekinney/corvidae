@@ -5,9 +5,8 @@
  *
  * Scope: `FleetEventSource`'s own wire/reconnect behavior is exhaustively
  * covered by T1.4's own test suites; what this file proves is the
- * composition this module adds — real fleet frames land in the shared
- * `NotificationStore`, `status` reflects the fleet connection once it's
- * live, and `dispose()` actually tears both sources down. The
+ * composition this module adds — `status` reflects the fleet connection
+ * once it's live, and `dispose()` actually tears both sources down. The
  * `status`-falls-back-to-the-health-poll branch (`fleetSource.status ===
  * 'closed'`) is reachable only in the narrow window before the
  * constructor's synchronous `subscribe()` call flips `FleetEventSource`
@@ -21,7 +20,6 @@ import { FleetEventSource } from '../lib/live-source/fleet-event-source.svelte.t
 import { startLiveSourceTestServer } from '../lib/live-source/live-source-test-server.test-support.ts';
 import { EngineStatusController } from './engine-status.svelte.ts';
 import GetFleetEventSourceHarness from './get-fleet-event-source-harness.test-harness.svelte';
-import { NotificationStore } from './notifications.svelte.ts';
 import ProvideFleetEventSourceHarness from './provide-fleet-event-source-harness.test-harness.svelte';
 
 /** A bare `Bun.serve()` that always fails `/v1/events/sse` (simulating an unreachable fleet feed) but keeps `/v1/health` reachable, so `EngineStatusController`'s health-poll fallback has somewhere to succeed. */
@@ -43,28 +41,16 @@ function startUnreachableFleetServer(): { baseUrl: string; stop: () => void } {
 }
 
 describe('EngineStatusController (integration, real server)', () => {
-  test('status becomes live and real fleet frames are forwarded into the notification store', async () => {
+  test('status becomes live against a real server', async () => {
     const server = await startLiveSourceTestServer();
-    const notifications = new NotificationStore();
-    const controller = new EngineStatusController(
-      { baseUrl: server.baseUrl, headers: { Authorization: `Bearer ${server.token}` } },
-      notifications,
-    );
+    const controller = new EngineStatusController({
+      baseUrl: server.baseUrl,
+      headers: { Authorization: `Bearer ${server.token}` },
+    });
 
     try {
       await waitFor(() => {
         expect(controller.status).toBe('live');
-      });
-
-      const workflowId = 'engine-status-integration';
-      await server.engine.start('signal-stepped', { steps: 1 }, { id: workflowId });
-
-      await waitFor(() => {
-        expect(
-          notifications.items.some(
-            (item) => item.href === `/runs/${workflowId}` && item.title === 'Workflow started',
-          ),
-        ).toBe(true);
       });
     } finally {
       controller.dispose();
@@ -73,20 +59,14 @@ describe('EngineStatusController (integration, real server)', () => {
   });
 
   test('caughtUp becomes true against a real server (the toast-gate primitive actually opens, not just "no crash")', async () => {
-    // `notifyForNotification`'s gate (`if (item && this.fleetSource.caughtUp)
-    // toastForNotification(item)`) is only worth anything if `caughtUp` ever
-    // flips true against the real fleet-SSE path `serve()` serves — a
-    // fake/no-op `replayComplete` ping
-    // would make this pass trivially by never toasting anything, ever, which
-    // "0 toasts on load" alone can't distinguish from "the gate correctly
-    // suppressed replay". This proves the real server actually sends the
-    // ping that opens the gate.
+    // Consumers that act only on live events gate on `caughtUp`, which is only worth anything if it
+    // ever flips true against the real fleet-SSE path `serve()` serves. This proves the real server
+    // sends the ping that opens the gate.
     const server = await startLiveSourceTestServer();
-    const notifications = new NotificationStore();
-    const controller = new EngineStatusController(
-      { baseUrl: server.baseUrl, headers: { Authorization: `Bearer ${server.token}` } },
-      notifications,
-    );
+    const controller = new EngineStatusController({
+      baseUrl: server.baseUrl,
+      headers: { Authorization: `Bearer ${server.token}` },
+    });
 
     try {
       await waitFor(() => {
@@ -100,10 +80,8 @@ describe('EngineStatusController (integration, real server)', () => {
 
   test('dispose() closes both the fleet source and the health poll', async () => {
     const server = await startLiveSourceTestServer();
-    const notifications = new NotificationStore();
     const controller = new EngineStatusController(
       { baseUrl: server.baseUrl, headers: { Authorization: `Bearer ${server.token}` } },
-      notifications,
       { healthPollIntervalMs: 5 },
     );
 
@@ -122,10 +100,8 @@ describe('EngineStatusController (integration, real server)', () => {
 
   test('falls back to the health poll once the fleet feed fails to reconnect 5 times in a row', async () => {
     const server = startUnreachableFleetServer();
-    const notifications = new NotificationStore();
     const controller = new EngineStatusController(
       { baseUrl: server.baseUrl, headers: {} },
-      notifications,
       { healthPollIntervalMs: 5, fleetReconnectDelayMs: () => 1 },
     );
 
