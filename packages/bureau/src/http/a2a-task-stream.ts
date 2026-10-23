@@ -40,7 +40,7 @@ import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import { bearsSettlement } from '../task-resync.ts';
 import type { Bureau } from '../types.ts';
-import { formsOf, type WaitForm } from './a2a-input-forms.ts';
+import { formsOf, type WaitForm, withPreviousForms } from './a2a-input-forms.ts';
 import {
   a2aStateOf,
   agentMessage,
@@ -86,6 +86,8 @@ export type FollowTaskOptions = {
   readonly lastEventId: string | undefined;
   /** Whether the request activated the durable-history extension. */
   readonly durableHistoryActive: boolean;
+  /** Whether the request activated A2UI, so a status that asks for input carries its form. */
+  readonly a2ui?: boolean | undefined;
   /** Builds the `Task` a snapshot sends, from the task's view with the folded status. */
   readonly snapshot: (view: TaskView) => Promise<Task>;
   /** The agent's reply on a completed task, for its artifact and final status message. */
@@ -217,6 +219,7 @@ export function eventsOf(
   element: Extract<TaskEvent, { kind: 'task.status' }>,
   reply: ReplyParts | undefined,
   forms: readonly WaitForm[] = [],
+  a2ui = false,
 ): StreamResponse[] {
   const timestamp = new Date(element.emittedAtMs).toISOString();
   const state = a2aStateOf(element.status);
@@ -257,7 +260,7 @@ export function eventsOf(
     // the one it answers when several are open.
     const status = statusUpdate(view, state, timestamp);
     if (status.payload?.$case === 'statusUpdate') {
-      status.payload.value.status!.message = waitingMessage(view, forms);
+      status.payload.value.status!.message = waitingMessage(view, forms, a2ui);
     }
     return [status];
   }
@@ -363,6 +366,11 @@ export function createFoldProjector(
  */
 export async function* followTask(options: FollowTaskOptions): AsyncGenerator<StreamResponse> {
   const { bureau, taskId, signal } = options;
+  /** A view's forms; with A2UI activated, each also names the form it replaces. */
+  const formsFor = async (view: TaskView) => {
+    const forms = await formsOf(bureau, view);
+    return options.a2ui === true ? withPreviousForms(bureau, view, forms) : forms;
+  };
   const requested = requireCursor(options.lastEventId);
   const initial = await bureau.tasks.get(taskId);
   if (initial === undefined) return;
@@ -439,8 +447,9 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           message: view.statusMessage,
           artifact: null,
         };
-        const forms = await formsOf(bureau, view);
-        for (const event of eventsOf(view, element, reply, forms)) queue.push({ event });
+        const forms = await formsFor(view);
+        for (const event of eventsOf(view, element, reply, forms, options.a2ui))
+          queue.push({ event });
         if (isTerminal(view.status)) queue.end();
       } else if (lastStatus === 'submitted' && view.status !== 'submitted') {
         lastStatus = 'working';
@@ -511,8 +520,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         if (!watching || element.status === lastStatus) return;
         lastStatus = element.status;
         const view = (await bureau.tasks.get(taskId)) ?? initial;
-        const forms = await formsOf(bureau, view);
-        for (const mapped of eventsOf(view, element, undefined, forms)) {
+        const forms = await formsFor(view);
+        for (const mapped of eventsOf(view, element, undefined, forms, options.a2ui)) {
           queue.push({ event: mapped });
         }
       });
@@ -553,7 +562,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         mapping = chained(mapping, async () => {
           const view = (await bureau.tasks.get(taskId)) ?? initial;
           const reply = status.status === 'completed' ? await options.replyOf(view) : undefined;
-          const events = eventsOf(view, status, reply, await formsOf(bureau, view));
+          const events = eventsOf(view, status, reply, await formsFor(view), options.a2ui);
           for (const [index, mapped] of events.entries()) {
             // Only the last event of a durable one carries its cursor, so a resume never skips
             // the part of it a reader had not received.

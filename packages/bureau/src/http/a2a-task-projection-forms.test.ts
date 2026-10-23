@@ -5,7 +5,9 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { TaskView } from '../task-registry.ts';
+import { withPreviousForms } from './a2a-input-forms.ts';
 import { waitingMessage } from './a2a-task-projection.ts';
+import { eventsOf } from './a2a-task-stream.ts';
 
 const schema = { type: 'object', properties: { a: { type: 'string' } } };
 const viewOf = (reviewId: string) =>
@@ -65,5 +67,65 @@ describe('waitingMessage form surfaces', () => {
 
     expect(message.parts).toHaveLength(1);
     expect(message.parts[0]?.content?.$case).toBe('text');
+  });
+});
+
+describe('the previous form of a run (COR-1674)', () => {
+  // The audit record of a closed wait, as `buildReviewDecisionAuditRecord` writes it: the review
+  // without its schema, and an `inputForm` marker. `getReview` returns a resolved review with no
+  // schema too, so only the marker can say the wait showed a form.
+  const record = (id: string, inputForm: boolean) => ({
+    type: 'review.human-wait.approved',
+    detail: { review: { kind: 'human-wait', id }, ...(inputForm ? { inputForm: true } : {}) },
+  });
+  const bureau = {
+    getReview: async () => undefined,
+    auditTrail: {
+      query: async () => [
+        record('human-wait:run-1:deploy:0', true),
+        record('human-wait:run-1:note:1', false),
+      ],
+    },
+  } as never;
+  const form = {
+    reviewId: 'human-wait:run-1:region:2',
+    signalName: 'region',
+    prompt: undefined,
+    inputSchema: schema,
+  } as never;
+
+  it('is the closed wait that showed a form, whatever signal it waited on', async () => {
+    const [named] = await withPreviousForms(bureau, viewOf('human-wait:run-1:region:2'), [form]);
+
+    expect(named?.previousReviewId).toBe('human-wait:run-1:deploy:0');
+  });
+});
+
+describe('a stream status that asks for input', () => {
+  const element = {
+    kind: 'task.status',
+    taskId: 'run-1',
+    cursor: '',
+    emittedAtMs: 0,
+    status: 'input-required',
+    finishReason: null,
+    message: null,
+    artifact: null,
+  } as never;
+  const reviewId = 'human-wait:run-1:deploy:0';
+  const forms = [{ reviewId, signalName: 'deploy', prompt: 'Where?', inputSchema: schema }];
+  const partsOf = (a2ui: boolean) => {
+    const [response] = eventsOf(viewOf(reviewId), element, undefined, forms, a2ui);
+    return response?.payload?.$case === 'statusUpdate'
+      ? (response.payload.value.status?.message?.parts ?? [])
+      : [];
+  };
+
+  it('carries the form when the request activated A2UI', () => {
+    expect(partsOf(true).map((part) => part.content?.$case)).toEqual(['text', 'data']);
+  });
+
+  it('is the prompt text alone when it did not', () => {
+    expect(partsOf(false).map((part) => part.content?.$case)).toEqual(['text']);
   });
 });

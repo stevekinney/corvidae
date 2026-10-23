@@ -1524,6 +1524,7 @@ export function createBureauA2ARequestHandler(
       lastEventId:
         resuming && durableHistoryActive ? headerOf(context, 'last-event-id') : undefined,
       durableHistoryActive,
+      a2ui: shape.activated.has(A2UI_EXTENSION_URI),
       snapshot: (view) => respondWith(view, shape, receipt),
       replyOf,
       timers,

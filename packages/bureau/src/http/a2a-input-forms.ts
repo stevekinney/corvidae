@@ -34,42 +34,39 @@ function parkOrdinalOf(reviewId: string): number {
   return Number(reviewId.slice(reviewId.lastIndexOf(':') + 1));
 }
 
-/** The run's human-wait reviews the audit trail recorded, oldest first; none without a trail. */
-async function recordedHumanWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
+/**
+ * The run's human-wait reviews that showed a form, oldest first, as the audit trail recorded them
+ * when they closed (the record carries an `inputForm` marker, not the schema). Empty without a
+ * trail.
+ */
+async function recordedFormWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
   const records = await bureau.auditTrail?.query({ runId, limit: 10_000 }).catch(() => undefined);
   const found = new Set<string>();
   for (const record of records ?? []) {
-    if (!record.type.startsWith('review.')) continue;
-    const review = (record.detail as { review?: Record<string, unknown> } | null)?.review;
-    const id = review?.['id'];
-    if (review?.['kind'] === 'human-wait' && typeof id === 'string') {
-      if (Number.isInteger(parkOrdinalOf(id))) found.add(id);
-    }
+    if (!record.type.startsWith('review.human-wait.')) continue;
+    const detail = record.detail as { review?: { id?: unknown }; inputForm?: unknown } | null;
+    const id = detail?.review?.id;
+    if (detail?.inputForm !== true || typeof id !== 'string') continue;
+    if (Number.isInteger(parkOrdinalOf(id))) found.add(id);
   }
   return [...found].toSorted((left, right) => parkOrdinalOf(left) - parkOrdinalOf(right));
 }
 
-/** The latest of the run's recorded human waits before `ordinal` that asked for a form. */
+/** The latest of the run's closed form waits before `ordinal`. */
 async function formReviewBefore(
   bureau: FormsBureau,
   runId: string,
   ordinal: number,
 ): Promise<string | undefined> {
-  const recorded = await recordedHumanWaitIds(bureau, runId);
-  const earlier = recorded.filter((id) => parkOrdinalOf(id) < ordinal);
-  for (const id of earlier.toReversed()) {
-    const review = await bureau.getReview(id).catch(() => undefined);
-    if (review?.kind === 'human-wait' && review.inputSchema !== undefined) return id;
-  }
-  return undefined;
+  const recorded = await recordedFormWaitIds(bureau, runId);
+  return recorded.filter((id) => parkOrdinalOf(id) < ordinal).at(-1);
 }
 
 /**
  * Adds to each form the review of the run's previous form wait, whose surface the form replaces.
  * Only a client that renders forms needs it, so a read that activated A2UI calls it and no other
  * caller pays for it. The audit trail has no newest-first order or review-kind filter, so this
- * reads the run's records (bounded by the query's limit) and then one review per earlier wait,
- * newest first, until a form is found.
+ * reads the run's records, bounded by the query's limit, and no review.
  */
 export async function withPreviousForms(
   bureau: FormsBureau,
