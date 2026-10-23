@@ -88,7 +88,9 @@ export function foldSurfaceEvent(
       next = { ...next, components: message.updateComponents.components };
     } else if (next !== undefined && message.updateDataModel !== undefined) {
       // A snapshot always sets the whole model, at the root path.
-      next = { ...next, dataModel: message.updateDataModel.value ?? {} };
+      // An explicit `null` is a model; only an absent value is the empty one.
+      const { value } = message.updateDataModel;
+      next = { ...next, dataModel: value === undefined ? {} : value };
     }
   }
   if (next !== undefined) held.set(surfaceId, next);
@@ -246,6 +248,31 @@ describe('reconnecting to a run and reconstructing its surface', () => {
       await second.rest();
       await stream.rest();
     });
+  });
+});
+
+describe('the fold', () => {
+  const snapshot = (value?: unknown) => ({
+    type: 'ACTIVITY_SNAPSHOT',
+    activityType: 'a2ui-surface',
+    content: {
+      surfaceId: 'panel',
+      surfaceRevision: 1,
+      messages: [
+        { createSurface: { catalogId: 'catalog' } },
+        { updateDataModel: value === undefined ? {} : { value } },
+      ],
+    },
+  });
+
+  it('keeps an explicit null data model and defaults only an absent one', () => {
+    const explicit = new Map<string, HeldSurface>();
+    foldSurfaceEvent(explicit, snapshot(null));
+    expect(explicit.get('panel')?.dataModel).toBeNull();
+
+    const absent = new Map<string, HeldSurface>();
+    foldSurfaceEvent(absent, snapshot());
+    expect(absent.get('panel')?.dataModel).toEqual({});
   });
 });
 

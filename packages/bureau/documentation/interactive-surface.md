@@ -300,7 +300,9 @@ export function foldSurfaceEvent(
       next = { ...next, components: message.updateComponents.components };
     } else if (next !== undefined && message.updateDataModel !== undefined) {
       // A snapshot always sets the whole model, at the root path.
-      next = { ...next, dataModel: message.updateDataModel.value ?? {} };
+      // An explicit `null` is a model; only an absent value is the empty one.
+      const { value } = message.updateDataModel;
+      next = { ...next, dataModel: value === undefined ? {} : value };
     }
   }
   if (next !== undefined) held.set(surfaceId, next);
