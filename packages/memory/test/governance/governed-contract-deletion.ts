@@ -525,6 +525,98 @@ export function registerDeletionContract(backend: GovernedBackend): void {
       expect(sweep.prunedEvents).toBeGreaterThan(0);
     });
 
+    it('records a retention sweep event only when the sweep deleted or pruned something', async () => {
+      const outcomes = async () => {
+        const events = await fixture.ledger.listEvents({
+          tenantId: 'tenant-a',
+          type: 'memory.retention.swept',
+        });
+        return events.map((event) => event.outcome);
+      };
+      // Nothing has expired and nothing is old enough to prune: the sweep records nothing.
+      expect(await fixture.memory.sweepRetention(retentionService)).toMatchObject({
+        status: 'applied',
+        deletionIds: [],
+        prunedEvents: 0,
+        prunedReceipts: 0,
+      });
+      expect(await outcomes()).toEqual([]);
+      // A dry run is asked for, so it records its report every time, even when it finds nothing.
+      await fixture.memory.sweepRetention(retentionService, { dryRun: true });
+      await fixture.memory.sweepRetention(retentionService, { dryRun: true });
+      expect(await outcomes()).toEqual(['dry-run', 'dry-run']);
+
+      await fixture.runtime.advance(91 * DAY);
+      const sweep = await fixture.memory.sweepRetention(retentionService);
+      expect(sweep.deletionIds).toHaveLength(1);
+      expect(await outcomes()).toEqual(['dry-run', 'dry-run', 'applied']);
+      const events = await fixture.ledger.listEvents({
+        tenantId: 'tenant-a',
+        type: 'memory.retention.swept',
+      });
+      expect(events.at(-1)?.recordIds).toEqual([recordId]);
+      // The next sweep finds nothing left to delete or prune, so it adds no event.
+      await fixture.memory.sweepRetention(retentionService);
+      expect(await outcomes()).toEqual(['dry-run', 'dry-run', 'applied']);
+    });
+
+    it('records a sweep event for audit pruning alone, and none for a held record already waiting', async () => {
+      const sweptEvents = async () =>
+        fixture.ledger.listEvents({ tenantId: 'tenant-a', type: 'memory.retention.swept' });
+      await fixture.memory.placeLegalHold(governancePrincipal, {
+        ...locator(),
+        ownerId: 'owner-a',
+      });
+      await fixture.runtime.advance(91 * DAY);
+      // The first pass opens the held record's exempt receipt, which is a deletion it requested.
+      const first = await fixture.memory.sweepRetention(retentionService);
+      expect(first.deletionIds).toHaveLength(1);
+      expect(await sweptEvents()).toHaveLength(1);
+      // The record is still expired and held, but its receipt is waiting: nothing to record.
+      const again = await fixture.memory.sweepRetention(retentionService);
+      expect(again.expired[0]?.held).toBe(true);
+      expect(again.deletionIds).toEqual([]);
+      expect(await sweptEvents()).toHaveLength(1);
+
+      // Once the audit history is a year old, pruning it alone is worth an event.
+      await fixture.runtime.advance(366 * DAY);
+      const pruning = await fixture.memory.sweepRetention(retentionService);
+      expect(pruning.deletionIds).toEqual([]);
+      expect(pruning.prunedEvents).toBeGreaterThan(0);
+      const events = await sweptEvents();
+      expect(events.map((event) => event.details?.['prunedEvents'])).toContain(
+        pruning.prunedEvents,
+      );
+    });
+
+    it('records a sweep event when abandoned-derivation pruning is its only work', async () => {
+      // Nothing is left to expire once the seeded record is deleted.
+      await fixture.memory.delete(principalA, locator());
+      const started = fixture.runtime.clock.now();
+      // A derivation that never stored its record, started just before the audit cutoff.
+      await fixture.ledger.putPendingDerivation({
+        tenantId: 'tenant-a',
+        record: { id: 'never-stored', namespace: scope.namespace },
+        startedAt: started - 1,
+      });
+      // Every event and receipt so far is exactly at the cutoff, which is not older than it.
+      await fixture.runtime.advance(365 * DAY);
+      const sweep = await fixture.memory.sweepRetention(retentionService);
+      expect(sweep).toMatchObject({
+        deletionIds: [],
+        prunedEvents: 0,
+        prunedReceipts: 0,
+        prunedDerivations: 1,
+      });
+      expect(await fixture.ledger.listPendingDerivations({ tenantId: 'tenant-a' })).toEqual([]);
+      const events = await fixture.ledger.listEvents({
+        tenantId: 'tenant-a',
+        type: 'memory.retention.swept',
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]?.details).toMatchObject({ prunedDerivations: 1 });
+    });
+
     it('never writes restricted content or credentials into events, receipts, notifications, or manifests', async () => {
       await fixture.memory.search(principalA, 'vault key', { collection: 'notes' });
       await fixture.memory.recallForModel(principalA, 'vault key', { collection: 'notes' });
