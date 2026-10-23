@@ -69,10 +69,15 @@ test('operator restarts a completed run, seeing the revision it will select firs
 });
 
 test('a run that is not terminal offers no Restart action', async ({ page }) => {
-  await page.goto('/runs?status=running');
-  const firstLink = page.getByRole('table', { name: 'Workflows' }).getByRole('link').first();
-  await expect(firstLink).toBeVisible();
-  await firstLink.click();
+  // `/runs` is the Bureau's list now, so a running engine run is found through the engine's own
+  // API and opened by id: a run only the engine knows opens on its Engine tab.
+  const running = await page.request.get('/api/v1/workflows', {
+    params: { status: 'running', limit: '1' },
+  });
+  expect(running.ok()).toBe(true);
+  const id = ((await running.json()) as { items: Array<{ id: string }> }).items[0]?.id;
+  if (id === undefined) throw new Error('The seeded engine has no running workflow.');
+  await page.goto(`/runs/${encodeURIComponent(id)}`);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Restart' })).toHaveCount(0);
 });
