@@ -120,9 +120,130 @@ export const episodePayload = z
     (payload) => payload.occurredTo === undefined || payload.occurredTo >= payload.occurredFrom,
     'an episode does not end before it begins',
   );
-export const procedurePayload = z
+/** A procedure as COR-769 first stored it: a title and its ordered steps. */
+export const procedurePayloadV1 = z
   .object({ title: nonEmpty, steps: z.array(nonEmpty).min(1) })
   .strict();
+
+/** What a procedure step does. A `tool` step names the tool it calls; the others carry their text. */
+export const PROCEDURE_STEP_KINDS = ['command', 'code', 'tool', 'check'] as const;
+
+/**
+ * How much review promoting a procedure needs. A `high-impact` procedure is one
+ * whose steps change state outside the run (deploy, delete, pay, send), and its
+ * promotion waits for a human reviewer.
+ */
+export const PROCEDURE_SCOPES = ['routine', 'high-impact'] as const;
+
+const procedureStepSchema = z
+  .object({
+    kind: z.enum(PROCEDURE_STEP_KINDS),
+    text: nonEmpty,
+    /** The tool a `tool` step calls; required for that kind and absent for the others. */
+    tool: nonEmpty.optional(),
+    /** Whether the extraction claims this step caused the outcome, rather than merely preceding it. */
+    causal: z.boolean(),
+  })
+  .strict()
+  .refine(
+    (step) => (step.kind === 'tool') === (step.tool !== undefined),
+    'a tool step names its tool, and only a tool step',
+  );
+
+/** The principal kinds that stand for a person, the only ones that may review a high-impact procedure. */
+export const PROCEDURE_REVIEWER_KINDS = ['user', 'governance'] as const;
+
+const procedureReviewSchema = z
+  .object({
+    reviewer: z.object({ kind: z.enum(PROCEDURE_REVIEWER_KINDS), id: nonEmpty }).strict(),
+    decidedAt: epochMilliseconds,
+    reviewId: nonEmpty,
+  })
+  .strict();
+
+const procedureValidationSchema = z
+  .object({
+    evaluator: z
+      .object({ name: nonEmpty, revision: nonEmpty, kind: z.enum(['deterministic', 'evaluator']) })
+      .strict(),
+    /** Digest of the exact fixture the validation ran. */
+    fixtureDigest: digestSchema,
+    outcome: z.literal('passed'),
+    /** What the validation observed, verbatim, and its digest. */
+    observation: nonEmpty,
+    observationDigest: digestSchema,
+  })
+  .strict();
+
+/**
+ * A validated procedure (COR-770). It is a revision of the same `procedure`
+ * kind, discriminated by `version`, so every procedure COR-769 stored still
+ * parses unchanged. Confidence and lifecycle status live on the projection
+ * record itself, like every other kind's.
+ */
+export const procedurePayloadV2 = z
+  .object({
+    version: z.literal(2),
+    title: nonEmpty,
+    objective: nonEmpty,
+    taskClass: nonEmpty,
+    preconditions: z.array(nonEmpty),
+    requiredCapabilities: z.array(nonEmpty),
+    /** Environment and dependency versions the procedure was validated against. */
+    environment: z.array(z.object({ name: nonEmpty, version: nonEmpty }).strict()),
+    steps: z.array(procedureStepSchema).min(1),
+    expectedEvidence: z.array(nonEmpty),
+    postconditions: z.array(nonEmpty),
+    knownFailures: z.array(z.object({ signature: nonEmpty, remedy: nonEmpty.optional() }).strict()),
+    sideEffects: z.array(nonEmpty),
+    approval: z.object({ scope: z.enum(PROCEDURE_SCOPES), required: z.boolean() }).strict(),
+    provenance: z
+      .object({
+        successfulEpisodes: z.array(projectionReferenceSchema),
+        failedEpisodes: z.array(projectionReferenceSchema),
+        validation: procedureValidationSchema,
+        review: procedureReviewSchema.optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const procedurePayload = z.union([procedurePayloadV1, procedurePayloadV2]);
+
+export type ProcedurePayloadV2 = z.infer<typeof procedurePayloadV2>;
+export type ProcedureStep = ProcedurePayloadV2['steps'][number];
+
+/** One step's identity: two steps with the same key are the same step. */
+export function procedureStepKey(step: string | ProcedureStep): string {
+  return typeof step === 'string' ? step : JSON.stringify([step.kind, step.tool ?? '', step.text]);
+}
+
+/**
+ * A procedure's searchable text. A validated procedure includes what it is for,
+ * the tools it calls, and the failures it is known for, so a query that names
+ * only an objective, a tool, or a failure signature still finds it.
+ */
+function procedureText(payload: z.infer<typeof procedurePayload>): string {
+  if (!('version' in payload)) return [payload.title, ...payload.steps].join('\n');
+  return [
+    payload.title,
+    payload.objective,
+    payload.taskClass,
+    ...payload.preconditions,
+    ...payload.steps.flatMap((step) =>
+      step.tool === undefined ? [step.text] : [step.text, step.tool],
+    ),
+    ...payload.expectedEvidence,
+    ...payload.postconditions,
+    ...payload.knownFailures.map((failure) => failure.signature),
+    ...payload.sideEffects,
+  ].join('\n');
+}
+
+/** The text of each step, for search and for the `steps-distinct` title check. */
+export function procedureStepText(step: string | ProcedureStep): string {
+  return typeof step === 'string' ? step : step.text;
+}
 export const preferencePayload = z.object({ subject: nonEmpty, statement: nonEmpty }).strict();
 export const summaryPayload = z
   .object({ text: nonEmpty, covers: z.array(projectionReferenceSchema).min(1) })
@@ -316,7 +437,7 @@ export function projectionText(record: EvidenceProjectionRecord): string {
     case 'episode':
       return record.payload.summary;
     case 'procedure':
-      return [record.payload.title, ...record.payload.steps].join('\n');
+      return procedureText(record.payload);
     case 'preference':
       return `${record.payload.subject} ${record.payload.statement}`;
     case 'summary':
