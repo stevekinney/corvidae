@@ -13,6 +13,8 @@ afterEach(() => {
 });
 
 async function probeRuns(options: { tasks?: unknown[]; goals?: unknown[] }) {
+  // A probe run earlier in the same test left its stub behind; restoring first keeps the original `fetch`.
+  stub?.restore();
   stub = installBureauStub({
     'bureau.tasks.list': () => ({ tasks: options.tasks ?? [], nextPageToken: null }),
     'bureau.goals.list': () => ({ goals: options.goals ?? [], nextOffset: null }),
