@@ -4,6 +4,7 @@ import {
   isTokenUsage,
   isToolResult,
 } from '../components/chat/builders.ts';
+import { liftLegacyWireConversation } from './stream-event-codec-conversation-schema.ts';
 import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
 import {
   isRecord,
@@ -162,8 +163,12 @@ function decodeCompletedRun(
   parsed: Record<string, unknown>,
   required: WireEnvelope,
 ): ChatStreamEvent {
+  const conversation =
+    required.wireVersion === 4
+      ? parsed['conversation']
+      : liftLegacyWireConversation(parsed['conversation']);
   if (
-    !isConversationHistory(parsed['conversation']) ||
+    !isConversationHistory(conversation) ||
     typeof parsed['content'] !== 'string' ||
     !isTokenUsage(parsed['usage']) ||
     typeof parsed['finishReason'] !== 'string'
@@ -171,7 +176,7 @@ function decodeCompletedRun(
     throw new Error('Invalid chat stream event');
   return {
     type: 'run.completed',
-    conversation: parsed['conversation'],
+    conversation,
     content: parsed['content'],
     usage: parsed['usage'],
     finishReason: parsed['finishReason'],

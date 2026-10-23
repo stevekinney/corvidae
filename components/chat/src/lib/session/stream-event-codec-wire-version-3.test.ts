@@ -16,10 +16,10 @@ import {
  * and `TEXT_MESSAGE_*`. Versions 1 and 2 keep decoding exactly as before.
  */
 describe('wire version 3', () => {
-  test('is a supported version, and 4 is not', () => {
-    expect(SUPPORTED_WIRE_VERSIONS).toEqual([1, 2, 3]);
+  test('is a supported version, and 5 is not', () => {
+    expect(SUPPORTED_WIRE_VERSIONS).toEqual([1, 2, 3, 4]);
     expect(isSupportedWireVersion(3)).toBe(true);
-    expect(isSupportedWireVersion(4)).toBe(false);
+    expect(isSupportedWireVersion(5)).toBe(false);
     expect(isSupportedWireVersion('3')).toBe(false);
   });
 
@@ -32,14 +32,14 @@ describe('wire version 3', () => {
         accumulated: 'h',
         messageId: 'm',
         text: 'h',
-        wireVersion: 4,
+        wireVersion: 5,
         sequence: 0,
       };
       expect(() => decodeChatStreamEvent(frame)).toThrow('Invalid chat stream event');
     }
     expect(() =>
       encodeChatStreamEvent(
-        hostileEvent({ type: 'run.started', runId: 'run-1', wireVersion: 4, sequence: 0 }),
+        hostileEvent({ type: 'run.started', runId: 'run-1', wireVersion: 5, sequence: 0 }),
       ),
     ).toThrow('cannot encode a malformed wire envelope');
   });
