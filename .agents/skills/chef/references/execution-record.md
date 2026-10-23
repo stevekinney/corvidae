@@ -49,7 +49,7 @@ Staged verification commands, working directory, and expected results (cheap che
 Reusable evidence identities, environment assumptions, exit codes, paths, and invalidation conditions:
 Primary reviewer and inherited correction-attempt counts:
 Merge gate (corvidae: `bun run check` per pull request, run shared; a full `validate` only for a one-way door, lock or concurrency infrastructure, or `turbo.json` and root scripts):
-Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round; do not re-answer a re-reported comment.
+Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically, so batch a round's fixes into one push; do not re-answer a re-reported comment.
 Delivery artifact and review boundary:
 
 Mutation protocol: `exec` workdir affects only that command. Before any write,
