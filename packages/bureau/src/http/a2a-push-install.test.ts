@@ -162,4 +162,48 @@ describe('the push install', () => {
     const survivor = await fixture.checkpoints.read('task-1', 'same');
     expect(survivor?.installId).toBe('winner');
   });
+
+  it('replaces a failed install’s leftover for another webhook instead of confirming it', async () => {
+    const fixture = setup(fakeStore({}));
+    // A failed install of one webhook left its pending checkpoint, at a cursor from long ago.
+    await fixture.install('1', configuration('cfg')).catch(() => undefined);
+    await fixture.checkpoints.remove('task-1', 'cfg');
+    await fixture.checkpoints.claim({
+      recordVersion: 1,
+      taskId: 'task-1',
+      configId: 'cfg',
+      cursor: '1',
+      caller: CALLER,
+      pending: true,
+      installId: 'old',
+      fingerprint: 'another-webhook',
+    });
+
+    await fixture.install('9', { ...configuration('cfg'), url: 'https://new.test/hook' });
+
+    const checkpoint = await fixture.checkpoints.read('task-1', 'cfg');
+    expect(checkpoint?.cursor).toBe('9');
+    expect(checkpoint?.pending).toBeUndefined();
+    expect(checkpoint?.installId).not.toBe('old');
+  });
+
+  it('ends with a confirmed checkpoint when another instance’s delete removed the pending one', async () => {
+    let remove: () => Promise<void> = async () => undefined;
+    const fixture = setup(
+      fakeStore({
+        create: async (input) => {
+          // Instance B deletes the id between A's pending write and A's commit.
+          await remove();
+          return input;
+        },
+      }),
+    );
+    remove = () => fixture.checkpoints.remove('task-1', 'cfg');
+
+    await fixture.install('6', configuration('cfg'));
+
+    const checkpoint = await fixture.checkpoints.read('task-1', 'cfg');
+    expect(checkpoint?.cursor).toBe('6');
+    expect(checkpoint?.pending).toBeUndefined();
+  });
 });

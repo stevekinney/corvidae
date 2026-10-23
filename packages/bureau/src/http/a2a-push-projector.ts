@@ -120,8 +120,9 @@ export type A2APushProjector = {
    */
   recover(): Promise<void>;
   /**
-   * Recovers, trying again with backoff until it succeeds or the Bureau stops. An install waits
-   * for this, so a configuration never races a recovery that has not settled its checkpoints.
+   * Recovers every task once and resolves, whatever failed: a task that failed keeps being
+   * retried in the background with backoff, and holds up no other task. An install waits for
+   * this, then takes its task's fence, which a retry of the same task's reconciliation also takes.
    */
   recoverUntilReady(): Promise<void>;
   /**
@@ -529,20 +530,83 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     }
   }
 
-  async function recover(): Promise<void> {
-    let failure: { readonly error: unknown } | undefined;
-    for (const taskId of await checkpoints.listTaskIds()) {
-      try {
-        if ((await bureau.tasks.get(taskId)) === undefined) await cleanup(taskId);
-        else {
-          await reconcile(taskId);
-          watch(taskId);
-        }
-      } catch (error) {
-        failure ??= { error };
+  /** Recovers one task's checkpoints. Resolves the failure, or `undefined` on success. */
+  async function recoverTask(taskId: string): Promise<{ readonly error: unknown } | undefined> {
+    try {
+      if ((await bureau.tasks.get(taskId)) === undefined) await cleanup(taskId);
+      else {
+        // Under the task's fence, so an install of the same task cannot race its reconciliation.
+        await fence(taskId, () => reconcile(taskId));
+        watch(taskId);
       }
+      return undefined;
+    } catch (error) {
+      return { error };
     }
-    if (failure !== undefined) throw failure.error;
+  }
+
+  /** Tries every task; resolves the failures. A task's failure never stops the others. */
+  async function recoverTasks(taskIds: readonly string[]) {
+    const failures: Array<{ readonly taskId: string; readonly error: unknown }> = [];
+    for (const taskId of taskIds) {
+      const failure = await recoverTask(taskId);
+      if (failure !== undefined) failures.push({ taskId, error: failure.error });
+    }
+    return failures;
+  }
+
+  async function recover(): Promise<void> {
+    const failures = await recoverTasks(await checkpoints.listTaskIds());
+    if (failures[0] !== undefined) throw failures[0].error;
+  }
+
+  /** Keeps trying `taskIds` (or, when `undefined`, the whole listing) until all have recovered. */
+  function retryRecovery(taskIds: readonly string[] | undefined, attempt: number): void {
+    if (stopped()) return;
+    timers.setTimeout(
+      () => {
+        void (async () => {
+          if (stopped()) return;
+          try {
+            const failures = await recoverTasks(taskIds ?? (await checkpoints.listTaskIds()));
+            for (const failure of failures) report(failure.error);
+            if (failures.length > 0) {
+              retryRecovery(
+                failures.map((failure) => failure.taskId),
+                attempt + 1,
+              );
+            }
+          } catch (error) {
+            report(error);
+            retryRecovery(taskIds, attempt + 1);
+          }
+        })();
+      },
+      Math.min(retryMs * 2 ** attempt, MAXIMUM_CLEANUP_BACKOFF_MS),
+    );
+  }
+
+  /**
+   * One pass over every task, after which installs may proceed whatever its outcome: a task that
+   * failed keeps being retried in the background, and its failure holds up no other task.
+   */
+  async function recoverUntilReady(): Promise<void> {
+    let taskIds: string[];
+    try {
+      taskIds = await checkpoints.listTaskIds();
+    } catch (error) {
+      report(error);
+      retryRecovery(undefined, 0);
+      return;
+    }
+    const failures = await recoverTasks(taskIds);
+    for (const failure of failures) report(failure.error);
+    if (failures.length > 0) {
+      retryRecovery(
+        failures.map((failure) => failure.taskId),
+        0,
+      );
+    }
   }
 
   return {
@@ -555,18 +619,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
 
     recover,
 
-    async recoverUntilReady() {
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          await recover();
-          return;
-        } catch (error) {
-          report(error);
-          if (stopped()) return;
-          await sleep(Math.min(retryMs * 2 ** attempt, MAXIMUM_CLEANUP_BACKOFF_MS));
-        }
-      }
-    },
+    recoverUntilReady,
 
     fence,
 

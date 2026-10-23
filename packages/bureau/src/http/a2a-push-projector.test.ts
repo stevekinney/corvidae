@@ -661,7 +661,34 @@ describe('the push projector', () => {
     expect(fixture.receiver.requests[0]?.body.task.metadata).toEqual({ snapshotOf: 'failed' });
   });
 
-  it('retries recovery until it succeeds, and only then reports ready', async () => {
+  it('settles ready after one pass, and keeps retrying the task that failed', async () => {
+    const fixture = harness([started, requested(1)]);
+    await fixture.configure('0', 'config-1', 'task-1', 'committed');
+    await fixture.configure('0', 'config-1', 'task-gone');
+    let unreadable = true;
+    const flaky: A2APushCheckpoints = {
+      ...fixture.checkpoints,
+      listForTask: async (taskId) => {
+        if (taskId === 'task-1' && unreadable) throw new Error('unreadable');
+        return fixture.checkpoints.listForTask(taskId);
+      },
+    };
+
+    // The pass resolves although task-1 failed, and the other task was recovered.
+    await fixture.projectorOver(flaky).recoverUntilReady();
+    expect(await fixture.checkpoints.read('task-gone', 'config-1')).toBeUndefined();
+    const stillPending = await fixture.checkpoints.read('task-1', 'config-1');
+    expect(stillPending?.pending).toBe(true);
+    await eventually(() => fixture.errors.length >= 2);
+
+    unreadable = false;
+    await eventually(async () => {
+      const checkpoint = await fixture.checkpoints.read('task-1', 'config-1');
+      return checkpoint?.pending === undefined;
+    });
+  });
+
+  it('settles ready when the checkpoint listing itself fails, and retries it', async () => {
     const fixture = harness([started, requested(1)]);
     await fixture.configure('0', 'config-1', 'task-1', 'committed');
     let failures = 2;
@@ -675,15 +702,13 @@ describe('the push projector', () => {
         return fixture.checkpoints.listTaskIds();
       },
     };
-    const projector = fixture.projectorOver(flaky);
 
-    await projector.recoverUntilReady();
-
+    await fixture.projectorOver(flaky).recoverUntilReady();
+    await eventually(async () => {
+      const checkpoint = await fixture.checkpoints.read('task-1', 'config-1');
+      return checkpoint?.pending === undefined;
+    });
     expect(failures).toBe(0);
-    expect(fixture.errors).toHaveLength(2);
-    // The pending checkpoint was confirmed by the attempt that finally ran.
-    const confirmed = await fixture.checkpoints.read('task-1', 'config-1');
-    expect(confirmed?.pending).toBeUndefined();
   });
 
   it('recovers the other tasks when one task’s recovery fails', async () => {

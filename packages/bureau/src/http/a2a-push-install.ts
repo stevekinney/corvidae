@@ -4,8 +4,11 @@
  *
  * The checkpoint is written ahead of its configuration, marked pending, so a crash between the two
  * writes leaves a checkpoint that a restart confirms or removes, and never a configuration that no
- * checkpoint knows. The caller runs an install and a delete of the same task through one fence
- * ({@link A2APushProjector.fence}), so neither interleaves with the other.
+ * checkpoint knows. The caller runs an install and a delete of the same task through one
+ * in-process fence ({@link A2APushProjector.fence}), an optimization only: the protocol itself
+ * tolerates another instance interleaving, because after the configuration commits the install
+ * settles its checkpoint durably (writing it when a delete removed it, replacing a leftover of a
+ * different webhook, never confirming one).
  *
  * A failed `create` is not taken as proof that nothing was written: the store may have committed
  * before the failure reached the caller. The install asks the store whether that configuration exists first, and
@@ -27,7 +30,7 @@ import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts
 /** What an install reads and writes. */
 export type A2APushInstallDependencies = {
   readonly store: Pick<WeftPushNotificationStore, 'check' | 'create'>;
-  readonly checkpoints: Pick<A2APushCheckpoints, 'create' | 'confirm' | 'removePending'>;
+  readonly checkpoints: Pick<A2APushCheckpoints, 'claim' | 'settle' | 'removePending'>;
   /** Starts (or nudges) the projection of the task's history. */
   readonly watch: (taskId: string) => void;
   /** A fresh identifier. Defaults to `crypto.randomUUID`. */
@@ -43,6 +46,15 @@ export type A2APushInstallInput = {
   /** Where the checkpoint starts; the configuration receives every event after it. */
   readonly cursor: string;
 };
+
+/** A digest of the webhook a configuration names, so two installs of different ones differ. */
+async function fingerprintOf(configuration: TaskPushNotificationConfig): Promise<string> {
+  const bytes = new TextEncoder().encode(
+    JSON.stringify([configuration.url, configuration.token, configuration.authentication ?? null]),
+  );
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Installs a push configuration on a task and starts its checkpoint at the cursor. Both writes
@@ -60,6 +72,7 @@ export async function installPushConfiguration(
     configuration.id === '' ? await store.check(taskId, context, configuration) : undefined;
   const configId = configuration.id === '' ? (repeated?.id ?? newId()) : configuration.id;
   const installId = newId();
+  const fingerprint = await fingerprintOf(configuration);
   const pendingCheckpoint = (id: string) => ({
     recordVersion: 1 as const,
     taskId,
@@ -68,8 +81,9 @@ export async function installPushConfiguration(
     caller,
     pending: true as const,
     installId,
+    fingerprint,
   });
-  await checkpoints.create(pendingCheckpoint(configId));
+  await checkpoints.claim(pendingCheckpoint(configId));
   const request = { ...structuredClone(configuration), id: configId, taskId };
   let stored: TaskPushNotificationConfig;
   try {
@@ -97,9 +111,11 @@ export async function installPushConfiguration(
     // A concurrent create of the same webhook won: its configuration is the one checkpointed,
     // and an existing checkpoint (the earlier cursor) is kept.
     await checkpoints.removePending(taskId, configId, installId);
-    await checkpoints.create(pendingCheckpoint(stored.id));
   }
-  await checkpoints.confirm(taskId, stored.id);
+  // Whatever became of the pending checkpoint while the configuration committed (another
+  // instance's delete removed it, a failed install's leftover for another webhook still stands),
+  // the committed configuration ends with a confirmed checkpoint of its own installer's cursor.
+  await checkpoints.settle(pendingCheckpoint(stored.id));
   watch(taskId);
   return stored;
 }
