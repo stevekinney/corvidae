@@ -60,9 +60,14 @@
 
   let panel = $state<HTMLElement | null>(null);
 
-  /** On a narrow screen the panel opens below the list: bring it into view. */
+  /**
+   * On a narrow screen the panel opens below the list: bring it into view. Beside the list, in the
+   * two-column layout (`min-width: 64rem`, as the page's), it is already in view and scrolling
+   * would move the row that was opened out of it.
+   */
   onMount(() => {
-    panel?.scrollIntoView?.({ block: 'nearest' });
+    const beside = window.matchMedia?.('(min-width: 64rem)').matches ?? false;
+    if (!beside) panel?.scrollIntoView?.({ block: 'nearest' });
   });
 
   function goTo(event: MouseEvent, path: string): void {

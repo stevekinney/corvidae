@@ -33,6 +33,8 @@
   let selectedId = $state<string | null>(null);
   let notice = $state<'corrected' | undefined>(undefined);
   let outcome = $state<ForgetOutcome | undefined>(undefined);
+  /** The memories a forget answered with a legal hold, which stays known when the receipt goes. */
+  let held = $state<readonly string[]>([]);
   let changes = $state<ReturnType<typeof MemoryChanges> | undefined>(undefined);
 
   const list = createInfiniteQuery(
@@ -42,7 +44,7 @@
         listMemories(agentId, { limit: PAGE_SIZE, offset: pageParam }, { signal }),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
-      enabled: applied === '',
+      // Kept current while a search is applied: the header's count and the match total read it.
       retry: false,
     }),
     undefined,
@@ -93,10 +95,11 @@
   function changed(change: {
     readonly kind: 'forgotten' | 'corrected';
     readonly id: string;
+    readonly select?: boolean;
   }): void {
     if (change.kind === 'corrected') {
       notice = 'corrected';
-      selectedId = change.id;
+      if (change.select !== false) selectedId = change.id;
     } else {
       notice = undefined;
       if (selectedId === change.id) selectedId = null;
@@ -171,7 +174,7 @@
     </Alert>
   {/if}
 
-  <MemoryChanges bind:this={changes} {agentId} bind:outcome onChanged={changed} />
+  <MemoryChanges bind:this={changes} {agentId} bind:outcome bind:held onChanged={changed} />
 
   <div class="weft-memory__body" data-has-detail={selectedId !== null}>
     <div class="weft-memory__results">
@@ -238,7 +241,7 @@
         <MemoryDetail
           {agentId}
           id={selectedId}
-          legalHold={outcome?.id === selectedId && outcome.result.deletion === 'exempt'}
+          legalHold={held.includes(selectedId)}
           onOpen={open}
           onClose={() => (selectedId = null)}
           onForget={(id) => changes?.askToForget(id)}

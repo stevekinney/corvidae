@@ -29,6 +29,9 @@
   const kind = $derived(kindOf(memory));
   const segments = $derived(highlightSegments(memory.content, query));
   const name = $derived(excerpt(memory.content));
+  const when = $derived(formatMemoryTime(memory.createdAt));
+  /** The row's full text, which says what its actions are for when two excerpts are alike. */
+  const textId = $props.id();
   let chip = $state<HTMLElement | null>(null);
 </script>
 
@@ -40,7 +43,7 @@
     onclick={() => onOpen(memory.id)}
   >
     {#snippet title()}
-      <span class="weft-memory__content"
+      <span class="weft-memory__content" id={textId}
         >{#each segments as segment, index (index)}{#if segment.match}<mark
               class="weft-memory__match">{segment.text}</mark
             >{:else}{segment.text}{/if}{/each}</span
@@ -52,11 +55,7 @@
       {/if}
     {/snippet}
     {#snippet trailingActions()}
-      <RelativeTime
-        class="weft-memory__time"
-        date={memory.createdAt}
-        title={formatMemoryTime(memory.createdAt)}
-      />
+      <RelativeTime class="weft-memory__time" date={memory.createdAt} title={when} />
       <span class="weft-memory__kind" bind:this={chip}>
         <Badge variant="neutral" size="sm">{kind.label}</Badge>
       </span>
@@ -65,13 +64,15 @@
         <Button
           variant="ghost"
           size="sm"
-          aria-label={MEMORY_COPY.rowAction.correct(name)}
+          aria-label={MEMORY_COPY.rowAction.correct(name, when)}
+          aria-describedby={textId}
           onclick={() => onCorrect(memory)}>{MEMORY_COPY.correct.action}</Button
         >
         <Button
           variant="ghost"
           size="sm"
-          aria-label={MEMORY_COPY.rowAction.forget(name)}
+          aria-label={MEMORY_COPY.rowAction.forget(name, when)}
+          aria-describedby={textId}
           onclick={() => onForget(memory.id)}>{MEMORY_COPY.forget.action}</Button
         >
       </span>

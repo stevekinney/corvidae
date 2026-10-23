@@ -48,6 +48,9 @@ const WINDOW = {
   trust: 'verified',
   sessionId: null,
 };
+/** The time a row's actions are named with. */
+const whenOf = (memory: { readonly createdAt: string }): string =>
+  new Date(memory.createdAt).toLocaleString();
 const NO_LINEAGE = { runId: null, corrects: null, correctedBy: null };
 
 const RECEIPT = {
@@ -136,10 +139,14 @@ describe('the list and the search', () => {
     expect(view.queryByRole('button', { name: /^Details/ })).toBeNull();
     const row = text.closest('li') as HTMLElement;
     expect(
-      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(AISLE.content) }),
+      within(row).getByRole('button', {
+        name: MEMORY_COPY.rowAction.forget(AISLE.content, whenOf(AISLE)),
+      }),
     ).not.toBeNull();
     expect(
-      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }),
+      within(row).getByRole('button', {
+        name: MEMORY_COPY.rowAction.correct(AISLE.content, whenOf(AISLE)),
+      }),
     ).not.toBeNull();
     expect(served.callsTo('bureau.memory.get')).toEqual([]);
 
@@ -596,7 +603,9 @@ describe('forgetting a memory', () => {
     const text = await view.findByText(content);
     const row = text.closest('li') as HTMLElement;
     await fireEvent.click(
-      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.forget(content) }),
+      within(row).getByRole('button', {
+        name: MEMORY_COPY.rowAction.forget(content, whenOf(AISLE)),
+      }),
     );
     const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
     await fireEvent.click(
@@ -796,7 +805,9 @@ describe('correcting a memory', () => {
     const row = text.closest('li') as HTMLElement;
 
     await fireEvent.click(
-      within(row).getByRole('button', { name: MEMORY_COPY.rowAction.correct(AISLE.content) }),
+      within(row).getByRole('button', {
+        name: MEMORY_COPY.rowAction.correct(AISLE.content, whenOf(AISLE)),
+      }),
     );
     const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
     const field = within(dialog).getByLabelText(MEMORY_COPY.correct.dialog.label);
@@ -927,6 +938,197 @@ describe('correcting a memory', () => {
         .hasAttribute('disabled'),
     ).toBe(true);
     expect(served.callsTo('bureau.memory.correct')).toEqual([]);
+  });
+});
+
+describe('what a review round found', () => {
+  test('says a match total that is capped as at least, even when the agent’s total is known', () => {
+    expect(MEMORY_COPY.matchCount(20, 25, true)).toBe('20+ of 25 memories match');
+    expect(MEMORY_COPY.matchCount(3, 12, false)).toBe('3 of 12 memories match');
+    expect(MEMORY_COPY.matchCount(1, 1, false)).toBe('1 of 1 memory matches');
+  });
+
+  test('keeps the counts current when a memory is forgotten from the search results', async () => {
+    let gone = false;
+    bureau({
+      'bureau.memory.list': () => ({
+        memories: gone ? [WINDOW] : [AISLE, WINDOW],
+        nextOffset: null,
+      }),
+      'bureau.memory.search': () => ({
+        hits: (gone ? [WINDOW] : [AISLE, WINDOW]).map((memory) => ({ memory, score: 0.5 })),
+      }),
+      'bureau.memory.forget': () => {
+        gone = true;
+        return { id: AISLE.id, deletion: 'completed', receipt: RECEIPT };
+      },
+    });
+    const view = open();
+    await view.findByText(AISLE.content);
+    await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
+      target: { value: 'seats' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.searchAction }));
+    await waitFor(() =>
+      expect(textOf(view.getByTestId('memory-match-count'))).toBe(
+        MEMORY_COPY.matchCount(2, 2, false),
+      ),
+    );
+
+    // The words searched for are marked, so the row is found by its identity and not its text.
+    const row = view.container.querySelector('[data-memory="memory-aisle"]') as HTMLElement;
+    await fireEvent.click(
+      within(row).getByRole('button', {
+        name: MEMORY_COPY.rowAction.forget(AISLE.content, whenOf(AISLE)),
+      }),
+    );
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+    );
+
+    await waitFor(() =>
+      expect(textOf(view.getByTestId('memory-match-count'))).toBe(
+        MEMORY_COPY.matchCount(1, 1, false),
+      ),
+    );
+    expect(textOf(view.getByTestId('memory-count'))).toBe(MEMORY_COPY.count(1, false));
+  });
+
+  test('keeps a legal hold known after the receipt that reported it is dismissed', async () => {
+    bureau({
+      'bureau.memory.forget': () => ({
+        id: AISLE.id,
+        deletion: 'exempt',
+        receipt: { ...RECEIPT, awaitingHoldRelease: true },
+      }),
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(within(detail).getByRole('button', { name: MEMORY_COPY.forget.action }));
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+    );
+    await view.findByText(MEMORY_COPY.forget.outcome.exempt.title);
+
+    await fireEvent.click(view.getByRole('button', { name: /dismiss/i }));
+
+    expect(view.queryByText(MEMORY_COPY.forget.outcome.exempt.title)).toBeNull();
+    expect(
+      textOf(
+        within(detail).getByText(MEMORY_COPY.detail.fields.legalHold, { selector: 'dt' })
+          .nextElementSibling,
+      ),
+    ).toBe(MEMORY_COPY.detail.legalHold.held);
+  });
+
+  test('does not close a newer correction form, or leave for its memory, when an older correction lands', async () => {
+    let release: (answer: unknown) => void = () => {};
+    const served = bureau({
+      'bureau.memory.correct': () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    });
+    const view = open();
+    const aisleText = await view.findByText(AISLE.content);
+    const aisleRow = aisleText.closest('li') as HTMLElement;
+    await fireEvent.click(
+      within(aisleRow).getByRole('button', {
+        name: MEMORY_COPY.rowAction.correct(AISLE.content, whenOf(AISLE)),
+      }),
+    );
+    const first = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+    await fireEvent.input(within(first).getByLabelText(MEMORY_COPY.correct.dialog.label), {
+      target: { value: 'The user prefers the exit row.' },
+    });
+    await fireEvent.click(
+      within(first).getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }),
+    );
+    await waitFor(() => expect(served.callsTo('bureau.memory.correct')).toHaveLength(1));
+    await fireEvent.click(
+      within(first).getByRole('button', { name: MEMORY_COPY.correct.dialog.cancel }),
+    );
+    // The person moves on to another memory while the first correction is still being saved.
+    const windowText = await view.findByText(WINDOW.content);
+    const windowRow = windowText.closest('li') as HTMLElement;
+    await fireEvent.click(
+      within(windowRow).getByRole('button', {
+        name: MEMORY_COPY.rowAction.correct(WINDOW.content, whenOf(WINDOW)),
+      }),
+    );
+    const second = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+    const field = within(second).getByLabelText(MEMORY_COPY.correct.dialog.label);
+    expect((field as HTMLTextAreaElement).value).toBe(WINDOW.content);
+
+    release({ id: AISLE.id, memory: { ...AISLE, id: 'memory-corrected', source: 'operator' } });
+
+    expect(await view.findByText(MEMORY_COPY.correct.saved.title)).not.toBeNull();
+    const stillOpen = view.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+    expect(
+      (within(stillOpen).getByLabelText(MEMORY_COPY.correct.dialog.label) as HTMLTextAreaElement)
+        .value,
+    ).toBe(WINDOW.content);
+    expect(served.callsTo('bureau.memory.get')).toEqual([]);
+  });
+
+  test('tells two memories that share their first words apart in their actions', async () => {
+    const prefix = 'The traveller prefers a window seat on long flights and always wants';
+    const first = { ...AISLE, id: 'memory-first', content: `${prefix} the vegetarian meal.` };
+    const second = {
+      ...AISLE,
+      id: 'memory-second',
+      content: `${prefix} the fish meal.`,
+      createdAt: '2026-10-20T09:30:00.000Z',
+    };
+    bureau({ 'bureau.memory.list': () => ({ memories: [first, second], nextOffset: null }) });
+    const view = open();
+    await view.findByText(first.content);
+
+    const buttons = view.getAllByRole('button', { name: /^Forget:/ });
+    const names = buttons.map((button) => button.getAttribute('aria-label'));
+
+    expect(new Set(names).size).toBe(2);
+    // Each action is described by its row's whole text.
+    for (const button of buttons) {
+      const described = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+      expect([first.content, second.content]).toContain(textOf(described));
+    }
+  });
+
+  describe('scrolling the details into view', () => {
+    const original = {
+      scroll: HTMLElement.prototype.scrollIntoView,
+      media: window.matchMedia,
+    };
+    afterEach(() => {
+      HTMLElement.prototype.scrollIntoView = original.scroll;
+      window.matchMedia = original.media;
+    });
+
+    async function scrollsWhenOpened(wide: boolean): Promise<number> {
+      let scrolls = 0;
+      HTMLElement.prototype.scrollIntoView = () => {
+        scrolls += 1;
+      };
+      window.matchMedia = ((query: string) => ({
+        matches: wide && query.includes('64rem'),
+      })) as unknown as typeof window.matchMedia;
+      bureau();
+      const view = open();
+      await openDetails(view, AISLE.content);
+      await view.findByText(MEMORY_COPY.detail.lineage);
+      return scrolls;
+    }
+
+    test('scrolls to the details when they are stacked under the list', async () => {
+      expect(await scrollsWhenOpened(false)).toBe(1);
+    });
+
+    test('leaves the page where it is when the details sit beside the list', async () => {
+      expect(await scrollsWhenOpened(true)).toBe(0);
+    });
   });
 });
 

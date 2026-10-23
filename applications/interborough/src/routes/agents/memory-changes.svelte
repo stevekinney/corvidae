@@ -34,11 +34,23 @@
     agentId: string;
     /** What the last forget answered, for the page to say when its memory stays stored. */
     outcome?: ForgetOutcome | undefined;
-    /** Called once a change has landed, so the page can look at the list again. */
-    onChanged: (change: { readonly kind: 'forgotten' | 'corrected'; readonly id: string }) => void;
+    /**
+     * The memories a forget answered with a legal hold. Unlike the receipt, which a person can
+     * dismiss, a hold the Bureau confirmed stays known.
+     */
+    held?: readonly string[];
+    /**
+     * Called once a change has landed, so the page can look at the list again. `select` is false
+     * for a correction that finished after the person had moved on to another memory.
+     */
+    onChanged: (change: {
+      readonly kind: 'forgotten' | 'corrected';
+      readonly id: string;
+      readonly select?: boolean;
+    }) => void;
   };
 
-  let { agentId, outcome = $bindable(), onChanged }: Props = $props();
+  let { agentId, outcome = $bindable(), held = $bindable([]), onChanged }: Props = $props();
 
   const queryClient = useQueryClient();
 
@@ -54,6 +66,7 @@
     mutationFn: (id: string) => forgetMemory(agentId, id),
     onSuccess: (result, id) => {
       outcome = { id, result };
+      if (result.deletion === 'exempt' && !held.includes(id)) held = [...held, id];
       // A memory that is gone has no details to read again: the outcome stays on screen.
       void queryClient.invalidateQueries(
         result.deletion === 'completed'
@@ -73,13 +86,16 @@
     onMutate: () => {
       correctionFailure = undefined;
     },
-    onSuccess: (result) => {
-      correctionOpen = false;
+    onSuccess: (result, change) => {
+      // The form may have moved on to another memory while this one was saved: close only the
+      // form that asked for this correction, and do not take the person to its result.
+      const current = correcting === change.id;
+      if (current) correctionOpen = false;
       void queryClient.invalidateQueries({ queryKey: queryKeys.memory.all(agentId) });
-      onChanged({ kind: 'corrected', id: result.memory.id });
+      onChanged({ kind: 'corrected', id: result.memory.id, select: current });
     },
-    onError: (error) => {
-      correctionFailure = memoryFaultOf(error);
+    onError: (error, change) => {
+      if (correcting === change.id) correctionFailure = memoryFaultOf(error);
     },
   }));
 

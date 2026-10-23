@@ -642,7 +642,7 @@ export const MEMORY_COPY = {
    */
   matchCount: (matched: number, total: number | undefined, more: boolean): string =>
     total !== undefined
-      ? `${matched} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
+      ? `${matched}${more ? '+' : ''} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
       : `${matched}${more ? '+' : ''} ${matched === 1 && !more ? 'memory matches' : 'memories match'}`,
   noMatch: (query: string): string => `No memory matches “${query}”`,
   /** The action under an empty search that lists everything again. */
@@ -673,8 +673,8 @@ export const MEMORY_COPY = {
   },
   /** The names of a row's actions: the memory is named so each row's buttons are told apart. */
   rowAction: {
-    forget: (excerpt: string): string => `Forget: ${excerpt}`,
-    correct: (excerpt: string): string => `Correct: ${excerpt}`,
+    forget: (excerpt: string, when: string): string => `Forget: ${excerpt} (${when})`,
+    correct: (excerpt: string, when: string): string => `Correct: ${excerpt} (${when})`,
   },
   detail: {
     heading: 'Memory details',
