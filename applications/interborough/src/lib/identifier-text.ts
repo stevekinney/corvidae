@@ -1,16 +1,32 @@
 /**
- * Splits a line of prose so the identifiers in it can be set in monospace: the kebab-case names of
- * agents and tools (`request-human-input`, `issue-refund`) and ids such as `order-1001`. A word with
- * no hyphen between letters or digits is prose, and so is a hyphen at either edge of a word.
+ * Splits a line of prose so the identifiers in it can be set in monospace. What is an identifier is
+ * decided by where the line comes from, never by how a word looks: the caller names the agent, the
+ * tool or the run id its line is about, and every whole-word occurrence of one is an identifier,
+ * whether or not it has a hyphen (`echo`, `assistant`, `request-human-input`). A word that merely
+ * contains one (`echoes`) is prose.
  */
-const IDENTIFIER = /\b[a-z0-9]+(?:-[a-z0-9]+)+\b/gi;
-
 export type TextSegment = { readonly text: string; readonly identifier: boolean };
 
-export function segmentIdentifiers(text: string): readonly TextSegment[] {
+function escapeForPattern(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function segmentIdentifiers(
+  text: string,
+  identifiers: readonly string[],
+): readonly TextSegment[] {
+  // The longest first, so a name that contains another (`echo-loud` and `echo`) is matched whole.
+  const names = [...new Set(identifiers.filter((name) => name !== ''))].sort(
+    (left, right) => right.length - left.length,
+  );
+  if (names.length === 0) return text === '' ? [] : [{ text, identifier: false }];
+  const pattern = new RegExp(
+    `(?<![\\w-])(?:${names.map(escapeForPattern).join('|')})(?![\\w-])`,
+    'g',
+  );
   const segments: TextSegment[] = [];
   let last = 0;
-  for (const match of text.matchAll(IDENTIFIER)) {
+  for (const match of text.matchAll(pattern)) {
     const start = match.index;
     if (start > last) segments.push({ text: text.slice(last, start), identifier: false });
     segments.push({ text: match[0], identifier: true });

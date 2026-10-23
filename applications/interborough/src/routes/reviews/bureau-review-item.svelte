@@ -87,6 +87,7 @@
     <ApprovalDecision
       id={`review-${review.id}`}
       {question}
+      identifiers={[review.approval.toolName]}
       deciding={submitting}
       withNote
       onDecide={(decision, note) =>
@@ -99,6 +100,7 @@
     <QuestionDecision
       id={`review-${review.id}`}
       {question}
+      identifiers={review.agentName === undefined ? [] : [review.agentName]}
       sending={submitting}
       failure={undefined}
       onSend={onAnswer}

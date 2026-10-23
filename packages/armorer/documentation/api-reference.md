@@ -24,6 +24,8 @@ import { createTool, createToolbox, createRegistry, defineTool } from 'armorer';
 - `materializeToolResultAsync`: normalize one tool result, collecting stream payloads when needed.
 - `materializeToolResults`: normalize multiple non-streaming tool results.
 - `materializeToolResultsAsync`: normalize multiple tool results, collecting streams when needed.
+- `readToolShortDescription`: read a tool's `metadata.shortDescription`, the one line a screen shows in place of its model-facing `description`, or `undefined` when it declares none.
+- `renderToolSummary`: write a tool's `metadata.summary` template for one call, such as `Refund order order-1001 for $42.00`.
 - `withContext`: bind extra runtime context into a tool factory.
 
 ### Types

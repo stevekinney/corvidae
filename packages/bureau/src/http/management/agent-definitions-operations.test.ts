@@ -908,7 +908,7 @@ describe('bureau.agents.catalog', () => {
     const served = await serve();
     const response = await callAs(served.owner, 'bureau.agents.catalog', {});
     expect(response.result?.['tools']).toEqual([
-      { name: 'lookup-order', description: 'Looks an order up' },
+      { name: 'lookup-order', description: 'Looks an order up', shortDescription: null },
     ]);
   });
 

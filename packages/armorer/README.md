@@ -1120,6 +1120,11 @@ Metadata keys with built-in enforcement:
 - `metadata.dangerous: true` marks a tool as dangerous
 - `metadata.concurrency: number` sets a per-tool concurrency limit
 
+Metadata keys for display, which no enforcement reads:
+
+- `metadata.shortDescription: string` is one static line for a person, shown where a screen lists tools in place of the model-facing `description`. `readToolShortDescription(tool.metadata)` returns it, or `undefined` when the tool declares none.
+- `metadata.summary: string` is the per-call template `renderToolSummary` fills in, such as `Refund order {orderId} for {cents:usd-cents}`.
+
 Risk flags with built-in query and tag support:
 
 - `risk.untrustedOutput: true` marks a tool whose output may contain third-party instructions and adds the `untrusted-output` tag

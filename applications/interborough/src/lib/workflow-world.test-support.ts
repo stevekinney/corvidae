@@ -14,6 +14,7 @@ import {
   STUB_AGENT_DIRECTORY,
   STUB_WORKFLOW_DIRECTORY,
   StubFault,
+  stubHostPaths,
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
@@ -671,10 +672,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     if (url.pathname === '/host/paths') {
       return world.workflowDirectory === null
         ? new Response('Not found', { status: 404 })
-        : Response.json({
-            agentDirectory: STUB_AGENT_DIRECTORY,
-            workflowDirectory: world.workflowDirectory,
-          });
+        : Response.json(stubHostPaths(STUB_AGENT_DIRECTORY, world.workflowDirectory));
     }
     const scheduleRoute = url.pathname.endsWith('/jsonrpc')
       ? null

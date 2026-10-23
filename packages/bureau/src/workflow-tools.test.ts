@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createToolbox } from 'armorer';
+import { createToolbox, readToolShortDescription, type Tool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -607,5 +607,20 @@ describe('a file written by hand', () => {
     });
     expect(result).toMatchObject({ status: 'ok', id: 'by-hand' });
     expect(await fileOf(harness, 'by-hand')).toMatchObject({ agent: 'someone', paused: true });
+  });
+});
+
+describe('what a person is shown of each tool', () => {
+  it('is one line of at most 120 characters per tool, apart from the prompt the model reads', () => {
+    const tools: Record<string, Tool> = createWorkflowTools({
+      workflows: () => undefined,
+      runIdentity: async () => ({ agent: undefined, owner: undefined }),
+    });
+    for (const name of WORKFLOW_TOOL_NAMES) {
+      const line = readToolShortDescription(tools[name]?.metadata);
+      expect(line, name).toBeDefined();
+      expect(line?.length, name).toBeLessThanOrEqual(120);
+      expect(line, name).not.toBe(tools[name]?.description);
+    }
   });
 });

@@ -86,6 +86,7 @@ import {
   openRunStream,
 } from './ag-ui-stream.ts';
 import type { AgUiErrorCode } from './ag-ui-vocabulary.ts';
+import { type AgUiA2uiDeclaration, a2uiDeclarationOf } from './ag-ui-surface-source.ts';
 import { ownerOfPrincipal, type OwnerAccessPredicate } from './owner-predicate.ts';
 
 /** `createBureauHandler`'s `agUi` option. Omitted, nothing is mounted. */
@@ -383,7 +384,11 @@ export function createAgUiMount(
     );
   }
 
-  async function attachByThread(threadId: string, principal: Principal): Promise<Response> {
+  async function attachByThread(
+    threadId: string,
+    principal: Principal,
+    a2ui: AgUiA2uiDeclaration | undefined,
+  ): Promise<Response> {
     const missing = refuse('THREAD_NOT_FOUND', `Thread "${threadId}" was not found`);
     const authorized = await authorizeThread(threadId, principal, 'bureau.tasks:read');
     if (authorized === undefined) return missing;
@@ -398,6 +403,7 @@ export function createAgUiMount(
       owner: authorized.owner,
       replay: 'open-step',
       messagesSnapshot: true,
+      ...(a2ui === undefined ? {} : { a2ui }),
     });
   }
 
@@ -414,7 +420,11 @@ export function createAgUiMount(
     return typeof sessionId === 'string' ? sessionId : undefined;
   }
 
-  async function attachByRun(runId: string, principal: Principal): Promise<Response> {
+  async function attachByRun(
+    runId: string,
+    principal: Principal,
+    a2ui: AgUiA2uiDeclaration | undefined,
+  ): Promise<Response> {
     const missing = (): Response => refuse('RUN_NOT_FOUND', `Run "${runId}" was not found`);
     const owner = await authorization.ownerOf({ kind: 'run', id: runId });
     if (owner === undefined || !may(principal, owner, 'bureau.tasks:read')) return missing();
@@ -434,6 +444,7 @@ export function createAgUiMount(
           owner,
           replay: 'open-step',
           messagesSnapshot: true,
+          ...(a2ui === undefined ? {} : { a2ui }),
         });
       }
       // The thread is the parent's session, as on every stream of this mount.
@@ -457,6 +468,7 @@ export function createAgUiMount(
       owner,
       replay: 'open-step',
       messagesSnapshot: true,
+      ...(a2ui === undefined ? {} : { a2ui }),
     });
   }
 
@@ -514,6 +526,7 @@ export function createAgUiMount(
     input: RunAgentInput,
     agentName: string,
     principal: Principal,
+    a2ui: AgUiA2uiDeclaration | undefined,
   ): Promise<Response> {
     const owner = ownerOfPrincipal(principal);
     if (owner === undefined) {
@@ -565,6 +578,7 @@ export function createAgUiMount(
         principal,
         owner,
         readableAs,
+        ...(a2ui === undefined ? {} : { a2ui }),
       });
     }
     // Publication gates a new run only.
@@ -673,6 +687,7 @@ export function createAgUiMount(
                 owner,
                 replay: 'beginning',
                 messagesSnapshot: false,
+                ...(a2ui === undefined ? {} : { a2ui }),
               }),
             };
           }
@@ -721,6 +736,7 @@ export function createAgUiMount(
       owner,
       replay: 'beginning',
       messagesSnapshot: false,
+      ...(a2ui === undefined ? {} : { a2ui }),
     });
   }
 
@@ -759,7 +775,13 @@ export function createAgUiMount(
           400,
         );
       }
-      return startRun(parsed.data as RunAgentInput, second!, principal);
+      const input = parsed.data as RunAgentInput;
+      return startRun(
+        input,
+        second!,
+        principal,
+        a2uiDeclarationOf(request.headers, input.forwardedProps),
+      );
     }
     if (segments.length === 3 && first === 'threads' && third === 'messages') {
       if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);
@@ -773,7 +795,7 @@ export function createAgUiMount(
           406,
         );
       }
-      return attachByThread(second!, principal);
+      return attachByThread(second!, principal, a2uiDeclarationOf(request.headers));
     }
     if (segments.length === 2 && first === 'runs') {
       if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);
@@ -783,7 +805,7 @@ export function createAgUiMount(
           406,
         );
       }
-      return attachByRun(second!, principal);
+      return attachByRun(second!, principal, a2uiDeclarationOf(request.headers));
     }
     if (segments.length === 3 && first === 'runs' && third === 'cancel') {
       if (method !== 'POST') return json({ code: 'MethodNotAllowed', message: 'Use POST' }, 405);

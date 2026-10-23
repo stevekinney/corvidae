@@ -53,3 +53,15 @@ export function renderToolSummary(
   });
   return complete ? text : undefined;
 }
+
+/**
+ * A tool's `metadata.shortDescription`: the one line a screen shows for the tool in place of its
+ * model-facing `description`. Returns `undefined` when the tool declares none, or declares only
+ * whitespace or something other than a string, so a caller falls back to the description.
+ */
+export function readToolShortDescription(metadata: ToolMetadata | undefined): string | undefined {
+  const value = metadata?.['shortDescription'];
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}

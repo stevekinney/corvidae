@@ -79,16 +79,34 @@ export async function createAgentFile(
   return answer.result as { id: string; hash: string };
 }
 
+export type CatalogTool = {
+  name: string;
+  description: string;
+  shortDescription: string | null;
+};
+
 /** The models and tools `bureau.agents.catalog` offers, which is all the editor may offer. */
 export async function readCatalog(
   request: APIRequestContext,
-): Promise<{ models: { provider: string; model: string }[]; tools: { name: string }[] }> {
+): Promise<{ models: { provider: string; model: string }[]; tools: CatalogTool[] }> {
   const answer = await bureau(request, 'bureau.agents.catalog', {});
   expect(answer.fault, 'reading the catalog').toBeUndefined();
   return answer.result as {
     models: { provider: string; model: string }[];
-    tools: { name: string }[];
+    tools: CatalogTool[];
   };
+}
+
+/** What `/host/paths` says about where the host keeps its configuration and its providers' keys. */
+export type ProviderPaths = {
+  configurationFile: string;
+  providers: { name: string; secretFile: string }[];
+};
+
+export async function readProviderPaths(request: APIRequestContext): Promise<ProviderPaths> {
+  const response = await request.get('/host/paths');
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as ProviderPaths;
 }
 
 /** The directory the host keeps agent files in, which is inside the temporary home. */
