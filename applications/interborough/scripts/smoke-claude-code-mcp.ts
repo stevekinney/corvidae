@@ -66,6 +66,35 @@ async function main(): Promise<number> {
     if (!/connected/i.test(line) || /failed|not connected/i.test(line)) {
       problems.push(`claude mcp list did not report ${serverName} as connected`);
     }
+    // The run inspector MCP App (COR-910): the endpoint lists the `ui://` resource, reads it as
+    // an MCP App page, and links `bureau.tasks.inspect` to it.
+    const rpc = async (id: number, method: string, params: Record<string, unknown>) => {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-06-18',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+      });
+      const text = await response.text();
+      return JSON.parse(text.startsWith('{') ? text : (text.match(/^data: (.*)$/m)?.[1] ?? 'null'));
+    };
+    const uri = 'ui://bureau/run-inspector/v1';
+    const read = await rpc(2, 'resources/read', { uri });
+    const content = read?.result?.contents?.[0];
+    if (content?.mimeType !== 'text/html;profile=mcp-app' || typeof content?.text !== 'string') {
+      problems.push(`resources/read ${uri} did not answer an MCP App page`);
+    }
+    const tools = await rpc(3, 'tools/list', {});
+    const linked = tools?.result?.tools?.find(
+      (tool: { name: string }) => tool.name === 'bureau.tasks.inspect',
+    );
+    if (linked?._meta?.ui?.resourceUri !== uri) {
+      problems.push('bureau.tasks.inspect is not linked to the run inspector resource');
+    }
+    console.log(`[smoke:claude-code-mcp] ${uri} -> ${content?.text?.length ?? 0} bytes`);
     await claude(['mcp', 'remove', serverName, '-s', 'local'], configDirectory);
   } finally {
     await host.close();

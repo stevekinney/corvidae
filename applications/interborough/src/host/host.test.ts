@@ -150,6 +150,22 @@ describe('the identity of every request', () => {
     const tools = (listed.result?.['tools'] ?? []) as Array<{ name: string }>;
     const names = tools.map((tool) => tool.name);
     expect(names).toContain('bureau.reviews.list');
+    // The run inspector is an injected `ui://` resource, linked from `bureau.tasks.inspect` (COR-910).
+    const inspect = (tools as Array<{ name: string; _meta?: unknown }>).find(
+      (tool) => tool.name === 'bureau.tasks.inspect',
+    );
+    expect(inspect?._meta).toMatchObject({ ui: { resourceUri: 'ui://bureau/run-inspector/v1' } });
+    const resources = await mcp(4, 'resources/list', {});
+    expect(resources.result?.['resources']).toMatchObject([
+      { uri: 'ui://bureau/run-inspector/v1', mimeType: 'text/html;profile=mcp-app' },
+    ]);
+    const page = await mcp(5, 'resources/read', { uri: 'ui://bureau/run-inspector/v1' });
+    expect(page.result?.['contents']).toMatchObject([
+      {
+        text: expect.stringContaining('<div id="root">'),
+        _meta: { contentDigest: expect.any(String) },
+      },
+    ]);
     // Listing reviews needs `bureau.reviews:read`, which the local caller's grant supplies.
     const called = await mcp(3, 'tools/call', { name: 'bureau.reviews.list', arguments: {} });
     expect(called.result?.['isError']).toBeFalsy();
