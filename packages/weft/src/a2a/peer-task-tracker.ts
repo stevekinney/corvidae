@@ -216,7 +216,7 @@ export class PeerTaskTracker {
 
   private setStatus(status: Task['status']): void {
     this.current = peerStateOf(status?.state);
-    this.stamp = `${this.current}|${status?.timestamp ?? ''}|${status?.message?.messageId ?? ''}`;
+    this.stamp = stampOf(this.current, status);
     if (this.headSeen && this.stamp !== this.headStamp) this.fresh = true;
     if (status?.message !== undefined) this.lastMessage = textOfMessage(status.message);
     this.emit();
@@ -230,6 +230,10 @@ export class PeerTaskTracker {
       message: this.lastMessage,
     });
   }
+}
+
+function stampOf(state: A2APeerTaskState, status: Task['status']): string {
+  return `${state}|${status?.timestamp ?? ''}|${status?.message?.messageId ?? ''}`;
 }
 
 function stopStateOf(state: A2APeerTaskState): A2APeerStopState {
