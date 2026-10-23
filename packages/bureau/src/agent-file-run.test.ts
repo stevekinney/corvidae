@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError } from './create-bureau';
+import { BureauError, UnknownScheduleAgentError } from './create-bureau';
 import { waitForRunState } from './test';
 import {
   agentFileText,
@@ -20,6 +20,7 @@ import {
   type Observation,
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
+import { pollUntil } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 
 const harnesses: FileBureauHarness[] = [];
@@ -100,6 +101,42 @@ describe('bureau.run of a file agent', () => {
       expect(thrown, name).toBeInstanceOf(BureauError);
       expect((thrown as BureauError).code).toBe('NOT_FOUND');
     }
+  });
+
+  it('schedules a file agent, refuses a name no agent has, and still fails at fire time once the file is gone (COR-1667)', async () => {
+    const { bureau, put, directory, observed } = await start({
+      overrides: { durableExecution: true },
+    });
+    await put('researcher.md', RESEARCHER);
+    await bureau.agents.refresh();
+
+    const refusal = await rejectionOf(
+      bureau.createSchedule({ agentName: 'ghost', input: 'x', spec: '1m' }),
+    );
+    expect(refusal).toBeInstanceOf(UnknownScheduleAgentError);
+    expect((refusal as UnknownScheduleAgentError).agentName).toBe('ghost');
+
+    const created = await bureau.createSchedule({
+      agentName: 'researcher',
+      input: 'x',
+      spec: '1m',
+    });
+    expect(created?.status).toBe('active');
+    const occurrence = created?.nextFireAt;
+    if (occurrence === null || occurrence === undefined) throw new Error('no first occurrence');
+
+    await rm(join(directory, 'researcher.md'));
+    await bureau.agents.refresh();
+    expect(bureau.agents.find('researcher')).toBeUndefined();
+
+    await bureau.runDurableMaintenance(occurrence);
+    const fired = await pollUntil(async () => {
+      const schedule = await bureau.getSchedule(created!.id);
+      return schedule?.lastFireAt ?? schedule?.currentWorkflowId ?? undefined;
+    }, 'the tick to fire');
+    expect(fired).toBeDefined();
+    // The fire was refused at fire time, as before: the missing agent never generated anything.
+    expect(observed).toEqual([]);
   });
 
   it('records the snapshot under the file hash, and lists revisions newest first', async () => {

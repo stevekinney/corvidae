@@ -218,6 +218,7 @@ export {
   classifyRecoveredRunDetailed,
   createBureau,
   ScheduleLocatorUnavailableError,
+  UnknownScheduleAgentError,
 } from './create-bureau';
 export {
   createFanOutRouting,

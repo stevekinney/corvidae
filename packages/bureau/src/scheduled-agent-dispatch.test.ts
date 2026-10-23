@@ -1,7 +1,7 @@
 /**
  * COR-323 — a scheduler task and a schedule's fire run as a named catalog agent, resolved through
  * the catalog, with that agent's own `generate`. No Bureau-wide `generate` exists to run them on,
- * and the implicit `bureau` agent that used to stand for it is refused rather than run.
+ * and the implicit `bureau` agent that used to stand for it is refused rather than run. COR-1667: creating a schedule under a name the catalog lacks is refused too, so a fire only meets a missing agent after the catalog loses one.
  */
 import {
   createAgent,
@@ -11,6 +11,7 @@ import {
 } from '@lostgradient/operative';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -164,27 +165,45 @@ describe('a schedule’s fire', () => {
     expect(other.calls()).toBe(0);
   });
 
-  it('stored under the implicit "bureau" agent fails with a diagnostic and runs nothing', async () => {
+  it('stored under an agent the catalog later lost fails with a diagnostic and runs nothing (COR-1667)', async () => {
+    // Creation refuses a name the catalog lacks, so the schedule is made under a catalog agent and
+    // the agent leaves the catalog between restarts: the fire still fails, exactly as before.
+    const databasePath = createTemporaryPath('bureau-schedule-agent-removed', '.sqlite');
     const worker = answering('never');
-    const bureau = await harness.open({
-      agents: { worker: createAgent({ generate: worker.generate }) },
-    });
+    try {
+      const first = await createBureau<AgentDefinitions>({
+        agents: { worker: createAgent({ generate: worker.generate }) },
+        storage: { type: 'sqlite', path: databasePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      const created = await first.createSchedule({
+        agentName: 'worker',
+        input: 'check in',
+        spec: '1m',
+        principal: OWNER.alice,
+      });
+      await first.dispose();
 
-    const created = await bureau.createSchedule({
-      agentName: 'bureau',
-      input: 'check in',
-      spec: '1m',
-      principal: OWNER.alice,
-    });
-    await bureau.runDurableMaintenance(created!.nextFireAt!);
-    const status = await pollUntil(async () => {
-      const page = await bureau.listDurableRuns();
-      const fire = page?.items[0];
-      return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
-    }, 'the fire to settle');
+      const second = await createBureau<AgentDefinitions>({
+        agents: {},
+        storage: { type: 'sqlite', path: databasePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      bureaus.push(second);
+      await second.runDurableMaintenance(created!.nextFireAt!);
+      const status = await pollUntil(async () => {
+        const page = await second.listDurableRuns();
+        const fire = page?.items[0];
+        return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
+      }, 'the fire to settle');
 
-    expect(status).toBe('failed');
-    expect(worker.calls()).toBe(0);
+      expect(status).toBe('failed');
+      expect(worker.calls()).toBe(0);
+    } finally {
+      removeTemporaryPath(databasePath);
+    }
   });
 });
 

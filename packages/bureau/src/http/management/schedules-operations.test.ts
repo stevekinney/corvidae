@@ -155,6 +155,7 @@ describe('each schedule operation, as the owner', () => {
       'alice-key',
     );
     expect(status(unknown)).toBe(404);
+    expect(JSON.stringify(unknown.error)).toContain('nobody');
     const malformed = await rpc(
       opened.handler,
       'bureau.schedules.create',

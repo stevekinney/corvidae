@@ -894,7 +894,7 @@ export function buildBureauHandlerHost(
       updateSchedule: bureau.updateSchedule,
       owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
       agentName: (scheduleId) => bureau.getScheduleAgentName(scheduleId),
-      hasAgent: (name) => bureau.agents.has(name),
+      hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,
     memory: { governed: bureau.memory, tenantId: bureau.id },
