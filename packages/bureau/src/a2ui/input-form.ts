@@ -30,6 +30,11 @@
  * delivered. A fallback form's submission may instead be `{ "response": "<JSON text>" }`, which is
  * parsed first.
  *
+ * The form's controls do not write the schema's scalar types: a `ChoicePicker` writes a list of
+ * the chosen values and a number `TextField` writes text. {@link checkFormSubmission} therefore
+ * normalises those two kinds of generated field (a one-item list to its string, numeric text to a
+ * number) before it validates; it coerces nothing else.
+ *
  * @module input-form
  */
 
@@ -41,8 +46,11 @@ import type { InteractiveSurfaceJsonObject } from '../interactive-surface/types.
 export const A2UI_BASIC_CATALOG_ID =
   'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json';
 
-/** The media type of a data part that carries one A2UI message. */
-export const A2UI_MEDIA_TYPE = 'application/json+a2ui';
+/**
+ * The media type of an A2A data part that carries A2UI messages: the part's data is an array of
+ * messages and its `metadata.mimeType` is this value (the A2UI A2A extension's data encoding).
+ */
+export const A2UI_MEDIA_TYPE = 'application/a2ui+json';
 
 /** The name of the action event a form's submit button raises. */
 export const INPUT_FORM_SUBMIT_EVENT = 'submit-input';
@@ -197,6 +205,11 @@ function componentOf(field: FormField, id: string): Record<string, unknown> {
   }
 }
 
+/** The A2UI message that removes a form's surface once its wait has closed. */
+export function inputFormDeletion(surfaceId: string): A2uiMessage {
+  return { version: 'v0.9', deleteSurface: { surfaceId } };
+}
+
 /**
  * The A2UI messages that render a human-input schema as a form: a `createSurface` for the basic
  * catalog and an `updateComponents` holding the form. A mappable schema becomes one field per
@@ -243,6 +256,34 @@ export function inputFormMessages(surfaceId: string, schema: HumanInputSchema): 
 }
 
 /**
+ * The submission as the schema's scalar types, for the fields the form generated: a chosen-values
+ * list of one item becomes that string (an empty list, no choice), and numeric text in a number
+ * field becomes the number (blank text, no value). Any other field and any other shape is left
+ * for the schema to accept or refuse.
+ */
+function normalisedSubmission(fields: readonly FormField[], submitted: unknown): unknown {
+  if (!isRecord(submitted)) return submitted;
+  const value: Record<string, unknown> = { ...submitted };
+  for (const { name, property } of fields) {
+    const held = value[name];
+    if (Array.isArray(property['enum'])) {
+      if (Array.isArray(held) && held.length === 0) delete value[name];
+      else if (Array.isArray(held) && held.length === 1 && typeof held[0] === 'string') {
+        value[name] = held[0];
+      }
+    } else if (
+      (property['type'] === 'number' || property['type'] === 'integer') &&
+      typeof held === 'string'
+    ) {
+      const text = held.trim();
+      if (text === '') delete value[name];
+      else if (Number.isFinite(Number(text))) value[name] = Number(text);
+    }
+  }
+  return value;
+}
+
+/**
  * The compiler every submission is checked with: the one the interactive-surface contract uses,
  * so a wait's schema is held to the same rules as a surface's (no `pattern`, no `$id`, no `$async`).
  */
@@ -261,8 +302,10 @@ export type FormSubmission =
  */
 export function checkFormSubmission(schema: HumanInputSchema, submitted: unknown): FormSubmission {
   let value: unknown = submitted;
+  const fields = mappableFieldsOf(schema);
+  if (fields !== undefined) value = normalisedSubmission(fields, submitted);
   if (
-    mappableFieldsOf(schema) === undefined &&
+    fields === undefined &&
     isRecord(submitted) &&
     Object.keys(submitted).length === 1 &&
     typeof submitted['response'] === 'string'

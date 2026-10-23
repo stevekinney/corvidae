@@ -411,10 +411,60 @@ describe('checkFormSubmission', () => {
     expect(checkFormSubmission(schema, ['staging']).ok).toBe(false);
   });
 
-  it('does not coerce: a numeric string is not a number', () => {
+  it('does not coerce a field the form did not generate: a numeric string is not a number there', () => {
     expect(
       checkFormSubmission({ type: 'object', properties: { n: { type: 'number' } } }, { n: '3' }).ok,
+    ).toBe(true);
+    expect(
+      checkFormSubmission(
+        { type: 'object', properties: { n: { type: 'number' }, extra: { type: 'array' } } },
+        { n: '3' },
+      ).ok,
     ).toBe(false);
+  });
+
+  describe('the values the generated controls write', () => {
+    const typed: HumanInputSchema = {
+      type: 'object',
+      properties: {
+        stage: { type: 'string', enum: ['staging'] },
+        replicas: { type: 'integer' },
+        ratio: { type: 'number' },
+        note: { type: 'string' },
+        urgent: { type: 'boolean' },
+      },
+      required: ['stage', 'replicas'],
+      additionalProperties: false,
+    };
+
+    it('accepts a ChoicePicker’s one-item list as the enum string and a number field’s text as a number', () => {
+      const result = checkFormSubmission(typed, {
+        stage: ['staging'],
+        replicas: '3',
+        ratio: ' 0.5 ',
+        note: 'ok',
+        urgent: true,
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        value: { stage: 'staging', replicas: 3, ratio: 0.5, note: 'ok', urgent: true },
+      });
+    });
+
+    it('treats blank number text and an empty choice as no value', () => {
+      expect(checkFormSubmission(typed, { stage: ['staging'], replicas: '4', ratio: '' })).toEqual({
+        ok: true,
+        value: { stage: 'staging', replicas: 4 },
+      });
+      expect(checkFormSubmission(typed, { stage: [], replicas: '4' }).ok).toBe(false);
+    });
+
+    it('still refuses what normalising cannot make valid', () => {
+      expect(checkFormSubmission(typed, { stage: ['staging', 'x'], replicas: '3' }).ok).toBe(false);
+      expect(checkFormSubmission(typed, { stage: 'staging', replicas: 'many' }).ok).toBe(false);
+      expect(checkFormSubmission(typed, { stage: 'staging', replicas: '2.5' }).ok).toBe(false);
+    });
   });
 
   describe('the long-text fallback', () => {

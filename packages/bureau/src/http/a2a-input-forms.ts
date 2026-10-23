@@ -14,6 +14,8 @@ import type { Bureau } from '../types.ts';
 
 /** A human wait that asks for structured input: what to ask, and the shape of the answer. */
 export type WaitForm = {
+  /** The review the wait is parked on: one wait, one form surface. */
+  readonly reviewId: string;
   readonly signalName: string;
   readonly prompt: string | undefined;
   readonly inputSchema: HumanInputSchema;
@@ -35,6 +37,7 @@ export async function formsOf(
       const review = await bureau.getReview(wait.reviewId).catch(() => undefined);
       if (review?.kind !== 'human-wait' || review.inputSchema === undefined) return undefined;
       return {
+        reviewId: wait.reviewId,
         signalName: wait.signalName,
         prompt: review.prompt,
         inputSchema: review.inputSchema,
@@ -42,4 +45,21 @@ export async function formsOf(
     }),
   );
   return forms.filter((form): form is WaitForm => form !== undefined);
+}
+
+/** The surface id of a wait's form: one per review, so a repeated wait on a signal is a new surface. */
+export function formSurfaceId(reviewId: string): string {
+  return `input-form:${reviewId}`;
+}
+
+/**
+ * The review id of the wait that parked on the same signal just before this one, or `undefined`
+ * for the first park. Review ids end in the park ordinal (`human-wait:<run>:<signal>:<n>`), and a
+ * wait on a signal opens only once the previous park on it has closed.
+ */
+export function previousParkReviewId(reviewId: string): string | undefined {
+  const split = reviewId.lastIndexOf(':');
+  const ordinal = Number(reviewId.slice(split + 1));
+  if (split < 0 || !Number.isInteger(ordinal) || ordinal < 1) return undefined;
+  return `${reviewId.slice(0, split)}:${ordinal - 1}`;
 }

@@ -163,15 +163,15 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
       expect(parts[0]?.$case).toBe('text');
       expect(parts[0]?.$case === 'text' && parts[0].value).toContain('Where should this deploy?');
       const data = message?.parts.filter((part) => part.content?.$case === 'data') ?? [];
-      expect(data.map((part) => part.mediaType)).toEqual([
-        'application/json+a2ui',
-        'application/json+a2ui',
-      ]);
-      const [create, update] = data.map((part) =>
-        part.content?.$case === 'data' ? (part.content.value as Record<string, any>) : {},
-      );
+      // One data part holds the form's messages as an array, typed as A2UI's media type.
+      expect(data).toHaveLength(1);
+      expect(data[0]?.mediaType).toBe('application/a2ui+json');
+      expect(data[0]?.metadata).toEqual({ mimeType: 'application/a2ui+json' });
+      const messages =
+        data[0]?.content?.$case === 'data' ? (data[0].content.value as Record<string, any>[]) : [];
+      const [create, update] = messages;
       expect(create?.['createSurface']).toMatchObject({
-        surfaceId: `input-form:${task.id}:deploy`,
+        surfaceId: `input-form:human-wait:${task.id}:deploy:0`,
       });
       expect(
         update?.['updateComponents'].components.map((c: { component: string }) => c.component),

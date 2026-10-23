@@ -26,8 +26,8 @@ import type {
   TaskState as BureauTaskState,
   TaskView,
 } from '../task-registry.ts';
-import type { WaitForm } from './a2a-input-forms.ts';
-import { A2UI_MEDIA_TYPE, inputFormMessages } from '../a2ui/input-form.ts';
+import { formSurfaceId, previousParkReviewId, type WaitForm } from './a2a-input-forms.ts';
+import { A2UI_MEDIA_TYPE, inputFormDeletion, inputFormMessages } from '../a2ui/input-form.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
 
 /** The cleanup extension's URI (`packages/weft/documentation/a2a/extensions/cleanup-v1.md`). */
@@ -137,19 +137,22 @@ export function waitingMessage(view: TaskView, forms: readonly WaitForm[] = []):
     ...(signalNames.length === 0 ? {} : { signalNames }),
     ...(callIds.length === 0 ? {} : { callIds }),
   });
-  // One A2UI message per data part, as the A2UI extension carries them.
+  // One data part per form, carrying its A2UI messages as an array (the A2UI extension's data
+  // encoding). A repeated wait on a signal is a new surface: the earlier park's closes first.
   for (const form of forms) {
-    for (const a2ui of inputFormMessages(
-      `input-form:${view.id}:${form.signalName}`,
-      form.inputSchema,
-    )) {
-      message.parts.push({
-        content: { $case: 'data', value: a2ui },
-        metadata: undefined,
-        filename: '',
-        mediaType: A2UI_MEDIA_TYPE,
-      });
-    }
+    const previous = previousParkReviewId(form.reviewId);
+    message.parts.push({
+      content: {
+        $case: 'data',
+        value: [
+          ...(previous === undefined ? [] : [inputFormDeletion(formSurfaceId(previous))]),
+          ...inputFormMessages(formSurfaceId(form.reviewId), form.inputSchema),
+        ],
+      },
+      metadata: { mimeType: A2UI_MEDIA_TYPE },
+      filename: '',
+      mediaType: A2UI_MEDIA_TYPE,
+    });
   }
   return message;
 }
