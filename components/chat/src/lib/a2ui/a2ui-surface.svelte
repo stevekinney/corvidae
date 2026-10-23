@@ -9,6 +9,7 @@
 
   import A2uiNode from './a2ui-node.svelte';
   import { A2uiDataModel } from './data-model.svelte.ts';
+  import { displayTimeZone } from './node-helpers.ts';
   import { setA2uiRenderContext } from './render-context.ts';
   import type { A2uiComponent, A2uiDiagnostic } from './types.ts';
 
@@ -25,7 +26,15 @@
     releaseAssetUrl,
     onDiagnostic,
     locale,
+    timeZone,
   }: A2uiSurfaceProps = $props();
+
+  // Effects run only in the browser, after hydration: until then, a zoned
+  // value without an explicit zone shows in UTC, as the server rendered it.
+  let mounted = $state(false);
+  $effect(() => {
+    mounted = true;
+  });
 
   const idPrefix = $props.id();
   const reported = new Set<string>();
@@ -90,6 +99,9 @@
     model,
     get locale() {
       return locale;
+    },
+    get timeZone() {
+      return displayTimeZone(timeZone, mounted);
     },
     idPrefix: `a2ui${idPrefix}`,
     dispatch: (action) => onAction?.(action, action.context),

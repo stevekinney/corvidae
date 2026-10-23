@@ -421,12 +421,15 @@ export interface TaskRegistry {
    * holds is deleted through `deleteRun`, which removes its record. Resolves how
    * many records it removed. `onRemoved` hears each record it removed, once it is gone, so
    * state kept for a task past its settling can end with it; a listener that throws is its own
-   * failure, never the removal's.
+   * failure, never the removal's. `beforeRemove` runs first, for state that must be gone
+   * before the record is: when it throws, the failure is diagnosed and the record is kept,
+   * so a later pass retries it.
    */
   expire(
     cutoffMs: number,
     keep: ReadonlySet<string>,
     onRemoved?: (record: TaskRecord) => Promise<void> | void,
+    beforeRemove?: (record: TaskRecord) => Promise<void>,
   ): Promise<number>;
   /**
    * Empties the history of every task of one incarnation of a context, keeping
@@ -1109,6 +1112,35 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
    * something else) tells no one. A listener that throws is its
    * own failure, never the write's.
    */
+  async function recordSettlement(
+    taskId: string,
+    settlement: Parameters<TaskRegistry['recordSettled']>[1],
+  ): Promise<boolean> {
+    const captured: { settled?: TaskRecord } = {};
+    const recorded = await track(
+      update(taskId, (record) => {
+        // A task has more than one writer of its settlement (the action that ended the run,
+        // and the catalog hook that carries the answer), so the answer is never lost to
+        // whichever lands last. Only a catalog task and a schedule fire record one: a session
+        // run's answer lives in its durable history, and a fire writes none there.
+        const answer =
+          record.incarnation === '' || record.kind === 'schedule-fire'
+            ? (settlement.answer ?? record.settled?.answer)
+            : undefined;
+        const { answer: _ignored, ...rest } = settlement;
+        const next: TaskRecord = {
+          ...record,
+          settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+        };
+        captured.settled = next;
+        return next;
+      }),
+    );
+    if (recorded) await announceSettled(taskId);
+    if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
+    return recorded;
+  }
+
   async function announceSettled(taskId: string): Promise<void> {
     const waiting = settledListeners.get(taskId);
     if (waiting === undefined || waiting.size === 0) return;
@@ -1203,30 +1235,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       return bound;
     },
 
-    async recordSettled(taskId, settlement) {
-      const captured: { settled?: TaskRecord } = {};
-      const recorded = await track(
-        update(taskId, (record) => {
-          // A task has more than one writer of its settlement (the action that ended the run,
-          // and the catalog hook that carries the answer), so the answer is never lost to
-          // whichever lands last. Only a catalog task and a schedule fire record one: a session
-          // run's answer lives in its durable history, and a fire writes none there.
-          const answer =
-            record.incarnation === '' || record.kind === 'schedule-fire'
-              ? (settlement.answer ?? record.settled?.answer)
-              : undefined;
-          const { answer: _ignored, ...rest } = settlement;
-          const next: TaskRecord = {
-            ...record,
-            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
-          };
-          captured.settled = next;
-          return next;
-        }),
-      );
-      if (recorded) await announceSettled(taskId);
-      if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
-      return recorded;
+    recordSettled(taskId, settlement) {
+      // The whole settlement is tracked, its announcement included, so `flush()` (and so
+      // `idle()`) also waits for what a settlement listener starts, such as a surface freeze.
+      return track(recordSettlement(taskId, settlement));
     },
 
     async unsettledFiresOfContext(contextId, incarnation) {
@@ -1326,7 +1338,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       );
     },
 
-    async expire(cutoffMs, keep, onRemoved) {
+    async expire(cutoffMs, keep, onRemoved, beforeRemove) {
       let removed = 0;
       // A review still open holds its task: it is waiting on its requester, and removing the
       // record would make `get` and `respond` not-found while the review holds the context open.
@@ -1336,6 +1348,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         if (held.has(record.taskId)) continue;
         if (Date.parse(record.settled.at) >= cutoffMs) continue;
         if (host.liveTask(record.taskId) !== undefined) continue;
+        try {
+          await beforeRemove?.(record);
+        } catch (error) {
+          diagnose(`The cleanup before removing task "${record.taskId}" failed; it is kept`, error);
+          continue;
+        }
         await this.remove(record.taskId);
         removed += 1;
         try {

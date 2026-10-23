@@ -51,6 +51,18 @@ describe('basic catalog functions', () => {
     );
   });
 
+  it('formatString reads a relative path that starts with a keyword as a path', () => {
+    const scope = context({ true: { value: 'yes' }, nullable: 'n', falsey: 'f' });
+
+    expect(
+      callFunction(
+        'formatString',
+        { value: '${true/value} ${nullable} ${falsey} ${true} ${not(value: false)}' },
+        scope,
+      ),
+    ).toBe('yes n f true true');
+  });
+
   it('required rejects null, undefined, the empty string, and the empty array', () => {
     const scope = context();
     for (const value of [null, undefined, '', []]) {
@@ -67,6 +79,24 @@ describe('basic catalog functions', () => {
     expect(callFunction('regex', { value: '1234', pattern: '^[0-9]{5}$' }, scope)).toBe(false);
     expect(callFunction('regex', { value: 'x', pattern: '(' }, scope)).toBe(false);
     expect(scope.reports).toHaveLength(1);
+  });
+
+  it('regex runs an agent pattern in linear time, rejecting what only backtracking can run', () => {
+    const scope = context();
+    // Catastrophic for a backtracking engine: it would try 2^n ways to split the a's.
+    const long = `${'a'.repeat(5000)}!`;
+    expect(callFunction('regex', { value: long, pattern: '^(a+)+$' }, scope)).toBe(false);
+    expect(callFunction('regex', { value: 'aaaa', pattern: '^(a|aa)*$' }, scope)).toBe(true);
+    // JavaScript syntax still works: named groups, Unicode escapes, character classes.
+    expect(callFunction('regex', { value: 'ab-12', pattern: '^(?<w>\\w+)-\\d+$' }, scope)).toBe(
+      true,
+    );
+    expect(scope.reports).toEqual([]);
+
+    // Backreferences and lookaround need backtracking, so they are reported, never run.
+    expect(callFunction('regex', { value: 'aa', pattern: '^(a)\\1$' }, scope)).toBe(false);
+    expect(callFunction('regex', { value: 'ab', pattern: 'a(?=b)' }, scope)).toBe(false);
+    expect(scope.reports).toHaveLength(2);
   });
 
   it('length checks the minimum and maximum', () => {

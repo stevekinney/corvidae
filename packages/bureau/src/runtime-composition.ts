@@ -740,6 +740,38 @@ export function createRunMemoryAuthority(
   });
 }
 
+/** The authorization revision of Bureau's own maintenance authority, recorded on what a sweep writes. */
+export const BUREAU_MAINTENANCE_POLICY_REVISION = 'bureau:maintenance';
+
+/** The only capabilities Bureau's maintenance authority holds: a retention sweep and the deletions it opens. */
+export const BUREAU_MAINTENANCE_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Object.freeze([
+  'memory:retention',
+  'memory:delete',
+]);
+
+/**
+ * COR-1629 — the authority Bureau's maintenance pass sweeps governed memory's retention under: a
+ * one-link `service:bureau` chain, the principal every run chain starts from, holding exactly the
+ * two capabilities a sweep needs. The sweep walks every scope of the tenant, so `ownerId` only
+ * names who acted. No run authority gains a capability from it. A Bureau without governed memory
+ * has nothing to sweep, so it gets no authority.
+ */
+export function createMaintenanceMemoryAuthority(
+  memory: GovernedMemory | undefined,
+  tenantId: string,
+): MemoryAuthority | undefined {
+  if (memory === undefined) return undefined;
+  return createMemoryAuthority({
+    principal: { kind: 'service', id: 'bureau' },
+    tenantId,
+    ownerId: tenantId,
+    purpose: 'retention',
+    capabilities: BUREAU_MAINTENANCE_MEMORY_CAPABILITIES,
+    policyRevision: BUREAU_MAINTENANCE_POLICY_REVISION,
+    projection: 'bureau',
+  });
+}
+
 /**
  * The memory principal behind a request authority's `principalId`. Memory
  * classifies a `service:` identity as a service, but Bureau's own service

@@ -194,17 +194,20 @@ export async function settlePendingDerivations(context: GovernanceContext): Prom
  * Retires the ledger entries of derivations that never stored their record:
  * entries older than `before` with no record stored under them. Only an age
  * far past any running operation, the audit retention, tells such an entry
- * from one whose record is still about to be stored.
+ * from one whose record is still about to be stored. Returns how many it retired.
  */
 export async function pruneAbandonedDerivations(
   context: GovernanceContext,
   tenantId: string,
   before: number,
-): Promise<void> {
+): Promise<number> {
+  let pruned = 0;
   for (const entry of await context.ledger.listPendingDerivations({ tenantId })) {
     if (entry.startedAt >= before || (await context.load(tenantId, entry.record)) !== undefined) {
       continue;
     }
     await context.ledger.deletePendingDerivation(tenantId, entry.record);
+    pruned++;
   }
+  return pruned;
 }

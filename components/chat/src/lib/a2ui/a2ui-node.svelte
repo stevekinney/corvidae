@@ -23,6 +23,7 @@
     Combobox,
     DatePicker,
     Divider,
+    FormField,
     Image,
     Input,
     Modal,
@@ -74,6 +75,8 @@
     resolveString,
     resolveStringList,
     runAction,
+    sliderStep,
+    timeOutOfRange,
   } from './node-helpers.ts';
   import { getA2uiRenderContext } from './render-context.ts';
   import type { A2uiComponent, A2uiJsonValue } from './types.ts';
@@ -105,6 +108,26 @@
       if (typeof name === 'string' && !(Object.hasOwn(A2UI_ICONS, name) && A2UI_ICONS[name])) {
         context.report('unknown-icon', id, `Cinder has no icon for "${name}"`);
       }
+    } else if (
+      problem === undefined &&
+      component?.component === 'DateTimeInput' &&
+      dateTimeControl(
+        resolveBoolean(prop('enableDate'), evaluation),
+        resolveBoolean(prop('enableTime'), evaluation),
+      ).control === 'none'
+    ) {
+      report('a DateTimeInput enables neither a date nor a time, so it renders no control');
+    } else if (
+      problem === undefined &&
+      component?.component === 'TextField' &&
+      typeof prop('validationRegexp') === 'string' &&
+      matchesPattern(prop('validationRegexp') as string, '') === undefined
+    ) {
+      // RE2 runs neither an invalid pattern nor backreferences or lookaround,
+      // so the field is not checked against it; say so rather than pass silently.
+      report(
+        'validationRegexp is not a valid pattern, or needs backreferences or lookaround, which do not run; the field is not checked against it',
+      );
     } else if (problem === 'unsupported' && component !== undefined) {
       context.report(
         'unsupported-component',
@@ -277,7 +300,9 @@
   );
 
   /** A DateTimeInput's name when the surface gives it no label. */
-  function dateTimeLabel(kind: ReturnType<typeof dateTimeControl>): string {
+  function dateTimeLabel(
+    kind: Exclude<ReturnType<typeof dateTimeControl>, { control: 'none' }>,
+  ): string {
     if (kind.control === 'time-field') return 'Time';
     return kind.granularity === 'day' ? 'Date' : 'Date and time';
   }
@@ -285,8 +310,9 @@
   /**
    * A ChoicePicker's options, each value once: a repeated value would give two
    * controls one key and one id, so the first wins and the rest are reported.
+   * A single-choice control also skips an empty value, which it reads as no selection.
    */
-  function choiceOptions(raw: unknown): { value: string; label: string }[] {
+  function choiceOptions(raw: unknown, single: boolean): { value: string; label: string }[] {
     if (!Array.isArray(raw)) return [];
     const seen = new Set<string>();
     const options: { value: string; label: string }[] = [];
@@ -297,6 +323,11 @@
       }
       const option = entry as { label?: unknown; value?: unknown };
       if (typeof option.value !== 'string') continue;
+      if (single && option.value === '') {
+        // Cinder's single-choice controls use `''` for no selection, so none could pick it.
+        report('a ChoicePicker option has an empty value; it is skipped');
+        continue;
+      }
       if (seen.has(option.value)) {
         report(`ChoicePicker option "${option.value}" is listed more than once; the first is kept`);
         continue;
@@ -312,6 +343,73 @@
 
   // ── Tabs ──
   let selectedTab = $state('0');
+  /** The child of the tab the user selected, to follow it when an update moves it. */
+  let selectedChild: unknown;
+  const tabs = $derived(
+    component?.component === 'Tabs' && Array.isArray(prop('tabs'))
+      ? (prop('tabs') as unknown[]).filter(
+          (tab): tab is { title?: unknown; child?: unknown } =>
+            typeof tab === 'object' && tab !== null,
+        )
+      : [],
+  );
+
+  // A server update that moves the selected tab keeps it selected; one that
+  // removes it leaves the first selected.
+  $effect.pre(() => {
+    const current = tabs[Number(selectedTab)];
+    if (current !== undefined && (selectedChild === undefined || current.child === selectedChild)) {
+      selectedChild = current.child;
+      return;
+    }
+    const moved = tabs.findIndex((tab) => tab.child === selectedChild);
+    const next = moved === -1 ? 0 : moved;
+    selectedTab = String(next);
+    selectedChild = tabs[next]?.child;
+  });
+
+  function selectTab(next: string): void {
+    selectedTab = next;
+    selectedChild = tabs[Number(next)]?.child;
+  }
+
+  // ── Number TextField ──
+  /**
+   * The number a focused number field shows. Cinder's NumberInput replaces the
+   * text being typed whenever its value changes, so while the user types into a
+   * field that writes its model on each keystroke, the field keeps the value it
+   * had when focused; the commit on blur brings it back in step. A host update
+   * (a new model generation) ends the hold, so the server's value shows and wins.
+   */
+  let heldNumber = $state<{ value: number | null; generation: number } | undefined>(undefined);
+
+  /** Writes a number field's model as the user types, not only when they commit. */
+  function writeWhileTyping(input: HTMLInputElement): () => void {
+    const hold = () => {
+      const current = read('value');
+      heldNumber = {
+        value: typeof current === 'number' ? current : (resolveNumber(current, evaluation) ?? null),
+        generation: context.model.generation,
+      };
+    };
+    // `focusout` follows `blur`, so the field's own commit on blur runs first.
+    const release = () => {
+      heldNumber = undefined;
+    };
+    // A TextField's value is text, so the model holds what is typed, in the
+    // field's own locale (`1,5`); the commit on blur writes the canonical number.
+    const write = () => setLocal('value', input.value.trim());
+    input.addEventListener('focus', hold);
+    input.addEventListener('focusout', release);
+    input.addEventListener('input', write);
+    return () => {
+      input.removeEventListener('focus', hold);
+      input.removeEventListener('focusout', release);
+      input.removeEventListener('input', write);
+      // Removing a focused input need not emit `focusout`, so the hold ends here too.
+      release();
+    };
+  }
 
   /** Opens the dialog, remembering the control that opened it so focus can return there. */
   function openModal(event: MouseEvent): void {
@@ -454,13 +552,7 @@
     {:else if type === 'Card'}
       <Card class="a2ui-leaf">{@render child(prop('child'))}</Card>
     {:else if type === 'Tabs'}
-      {@const tabs = Array.isArray(prop('tabs'))
-        ? (prop('tabs') as unknown[]).filter(
-            (tab): tab is { title?: unknown; child?: unknown } =>
-              typeof tab === 'object' && tab !== null,
-          )
-        : []}
-      <Tabs bind:value={selectedTab} class="a2ui-leaf">
+      <Tabs bind:value={() => selectedTab, selectTab} class="a2ui-leaf">
         <TabList>
           {#each tabs as tab, index (index)}
             <Tab value={String(index)}>{plainText(resolveString(tab.title, evaluation))}</Tab>
@@ -575,9 +667,14 @@
           id={domId}
           label={nameOr(text('label'), 'Number')}
           {...describedBy}
-          value={typeof value === 'number' ? value : (resolveNumber(value, evaluation) ?? null)}
+          value={heldNumber === undefined || heldNumber.generation !== context.model.generation
+            ? typeof value === 'number'
+              ? value
+              : (resolveNumber(value, evaluation) ?? null)
+            : heldNumber.value}
           {...optional('error', error)}
           class="a2ui-leaf"
+          inputAttachment={writeWhileTyping}
           onValueChange={(next: number | null) =>
             setLocal('value', next === null ? '' : String(next))}
         />
@@ -604,7 +701,6 @@
         onValueChange={(next: boolean) => setLocal('value', next)}
       />
     {:else if type === 'ChoicePicker'}
-      {@const options = choiceOptions(prop('options'))}
       {@const selected = resolveStringList(read('value'), evaluation)}
       {@const control = choicePickerControl(
         mapEnum(
@@ -620,6 +716,10 @@
           report,
         ),
         resolveBoolean(prop('filterable'), evaluation),
+      )}
+      {@const options = choiceOptions(
+        prop('options'),
+        control !== 'checkbox-group' && control !== 'multi-select',
       )}
       {@const label = nameOr(text('label'), 'Options')}
       {#if control === 'checkbox-group'}
@@ -685,30 +785,42 @@
           class="a2ui-leaf"
         />
       {:else}
+        <!-- Select documents `undefined` as nothing selected, though its exact
+             optional type does not admit it; `''` would make it warn instead. -->
         <Select
           id={domId}
           {label}
           {...describedBy}
           {options}
           bind:value={
-            () => selected[0] ?? '', (next) => setLocal('value', next === '' ? [] : [next])
+            () => selected[0] as string,
+            (next) => setLocal('value', next === undefined ? [] : [next])
           }
           {...optional('error', checkMessage)}
           class="a2ui-leaf"
         />
       {/if}
     {:else if type === 'Slider'}
-      <Slider
-        label={nameOr(text('label'), 'Value')}
-        min={resolveNumber(prop('min'), evaluation) ?? 0}
-        max={resolveNumber(prop('max'), evaluation) ?? 100}
-        bind:value={
-          () =>
-            resolveNumber(read('value'), evaluation) ?? resolveNumber(prop('min'), evaluation) ?? 0,
-          (next) => setLocal('value', next)
-        }
-        class="a2ui-leaf"
-      />
+      {@const min = resolveNumber(prop('min'), evaluation) ?? 0}
+      {@const max = resolveNumber(prop('max'), evaluation) ?? 100}
+      {@const label = nameOr(text('label'), 'Value')}
+      <!-- Slider has no error of its own; a FormField carries its failing check,
+           marking it invalid and describing it with the message. -->
+      <FormField id={domId} {label} {...optional('error', checkMessage)} class="a2ui-leaf">
+        <Slider
+          {label}
+          {min}
+          {max}
+          step={sliderStep(min, max)}
+          bind:value={
+            () =>
+              resolveNumber(read('value'), evaluation) ??
+              resolveNumber(prop('min'), evaluation) ??
+              0,
+            (next) => setLocal('value', next)
+          }
+        />
+      </FormField>
     {:else if type === 'DateTimeInput'}
       {@const kind = dateTimeControl(
         resolveBoolean(prop('enableDate'), evaluation),
@@ -721,23 +833,30 @@
           label={nameOr(text('label'), dateTimeLabel(kind))}
           {...describedBy}
           bind:value={
-            () => dateTimeForControl(value, 'time') ?? '', (next) => setLocal('value', next)
+            () => dateTimeForControl(value, 'time', context.timeZone) ?? '',
+            (next) => setLocal('value', next)
           }
-          {...optional('error', checkMessage)}
+          {...optional(
+            'error',
+            checkMessage ??
+              (timeOutOfRange(value, text('min'), text('max'), context.timeZone)
+                ? 'The time is outside the allowed range.'
+                : undefined),
+          )}
           class="a2ui-leaf"
         />
-      {:else}
+      {:else if kind.control === 'date-picker'}
         <DatePicker
           id={domId}
           label={nameOr(text('label'), dateTimeLabel(kind))}
           {...describedBy}
           granularity={kind.granularity}
-          {...optional('min', text('min') || undefined)}
-          {...optional('max', text('max') || undefined)}
+          {...optional('min', dateTimeForControl(text('min'), kind.granularity, context.timeZone))}
+          {...optional('max', dateTimeForControl(text('max'), kind.granularity, context.timeZone))}
           bind:value={
-            () => dateTimeForControl(value, kind.granularity),
+            () => dateTimeForControl(value, kind.granularity, context.timeZone),
             (next) => {
-              if (next !== dateTimeForControl(value, kind.granularity))
+              if (next !== dateTimeForControl(value, kind.granularity, context.timeZone))
                 setLocal('value', next ?? '');
             }
           }

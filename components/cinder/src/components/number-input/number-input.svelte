@@ -84,8 +84,21 @@
 
   const resetTarget = untrack(() => value);
 
+  function isValidLocale(tag: string | undefined): tag is string {
+    if (tag === undefined) return false;
+    try {
+      return Intl.getCanonicalLocales(tag).length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // An invalid tag would make every Intl formatter throw while rendering, so
+  // the first valid candidate wins.
   const resolvedLocale = $derived(
-    locale ?? localeContext?.locale ?? (hasMounted ? navigator.language : 'en-US'),
+    [locale, localeContext?.locale, hasMounted ? navigator.language : undefined].find(
+      isValidLocale,
+    ) ?? 'en-US',
   );
 
   const resolvedMin = $derived(typeof min === 'number' && Number.isFinite(min) ? min : -Infinity);
