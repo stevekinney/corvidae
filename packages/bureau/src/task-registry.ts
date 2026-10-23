@@ -29,7 +29,11 @@
  */
 
 import type { RuntimeIdentifiers } from '@lostgradient/lifecycle';
-import type { AgentInput, CleanupAcknowledgement } from '@lostgradient/operative';
+import {
+  type AgentInput,
+  type CleanupAcknowledgement,
+  isFailureFinishReason,
+} from '@lostgradient/operative';
 import { messageText } from 'conversationalist';
 import {
   type ConditionalTextValueStore,
@@ -39,7 +43,6 @@ import {
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 
-import { isRunFailureFinishReason } from './runtime-composition';
 import {
   compareListingKeys,
   createTaskListingStore,
@@ -471,7 +474,7 @@ export function settledTaskState(
   if (status === 'aborted') return 'canceled';
   if (status === 'error') return 'failed';
   if (finishReason === 'aborted') return 'canceled';
-  return isRunFailureFinishReason(finishReason) ? 'failed' : 'completed';
+  return isFailureFinishReason(finishReason) ? 'failed' : 'completed';
 }
 
 /** The cleanup state an acknowledgement stands for. */

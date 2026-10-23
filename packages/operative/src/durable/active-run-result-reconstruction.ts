@@ -12,6 +12,7 @@ import {
   MaximumStepsExceededError,
 } from '../errors';
 import { type OperativeEventEmitter, RunErrorEvent } from '../events';
+import { FAILURE_BY_FINISH_REASON } from '../finish-reason';
 import { createRunState } from '../loop';
 import { makeAbortResult, makeCompletedResult, makeErrorResult } from '../run-lifecycle';
 import type { EventDispatcher, RunState } from '../run-step';
@@ -292,23 +293,15 @@ export async function classifyTimeoutMessage(
 
 /**
  * Whether a run recovered with each finish reason announces `run.error` before `run.completed`
- * (COR-1598): the failures, because that is what turns the run record to `error` and ends an
- * attached stream with `RUN_ERROR`, and a fresh run that fails announces it. `maximum-steps`
- * fires `run.completed` alone on a fresh run too, `aborted` has its own `run.aborted`, and
- * `stop-condition` is not a failure. `satisfies Record<FinishReason, boolean>` makes a finish
- * reason added without being classified here fail the type-check, and
- * `active-run-announced-failure-reasons.test.ts` keeps the map equal to what `makeErrorResult`
+ * (COR-1598, COR-1627): exactly the failures, because that is what turns the run record to
+ * `error` and ends an attached stream with `RUN_ERROR`, and a fresh run that fails announces it.
+ * It is the failure map itself, `FAILURE_BY_FINISH_REASON`, so there is one classification:
+ * `aborted` has its own `run.aborted` and `stop-condition` is not a failure.
+ * `active-run-announced-failure-reasons.test.ts` keeps it equal to what `makeErrorResult`
  * classifies as a failure.
  */
-export const FINISH_REASONS_ANNOUNCED_ON_REATTACH = {
-  error: true,
-  'budget-exceeded': true,
-  tripwire: true,
-  'elicitation-denied': true,
-  'maximum-steps': false,
-  aborted: false,
-  'stop-condition': false,
-} as const satisfies Record<FinishReason, boolean>;
+export const FINISH_REASONS_ANNOUNCED_ON_REATTACH: Readonly<Record<FinishReason, boolean>> =
+  FAILURE_BY_FINISH_REASON;
 
 /**
  * Announce a run's failure with `run.error`, the way every other failed run does. Returns the

@@ -97,6 +97,7 @@ import {
   SKILL_TOOL_DENIED_CODE,
   admitToolResultMedia,
   createStepGeneratedMediaAdmitter,
+  isFailureFinishReason,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -257,7 +258,6 @@ import {
   createRuntimeComposition,
   createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
-  isRunFailureFinishReason,
   isScheduledFireAuthority,
   recordRecoveredSkillPolicy,
   recoveredSkillPolicyOf,
@@ -1583,7 +1583,7 @@ export async function monitorRecoveredScheduledFire(
       typeof result === 'object' &&
       result !== null &&
       'finishReason' in result &&
-      isRunFailureFinishReason(result.finishReason)
+      isFailureFinishReason(result.finishReason)
     ) {
       const errorMessage =
         'errorMessage' in result && typeof result.errorMessage === 'string'
@@ -1627,7 +1627,7 @@ export async function monitorRecoveredCatalogRun(
       typeof result === 'object' &&
       result !== null &&
       'finishReason' in result &&
-      isRunFailureFinishReason(result.finishReason)
+      isFailureFinishReason(result.finishReason)
     ) {
       const errorMessage =
         'errorMessage' in result && typeof result.errorMessage === 'string'
@@ -7589,7 +7589,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
 
         const finishReason = event.finishReason;
-        const lastRunStatus = isRunFailureFinishReason(finishReason) ? 'error' : 'completed';
+        const lastRunStatus = isFailureFinishReason(finishReason) ? 'error' : 'completed';
 
         const report = buildTerminalReportFromCompletedEvent(runId, event);
         runReports.set(runId, report);
@@ -7609,7 +7609,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 lastRunId: runId,
                 lastRunStatus,
                 lastFinishReason: event.finishReason,
-                ...(isRunFailureFinishReason(event.finishReason)
+                ...(isFailureFinishReason(event.finishReason)
                   ? { lastError: serializeUnknownError(event.error) }
                   : {}),
               },
@@ -8256,8 +8256,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       void runTerminalCheckpointCleanup(runId);
       const completedConversation = event.conversation;
       const finishReason = event.finishReason;
-      const lastRunStatus = isRunFailureFinishReason(finishReason) ? 'error' : 'completed';
-      const lastError = isRunFailureFinishReason(finishReason) ? event.error : undefined;
+      const lastRunStatus = isFailureFinishReason(finishReason) ? 'error' : 'completed';
+      const lastError = isFailureFinishReason(finishReason) ? event.error : undefined;
 
       const report = buildTerminalReportFromCompletedEvent(runId, event);
       runReports.set(runId, report);
@@ -8273,7 +8273,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             lastRunId: runId,
             lastRunStatus,
             lastFinishReason: finishReason,
-            ...(isRunFailureFinishReason(finishReason)
+            ...(isFailureFinishReason(finishReason)
               ? { lastError: serializeUnknownError(lastError) }
               : {}),
           }),

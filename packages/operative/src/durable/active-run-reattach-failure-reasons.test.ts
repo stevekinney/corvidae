@@ -7,6 +7,7 @@ import {
   BudgetExceededError,
   ElicitationDeniedError,
   GuardrailTripwireError,
+  MaximumStepsExceededError,
 } from '../errors';
 import {
   RunAbortedEvent,
@@ -63,7 +64,7 @@ function observeLifecycle(emitter: CompletableEventTarget<CombinedOperativeEvent
 type FailureCase = {
   readonly finishReason: Extract<
     FinishReason,
-    'error' | 'budget-exceeded' | 'tripwire' | 'elicitation-denied'
+    'error' | 'budget-exceeded' | 'tripwire' | 'elicitation-denied' | 'maximum-steps'
   >;
   readonly summary: Record<string, unknown>;
   readonly errorClass: string;
@@ -132,6 +133,14 @@ const failureCases: readonly FailureCase[] = [
     stepError: () => new ElicitationDeniedError('the user declined'),
     lifecycle: ['run.error', 'run.completed'],
   },
+  {
+    // COR-1627: a run that ended at its step limit is a failure like the rest.
+    finishReason: 'maximum-steps',
+    summary: summaryFor('reattach-maximum-steps', { finishReason: 'maximum-steps' }),
+    errorClass: 'MaximumStepsExceededError',
+    stepError: () => new MaximumStepsExceededError(1),
+    lifecycle: ['run.error', 'run.completed'],
+  },
 ];
 
 function reattach(
@@ -193,7 +202,6 @@ describe('a reattached run whose summary carries a failure finish reason', () =>
     // An in-band abort ends with its own `run.aborted`, never `run.completed`.
     const endings = [
       ['stop-condition', 'run.completed'],
-      ['maximum-steps', 'run.completed'],
       ['aborted', 'run.aborted'],
     ] as const;
     for (const [finishReason, terminal] of endings) {

@@ -185,7 +185,7 @@ export function makeAbortResult(
 /**
  * Build the errored {@link RunResult}: fire `onRunError`, then emit
  * `RunCompletedEvent` with the finish reason classified from the error
- * (`elicitation-denied` / `budget-exceeded` / `tripwire` / `error`). Mirrors
+ * (`elicitation-denied` / `budget-exceeded` / `tripwire` / `maximum-steps` / `error`). Mirrors
  * `executeLoop`'s `makeErrorResult` exactly.
  *
  * When `error` is a {@link GuardrailTripwireError}, this ALSO dispatches a
@@ -219,7 +219,9 @@ export function makeErrorResult(
         ? 'budget-exceeded'
         : runError instanceof GuardrailTripwireError
           ? 'tripwire'
-          : 'error';
+          : runError instanceof MaximumStepsExceededError
+            ? 'maximum-steps'
+            : 'error';
 
   const costEstimate = computeCostEstimate(runState.totalUsage, costEstimation, runState.cost);
   const result: RunResult = {

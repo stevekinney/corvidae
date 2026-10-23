@@ -139,7 +139,12 @@ type ReadHistory = {
   readonly lastCursorByKind: ReadonlyMap<string, string>;
   /** How the run ended, from its last terminal record, when it recorded one. */
   readonly terminal:
-    { readonly outcome: NativeTerminal['outcome']; readonly detail: unknown } | undefined;
+    | {
+        readonly outcome: NativeTerminal['outcome'];
+        readonly detail: unknown;
+        readonly recordedAs?: NativeTerminal['recordedAs'];
+      }
+    | undefined;
 };
 
 const TERMINAL_OUTCOME: Readonly<Record<string, NativeTerminal['outcome']>> = {
@@ -163,7 +168,14 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
       lastCursorByKind.set(event.kind, event.cursor);
       fence = event.cursor;
       const outcome = TERMINAL_OUTCOME[event.kind];
-      if (outcome !== undefined) terminal = { outcome, detail: event.payload };
+      if (outcome === undefined) continue;
+      // COR-1627: a run that stopped at its step limit recorded `run.error` and then a
+      // `run.completed` that carries its finish reason; it ended in the error.
+      const payload = event.payload as { finishReason?: unknown } | null | undefined;
+      terminal =
+        event.kind === RECORDED.runCompleted && payload?.finishReason === 'maximum-steps'
+          ? { outcome: 'error', detail: event.payload, recordedAs: RECORDED.runCompleted }
+          : { outcome, detail: event.payload };
     }
     if (!page.hasMore || page.nextCursor === undefined) break;
     since = page.nextCursor;
@@ -438,11 +450,12 @@ export function openRunStream(
     const closing = projector.closeOpen();
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
     const kind =
-      terminal.outcome === 'completed'
+      terminal.recordedAs ??
+      (terminal.outcome === 'completed'
         ? RECORDED.runCompleted
         : terminal.outcome === 'error'
           ? RECORDED.runError
-          : RECORDED.runAborted;
+          : RECORDED.runAborted);
     const label = {
       durable: true,
       ...(history?.lastCursorByKind.get(kind) === undefined

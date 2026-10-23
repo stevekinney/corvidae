@@ -62,6 +62,36 @@ describe('instrumentRun failure and cleanup', () => {
     }
   });
 
+  it('sets ERROR status on the run span when the run stops at its step limit (COR-1627)', async () => {
+    const tracer = new RecordingTracer();
+    const noopTool = createTool({
+      name: 'noop',
+      description: 'does nothing',
+      input: z.object({}),
+      execute: async () => ({ ok: true }),
+    });
+
+    const activeRun = createActiveRun({
+      generate: async () => toolCallResponse([{ name: 'noop', arguments: {} }]),
+      toolbox: createTestToolbox([noopTool]),
+      conversation: new Conversation(),
+      maximumSteps: 2,
+    });
+
+    const unsubscribe = instrumentRun(activeRun, { tracer });
+    const result = await activeRun.result;
+    activeRun.complete();
+    unsubscribe();
+
+    expect(result.finishReason).toBe('maximum-steps');
+    const runSpan = findSpan(tracer, 'invoke_agent')!;
+    expect(runSpan.status.code).toBe(SpanStatusCode.ERROR);
+    expect(runSpan.status.message).toBe('Run failed (policy/MAXIMUM_STEPS)');
+    expect(runSpan.attributes['operative.error.code']).toBe('MAXIMUM_STEPS');
+    expect(runSpan.attributes['operative.error.kind']).toBe('policy');
+    expect(runSpan.ended).toBe(true);
+  });
+
   it('sets abort reason on run span and sweeps open spans when aborted', async () => {
     const tracer = new RecordingTracer();
     const toolbox = createTestToolbox([]);

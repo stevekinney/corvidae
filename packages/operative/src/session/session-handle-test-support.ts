@@ -12,6 +12,7 @@ import type { ConversationSnapshot } from 'conversationalist';
 import { createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
+import { noToolCalls } from '../conditions';
 import type { CheckpointStore } from '../durable/checkpoint-store';
 import {
   createRunEngine,
@@ -75,8 +76,12 @@ export function createCheckpointStoreFixture(
   };
 }
 
+/**
+ * Run options whose run ends on a clean stop after its one step. A run that exhausts
+ * `maximumSteps` is a failure (COR-1627), so a fixture that wants a healthy run stops it itself.
+ */
 export function createTestRunOptions(generate: GenerateFunction = createInstantGenerate()) {
-  return { generate, toolbox: createToolbox([]), maximumSteps: 1 };
+  return { generate, toolbox: createToolbox([]), maximumSteps: 1, stopWhen: noToolCalls() };
 }
 
 export function createSessionHandleFixture(overrides?: {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
+import { noToolCalls } from '../conditions';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';
@@ -55,6 +56,7 @@ describe('session.cancel() — handle ownership', () => {
       generate: blockingGenerate,
       toolbox: createToolbox([]),
       maximumSteps: 1,
+      stopWhen: noToolCalls(),
     };
     const firstHandle = createSessionHandle('shared-cancel-session', {
       store,
@@ -94,7 +96,7 @@ describe('session.cancel() — handle ownership', () => {
       ['shared-cancel-session:1', 'completed'],
     ]);
     expect(settled!.runs[0]!.outcome?.finishReason).toBe('aborted');
-    expect(settled!.runs[1]!.outcome?.finishReason).toBe('maximum-steps');
+    expect(settled!.runs[1]!.outcome?.finishReason).toBe('stop-condition');
   });
 
   it('keeps a newer same-handle run current while an older cancel is pending', async () => {

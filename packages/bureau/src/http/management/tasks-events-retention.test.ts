@@ -35,6 +35,7 @@ describe('bureau.tasks.events below the retention floor', () => {
       id: 'retention-bureau',
       agents: {},
       generate: finishes,
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createToolbox<readonly Tool[]>([]),
       runtime,
       storage: fixture.configuration,

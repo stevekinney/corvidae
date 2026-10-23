@@ -2381,53 +2381,56 @@ describe('createRuntimeComposition durable execution', () => {
       }
     });
 
-    it('dispatches ScheduleFailedEvent when a correlated fire completes with a failure finishReason', async () => {
-      const runtime = await createRuntimeComposition({
-        generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
-        durableExecution: true,
-      });
+    it.each(['error', 'maximum-steps'])(
+      'dispatches ScheduleFailedEvent when a correlated fire completes with finishReason %s (COR-1627)',
+      async (finishReason) => {
+        const runtime = await createRuntimeComposition({
+          generate: async () => ({ content: 'ok', toolCalls: [] }),
+          storage: { type: 'memory' },
+          durableExecution: true,
+        });
 
-      try {
-        const resolution = await runtime.buildScheduledRunServices(
-          {
-            workflowId: 'fire-failed-1',
-            workflowType: 'agentRun',
-            input: {
-              agentName: 'researcher',
-              input: 'nightly digest',
-              scheduleId: 'nightly-digest',
+        try {
+          const resolution = await runtime.buildScheduledRunServices(
+            {
+              workflowId: 'fire-failed-1',
+              workflowType: 'agentRun',
+              input: {
+                agentName: 'researcher',
+                input: 'nightly digest',
+                scheduleId: 'nightly-digest',
+              },
+              schedule: { id: 'nightly-digest' },
             },
-            schedule: { id: 'nightly-digest' },
-          },
-          runtime.sessionStore!,
-        );
-        expect(resolution.status).toBe('available');
+            runtime.sessionStore!,
+          );
+          expect(resolution.status).toBe('available');
 
-        const completed: ScheduleCompletedEvent[] = [];
-        const failed: ScheduleFailedEvent[] = [];
-        runtime.scheduleFireEvents.addEventListener(ScheduleCompletedEvent.type, (event) => {
-          completed.push(event);
-        });
-        runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
-          failed.push(event);
-        });
+          const completed: ScheduleCompletedEvent[] = [];
+          const failed: ScheduleFailedEvent[] = [];
+          runtime.scheduleFireEvents.addEventListener(ScheduleCompletedEvent.type, (event) => {
+            completed.push(event);
+          });
+          runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
+            failed.push(event);
+          });
 
-        // A "completed" (non-throwing) workflow whose RunResult.finishReason
-        // is itself a failure classification (isRunFailureFinishReason) is
-        // still schedule.failed, not schedule.completed.
-        runtime.durable!.engine.dispatchEvent(
-          new WorkflowCompletedEvent('fire-failed-1', { finishReason: 'error' }, 10),
-        );
+          // A "completed" (non-throwing) workflow whose RunResult.finishReason
+          // is itself a failure classification (isFailureFinishReason) is
+          // still schedule.failed, not schedule.completed.
+          runtime.durable!.engine.dispatchEvent(
+            new WorkflowCompletedEvent('fire-failed-1', { finishReason }, 10),
+          );
 
-        expect(failed).toHaveLength(1);
-        expect(failed[0]!.scheduleId).toBe('nightly-digest');
-        expect(failed[0]!.runId).toBe('fire-failed-1');
-        expect(completed).toHaveLength(0);
-      } finally {
-        runtime.durable?.engine[Symbol.dispose]?.();
-      }
-    });
+          expect(failed).toHaveLength(1);
+          expect(failed[0]!.scheduleId).toBe('nightly-digest');
+          expect(failed[0]!.runId).toBe('fire-failed-1');
+          expect(completed).toHaveLength(0);
+        } finally {
+          runtime.durable?.engine[Symbol.dispose]?.();
+        }
+      },
+    );
 
     it('dispatches ScheduleFailedEvent when a correlated fire terminates with an unhandled workflow error', async () => {
       const runtime = await createRuntimeComposition({

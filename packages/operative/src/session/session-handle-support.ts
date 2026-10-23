@@ -10,6 +10,7 @@ import type { CheckpointStore } from '../durable/checkpoint-store';
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import { normalizeAgentRunWorkflowResult } from '../durable/run-workflow-result';
 import { toAgentRunError } from '../errors';
+import { isFailureFinishReason } from '../finish-reason';
 import type { RunOutcome, RunResult } from '../types';
 import { createRunConversationBoundary } from './run-conversation-boundary';
 import { ForkThroughMessageError } from './session-handle-types';
@@ -159,19 +160,12 @@ export function newestRunningRunRef(session: AgentSession | undefined): RunRef |
 }
 
 /**
- * Map a `finishReason` to a `RunRef.status`.
+ * Map a `finishReason` to a `RunRef.status`: `aborted` is `aborted`, every failure finish reason
+ * (including `maximum-steps`, COR-1627) is `error`, and the rest are `completed`.
  */
 export function finishReasonToStatus(finishReason: string): RunRef['status'] {
   if (finishReason === 'aborted') return 'aborted';
-  if (
-    finishReason === 'error' ||
-    finishReason === 'elicitation-denied' ||
-    finishReason === 'budget-exceeded' ||
-    finishReason === 'tripwire'
-  ) {
-    return 'error';
-  }
-  return 'completed';
+  return isFailureFinishReason(finishReason) ? 'error' : 'completed';
 }
 
 export function runOutcomeFromResult(result: RunResult): RunOutcome {

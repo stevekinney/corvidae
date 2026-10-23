@@ -4257,6 +4257,7 @@ describe('createBureau', () => {
     const bureau = await createBureau({
       agents: {},
       generate: createMockGenerate(),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
     });
 
@@ -4994,6 +4995,9 @@ describe('createBureau', () => {
 
       const detail = bureau.getRun(run.id);
       expect(detail?.finishReason).toBe('maximum-steps');
+      // COR-1627: a run that stops at its step limit is a failure in its record.
+      expect(detail?.status).toBe('error');
+      expect(bureau.listRuns()[0]?.status).toBe('error');
       expect(detail?.steps).toBe(DEFAULT_MAXIMUM_STEPS);
       // `run.started`/`step.started` carry the live Conversation controller;
       // serializing it put the controller's internals (and its bound methods)
@@ -13889,6 +13893,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         await generateGate;
         return { content: 'Drained to completion', toolCalls: [] };
       },
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
     });
 
@@ -14287,6 +14292,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14382,6 +14388,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14472,6 +14479,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14508,6 +14516,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14583,6 +14592,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14614,6 +14624,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14676,6 +14687,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14916,6 +14928,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -14959,6 +14972,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15014,6 +15028,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15089,6 +15104,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15163,6 +15179,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15210,6 +15227,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15252,6 +15270,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15311,6 +15330,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15376,6 +15396,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15443,6 +15464,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15511,6 +15533,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15587,6 +15610,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -15664,12 +15688,14 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
     const bureauA = await createBureau({
       agents: {},
       generate: createMockGenerate('Done.'),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
     });
     const bureauB = await createBureau({
       agents: {},
       generate: createMockGenerate('Done.'),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
     });
@@ -15871,6 +15897,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       const bureauB = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
       });
@@ -16692,6 +16719,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
       });
@@ -16753,6 +16781,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
       });
@@ -16959,6 +16988,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -17043,6 +17073,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -17128,6 +17159,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -17192,6 +17224,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -17395,6 +17428,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const bureau = await createBureau({
         agents: {},
         generate: createMockGenerate('Done.'),
+        stopWhen: stopWhen.noToolCalls(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
@@ -17505,6 +17539,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const bureauB = await createBureau({
           ...sharedOptions,
           generate: createMockGenerate('Done.'),
+          stopWhen: stopWhen.noToolCalls(),
           runtime: createManualRuntimeServices(),
         });
 
@@ -20195,6 +20230,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     const bureau = await createBureau({
       agents: {},
       generate: createMockGenerate('Done.'),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
       persistence: failingKv,
       runtime,
@@ -21655,6 +21691,7 @@ describe('AB-390 — outbox claim lease', () => {
     const bureauA = await createBureau({
       agents: {},
       generate: createMockGenerate('unused'),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       runtime,
@@ -21662,6 +21699,7 @@ describe('AB-390 — outbox claim lease', () => {
     const bureauB = await createBureau({
       agents: {},
       generate: createMockGenerate('unused'),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       runtime,
@@ -23013,6 +23051,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const bureau = await createBureau({
       agents: {},
       generate: createMockGenerate(),
+      stopWhen: stopWhen.noToolCalls(),
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
