@@ -306,6 +306,7 @@ import {
   type LiveTask,
   type TaskRecord,
 } from './task-registry';
+import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
   EXPIRY_ACTOR,
@@ -9077,6 +9078,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
+      // COR-1669: a task whose settlement was written but whose event never was.
+      await taskResyncInstance?.repairAll().catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not repair task histories at boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
       return report;
     } finally {
       recoveryPassActive = false;
@@ -12416,6 +12426,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1669 — a task marked resync-pending, or settled with no event that says so.
+      try {
+        await taskResyncInstance?.repairAll();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual task-history repair pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       try {
         await reconcileAgentSnapshots();
         await retainAgentSnapshots();
@@ -12692,6 +12713,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic task retention pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        try {
+          await taskResyncInstance?.repairAll();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic task-history repair pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -17626,6 +17657,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // below, alongside `auditTrailInstance`, once `bureau` itself exists to
   // subscribe to.
   let durableEventProducerInstance: DurableEventProducer | undefined;
+  // COR-1669 — repairs a task's history after a failed append, at boot, and in maintenance.
+  let taskResyncInstance: TaskResync | undefined;
 
   /**
    * Whether `principal` may read `owner`'s durable history right now: the one
@@ -18820,8 +18853,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       eventHistoryInstance,
       runtimeServices,
       diagnose,
-      { signal: backgroundShutdownController.signal, eventTimestamp },
+      {
+        signal: backgroundShutdownController.signal,
+        eventTimestamp,
+        onAppendFailed: (owner) => void taskResyncInstance?.appendFailed(owner),
+      },
     );
+    taskResyncInstance = createTaskResync({
+      tasks,
+      history: eventHistoryInstance,
+      producer: durableEventProducerInstance,
+      retentionCutoff: eventRetentionCutoff,
+      diagnose: (message, cause) =>
+        diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+    });
   }
 
   // Wire the webhook notifier (AB-21) now that the audit trail exists (an
