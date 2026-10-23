@@ -17,6 +17,7 @@ Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dep
 - [Storage Backends](#storage-backends)
 - [Evidence and Projections](#evidence-and-projections)
 - [Memory Transitions](#memory-transitions)
+- [Procedural Memory](#procedural-memory)
 - [Hooks](#hooks)
 - [Tools](#tools)
 - [Ingestion](#ingestion)
@@ -784,9 +785,242 @@ The engine awaits an injected `sink` for each lifecycle event and never writes t
 | A receipt found only after a lost batch | `requested`, `validation-started`, `recovery-reconciled` |
 | A reused operation id | `requested`, then the thrown `TransitionIdentifierConflictError` |
 
+#### Correlating events with a run
+
+An event says what happened to an operation. It does not say which run, chat, or context made the call. `submit(proposal, { signal, correlation })` takes a `MemoryCorrelation`, `{ runId?, sessionId?, contextEpochId? }`, and stamps it as `correlation` on every event of that attempt. `contextEpochId` is the effective-context epoch of the generate attempt that produced the call, which exists only when the run seals epochs (see [The bundle in an effective-context epoch](#the-bundle-in-an-effective-context-epoch)). The engine parses the value with `memoryCorrelationSchema` before the first event, so a malformed one (an unknown key, or an empty string) throws a `ZodError` and nothing is emitted.
+
+Correlation describes the attempt, not the change, so it is in neither the proposal, its digest, nor the receipt. A retry from a recovered run reconciles to the same receipt, and its `recovery-reconciled` event carries the recovering run's correlation, not the original run's. Without a `correlation` option an event has no `correlation` field.
+
+```ts
+import {
+  createTransitionEngine,
+  type EvidenceProjectionStorage,
+  type MemoryCorrelation,
+  type TransitionEvent,
+  type TransitionProposal,
+} from '@lostgradient/memory';
+
+declare const storage: EvidenceProjectionStorage;
+declare const proposal: TransitionProposal;
+
+const events: TransitionEvent[] = [];
+const engine = createTransitionEngine({
+  storage,
+  now: Date.now,
+  sink: (event) => {
+    events.push(event);
+  },
+});
+
+const correlation: MemoryCorrelation = {
+  runId: 'run-7',
+  sessionId: 'session-3',
+  contextEpochId: 'epoch-2',
+};
+await engine.submit(proposal, { correlation });
+
+// Every event of the attempt names the run that made the call.
+console.log(events.every((event) => event.correlation?.runId === 'run-7')); // true
+```
+
+Governed memory carries the same shape on its notifications. `GovernedWriteOptions.correlation` takes a `MemoryCorrelation`, and every `MemoryGovernanceNotification` the write produces (its admission, and a withdrawal of a superseding successor it undoes) has it as `correlation`. It is delivered to `onEvent` only: it is not stored on the record and not on the ledger event, so a ledger read does not return it. A malformed correlation makes the write `rejected` with `invalid-request`. Bureau's persist hook sets it on every write it makes: the `runId`, the `sessionId` of the chat, and the `contextEpochId` when the run seals epochs.
+
 ### Testing a failure
 
 `createInMemoryEvidenceProjectionStorage()` and `createWeftEvidenceProjectionStorage()` accept `wrapApply`, which wraps the store's one write boundary so a test can fail, count, or park a batch. The engine's `hooks` (`beforeBatch`, `afterBatch`, `beforeEvents`) mark its own boundaries; a test abandons work by never resolving one. Production code sets neither.
+
+## Procedural Memory
+
+A procedure is a `procedure` projection: a way of doing a task, with the episodes it came from and the validation that promoted it. Procedural memory adds no store and no write path. Every step below is a transition through the engine in [Memory Transitions](#memory-transitions), so it is atomic, receipted, idempotent by operation id, and reported through the same events. The helpers are `extractProcedureCandidate()`, `promoteProcedure()`, `retrieveProcedures()`, `recordProcedureOutcome()`, and `retireProcedure()`.
+
+A procedure grants nothing. Its steps are text for a model or a person to read. A `tool` step names a tool, and naming it does not make it callable: the run's toolbox and tool policy decide what runs, so a step naming a tool the policy denies never executes. Retrieval does not widen a run's capabilities either; it leaves out a procedure that needs one the run lacks.
+
+### Candidates
+
+A _draft_ (`ProcedureDraft`) is what a proposer claims: `title`, `objective`, `taskClass`, `preconditions`, `requiredCapabilities`, `environment` (dependency names and the versions the procedure was validated against), `steps`, `expectedEvidence`, `postconditions`, `knownFailures`, `sideEffects`, and a `scope` of `routine` or `high-impact`. A `high-impact` procedure is one whose steps change state outside the run (deploy, delete, pay, send). Each step has a `kind` (`command`, `code`, `tool`, or `check`), its `text`, and `causal`: whether the proposer claims the step caused the outcome rather than merely preceded it. A `tool` step names its `tool`, and only a `tool` step does.
+
+`extractProcedureCandidate({ storage, tenantId, namespace, draft, successfulEpisodes, failedEpisodes? })` links a draft to the exact episode revisions it came from and returns a `ProcedureCandidate`. It stores nothing. It reads each episode at the revision named and checks that the revision is still the current one and not revoked. It throws `ProcedureCandidateError` with a `code`:
+
+| Code | Meaning |
+| --- | --- |
+| `no-successful-episode` | No successful episode was named. |
+| `no-causal-step` | No step is marked `causal`, so the draft describes a run, not a procedure. |
+| `contradictory-episodes` | An episode is named twice, or as both a success and a failure. |
+| `episode-not-found` | A named episode revision does not exist. |
+| `not-an-episode` | A named projection is some other kind. |
+| `episode-not-current` | A named revision is no longer the current revision, or is revoked. |
+
+Failed episodes are kept as provenance and never dropped. The candidate's `sources` are the episodes' evidence, deduplicated.
+
+### Promotion
+
+`promoteProcedure({ engine, authority, candidate, id, operationId, projectorRevision, validator, review?, replaces?, confidence? })` commits a candidate as a validated procedure in one transition, or says why not. A count of successful episodes never promotes anything. A `ProcedureValidator` (`name`, `revision`, `kind` of `deterministic` or `evaluator`, and `validate(candidate)`) must run and pass. Its `validate()` returns a `ProcedureValidationRun`: the `outcome`, the `fixture` it ran, the `evidence` it observed, and, for a failed run, a `failureSignature`. The validator's identity, a digest of the fixture, and the observation verbatim become the procedure's provenance, which the receipt's record digest covers. `confidence` defaults to 0.5.
+
+Promotion reads the candidate's episodes again, so an episode withdrawn since extraction refuses the promotion. It copies and freezes everything the caller passed before it awaits, so neither the caller nor the validator can change what is stored after it was validated. It returns a `ProcedurePromotion`:
+
+| `status` | Meaning |
+| --- | --- |
+| `promoted` | Committed. `procedure` is the `{ id, revision }` written and `result` the committed `TransitionResult`. |
+| `pending-review` | Validation passed, but the candidate is `high-impact` and waits for a person. Nothing was written. `request` is a `ProcedureReviewRequest`. |
+| `refused` | Nothing was written. `reason` is `unvalidated` (no validator), `validation-failed` (with the `run`), `review-declined`, `review-not-human`, `review-mismatch`, `episode-withdrawn`, `contradictory-episodes`, or `wrong-tenant`. |
+| `rejected` | The engine refused the transition. `result` says why. |
+
+For a high-impact candidate, show the `request` to a person, then promote again with a `ProcedureReviewDecision`: the `requestDigest` of that exact request, a `reviewer` principal of kind `user` or `governance`, `approved`, `decidedAt`, and a `reviewId`. The digest covers the exact transition the approval permits, including the authority and the revision replaced, so a decision for another procedure, operation, candidate, fixture, or observation is a `review-mismatch`. A `service` or `agent` reviewer is `review-not-human`. The engine enforces the same rules itself (`procedure.causal-step-claimed` and `procedure.high-impact-reviewed`), so a hand-written proposal cannot skip them. A host routes `pending-review` through its own approval path; this package ships no review UI.
+
+`replaces` names the current revision of procedure `id` that a new validation replaces. The result is a `rebuilt` revision of the same procedure, so the old revision stays in its history, and a revision that is no longer current is `conflicted`. Promotion is idempotent: a retry with the same `operationId` and the same inputs finds the committed receipt and returns `promoted` with `replayed: true`, without running the validator or reading the episodes again. The same `operationId` with different inputs reaches the engine, which reports the conflict.
+
+```ts
+import {
+  extractProcedureCandidate,
+  type MemoryAuthority,
+  promoteProcedure,
+  type ProcedureReviewDecision,
+  type ProcedureValidator,
+  type TransitionEngine,
+} from '@lostgradient/memory';
+
+declare const engine: TransitionEngine;
+declare const authority: MemoryAuthority;
+declare const approver: ProcedureReviewDecision['reviewer'];
+
+const validator: ProcedureValidator = {
+  name: 'staging-replay',
+  revision: 'staging-replay:1',
+  kind: 'deterministic',
+  validate: async () => ({
+    outcome: 'passed',
+    fixture: 'staging certificate expiring in 3 days',
+    evidence: 'renewed; expires in 89 days',
+  }),
+};
+
+const candidate = await extractProcedureCandidate({
+  storage: engine.storage,
+  tenantId: authority.tenantId,
+  namespace: 'runbooks',
+  draft: {
+    title: 'Rotate the staging certificate',
+    objective: 'Replace the expiring TLS certificate on staging.',
+    taskClass: 'certificate-rotation',
+    preconditions: [],
+    requiredCapabilities: ['tools:execute'],
+    environment: [{ name: 'certbot', version: '2.11' }],
+    steps: [
+      { kind: 'tool', text: 'renew the certificate', tool: 'renew_certificate', causal: true },
+      { kind: 'tool', text: 'reload the load balancer', tool: 'reload_balancer', causal: true },
+    ],
+    expectedEvidence: ['a renewed certificate'],
+    postconditions: ['the certificate expires in more than 60 days'],
+    knownFailures: [{ signature: 'rate limit exceeded' }],
+    sideEffects: ['reloads the staging load balancer'],
+    scope: 'high-impact',
+  },
+  successfulEpisodes: [{ id: 'episode-1', revision: 1 }],
+});
+
+const options = {
+  engine,
+  authority,
+  candidate,
+  id: 'rotate-staging-certificate',
+  operationId: 'promote-1',
+  projectorRevision: 'procedure-projector:1',
+  validator,
+};
+
+// A high-impact candidate stops here until a person decides this exact request.
+const first = await promoteProcedure(options);
+if (first.status === 'pending-review') {
+  const second = await promoteProcedure({
+    ...options,
+    review: {
+      reviewId: 'review-1',
+      requestDigest: first.request.requestDigest,
+      reviewer: approver,
+      approved: true,
+      decidedAt: Date.now(),
+    },
+  });
+  console.log(second.status); // 'promoted'
+}
+```
+
+### Retrieval
+
+`retrieveProcedures({ storage, authority, namespace, query, environment, capabilities, satisfiedPreconditions?, limit?, now })` returns the procedures that fit the run. It needs `memory:search`; without it the result has no matches and `stopReason: 'unavailable'`. The stages run in a fixed order, and nothing is scored until it has passed every earlier one:
+
+1. **Authorization.** Only procedures whose evidence the authority may search, read in one consistent pass over the namespace. Active and demoted procedures only; a superseded or revoked one never appears.
+2. **Validation.** A procedure stored before validation existed (a bare title and steps) is excluded as `unvalidated`.
+3. **Environment.** Every dependency the procedure was validated against must be in `environment`, at the same version or a more specific one: `2.11` fits `2.11.4` and does not fit `2.12`. Otherwise it is `environment-missing` or `environment-mismatch`.
+4. **Capabilities.** A procedure that needs a capability absent from `capabilities` is `capability-missing`.
+5. **Preconditions.** When `satisfiedPreconditions` is passed, every precondition of the procedure must be in it, or the procedure is `precondition-unmet`. Without it, preconditions are not checked.
+
+The survivors are scored lexically over their objective, steps, tools, and known failures, and a demoted one ranks below an active one of equal relevance. `limit` defaults to 5 and must be a positive integer, or the call throws a `RangeError`.
+
+The result has `matches`, `exclusions` (each with the `procedure` reference, a `reason`, and a `detail`), and `stopReason` (`sufficient` when the limit filled, otherwise `exhausted`). A `ProcedureMatch` carries more than steps: the `procedure` reference, `status` (`active` or `demoted`), `payload`, `score`, `proof` (the `sources` it rests on, the `validation`, and any `review`), `freshness` (`validFrom`, `changedAt`, and `ageMilliseconds`), `confidence`, `knownFailures`, and `lineage` (the revision it `replaces`, or the episode that `demotedBy` it).
+
+`retrieveProcedures()` is not `recallForModel()`. It renders no `<memory-evidence>` block, runs no recall detectors, and writes no ledger event. The caller decides what reaches a model, and a procedure's text is untrusted content like any other recalled text.
+
+### Applying a procedure
+
+Applying is the caller's work: hand the match to a run and let the run's toolbox do the calling. A portable skill can point at a procedure with a tag such as `procedure:runbooks/rotate-staging-certificate`, and neither record is rewritten into the other. `packages/bureau/src/procedural-memory.test.ts` is the end-to-end example. It retrieves the procedure for the run's environment, builds a toolbox filtered by `createPolicyEnforcementHook({ personaToolPolicy })` in Operative, and runs a Bureau agent whose first step calls each `tool` the match names. A step that names a denied tool never runs.
+
+### Outcomes and demotion
+
+```ts
+import {
+  type MemoryAuthority,
+  type ProcedureMatch,
+  recordProcedureOutcome,
+  retireProcedure,
+  type TransitionEngine,
+} from '@lostgradient/memory';
+
+declare const engine: TransitionEngine;
+declare const authority: MemoryAuthority;
+declare const match: ProcedureMatch;
+
+// The run applied the procedure and it failed.
+const outcome = await recordProcedureOutcome({
+  engine,
+  authority,
+  namespace: 'runbooks',
+  procedure: match.procedure,
+  operationId: 'outcome-1',
+  episodeId: 'episode-outcome-1',
+  outcome: 'failed',
+  failureSignature: 'reload_balancer denied by tool policy',
+  summary: 'The balancer reload was denied, so the rotation did not complete.',
+  projectorRevision: 'episode-projector:1',
+  at: Date.now(),
+});
+console.log(outcome.demoted); // true
+
+// Later, retire the revision that is now current.
+await retireProcedure({
+  engine,
+  authority,
+  namespace: 'runbooks',
+  procedure: { id: match.procedure.id, revision: match.procedure.revision + 1 },
+  operationId: 'revoke-1',
+  change: 'revoke',
+  reason: 'superseded-by-new-runbook',
+});
+```
+
+`recordProcedureOutcome()` feeds an application's result back as new facts and never edits the procedure. It submits up to three transitions in order, each named from `operationId`: an `append-evidence` (`<operationId>:evidence`, a `tool-result` record with `untrusted` trust whose causation names `runId` when given), a `create-projection` for the episode (`<operationId>:episode`), and, for a `failed` outcome of a procedure that is still its current, active revision, a `revise-projection` named `operationId` itself that demotes the procedure by that episode. A demoted procedure stays recallable at a lower rank, and its history says why. The first two are facts about what happened and stay true whether or not the demotion lands. `at` is when the application ended, not when it was recorded, so a retried call proposes the same transitions and each replays; a retry after the demotion committed finds its receipt and resubmits the same demotion. It returns `{ episode, demoted, results }`.
+
+It throws `ProcedureLifecycleError`, whose `result` is the refusal, when `procedure` is not a procedure revision, when the authority cannot write the evidence the procedure rests on (reported as not found, so outcomes cannot probe for private evidence), when `at` precedes the revision that was applied, or when any transition does not commit.
+
+`retireProcedure()` takes a procedure out of use. `change: 'quarantine'` is for a suspect procedure and `'revoke'` for one known to be wrong. Both write an ordinary `revoked` revision, which nothing can make recallable again, with a reason code of `quarantined:<reason>` or `revoked:<reason>`. The authority needs `memory:revoke`, and `procedure` must name the revision that is current, or the engine reports it as stale.
+
+### What procedural memory does not do
+
+- It does not run a procedure, check that its steps were followed, or decide that an application succeeded. The caller reports the outcome.
+- It does not extract a draft from a transcript. A proposer, a person or a model, writes the draft, and `causal` is that proposer's claim. Validation is the check.
+- A validator is only as good as its fixture. An `evaluator` validator judges by a rubric and is recorded as an evaluator, not as a deterministic check.
+- A promoted procedure is not trusted content. Retrieval returns it as data, and nothing in it changes anyone's authority.
+- It is separate from the `procedural` memory class of governed records. `recallForModel()` recalls records, and a procedure projection is retrieved only with `retrieveProcedures()`.
 
 ## Hooks
 
@@ -1845,7 +2079,7 @@ await memory.close();
 | `propagation` | No | A `MemoryDeletionPropagator` or `'not-retained'` for each bounded-async deletion target. See [Deletion and receipts](#deletion-and-receipts). |
 | `textSearchProvider` | No | Text scores for ranking, and the index the `indexes` deletion handler removes entries from. Without one, ranking uses in-process BM25. |
 | `runtime` | No | `RuntimeServices` for the clock and identifiers. Defaults to the real ones. |
-| `onEvent` | No | Called with a redacted `MemoryGovernanceNotification` for every ledger event: `type`, `outcome`, `tenantId`, `at`, `recordIds`, and, when known, `operationId`, `principalId`, and `projection`. It never carries a protected reason, a detector diagnostic, or record content. It is awaited inside the governed call, after the event is appended to the ledger. A throw or rejection therefore escapes the call even though the change and its ledger event are already stored. A write is stored, so retrying it without a `dedupeKey`, or on storage that cannot honor one, stores it again. A deletion has persisted its receipt, but neither lane runs until the next `processDeletionPropagation()`. Reads and denials record events too, so they throw as well, and under Bureau the run fails. Make the sink non-throwing, for example by catching and buffering what it cannot deliver. |
+| `onEvent` | No | Called with a redacted `MemoryGovernanceNotification` for every ledger event: `type`, `outcome`, `tenantId`, `at`, `recordIds`, and, when known, `operationId`, `principalId`, `projection`, and `correlation` (see [Correlating events with a run](#correlating-events-with-a-run)). It never carries a protected reason, a detector diagnostic, or record content. It is awaited inside the governed call, after the event is appended to the ledger. A throw or rejection therefore escapes the call even though the change and its ledger event are already stored. A write is stored, so retrying it without a `dedupeKey`, or on storage that cannot honor one, stores it again. A deletion has persisted its receipt, but neither lane runs until the next `processDeletionPropagation()`. Reads and denials record events too, so they throw as well, and under Bureau the run fails. Make the sink non-throwing, for example by catching and buffering what it cannot deliver. |
 
 A governed call is a sequence of awaited steps, not one transaction across these dependencies. A write stores its record, then indexes an active record in the `textSearchProvider`, then appends its ledger event, and then calls `onEvent`. When a later step throws, the call throws with the earlier steps already stored: a text index that throws leaves the record stored with no admission event in the ledger. The deletion lanes are the one exception, for their own work only: a failed storage transaction, or a propagator or built-in handler that throws, is recorded on the receipt rather than thrown, as [Deletion and receipts](#deletion-and-receipts) describes.
 
