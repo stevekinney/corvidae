@@ -40,7 +40,7 @@
 }
 
 .weft-workers-panel__header {
-  padding: 11px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 600;
@@ -50,7 +50,7 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-radius: var(--cinder-radius-lg);
   border: 1px solid;
   font-size: var(--cinder-text-sm);
@@ -72,7 +72,7 @@
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 13px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   min-width: 0;
 }
 
@@ -178,7 +178,7 @@
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 13px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-deployment-row__identity {
@@ -259,7 +259,7 @@
 }
 
 .weft-worker-detail__activities {
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -291,7 +291,7 @@
 
 .weft-worker-manifest-panel__identity,
 .weft-worker-manifest-panel__note {
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-worker-manifest-panel__note {
@@ -302,14 +302,14 @@
 
 .weft-worker-manifest-panel__capabilities {
   margin: 0;
-  padding: 0 15px 12px;
+  padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block);
 }
 
 .weft-worker-manifest-panel__capabilities > div {
   display: grid;
   grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
   gap: 12px;
-  padding-block: 6px;
+  padding-block: var(--cinder-space-2);
 }
 
 .weft-worker-manifest-panel__capabilities dt {
@@ -352,7 +352,7 @@
   flex-wrap: wrap;
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   background: var(--cinder-surface-raised);
 }
 
@@ -386,7 +386,7 @@
   display: grid;
   grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
   gap: 12px;
-  padding-block: 4px;
+  padding-block: var(--cinder-space-1);
 }
 
 .weft-manifest-diagnostics__accepted code {
@@ -431,7 +431,7 @@
 }
 
 .weft-queue-detail__no-workers {
-  padding: 15px;
+  padding: var(--cinder-density-pad-card);
   margin: 0;
   font-size: var(--cinder-text-sm);
   color: var(--cinder-text-subtle);
@@ -439,7 +439,7 @@
 
 .weft-dead-letter-panel {
   flex-direction: column;
-  padding: 14px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-dead-letter-panel__header {
@@ -491,7 +491,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
 }
 
@@ -547,7 +547,7 @@
 
 .weft-diagnostic-card__evidence {
   margin: 8px 0 0;
-  padding-inline-start: 18px;
+  padding-inline-start: var(--cinder-space-4);
   font-size: var(--cinder-text-xs);
   color: var(--cinder-text-subtle);
 }
@@ -556,14 +556,14 @@
   background: var(--cinder-status-warning-background);
   border: 1px solid var(--cinder-status-warning-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 14px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-diagnostic-card--danger {
   background: var(--cinder-status-danger-background);
   border: 1px solid var(--cinder-status-danger-border);
   border-radius: var(--cinder-radius-lg);
-  padding: 14px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-task-ledger-detail {
@@ -616,7 +616,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   overflow-wrap: anywhere;
 }
 
@@ -632,7 +632,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-block-end: 1px solid var(--cinder-border-muted);
   overflow-wrap: anywhere;
 }
@@ -665,7 +665,7 @@
 }
 
 .weft-task-attempts__timeline {
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   overflow-wrap: anywhere;
 }
 
@@ -674,7 +674,7 @@
   flex-wrap: wrap;
   gap: var(--cinder-space-2);
   align-items: center;
-  padding: 12px 15px 0;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline) 0;
 }
 
 .weft-task-attempts__paging-summary {
@@ -731,23 +731,23 @@
 .weft-workers-card__stats {
   display: flex;
   gap: 16px;
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-workers-card__diagnostics {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 0 15px 12px;
+  padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block);
 }
 
 .weft-workers-card__skeleton {
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
 }
 
 .weft-workers-card__error {
   margin: 0;
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   font-size: var(--cinder-text-xs);
   color: var(--cinder-status-danger-text);
 }
@@ -822,7 +822,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-3);
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   overflow-wrap: anywhere;
 }
 
@@ -881,7 +881,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-2);
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   background: var(--cinder-surface-raised);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
@@ -951,7 +951,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-3);
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   overflow-wrap: anywhere;
 }
 

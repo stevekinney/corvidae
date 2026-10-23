@@ -1121,6 +1121,21 @@
           }
         }
       },
+      "reading": {
+        "$value": {
+          "value": 47.5,
+          "unit": "rem"
+        },
+        "$description": "Reading column width (760px). The width of a page of text, forms, and lists: wide enough for a row of controls, narrow enough to read.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-content-width-reading",
+            "public": true,
+            "category": "size",
+            "cssRecipe": null
+          }
+        }
+      },
       "wide": {
         "$value": {
           "value": 90,

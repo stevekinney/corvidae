@@ -225,7 +225,7 @@
 
   .weft-async-activity-drawer__spent {
     margin: 0;
-    padding: 10px;
+    padding: var(--cinder-space-2);
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-xs);

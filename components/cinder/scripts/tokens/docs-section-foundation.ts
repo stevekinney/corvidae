@@ -104,6 +104,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-content-width-prose',
       '--cinder-content-width-narrow',
       '--cinder-content-width-wide',
+      '--cinder-content-width-reading',
     ],
   },
   {
@@ -203,10 +204,32 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
     cssProperties: [
       '--cinder-pad-control',
       '--cinder-pad-card',
+      '--cinder-pad-page',
       '--cinder-gap-stack',
       '--cinder-gap-inline',
       '--cinder-radius-control',
       '--cinder-radius-surface',
+    ],
+  },
+  {
+    slug: 'type-roles',
+    headings: ['## Type roles'],
+    cssProperties: [
+      '--cinder-text-page-title',
+      '--cinder-text-section-title',
+      '--cinder-text-body',
+      '--cinder-text-secondary',
+      '--cinder-text-code',
+    ],
+  },
+  {
+    slug: 'density',
+    headings: ['## Density'],
+    cssProperties: [
+      '--cinder-density-row-height',
+      '--cinder-density-pad-block',
+      '--cinder-density-pad-inline',
+      '--cinder-density-pad-card',
     ],
   },
   {

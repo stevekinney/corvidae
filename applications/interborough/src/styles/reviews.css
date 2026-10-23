@@ -74,11 +74,11 @@
 }
 
 .weft-reviews-inbox__list-pane .weft-reviews-inbox__empty-state {
-  padding: 24px;
+  padding: var(--cinder-space-6);
 }
 
 .weft-reviews-inbox__count {
-  padding: 11px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-xs);
   font-weight: 600;
@@ -95,11 +95,10 @@
   height: 100%;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 24px 60px;
 }
 
 .weft-reviews-inbox__detail-pane .weft-reviews-inbox__empty-state {
-  padding: 24px;
+  padding: var(--cinder-space-6);
 }
 
 /* Query fault banner (shared by the inbox list pane and the archive table —
@@ -112,7 +111,7 @@
   align-items: center;
   gap: var(--cinder-space-2-5, 10px);
   margin: 16px;
-  padding: 11px 14px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-raised);
@@ -172,10 +171,10 @@
 .weft-review-row {
   display: block;
   width: 100%;
-  padding: 12px 15px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border: 0;
   border-bottom: 1px solid var(--cinder-border-muted);
-  border-inline-start: 3px solid transparent;
+  border-inline-start: var(--cinder-space-1) solid transparent;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -307,7 +306,7 @@
 }
 
 .weft-review-recorded-feedback {
-  padding: 16px;
+  padding: var(--cinder-density-pad-card);
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-lg);
   background: var(--cinder-surface-inset);
@@ -340,7 +339,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 0;
+  padding: var(--cinder-density-pad-block) 0;
   border-bottom: 1px solid var(--cinder-border-muted);
 }
 
@@ -418,7 +417,7 @@
 }
 
 .weft-reviews-archive th {
-  padding: 9px 16px;
+  padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
   background: var(--cinder-surface-inset);
   border-bottom: 1px solid var(--cinder-border-muted);
   text-align: start;
@@ -430,7 +429,7 @@
 }
 
 .weft-reviews-archive td {
-  padding: 11px 16px;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
   white-space: nowrap;
 }
@@ -494,10 +493,6 @@
   .weft-reviews-inbox__live {
     justify-content: space-between;
   }
-
-  .weft-reviews-inbox__detail-pane {
-    padding: 16px 16px 40px;
-  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -520,7 +515,8 @@
 }
 
 .weft-bureau-review-row__link {
-  padding: 0 15px 12px calc(15px + 3px);
+  padding: 0 var(--cinder-density-pad-inline) var(--cinder-density-pad-block)
+    calc(var(--cinder-density-pad-inline) + var(--cinder-space-1));
   color: inherit;
   font-size: var(--cinder-text-sm);
 }
