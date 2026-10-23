@@ -135,6 +135,13 @@ const stepsSchema = z
     'The steps, run in order: { "kind": "activity", "handler": "agent", "input": { "agent": "...", "message": "..." } }, { "kind": "sleep", "duration": "5m" }, or { "kind": "await-signal", "signal": "..." }.',
   );
 
+const descriptionSchema = z
+  .string()
+  .optional()
+  .describe(
+    'One sentence on what the workflow is for, shown beside its name in the workflow list. Leave it out for none.',
+  );
+
 const pausedSchema = z
   .boolean()
   .optional()
@@ -230,9 +237,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     input: {
       trigger: Record<string, unknown>;
       steps: Record<string, unknown>[];
+      description?: string | undefined;
       paused?: boolean | undefined;
     },
   ): WorkflowFileDefinition => ({
+    ...(input.description === undefined ? {} : { description: input.description }),
     agent,
     ...(input.paused === undefined ? {} : { paused: input.paused }),
     trigger: input.trigger as WorkflowFileDefinition['trigger'],
@@ -248,11 +257,13 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       .describe(
         'The identifier, lowercase letters, digits, and hyphens, starting with a letter and at most 64 characters. Derived from `name` when you leave it out.',
       ),
+    description: descriptionSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
   });
   const updateInput = guardedInput.extend({
+    description: descriptionSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
@@ -292,7 +303,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const update = createTool({
     name: 'workflows-update',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, and you become the agent that wrote it. Leave `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, and you become the agent that wrote it. Leave `description` out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const calling = await caller(context, input.id);

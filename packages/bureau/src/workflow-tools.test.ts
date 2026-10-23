@@ -159,6 +159,27 @@ describe('workflows-create', () => {
     expect(detail?.schedule?.status).toBe('active');
   });
 
+  it('writes the description it is given, and none when it is left out', async () => {
+    const harness = await start();
+
+    await harness.callTool('workflows-create', {
+      name: 'Described',
+      description: 'Writes the nightly digest.',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await harness.callTool('workflows-create', { name: 'Bare', trigger: TRIGGER, steps: STEPS });
+
+    expect(await fileOf(harness, 'described')).toMatchObject({
+      description: 'Writes the nightly digest.',
+    });
+    expect(await fileOf(harness, 'bare')).not.toHaveProperty('description');
+    expect(harness.bureau.workflows!.list().map((listing) => listing.description)).toEqual([
+      null,
+      'Writes the nightly digest.',
+    ]);
+  });
+
   it('takes an explicit identifier, and answers a taken one as a conflict naming it, with no suffix', async () => {
     const harness = await start();
     const first = await harness.callTool('workflows-create', {

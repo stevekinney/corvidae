@@ -65,6 +65,9 @@ import {
 /** The statuses of an instance that has not finished: the runs whose revision must stay loadable. */
 const IN_FLIGHT_STATUSES: readonly WorkflowStatus[] = ['pending', 'running', 'suspended'];
 
+/** How far back a workflow's recent instances are counted: the 24 hours the list shows. */
+const RECENT_RUN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /** The most runs of one workflow `runs.list` reads, so a long history cannot make one call unbounded. */
 const RUNS_READ_LIMIT_PER_WORKFLOW = 1000;
 
@@ -97,6 +100,16 @@ export interface WorkflowRunDetail extends WorkflowRunSummary {
   readonly result?: unknown;
   /** Why the instance failed, for a run that did, including a failed agent step. */
   readonly error?: string;
+}
+
+/** How busy one workflow is: what the workflow list shows beside each row. */
+export interface WorkflowRunCounts {
+  /** Instances that have not finished: pending, running, or suspended. */
+  readonly active: number;
+  /** Instances created in the last 24 hours. */
+  readonly last24Hours: number;
+  /** When the newest instance was created, or `null` when the workflow has had none. */
+  readonly lastRunAt: string | null;
 }
 
 export interface WorkflowRunFilter {
@@ -174,6 +187,8 @@ export interface BureauWorkflows {
     readonly nextOffset: number | null;
   }>;
   readonly getRun: (runId: string) => Promise<WorkflowRunDetail | undefined>;
+  /** The counts of `id`'s instances, read from the engine's own totals. */
+  readonly runCounts: (id: string) => Promise<WorkflowRunCounts>;
   /** Rescan the directory; resolves once the engine and the schedules match it. */
   readonly refresh: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
@@ -899,6 +914,21 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         runs,
         nextOffset:
           ordered.length > filter.offset + filter.limit ? filter.offset + filter.limit : null,
+      };
+    },
+
+    async runCounts(id) {
+      const [active, recent, newest] = await Promise.all([
+        engine.list({ type: id, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
+        engine.list({ type: id, createdAt: { gte: Date.now() - RECENT_RUN_WINDOW_MS }, limit: 1 }),
+        // The engine lists newest first, so the first item of an unfiltered page is the last run.
+        engine.list({ type: id, limit: 1 }),
+      ]);
+      const last = newest.items[0];
+      return {
+        active: active.total,
+        last24Hours: recent.total,
+        lastRunAt: last === undefined ? null : new Date(last.createdAt).toISOString(),
       };
     },
 
