@@ -215,7 +215,83 @@ async function drain(stream: ReturnType<typeof serverSentEvents>): Promise<Serve
   }
 }
 
+/**
+ * A minimal A2UI v0.9.1 client: replays every message a stream delivered and refuses what the
+ * specification forbids, a second `createSurface` for a held surface id and an update to a surface
+ * that does not exist. Returns the text each surface's components show.
+ */
+function replayed(events: Array<ServerSentEvent | undefined>): Record<string, string[]> {
+  const surfaces = new Map<string, Map<string, Json>>();
+  for (const event of events) {
+    for (const part of surfaceDataOf(event)) {
+      for (const message of part.data as Json[]) {
+        if (message.createSurface !== undefined) {
+          const { surfaceId } = message.createSurface;
+          if (surfaces.has(surfaceId)) throw new Error(`createSurface repeats ${surfaceId}`);
+          surfaces.set(surfaceId, new Map());
+        } else if (message.deleteSurface !== undefined) {
+          surfaces.delete(message.deleteSurface.surfaceId);
+        } else {
+          const body = message.updateComponents ?? message.updateDataModel;
+          const held = surfaces.get(body.surfaceId);
+          if (held === undefined) throw new Error(`an update names the absent ${body.surfaceId}`);
+          for (const component of message.updateComponents?.components ?? []) {
+            held.set(component.id, component);
+          }
+        }
+      }
+    }
+  }
+  return Object.fromEntries(
+    [...surfaces].map(([id, components]) => [
+      id,
+      [...components.values()].flatMap((component) =>
+        typeof component.text === 'string' ? [component.text] : [],
+      ),
+    ]),
+  );
+}
+
 describe('SubscribeToTask with a surface', () => {
+  it('continues a held surface with its whole state and never a second createSurface', async () => {
+    await withTask(async (kit) => {
+      const taskId = await kit.park();
+      const stream = serverSentEvents(await kit.subscribe(taskId));
+      const opening = await stream.next();
+      await kit.apply(taskId);
+      const created = await stream.next();
+      await kit.apply(taskId, { baseRevision: 1, text: 'Two' });
+      const second = await stream.next();
+      await kit.apply(taskId, { baseRevision: 2, text: 'Three' });
+      const third = await stream.next();
+      const kinds = (event: ServerSentEvent | undefined) =>
+        surfaceDataOf(event).flatMap((part) =>
+          (part.data as Json[]).map((message) => Object.keys(message).find((k) => k !== 'version')),
+        );
+      expect(kinds(created)).toEqual(['createSurface', 'updateComponents', 'updateDataModel']);
+      expect(kinds(second)).toEqual(['updateComponents', 'updateDataModel']);
+      expect(kinds(third)).toEqual(['updateComponents', 'updateDataModel']);
+      expect(replayed([opening, created, second, third])).toEqual({ panel: ['Three'] });
+      await stream.cancel();
+    });
+  });
+
+  it('replays an opening snapshot, an update, and a delete as valid A2UI', async () => {
+    await withTask(async (kit) => {
+      const taskId = await kit.park();
+      await kit.apply(taskId);
+      const stream = serverSentEvents(await kit.subscribe(taskId));
+      const opening = await stream.next();
+      await kit.apply(taskId, { baseRevision: 1, text: 'Two' });
+      const updated = await stream.next();
+      await kit.remove(taskId, 'panel', 2);
+      const deleted = await stream.next();
+      expect(replayed([opening, updated])).toEqual({ panel: ['Two'] });
+      expect(replayed([opening, updated, deleted])).toEqual({});
+      await stream.cancel();
+    });
+  });
+
   it('sends each revision once as a status update of the current state, ahead of later status frames', async () => {
     await withTask(async (kit) => {
       const taskId = await kit.park();

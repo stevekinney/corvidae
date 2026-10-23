@@ -647,6 +647,15 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   }
 }
 
+/** A surface data part without its `createSurface` message; any other part as it is. */
+function withoutCreateSurface(part: Part): Part {
+  if (part.content?.$case !== 'data' || !Array.isArray(part.content.value)) return part;
+  const messages = (part.content.value as Record<string, unknown>[]).filter(
+    (message) => !('createSurface' in message),
+  );
+  return { ...part, content: { $case: 'data', value: messages } };
+}
+
 /** What a client holds of one surface: the revision sent, and whether it was A2UI data. */
 type SentSurface = { readonly revision: number; readonly data: boolean };
 
@@ -695,7 +704,10 @@ function createSurfaceReconciler(
           parts.push(deleteSurfacePart(surface));
         } else {
           sent.set(surface.surfaceId, { revision: surface.revision, data: delivered(surface) });
-          parts.push(...surfaceParts([surface], activated, surfaces.supportedCatalogIds));
+          const whole = surfaceParts([surface], activated, surfaces.supportedCatalogIds);
+          // A surface the client already holds is continued with its whole current state and no
+          // second `createSurface`, which A2UI v0.9.1 forbids for an existing surface id.
+          parts.push(...(before?.data === true ? whole.map(withoutCreateSurface) : whole));
         }
         revisions.push(`${surface.surfaceId}@${surface.revision}`);
       }
