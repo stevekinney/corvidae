@@ -12,6 +12,7 @@
     "test:slow": "bun test .slow.test.ts",
     "test:browser": "bun --bun playwright test --config playwright.config.ts",
     "test:coverage": "bun scripts/check-coverage-cli.ts",
+    "smoke:claude-code-mcp": "bun scripts/smoke-claude-code-mcp.ts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings"
   },
   "dependencies": {
