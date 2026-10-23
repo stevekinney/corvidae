@@ -229,6 +229,7 @@ export type BureauHandlerSource = Pick<
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
   | 'assets'
+  | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
 > & {

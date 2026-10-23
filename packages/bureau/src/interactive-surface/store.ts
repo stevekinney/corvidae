@@ -163,6 +163,14 @@ export interface InteractiveSurfaces {
     command: CloseInteractiveSurfaceCommand,
     authorization?: InteractiveSurfaceAuthorization,
   ): Promise<CloseInteractiveSurfaceReceipt>;
+  /**
+   * Every surface of a task that the caller may see, oldest first, as `snapshot` would read each.
+   * A task the caller cannot reach has none.
+   */
+  list(
+    taskId: string,
+    authorization?: InteractiveSurfaceAuthorization,
+  ): Promise<readonly InteractiveSurface[]>;
   /** Freezes every open surface of a task, closed as `cancelled`. */
   abort(
     command: AbortInteractiveSurfacesCommand,
@@ -1014,6 +1022,26 @@ export function createInteractiveSurfaces(
     });
   }
 
+  async function list(
+    taskId: string,
+    authorization: InteractiveSurfaceAuthorization = {},
+  ): Promise<readonly InteractiveSurface[]> {
+    const read = await guarded(async () => {
+      const id = readIdentifier(taskId, 'taskId', MAX_COMPOSITE_IDENTIFIER_LENGTH);
+      const task = await reachTask(id, authorization);
+      if (isRejection(task)) return [];
+      const found: InteractiveSurface[] = [];
+      for (const surfaceId of await surfaceIdsOf(id)) {
+        const loaded = await current(task, id, surfaceId);
+        if (loaded !== undefined && maySee(loaded.stored.surface, authorization)) {
+          found.push(await withCursor(loaded.stored.surface));
+        }
+      }
+      return found.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
+    });
+    return isRejection(read) ? [] : read;
+  }
+
   // ── act ───────────────────────────────────────────────────────────
 
   async function act(
@@ -1415,6 +1443,7 @@ export function createInteractiveSurfaces(
     create,
     update,
     snapshot,
+    list,
     act,
     close,
     abort,
