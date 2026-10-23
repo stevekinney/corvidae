@@ -40,9 +40,8 @@ export function sutUrlOf(output: string): string | undefined {
 }
 
 async function startHost(): Promise<{ url: string; stop(): Promise<void> }> {
-  const child = Bun.spawn(['bun', HOST_ENTRY], {
+  const child = Bun.spawn(['bun', HOST_ENTRY, '0'], {
     cwd: BUREAU_ROOT,
-    env: { ...Bun.env, PORT: '0' },
     stdout: 'pipe',
     stderr: 'inherit',
   });

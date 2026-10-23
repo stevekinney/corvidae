@@ -67,6 +67,9 @@ function standIn(initial: DurableEventEnvelope[] = []) {
   let view: TaskView | undefined = VIEW;
   let beforeReplay: (() => void) | undefined;
   const closers: Array<(error?: unknown) => void> = [];
+  const signals: AbortSignal[] = [];
+  const changeListeners: Array<(view: TaskView) => void> = [];
+  let getFailures = 0;
   const bureau: A2APushBureau = {
     lifecycle: 'ready',
     eventHistory: (async (_owner: unknown, options?: { since?: string; limit?: number }) => {
@@ -89,8 +92,9 @@ function standIn(initial: DurableEventEnvelope[] = []) {
     subscribeEventHistory: ((
       _owner: unknown,
       listener: (event: DurableEventEnvelope) => void,
-      subscription?: { onClosed?: (error?: unknown) => void },
+      subscription?: { onClosed?: (error?: unknown) => void; signal?: AbortSignal },
     ) => {
+      if (subscription?.signal !== undefined) signals.push(subscription.signal);
       listeners.push(listener);
       if (subscription?.onClosed !== undefined) closers.push(subscription.onClosed);
       return { unsubscribe: () => undefined };
@@ -98,9 +102,18 @@ function standIn(initial: DurableEventEnvelope[] = []) {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
     tasks: {
-      get: async (taskId: string) => (taskId === 'task-1' ? view : undefined),
+      get: async (taskId: string) => {
+        if (getFailures > 0) {
+          getFailures -= 1;
+          throw new Error('registry fault');
+        }
+        return taskId === 'task-1' ? view : undefined;
+      },
       onSettled: () => () => undefined,
-      onChanged: () => () => undefined,
+      onChanged: (_taskId: string, listener: (view: TaskView) => void) => {
+        changeListeners.push(listener);
+        return () => undefined;
+      },
     },
   };
   return {
@@ -121,6 +134,16 @@ function standIn(initial: DurableEventEnvelope[] = []) {
     setView(next: TaskView | undefined) {
       view = next;
     },
+    /** Fails the next `count` registry reads. */
+    failGets(count: number) {
+      getFailures = count;
+    },
+    /** Tells the watchers the registry changed the task, with no durable event. */
+    notifyChanged() {
+      for (const listener of changeListeners) listener(view as TaskView);
+    },
+    /** Whether every history subscription has been stopped. */
+    allUnsubscribed: () => signals.length > 0 && signals.every((signal) => signal.aborted),
     /** Runs `hook` just before the next paged replay reads the history. */
     beforeNextReplay(hook: () => void) {
       beforeReplay = hook;
@@ -485,6 +508,54 @@ describe('the push projector', () => {
     await eventually(() => fixture.receiver.requests.length === 1);
 
     expect(fixture.receiver.kinds()).toEqual(['task:none']);
+  });
+
+  it('delivers a failure the history never recorded, once the registry reports it', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+    fixture.projector.watch('task-1');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    fixture.setView({ ...VIEW, status: 'failed', finishReason: 'error' });
+    fixture.notifyChanged();
+
+    await eventually(() => fixture.receiver.kinds().includes('status:TASK_STATE_FAILED'));
+  });
+
+  it('retries a task-level pump that throws, with no later event to wake it', async () => {
+    const fixture = harness([started, requested(1)]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+    fixture.failGets(1);
+
+    fixture.projector.watch('task-1');
+
+    await eventually(() => fixture.receiver.requests.length === 1);
+    expect(fixture.errors).toHaveLength(1);
+  });
+
+  it('leaves no watcher on a task whose last configuration was deleted', async () => {
+    const fixture = harness([started]);
+    await fixture.configure('0');
+    fixture.projector.watch('task-1');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await fixture.pushStore.delete('task-1', fixture.projector.contextOf(CALLER), 'config-1');
+    await fixture.checkpoints.remove('task-1', 'config-1');
+    fixture.projector.watch('task-1');
+
+    await eventually(() => fixture.allUnsubscribed());
+  });
+
+  it('delivers two events that serialize identically as two deliveries', async () => {
+    const fixture = harness([started, requested(1), requested(2)]);
+    await fixture.configure('0');
+    fixture.startDelivery();
+
+    await fixture.projector.pump('task-1', 'config-1');
+
+    await eventually(() => fixture.receiver.requests.length === 2);
   });
 
   it('delivers an event that races the creation of a configuration', async () => {

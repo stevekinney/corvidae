@@ -7,6 +7,7 @@
 import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 
 import {
@@ -309,6 +310,70 @@ describe('delivery', () => {
     // Neither refused send answered the wait.
     const task = await call(fixture, 'GetTask', { id: taskId });
     expect(task.result.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+  });
+
+  it('keeps the winner of two concurrent creates of one id with different webhooks pumped', async () => {
+    let calls = 0;
+    const generate: GenerateFunction = async () => {
+      calls += 1;
+      return calls === 1
+        ? {
+            content: '',
+            toolCalls: [
+              {
+                id: 'wait-1',
+                name: 'requestHumanInput',
+                arguments: { signalName: 'human-response', prompt: 'Which?' },
+              },
+            ],
+          }
+        : { content: 'done', toolCalls: [] };
+    };
+    const fixture = await fixtureOf(generate, { humanInput: true });
+    fixture.startDelivery();
+    const taskId = await startTask(fixture);
+    await eventually(async () => {
+      const task = await call(fixture, 'GetTask', { id: taskId });
+      return task.result.status.state === 'TASK_STATE_INPUT_REQUIRED';
+    });
+
+    const results = await Promise.all([
+      call(fixture, 'CreateTaskPushNotificationConfig', {
+        taskId,
+        ...webhook(fixture, { id: 'same', token: 'one' }),
+      }),
+      call(fixture, 'CreateTaskPushNotificationConfig', {
+        taskId,
+        ...webhook(fixture, { id: 'same', token: 'two' }),
+      }),
+    ]);
+    expect(results.filter((result) => result.error === undefined)).toHaveLength(1);
+
+    // The winner's checkpoint survived the loser's cleanup: it still receives what follows.
+    await call(fixture, 'SendMessage', {
+      message: message('red', { taskId, metadata: { signalName: 'human-response' } }),
+      configuration: { returnImmediately: true },
+    });
+    await eventually(() => fixture.receiver.kinds().includes('status:TASK_STATE_COMPLETED'));
+  });
+
+  it('installs the inline configuration of a new task whose deadline had passed', async () => {
+    const fixture = await fixtureOf(answering('done'));
+    const late = await call(fixture, 'SendMessage', {
+      message: message('too late', {
+        metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } },
+      }),
+      configuration: {
+        returnImmediately: true,
+        taskPushNotificationConfig: webhook(fixture, { id: 'hook-1' }),
+      },
+    });
+    expect(late.error).toBeUndefined();
+
+    const listed = await call(fixture, 'ListTaskPushNotificationConfigs', {
+      taskId: late.result.task.id,
+    });
+    expect(listed.result.configs.map((config: Json) => config.id)).toEqual(['hook-1']);
   });
 
   it('holds the next event until the previous one is terminal', async () => {

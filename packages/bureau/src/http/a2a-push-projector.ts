@@ -229,11 +229,11 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     const sender = senderOf(configId);
 
     /** Enqueues one event once the configuration's previous delivery is terminal. */
-    const send = async (response: StreamResponse): Promise<boolean> => {
+    const send = async (response: StreamResponse, eventKey: string): Promise<boolean> => {
       await settled(destination);
       // A deleted configuration is owed nothing.
       if ((await store.get(taskId, configId, context)) === undefined) return false;
-      await sender.send(response, context);
+      await sender.sendKeyed(response, context, eventKey);
       return true;
     };
 
@@ -249,14 +249,35 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       if (element?.kind === 'task.status') {
         view ??= (await bureau.tasks.get(taskId)) ?? initial;
         const reply = element.status === 'completed' ? await reader.replyOf(view) : undefined;
-        for (const response of eventsOf(view, element, reply)) {
-          if (!(await send(response))) return true;
+        const responses = eventsOf(view, element, reply);
+        for (const [index, response] of responses.entries()) {
+          if (!(await send(response, `${event.cursor}:${index}`))) return true;
         }
       }
       await checkpoints.advance(taskId, configId, event.cursor);
     }
     const reached = retained.events.at(-1)?.cursor ?? retained.reached;
     if (reached !== undefined) await checkpoints.advance(taskId, configId, reached);
+    // A task can settle without a durable event (a failure the history never recorded): its
+    // registry state is then the only record, so the settled status is sent from it. The key
+    // names the status, so a repeat of this pump deduplicates.
+    if (!projector.ended && isTerminal(initial.status)) {
+      const settledElement: Extract<TaskEvent, { kind: 'task.status' }> = {
+        kind: 'task.status',
+        taskId,
+        cursor: reached ?? '-1',
+        emittedAtMs: Date.parse(initial.updatedAt),
+        status: initial.status,
+        finishReason: initial.finishReason,
+        message: initial.statusMessage,
+        artifact: null,
+      };
+      const reply = initial.status === 'completed' ? await reader.replyOf(initial) : undefined;
+      for (const [index, response] of eventsOf(initial, settledElement, reply).entries()) {
+        if (!(await send(response, `settled:${initial.status}:${index}`))) return true;
+      }
+      return true;
+    }
     return projector.ended;
   }
 
@@ -267,7 +288,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     readonly initial: TaskView;
     readonly retained: RetainedEvents;
     readonly projector: ReturnType<typeof createFoldProjector>;
-    readonly send: (response: StreamResponse) => Promise<boolean>;
+    readonly send: (response: StreamResponse, eventKey: string) => Promise<boolean>;
   }): Promise<boolean> {
     const { taskId, configId, initial, retained, projector } = input;
     let folded: Extract<TaskEvent, { kind: 'task.status' }> | undefined;
@@ -286,7 +307,9 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
             statusMessage: folded.message,
           };
     const { task } = await reader.read(view, { includeArtifacts: true, activated: new Set() });
-    if (!(await input.send({ payload: { $case: 'task', value: task } }))) return true;
+    if (!(await input.send({ payload: { $case: 'task', value: task } }, `snapshot:${cursor}`))) {
+      return true;
+    }
     await checkpoints.advance(taskId, configId, cursor);
     return projector.ended || isTerminal(view.status);
   }
@@ -342,10 +365,12 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       }
       controller.abort();
       subscription.abort();
+      for (const unwatch of unwatchRegistry) unwatch();
     };
     watching.set(taskId, stop);
     let pending = Promise.resolve();
     let queued = false;
+    let failures = 0;
     const trigger = (): void => {
       // Events that arrive while a pump is queued are covered by it: it reads the history itself.
       if (queued) return;
@@ -354,12 +379,29 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
         .then(async () => {
           queued = false;
           const ended = await pumpTask(taskId);
+          failures = 0;
           if (ended) stop();
           return undefined;
         })
-        .catch(report);
+        .catch((error: unknown) => {
+          report(error);
+          // The task-level pump failed before any configuration's own retry could start, and no
+          // later event is owed: try again, a little later each time.
+          if (controller.signal.aborted || stopped()) return;
+          const delay = Math.min(retryMs * 2 ** failures, MAXIMUM_CLEANUP_BACKOFF_MS);
+          failures += 1;
+          timers.setTimeout(() => {
+            if (!controller.signal.aborted && !stopped()) trigger();
+          }, delay);
+        });
     };
     triggers.set(taskId, trigger);
+    // The registry changes a task without a durable event (it starts working, or fails with no
+    // record), so its changes pump too, as a stream's do.
+    const unwatchRegistry = [
+      bureau.tasks.onChanged(taskId, () => trigger()),
+      bureau.tasks.onSettled(taskId, () => trigger()),
+    ];
     const subscribe = (): void => {
       subscription = new AbortController();
       const current = subscription;
@@ -428,8 +470,9 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
         checkpoint.configId,
         contextOf(checkpoint.caller),
       );
-      if (configuration === undefined) await checkpoints.remove(taskId, checkpoint.configId);
-      else await checkpoints.confirm(taskId, checkpoint.configId);
+      if (configuration === undefined) {
+        await checkpoints.removePending(taskId, checkpoint.configId, checkpoint.installId);
+      } else await checkpoints.confirm(taskId, checkpoint.configId);
     }
   }
 

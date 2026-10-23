@@ -43,6 +43,11 @@ export interface A2APushCheckpoint {
    * committed) or removes it (it was not), so a configuration never exists without a checkpoint.
    */
   readonly pending?: true;
+  /**
+   * The install that wrote a pending checkpoint. Only that install, or a recovery that read this
+   * generation, may remove it, so an install that lost a race never deletes the winner's.
+   */
+  readonly installId?: string;
 }
 
 /** A stored checkpoint whose `recordVersion` this Bureau does not know: it is never misread. */
@@ -84,6 +89,11 @@ export interface A2APushCheckpoints {
   listTaskIds(): Promise<string[]>;
   /** Deletes a configuration's checkpoint. */
   remove(taskId: string, configId: string): Promise<void>;
+  /**
+   * Deletes a configuration's checkpoint only while it is still the pending one `installId`
+   * wrote. A confirmed checkpoint, or one another install wrote, is kept.
+   */
+  removePending(taskId: string, configId: string, installId: string | undefined): Promise<void>;
 }
 
 function taskPrefix(taskId: string): string {
@@ -186,6 +196,22 @@ export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APush
         taskIds.add(decodeURIComponent(rest.slice(0, rest.indexOf(':'))));
       }
       return [...taskIds];
+    },
+
+    async removePending(taskId, configId, installId) {
+      const key = keyOf(taskId, configId);
+      for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+        const raw = await kv.get(key);
+        if (raw === null) return;
+        const current = parse(taskId, configId, raw);
+        if (current.pending !== true || current.installId !== installId) return;
+        const written = await kv.conditionalBatch(
+          [{ key, expectedValue: raw }],
+          [{ type: 'delete', key }],
+        );
+        if (written) return;
+      }
+      throw new Error(`The push checkpoint of configuration "${configId}" could not be removed.`);
     },
 
     async remove(taskId, configId) {

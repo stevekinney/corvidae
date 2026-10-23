@@ -82,6 +82,8 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
         readonly delivery: A2APushDelivery;
         readonly checkpoints: A2APushCheckpoints;
         readonly projector: A2APushProjector;
+        /** Settles once the start-up recovery has: no install runs before it, so none races it. */
+        readonly ready: Promise<void>;
       }
     | undefined;
 };

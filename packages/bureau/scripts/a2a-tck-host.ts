@@ -17,7 +17,7 @@
  * receiver picks its port. Never serve a deployment this way.
  *
  * The host prints `A2A_TCK_SUT_URL=<url>` as its only stdout line once it listens; everything else
- * goes to stderr. `PORT` (default: any free port) chooses the listener. It stops on SIGTERM.
+ * goes to stderr. The first argument (default: any free port) chooses the listener. It stops on SIGTERM.
  *
  * Run it through `bun run --filter=@lostgradient/bureau test:a2a-tck`.
  */
@@ -231,7 +231,7 @@ export async function startTckHost(port = 0): Promise<TckHost> {
 }
 
 if (import.meta.main) {
-  const host = await startTckHost(Number(Bun.env['PORT'] ?? 0));
+  const host = await startTckHost(Number(Bun.argv[2] ?? 0));
   // The runner reads the agent's URL from this one stdout line.
   process.stdout.write(`A2A_TCK_SUT_URL=${host.url}\n`);
   console.error(`A2A TCK host listening at ${host.url}`);

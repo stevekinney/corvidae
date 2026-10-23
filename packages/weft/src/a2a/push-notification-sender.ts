@@ -192,6 +192,16 @@ export type OutboxPushNotificationSenderOptions = {
  */
 export type OutboxPushNotificationSender = PushNotificationSender & {
   readonly pushStore: WeftPushNotificationStore;
+  /**
+   * Send `streamResponse` as the event named by `eventKey`. The key joins the response in the
+   * delivery's identity, so two distinct events whose responses serialize identically are two
+   * deliveries, and only a replay of the same `eventKey` deduplicates.
+   */
+  sendKeyed(
+    streamResponse: StreamResponse,
+    context: ServerCallContext,
+    eventKey: string,
+  ): Promise<void>;
 };
 
 /**
@@ -286,27 +296,37 @@ export function createOutboxPushNotificationSender(
 
   return {
     pushStore: wrappedStore,
-    async send(streamResponse: StreamResponse, context: ServerCallContext, _task?: Task) {
-      const taskId = taskIdOf(streamResponse);
-      if (taskId === '') return;
-      const configs = await pushStore.load(taskId, context);
-      if (configs.length === 0) return;
-      const json: unknown = StreamResponse.toJSON(streamResponse);
-      const traceparent = traceparentOf(context);
-      const event = {
-        json,
-        digest: sha256Hex(canonicalJson(json)),
-        ...(traceparent === undefined ? {} : { causation: { traceparent } }),
-      };
-      const failures = await Promise.all(
-        configs.map((config) => enqueueFor(config.id, taskId, context, event)),
-      );
-      const messages = failures.filter((failure) => failure !== null);
-      if (messages.length > 0) {
-        throw new Error(
-          `Push notifications for task ${taskId} were not enqueued: ${messages.join('; ')}.`,
-        );
-      }
-    },
+    send: (streamResponse: StreamResponse, context: ServerCallContext, _task?: Task) =>
+      deliver(streamResponse, context, undefined),
+    sendKeyed: (streamResponse, context, eventKey) => deliver(streamResponse, context, eventKey),
   };
+
+  async function deliver(
+    streamResponse: StreamResponse,
+    context: ServerCallContext,
+    eventKey: string | undefined,
+  ): Promise<void> {
+    const taskId = taskIdOf(streamResponse);
+    if (taskId === '') return;
+    const configs = await pushStore.load(taskId, context);
+    if (configs.length === 0) return;
+    const json: unknown = StreamResponse.toJSON(streamResponse);
+    const traceparent = traceparentOf(context);
+    const event = {
+      json,
+      digest: sha256Hex(
+        eventKey === undefined ? canonicalJson(json) : `${eventKey}\0${canonicalJson(json)}`,
+      ),
+      ...(traceparent === undefined ? {} : { causation: { traceparent } }),
+    };
+    const failures = await Promise.all(
+      configs.map((config) => enqueueFor(config.id, taskId, context, event)),
+    );
+    const messages = failures.filter((failure) => failure !== null);
+    if (messages.length > 0) {
+      throw new Error(
+        `Push notifications for task ${taskId} were not enqueued: ${messages.join('; ')}.`,
+      );
+    }
+  }
 }

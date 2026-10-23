@@ -261,6 +261,7 @@ export type BureauA2ARequestHandlerOptions = {
         readonly delivery: A2APushDelivery;
         readonly checkpoints: A2APushCheckpoints;
         readonly projector: A2APushProjector;
+        readonly ready: Promise<void>;
       }
     | undefined;
 };
@@ -552,7 +553,10 @@ export function createBureauA2ARequestHandler(
     context: ServerCallContext | undefined,
     cursor: string,
   ): Promise<TaskPushNotificationConfig> {
-    const { delivery, checkpoints, projector } = requirePush();
+    const { delivery, checkpoints, projector, ready } = requirePush();
+    // Recovery settles every pending checkpoint it finds, so an install starts after it: a
+    // recovery that read a checkpoint this install reuses could otherwise remove it.
+    await ready;
     // The identifier is fixed first so the checkpoint can be written ahead of the configuration,
     // marked pending: a crash between the two writes leaves a checkpoint that a restart confirms
     // or removes, never a configuration that no checkpoint knows.
@@ -563,13 +567,15 @@ export function createBureauA2ARequestHandler(
         : undefined;
     const configId =
       configuration.id === '' ? (repeated?.id ?? crypto.randomUUID()) : configuration.id;
-    const written = await checkpoints.create({
+    const installId = crypto.randomUUID();
+    await checkpoints.create({
       recordVersion: 1,
       taskId,
       configId,
       cursor,
       caller: callerOf(context),
       pending: true,
+      installId,
     });
     let stored: TaskPushNotificationConfig;
     try {
@@ -579,12 +585,12 @@ export function createBureauA2ARequestHandler(
         taskId,
       });
     } catch (error) {
-      if (written.pending === true) await checkpoints.remove(taskId, configId);
+      await checkpoints.removePending(taskId, configId, installId);
       throw error;
     }
     if (stored.id !== configId) {
       // A concurrent create of the same webhook won: its configuration is the one checkpointed.
-      if (written.pending === true) await checkpoints.remove(taskId, configId);
+      await checkpoints.removePending(taskId, configId, installId);
       await checkpoints.create({
         recordVersion: 1,
         taskId,
@@ -592,6 +598,7 @@ export function createBureauA2ARequestHandler(
         cursor,
         caller: callerOf(context),
         pending: true,
+        installId,
       });
     }
     await checkpoints.confirm(taskId, stored.id);
@@ -1151,7 +1158,10 @@ export function createBureauA2ARequestHandler(
       }
       // Installed before the binding completes, so an exact retry of a send that crashed here
       // runs this again and finds the one configuration.
-      if (inlinePush !== undefined && !(expired && pending === undefined)) {
+      if (
+        inlinePush !== undefined &&
+        !(expired && continued !== undefined && pending === undefined)
+      ) {
         await installPush(result.taskId, inlinePush, context, pushCursor);
       }
     } catch (error) {
@@ -1405,12 +1415,14 @@ export function createBureauA2ARequestHandler(
       params: DeleteTaskPushNotificationConfigRequest,
       context,
     ): Promise<void> {
-      const { delivery, checkpoints } = requirePush();
+      const { delivery, checkpoints, projector } = requirePush();
       const view = await ownTask(params.taskId, ownerOf(context));
       // The sender's store stops the configuration's deliveries before it returns; the checkpoint
       // goes with the configuration.
       await delivery.sender.pushStore.delete(view.id, context, params.id);
       await checkpoints.remove(view.id, params.id);
+      // A task left with no configuration has nothing to project: its watcher finds that and stops.
+      projector.watch(view.id);
     },
   };
 }

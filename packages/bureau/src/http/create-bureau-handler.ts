@@ -852,10 +852,10 @@ function createPushSupport(
     timers: createDefaultRuntimeServices().timers,
   });
   // A restart resumes every checkpoint from where it stopped.
-  void projector.recover().catch((error: unknown) => {
+  const ready = projector.recover().catch((error: unknown) => {
     console.error('A2A push recovery failed:', error);
   });
-  return { delivery, checkpoints, projector };
+  return { delivery, checkpoints, projector, ready };
 }
 
 /** How often the respond ledger drops its expired bindings, at most. */

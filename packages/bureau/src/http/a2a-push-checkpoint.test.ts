@@ -26,6 +26,25 @@ async function advancedTo(
 }
 
 describe('the push checkpoint', () => {
+  it('removes a pending checkpoint only for the install that wrote it', async () => {
+    const checkpoints = createA2APushCheckpoints(textValueStore(new MemoryStorage()));
+    await checkpoints.create({ ...CHECKPOINT, pending: true, installId: 'winner' });
+
+    // A losing install, or a stale recovery, holds another generation.
+    await checkpoints.removePending('task-1', 'config-1', 'loser');
+    expect(await checkpoints.read('task-1', 'config-1')).toBeDefined();
+
+    await checkpoints.confirm('task-1', 'config-1');
+    await checkpoints.removePending('task-1', 'config-1', 'winner');
+    const confirmed = await checkpoints.read('task-1', 'config-1');
+    expect(confirmed?.pending).toBeUndefined();
+
+    const fresh = createA2APushCheckpoints(textValueStore(new MemoryStorage()));
+    await fresh.create({ ...CHECKPOINT, pending: true, installId: 'winner' });
+    await fresh.removePending('task-1', 'config-1', 'winner');
+    expect(await fresh.read('task-1', 'config-1')).toBeUndefined();
+  });
+
   it('keeps the first checkpoint of a configuration and survives a restart', async () => {
     const kv = textValueStore(new MemoryStorage());
     await createA2APushCheckpoints(kv).create(CHECKPOINT);
