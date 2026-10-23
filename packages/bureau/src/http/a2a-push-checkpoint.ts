@@ -17,6 +17,9 @@ import type { ConditionalTextValueStore } from '@lostgradient/weft';
 /** The key prefix of a push checkpoint, disjoint from every other prefix the Bureau stores. */
 export const A2A_PUSH_CHECKPOINT_KEY_PREFIX = 'bureau-a2a-push:v1:';
 
+/** The key holding the secret that keys push fingerprints, disjoint from every checkpoint key. */
+export const A2A_PUSH_FINGERPRINT_KEY = 'bureau-a2a-push-fingerprint-key:v1';
+
 /** The record version this module writes and reads. */
 export const A2A_PUSH_CHECKPOINT_VERSION = 1;
 
@@ -84,6 +87,19 @@ export class A2APushCheckpointVersionError extends Error {
 
 /** The store of every push configuration's checkpoint. */
 export interface A2APushCheckpoints {
+  /**
+   * The fingerprint of the webhook a configuration names: an HMAC-SHA-256 of its URL, token, and
+   * authentication under a secret this store generates once and keeps beside the checkpoints, so
+   * a checkpoint read without that secret cannot be used to guess a low-entropy token offline.
+   * A fingerprint is compared only against another from the same store; one written under an
+   * older scheme (a plain digest) differs, so an old pending checkpoint is treated as a failed
+   * install's leftover and replaced, which is what recovery wants.
+   */
+  fingerprint(configuration: {
+    readonly url: string;
+    readonly token?: string | undefined;
+    readonly authentication?: unknown;
+  }): Promise<string>;
   /** A configuration's checkpoint, or `undefined` when it has none. */
   read(taskId: string, configId: string): Promise<A2APushCheckpoint | undefined>;
   /** Writes a configuration's first checkpoint; one that exists is kept. Resolves the stored one. */
@@ -153,6 +169,55 @@ function sequenceOf(cursor: string): number {
 
 /** The push checkpoints over `kv`, the Bureau's own store (or memory, for an ephemeral Bureau). */
 export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APushCheckpoints {
+  let fingerprintKey: Promise<CryptoKey> | undefined;
+
+  /** The HMAC key: the stored secret, generated and stored once when none exists. */
+  function loadFingerprintKey(): Promise<CryptoKey> {
+    fingerprintKey ??= (async () => {
+      let secret = await kv.get(A2A_PUSH_FINGERPRINT_KEY);
+      for (let attempt = 0; secret === null && attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+        const generated = [...crypto.getRandomValues(new Uint8Array(32))]
+          .map((byte) => byte.toString(16).padStart(2, '0'))
+          .join('');
+        const written = await kv.conditionalBatch(
+          [{ key: A2A_PUSH_FINGERPRINT_KEY, expectedValue: null }],
+          [{ type: 'set', key: A2A_PUSH_FINGERPRINT_KEY, value: generated }],
+        );
+        secret = written ? generated : await kv.get(A2A_PUSH_FINGERPRINT_KEY);
+      }
+      if (secret === null) throw new Error('The push fingerprint key could not be written.');
+      return crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+      );
+    })();
+    // A failed load is retried by the next call, not cached.
+    fingerprintKey.catch(() => {
+      fingerprintKey = undefined;
+    });
+    return fingerprintKey;
+  }
+
+  async function fingerprint(configuration: {
+    readonly url: string;
+    readonly token?: string | undefined;
+    readonly authentication?: unknown;
+  }): Promise<string> {
+    const key = await loadFingerprintKey();
+    const bytes = new TextEncoder().encode(
+      JSON.stringify([
+        configuration.url,
+        configuration.token,
+        configuration.authentication ?? null,
+      ]),
+    );
+    const mac = await crypto.subtle.sign('HMAC', key, bytes);
+    return [...new Uint8Array(mac)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
   async function read(taskId: string, configId: string): Promise<A2APushCheckpoint | undefined> {
     const raw = await kv.get(keyOf(taskId, configId));
     return raw === null ? undefined : parse(taskId, configId, raw);
@@ -192,6 +257,7 @@ export function createA2APushCheckpoints(kv: ConditionalTextValueStore): A2APush
   }
 
   return {
+    fingerprint,
     read,
 
     async create(checkpoint) {
