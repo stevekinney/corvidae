@@ -225,7 +225,7 @@ describe('the agent a schedule runs', () => {
     const preview = created.result!['inputPreview'] as string;
     expect(preview.isWellFormed()).toBe(true);
     expect(preview).toBe(`${'x'.repeat(498)}😀…`);
-    expect([...preview]).toHaveLength(500);
+    expect(Array.from(preview)).toHaveLength(500);
     const id = created.result!['id'] as string;
     const read = await rpc(opened.handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
     expect(read.result!['inputPreview']).toBe(preview);

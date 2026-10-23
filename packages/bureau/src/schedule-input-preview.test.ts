@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { SCHEDULE_INPUT_PREVIEW_LENGTH, scheduleInputPreview } from './schedule-input-preview';
 
-const characters = (text: string) => [...text].length;
+const characters = (text: string) => Array.from(text).length;
 
 describe('scheduleInputPreview', () => {
   it('keeps text of exactly the limit whole, and trims the whitespace around it', () => {
