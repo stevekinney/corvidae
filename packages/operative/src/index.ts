@@ -506,6 +506,7 @@ export type {
 } from './create-schedule-self-tool';
 export * from './create-schedule-wakeup-tool';
 export {
+  checkHumanInputSchemas,
   HUMAN_INPUT_SCHEMA_MAXIMUM_BYTES,
   HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH,
   HumanInputSchemaError,
