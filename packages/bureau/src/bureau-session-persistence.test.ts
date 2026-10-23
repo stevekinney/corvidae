@@ -13,7 +13,7 @@ describe('createSessionPersistence', () => {
   it('matches native object-spread semantics for malformed incoming strings and arrays', async () => {
     let storedSession: AgentSession | undefined = createAgentSession({
       id: 'session-merge',
-      agentName: 'bureau',
+      agentName: 'default',
       conversationHistory: createConversationHistory({ id: 'session-merge' }),
       metadata: {
         lastRequestAuthorities: { existing: 'keep' },
@@ -92,7 +92,7 @@ describe('createSessionPersistence', () => {
     storedSession = {
       ...createAgentSession({
         id: 'session-fenced',
-        agentName: 'bureau',
+        agentName: 'default',
         conversationHistory: createConversationHistory({ id: 'session-fenced' }),
       }),
       incarnation: 'incarnation-2',

@@ -4,7 +4,12 @@
  * by the sweep, a canceled review gets one `canceled` record whichever route cancels it and at
  * whichever round it stood, and this process's own close does not undo the prune that follows it.
  */
-import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  stopWhen,
+  type Toolbox,
+  createAgent,
+} from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -107,10 +112,14 @@ describe('a re-gated fire approval with a task stream open', () => {
   async function regated(subscribe: 'before' | 'after') {
     const charges: number[] = [];
     const bureau = await harness.open({
-      generate: chargesOnce,
-      toolbox: regatingApprovalToolbox(charges),
-      stopWhen: stopAtApproval,
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: regatingApprovalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'regate-session');
     const review = await reviewOf(bureau, fireId);
@@ -155,8 +164,8 @@ describe('a re-gated fire approval with a task stream open', () => {
     const charges: number[] = [];
     const holder = await harness.open({
       ...peerOptions,
-      toolbox: regatingApprovalToolbox(charges),
       storage: await harness.sqliteStorage(path),
+      toolbox: regatingApprovalToolbox(charges),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, 'regate-peer-session');
     const review = await reviewOf(holder, fireId);
@@ -169,8 +178,8 @@ describe('a re-gated fire approval with a task stream open', () => {
     expect(outcome.superseded).toBe(true);
     const peer = await harness.open({
       ...peerOptions,
-      toolbox: regatingApprovalToolbox([]),
       storage: await harness.sqliteStorage(path),
+      toolbox: regatingApprovalToolbox([]),
     });
     await reviewOf(peer, fireId);
 
@@ -221,10 +230,10 @@ describe('the automatic sweep and a decision in flight', () => {
       },
     ) as unknown as Toolbox;
     const bureau = await harness.open({
-      generate: chargesOnce,
-      toolbox,
-      stopWhen: stopAtApproval,
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
+      agents: {
+        default: createAgent({ generate: chargesOnce, toolbox, stopWhen: stopAtApproval }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'sweep-race-session');
     const review = await reviewOf(bureau, fireId);
@@ -321,10 +330,14 @@ describe('a re-gated fire approval that is canceled', () => {
   for (const [route, cancel] of Object.entries(cancelRoutes)) {
     it(`is closed as canceled at its current round when canceled ${route}`, async () => {
       const bureau = await harness.open({
-        generate: continuingGenerate,
-        toolbox: regatingApprovalToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         storage: await harness.sqliteStorage(harness.nextDatabasePath()),
+        agents: {
+          default: createAgent({
+            generate: continuingGenerate,
+            toolbox: regatingApprovalToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
       });
       const { fireId } = await fireOnce(bureau, OWNER.alice, 'regate-cancel-session');
       const review = await reviewOf(bureau, fireId);
@@ -359,10 +372,14 @@ describe('a re-gated fire approval that is canceled', () => {
     const hold = holdingWrites('review.tool-approval.canceled');
     harness.onDispose(() => hold.release());
     const first = await harness.open({
-      generate: continuingGenerate,
-      toolbox: regatingApprovalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage: await harness.sqliteStorage(path, (storage) => hold.wrap(storage)),
+      agents: {
+        default: createAgent({
+          generate: continuingGenerate,
+          toolbox: regatingApprovalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'regate-boot-session');
     const review = await reviewOf(first, fireId);
@@ -374,10 +391,14 @@ describe('a re-gated fire approval that is canceled', () => {
     expect(hold.held).toBe(true);
 
     const restarted = await harness.open({
-      generate: continuingGenerate,
-      toolbox: regatingApprovalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage: await harness.sqliteStorage(path),
+      agents: {
+        default: createAgent({
+          generate: continuingGenerate,
+          toolbox: regatingApprovalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     await pollUntil(async () => {
       const records = await canceledRecordsAt(restarted, fireId, review.id);
@@ -405,10 +426,14 @@ describe('a canceled approval whose process died between its record and its prun
       const hold = holdingWrites('pendingApprovalOverrides');
       harness.onDispose(() => hold.release());
       const first = await harness.open({
-        generate: continuingGenerate,
-        toolbox: approvalToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         storage: await harness.sqliteStorage(path, (storage) => hold.wrap(storage)),
+        agents: {
+          default: createAgent({
+            generate: continuingGenerate,
+            toolbox: approvalToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
       });
       const { fireId } = await fireOnce(first, OWNER.alice, 'prune-crash-session');
       const review = await reviewOf(first, fireId);
@@ -430,10 +455,14 @@ describe('a canceled approval whose process died between its record and its prun
       ).toHaveLength(1);
 
       const restarted = await harness.open({
-        generate: continuingGenerate,
-        toolbox: approvalToolbox([]),
-        stopWhen: stopWhen.noToolCalls(),
         storage: await harness.sqliteStorage(path),
+        agents: {
+          default: createAgent({
+            generate: continuingGenerate,
+            toolbox: approvalToolbox([]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
       });
       await sleep(400);
 
@@ -471,11 +500,15 @@ describe('a fire approval this process expires, with a task stream open', () => 
         }),
     );
     const bureau = await harness.open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       storage,
       sessionPersistenceRetryDelayMilliseconds: 0,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'own-expiry-session');
     const review = await reviewOf(bureau, fireId);

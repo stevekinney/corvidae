@@ -51,7 +51,7 @@ async function startRun(
   options: { message?: string; sessionId?: string; agentName?: string } = {},
 ) {
   const run = await opened.bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: options.message ?? 'work',
     principal,
     ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
@@ -262,7 +262,7 @@ describe('bureau.tasks.list', () => {
   it('returns only the current incarnation of a context after it is deleted and recreated', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const before = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'before',
         principal: OWNER.alice,
         sessionId: 'reused-context',
@@ -273,7 +273,7 @@ describe('bureau.tasks.list', () => {
       );
       await opened.bureau.deleteSession('reused-context');
       const after = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'after',
         principal: OWNER.alice,
         sessionId: 'reused-context',
@@ -294,13 +294,13 @@ describe('bureau.tasks.list', () => {
   it('returns exactly the two tasks of a session after two turns, each carrying the contextId', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const first = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'one',
         principal: OWNER.alice,
       });
       await waitForCondition(() => opened.bureau.getRun(first.id)?.status === 'completed', 'one');
       const second = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'two',
         principal: OWNER.alice,
         sessionId: first.sessionId,
@@ -345,7 +345,7 @@ describe('bureau.tasks.get', () => {
         contextId: run.sessionId,
         owner: OWNER.alice,
         status: 'working',
-        agentName: 'bureau',
+        agentName: 'default',
         cleanup: null,
         openWaits: [],
       });
@@ -511,7 +511,7 @@ describe('bureau.tasks.cancel', () => {
   it('rejects a task that finished without being canceled, applying nothing', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'quick',
         principal: OWNER.alice,
       });
@@ -617,7 +617,7 @@ describe('bureau.tasks.cancel receipts that depend on the cleanup acknowledgemen
             taskId,
             contextId: `context-${sequence}`,
             incarnation: '',
-            agentName: 'bureau',
+            agentName: 'default',
             owner: OWNER.alice,
             message: 'work',
           });

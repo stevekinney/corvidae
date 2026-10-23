@@ -22,6 +22,7 @@ import { principalFromApiKey } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
+import type { AgentDefinitions } from './agent-catalog';
 
 let databasePath = '';
 
@@ -248,11 +249,12 @@ async function localCall(
  * `durable` says so, and so no durable event history and no durable mailbox.
  */
 async function servedBureau(generate: GenerateFunction, durable = false) {
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: 'served',
-    agents: { writer: createAgent({ name: 'writer', generate }) },
-    generate,
-    stopWhen: stopWhen.noToolCalls(),
+    agents: {
+      writer: createAgent({ name: 'writer', generate }),
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     storage: { type: 'memory' },
     ...(durable ? { durableExecution: true } : {}),
     assets: { storage: createMemoryAssetStorage() },
@@ -281,14 +283,15 @@ const never: GenerateFunction = ({ signal }) =>
 
 describe('the limits the documentation names', () => {
   it('refuses updateSession and querySession whatever a durable engine could do', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: () => new Promise<never>(() => {}),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: () => new Promise<never>(() => {}) }),
+      },
       storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Wait for a signal' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Wait for a signal' });
       await waitForCondition(async () => {
         const session = await bureau.getSession(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
@@ -310,7 +313,7 @@ describe('the limits the documentation names', () => {
   it('answers bureau.tasks.events with UnsupportedCapability when there is no persistent storage', async () => {
     const { bureau, handler } = await servedBureau(answers);
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
 
       const stream = await handler(
@@ -333,7 +336,7 @@ describe('the limits the documentation names', () => {
   it('answers bureau.contexts.input with Unavailable when the Bureau has no durable mailbox', async () => {
     const { bureau, handler } = await servedBureau(never);
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'Hello' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'running', 'the run began');
 
       const answer = await localCall(handler, 'bureau.contexts.input', {

@@ -6,8 +6,8 @@ import { E2E_BASE_URL } from './tests/e2e/e2e-constants.ts';
 const continuousIntegration = isContinuousIntegration();
 
 export default defineConfig({
-  testDir: './tests/e2e',
-  testMatch: '**/*.spec.ts',
+  testDir: './tests',
+  testMatch: ['e2e/**/*.spec.ts', 'mcp-apps/**/*.spec.ts'],
   fullyParallel: false,
   workers: 1,
   reporter: continuousIntegration ? [['line'], ['html', { open: 'never' }]] : 'list',

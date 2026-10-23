@@ -29,6 +29,7 @@ import {
   type SkillEventMap,
   type SkillGuardrailOptions,
 } from './skills';
+import type { SkillClient } from './skills/client/skill-client';
 
 /**
  * The names of the skill lifecycle tools. An active skill's `allowed-tools` never narrows these
@@ -53,6 +54,32 @@ export function activeSkillToolPolicy(
 ): { allowList: string[] } | undefined {
   if (narrowed === undefined) return undefined;
   return { allowList: [...new Set([...narrowed, ...SKILL_LIFECYCLE_TOOL_NAMES])] };
+}
+
+/**
+ * One run's skill client, as Bureau needs it to persist and recover the active set: the client
+ * that owns the run's toolbox, the catalog revision it was built over, and the hook that makes the
+ * first step wait for a recovery.
+ */
+export interface AgentSkillsRunHandle {
+  readonly client: SkillClient;
+  readonly catalog: SkillCatalogRevision;
+  /**
+   * Re-validates stored activation records against the live catalog. The run's first step waits
+   * for it, so nothing reads a half-filled active set.
+   */
+  recover: SkillClient['recover'];
+}
+
+const runHandles = new WeakMap<object, AgentSkillsRunHandle>();
+
+/**
+ * The skill client a run's agent composed, found by the run's resolved hook plan
+ * (`RunOptions.hooks`), or `undefined` when the agent has no skills. Bureau uses the agent's own
+ * client rather than building a second one, because that client already owns the run's toolbox.
+ */
+export function agentSkillsRun(hooks: object | undefined): AgentSkillsRunHandle | undefined {
+  return hooks === undefined ? undefined : runHandles.get(hooks);
 }
 
 /** Options for {@link createAgentSkills}. */
@@ -128,10 +155,13 @@ export function createSkillGuardrailOptions(
  * skill's `allowed-tools` narrows the tools the model sees. Skill content is
  * scanned by the agent's own resolved guardrails.
  *
- * Active skills are not persisted across a durable recovery on this path: a
- * catalog-dispatched run has no Bureau session to snapshot them into, so a
- * recovered run starts with an empty active set and the model re-activates
- * what it needs.
+ * Active skills survive a durable recovery (COR-323): the run's client is
+ * registered against its hook plan ({@link agentSkillsRun}), and when Bureau
+ * dispatches the run into a session it snapshots the client's activation
+ * records after every step and, on a recovered run, re-validates the stored
+ * records against the live catalog before the first step reads the active set.
+ * A run outside a Bureau session (a bare `agent.run()`) has no session to
+ * snapshot into and starts with an empty active set.
  */
 export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
   return {
@@ -147,6 +177,16 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
         correlation: { agentName: run.agentName },
         ...(skillGuardrail === undefined ? {} : { guardrail: skillGuardrail }),
         ...(options.events === undefined ? {} : { events: options.events }),
+      });
+
+      let recovery: ReturnType<SkillClient['recover']> | undefined;
+      runHandles.set(run.hooks, {
+        client,
+        catalog: options.catalog,
+        recover: (records) => {
+          recovery = client.recover(records);
+          return recovery;
+        },
       });
 
       let toolbox = run.toolbox;
@@ -184,12 +224,12 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
 
       run.hooks.on(
         'prepareStep',
-        (context) => {
+        async (context) => {
+          if (recovery !== undefined) await recovery;
           const instructions = renderActiveSkillInstructions(client.active());
           if (instructions !== undefined) {
             context.conversation.appendSystemMessage(instructions, { _skillContentInjected: true });
           }
-          return Promise.resolve();
         },
         {
           id: 'agent:skill-client-instructions',

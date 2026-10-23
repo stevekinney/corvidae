@@ -183,7 +183,7 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
   it('keeps a session task input-required, in tasks.get and in its event stream', async () => {
     await withHeldBureau({ generate: parksTwice(), humanInput: true }, async (opened, hold) => {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'park',
         principal: OWNER.alice,
       });

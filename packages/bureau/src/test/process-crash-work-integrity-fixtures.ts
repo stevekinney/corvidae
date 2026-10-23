@@ -21,7 +21,7 @@ import {
   createWeftMemoryRecordStorage,
   type GovernedMemory,
 } from '@lostgradient/memory';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
 import {
   type AnyToolbox,
@@ -36,6 +36,7 @@ import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
 import type { Bureau } from '../types';
+import type { AgentDefinitions } from '../agent-catalog';
 
 /** The claim TTL the parent derives its single claim-lapse wait from. */
 export const CLAIM_TTL_MS = 200;
@@ -211,15 +212,18 @@ export interface HarnessBureauOptions {
 
 /** The durable, `workflow-lease` Bureau every child and the recoverer share. */
 export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bureau> {
-  return createBureau({
+  return createBureau<AgentDefinitions>({
     // The identifier is the memory tenant, so every process of a scenario must share it.
     id: TENANT_ID,
-    agents: {},
-    generate: options.generate,
-    toolbox: options.toolbox,
+    agents: {
+      default: createAgent({
+        generate: options.generate,
+        toolbox: options.toolbox,
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage: { type: options.backend, path: options.storagePath },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     requestAuthorityValidator: () => true,
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     ...(options.humanInput === true ? { humanInput: true as const } : {}),

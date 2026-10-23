@@ -9,13 +9,14 @@
  * delay instead (see `pollUntilWithRealDelay` below).
  */
 
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
+import type { AgentDefinitions } from './agent-catalog';
 
 function createNextTool() {
   return createTool({
@@ -130,25 +131,28 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
     const databasePath = createTemporaryPath('bureau-event-history-owner-recovery-lmdb');
 
     let bureauAReachedStep1 = false;
-    const bureauA = await createBureau({
-      agents: {},
-      generate: async ({ step }) => {
-        if (step === 0) {
-          return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        bureauAReachedStep1 = true; // step 0's saveCursor has committed
-        return new Promise<never>(() => {}); // the "process" dies here
+    const bureauA = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0) {
+              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            bureauAReachedStep1 = true; // step 0's saveCursor has committed
+            return new Promise<never>(() => {}); // the "process" dies here
+          },
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([createNextTool()]),
       storage: { type: 'lmdb', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
       const run = await bureauA.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'Attribute me to alice across a restart',
         principal: 'alice',
       });
@@ -158,14 +162,17 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
       // (a genuinely non-terminal Weft workflow is what `recoverAll()` needs
       // to surface for `reattachRecoveredRun` to run at all).
 
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
-        toolbox: createToolbox([createNextTool()]),
+      const bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'lmdb', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {

@@ -16,7 +16,6 @@ import {
   createContextEpochSealer,
   type ContextEpochSealer,
   type GenerateFunction,
-  stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import type { ToolRequestContext } from 'armorer';
@@ -66,7 +65,6 @@ async function answerOnce(createContextEpoch?: () => ContextEpochSealer) {
       }),
     },
     memory,
-    stopWhen: stopWhen.noToolCalls(),
     requestAuthorityValidator: () => true,
   });
   bureaus.push(bureau);

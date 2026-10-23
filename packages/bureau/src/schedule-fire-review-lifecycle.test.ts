@@ -71,9 +71,13 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
   it('drops the fire’s authority, round and override for each of several fires of one recurring session', async () => {
     const charges: number[] = [];
     const bureau = await open({
-      generate: chargesWithFreshCallIds(),
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopAtApproval,
+      agents: {
+        default: createAgent({
+          generate: chargesWithFreshCallIds(),
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const fires: string[] = [];
     for (let count = 0; count < 3; count += 1) {
@@ -100,10 +104,14 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
 
   it('retires the fence with the fire’s task, and not before', async () => {
     const bureau = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       taskRetention: { olderThan: 1 },
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'retained-session');
     const review = await reviewOf(bureau, fireId);
@@ -131,9 +139,13 @@ describe('an unanswered fire approval expires', () => {
   it('is swept, leaves the list and the session, and the fire’s review state ends', async () => {
     const charges: number[] = [];
     const bureau = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopAtApproval,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'expiring-session');
     const review = await reviewOf(bureau, fireId);
@@ -240,9 +252,13 @@ describe('the audit record of an expired fire approval', () => {
   it('keeps the round the approval had been superseded to', async () => {
     const charges: number[] = [];
     const bureau = await open({
-      generate: chargesOnce,
-      toolbox: regatingApprovalToolbox(charges),
-      stopWhen: stopAtApproval,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: regatingApprovalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'rounds-session');
     const review = await reviewOf(bureau, fireId);
@@ -284,10 +300,10 @@ describe('a crash between a fire step’s session write and its commit', () => {
       };
     };
     const first = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       storage: holdingStorage,
+      agents: {
+        default: createAgent({ generate, toolbox: approvalToolbox([]), stopWhen: stopAtApproval }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'crash-session');
     await reached;
@@ -296,10 +312,14 @@ describe('a crash between a fire step’s session write and its commit', () => {
 
     const charges: number[] = [];
     const restarted = await open({
-      generate,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopAtApproval,
       storage: raw,
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     await pollUntil(
       async () => ((await durableStatus(restarted, fireId)) === 'completed' ? true : undefined),
@@ -337,10 +357,10 @@ describe('a crash between a fire step’s session write and its commit', () => {
       };
     };
     const first = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       storage,
+      agents: {
+        default: createAgent({ generate, toolbox: approvalToolbox([]), stopWhen: stopAtApproval }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'ended-crash-session');
     await reached;
@@ -349,11 +369,11 @@ describe('a crash between a fire step’s session write and its commit', () => {
 
     const diagnostics: string[] = [];
     const second = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       storage: storageAfterCrash,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      agents: {
+        default: createAgent({ generate, toolbox: approvalToolbox([]), stopWhen: stopAtApproval }),
+      },
     });
     await pollUntil(async () => {
       const status = await durableStatus(second, fireId);
@@ -375,10 +395,14 @@ describe('a crash between a fire step’s session write and its commit', () => {
 
     const charges: number[] = [];
     const third = await open({
-      generate,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopAtApproval,
       storage: storageAfterCrash,
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
@@ -401,10 +425,14 @@ describe('a crash between a fire step’s session write and its commit', () => {
     };
     let dead = true;
     const first = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'unreadable-session');
     await reviewOf(first, fireId);
@@ -417,11 +445,15 @@ describe('a crash between a fire step’s session write and its commit', () => {
     dead = false;
     const diagnostics: string[] = [];
     const second = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage: withUnreadableStepRecords(storage),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     await pollUntil(async () => {
       const status = await durableStatus(second, fireId);
@@ -440,11 +472,15 @@ describe('a crash between a fire step’s session write and its commit', () => {
 
     const bootDiagnostics: string[] = [];
     const third = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage: withUnreadableStepRecords(storage),
       onDiagnostic: (diagnostic) => bootDiagnostics.push(diagnostic.message),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     const afterRestart = await sessionMetadata(third, 'unreadable-session');
@@ -460,10 +496,14 @@ describe('a crash between a fire step’s session write and its commit', () => {
     const { storage, storageAfterCrash, reached } = crashAfterApprovalWrite();
     const firstCharges: number[] = [];
     const first = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(firstCharges),
-      stopWhen: stopAtApproval,
       storage,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(firstCharges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'decided-crash-session');
     await reached;
@@ -475,10 +515,14 @@ describe('a crash between a fire step’s session write and its commit', () => {
     // The replay makes the same call under the same id.
     const secondCharges: number[] = [];
     const second = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(secondCharges),
-      stopWhen: stopAtApproval,
       storage: storageAfterCrash,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(secondCharges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     await pollUntil(
       async () => ((await durableStatus(second, fireId)) === 'completed' ? true : undefined),
@@ -491,10 +535,14 @@ describe('a crash between a fire step’s session write and its commit', () => {
     expect(keysOf(metadata['lastRequestAuthorities'])).toEqual([]);
 
     const third = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       storage: storageAfterCrash,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     expect(reviewsOf(third, fireId)).toEqual([]);
@@ -507,11 +555,15 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
     const firstCharges: number[] = [];
     const first = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(firstCharges),
-      stopWhen: stopAtApproval,
       storage,
       taskRetention: { olderThan: 1 },
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(firstCharges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'fenced-session');
     const review = await reviewOf(first, fireId);
@@ -522,10 +574,14 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     // A peer that lists the same approval, from the session the fire recorded it in.
     const peerCharges: number[] = [];
     const peer = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox(peerCharges),
-      stopWhen: stopAtApproval,
       storage,
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox(peerCharges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     await reviewOf(peer, fireId);
 
@@ -568,13 +624,17 @@ describe('a fire’s task stream ends when its last review closes', () => {
       };
     };
     const bureau = await open({
-      generate,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopAtApproval,
       storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const created = await bureau.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -655,13 +715,17 @@ describe('a fire’s task stream ends when its last review closes', () => {
       return askingGenerate()(context);
     };
     const bureau = await open({
-      generate,
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const created = await bureau.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -713,10 +777,14 @@ describe('a fire still going when its process restarts', () => {
       return { content: 'done', toolCalls: [] };
     };
     const first = await open({
-      generate,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'mid-flight-session');
     await reviewOf(first, fireId);
@@ -730,10 +798,14 @@ describe('a fire still going when its process restarts', () => {
     dead = false;
     const charges: number[] = [];
     const restarted = await open({
-      generate,
-      toolbox: approvalToolbox(charges),
-      stopWhen: stopWhen.noToolCalls(),
       storage,
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     await pollUntil(
       () => (reviewsOf(restarted, fireId).length === 2 ? true : undefined),
@@ -754,10 +826,14 @@ describe('a fire still going when its process restarts', () => {
 describe('a fire’s review is announced', () => {
   it('reaches the run’s history as review.requested, and the task reads input-required on its stream', async () => {
     const approval = await open({
-      generate: chargesOnce,
-      toolbox: approvalToolbox([]),
-      stopWhen: stopAtApproval,
       storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      agents: {
+        default: createAgent({
+          generate: chargesOnce,
+          toolbox: approvalToolbox([]),
+          stopWhen: stopAtApproval,
+        }),
+      },
     });
     const { fireId } = await fireOnce(approval);
     const review = await reviewOf(approval, fireId);
@@ -787,10 +863,14 @@ describe('a fire’s review is announced', () => {
 
   it('announces a human wait once, as review.requested, with the signal it waits on', async () => {
     const bureau = await open({
-      generate: askingGenerate(),
       humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      agents: {
+        default: createAgent({
+          generate: askingGenerate(),
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau);
     const review = await reviewOf(bureau, fireId);
@@ -825,11 +905,15 @@ describe('a fire that continues past an approval', () => {
       return { content: 'moving on', toolCalls: [] };
     };
     const bureau = await open({
-      generate,
-      toolbox: approvalToolbox(charges),
       // No `stopWhen.pendingApproval()`: the fire takes another step with the approval pending.
-      stopWhen: stopWhen.noToolCalls(),
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      agents: {
+        default: createAgent({
+          generate,
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'continuing-session');
     const review = await reviewOf(bureau, fireId);

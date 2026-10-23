@@ -31,9 +31,8 @@
  *   need a configured provider, and a host with none offers no choice, so Chat shows no picker.
  * - `internal`: a plain agent the host does not publish.
  *
- * What these agents do not cover: a schedule's fire and a goal's attempt pass their agent name
- * into the Bureau-wide runtime, so the seeded schedule and goal run the Bureau's own scripted
- * default and not `assistant`'s script. There are no users and no webhook receiver.
+ * A schedule's fire runs its named agent too, so the seeded schedule runs `assistant`'s script.
+ * There are no users and no webhook receiver.
  */
 
 import type { Bureau } from '@lostgradient/bureau';
@@ -281,18 +280,23 @@ function createToolRunnerToolbox(approvalSecret: string) {
 }
 
 /**
- * The seeded agents. `approvalSecret` signs the refund approvals `tool-runner` raises; the host
+ * The seeded agents. `assistantGenerate` replaces the `assistant`'s script, for a test that needs a
+ * run to stay in flight. `approvalSecret` signs the refund approvals `tool-runner` raises; the host
  * keeps one per installation in Bungalow's secrets so a restart can still resolve a pending
  * review.
  */
-export function createSeededAgents(approvalSecret: string) {
+export function createSeededAgents(approvalSecret: string, assistantGenerate?: GenerateFunction) {
   return {
     assistant: createAgent({
       name: 'assistant',
       description: 'Answers every message with the same scripted reply.',
-      generate: createScriptedGenerate(
-        repeated([reply('Hello from the assistant. This reply is scripted; no model was called.')]),
-      ),
+      generate:
+        assistantGenerate ??
+        createScriptedGenerate(
+          repeated([
+            reply('Hello from the assistant. This reply is scripted; no model was called.'),
+          ]),
+        ),
       stopWhen: stopWhen.noToolCalls(),
     }),
     'tool-runner': createAgent({
@@ -333,16 +337,6 @@ export function createSeededAgents(approvalSecret: string) {
       stopWhen: stopWhen.noToolCalls(),
     }),
   };
-}
-
-/**
- * The model the Bureau itself runs when no catalog agent supplies one, such as for a schedule's
- * tick. It is a script like every agent's, so a fresh host still calls no model.
- */
-export function createSeededGenerate() {
-  return createScriptedGenerate(
-    repeated([reply('This reply comes from the Bureau’s scripted default. No model was called.')]),
-  );
 }
 
 /** The seeded agents' definitions, which type the Bureau built over them. */

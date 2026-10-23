@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import {
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
@@ -55,12 +55,13 @@ export async function serveWorkflows(
   options: ServeOptions = {},
 ): Promise<Served> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-workflow-operations-'));
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     assets: { storage: createMemoryAssetStorage() },
     id: 'workflows-bureau',
-    agents: options.agents ?? agents,
+    agents: {
+      ...(options.agents ?? agents),
+    },
     workflowDirectory: directory,
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),

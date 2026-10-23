@@ -7,9 +7,9 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
+import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
-import { FIRE_QUESTION_INPUT, FIRE_QUESTION_PROMPT } from './fire-question.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
 
@@ -161,7 +161,7 @@ test.describe('a scheduled run’s human wait', () => {
     const schedule = (await bureauCall(request, 'bureau.schedules.create', {
       agentName: 'request-human-input',
       spec: '1s',
-      input: FIRE_QUESTION_INPUT,
+      input: 'Ask which environment the scheduled release goes to',
       description: `Asks which environment (${crypto.randomUUID()})`,
       overlap: 'skip',
     })) as { id: string };
@@ -183,7 +183,7 @@ test.describe('a scheduled run’s human wait', () => {
           };
           fire = listed.reviews.find(
             (candidate) =>
-              candidate.kind === 'human-wait' && candidate.prompt === FIRE_QUESTION_PROMPT,
+              candidate.kind === 'human-wait' && candidate.prompt === HUMAN_INPUT_PROMPT,
           );
           return fire?.id;
         })
@@ -211,7 +211,7 @@ test.describe('a scheduled run’s human wait', () => {
           : `a[href="/chat/${question.sessionId}"]`,
       ),
     });
-    await expect(row).toContainText(FIRE_QUESTION_PROMPT);
+    await expect(row).toContainText(HUMAN_INPUT_PROMPT);
     await row.getByRole('button').click();
     await page.getByLabel('Your answer').fill('staging');
     await page.getByRole('button', { name: 'Send answer' }).click();

@@ -22,12 +22,13 @@ import {
   type RunnableAgent,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { BureauError, createBureau } from './create-bureau';
 import type { BureauRunOptions } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -43,10 +44,6 @@ function waitOneTimerTurn(): Promise<void> {
 
 function mockGenerate(content = 'ok') {
   return async () => ({ content, toolCalls: [] });
-}
-
-function createEmptyToolbox(): Toolbox {
-  return createToolbox([]) as unknown as Toolbox;
 }
 
 describe('bureau.run', () => {
@@ -704,8 +701,10 @@ describe('bureau.run', () => {
     });
   });
 
-  it('accepts an empty agents catalog for a bureau that only uses createRun', async () => {
-    const bureau = await createBureau({ agents: {}, toolbox: createEmptyToolbox() });
+  it('accepts an empty agents catalog', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {},
+    });
     try {
       expect(bureau.agents.names()).toEqual([]);
       expect(bureau.agents.has('anything')).toBe(false);
@@ -915,7 +914,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
 
   it('applies the guardrail tier to a NON-durable dispatch, not just identity', async () => {
     let generateCalls = 0;
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         echo: createAgent({
           name: 'echo',
@@ -923,16 +922,15 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
             generateCalls += 1;
             return { content: 'ok', toolCalls: [] };
           },
+          guardrails: alwaysTrip,
         }),
       },
-      guardrails: alwaysTrip,
       storage: { type: 'memory' },
     });
 
     try {
       const result = await bureau.run('echo', 'hi').result();
-      // The bureau's guardrails, inherited by the agent (COR-1367) and
-      // registered as `agent:guardrails-prepare-step`, run before generate and
+      // The agent's own guardrails, registered as `agent:guardrails-prepare-step`, run before generate and
       // hard-halt, so the provider is never reached.
       expect(result.finishReason).toBe('tripwire');
       expect(generateCalls).toBe(0);
@@ -1207,22 +1205,25 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
 
   it('carries Bureau’s tier into an interactive bureau.createRun run', async () => {
     const seen: string[] = [];
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (request) => {
-        for (const message of request.conversation.getMessages()) {
-          if (message.role === 'system' && typeof message.content === 'string') {
-            seen.push(message.content);
-          }
-        }
-        return { content: 'ok', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (request) => {
+            for (const message of request.conversation.getMessages()) {
+              if (message.role === 'system' && typeof message.content === 'string') {
+                seen.push(message.content);
+              }
+            }
+            return { content: 'ok', toolCalls: [] };
+          },
+        }),
       },
       identity: { resolve: async () => 'BUREAU-TIER-REACHED' },
       storage: { type: 'memory' },
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'hi' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'hi' });
       for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
         await waitOneTimerTurn();
       }

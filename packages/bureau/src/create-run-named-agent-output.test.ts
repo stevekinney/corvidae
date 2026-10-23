@@ -76,7 +76,6 @@ describe('a named agent’s structured output on a session run', () => {
         viaSession: structuredAgent(sessionGenerate),
       },
       persistence: textValueStore(new MemoryStorage()),
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(bureau);
 
@@ -122,7 +121,6 @@ describe('a named agent’s structured output after a restart', () => {
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(crashed);
     const run = await crashed.createRun({ message: 'go', agentName: 'scribe' });
@@ -150,7 +148,6 @@ describe('a named agent’s structured output after a restart', () => {
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     bureaus.push(restarted);
     await pollUntil(async () => {

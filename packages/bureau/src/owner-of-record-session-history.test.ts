@@ -12,12 +12,14 @@ import {
   type DurableEventEnvelope,
   type GenerateFunction,
   stopWhen,
+  createAgent,
 } from '@lostgradient/operative';
 import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const ALICE = 'api-key:alice';
@@ -25,14 +27,14 @@ const BOB = 'api-key:bob';
 
 async function openBureau() {
   const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-history-'));
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     id: 'session-history',
-    agents: {},
-    generate,
+    agents: {
+      default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
+    },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    stopWhen: stopWhen.noToolCalls(),
   });
   return { bureau, directory };
 }
@@ -41,7 +43,7 @@ type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'hello',
     sessionId,
     principal,
@@ -393,7 +395,7 @@ describe('the history of a deleted session (COR-718)', () => {
       await claimReached.promise;
       expect(await store.load('pending')).toBeUndefined();
       const run = await bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hello',
         sessionId: 'pending',
         principal: BOB,

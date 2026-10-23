@@ -42,7 +42,7 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 
 ## What It Does
 
-- Composes a runtime from `BureauOptions`: a single provider, a fallover/routing provider set, tools, memory, skills, session persistence, durable execution, guardrails, cache, identity, and scheduler configuration.
+- Composes a runtime from `BureauOptions`: a catalog of agents (each owns its `generate`, tools, skills, guardrails, stop conditions, and instructions), memory, session persistence, durable execution, cache, identity, and scheduler configuration.
 - Creates and tracks runs (`createRun`), aborts and deletes them, and lists them by status.
 - Persists sessions through a `SessionStore` and recovers in-flight durable runs after a process restart (`engine.recoverAll()`), reattaching bureau-owned runs and monitoring native scheduled fires.
 - Exposes durable primitives when a durable engine is composed: `signalSession` delivers a real fire-and-forget signal; `updateSession`/`querySession` are kept but unconditionally throw `BureauError('UNSUPPORTED_CAPABILITY')` (AB-192—the built-in `agentRun` workflow registers no `ctx.onUpdate`/`ctx.onQuery` handler; see `bureau.sessionVerbCapabilities`); `submitSessionInput` runs AB-42's fixed pre-admission checks (authorization, then session lifecycle, then capability/capacity), and an authorized request on a session that is not terminal reaches the durable session mailbox (`admitted`, `replayed`, `conflict`, or `backlog-exhausted`); it returns `{ outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' }` only when no session mailbox, durable storage, or key-value store is composed (AB-194, COR-435); `submitSteeringCommand` admits `pause`, `resume`, `agent-identity`, `route`, `model`, `provider`, and `effort` for authorized in-memory and durable sessions, persisting durable commands before applying them; `policyRef` resolves configuration coordinates through `modelPolicy.users`, while an `agent-identity` `policyRef` remains `unsupported-capability` with `selector-unavailable`; plus full CRUD over durable schedules (`createSchedule`, `getSchedule`, `listSchedules`, `pauseSchedule`, `resumeSchedule`, `cancelSchedule`).
@@ -54,11 +54,11 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 
 ## How It Works
 
-`createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `GovernedMemory`, an optional `Scheduler`, and the resolved runtime composition (generate function, toolbox, session store, durable engine).
+`createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `GovernedMemory`, an optional `Scheduler`, and the resolved runtime composition (session store, durable engine, memory, and the agent catalog's dispatch).
 
 `createRun(request)` (`agentName` is required) loads or creates a session, appends the request message to its conversation, builds an `ActiveRun` via `operative`'s `createActiveRun`, and registers it with the store. If a durable engine is composed, the run is routed through it instead of the in-memory loop, so it can crash and resume from its last completed step. Terminal run events (`run.completed`, `run.aborted`) persist the session's status with a bounded retry.
 
-A `createRun` request that names a catalog agent (`agentName`) runs that agent. The session run uses the agent's own `generate`, tools, system prompt (the request's `systemPrompt` wins, then the agent's, then the Bureau's), `maximumSteps`, `maximumTokens`, and stop conditions, with the Bureau's memory, guardrails, identity, skills, and opt-in tools (`requestHumanInput`, `scheduleWakeup`) composed around it. A session is bound to the agent that created it: a later run omits `agentName` or repeats it, and naming another is a `BAD_REQUEST`. A name outside the catalog is `NOT_FOUND`, and a Bureau that has only catalog agents accepts a named run and refuses an unnamed one with `NOT_CONFIGURED`. A durable named run recovers as its agent. If the agent has left the catalog the run fails, and if its definition revision changed Bureau logs a warning and resumes with the current definition. A schedule's fire and a goal's attempt still run the Bureau-wide runtime.
+A `createRun` request names a catalog agent (`agentName`, required) and runs it. The session run uses the agent's own `generate`, tools, skills, guardrails, system prompt (the request's `systemPrompt` wins, then the agent's), `maximumSteps`, `maximumTokens`, and stop conditions, with the Bureau's memory, identity, and opt-in tools (`requestHumanInput`, `scheduleWakeup`) composed around it. A session is bound to the agent that created it: a later run omits `agentName` or repeats it, and naming another is a `BAD_REQUEST`. A name outside the catalog is `NOT_FOUND`, which includes `bureau`: the implicit Bureau-wide agent that ran on `BureauOptions.generate` and its siblings no longer exists, and a session, schedule, or recovered run stored under it is refused (a new run, a schedule fire) or fails with a diagnostic (a recovered run) rather than running. A durable named run recovers as its agent. If the agent has left the catalog the run fails, and if its definition revision changed Bureau logs a warning and resumes with the current definition. A schedule's fire and a scheduler task (`submitSchedulerTask({ agentName, … })`) run their named agent the same way, resolved through the catalog. A task naming an agent the catalog lacks is refused with `NOT_FOUND`, and a fire whose agent is missing settles as unavailable with the reason. A skill an agent activates survives a crash: Bureau snapshots the active records of the agent's own `createAgentSkills` client into the session after every step and, on recovery, re-validates them against the live catalog before the run's first step.
 
 With `humanInput: true` on a durable Bureau, an agent can call `requestHumanInput` to park its run, whichever way the run was started (a `createRun` run, or a `bureau.run()` run of an agent that resolves definitions; a child run or a goal attempt is not offered the tool, and neither is anything on a Bureau with no durable engine). The park appears in `listPendingReviews()` as a `human-wait` review. A `createRun` run's review carries its `sessionId`; a `bureau.run()` run has no session, so its review has no `sessionId` and is addressed by its `runId`. `resolveReview` resumes either one: `approve` delivers the optional `payload`, and `deny` and `reject` deliver the same denial and rejection markers on the signal. A `bureau.run()` park is resolved through the engine by run id, under a delivery id derived from the review id (the review id itself, or a fixed-length hash of it when it exceeds Weft's 128-byte `signalId` limit, as a long `signalName` makes it), so a retried resolve delivers once. The engine's own record of what the run waits on decides whether a review is still pending, so resolving does not depend on the audit trail. After a restart a parked `bureau.run()` run is listed again under the id it had. The agent must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Tool approvals on `bureau.run()` runs are not reviewed. A schedule fire is offered `requestHumanInput` the same way, and what it waits on is a review of the fire: its `runId` is the fire's run id (its task id), its `sessionId` is the session the fire runs in, and its owner is the schedule's owner. A fire's park is listed live and after a restart, and `bureau.tasks.respond` or `resolveReview` answers it. A tool call a fire's step leaves awaiting approval is a `tool-approval` review of the fire in the same way, recorded with the fire's session, in the same write as its conversation, so a restart lists it again. A restart lists only the approvals the fire's run committed, whether the fire is still going or has ended: the run's checkpoint is the source of truth, and what the session holds is a claim made before the step committed. One from a step that crashed before its commit is not restored, the replayed step records its own, and the session is reconciled with the checkpoint when the fire settles. `resolveReview` with `approve` runs the tool, and the fire's task is `input-required` until it is decided. An approval nobody answers is swept by `sweepExpiredReviews` like any other, and a canceled fire's approvals are revoked and removed from its session, so a restart never brings one back to run a tool for a canceled run. The engine's own status decides whether a fire was canceled, at boot and again when an approval is decided: a fire the engine records as `cancelled`, whichever process canceled it and however far the cancel's bookkeeping got, restores nothing, and deciding its approval is refused with `CONFLICT`. A boot that cannot read the engine's status restores nothing and prunes nothing, and tries again at the next boot. A decided, expired, canceled or abandoned approval leaves nothing of its own in the session; what fences a concurrent resolver goes with the fire's task at retention. A fire announces each review it raises as `review.requested`, and its `bureau.tasks.events` stream reads `input-required` while a review is open and ends when the last one closes, decided or expired. A fire that takes another step after an approval writes its conversation back then, over the outcome an early decision would have recorded, so deciding such an approval throws `ApprovalOutcomeNotWrittenError`: configure the agent with `stopWhen.pendingApproval()`. Reviews of a fire are the same on every Bureau sharing its stores (COR-1613). Another instance answers a fire's `requestHumanInput` park through the engine by run id, without holding the fire, and the fire completes on its holder. A review closed by another instance, decided or expired, reaches the holder through the run's shared durable history: it drops its own copy and re-reads the task, whether or not a stream is open (COR-1621), so a `bureau.tasks.events` stream it serves ends when the last review closes anywhere. A peer's re-gate leaves the review listed at the round the session holds, and a decision on a round a peer has re-gated since is refused with `CONFLICT`. A `-1` reconnect to that stream is told the fire's current status first. A replayed step announces the same `review.requested` once, by review id from the run's history, and a request a replay abandoned (the model minted a new tool call id) is closed with `review.superseded` when the fire settles or is canceled. A canceled fire's approvals and parks are each closed once per round in the audit trail and the durable history, by whichever process finds them first, whichever route cancels the fire, and including after a crash and restart. A re-gate (`review.superseded`) does not close an approval: it stays pending under its id at the next round, and a task stream that replays the history does not drop it. The expiry sweep leaves a review alone while a decision on it is in flight. An approval or park the canceled fire was holding is recorded as `canceled` by principal `system:run-abort` only when no terminal record exists. A restored approval is decided under the skills the run has active now, which are the last set it committed (a fire's from its checkpoint, a session run's from its session snapshot), not the set that was active when the call was requested, so a skill activated after the request can narrow a tool away from it. A call those skills refuse is refused after a restart, and a tool the active skills do not permit cannot be approved even live (`CONFLICT`). The snapshot is read again on each approve (COR-1620), so a read that failed once does not fix the policy for good. When the policy that governed the call cannot be verified, the approve is refused with `CONFLICT` and runs nothing, and a deny still goes through. Unverifiable is a snapshot that fails to be read or deserialized, one that names another fire (a recurring schedule's newer fire) or another run, a stored skill the catalog refuses on recovery (a revoked source or a drifted digest), and a run with no toolbox of its own whose session names active skills, which the base toolbox cannot enforce. A snapshot that verifiably names no skill is not unverifiable: a run that never activated one is approved as before. A snapshot a later run cleared is unverifiable too: the start of a run in a session nulls the session's skill records and their run id, so a cleared snapshot whose run id is null while the session's last run is another run is that run's reset, not a record that this run had no skills (a Bureau with no skills has nothing to verify, and is not affected). The same holds for every toolbox recovery builds, not only the restore's: a fire replayed after its process died in a step, and a session run reattached the same way, are offered no tool and write no skill snapshot when their snapshot cannot be verified or a stored skill is refused on recovery, so what they persisted before is kept, and an approval they raise is refused at approve under the snapshot read again. The automatic maintenance profile runs `sweepExpiredReviews` on its own timer (every five minutes), so expired state goes without a host call, and an approval's session prune commits before its in-memory state is dropped: when the prune fails the approval stays hidden and refused, and the fire's next release retries it. A fire that settled with a review still open counts as activity for its context, so `bureau.contexts.list` and `get` read `awaiting-input` as `bureau.tasks.get` reads `input-required`.
 
@@ -70,18 +70,23 @@ On boot, if durable execution is configured, `bureau` sweeps suspended scheduler
 
 ## Quick Start
 
-This example demonstrates the `BureauOptions.provider` + `Bureau.createRun` path, whose Bureau-level `provider` is **deprecated** (COR-323 part 2 removes it). New code should give `agents` a catalog entry built with `createAgent` and name it in `createRun({ agentName })` or dispatch through `bureau.run(name, input, options?)`.
+Give `agents` a catalog entry built with `createAgent`, then name it in `createRun({ agentName })` or dispatch through `bureau.run(name, input, options?)`.
 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
 
 const bureau = await createBureau({
-  agents: {},
-  provider: { provider: 'anthropic', model: 'claude-sonnet-4.5' },
+  agents: { summarizer: createAgent({ generate }) },
   storage: { type: 'sqlite', path: 'bureau.sqlite' },
 });
 
-const run = await bureau.createRun({ agentName: 'bureau', message: 'Summarize the Q3 report.' });
+const run = await bureau.createRun({
+  agentName: 'summarizer',
+  message: 'Summarize the Q3 report.',
+});
 console.log(run.status); // "running"
 
 // Wait for completion via the live event surface. A run records many actions
@@ -132,7 +137,7 @@ const create: <const D extends AgentDefinitions = AgentDefinitions>(
 ) => Promise<Bureau<D>> = createBureau;
 ```
 
-Composes and returns a `Bureau`. `agents` is the only required field—pass `{}` for a bureau that only uses the session/durability-backed `createRun` surface below and doesn't dispatch through the typed catalog at all. Without a `generate`/`provider`/`providers` + `routing` (all agent-owned fields, **deprecated** per AB-242), the result has no generate function configured (`bureau.ready === false`) and `createRun` throws `BureauError('NOT_CONFIGURED')` until one is provided.
+Composes and returns a `Bureau`. `agents` is the only required field—pass `{}` for a bureau that only dispatches durable primitives and doesn't run an agent at all. Every run belongs to a catalog agent, which owns its own `generate`, tools, skills, guardrails, stop conditions, step cap, and instructions (COR-323 deleted the Bureau-wide `generate`, `provider`, `providers`, `routing`, `toolbox`, `guardrails`, `skills`, `stopWhen`, `maximumSteps`, and `systemPrompt` options); a request names its agent with `agentName`.
 
 ### `BureauOptions`
 
@@ -140,27 +145,19 @@ Every field except `agents` is optional.
 
 | Field | Type | Purpose |
 | --- | --- | --- |
-| `agents` | `AgentDefinitions` (`D`) | **Required.** The typed agent catalog, exposed as `bureau.agents` and dispatched by name through `bureau.run`. Pass `{}` for a bureau that doesn't use it. The name `bureau` is reserved for the Bureau-wide default agent that a `createRun` call without `agentName` runs, so an entry called `bureau` is refused with `BureauError` (`BAD_REQUEST`). |
+| `agents` | `AgentDefinitions` (`D`) | **Required.** The typed agent catalog, exposed as `bureau.agents` and dispatched by name through `bureau.run`. Pass `{}` for a bureau that doesn't use it. The name `bureau` is reserved (it was the implicit Bureau-wide agent, which no longer exists), so an entry called `bureau` is refused with `BureauError` (`BAD_REQUEST`). |
 | `children` | `{ signals?: { [agentName]?: ChildSignalContract }; delegation?: { secret; policyVersion?; defaultTimeToLiveMilliseconds? } }` | COR-772—configuration for `bureau.children`. `signals` registers each child agent's typed signal contract (contracts are code, so they are configured rather than persisted); `delegation` turns on signed COR-336 delegation grants. An empty `secret` or a non-positive lifetime is a `BAD_REQUEST` at construction. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `validators` | `readonly Validator[]` | COR-851—the validators durable goals may name. A goal stores only a validator's identity (name and version); the executable is registered here and resolved by that exact identity every time it runs, including after a restart. Two validators with the same name and version fail `createBureau`. See [Durable goals](#durable-goals-cor-851). |
 | `resolveFreshAttemptSource` | `FreshAttemptSourceResolver` | COR-851—resolves the producing run's sealed context epoch and permitted actors for a `fresh-from-artifact` goal's handoff artifact. Omitted, no such goal can be created. See [Durable goals](#durable-goals-cor-851). |
-| `generate` **(deprecated)** | `GenerateFunction` | Escape hatch: supply your own generate function directly, bypassing provider resolution entirely. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `generate`. |
-| `provider` **(deprecated)** | `ProviderConfiguration` | Resolve a single provider (`'anthropic' \| 'openai' \| 'gemini'`) to a generate function. Agent-owned now—deprecated, not removed, per AB-242; resolve the provider into a `GenerateFunction` and pass it as `createAgent`'s `generate` instead. |
-| `providers` / `routing` **(deprecated)** | `ProviderRouteConfiguration[]` / `RoutingConfiguration` | Resolve multiple named providers with fallover or step-based routing between them. Agent-owned now—deprecated, not removed, per AB-242; resolve the fallback/routing behavior into a `GenerateFunction` and pass it as `createAgent`'s `generate` instead. |
-| `toolbox` **(deprecated)** | `Toolbox` | The bureau-level toolbox available to every run. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `toolbox`. |
 | `store` | `Store` | Supply your own `@lostgradient/operative` `Store` instead of letting `bureau` create one. |
 | `persistence` / `storage` | `PersistenceOptions \| StorageConfiguration \| ConditionalTextValueStore` | Configure session and key-value persistence. `storage` is shorthand for the common case; `persistence` is the full options-object form. |
 | `durableExecution` | `boolean` | Override the default (on for persistent `storage`, off for `memory`) for Weft-backed crash-and-resume execution. |
 | `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a recovered run whose request authority cannot be restored gets no memory hooks. Catalog runs (`bureau.run`) and `bureau.children` children get none either. See [Governed memory](#governed-memory-cor-41). |
 | `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority` and [Governed memory](#governed-memory-cor-41). |
-| `cache` | `CacheConfiguration` | Wrap the resolved generate function with response caching. |
-| `guardrails` **(deprecated)** | `GuardrailsOptions \| false` | Attach `operative` guardrail detectors to every run; omitted wires the AB-40 preset, `false` opts out. Agent-owned now—migrate to `createAgent`'s `guardrails` (COR-1367). During the transition a catalog agent that declares no `guardrails` of its own inherits this value (see [Per-agent guardrails and skills](#per-agent-guardrails-and-skills-cor-1367)). |
+| `cache` | `CacheConfiguration` | Wraps the Bureau-wide generate function with response caching. A Bureau no longer composes one (every agent owns its `generate`, COR-323), so this has no effect on a catalog agent's runs. |
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |
-| `skills` **(deprecated)** | `SkillRuntimeConfiguration` | Attach a skill catalog to `createRun` runs; injects an `<available_skills>` system block on step 0 of every run. Agent-owned now—migrate to `createAgent`'s `skills` (COR-1367). It never reached catalog agents (`bureau.run`) and still does not. |
-| `streaming` | `StreamingConfiguration` | Enable enhanced streaming and expose a `streamEventTarget` on run runtime. |
+| `streaming` | `StreamingConfiguration` | Enable enhanced streaming and expose a `streamEventTarget` on the Bureau-wide generate. A Bureau no longer composes one (COR-323), so this has no effect on a catalog agent's runs. |
 | `scheduler` | `SchedulerConfiguration` | Attach an in-process priority scheduler (`submitSchedulerTask`). `retentionWindowMs` (finite, greater than zero; unset defaults to 3600000 milliseconds, one hour, and an explicit value overrides it) bounds how long a settled task stays resolvable through `locateSchedulerTask` / `awaitSchedulerTask`; an explicit value is forwarded unchanged to operative's `createScheduler`, and Bureau's composed runtime drives its timers. |
-| `stopWhen` **(deprecated)** | `StopCondition \| StopCondition[]` | Default stop condition(s) applied to every run. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `stopWhen`. |
-| `maximumSteps` / `systemPrompt` **(deprecated)** | `number` / `string` | Default step cap and system prompt for runs that don't specify their own. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `maximumSteps`/`instructions`. |
 | `observability` | `boolean \| Omit<ObservabilityOptions, 'eventTarget'>` | Opt into OpenTelemetry spans/metrics for durable runs. No-op without `@opentelemetry/api` installed. |
 | `onLog` | `(record: WorkflowLogRecord) => void` | Sink for `ctx.log` records emitted by durable workflows. |
 | `onDiagnostic` | `(diagnostic: BureauDiagnostic) => void` | Sink for bureau's own operational diagnostics—recovery failures, live-frame listener exceptions, dispose errors, persistence failures. Omit to log to the console exactly as before. |
@@ -174,21 +171,19 @@ Every field except `agents` is optional.
 
 ### Per-agent guardrails and skills (COR-1367)
 
-`createAgent` accepts `guardrails` and `skills`, the per-agent counterparts of the deprecated `BureauOptions.guardrails`/`skills`. For a catalog agent dispatched with `bureau.run`, the guardrails a run applies resolve most specific first:
+`createAgent` accepts `guardrails` and `skills`. Guardrails a run applies resolve from the agent itself:
 
-| Agent `guardrails` | `BureauOptions.guardrails` | The run applies |
-| --- | --- | --- |
-| omitted | omitted | the AB-40 preset, once, in the agent's tier |
-| omitted | a configuration | the bureau configuration (inherited), instead of the preset |
-| a configuration | anything | the agent's configuration only |
-| `false` | anything | no guardrails |
-| omitted | `false` | no guardrails |
+| Agent `guardrails` | The run applies                             |
+| ------------------ | ------------------------------------------- |
+| omitted            | the AB-40 preset, once, in the agent's tier |
+| a configuration    | the agent's configuration only              |
+| `false`            | no guardrails                               |
 
-Bureau hands its value down through `AgentRunContext.inheritedGuardrails` to agents that carry `OPERATIVE_RESOLVES_GUARDRAILS` (every `createAgent` result), and then registers no guardrail invariant of its own for that run, so the policy runs exactly once and a recovered run resumes under the same composition its fresh dispatch used. A hand-written `RunnableAgent`, or a `createLazyAgent` wrapper, keeps Bureau's own guardrail invariant as before and is handed `false`, so a `createAgent` behind a lazy wrapper does not add the preset a second time.
+Bureau hands an agent that carries `OPERATIVE_RESOLVES_GUARDRAILS` (every `createAgent` result) nothing to inherit, and then registers no guardrail invariant of its own for that run, so the policy runs exactly once and a recovered run resumes under the same composition its fresh dispatch used. A hand-written `RunnableAgent`, or a `createLazyAgent` wrapper, keeps Bureau's own guardrail invariant (the AB-40 preset) and is handed `false`, so a `createAgent` behind a lazy wrapper does not add the preset a second time.
 
-Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` runs. A catalog agent offers exactly the catalog its own `skills: createAgentSkills({ catalog })` names, scanned by its own guardrails.
+A catalog agent offers exactly the catalog its own `skills: createAgentSkills({ catalog })` names, scanned by its own guardrails.
 
-`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` is exported by this package. It implements operative's `AgentSkills` seam over Bureau's skills subsystem, which [documentation/skills.md](./documentation/skills.md) describes and the `@lostgradient/bureau/skills` subpath exports. The composition lives here because operative cannot import a private Bureau module, and the skills subsystem must not import operative. Each run gets a fresh skill client bound to the catalog, so activations never leak between runs. Active skills are not snapshotted for durable recovery on this path: a catalog-dispatched run has no Bureau session to hold them, so a recovered run starts with an empty active set.
+`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` is exported by this package. It implements operative's `AgentSkills` seam over Bureau's skills subsystem, which [documentation/skills.md](./documentation/skills.md) describes and the `@lostgradient/bureau/skills` subpath exports. The composition lives here because operative cannot import a private Bureau module, and the skills subsystem must not import operative. Each run gets a fresh skill client bound to the catalog, so activations never leak between runs. A session run of the agent (`createRun`) or a schedule fire also keeps its active skills across a crash: Bureau snapshots the client's activation records into the session after each step, and a recovered run re-validates them against the live catalog before its first step, so a skill whose source was revoked or whose content drifted does not come back. A `bureau.run()` dispatch has no Bureau session to hold them, so a recovered one starts with an empty active set.
 
 ```typescript
 import { createAgentSkills } from '@lostgradient/bureau';
@@ -241,7 +236,7 @@ The most commonly used members:
 | `goals` | `BureauGoals` | COR-851—create a durable goal, then `get`/`list`/`active`/`cancel`/`close` it and `recover` every unfinished one after a restart. Needs a durable engine. See [Durable goals](#durable-goals-cor-851). |
 | `createRun(request)` **(deprecated)** | `Promise<CreatedRunSummary>` | Create and start a run against a session. With `runCreationRequestId`, resolves with a durable `receipt` and replays exact retries (see [Run-creation receipts](#run-creation-receipts-cor-424)). `message` is optional: `appendMessages` appends built Conversationalist rows verbatim, and a request with neither answers the session's conversation as it stands, which must end in a user or tool-result row (`BAD_REQUEST` otherwise). Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
 | `locateRunCreationReceipt(request)` | `Promise<RunCreationReceiptLocation>` | COR-424: report where a `runCreationRequestId`'s receipt stands, scoped to its `principal` and to the agent the run is (`agentName`, or the bound agent of the `sessionId` it continued): `recorded`, `pending`, `expired` once the binding's retention window has passed, or `not-found`. Needs a durable engine. See [Run-creation receipts](#run-creation-receipts-cor-424). |
-| `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. |
+| `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. `request.agentName` names the catalog agent that runs it (`NOT_FOUND` when the catalog lacks it). |
 | `locateSchedulerTask(taskId)` | `SchedulerTaskLocation` | Resolve a receipt's `taskId` to `in-progress`, `terminal` (with a `PromiseSettledResult` outcome), `expired`, or `not-found`. Synchronous; throws `BureauError` (`NOT_CONFIGURED`) when the scheduler is not enabled. In-process and in-memory only: a restart loses it. |
 | `awaitSchedulerTask(taskId)` | `Promise<RunResult \| null>` | Await a task's settlement from its `taskId` alone, mirroring what the scheduler's `submit()` promise settled with. An `expired` or unknown id rejects with `SchedulerTaskLookupError` (`reason: 'expired' \| 'not-found'`). Throws `BureauError` (`NOT_CONFIGURED`) synchronously when the scheduler is not enabled. |
 | `listRuns(status?)` | `RunSummary[]` | List tracked runs, optionally filtered by status. |
@@ -262,10 +257,9 @@ The most commonly used members:
 | `submitSteeringCommand(sessionId, request)` | `Promise<SteeringCommandAdmissionOutcome>` | AB-67/AB-199/AB-200—admits `pause`, `resume`, `agent-identity`, `route`, `model`, `provider`, and `effort` for authorized, non-terminal in-memory and durable sessions. Durable sessions keep every admission and run-boundary transition in an append-only steering log that each Bureau process folds before deciding, so desired state, command states, `configVersion`, and `(principal, id)` idempotency survive any number of restarts and are shared by every process on the backend. `pause`/`resume` bind to one run; `agent-identity` is deferred to the next run; the other configuration coordinates apply at the next step boundary. Same `not-found`/`session-terminal` pre-admission checks as `submitSessionInput`. Configuration `policyRef` values resolve through `modelPolicy.users`; missing profiles or coordinates are rejected with `policy-denied`. Only an `agent-identity` `policyRef` returns `{ outcome: 'unsupported-capability', reason: 'selector-unavailable' }`. Unknown catalog coordinates are rejected with `policy-denied`. A `model` override may name its `provider` beside the model (`{ target: 'model', override, provider }`); with a provider, admission and step selection match the pair, and without one (every record written before the field existed) the model name alone. COR-1559: a `model` is also held to what the session's agent allows, decided at admission: a selectable agent (every file agent, and a code-defined agent with `allowedCandidates`) and a fixed agent are held to their models, and a model outside them is rejected with `model-not-allowed` and logged like any refusal, so a retry is answered the same; a routed or opaque agent lists no models (`bureau.agents.models` answers `selectable: false` and an empty list), so every `model` override for it is rejected with `model-not-allowed`. The check holds a model a caller names; a model chosen by a policy profile (`policyRef`) or by an agent's own routing is out of its scope. A `model` override is admitted on an idle session too (`pause`, `resume` and the other targets keep `session-terminal`), and a stale `expectedRevision` is `rejected` with `stale-revision`. An exact `(principal, id)` retry replays; a mismatched retry returns a typed `conflict`; an accepted command can transition to `failed` when its boundary is lost to terminal completion. |
 | `sessionVerbCapabilities` | `{ signal: true; update: false; query: false }` | Constant, synchronous capability discovery for the three throw/no-throw session verbs (AB-192); `submitSessionInput`/`submitSteeringCommand` are distinct, always-present verbs not covered by this map. |
 | `createSchedule(definition)` / `getSchedule(id)` / `listSchedules(filter?)` / `pauseSchedule(id)` / `resumeSchedule(id)` / `cancelSchedule(id)` | various | Durable recurring schedule CRUD, backed by the Weft engine. `createSchedule` dispatches `AgentScheduledEvent` (`schedule.created`) on this Bureau's event surface exactly once per successful registration. `pauseSchedule`, `resumeSchedule`, and `cancelSchedule` dispatch their matching schedule lifecycle events once per transition they make. Pausing a schedule that is not active, or resuming one that is active, succeeds without changing the schedule, so it records and dispatches nothing; every cancel is recorded. Each transition commits a pending record in the same write as the schedule's new state, and Bureau records it in durable event history and the audit trail before dispatching the event. A record left pending by a crash or a failed write is recorded at the next boot or durable maintenance pass, once (COR-194). `schedule.deleted` is reserved and unreachable because the public surface cancels schedules rather than deleting them. Separately from that definition lifecycle, every scheduled occurrence dispatches `schedule.attempted` before the overlap policy decides what to do with it, and an occurrence the policy drops (`overlap: 'skip'` colliding with a still-running fire) dispatches `schedule.skipped` carrying the occurrence, the blocking `runId`, and the policy. Both are sourced from the Weft engine's own `schedule:attempted`/`schedule:skipped` signals. They are what distinguishes a schedule that is ticking and choosing not to run from one that has stopped ticking — `schedule.completed`/`schedule.failed` only ever describe occurrences that actually launched a run. |
-| `getConfiguration()` / `getTools()` | `ConfigurationResponse` / `ToolSummary[]` | Introspect the resolved provider/tool configuration. |
+| `getConfiguration()` / `getTools()` | `ConfigurationResponse` / `ToolSummary[]` | Introspect the Bureau-wide configuration. A Bureau no longer composes a provider, toolbox, step cap, or system prompt of its own (COR-323), so `provider`, `providers`, and `tools` come back empty. |
 | `subscribeLiveFrames(listener)` | `() => void` | Subscribe to every `ServerFrame` the bureau emits; returns an unsubscribe function. The first subscriber is also replayed (in a microtask, after the call returns its unsubscribe handle) the frames emitted during boot recovery and by the runs it recovered (at most the newest 1024, in emission order), so recovered runs that emitted while `createBureau()` was still awaiting are not lost; later subscribers see only new frames. |
 | `addEventListener` / `on` / `once` / `subscribe` / `toObservable` / `events` | — | The typed `BureauEventMap` surface for actions, run registration and removal, disposal, schedule lifecycle, recovery decisions, and non-pending review transitions. Schedule terminal events carry the fired `runId`; recovery events carry the classification verdict or rejection reason; review events carry identifiers and status metadata but never approval arguments, signal payloads, or decision reasons. |
-| `ready` | `boolean` | Whether a generate function is configured. |
 | `sessionStore` / `kv` / `auditTrail` / `eventHistory` / `subscribeEventHistory` | `SessionStore \| undefined` / `ConditionalTextValueStore \| undefined` / `AuditTrail \| undefined` / `(owner, options?) => Promise<DurableEventPage \| DurableEventGap \| EventHistoryUnsupportedOutcome>` / `(owner, listener, options?) => Subscription` | The underlying persistence handles, when configured; `eventHistory` pages one run's or session's durable event history, `subscribeEventHistory` replays then live-tails it with no gap or duplicate at the handoff (AB-91/AB-311). |
 | `shutdown(options?)` | `Promise<BureauShutdownReport>` | AB-207—the awaited drain. `{ policy: 'abort' }` (the default) aborts every active run immediately, then awaits every Bureau-owned subsystem's teardown (scheduler, online-evals, webhook notifier, audit trail, durable engine); `{ policy: 'drain' }` lets every caller-owned run (`bureau.run`/session-owned) reach its own natural terminal result while Bureau-owned background work is stopped identically to `'abort'`. `timeoutMilliseconds` bounds the WAIT only—on elapse, `shutdown()` resolves (never rejects) reporting every still-outstanding owner `'unresolved'`; the underlying drain is not abandoned, only the wait for it. |
 | `dispose()` | `Promise<void>` | Thin wrapper over `shutdown({ policy: 'abort' })`, kept for its existing `Promise<void>` shape. Tears down subscriptions and closes owned storage handles—genuinely awaited now (AB-207), not fire-and-forget. |
@@ -583,6 +577,63 @@ The handler has no run-starting operation of its own, so the host starts the run
 
 `bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
 
+### MCP adapter (COR-839, COR-910)
+
+`createBureauHandler(bureau, { mcp: {} })` mounts Bureau's `mcpExposable` management operations as MCP tools, at `/mcp` unless `mcp.pathPrefix` says otherwise. It is a thin wrapper over Weft's [`createOperationMcpMount`](../weft/README.md#mcp-for-an-operation-catalog), so it serves both protocol eras (2026-07-28 and 2025-11-25) statelessly, and every call runs through the catalog pipeline as the caller the handler authenticated: the same access policy, owner predicate, and scopes as `POST /jsonrpc`. A caller sees only what it could already read there. Omit `mcp` and nothing is mounted.
+
+The target is an AI host that observes and steers existing work: Claude Desktop and Claude Code, over Streamable HTTP. Interborough mounts the adapter at `/bureau/mcp` (not `/mcp`, which is the engine's own endpoint) and its on-demand `smoke:claude-code-mcp` script connects a real Claude Code to it. Other hosts that speak Streamable HTTP MCP should work, but none is tested or supported.
+
+Twenty-one operations are exposed, as tools of the same name:
+
+| Area             | Tools                                                                |
+| ---------------- | -------------------------------------------------------------------- |
+| Tasks            | `bureau.tasks.list`, `get`, `events`, `inspect`, `respond`, `cancel` |
+| Reviews          | `bureau.reviews.list`, `get`, `resolve`                              |
+| Contexts         | `bureau.contexts.list`, `get`, `input`                               |
+| Goals, schedules | `bureau.goals.list`, `get`; `bureau.schedules.list`, `get`           |
+| Workflows        | `bureau.workflows.list`, `get`; `bureau.workflows.runs.list`, `get`  |
+| Agents           | `bureau.agents.list`                                                 |
+
+`bureau.tasks.events` is the one subscription: a call answers with the events recorded after its `fromCursor`, up to `maxEvents`, and the cursor to resume from, so a client polls it rather than holding a stream. `respond`, `cancel`, `resolve`, and `input` change state and carry the matching tool annotations. Nothing here starts a run, creates or edits a goal, schedule, or workflow, reads memory or assets, or touches agent definitions: those stay on the management plane, and `bureau.surfaces` commands have no MCP tool.
+
+```ts
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import type { createBureauHandler } from '@lostgradient/bureau';
+
+// A handler created with `createBureauHandler(bureau, { authentication, mcp: {} })`.
+declare const handler: ReturnType<typeof createBureauHandler>;
+
+const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+  fetch: (url, init) => {
+    const request = new Request(url, init);
+    request.headers.set('X-API-Key', 'alice-key');
+    return handler(request);
+  },
+});
+const client = new Client({ name: 'review-desk', version: '1.0.0' });
+await client.connect(transport);
+
+// Find the reviews waiting for this caller, then approve the first one.
+const pending = await client.callTool({ name: 'bureau.reviews.list', arguments: {} });
+console.log(pending.structuredContent);
+await client.callTool({
+  name: 'bureau.reviews.resolve',
+  arguments: { id: 'review-1', decision: 'approve' },
+});
+await client.close();
+```
+
+#### MCP Apps on the adapter
+
+Two further options let an application publish MCP Apps beside the tools. `resources` injects `ui://` resources the server lists and reads, and `toolMeta` attaches `_meta` to a tool's listing by operation name. Both are injected because Bureau must not depend on an application's bundle: Interborough builds the pages and hands them in. Bureau adds no operation for an app; each page uses the tools above, as the signed-in caller.
+
+| Resource | Linked tool | What it does |
+| --- | --- | --- |
+| `ui://bureau/run-inspector/v1` | `bureau.tasks.inspect` | One task's liveness, ownership tree, progress, result, and abort. Reads `bureau.tasks.inspect` (`bureau.task-inspection.v1`: no transcript, prompt, tool argument, result, or checkpoint) and aborts through `bureau.tasks.cancel`. |
+| `ui://bureau/pending-review/v1` | `bureau.reviews.list` | The caller's pending reviews. Reads through `bureau.reviews.get` and decides through `bureau.reviews.resolve`: approve, deny, or reject with feedback, which `reject` carries as its `reason`. |
+
+The inspector also follows a task through `bureau.tasks.events`. Both declare an empty content-security policy (no network origin, frame, or base URI) and no permissions, which a host reads as denied, and neither asks for a dedicated sandbox origin. The version is part of each URI: a changed contract is a new URI. Closing an app never cancels a run; abort is the explicit `bureau.tasks.cancel`. The MCP Apps contract Bureau uses for tracked surfaces, including the `mcp-app` representation, is [`documentation/interactive-surface.md`](./documentation/interactive-surface.md); the adapter's apps are plain tool-linked pages and do not create surfaces.
+
 ### Owner of record (COR-718)
 
 Every resource has one **owner**: the principal that owns it, stored once when the resource is created. The **actor** is whoever performed an action, and is recorded on the audit entry's `principal`. A service principal (`system:scheduler`, `system:recovery`, `system:expiry`) is only ever an actor: work the scheduler, recovery, or expiry starts or changes keeps the owner of the resource it acts on.
@@ -861,7 +912,7 @@ subscription.unsubscribe();
 
 Pass a `GovernedMemory` as `BureauOptions.memory`, and every run Bureau composes recalls through mandatory recall admission and stores its final answer through write admission, both under an authority derived from the run's persisted request. The host builds the instance with `createGovernedMemory()` from `@lostgradient/memory`, so the host owns its storage, ledger, and policy. Bureau calls `memory.init()` while it composes and calls `memory.close()` without awaiting it when it shuts down. `bureau.memory` is the same instance, for the governance work the host does itself. The [memory README's governed memory section](../memory/README.md#governed-memory) is the API reference, and [Memory governance and lifecycle evaluation](../../documentation/memory-governance.md) covers the lifecycle across packages.
 
-This example runs in [`src/memory-governance-guide.test.ts`](./src/memory-governance-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and asserts every commented result. It uses the deprecated `generate`, `stopWhen`, and `createRun` fields, because only the runs Bureau composes itself get memory hooks:
+This example runs in [`src/memory-governance-guide.test.ts`](./src/memory-governance-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and asserts every commented result. It uses `createRun`, because only the runs Bureau composes itself get memory hooks:
 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
@@ -873,7 +924,12 @@ import {
   createMockEmbedder,
   createWeftMemoryRecordStorage,
 } from '@lostgradient/memory';
-import { createMockGenerate, stopWhen, waitForRunState } from '@lostgradient/operative';
+import {
+  createAgent,
+  createMockGenerate,
+  stopWhen,
+  waitForRunState,
+} from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 
 const storage = new MemoryStorage();
@@ -886,16 +942,19 @@ const memory = createGovernedMemory({
 
 const bureau = await createBureau({
   id: 'acme', // the tenant: memory is partitioned by the Bureau's identifier
-  agents: {},
-  generate: createMockGenerate([{ content: 'Booked seat 14C for Alice.', toolCalls: [] }]),
-  stopWhen: stopWhen.noToolCalls(),
+  agents: {
+    default: createAgent({
+      generate: createMockGenerate([{ content: 'Booked seat 14C for Alice.', toolCalls: [] }]),
+      stopWhen: stopWhen.noToolCalls(),
+    }),
+  },
   memory,
   // A caller-supplied request authority is re-validated before every run.
   requestAuthorityValidator: () => true,
 });
 
 const run = await bureau.createRun({
-  agentName: 'bureau',
+  agentName: 'default',
   message: 'Book the 9:40 to Denver.',
   principal: 'alice', // the run's owner of record, whose partition its memory is written to
   sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
@@ -921,7 +980,7 @@ const auditor = createMemoryAuthority({
   policyRevision: 'authorization:7',
   projection: 'audit',
 });
-const [stored] = await bureau.memory!.list(auditor, { collection: 'bureau' }); // the agent's name
+const [stored] = await bureau.memory!.list(auditor, { collection: 'default' }); // the agent's name
 console.log(stored?.content); // 'Booked seat 14C for Alice.'
 console.log(stored?.source); // 'conversation'
 console.log(stored?.trust); // 'untrusted'
@@ -993,7 +1052,7 @@ const result = await run.result();
 
 `run`'s synchronous throws are limited to an unknown `name`, a disposed bureau, and malformed `input`/`options`; everything else (session, provider, tool, policy, or abort failures) settles through the returned `AgentRun` handle. `BureauRunOptions` (`sessionId?`, `signal?`, `traceContext?`, `withTraceContext?`, `principal?`) carries only call-scoped concerns—there is no per-call `systemPrompt`/`maximumSteps`/`maximumTokens` override; anything that shapes how an agent runs is fixed on its own definition (`createAgent({ instructions, maximumSteps, ... })`). `sessionId` correlates a durable dispatch to the engine's own session/recovery bookkeeping (a no-op when the run is dispatched in-memory); `principal` (AB-241) forwards into `AgentRunContext.principal` on both dispatch branches—the direct branch hands it straight to the agent's own `run()`, and the durable branch additionally records it exactly as `Bureau.createRun` does (`LivenessSnapshot.owner`, and the in-memory `runAttribution` map `eventHistory`'s principal gate consults)—so a caller sees the same attribution regardless of which branch a given agent takes. A non-string value throws synchronously (`BureauError` `BAD_REQUEST`).
 
-`run` is independent of, and additive to, `createRun` below (`createRun` and the bureau-level `generate`/`provider`/`providers`/`routing`/`toolbox`/`guardrails`/`skills`/`stopWhen`/`maximumSteps`/`systemPrompt` fields it drives are all **deprecated**, not yet removed—see AB-242's decision record and the removal issue it names, AB-352): `run` dispatches to a catalog `RunnableAgent` (agent-owned generate/tools/durability by construction), while `createRun` keeps driving bureau-level `generate`/`provider` through the session/durable-execution machinery documented above. A bureau may use either, both, or neither—pass `agents: {}` for a bureau that only uses `createRun`. When a durable engine is composed (a persistent `storage` backend, or `durableExecution: true`) and the named agent supports AB-21's definition-resolution capability (every `createAgent`/`createLazyAgent` result does), `run` drives the dispatch through that same durable engine so it survives a crash and resumes; otherwise the agent's own in-memory `run()` is used directly.
+`run` is independent of, and additive to, `createRun` below: `run` dispatches to a catalog `RunnableAgent` (agent-owned generate/tools/durability by construction) with no session, while `createRun` drives the same catalog agent through the session/durable-execution machinery documented above. A bureau may use either or both. When a durable engine is composed (a persistent `storage` backend, or `durableExecution: true`) and the named agent supports AB-21's definition-resolution capability (every `createAgent`/`createLazyAgent` result does), `run` drives the dispatch through that same durable engine so it survives a crash and resumes; otherwise the agent's own in-memory `run()` is used directly.
 
 ### Agent files (COR-1524)
 
@@ -1140,12 +1199,13 @@ const cleanupReport = await run.closed();
 await harness.runtime.deferred.drain();
 
 const artifact = await assembleReproductionArtifact(harness, recorder, {
+  effectiveModel: { provider: 'anthropic', model: 'claude-sonnet-4.5' },
   terminalResult,
   cleanupReport,
 });
 ```
 
-`ReproductionArtifact` here is `@lostgradient/operative`'s canonical declaration (AB-334), instantiated with Bureau's own `cleanupReport` union—`CleanupAcknowledgement | DeferredDrainReport | BureauShutdownReport`—since `bureau` can import that shared shape from `operative` but never the reverse. Assembles the normalized `ReproductionArtifact` AB-92's decision record fixes (AC8) from one harness run: `sourceRevision` (`git rev-parse HEAD`, read once), `packageVersions` (every workspace package's `name`/`version`, read from its `package.json`), `effectiveModel` (`harness.bureau.getConfiguration().provider`—requires `BureauOptions.provider` to be set alongside a scripted `generate`; throws rather than inventing a provider/model when it is not), `clockOrigin`/`identifierSeed`/`randomSeed` (`harness.runtime`'s own recorded seeds—present even for an unpinned, default-constructed runtime), `scriptedOutcomes`/`firedFaults` (always empty until AB-95's fault engine exists), `causalTrace` (`recorder.normalize()` and nothing else), `terminalResult`, and `cleanupReport`. `terminalResult` is redacted through `summarizeToolInput` before embedding—a privileged key (`password`, `secret`, `token`, `apiKey`, `authorization`, `credential`, `privateKey`) never appears in the serialized artifact. The returned object's keys are always written in AB-92's fixed field order, so `JSON.stringify` is byte-identical across two runs of the same scripted case with the same seeds.
+`ReproductionArtifact` here is `@lostgradient/operative`'s canonical declaration (AB-334), instantiated with Bureau's own `cleanupReport` union—`CleanupAcknowledgement | DeferredDrainReport | BureauShutdownReport`—since `bureau` can import that shared shape from `operative` but never the reverse. Assembles the normalized `ReproductionArtifact` AB-92's decision record fixes (AC8) from one harness run: `sourceRevision` (`git rev-parse HEAD`, read once), `packageVersions` (every workspace package's `name`/`version`, read from its `package.json`), `effectiveModel` (named by the caller in `options`, because no Bureau-wide provider holds one: every run belongs to a catalog agent that owns its model), `clockOrigin`/`identifierSeed`/`randomSeed` (`harness.runtime`'s own recorded seeds—present even for an unpinned, default-constructed runtime), `scriptedOutcomes`/`firedFaults` (always empty until AB-95's fault engine exists), `causalTrace` (`recorder.normalize()` and nothing else), `terminalResult`, and `cleanupReport`. `terminalResult` is redacted through `summarizeToolInput` before embedding—a privileged key (`password`, `secret`, `token`, `apiKey`, `authorization`, `credential`, `privateKey`) never appears in the serialized artifact. The returned object's keys are always written in AB-92's fixed field order, so `JSON.stringify` is byte-identical across two runs of the same scripted case with the same seeds.
 
 `assembleReproductionArtifact` takes an optional fourth `environment` argument (AB-264): `{ sourceRevision?, packageVersions? }`. Supplying a field there replaces this function's own discovery for that field—`git rev-parse HEAD` and the `packages/*` manifest glob both assume a real repository checkout rooted at a `turbo.json`, neither of which exists inside a packed-and-path-installed tarball consumer (`scripts/verify-bureau-tarball-boundary.ts`'s probe passes both explicitly, since it already knows them from its own pack step). Omitted fields still discover normally, so every existing caller inside this repository is unaffected.
 
@@ -1161,6 +1221,7 @@ declare const harness: BureauTestHarness<{ worker: StandaloneAgent }>;
 declare const recorder: EventRecorder;
 declare const terminalResult: AssembleReproductionArtifactOptions['terminalResult'];
 declare const cleanupReport: AssembleReproductionArtifactOptions['cleanupReport'];
+declare const effectiveModel: AssembleReproductionArtifactOptions['effectiveModel'];
 
 const sourceRevision = '0123456789abcdef0123456789abcdef01234567';
 const packageVersions = { '@lostgradient/bureau': '0.0.0' };
@@ -1168,7 +1229,7 @@ const packageVersions = { '@lostgradient/bureau': '0.0.0' };
 const artifact = await assembleReproductionArtifact(
   harness,
   recorder,
-  { terminalResult, cleanupReport },
+  { effectiveModel, terminalResult, cleanupReport },
   { sourceRevision, packageVersions },
 );
 ```

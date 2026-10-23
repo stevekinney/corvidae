@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import type { WorkflowState } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau, resolveWaitForDurableRun } from './create-bureau';
 import { waitForCondition } from './test';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const bureaus: Bureau[] = [];
 const directories: string[] = [];
@@ -30,16 +31,19 @@ async function durableBureau(
   generate: GenerateFunction,
   options: { readonly storagePath?: string } = {},
 ): Promise<Bureau> {
-  const bureau = await createBureau({
-    agents: {},
-    generate,
-    toolbox: createToolbox([]),
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate,
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
     storage:
       options.storagePath === undefined
         ? { type: 'memory' }
         : { type: 'sqlite', path: options.storagePath },
     durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
     ...(options.storagePath === undefined
       ? {}
       : {
@@ -57,7 +61,7 @@ async function durableBureau(
 describe('Bureau.waitForDurableRun', () => {
   it('resolves with the terminal state once this bureau commits the run', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
 
     const state = await bureau.waitForDurableRun(run.id);
 
@@ -68,7 +72,7 @@ describe('Bureau.waitForDurableRun', () => {
 
   it('resolves immediately for a run that is already terminal', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
     await bureau.waitForDurableRun(run.id);
 
     const again = await bureau.waitForDurableRun(run.id);
@@ -83,10 +87,13 @@ describe('Bureau.waitForDurableRun', () => {
   });
 
   it('resolves undefined when no durable engine is composed', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'done', toolCalls: [] }),
-      toolbox: createToolbox([]),
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'done', toolCalls: [] }),
+          toolbox: createToolbox([]),
+        }),
+      },
     });
     bureaus.push(bureau);
 
@@ -105,7 +112,7 @@ describe('Bureau.waitForDurableRun', () => {
       },
       { storagePath },
     );
-    const run = await owner.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await owner.createRun({ agentName: 'default', message: 'go' });
     const observer = await durableBureau(async () => ({ content: 'unused', toolCalls: [] }), {
       storagePath,
     });
@@ -165,20 +172,23 @@ describe('Bureau.waitForDurableRun', () => {
 
   it('refuses to wait for a non-terminal run under durableBackgroundTasks: manual, and still reports a terminal one', async () => {
     const release = Promise.withResolvers<void>();
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        await release.promise;
-        return { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            await release.promise;
+            return { content: 'done', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([]),
       storage: { type: 'memory' },
       durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
       durableBackgroundTasks: 'manual',
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ agentName: 'bureau', message: 'go' });
+    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
 
     const refusal = await bureau.waitForDurableRun(run.id).then(
       () => undefined,

@@ -9,7 +9,12 @@
 // complete but bureau's own row never lands. Bureau B then recovers the run at
 // boot, finds nothing to reconstruct, and replays straight into the wait.
 
-import { type GenerateFunction, HumanWaitParkedEvent, stopWhen } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  HumanWaitParkedEvent,
+  stopWhen,
+  createAgent,
+} from '@lostgradient/operative';
 import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -19,6 +24,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import { BureauError, createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const STEP_KEY_PREFIX = 'durable-run:';
 const textDecoder = new TextDecoder();
@@ -147,17 +153,20 @@ describe('a reattached run whose first park happens after boot-time reconstructi
     let verificationStorage: Storage | undefined;
     let verificationDisposals = 0;
     try {
-      bureauA = await createBureau({
-        agents: {},
-        generate: async () => humanInputCall('call-a'),
-        toolbox: createEmptyToolbox(),
+      bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => humanInputCall('call-a'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: intercept.storage,
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-me' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
       const runId = run.id;
       await waitForCondition(
         () => reviewsFor(bureauA!, runId).length === 1,
@@ -183,18 +192,21 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       expect(persisted.some((text) => text.includes('requestHumanInput'))).toBe(false);
 
       let bCalls = 0;
-      bureauB = await createBureau({
-        agents: {},
-        generate: async () => {
-          bCalls++;
-          return { content: 'resumed after recovery', toolCalls: [] };
+      bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              bCalls++;
+              return { content: 'resumed after recovery', toolCalls: [] };
+            },
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
       expect(bCalls).toBe(0);
       const durableRun = await bureauB.getDurableRun(runId);
@@ -258,24 +270,27 @@ describe('a reattached run whose first park happens after boot-time reconstructi
     let bureauB: Bureau | undefined;
     try {
       let aCalls = 0;
-      bureauA = await createBureau({
-        agents: {},
-        generate: async () => {
-          aCalls++;
-          if (aCalls === 1) return humanInputCall('call-a1');
-          if (aCalls === 2) {
-            return { content: '', toolCalls: [{ id: 'call-a2', name: 'next', arguments: {} }] };
-          }
-          return new Promise<never>(() => {});
+      bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              aCalls++;
+              if (aCalls === 1) return humanInputCall('call-a1');
+              if (aCalls === 2) {
+                return { content: '', toolCalls: [{ id: 'call-a2', name: 'next', arguments: {} }] };
+              }
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-then-continue' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'park-then-continue' });
       const runId = run.id;
       await waitForCondition(
         () => reviewsFor(bureauA!, runId).length === 1,
@@ -290,18 +305,21 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       );
 
       let bCalls = 0;
-      bureauB = await createBureau({
-        agents: {},
-        generate: async () => {
-          bCalls++;
-          return { content: 'done after recovery', toolCalls: [] };
+      bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              bCalls++;
+              return { content: 'done after recovery', toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
       await waitForCompleted(bureauB, runId);
 
@@ -320,22 +338,25 @@ describe('a reattached run whose first park happens after boot-time reconstructi
 describe('bounded duplicate park events (COR-121)', () => {
   it('a fresh run keeps exactly the tool dispatch', async () => {
     let calls = 0;
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => {
-        calls++;
-        return calls === 1
-          ? humanInputCall('call-1')
-          : { content: 'approved and done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            calls++;
+            return calls === 1
+              ? humanInputCall('call-1')
+              : { content: 'approved and done', toolCalls: [] };
+          },
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
       humanInput: true,
-      stopWhen: stopWhen.noToolCalls(),
     });
     try {
-      const run = await bureau.createRun({ agentName: 'bureau', message: 'park-me' });
+      const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
       await waitForCondition(
         () => reviewsFor(bureau, run.id).length === 1,
         'expected the fresh run to park',
@@ -356,35 +377,41 @@ describe('bounded duplicate park events (COR-121)', () => {
     let bureauA: Bureau | undefined;
     let bureauB: Bureau | undefined;
     try {
-      bureauA = await createBureau({
-        agents: {},
-        generate: async () => humanInputCall('call-a'),
-        toolbox: createEmptyToolbox(),
+      bureauA = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => humanInputCall('call-a'),
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
-      const run = await bureauA.createRun({ agentName: 'bureau', message: 'park-me' });
+      const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
       await waitForCondition(
         () => reviewsFor(bureauA!, run.id).length === 1,
         'expected bureau A to park',
       );
 
       let bCalls = 0;
-      bureauB = await createBureau({
-        agents: {},
-        generate: async () => {
-          bCalls++;
-          return { content: 'resumed', toolCalls: [] };
+      bureauB = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => {
+              bCalls++;
+              return { content: 'resumed', toolCalls: [] };
+            },
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
-        toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
-        stopWhen: stopWhen.noToolCalls(),
       });
       await waitForCondition(
         () => reviewsFor(bureauB!, run.id).length === 1,
@@ -428,17 +455,20 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
 
     let bureau: Bureau | undefined;
     try {
-      bureau = await createBureau({
-        agents: {},
-        generate,
-        toolbox: createEmptyToolbox(),
+      bureau = await createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate,
+            toolbox: createEmptyToolbox(),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
         storage: intercept.storage,
         durableExecution: true,
         humanInput: true,
         flowControl: { concurrency: { limit: 1 } },
-        stopWhen: stopWhen.noToolCalls(),
       });
-      const runOne = await bureau.createRun({ agentName: 'bureau', message: 'park-me' });
+      const runOne = await bureau.createRun({ agentName: 'default', message: 'park-me' });
       await waitForCondition(
         () => reviewsFor(bureau!, runOne.id).length === 1,
         'expected run one to park',
@@ -449,7 +479,7 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
       intercept.release();
       await waitForCondition(() => calls === 2, 'expected the continuation generate to start');
 
-      const rejected = await bureau.createRun({ agentName: 'bureau', message: 'second' }).then(
+      const rejected = await bureau.createRun({ agentName: 'default', message: 'second' }).then(
         () => undefined,
         (error: unknown) => error,
       );

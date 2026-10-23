@@ -138,7 +138,7 @@ describe('bureau.deployment.get', () => {
     const opened = await openBureau({});
     try {
       const run = await opened.bureau.createRun({
-        agentName: 'bureau',
+        agentName: 'default',
         message: 'hold',
         principal: 'api-key:alice',
       });

@@ -5,7 +5,12 @@
  * with no toolbox of its own, are unverifiable too. A snapshot that verifiably names no skill is
  * not, and such an approval runs as before.
  */
-import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  stopWhen,
+  type Toolbox,
+  createAgent,
+} from '@lostgradient/operative';
 import { KEYS, type Storage } from '@lostgradient/weft';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
@@ -31,6 +36,7 @@ import {
 } from './skill-policy-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
+import { createAgentSkills } from './agent-skills';
 
 const harness = createScheduleFireHarness();
 
@@ -187,11 +193,15 @@ async function refusalOf(bureau: Bureau, id: string): Promise<BureauError> {
 async function parkedFireWithSkill(catalog: SkillCatalogOnDisk) {
   const path = harness.nextDatabasePath();
   const first = await harness.open({
-    generate: lockedAfterCharging('wait'),
-    stopWhen: stopWhen.noToolCalls(),
-    skills: { catalog: await catalog.discover() },
-    toolbox: chargeApprovalToolbox([]),
     storage: { type: 'sqlite', path },
+    agents: {
+      default: createAgent({
+        generate: lockedAfterCharging('wait'),
+        stopWhen: stopWhen.noToolCalls(),
+        skills: createAgentSkills({ catalog: await catalog.discover() }),
+        toolbox: chargeApprovalToolbox([]),
+      }),
+    },
   });
   const { fireId, scheduleId } = await fireOnce(first, OWNER.alice, SESSION);
   const review = await reviewOf(first, fireId);
@@ -211,13 +221,17 @@ async function restartFire(
   wrap?: (storage: Storage) => Storage,
 ) {
   return harness.open({
-    generate: lockedAfterCharging('wait'),
-    stopWhen: stopWhen.noToolCalls(),
-    skills: { catalog: await catalog.discover() },
-    toolbox: chargeApprovalToolbox(charges),
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     storage:
       wrap === undefined ? { type: 'sqlite', path } : await harness.sqliteStorage(path, wrap),
+    agents: {
+      default: createAgent({
+        generate: lockedAfterCharging('wait'),
+        stopWhen: stopWhen.noToolCalls(),
+        skills: createAgentSkills({ catalog: await catalog.discover() }),
+        toolbox: chargeApprovalToolbox(charges),
+      }),
+    },
   });
 }
 
@@ -294,14 +308,18 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     const generate: GenerateFunction = (context) =>
       phase.first ? locked(context) : Promise.resolve({ content: 'nothing to do', toolCalls: [] });
     const first = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const created = await first.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -343,11 +361,15 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     }, 'the newer fire to take the session');
     const charges: number[] = [];
     const restarted = await harness.open({
-      generate: () => Promise.resolve({ content: 'nothing to do', toolCalls: [] }),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate: () => Promise.resolve({ content: 'nothing to do', toolCalls: [] }),
+          stopWhen: stopWhen.noToolCalls(),
+          skills: createAgentSkills({ catalog: await catalog.discover() }),
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     const restored = await reviewOf(restarted, fireId);
 
@@ -400,15 +422,15 @@ async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
   const options = async () => ({
     generate: lockedAfterCharging('stop'),
     stopWhen: stopWhen.noToolCalls(),
-    skills: { catalog: await catalog.discover() },
+    skills: createAgentSkills({ catalog: await catalog.discover() }),
   });
   const first = await harness.open({
     ...(await options()),
-    toolbox: chargeApprovalToolbox([]),
     storage: { type: 'sqlite', path },
+    toolbox: chargeApprovalToolbox([]),
   });
   const run = await first.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'charge, then lock',
     principal: OWNER.alice,
   });
@@ -434,8 +456,8 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
     });
     const restarted = await harness.open({
       ...(await options()),
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -461,8 +483,8 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
     const charges: number[] = [];
     const restarted = await harness.open({
       ...(await options()),
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
@@ -513,20 +535,20 @@ describe('a restored approval of a run that never activated a skill', () => {
     const options = async () => ({
       generate: chargesOnce,
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-      skills: { catalog: await catalog.discover() },
+      skills: createAgentSkills({ catalog: await catalog.discover() }),
     });
     const first = await harness.open({
       ...(await options()),
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      toolbox: chargeApprovalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'no-skill-session');
     await reviewOf(first, fireId);
     const charges: number[] = [];
     const restarted = await harness.open({
       ...(await options()),
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
 
@@ -547,13 +569,17 @@ describe('a restored approval of a run that never activated a skill', () => {
           })
         : Promise.resolve({ content: 'nothing to do', toolCalls: [] });
     const first = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: chargeApprovalToolbox([]),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: chargeApprovalToolbox([]),
+        }),
+      },
     });
     const created = await first.createSchedule({
-      agentName: 'researcher',
+      agentName: 'default',
       input: 'check in',
       spec: '1m',
       principal: OWNER.alice,
@@ -589,51 +615,18 @@ describe('a restored approval of a run that never activated a skill', () => {
     }, 'the newer fire to take the session');
     const charges: number[] = [];
     const restarted = await harness.open({
-      generate,
-      stopWhen: stopWhen.noToolCalls(),
-      toolbox: chargeApprovalToolbox(charges),
       storage: { type: 'sqlite', path },
+      agents: {
+        default: createAgent({
+          generate,
+          stopWhen: stopWhen.noToolCalls(),
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     const restored = await reviewOf(restarted, fireId);
 
     await approve(restarted, restored.id);
-
-    expect(charges).toEqual([4242]);
-  });
-
-  it('runs as before for a session run with no toolbox of its own', async () => {
-    const path = harness.nextDatabasePath();
-    const options = {
-      generate: chargesOnce,
-      stopWhen: stopWhen.noToolCalls(),
-    };
-    const first = await harness.open({
-      ...options,
-      toolbox: chargeApprovalToolbox([]),
-      storage: { type: 'sqlite', path },
-    });
-    const run = await first.createRun({
-      agentName: 'bureau',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
-    const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
-      'the session run’s approval',
-    );
-    const charges: number[] = [];
-    const restarted = await harness.open({
-      ...options,
-      toolbox: chargeApprovalToolbox(charges),
-      storage: { type: 'sqlite', path },
-    });
-    await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
-      'the restored approval',
-    );
-    scheduledFireReviewStateOf(restarted).runToolboxesByRunId.delete(run.id);
-
-    await approve(restarted, review.id);
 
     expect(charges).toEqual([4242]);
   });
@@ -647,12 +640,19 @@ describe('a restored session-run approval is decided under the snapshot read at 
     withSkills = true,
   ) {
     const parked = await parkedRunWithSkill(catalog);
+    const skills = withSkills
+      ? { skills: createAgentSkills({ catalog: await catalog.discover() }) }
+      : {};
     const restarted = await harness.open({
-      generate: lockedAfterCharging('stop'),
-      stopWhen: stopWhen.noToolCalls(),
-      ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
-      toolbox: chargeApprovalToolbox(charges),
       storage: await harness.sqliteStorage(parked.path, sessionBodyReads(reads)),
+      agents: {
+        default: createAgent({
+          generate: lockedAfterCharging('stop'),
+          stopWhen: stopWhen.noToolCalls(),
+          ...skills,
+          toolbox: chargeApprovalToolbox(charges),
+        }),
+      },
     });
     const restored = await pollUntil(
       () => restarted.listPendingReviews().find((candidate) => candidate.id === parked.review.id),

@@ -22,6 +22,8 @@ import { writeFileSync } from 'node:fs';
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';
+import { createAgent } from '@lostgradient/operative';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const [backend, storagePath, markerPath] = process.argv.slice(2);
 
@@ -39,29 +41,32 @@ if (
 let scheduleId: string | undefined;
 let occurrence: number | undefined;
 
-const bureau = await createBureau({
-  agents: {},
-  generate: async () => {
-    const summary = scheduleId === undefined ? undefined : await bureau.getSchedule(scheduleId);
-    if (
-      scheduleId === undefined ||
-      occurrence === undefined ||
-      summary?.currentWorkflowId === undefined
-    ) {
-      process.stderr.write('child: the fire began without a recorded schedule fire\n');
-      process.exit(3);
-    }
-    // Written synchronously so it is on disk before the kill.
-    writeFileSync(
-      markerPath,
-      JSON.stringify({ scheduleId, occurrence, fireId: summary.currentWorkflowId }),
-      'utf8',
-    );
-    // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped.
-    process.kill(process.pid, 'SIGKILL');
-    return new Promise<never>(() => {});
+const bureau = await createBureau<AgentDefinitions>({
+  agents: {
+    default: createAgent({
+      generate: async () => {
+        const summary = scheduleId === undefined ? undefined : await bureau.getSchedule(scheduleId);
+        if (
+          scheduleId === undefined ||
+          occurrence === undefined ||
+          summary?.currentWorkflowId === undefined
+        ) {
+          process.stderr.write('child: the fire began without a recorded schedule fire\n');
+          process.exit(3);
+        }
+        // Written synchronously so it is on disk before the kill.
+        writeFileSync(
+          markerPath,
+          JSON.stringify({ scheduleId, occurrence, fireId: summary.currentWorkflowId }),
+          'utf8',
+        );
+        // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped.
+        process.kill(process.pid, 'SIGKILL');
+        return new Promise<never>(() => {});
+      },
+      toolbox: createToolbox([]),
+    }),
   },
-  toolbox: createToolbox([]),
   storage: { type: backend, path: storagePath },
   durableExecution: true,
   durableBackgroundTasks: 'manual',

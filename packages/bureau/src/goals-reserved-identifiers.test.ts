@@ -8,7 +8,7 @@
  * purge by id. So every prefix a goal derives an id under is refused for every
  * id an ordinary caller chooses, and a goal still runs under its own.
  */
-import { createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate, stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -24,6 +24,7 @@ import {
   workflowStatus,
 } from './testing/goal-fixtures.test-support';
 import type { Bureau } from './types';
+import type { AgentDefinitions } from './agent-catalog';
 
 const open: Bureau[] = [];
 
@@ -32,20 +33,22 @@ afterEach(async () => {
 });
 
 async function boot() {
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     agents: {
       worker: workerAgent(hangUntilAborted),
       planner: workerAgent(hangUntilAborted, 'planner'),
+      default: createAgent({
+        generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
+        toolbox: createToolbox([]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
     },
     validators: [createCheckValidator()],
-    generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
-    toolbox: createToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
-  const typed = bureau as unknown as Bureau;
+  const typed = bureau;
   open.push(typed);
   return typed;
 }
@@ -106,7 +109,7 @@ describe('an id an ordinary caller chooses', () => {
     const bureau = await boot();
 
     const error = await bureau
-      .createRun({ agentName: 'bureau', message: 'hello', sessionId })
+      .createRun({ agentName: 'default', message: 'hello', sessionId })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
@@ -140,7 +143,7 @@ describe('an id an ordinary caller chooses', () => {
     const bureau = await boot();
 
     const run = await bureau.createRun({
-      agentName: 'bureau',
+      agentName: 'default',
       message: 'hello',
       sessionId: 'goalpost',
     });

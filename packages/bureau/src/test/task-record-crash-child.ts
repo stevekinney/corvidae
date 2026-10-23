@@ -17,12 +17,13 @@
  */
 import { writeFileSync } from 'node:fs';
 
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
 import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';
 import { createAskingAgent, finishes } from './task-record-crash-agent';
+import type { AgentDefinitions } from '../agent-catalog';
 
 const [mode, storagePath, markerPath] = process.argv.slice(2);
 
@@ -63,15 +64,19 @@ const storage = new Proxy(raw, {
   },
 }) as Storage;
 
-const bureau = await createBureau({
+const bureau = await createBureau<AgentDefinitions>({
   id: 'task-record-crash',
-  agents: { asker: createAskingAgent() },
-  generate: finishes,
-  toolbox: createToolbox([]),
+  agents: {
+    asker: createAskingAgent(),
+    default: createAgent({
+      generate: finishes,
+      toolbox: createToolbox([]),
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    }),
+  },
   storage,
   durableExecution: true,
   humanInput: true,
-  stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   durableOwnership: { ownership: 'none' },
 });
 
@@ -85,7 +90,7 @@ const kill = (runId: string): never => {
 
 if (mode === 'settlement') {
   const run = await bureau.createRun({
-    agentName: 'bureau',
+    agentName: 'default',
     message: 'finish me',
     principal: 'api-key:alice',
   });

@@ -24,13 +24,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { ScheduleCompletedEvent, ScheduleFailedEvent, stopWhen } from '@lostgradient/operative';
+import {
+  ScheduleCompletedEvent,
+  ScheduleFailedEvent,
+  stopWhen,
+  createAgent,
+} from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
+import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'schedule-fire-crash-child.ts');
 const INTERVAL_MS = 60_000;
@@ -70,20 +76,23 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
     const fireReleased = new Promise<void>((resolve) => {
       releaseFire = resolve;
     });
-    const bureau = await createBureau({
-      agents: {},
-      generate: async (context) => {
-        generateCalls += 1;
-        await fireReleased;
-        conversations.add(context.conversation.current.id);
-        return { content: 'recovered', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async (context) => {
+            generateCalls += 1;
+            await fireReleased;
+            conversations.add(context.conversation.current.id);
+            return { content: 'recovered', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
-      toolbox: createToolbox([]),
       storage: { type: backend, path: storagePath },
       durableExecution: true,
       durableBackgroundTasks: 'manual',
       durableOwnership: { ownership: 'none' },
-      stopWhen: stopWhen.noToolCalls(),
     });
     scope.onHang(() => bureau.shutdown());
     try {

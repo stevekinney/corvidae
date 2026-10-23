@@ -51,7 +51,7 @@ const COVERAGE_TEST_ROOTS = ['scripts', 'src', 'tests'] as const;
  * Test files the coverage run leaves out: the Playwright lane, which `bun test` never runs, and
  * the host's suite, which runs under `bunfig.toml` rather than the DOM preload this run uses.
  */
-const EXCLUDED_COVERAGE_TEST_PREFIXES = ['tests/e2e/', 'src/host/'];
+const EXCLUDED_COVERAGE_TEST_PREFIXES = ['tests/e2e/', 'tests/mcp-apps/', 'src/host/'];
 const BUN_TEST_FILE_PATTERN = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]s|[jt]sx)$/;
 /**
  * The slow lane's files. `test` ignores `**\/*.slow.test.ts` and `test:slow` runs them under its own
