@@ -73,13 +73,27 @@ export function workflowEventsKey(workflowId: string): QueryKey {
 export const WORKFLOWS_LIST_KEY_PREFIX: QueryKey = ['workflows', 'list'];
 export const WORKFLOWS_AGGREGATE_KEY_PREFIX: QueryKey = ['workflows', 'aggregate'];
 export const SCHEDULES_LIST_KEY_PREFIX: QueryKey = ['schedules', 'list'];
+export const SCHEDULES_DETAIL_KEY_PREFIX: QueryKey = ['schedules', 'detail'];
+export const SCHEDULES_RUN_HISTORY_KEY_PREFIX: QueryKey = ['schedules', 'run-history'];
 export const REVIEWS_LIST_KEY_PREFIX: QueryKey = ['reviews', 'list'];
 export const WORKERS_LIST_KEY: QueryKey = ['workers', 'list'];
 
-/** Fleet event kinds with no `workflowId` that map to a specific list query to invalidate. Extend as new tracks add list surfaces. */
+/** Fleet kinds that end a run: the status a schedule's last-run glyph and recent-runs list read. */
+const WORKFLOW_SETTLED_KINDS: ReadonlySet<string> = new Set([
+  'workflow:completed',
+  'workflow:failed',
+  'workflow:cancelled',
+  'workflow:timed-out',
+]);
+
+/** Fleet kinds that move a schedule's own fields: when it last fired and when it fires next. */
+const SCHEDULE_FIRE_KINDS: ReadonlySet<string> = new Set([
+  'schedule:fired',
+  'schedule:missed-fire',
+]);
+
+/** Fleet event kinds with no `workflowId` that map to a specific list query to invalidate (a schedule's own are `applyScheduleFleetFrame`'s). Extend as new tracks add list surfaces. */
 const NON_WORKFLOW_KIND_INVALIDATION: ReadonlyMap<string, QueryKey> = new Map([
-  ['schedule:fired', SCHEDULES_LIST_KEY_PREFIX],
-  ['schedule:missed-fire', SCHEDULES_LIST_KEY_PREFIX],
   ['human-review:requested', REVIEWS_LIST_KEY_PREFIX],
   ['human-review:completed', REVIEWS_LIST_KEY_PREFIX],
   ['worker:connected', WORKERS_LIST_KEY],
@@ -131,8 +145,55 @@ export function applyWorkflowTailFrame(
 // FleetEventSource → cache
 // ---------------------------------------------------------------------------
 
+function runHistoryHolds(data: unknown, workflowId: string): boolean {
+  if (typeof data !== 'object' || data === null) return false;
+  const items: unknown = Reflect.get(data, 'items');
+  return (
+    Array.isArray(items) &&
+    items.some(
+      (item: unknown) =>
+        typeof item === 'object' && item !== null && Reflect.get(item, 'id') === workflowId,
+    )
+  );
+}
+
+/**
+ * Invalidates what a schedule's views derive from its runs, so none of them keeps showing the
+ * outcome of an earlier fire next to the time of a later one. A fire moves the schedule itself
+ * (its list rows and detail: last and next fire) and adds a run to its history, so all three are
+ * refetched. A run settling changes only its own status, so only the run histories that list that
+ * run are refetched: the fire that launched it already refreshed the history to hold it.
+ */
+export function applyScheduleFleetFrame(queryClient: QueryClient, frame: FleetEventFrame): void {
+  if (SCHEDULE_FIRE_KINDS.has(frame.kind)) {
+    void queryClient.invalidateQueries({ queryKey: SCHEDULES_LIST_KEY_PREFIX });
+    void queryClient.invalidateQueries({ queryKey: SCHEDULES_DETAIL_KEY_PREFIX });
+    void queryClient.invalidateQueries({ queryKey: SCHEDULES_RUN_HISTORY_KEY_PREFIX });
+    return;
+  }
+  const settledId = frame.workflowId;
+  if (settledId !== undefined && WORKFLOW_SETTLED_KINDS.has(frame.kind)) {
+    void queryClient.invalidateQueries({
+      queryKey: SCHEDULES_RUN_HISTORY_KEY_PREFIX,
+      predicate: (query) => runHistoryHolds(query.state.data, settledId),
+    });
+  }
+}
+
+/**
+ * Subscribes schedule invalidation to a fleet source and returns the unsubscribe. The shell calls it
+ * once, with its one shared source, so every schedule view follows the engine whichever page is open.
+ */
+export function subscribeScheduleInvalidation(
+  source: { subscribe(listener: (frame: FleetEventFrame) => void): () => void },
+  queryClient: QueryClient,
+): () => void {
+  return source.subscribe((frame) => applyScheduleFleetFrame(queryClient, frame));
+}
+
 /** Applies one `FleetEventSource` frame: invalidates the list/detail/aggregate queries it affects. Never writes into the events append cache — see module doc. */
 export function applyFleetEventFrame(queryClient: QueryClient, frame: FleetEventFrame): void {
+  applyScheduleFleetFrame(queryClient, frame);
   if (frame.workflowId !== undefined) {
     void queryClient.invalidateQueries({ queryKey: WORKFLOWS_LIST_KEY_PREFIX });
     void queryClient.invalidateQueries({ queryKey: WORKFLOWS_AGGREGATE_KEY_PREFIX });
