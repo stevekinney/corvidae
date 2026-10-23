@@ -92,6 +92,7 @@ describe('a continuation whose receipt could not be recorded', () => {
         pushNotifications: false,
       });
       const handler = createBureauA2ARequestHandler({
+        publicUrl: 'http://localhost',
         agentName: 'asker',
         card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
         bureau: opened.bureau,
@@ -169,6 +170,7 @@ describe('a completed task whose reply this instance cannot read yet', () => {
         pushNotifications: false,
       });
       const handler = createBureauA2ARequestHandler({
+        publicUrl: 'http://localhost',
         agentName: 'asker',
         card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
         bureau,

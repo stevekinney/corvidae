@@ -77,6 +77,7 @@ import {
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
+import { mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
@@ -828,6 +829,9 @@ function createA2AMount(
         { readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined } | undefined;
       if (described === undefined || agent === undefined) return undefined;
       return {
+        outputModes: mediaOutputModesOf(
+          readGenerationProfile(agent as Parameters<typeof readGenerationProfile>[0]).descriptors,
+        ),
         catalogName: agentName,
         displayName: described.displayName,
         description: described.description ?? undefined,
@@ -864,7 +868,7 @@ function createPushSupport(
     checkpoints,
     delivery,
     tenant: bureau.id,
-    reader: createTaskReader({ bureau, records }),
+    reader: createTaskReader({ bureau, records, publicUrl: options.publicUrl as string }),
     timers: createDefaultRuntimeServices().timers,
     sweepMs: delivery.sweepIntervalMs,
   });
