@@ -275,6 +275,8 @@ export type World = {
   failSchedules: boolean;
   /** The agent each Bureau schedule runs, by schedule id. A schedule that is not here is not a Bureau agent schedule. */
   scheduleAgents: Record<string, string>;
+  /** The text each Bureau schedule sends its agent, by schedule id. */
+  scheduleInputs: Record<string, string>;
   /** What `bureau.agents.list` answers. */
   agents: Array<Record<string, unknown>>;
   /** Makes `bureau.schedules.list` answer with a fault, as a Bureau that is down would. */
@@ -295,6 +297,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     failSchedules: false,
     scheduleAgents: {},
+    scheduleInputs: {},
     agents: [],
     failBureauSchedules: false,
     failBureauFiles: false,
@@ -375,6 +378,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     id: schedule.id,
     owner: 'anonymous:local',
     agentName: world.scheduleAgents[schedule.id] ?? null,
+    inputPreview: world.scheduleInputs[schedule.id] ?? null,
     workflowType: schedule.workflowType,
     description: schedule.description ?? null,
     cronExpression: schedule.cronExpression ?? null,
@@ -430,6 +434,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       }
       world.schedules.push(schedule);
       world.scheduleAgents[schedule.id] = String(params['agentName']);
+      world.scheduleInputs[schedule.id] = String(params['input']);
       return bureauView(schedule);
     },
     'bureau.schedules.pause': (params) => {

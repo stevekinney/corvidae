@@ -215,6 +215,7 @@ describe('connectNotificationFeed', () => {
             id: 's-1',
             owner: 'anonymous:local',
             agentName: 'assistant',
+            inputPreview: null,
             workflowType: 'agentRun',
             description: 'Daily summary',
             cronExpression: '0 9 * * *',

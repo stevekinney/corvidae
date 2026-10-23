@@ -9,9 +9,13 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   applyFleetEventFrame,
+  applyScheduleFleetFrame,
   applyWorkflowTailFrame,
   REVIEWS_LIST_KEY_PREFIX,
+  SCHEDULES_DETAIL_KEY_PREFIX,
   SCHEDULES_LIST_KEY_PREFIX,
+  SCHEDULES_RUN_HISTORY_KEY_PREFIX,
+  subscribeScheduleInvalidation,
   WORKERS_LIST_KEY,
   workflowDetailKey,
   workflowEventsKey,
@@ -180,5 +184,94 @@ describe('applyFleetEventFrame', () => {
     expect(queryClient.getQueryState(SCHEDULES_LIST_KEY_PREFIX)?.isInvalidated).toBeFalsy();
     expect(queryClient.getQueryState(REVIEWS_LIST_KEY_PREFIX)?.isInvalidated).toBeFalsy();
     expect(queryClient.getQueryState(WORKERS_LIST_KEY)?.isInvalidated).toBeFalsy();
+  });
+});
+
+describe('a schedule’s derived queries', () => {
+  const HISTORY_KEY = [...SCHEDULES_RUN_HISTORY_KEY_PREFIX, 'nightly'];
+  const OTHER_HISTORY_KEY = [...SCHEDULES_RUN_HISTORY_KEY_PREFIX, 'weekly'];
+  const DETAIL_KEY = [...SCHEDULES_DETAIL_KEY_PREFIX, 'nightly'];
+
+  function seeded(): QueryClient {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(SCHEDULES_LIST_KEY_PREFIX, []);
+    queryClient.setQueryData(DETAIL_KEY, {});
+    queryClient.setQueryData(HISTORY_KEY, { items: [{ id: 'run-1', status: 'running' }] });
+    queryClient.setQueryData(OTHER_HISTORY_KEY, { items: [{ id: 'run-9', status: 'completed' }] });
+    return queryClient;
+  }
+
+  const stale = (queryClient: QueryClient, key: readonly unknown[]) =>
+    queryClient.getQueryState(key)?.isInvalidated === true;
+
+  test.each(['schedule:fired', 'schedule:missed-fire'])(
+    '%s refetches the list, every detail and every run history',
+    (kind) => {
+      const queryClient = seeded();
+      applyFleetEventFrame(queryClient, fleetFrame({ kind }));
+      expect(stale(queryClient, SCHEDULES_LIST_KEY_PREFIX)).toBe(true);
+      expect(stale(queryClient, DETAIL_KEY)).toBe(true);
+      expect(stale(queryClient, HISTORY_KEY)).toBe(true);
+      expect(stale(queryClient, OTHER_HISTORY_KEY)).toBe(true);
+    },
+  );
+
+  test.each(['workflow:completed', 'workflow:failed', 'workflow:cancelled', 'workflow:timed-out'])(
+    'a run that settles (%s) refetches only the histories that list it',
+    (kind) => {
+      const queryClient = seeded();
+      applyFleetEventFrame(queryClient, fleetFrame({ kind, workflowId: 'run-1' }));
+      expect(stale(queryClient, HISTORY_KEY)).toBe(true);
+      expect(stale(queryClient, OTHER_HISTORY_KEY)).toBe(false);
+      // Its status is not the schedule’s own fields.
+      expect(stale(queryClient, SCHEDULES_LIST_KEY_PREFIX)).toBe(false);
+      expect(stale(queryClient, DETAIL_KEY)).toBe(false);
+    },
+  );
+
+  test('a run that has not settled, or no run at all, refetches nothing', () => {
+    const queryClient = seeded();
+    applyScheduleFleetFrame(
+      queryClient,
+      fleetFrame({ kind: 'workflow:started', workflowId: 'run-1' }),
+    );
+    applyScheduleFleetFrame(queryClient, fleetFrame({ kind: 'workflow:completed' }));
+    applyScheduleFleetFrame(queryClient, fleetFrame({ kind: 'alert:fired' }));
+    expect(stale(queryClient, HISTORY_KEY)).toBe(false);
+    expect(stale(queryClient, SCHEDULES_LIST_KEY_PREFIX)).toBe(false);
+  });
+
+  test('a history that is not a page of runs is left alone', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(HISTORY_KEY, 'unexpected');
+    queryClient.setQueryData(OTHER_HISTORY_KEY, { items: ['run-1', null] });
+    applyScheduleFleetFrame(
+      queryClient,
+      fleetFrame({ kind: 'workflow:failed', workflowId: 'run-1' }),
+    );
+    expect(stale(queryClient, HISTORY_KEY)).toBe(false);
+    expect(stale(queryClient, OTHER_HISTORY_KEY)).toBe(false);
+  });
+
+  test('subscribeScheduleInvalidation applies every frame its source delivers, until it is unsubscribed', () => {
+    const queryClient = seeded();
+    let listener: ((frame: FleetEventFrame) => void) | undefined;
+    let unsubscribed = false;
+    const unsubscribe = subscribeScheduleInvalidation(
+      {
+        subscribe(next) {
+          listener = next;
+          return () => {
+            unsubscribed = true;
+          };
+        },
+      },
+      queryClient,
+    );
+
+    listener?.(fleetFrame({ kind: 'schedule:fired' }));
+    expect(stale(queryClient, HISTORY_KEY)).toBe(true);
+    unsubscribe();
+    expect(unsubscribed).toBe(true);
   });
 });

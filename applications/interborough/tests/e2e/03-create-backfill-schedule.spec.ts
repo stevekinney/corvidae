@@ -1,8 +1,9 @@
 /**
  * Persona flow (d): create-and-backfill-schedule (plan §11.4).
  *
- * schedules → create slide-over → ScheduleBuilder cron → overlap policy →
- * backfill warning → save → detail shows next fires.
+ * schedules → create slide-over → "Advanced: start a code-defined workflow" → ScheduleBuilder
+ * cron → overlap policy → backfill warning → save → detail shows next fires, and keeps the
+ * engine's fields behind its Engine disclosure.
  *
  * Purely additive (creates one new schedule); safe anywhere in the run
  * order relative to the other flows.
@@ -17,12 +18,15 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.
-  await expect(page.getByRole('button', { name: 'Create schedule' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New schedule' })).toBeVisible();
   await checkA11y('schedules list');
 
-  await page.getByRole('button', { name: 'Create schedule' }).click();
+  await page.getByRole('button', { name: 'New schedule' }).click();
   const drawer = page.getByRole('dialog', { name: 'Create schedule' });
   await expect(drawer).toBeVisible();
+  // A new schedule runs an agent, so a code-defined workflow is under "Advanced".
+  await expect(drawer.getByRole('combobox', { name: 'Workflow type' })).toHaveCount(0);
+  await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
 
   // The "Workflow type" field starts as a free-text `Input` and swaps to a
   // registry-backed `Select` once `weft.system.registry` resolves
@@ -67,8 +71,17 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await expect(drawer).not.toBeVisible();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
-  await expect(page.getByText('Next 5 fires')).toBeVisible();
+  // The page is named by what it starts, not by the identifier the engine made.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Schedule for order-processing' }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Next fires' })).toBeVisible();
   await expect(page.getByText('Not scheduled')).toHaveCount(0);
-  await expect(page.locator('.weft-schedule-detail__fires-list li').first()).toBeVisible();
+  await expect(page.getByTestId('schedule-next-fires').locator('li')).toHaveCount(5);
+  // The engine's own fields are there only once the disclosure opens.
+  await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
+  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
+  await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
+  await expect(page.getByText('0 3 * * *')).toBeVisible();
   await checkA11y('schedule detail — next fires populated');
 });

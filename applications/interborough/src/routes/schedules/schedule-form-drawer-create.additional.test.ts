@@ -44,6 +44,12 @@ describe('ScheduleFormDrawer — create', () => {
         props: { client, mode: 'create', onClose: () => (closed = true) },
       });
 
+      // A new schedule runs an agent; a code-defined workflow is under "Advanced".
+      await fireEvent.click(
+        await waitFor(() =>
+          getByRole('button', { name: 'Advanced: start a code-defined workflow' }),
+        ),
+      );
       const workflowTypeInput = await waitFor(() =>
         getByRole('textbox', { name: 'Workflow type' }),
       );
@@ -76,6 +82,12 @@ describe('ScheduleFormDrawer — create', () => {
         props: { client, mode: 'create', onClose: () => (closed = true) },
       });
 
+      // A new schedule runs an agent; a code-defined workflow is under "Advanced".
+      await fireEvent.click(
+        await waitFor(() =>
+          getByRole('button', { name: 'Advanced: start a code-defined workflow' }),
+        ),
+      );
       const workflowTypeInput = await waitFor(() =>
         getByRole('textbox', { name: 'Workflow type' }),
       );

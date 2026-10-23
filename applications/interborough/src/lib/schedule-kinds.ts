@@ -39,6 +39,8 @@ export type ScheduleKind =
 export type ScheduleOverlay = {
   /** The agent each Bureau schedule runs, by schedule id. */
   readonly agents: ReadonlyMap<string, string> | undefined;
+  /** The start of the text each Bureau schedule sends its agent, by schedule id. */
+  readonly inputs: ReadonlyMap<string, string> | undefined;
   /**
    * The schedules the Bureau listed that run no agent, which are the triggers of workflow files,
    * by schedule id, each with the type it starts. Only the Bureau says a schedule is a file's, and it
@@ -75,15 +77,20 @@ export async function loadScheduleOverlay(
     files.status === 'rejected' ? await Promise.allSettled([listDefinitions(client)]) : undefined;
   const definitions = engine?.[0];
   const agents = new Map<string, string>();
+  const inputs = new Map<string, string>();
   const fileSchedules = new Map<string, string>();
   if (schedules.status === 'fulfilled') {
     for (const schedule of schedules.value) {
       if (schedule.agentName === null) fileSchedules.set(schedule.id, schedule.workflowType);
-      else agents.set(schedule.id, schedule.agentName);
+      else {
+        agents.set(schedule.id, schedule.agentName);
+        if (schedule.inputPreview !== null) inputs.set(schedule.id, schedule.inputPreview);
+      }
     }
   }
   return {
     agents: schedules.status === 'fulfilled' ? agents : undefined,
+    inputs: schedules.status === 'fulfilled' ? inputs : undefined,
     fileSchedules: schedules.status === 'fulfilled' ? fileSchedules : undefined,
     files:
       files.status === 'fulfilled'

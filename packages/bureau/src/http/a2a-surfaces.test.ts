@@ -20,6 +20,7 @@ import {
   A2UI_EXTENSION_URI,
 } from '../a2ui/catalogs.ts';
 import { a2uiHarness, createMessage, updateComponentsMessage } from '../a2ui/a2ui.test-support.ts';
+import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import type { InteractiveSurfaces } from '../interactive-surface/store.ts';
 import { surfaceParts } from './a2a-task-projection.ts';
@@ -267,7 +268,21 @@ async function withButton() {
   const fixture = await open();
   const task = await fixture.start();
   const harness = a2uiHarness({ [task.id]: { owner: 'api-key:alice', contextId: task.contextId } });
-  fixture.useSurfaces(harness.surfaces);
+  // Counts the actions the surface store admitted: an admitted action is an event no answer can
+  // withdraw, so a send that cannot apply must not cause one.
+  const admitted = { count: 0 };
+  fixture.useSurfaces(
+    new Proxy(harness.surfaces, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, receiver) as unknown;
+        if (property !== 'act') return value;
+        return (...parameters: Parameters<typeof target.act>) => {
+          admitted.count += 1;
+          return target.act(...parameters);
+        };
+      },
+    }),
+  );
   const created = await harness.adapter.apply({
     taskId: task.id,
     commandId: 'c1',
@@ -327,7 +342,7 @@ async function withButton() {
     });
     expect(updated).toMatchObject({ outcome: 'accepted' });
   };
-  return { fixture, task, action, message, status, update };
+  return { fixture, task, action, message, status, update, admitted };
 }
 
 describe('an A2UI action sent to the task', () => {
@@ -482,6 +497,26 @@ describe('a retry of an applied A2UI action', () => {
         fixture.send(message('m-same', action({ context: { other: 1 } })), [A2UI_EXTENSION_URI]),
       );
       expect(error.toErrorInfo?.()).toMatchObject({ reason: 'INVALID_PARAMS' });
+    } finally {
+      await fixture.opened.dispose();
+    }
+  });
+});
+
+describe('an A2UI action whose deadline has passed', () => {
+  it('admits nothing, answers the deadline receipt, and leaves the wait open', async () => {
+    const { fixture, action, message, status, admitted } = await withButton();
+    try {
+      const expired = message('m-late', action(), {
+        [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2020-01-01T00:00:00Z' },
+      });
+      const answered = await fixture.send(expired, [
+        A2UI_EXTENSION_URI,
+        COMMAND_RECEIPTS_EXTENSION_URI,
+      ]);
+      expect('status' in answered).toBe(true);
+      expect(admitted.count).toBe(0);
+      expect(await status()).toBe('input-required');
     } finally {
       await fixture.opened.dispose();
     }
