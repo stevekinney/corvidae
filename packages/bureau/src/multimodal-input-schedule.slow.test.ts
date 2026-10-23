@@ -67,7 +67,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
       ] as const;
 
       const summary = await bureau.createSchedule({
-        agentName: 'researcher',
+        agentName: 'default',
         input,
         spec: '1s',
         principal: alice.id,
@@ -111,7 +111,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
       let thrown: unknown;
       try {
         await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: [] as never,
           spec: '1s',
         });

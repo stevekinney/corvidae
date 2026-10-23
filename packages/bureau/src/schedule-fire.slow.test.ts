@@ -123,7 +123,7 @@ describe('D6 scheduled-fire path (#109)', () => {
         });
 
         const schedule = await bureauA.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'recover this scheduled fire',
           spec: '1s',
         });
@@ -257,7 +257,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
       try {
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'maxsteps prompt',
           spec: '1s',
           sessionId,
@@ -312,7 +312,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(ScheduleFailedEvent.type, (event) => failed.push(event));
 
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'completes successfully',
           spec: '1s',
         });
@@ -359,7 +359,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(ScheduleFailedEvent.type, (event) => failed.push(event));
 
         const summary = await bureau.createSchedule({
-          agentName: 'researcher',
+          agentName: 'default',
           input: 'always fails',
           spec: '1s',
         });

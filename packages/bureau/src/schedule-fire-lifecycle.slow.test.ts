@@ -317,7 +317,7 @@ describe('a task registry that cannot write', () => {
       bureau.addEventListener('schedule.completed', (event) => completed.push(event.runId));
 
       const schedule = await bureau.createSchedule({
-        agentName: 'writer',
+        agentName: 'default',
         spec: '1s',
         input: 'tick',
         principal: 'api-key:alice',
