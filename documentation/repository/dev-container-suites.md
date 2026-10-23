@@ -1,0 +1,13 @@
+# Dev container: what each suite does there
+
+The detail behind AGENTS.md "Dev Container".
+
+What the container enables, suite by suite:
+
+- Live PostgreSQL (`packages/weft/src/storage/postgres.test.ts`) and live Neon driver (`neon-live.test.ts`, through `neon-proxy.test-support.ts` to the same disposable cluster): enabled. They need only `initdb` and `pg_ctl`, and they are what keeps `@lostgradient/weft#test:coverage` above its floor for `neon.ts`, `postgres.ts`, and their two test-support modules. The cluster is `initdb --no-locale -E UTF8`, so no system locale is needed; the C collation the key-value schema depends on is pinned in its DDL. PostgreSQL 17 is Debian 13's server major and the release the host-side fix used.
+- A real Neon endpoint: not provisioned. The live Neon suite tests the real driver's wire protocol against the local cluster, and a hosted database would need credentials the container must not carry.
+- Playwright's browser-fixture suite (`test:browser-fixtures`, part of `bun run test`): enabled, and required. It launches Chromium's headless shell, so `validate` fails without a browser.
+- Weft's real-browser smoke tests (`WEFT_BROWSER_SMOKE=1`: WebExtensionStorage, IndexedDB, HttpClient, Service Worker): runnable, still opt-in. The image carries full Chromium as well as the headless shell because WebExtensionStorage loads an unpacked extension, and all four suites pass in it with `bun run --filter=@lostgradient/weft test:browser`. They stay outside `validate` here exactly as on the host.
+- The full Playwright suite (`bun run test:browser`): not enabled. Its Firefox and WebKit keyboard projects need `npx playwright install --with-deps firefox webkit` (as root), and in this linux/arm64 image some Chromium cases fail (observed in a partial run, which included the `markdown-editor-template-placeholders` assertions and a few accessibility and scrolling checks; no complete run's counts are recorded), so treat its results there as advisory. It is outside `validate` on every machine.
+- The Agent Skills reference validator (`AGENT_SKILLS_REFERENCE_VALIDATOR`): not installed. It is opt-in and fetches a pinned Python tool with `uvx`.
+- Cinder's Svelte coverage floor is recorded as measured on linux/x64. On Apple silicon the container runs linux/arm64, so `check-coverage-ratchet.ts` prints its platform notice there just as it does on macOS; the floor still applies and passes (measured in the container: Svelte functions 83.25% against 75.00%, lines 35.58% against 19.90%). Weft's coverage gate keys its two host-dependent allowances the same way: `memory-footprint.ts`'s macOS-only FFI path is excused off macOS, and `workflow-event-feed.ts` line 398 only on linux/x64, where Bun misses it.

@@ -97,6 +97,20 @@
         "\\b(?:spec|specification|contract|documentation|requirement\\w*|acceptance criteria|RFC)\\b.{0,80}\\b(?:says|states|requires|mandates?|defines?)\\b.{0,100}\\b(?:but|however|whereas|yet)\\b",
         "\\bcontradiction\\b"
       ]
+    },
+    {
+      "name": "state-machine",
+      "description": "A lifecycle or state-machine transition is mishandled: a finish reason, run, task or settlement lifecycle, park or suspend, recovery or reattach, shutdown or dispose, or retry path.",
+      "patterns": [
+        "\\b(?:finish|stop|termination|exit|completion) reasons?\\b",
+        "\\b(?:run|task|settlement|session|attempt)\\b.{0,40}\\blifecycle\\b",
+        "\\b(?:parks?|parked|parking|suspends?|suspended|suspending|resum\\w*)\\b.{0,80}\\b(?:never|without|leak\\w*|stuck|hang\\w*|forever|stale|wrong|before|after|state)\\b",
+        "\\b(?:recover\\w*|reattach\\w*|re-attach\\w*|rehydrat\\w*)\\b.{0,80}\\b(?:never|without|skips?|misses|stale|wrong|state|not)\\b",
+        "\\b(?:shutdown|shut down|dispose\\w*|teardown|tear down)\\b.{0,80}\\b(?:never|without|leak\\w*|race|while|during|before|after|not)\\b",
+        "\\b(?:retry|retries|retried|retrying)\\b.{0,80}\\b(?:state|terminal|settled|already|duplicate|twice|again|exhaust\\w*)\\b",
+        "\\b(?:illegal|invalid|unexpected|impossible|missing) (?:state )?transition\\b",
+        "\\b(?:stuck|hangs?|never settles?|never resolves?|never completes?)\\b.{0,60}\\b(?:state|status|terminal|running|pending)\\b"
+      ]
     }
   ]
 }

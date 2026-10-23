@@ -23,7 +23,7 @@ Keep the note readable in one sitting, because a resuming coordinator reads it w
 - Decisions: short timestamped history of choices, affected packages, invalidated verification, and one supported fallback per unavailable capability. A choice that Jev decided records the question, the answer, the probability, the model, and the threshold, with a pointer to its line in `jev-decisions.jsonl`; a choice made without Jev because it was unavailable or below its threshold says so. Do not retry a rejected dispatch without new capability evidence.
 - Improvements: observation, owning team, duplicate search result, existing or created Linear issue, read-back result, and whether it blocks delivery.
 - Final state: requirement-by-requirement evidence, pull requests and merge revisions, releases/deployments/adoptions where required, read-back issue/project states, worker disposition, and unresolved requirements.
-- Resources: explicit user allowance if supplied (otherwise none specified); cached input, uncached input, and output separately, measured with `scripts/chef/transcript-usage.ts` over the run's transcripts; the coordinator's current context size; tokens per merged pull request by batch, read from the `merge-gate.ts --usage-log` file; every implementation dispatch that ran on Opus or Fable, with its reason; plan-window readings; unknown telemetry explicitly marked. Session counters are not shared account quota. Report consumption and delivered outcomes after the first completed batch, at every batch boundary without being asked, and before expanding a struggling batch. Repeated corrections or compaction without accepted results require reassessment, not silent expansion.
+- Resources: explicit user allowance if supplied (otherwise none specified); cached input, uncached input, and output separately, measured with `scripts/chef/transcript-usage.ts` over the run's transcripts; the coordinator's current context size; tokens per merged pull request by batch, read from the `deliver.ts --usage-log` file; every implementation dispatch that ran on Opus or Fable, with its reason; plan-window readings; unknown telemetry explicitly marked. Session counters are not shared account quota. Report consumption and delivered outcomes after the first completed batch, at every batch boundary without being asked, and before expanding a struggling batch. Repeated corrections or compaction without accepted results require reassessment, not silent expansion.
 - Corrections: stable implementation owner and primary reviewer, consolidated unresolved findings, attempts per defect/acceptance criterion across workers and follow-ups, and causal reassessment after two unsuccessful attempts. Security and mandatory gates remain blocking regardless of spend.
 
 ## Worker charter
@@ -44,8 +44,8 @@ Review-boundary capture evidence path and captureId (shared, canonical, or produ
 Dependency evidence already verified:
 Shared repository packet and relevant source facts:
 Role, requested model/effort, and escalation trigger (implementation defaults to Sonnet; give the reason for Opus or Fable):
-Context: fresh dispatch or resume (resume only under about 250K tokens), and the compact brief for a fresh one (charter, open findings, diff or commit range, evidence paths):
-Outcome matrix, for concurrency, replay, retry, or state-machine work (every input or failure crossed with every exit, each with its required result; the first test to write, red first), or "not applicable" with the reason:
+Context: fresh dispatch or resume (resume only while the agent's context is small), and the compact brief for a fresh one (charter, open findings, diff or commit range, evidence paths):
+Outcome matrix, required in the charter before dispatching concurrency, replay, retry, or state-machine work (finish reasons, run, task or settlement lifecycle, parks or suspends, recovery or reattach, shutdown or dispose, retries) (every input or failure crossed with every exit, each with its required result; the first test to write, red first), or "not applicable" with the reason:
 Staged verification commands, working directory, and expected results (cheap checks/regressions, review/corrections, mandatory complete gates):
   Workspace-filtered gates (name commands and covered workspaces, or state why inapplicable):
   Repository-level gates (name unfiltered commands and separately invoked suites the change could affect, or explicitly state none apply and why):
@@ -53,10 +53,10 @@ Reusable evidence identities, environment assumptions, exit codes, paths, and in
 Primary reviewer and inherited correction-attempt counts:
 Review policy (also required in specialist reviewer charters): before suggesting a change, read linked COR issues and search the COR backlog across projects for matching behavior, symbols, and work; verify scope, status, acceptance criteria, and decisions, and cite matching tickets instead of duplicating requests. Disclose an unavailable lookup without making it a blocker. A ticket does not excuse a concrete blocker introduced by the diff. Accept pre-release breaking changes, update in-repository callers directly, and remove deprecated code in the replaced path without compatibility layers. Block only with a supported input or reachable interleaving, wrong result, and concrete consequence; omit nitpicks and optional refactoring. Read AGENTS.md "Review guidelines" and the chef reference "Review and deliver" before reviewing.
 Merge gate (corvidae: `bun run check` per pull request, run shared, launched with `scripts/chef/gate-run.ts run`; a full `validate` only for a one-way door, lock or concurrency infrastructure, or `turbo.json` and root scripts, and the coordinator merges those):
-Merge command with every path filled in (`bun scripts/chef/merge-gate.ts ... --usage-log <file> --transcript <path>`), or "coordinator merges" with the reason:
+Delivery: the worker does not merge; after acceptance the coordinator launches `bun scripts/chef/deliver.ts --pr <n> --worktree <path> --comment-file <file>` (with `--gate-log`, `--issue`, `--completion-file`, `--remove-worktree` as needed). the coordinator's command carries `--usage-log <main checkout>/tmp/chef/<run>-usage.log --transcript <worker transcript path>`, which `deliver.ts` passes to `merge-gate.ts`, and that log is the source of tokens per merged pull request:
 Parallel-run limits (AGENTS.md "Parallel runs"): at most three sessions or workers on the host; at most one full validate queued per session, and only for an exception.
 Repository packet: `<main checkout>/tmp/chef/packets/<area>.md` (path; `packet.ts status <area>` exits 0, so it is fresh). Read it instead of rediscovering the code; read source only for the lines you will change.
-Session start: one fresh session for this issue, started from its brief (`bun scripts/chef/brief.ts <ID>` writes `tmp/chef/briefs/<ID>.md`), Sonnet by default; the session ends when its pull request merges. The context-ceiling hook warns at 250K tokens and urgently at 350K; it never blocks, so hand off at the next boundary between steps, with a fresh session and never a fork.
+Session start: one fresh session for this issue, started from its brief (`bun scripts/chef/brief.ts <ID>` writes `tmp/chef/briefs/<ID>.md`), Sonnet by default; the session ends when its pull request merges.
 Main health: `merge-gate.ts` refuses to merge while `main`'s last batch validate failed, unless this pull request is the fix and the merge command carries `--fixes-main`.
 Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically, so batch a round's fixes into one push; do not re-answer a re-reported comment.
 Delivery artifact and review boundary:
@@ -81,9 +81,8 @@ recovery; never reset or automatically clean a checkout.
 Inspect the existing codebase and match its conventions. Implement and verify
 only this package. Add a regression test for each bug. Preserve other owners'
 changes. Do not delegate or edit the work-history note. Do not write Linear,
-except to move this package's own issue to In Progress when you start. Merge
-only with the charter's merge command, and only after the coordinator has
-accepted your ready-for-review return. Do not skip gates, suppress failures,
+except to move this package's own issue to In Progress when you start. Do not merge;
+the coordinator delivers after it accepts your ready-for-review return. Do not skip gates, suppress failures,
 increase limits, or leave a required fix as a follow-up. Follow the charter's
 review-rounds line, and queue at most one full validate at a time. After two
 unsuccessful attempts at the same defect or acceptance criterion, stop
@@ -109,13 +108,15 @@ or (including a CPU load generator) when this charter requires it; record
 every PID, collect or kill each before returning, and report a
 `pgrep -fl "<pattern>"` that prints nothing.
 
-Keep your context small; past about 250K tokens, write a handoff brief under `tmp/chef/` and hand off to a fresh session. Every gate writes its full output to a log under the
+Keep your context small. Every gate writes its full output to a log under the
 evidence directory and prints only its exit code and a short summary; read a
 failure with a targeted search, never by printing the log. Run one
 consolidated gate command per stage. Commit only after the package's lint and
 type checks pass, chained so a failed check produces no commit. Show each
 regression test red with its fix reverted, and restore the fix; a test that
 passes without the fix is not evidence.
+
+Report: write the full report to `tmp/chef/<package>/round-<n>/report.md` in the main checkout, with logs beside it and a new directory for each correction round, and return at most 15 lines. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.
 
 Return status: merged, ready-for-review, blocked, or needs-decision.
 Include changed behavior/files; branch, worktree, commit and pull-request URL;
@@ -135,3 +136,7 @@ The coordinator fills every charter field or explicitly marks it inapplicable wi
 ## Provider references
 
 When runtime behavior is unclear, verify it against the current tool schema and the official [Codex subagent documentation](https://developers.openai.com/codex/subagents) or [Claude Code subagent documentation](https://code.claude.com/docs/en/sub-agents). The [Codex skill documentation](https://developers.openai.com/codex/skills) describes discovery and UI metadata; `agents/openai.yaml` does not pin an agent model or grant dispatch permissions.
+
+## Note naming
+
+The note lives at `<main checkout>/tmp/chef/<YYYY-MM-DD-HHMMSS>-<work-name>.md` with a sibling `-log.md`. Take the main checkout from the parent of `git rev-parse --path-format=absolute --git-common-dir`, never the current directory, because a worktree's `tmp/` vanishes with it. Notes live in the main checkout's `tmp/chef/`; write them with Bash when the Write tool refuses a path outside the session's directories. Create `tmp/chef/` when absent, use the actual local timestamp, add a session suffix on a collision, resume the same note for the same run, and never overwrite another run's. Persist the run identifier and timezone before dispatch; on resumption, locate that identifier even if the provider changed, and reconcile the note with live workers, revisions, and Linear before trusting it. A failed initial note write blocks dispatch. [The execution record](execution-record.md) gives the note's fields and the worker charter.
