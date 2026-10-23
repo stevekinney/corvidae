@@ -341,13 +341,16 @@ export async function buildApplication(
  * writes to it, so the pipe closing means the host's generation ended (a `bun --watch` reload, a
  * stop, or a crash). The build is then stale, and it exits before it can replace the newer build.
  */
-export function exitWhenStandardInputCloses(): void {
+export function exitWhenStandardInputCloses(
+  input: ReadableStream<Uint8Array> = Bun.stdin.stream(),
+  exit: (code: number) => void = process.exit.bind(process),
+): void {
   void (async () => {
     // Nothing is ever sent; reading only waits for the end of the stream.
-    const reader = Bun.stdin.stream().getReader();
+    const reader = input.getReader();
     for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) continue;
     for (const staging of stagingDirectories) rmSync(staging, { recursive: true, force: true });
-    process.exit(1);
+    exit(1);
   })();
 }
 
@@ -402,11 +405,19 @@ export async function runBuildCommand(
   return build;
 }
 
-if (import.meta.main) {
-  const argv = process.argv.slice(2);
+/** The process entry: parse the command line, watch standard input when asked, and build. */
+export async function runBuildMain(
+  argv: readonly string[],
+  exit: (code: number) => void = process.exit.bind(process),
+  log: (line: string) => void = console.log,
+  runBuild: typeof buildApplication = buildApplication,
+  input?: ReadableStream<Uint8Array>,
+): Promise<void> {
   const { exitWithParent } = parseBuildArguments(argv);
-  if (exitWithParent) exitWhenStandardInputCloses();
-  await runBuildCommand(console.log, buildApplication, argv);
+  if (exitWithParent) exitWhenStandardInputCloses(input, exit);
+  await runBuildCommand(log, runBuild, argv);
   // The standard-input reader keeps the process alive, so a build that finished exits itself.
-  if (exitWithParent) process.exit(0);
+  if (exitWithParent) exit(0);
 }
+
+if (import.meta.main) await runBuildMain(process.argv.slice(2));
