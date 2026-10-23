@@ -2,6 +2,7 @@
  * Prefix discovery over an ordered store: one read per group of keys, reserved keys left out, and a
  * bound on the number of reads.
  */
+import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { discoverPrefixes } from './prefix-discovery.ts';
@@ -100,6 +101,6 @@ describe('discoverPrefixes', () => {
         }),
     );
 
-    await expect(discoverPrefixes(connection)).rejects.toThrow();
+    expect(await rejectionOf(discoverPrefixes(connection))).toBeInstanceOf(Error);
   });
 });
