@@ -76,8 +76,11 @@ describe('listing sessions by origin', () => {
   it('lists only the sessions a goal or a schedule started', async () => {
     const store = await seededStore();
 
-    expect((await store.list({ origin: 'goal' })).map((row) => row.id)).toEqual(['goal-1']);
-    expect((await store.list({ origin: 'schedule' })).map((row) => row.id)).toEqual(['fire-1']);
+    const goals = await store.list({ origin: 'goal' });
+    const fires = await store.list({ origin: 'schedule' });
+
+    expect(goals.map((row) => row.id)).toEqual(['goal-1']);
+    expect(fires.map((row) => row.id)).toEqual(['fire-1']);
   });
 
   it('lists every session when no origin is asked for', async () => {
