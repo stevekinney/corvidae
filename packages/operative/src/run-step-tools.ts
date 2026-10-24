@@ -13,6 +13,7 @@ import {
 } from './events';
 import type { StepGeneratedMediaAdmitter } from './generated-media';
 import type { ErrorRecoveryAction } from './hooks/types';
+import { modelFacingToolResult } from './human-wait-parks';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
@@ -80,10 +81,12 @@ export async function executeTools(
     unadmitted: ToolExecutionResult[],
   ): Promise<{ error: unknown } | undefined> => {
     const rows = await admitToolResultMedia(admitter, unadmitted, mediaContext);
+    // The conversation is what the model reads; the step record keeps the results as they were.
+    const modelRows = rows.map(modelFacingToolResult);
     if (deps.collectAsync) {
-      await conversation.appendToolResultsAsync(rows, resultRowBatch(resultRowScope, rows));
+      await conversation.appendToolResultsAsync(modelRows, resultRowBatch(resultRowScope, rows));
     } else {
-      conversation.appendToolResults(rows, resultRowBatch(resultRowScope, rows));
+      conversation.appendToolResults(modelRows, resultRowBatch(resultRowScope, rows));
     }
     try {
       await retainToolResultMedia(
