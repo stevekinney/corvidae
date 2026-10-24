@@ -11,7 +11,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -338,7 +338,13 @@ test.describe('a Bureau that fails', () => {
   test('leaves the engine’s reviews on the page, with the Bureau’s own banner beside them', async ({
     page,
     checkA11y,
+    pageErrors,
   }) => {
+    pageErrors.expect({
+      pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
+      reason: 'the test answers the Bureau’s review list with a 500',
+      count: 3,
+    });
     await page.route('**/bureau/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
         await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });

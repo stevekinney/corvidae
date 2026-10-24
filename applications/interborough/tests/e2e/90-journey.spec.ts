@@ -195,7 +195,7 @@ test('starts a second session with the same agent from the agent’s page, and r
   await page.goto('/chat');
   await page
     .getByRole('navigation', { name: 'Chats' })
-    .getByRole('button', { name: /Start the journey/ })
+    .getByRole('link', { name: /Start the journey/ })
     .click();
 
   await expect(page).toHaveURL(new RegExp(`/chat/${sessions.followUp}$`));
@@ -292,7 +292,9 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await row.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}$`));
   const detail = page.locator('[data-page="workflow-detail"]');
-  await expect(detail.getByTestId('workflow-trigger')).toContainText(JOURNEY_WORKFLOW_CADENCE);
+  await expect(detail.getByTestId('workflow-trigger')).toHaveText(
+    describeCadence({ intervalMs: 5_000 }),
+  );
   await expect(detail.getByTestId('workflow-agent')).toContainText(AUTHOR_ID);
 
   // The schedule fires every few seconds. This page may open before the first fire, says there are
@@ -320,7 +322,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
 }) => {
   await page.goto('/schedules');
   const file = page
-    .locator('tr[data-kind="workflow-file"]')
+    .locator('li[data-kind="workflow-file"]')
     .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
   await expect(file).toContainText(describeCadence({ intervalMs: 5_000 }));
   // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file.
@@ -343,7 +345,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   // The schedule follows the file, which also ends the fire every few seconds.
   await page.goto('/schedules');
   const hourly = page
-    .locator('tr[data-kind="workflow-file"]')
+    .locator('li[data-kind="workflow-file"]')
     .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
   await expect(hourly).toContainText(describeCadence({ intervalMs: 3_600_000 }));
   await expect(hourly).not.toContainText(describeCadence({ intervalMs: 5_000 }));

@@ -27,8 +27,20 @@ import type {
   TaskView,
 } from '../task-registry.ts';
 import { TASK_ARTIFACT_TEXT_LIMIT } from '../task-registry.ts';
-import { formSurfaceId, previousParkReviewId, type WaitForm } from './a2a-input-forms.ts';
-import { A2UI_MEDIA_TYPE, inputFormDeletion, inputFormMessages } from '../a2ui/input-form.ts';
+import { formSurfaceId, type WaitForm } from './a2a-input-forms.ts';
+import {
+  A2UI_MEDIA_TYPE,
+  type A2uiMessage,
+  inputFormDeletion,
+  inputFormMessages,
+} from '../a2ui/input-form.ts';
+import {
+  A2UI_EXTENSION_URI,
+  A2UI_SPECIFICATION_VERSION,
+  offeredCatalogIds,
+} from '../a2ui/catalogs.ts';
+import { a2uiMessagesOf } from '../a2ui/messages.ts';
+import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { A2ATaskRecord, A2AWireMessage } from './a2a-task-record.ts';
 
 /** The cleanup extension's URI (`packages/weft/documentation/a2a/extensions/cleanup-v1.md`). */
@@ -136,8 +148,21 @@ export function replyMessageId(taskId: string): string {
   return `${taskId}:reply`;
 }
 
+function a2uiDataPart(messages: A2uiMessage[]): Part {
+  return {
+    content: { $case: 'data', value: messages },
+    metadata: { mimeType: A2UI_MEDIA_TYPE },
+    filename: '',
+    mediaType: A2UI_MEDIA_TYPE,
+  };
+}
+
 /** What an `INPUT_REQUIRED` task's status message names, so a continuation can address it. */
-export function waitingMessage(view: TaskView, forms: readonly WaitForm[] = []): Message {
+export function waitingMessage(
+  view: TaskView,
+  forms: readonly WaitForm[] = [],
+  a2ui = false,
+): Message {
   const signalNames = view.openWaits
     .filter(
       (wait): wait is Extract<TaskOpenWait, { kind: 'human-wait' }> => wait.kind === 'human-wait',
@@ -167,21 +192,21 @@ export function waitingMessage(view: TaskView, forms: readonly WaitForm[] = []):
     ...(callIds.length === 0 ? {} : { callIds }),
   });
   // One data part per form, carrying its A2UI messages as an array (the A2UI extension's data
-  // encoding). A repeated wait on a signal is a new surface: the earlier park's closes first.
-  for (const form of forms) {
-    const previous = previousParkReviewId(form.reviewId);
-    message.parts.push({
-      content: {
-        $case: 'data',
-        value: [
-          ...(previous === undefined ? [] : [inputFormDeletion(formSurfaceId(previous))]),
+  // encoding), only for a request that activated A2UI: the text above names the wait for the
+  // rest. A repeated wait is a new surface, and the earlier form's closes first. COR-1674 item 4
+  // (closing a form when the task leaves input-required) is not applicable: form surfaces appear
+  // only in activated read snapshots, and a snapshot does not carry deletes.
+  if (a2ui) {
+    for (const form of forms) {
+      message.parts.push(
+        a2uiDataPart([
+          ...(form.previousReviewId === undefined
+            ? []
+            : [inputFormDeletion(formSurfaceId(form.previousReviewId))]),
           ...inputFormMessages(formSurfaceId(form.reviewId), form.inputSchema),
-        ],
-      },
-      metadata: { mimeType: A2UI_MEDIA_TYPE },
-      filename: '',
-      mediaType: A2UI_MEDIA_TYPE,
-    });
+        ]),
+      );
+    }
   }
   return message;
 }
@@ -225,6 +250,8 @@ export type ProjectionInput = {
   readonly acknowledgement: TaskCleanupAcknowledgement | undefined;
   /** The input forms the task's open waits ask for; none when it is not waiting on one. */
   readonly forms?: readonly WaitForm[] | undefined;
+  /** The task's interactive surfaces (COR-837); only the `a2ui` ones are projected. */
+  readonly surfaces?: readonly InteractiveSurface[] | undefined;
 };
 
 /** How much of a task a response carries. */
@@ -234,11 +261,72 @@ export type ProjectionShape = {
   readonly includeArtifacts: boolean;
   /** The extensions this request activated. */
   readonly activated: ReadonlySet<string>;
+  /**
+   * The catalogs the requesting client declared in `a2uiClientCapabilities` (only a send carries
+   * them); `undefined` is no declaration, which offers the basic catalog only.
+   */
+  readonly supportedCatalogIds?: readonly string[] | undefined;
 };
 
 /** A message of the task's A2A history, read back from its wire form. */
 function historyMessage(wire: A2AWireMessage): Message {
   return Message.fromJSON(wire);
+}
+
+/**
+ * The parts that carry a task's A2UI surfaces (COR-837). A request that activated A2UI's extension
+ * gets one data part per surface holding the messages that rebuild it, typed as A2UI's media type;
+ * any other request gets each surface's text summary, so a client that cannot render one is still
+ * told what it shows. A surface torn down or of another kind has no part.
+ */
+export function surfaceParts(
+  surfaces: readonly InteractiveSurface[] | undefined,
+  activated: ReadonlySet<string>,
+  supportedCatalogIds?: readonly string[],
+): Part[] {
+  const shown = (surfaces ?? []).filter(
+    (surface) => surface.kind === 'a2ui' && surface.representation !== null,
+  );
+  if (!activated.has(A2UI_EXTENSION_URI)) return shown.map((surface) => textPart(surface.summary));
+  // Per surface: A2UI data only for a client that supports the surface's catalog, else its text.
+  const offered = offeredCatalogIds(supportedCatalogIds);
+  return shown.map((surface) =>
+    surface.representation?.kind === 'a2ui' && offered.includes(surface.representation.catalogId)
+      ? {
+          content: { $case: 'data' as const, value: a2uiMessagesOf(surface) },
+          // The revision is what a renderer echoes as `a2uiSurfaceRevision` on its action.
+          metadata: {
+            mimeType: A2UI_MEDIA_TYPE,
+            surfaceId: surface.surfaceId,
+            a2uiSurfaceRevision: surface.revision,
+          },
+          filename: '',
+          mediaType: A2UI_MEDIA_TYPE,
+        }
+      : textPart(surface.summary),
+  );
+}
+
+/**
+ * The part that tells an A2UI client to drop a surface it holds: the `deleteSurface` envelope, typed
+ * and labelled as a surface part is, so a stream's torn-down surface reads like its live ones.
+ */
+export function deleteSurfacePart(surface: InteractiveSurface): Part {
+  return {
+    content: {
+      $case: 'data' as const,
+      value: [
+        { version: A2UI_SPECIFICATION_VERSION, deleteSurface: { surfaceId: surface.surfaceId } },
+      ],
+    },
+    metadata: {
+      mimeType: A2UI_MEDIA_TYPE,
+      surfaceId: surface.surfaceId,
+      a2uiSurfaceRevision: surface.revision,
+    },
+    filename: '',
+    mediaType: A2UI_MEDIA_TYPE,
+  };
 }
 
 /** A Bureau task as an A2A `Task`, shaped for one response. */
@@ -266,7 +354,19 @@ export function projectTask(input: ProjectionInput, shape: ProjectionShape): Tas
       view.statusMessage ?? view.finishReason ?? 'The task failed.',
     );
   } else if (view.status === 'input-required') {
-    statusMessage = waitingMessage(view, input.forms);
+    statusMessage = waitingMessage(view, input.forms, shape.activated.has(A2UI_EXTENSION_URI));
+  }
+  // The task's A2UI surfaces ride on its status message, whatever the state: a frozen surface of a
+  // finished task is still readable. They are not part of the reply artifact.
+  const shownSurfaces = surfaceParts(input.surfaces, shape.activated, shape.supportedCatalogIds);
+  if (shownSurfaces.length > 0) {
+    const revisions = (input.surfaces ?? []).map(
+      (surface) => `${surface.surfaceId}@${surface.revision}`,
+    );
+    statusMessage =
+      statusMessage === undefined
+        ? agentMessage(task, `${view.id}:surfaces:${revisions.join(',')}`, shownSurfaces)
+        : { ...statusMessage, parts: [...statusMessage.parts, ...shownSurfaces] };
   }
   const history = (record?.history ?? []).map(historyMessage);
   const shownHistory =

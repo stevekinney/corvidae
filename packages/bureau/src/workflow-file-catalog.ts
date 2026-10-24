@@ -45,11 +45,15 @@ export interface WorkflowListing {
   readonly owner: string;
   /** The SHA-256 of the file's bytes, when they could be read. */
   readonly hash?: string;
+  /** What the workflow is for, in a sentence, or `null` when the file gives none or is invalid. */
+  readonly description: string | null;
   /** The identifier of the agent that wrote the file, or `null`. */
   readonly agent: string | null;
   readonly paused: boolean;
   /** The `kind` of the file's trigger, for a ready file, and `null` for an invalid one. */
   readonly triggerKind: string | null;
+  /** The file's trigger as written (`kind` and the keys of that kind), for a ready file, else `null`. */
+  readonly trigger: Readonly<{ kind: string } & Record<string, unknown>> | null;
   /** Weft's `workflowVersion` of the document, for a ready file. */
   readonly version?: string;
   /** Why an `invalid` file cannot run. */
@@ -272,9 +276,11 @@ export function createWorkflowFileCatalog(
             id: entry.id,
             state: ready ? 'ready' : 'invalid',
             owner,
+            description: entry.file?.description ?? null,
             agent: entry.file?.agent ?? null,
             paused: entry.file?.paused ?? false,
             triggerKind: entry.file?.document.trigger.kind ?? null,
+            trigger: entry.file?.document.trigger ?? null,
             ...(entry.hash === undefined ? {} : { hash: entry.hash }),
             ...(entry.file === undefined ? {} : { version: entry.file.version }),
             ...(entry.problem === undefined ? {} : { problem: entry.problem }),
@@ -334,6 +340,7 @@ export function createWorkflowFileCatalog(
         if (parsed.file.paused === paused) return { id, hash: current.hash };
         const { name: _name, ...document } = parsed.file.document;
         const bytes = bytesFor(id, {
+          ...(parsed.file.description === null ? {} : { description: parsed.file.description }),
           ...(parsed.file.agent === null ? {} : { agent: parsed.file.agent }),
           paused,
           trigger: document.trigger,

@@ -295,6 +295,73 @@ describe('a fire into a session another agent began', () => {
   });
 });
 
+describe('the origin of a session a fire creates (COR-1645)', () => {
+  async function settledFire(bureau: Awaited<ReturnType<typeof harness.open>>, scheduleId: string) {
+    const schedule = await bureau.getSchedule(scheduleId);
+    await bureau.runDurableMaintenance(schedule!.nextFireAt!);
+    await pollUntil(async () => {
+      const page = await bureau.listDurableRuns();
+      return page?.items.some((run) => run.status === 'completed') ? true : undefined;
+    }, 'the fire to complete');
+  }
+
+  it('records `schedule` on the session a fire starts, so a chat list leaves it out', async () => {
+    const worker = answering('fired');
+    const bureau = await harness.open({
+      agents: { worker: createAgent({ generate: worker.generate }) },
+    });
+    const created = await bureau.createSchedule({
+      agentName: 'worker',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+    });
+
+    await settledFire(bureau, created!.id);
+
+    const fires = await bureau.listSessions({ origin: 'schedule' });
+    expect(fires).toHaveLength(1);
+    expect(fires[0]?.metadata['sessionOrigin']).toBe('schedule');
+    expect(await bureau.listSessions({ origin: 'chat' })).toEqual([]);
+  });
+
+  it('leaves a chat’s origin alone when a fire continues it', async () => {
+    const worker = answering('fired');
+    const bureau = await harness.open({
+      agents: { worker: createAgent({ generate: worker.generate }) },
+    });
+    const begun = await bureau.createRun({
+      message: 'hello',
+      agentName: 'worker',
+      sessionId: 'shared-chat',
+      principal: OWNER.alice,
+    });
+    await pollUntil(async () => {
+      const run = await bureau.getRun(begun.id);
+      return run?.status === 'completed' ? true : undefined;
+    }, 'the first run to finish');
+    const created = await bureau.createSchedule({
+      agentName: 'worker',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+      sessionId: 'shared-chat',
+    });
+
+    const schedule = await bureau.getSchedule(created!.id);
+    await bureau.runDurableMaintenance(schedule!.nextFireAt!);
+    // The fire did run in the chat, and the chat is still a chat.
+    await pollUntil(async () => {
+      const chat = await bureau.sessionStore!.load('shared-chat');
+      return chat?.metadata['lastScheduledFireRunId'] === undefined ? undefined : true;
+    }, 'the fire to run in the chat');
+
+    const chats = await bureau.listSessions({ origin: 'chat' });
+    expect(chats.map((session) => session.id)).toEqual(['shared-chat']);
+    expect(await bureau.listSessions({ origin: 'schedule' })).toEqual([]);
+  });
+});
+
 describe('a session or recovered run stored under the implicit "bureau" agent', () => {
   it('is refused when a new run continues the session', async () => {
     const worker = answering('never');

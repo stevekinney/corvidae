@@ -14,55 +14,21 @@
  * being an optional external namespace it strips before routing) — so no
  * new base-URL-resolution logic is needed here at all.
  *
- * Every notification-worthy frame is forwarded into the shell's
- * `NotificationStore` (`./notifications.svelte.ts`) — this module is the
- * ONE place a fleet frame is received and fanned out, so a future
- * dashboard/list-liveness consumer subscribing to the same shared source
- * never doubles the connection.
- *
- * Critical/warning notifications additionally spawn a real toast (design
- * `Weft New Surfaces.dc.html` §C: "critical → strip + toast, warning →
- * toast, info → bell only"), gated on `FleetEventSource.caughtUp` — a fresh
- * connection replays up to 1,000 historical fleet events before it, and
- * every one of those would otherwise toast on page load. `ingest()` still
- * runs unconditionally, so the bell dropdown/critical strip reflect the full
- * replayed backlog; only the ephemeral toast is suppressed for it.
+ * This module is the ONE place the connection is opened and owned, so the consumers that read
+ * the feed (the Engine view's activity, the task evidence the shell refreshes) subscribe to the
+ * same source and never double it. The notification bell does not read the feed: it is about what
+ * is waiting on the person (`./notification-feed.svelte.ts`), and `status` below is the one thing
+ * it takes from here, the host's own problem.
  */
 import { getContext, hasContext, setContext } from 'svelte';
 
 import type { HttpClient } from '@lostgradient/weft';
 
-import {
-  FleetEventSource,
-  type FleetEventFrame,
-} from '../lib/live-source/fleet-event-source.svelte.ts';
+import { FleetEventSource } from '../lib/live-source/fleet-event-source.svelte.ts';
 import { PollingSource } from '../lib/live-source/polling-source.svelte.ts';
 import type { LiveSourceStatus } from '../lib/live-source/types.ts';
-import { router } from '../lib/router.svelte.ts';
-import type { NotificationItem, NotificationStore } from './notifications.svelte.ts';
-import { showToast } from './toast-host.svelte';
 
 const DEFAULT_HEALTH_POLL_INTERVAL_MS = 20_000;
-
-/**
- * Cinder's `<ToastRegion>` has two urgency channels, keyed off `variant`:
- * `info`/`success`/`warning` are polite (`role="status"`), `danger` is
- * assertive (`role="alert"`, `toast-region.svelte`'s `isPolite()`) — matching
- * the design caption ("critical → toast role=alert, warning → toast
- * role=status"). Previously (Cinder ≤0.16.1) `warning` was routed to the
- * assertive channel alongside `danger` — filed upstream as
- * https://github.com/stevekinney/cinder/issues/800 and fixed in Cinder
- * 0.19.0's `isPolite()`, so no app-local workaround is needed here anymore.
- */
-function toastForNotification(item: NotificationItem): void {
-  if (item.tier === 'info') return;
-  showToast(`${item.title} — ${item.body}`, {
-    variant: item.tier === 'critical' ? 'danger' : 'warning',
-    duration: item.tier === 'critical' ? 0 : 6_000,
-    showIcon: true,
-    action: { label: 'View', onAction: () => router.navigate(item.href) },
-  });
-}
 
 /**
  * Plan §5.3: "SSE fails repeatedly (cap 5 attempts, then surface status)".
@@ -93,7 +59,6 @@ export class EngineStatusController {
 
   constructor(
     client: Pick<HttpClient, 'baseUrl' | 'headers'>,
-    notifications: NotificationStore,
     options?: EngineStatusControllerOptions,
   ) {
     this.fleetSource = new FleetEventSource({
@@ -107,10 +72,9 @@ export class EngineStatusController {
       intervalMs: options?.healthPollIntervalMs ?? DEFAULT_HEALTH_POLL_INTERVAL_MS,
     });
 
-    this.#unsubscribeFleet = this.fleetSource.subscribe((frame: FleetEventFrame) => {
-      const item = notifications.ingest(frame);
-      if (item && this.fleetSource.caughtUp) toastForNotification(item);
-    });
+    // The shared connection is opened by subscribing; the consumers that read the feed (the Engine
+    // view's activity, the task evidence) subscribe for themselves.
+    this.#unsubscribeFleet = this.fleetSource.subscribe(() => {});
     this.#unsubscribeHealth = this.#healthPoll.subscribe(() => {});
   }
 

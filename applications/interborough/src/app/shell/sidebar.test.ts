@@ -74,7 +74,7 @@ function mount(scopes?: readonly AuthorizationScope[], engineStatus?: LiveSource
 }
 
 const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
-const ENGINE = ['Workers', 'Storage', 'System', 'Audit'];
+const ENGINE = ['Overview', 'Workers', 'Storage', 'System', 'Audit'];
 
 describe('the sidebar', () => {
   test('holds a Work group and an Engine group, in order', () => {
@@ -112,6 +112,7 @@ describe('the sidebar', () => {
       Runs: '/runs',
       Schedules: '/schedules',
       Reviews: '/reviews',
+      Overview: '/engine',
       Workers: '/workers',
       Storage: '/storage',
       System: '/system',
@@ -194,7 +195,7 @@ describe('the sidebar', () => {
     landAt('/chat');
     const { getByRole } = mount();
     const titles = Object.fromEntries(
-      ['Chat', 'Agents', 'Reviews', 'Audit'].map((label) => [
+      ['Chat', 'Agents', 'Reviews', 'Overview', 'Audit'].map((label) => [
         label,
         getByRole('link', { name: new RegExp(`^${label}`) }).getAttribute('title'),
       ]),
@@ -203,7 +204,36 @@ describe('the sidebar', () => {
       Chat: 'Chat (g c)',
       Agents: 'Agents (g a)',
       Reviews: 'Reviews (g v)',
+      Overview: 'Overview (g e)',
       Audit: 'Audit (g u)',
     });
+  });
+});
+
+describe('the sidebar on a narrow viewport', () => {
+  test('closes its drawer, and records that it is collapsed, when the drawer is dismissed', async () => {
+    stubEngine();
+    landAt('/chat');
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const { findByRole } = mount();
+      const dialog = await findByRole('dialog');
+      expect(document.querySelector('.weft-shell-sidebar--mobile')).not.toBeNull();
+      // A click on the dialog itself is a click on its backdrop, which dismisses the drawer.
+      await fireEvent.click(dialog);
+      await waitFor(() =>
+        expect(document.querySelector('.weft-shell-sidebar--mobile')?.outerHTML ?? null).toBeNull(),
+      );
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

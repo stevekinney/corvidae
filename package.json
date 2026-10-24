@@ -78,7 +78,7 @@
     "esm-env": "^1.2.0",
     "fake-indexeddb": "^6.2.5",
     "gray-matter": "^4.0.3",
-    "happy-dom": "^20.11.0",
+    "happy-dom": "^21.0.4",
     "hast-util-sanitize": "^5.0.0",
     "js-yaml": "^4.1.0",
     "json-schema-library": "11.6.2",
@@ -126,7 +126,7 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "valibot": "^1.4.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "scripts": {
     "build": "bun scripts/run-exclusively.ts 'turbo run build'",
@@ -196,6 +196,8 @@
   },
   "overrides": {
     "picomatch": "4.0.4",
-    "cookie": "0.7.2"
+    "cookie": "0.7.2",
+    "@ag-ui/client/zod": "^4.6.6",
+    "@ag-ui/proto/zod": "^4.6.6"
   }
 }

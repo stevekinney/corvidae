@@ -163,7 +163,7 @@ await seedWorkflowRevisions(engine);
 
 // Two `registerSource()` revisions of `invoice-reconciliation`, neither
 // loaded (WFT-116/WFT-165) — `09-preload-dynamic-source.spec.ts` drives the
-// Registry → Dynamic workflow sources panel against the selectable source
+// Workflow types → Workflow sources panel against the selectable source
 // list plus exact diagnostics/preload calls: preloading the loadable one moves
 // it idle -> ready, and preloading the unreachable one is refused with a
 // bounded failure category. Both transitions are per-`(name, revision)` and

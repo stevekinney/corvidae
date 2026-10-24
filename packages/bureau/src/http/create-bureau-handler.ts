@@ -58,6 +58,8 @@ import {
   type BureauAgentCatalog,
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
+import { agentExamplesSchema } from '../agent-examples.ts';
+import { readFileAgentBinding } from '../agent-file-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
@@ -77,7 +79,7 @@ import {
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
-import { mediaOutputModesOf } from './a2a-agent-card.ts';
+import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
@@ -188,6 +190,7 @@ export type BureauHandlerSource = Pick<
   | 'durableEngine'
   | 'getOwner'
   | 'getScheduleAgentName'
+  | 'getScheduleInputPreview'
   | 'tasks'
   | 'lifecycle'
   | 'eventHistory'
@@ -228,6 +231,7 @@ export type BureauHandlerSource = Pick<
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
   | 'assets'
+  | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
 > & {
@@ -705,6 +709,44 @@ async function recoveryOf(bureau: BureauHandlerSource): Promise<DeploymentRecove
   return { status: report.outcome, failedRunCount: report.perRunFailures.length };
 }
 
+/** The `tools` field of a {@link PublishedAgent}, which is absent when the agent does not say. */
+function toolsOf(names: readonly string[] | undefined): { readonly tools?: readonly string[] } {
+  return names === undefined ? {} : { tools: names };
+}
+
+/** The `examples` field of a {@link PublishedAgent}, which is absent when the agent has none. */
+function examplesOf(prompts: readonly string[] | undefined): {
+  readonly examples?: readonly string[];
+} {
+  return prompts === undefined || prompts.length === 0 ? {} : { examples: prompts };
+}
+
+/**
+ * The example prompts a code-defined agent states (`StandaloneAgent.examples`), or `undefined` for
+ * an agent that is not a `createAgent` result or states anything else. A runnable agent may be any
+ * object with a `run`, so the property is checked rather than trusted.
+ */
+function readCodeExamples(agent: object): readonly string[] | undefined {
+  // The same bounds `createAgent` enforces: a runnable that states more, or longer, says nothing,
+  // so one odd agent cannot make the whole list fail its output schema.
+  const prompts = agentExamplesSchema.safeParse(
+    (agent as { readonly examples?: unknown }).examples,
+  );
+  return prompts.success ? prompts.data : undefined;
+}
+
+/**
+ * The tool names a code-defined agent states (`StandaloneAgent.toolNames`), or `undefined` for an
+ * agent that is not a `createAgent` result, or states anything else. A runnable agent may be any
+ * object with a `run`, so the property is checked rather than trusted.
+ */
+function readCodeToolNames(agent: object): readonly string[] | undefined {
+  const names = (agent as { readonly toolNames?: unknown }).toolNames;
+  return Array.isArray(names) && names.every((name) => typeof name === 'string')
+    ? names
+    : undefined;
+}
+
 /**
  * The agents this deployment lists as published or withdrawn. A code-defined agent is published
  * by the `publish` allowlist alone and is not listed otherwise. A persisted agent (COR-1526)
@@ -731,6 +773,8 @@ function publishedAgentsOf(
         definitionRevision: readGenerationProfile(agent as never).revision,
         publishState: publish.includes(listing.id) ? 'published' : 'unpublished',
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
+        ...toolsOf(readCodeToolNames(agent)),
+        ...examplesOf(readCodeExamples(agent)),
       },
     ];
   });
@@ -747,6 +791,8 @@ function publishedAgentsOf(
         definitionRevision: readGenerationProfile(agent as never).revision,
         publishState: listing.published ? 'published' : 'withdrawn',
         media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
+        ...toolsOf(readFileAgentBinding(agent)?.definition.tools),
+        ...examplesOf(readFileAgentBinding(agent)?.definition.examples),
       },
     ];
   });
@@ -828,10 +874,16 @@ function createA2AMount(
       const agent = bureau.agents.find(agentName) as
         { readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined } | undefined;
       if (described === undefined || agent === undefined) return undefined;
+      const descriptors = readGenerationProfile(
+        agent as Parameters<typeof readGenerationProfile>[0],
+      ).descriptors;
       return {
-        outputModes: mediaOutputModesOf(
-          readGenerationProfile(agent as Parameters<typeof readGenerationProfile>[0]).descriptors,
-        ),
+        outputModes: mediaOutputModesOf(descriptors),
+        // A file part is a managed asset: without the asset service none can be read.
+        inputModes:
+          bureau.assets === undefined
+            ? undefined
+            : mediaInputModesOf(descriptors, bureau.assets.policy.allowedMediaTypes),
         catalogName: agentName,
         displayName: described.displayName,
         description: described.description ?? undefined,
@@ -973,6 +1025,7 @@ export function buildBureauHandlerHost(
       updateSchedule: bureau.updateSchedule,
       owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
       agentName: (scheduleId) => bureau.getScheduleAgentName(scheduleId),
+      inputPreview: (scheduleId) => bureau.getScheduleInputPreview(scheduleId),
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,

@@ -28,7 +28,7 @@
  * @module a2a-task-stream
  */
 
-import type { Artifact, StreamResponse, Task, TaskState } from '@a2a-js/sdk';
+import type { Artifact, Part, StreamResponse, Task, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
 import type { RuntimeTimers } from '@lostgradient/lifecycle';
 import { decodeCursor, encodeCursor } from '@lostgradient/weft';
@@ -36,18 +36,25 @@ import { withStreamEventCursor } from '@lostgradient/weft/a2a';
 
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 
+import { A2UI_EXTENSION_URI, offeredCatalogIds } from '../a2ui/catalogs.ts';
+import { a2uiMessagesOf } from '../a2ui/messages.ts';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
+import { INTERACTIVE_SURFACE_EVENT_KINDS } from '../interactive-surface/store.ts';
+import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
+import { bearsSettlement } from '../task-resync.ts';
 import type { Bureau } from '../types.ts';
-import { formsOf, type WaitForm } from './a2a-input-forms.ts';
+import { formsOf, type WaitForm, withPreviousForms } from './a2a-input-forms.ts';
 import {
   a2aStateOf,
   agentMessage,
   isTerminal,
   replyMessageId,
   publishedReplyParts,
+  deleteSurfacePart,
   type ReplyParts,
   resultArtifactId,
+  surfaceParts,
   waitingMessage,
 } from './a2a-task-projection.ts';
 import { createTaskEventProjector, type TaskEvent } from './management/tasks-events-operation.ts';
@@ -77,6 +84,40 @@ export type A2AStreamBureau = Pick<
   readonly tasks: Pick<TaskRegistry, 'get' | 'onSettled' | 'onChanged'>;
 };
 
+/** The durable event kinds that change a surface: each one makes a stream re-read its surfaces. */
+const SURFACE_KINDS: ReadonlySet<string> = new Set([
+  INTERACTIVE_SURFACE_EVENT_KINDS.created,
+  INTERACTIVE_SURFACE_EVENT_KINDS.updated,
+  INTERACTIVE_SURFACE_EVENT_KINDS.closed,
+  INTERACTIVE_SURFACE_EVENT_KINDS.frozen,
+]);
+
+/**
+ * How a stream follows a task's A2UI surfaces (COR-837, part 3). Supplied only for a request that
+ * activated A2UI's extension: any other client gets no per-revision surface frames.
+ */
+export type FollowSurfaces = {
+  /** The task's surfaces as the stream's owner may see them. */
+  readonly list: (taskId: string) => Promise<readonly InteractiveSurface[]>;
+  /** The catalogs the client declared; `undefined` offers the basic catalog only. */
+  readonly supportedCatalogIds: readonly string[] | undefined;
+  /**
+   * Freezes the task's open surfaces now that its run has ended, resolving once they are written.
+   * The stream awaits it before its closing reconcile, so it never ends ahead of a freeze that the
+   * task record's settlement (the surface store's own trigger) has not yet started.
+   */
+  readonly settle: (
+    taskId: string,
+    status: 'completed' | 'failed' | 'canceled',
+  ) => Promise<unknown>;
+};
+
+/** What the opening snapshot hands back: the task, and the surfaces it showed. */
+export type OpeningSnapshot = {
+  readonly task: Task;
+  readonly surfaces: readonly InteractiveSurface[];
+};
+
 /** What one stream needs beyond the Bureau. */
 export type FollowTaskOptions = {
   readonly bureau: A2AStreamBureau;
@@ -85,8 +126,12 @@ export type FollowTaskOptions = {
   readonly lastEventId: string | undefined;
   /** Whether the request activated the durable-history extension. */
   readonly durableHistoryActive: boolean;
+  /** Whether the request activated A2UI, so a status that asks for input carries its form. */
+  readonly a2ui?: boolean | undefined;
   /** Builds the `Task` a snapshot sends, from the task's view with the folded status. */
-  readonly snapshot: (view: TaskView) => Promise<Task>;
+  readonly snapshot: (view: TaskView) => Promise<OpeningSnapshot>;
+  /** Present when the request activated A2UI: the stream then delivers each surface revision once. */
+  readonly surfaces?: FollowSurfaces | undefined;
   /** The agent's reply on a completed task, for its artifact and final status message. */
   readonly replyOf: (view: TaskView) => Promise<ReplyParts | undefined>;
   readonly timers: RuntimeTimers;
@@ -216,6 +261,7 @@ export function eventsOf(
   element: Extract<TaskEvent, { kind: 'task.status' }>,
   reply: ReplyParts | undefined,
   forms: readonly WaitForm[] = [],
+  a2ui = false,
 ): StreamResponse[] {
   const timestamp = new Date(element.emittedAtMs).toISOString();
   const state = a2aStateOf(element.status);
@@ -256,11 +302,24 @@ export function eventsOf(
     // the one it answers when several are open.
     const status = statusUpdate(view, state, timestamp);
     if (status.payload?.$case === 'statusUpdate') {
-      status.payload.value.status!.message = waitingMessage(view, forms);
+      status.payload.value.status!.message = waitingMessage(view, forms, a2ui);
     }
     return [status];
   }
   return [statusUpdate(view, state, timestamp)];
+}
+
+/**
+ * A status element, or a `task.resynced` read as one (it restates the status a failed append lost,
+ * COR-1669); `undefined` for any other element.
+ */
+export function statusElementOf(
+  element: TaskEvent | undefined,
+): Extract<TaskEvent, { kind: 'task.status' }> | undefined {
+  if (element?.kind === 'task.status') return element;
+  if (element?.kind !== 'task.resynced') return undefined;
+  const { revision: _revision, ...status } = element;
+  return { ...status, kind: 'task.status' };
 }
 
 /** Reads a task's retained durable events to their end, or `undefined` without a history. */
@@ -332,10 +391,7 @@ export function createFoldProjector(
   initial: TaskView,
   retained: RetainedEvents | undefined,
 ) {
-  const terminalRetained =
-    retained?.events.some((event) =>
-      ['run.completed', 'run.error', 'run.aborted', 'run.tripwire'].includes(event.kind),
-    ) ?? false;
+  const terminalRetained = retained?.events.some((event) => bearsSettlement(event)) ?? false;
   return createTaskEventProjector(taskId, {
     status: terminalRetained || !isTerminal(initial.status) ? 'working' : initial.status,
     finishReason: initial.finishReason,
@@ -352,6 +408,11 @@ export function createFoldProjector(
  */
 export async function* followTask(options: FollowTaskOptions): AsyncGenerator<StreamResponse> {
   const { bureau, taskId, signal } = options;
+  /** A view's forms; with A2UI activated, each also names the form it replaces. */
+  const formsFor = async (view: TaskView) => {
+    const forms = await formsOf(bureau, view);
+    return options.a2ui === true ? withPreviousForms(bureau, view, forms) : forms;
+  };
   const requested = requireCursor(options.lastEventId);
   const initial = await bureau.tasks.get(taskId);
   if (initial === undefined) return;
@@ -360,8 +421,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   const projector = createFoldProjector(taskId, initial, retained);
   let folded: Extract<TaskEvent, { kind: 'task.status' }> | undefined;
   for (const event of retained?.events ?? []) {
-    const element = projector.project(event);
-    if (element?.kind === 'task.status') folded = element;
+    const element = statusElementOf(projector.project(event));
+    if (element !== undefined) folded = element;
   }
   const cursor =
     retained === undefined
@@ -376,7 +437,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           finishReason: folded.finishReason,
           statusMessage: folded.message,
         };
-  const task = await options.snapshot(snapshotView);
+  const { task, surfaces: shownInSnapshot } = await options.snapshot(snapshotView);
   if (options.durableHistoryActive && cursor !== undefined) {
     task.metadata = {
       ...task.metadata,
@@ -398,6 +459,10 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     options.buffer ?? A2A_STREAM_BUFFER,
   );
   let lastStatus = snapshotView.status;
+  // The state of the last status frame queued, which a surface frame repeats: `lastStatus` runs
+  // ahead of it while events wait to be mapped.
+  let sentState = snapshotView.status;
+  const reconciler = createSurfaceReconciler(options.surfaces, shownInSnapshot);
   const stops: Array<() => void> = [];
   const abort = () => queue.end();
   signal?.addEventListener('abort', abort, { once: true });
@@ -428,11 +493,13 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           message: view.statusMessage,
           artifact: null,
         };
-        const forms = await formsOf(bureau, view);
-        for (const event of eventsOf(view, element, reply, forms)) queue.push({ event });
+        const forms = await formsFor(view);
+        for (const event of eventsOf(view, element, reply, forms, options.a2ui))
+          queue.push({ event });
         if (isTerminal(view.status)) queue.end();
       } else if (lastStatus === 'submitted' && view.status !== 'submitted') {
         lastStatus = 'working';
+        sentState = 'working';
         queue.push({ event: statusUpdate(view, a2aStateOf('working'), view.updatedAt) });
       }
     });
@@ -500,8 +567,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         if (!watching || element.status === lastStatus) return;
         lastStatus = element.status;
         const view = (await bureau.tasks.get(taskId)) ?? initial;
-        const forms = await formsOf(bureau, view);
-        for (const mapped of eventsOf(view, element, undefined, forms)) {
+        const forms = await formsFor(view);
+        for (const mapped of eventsOf(view, element, undefined, forms, options.a2ui)) {
           queue.push({ event: mapped });
         }
       });
@@ -526,13 +593,24 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           return;
         }
         const element = projector.project(event);
+        if (SURFACE_KINDS.has(event.kind)) {
+          // A surface event is a trigger, not a payload: the surfaces are re-read as they stand,
+          // and each revision above what was sent goes out once, under this event's cursor.
+          mapping = chained(mapping, async () => {
+            const view = (await bureau.tasks.get(taskId)) ?? initial;
+            const frame = await reconciler.reconcile(view, sentState, event.emittedAtMs);
+            if (frame !== undefined) queue.push({ event: frame, cursor: event.cursor });
+          }).catch((error: unknown) => queue.fail(error));
+          return;
+        }
         if (element === undefined) return;
         if (element.kind === 'task.removed') {
           mapping = chained(mapping, async () => queue.end());
           return;
         }
-        if (element.kind !== 'task.status') return;
-        lastStatus = element.status;
+        const status = statusElementOf(element);
+        if (status === undefined) return;
+        lastStatus = status.status;
         // Whether this element ended the task, read now: a later event may end it before this
         // one is mapped.
         const endsTask = projector.ended;
@@ -540,15 +618,34 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         // overtake an earlier one.
         mapping = chained(mapping, async () => {
           const view = (await bureau.tasks.get(taskId)) ?? initial;
-          const reply = element.status === 'completed' ? await options.replyOf(view) : undefined;
-          const events = eventsOf(view, element, reply, await formsOf(bureau, view));
+          const reply = status.status === 'completed' ? await options.replyOf(view) : undefined;
+          const events = eventsOf(view, status, reply, await formsFor(view), options.a2ui);
+          // One last reconcile before the stream ends, so a surface the task froze or closed with
+          // its end is delivered. It goes out ahead of the terminal status, which stays the last
+          // frame of the stream, and repeats the state the client already holds.
+          if (endsTask) {
+            // The run event can precede the task record's settlement, which is what freezes the
+            // surfaces on its own: freeze them here, so the reconcile below reads them frozen.
+            if (
+              options.surfaces !== undefined &&
+              (status.status === 'completed' ||
+                status.status === 'failed' ||
+                status.status === 'canceled')
+            ) {
+              await options.surfaces.settle(taskId, status.status).catch(() => undefined);
+            }
+            const closing = await reconciler.reconcile(view, sentState, status.emittedAtMs);
+            if (closing !== undefined) queue.push({ event: closing });
+          }
+          sentState = status.status;
           for (const [index, mapped] of events.entries()) {
             // Only the last event of a durable one carries its cursor, so a resume never skips
             // the part of it a reader had not received.
+            const last = index === events.length - 1;
             queue.push({
               event: mapped,
-              ...(index === events.length - 1 ? { cursor: event.cursor } : {}),
-              ends: endsTask && index === events.length - 1,
+              ...(last ? { cursor: event.cursor } : {}),
+              ends: endsTask && last,
             });
           }
         }).catch((error: unknown) => queue.fail(error));
@@ -577,4 +674,124 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     signal?.removeEventListener('abort', abort);
     for (const stop of stops) stop();
   }
+}
+
+/** A surface data part without its `createSurface` message; any other part as it is. */
+function withoutCreateSurface(part: Part): Part {
+  if (part.content?.$case !== 'data' || !Array.isArray(part.content.value)) return part;
+  const messages = (part.content.value as Record<string, unknown>[]).filter(
+    (message) => !('createSurface' in message),
+  );
+  return { ...part, content: { $case: 'data', value: messages } };
+}
+
+/** What a client holds of one surface: the revision sent, and whether it was A2UI data. */
+type SentSurface = {
+  readonly revision: number;
+  readonly data: boolean;
+  /** The `createSurface` message sent, which holds the properties only it can carry. */
+  readonly created: string;
+  /** The ids of the components sent, which an update can add or replace but never remove. */
+  readonly components: ReadonlySet<string>;
+};
+
+/**
+ * Re-reads a task's surfaces and frames what the client has not been sent. `sent` starts as the
+ * surfaces the opening snapshot showed, so a revision in the snapshot is never sent again; a
+ * reconcile emits only revisions above what was sent, as one `statusUpdate` whose message carries
+ * the same parts a read does (`surfaceParts`), and a `deleteSurface` envelope for a surface the
+ * client holds that was torn down. It runs inside the stream's serial mapping chain.
+ */
+function createSurfaceReconciler(
+  surfaces: FollowSurfaces | undefined,
+  shown: readonly InteractiveSurface[],
+) {
+  if (surfaces === undefined) {
+    return {
+      reconcile: async (..._arguments: unknown[]): Promise<StreamResponse | undefined> => undefined,
+    };
+  }
+  const offered = offeredCatalogIds(surfaces.supportedCatalogIds);
+  const delivered = (surface: InteractiveSurface): boolean =>
+    surface.representation?.kind === 'a2ui' && offered.includes(surface.representation.catalogId);
+  /** The `createSurface` a surface would begin with: its catalog, theme, and data-model return. */
+  const createdOf = (surface: InteractiveSurface): string =>
+    delivered(surface)
+      ? JSON.stringify(a2uiMessagesOf(surface).find((message) => 'createSurface' in message))
+      : '';
+  const sentOf = (surface: InteractiveSurface): SentSurface => ({
+    revision: surface.revision,
+    data: delivered(surface),
+    created: createdOf(surface),
+    components: new Set(
+      surface.representation?.kind === 'a2ui'
+        ? surface.representation.components.map((component) => JSON.stringify(component['id']))
+        : [],
+    ),
+  });
+  const sent = new Map<string, SentSurface>();
+  for (const surface of shown) {
+    if (surface.kind === 'a2ui') sent.set(surface.surfaceId, sentOf(surface));
+  }
+  const activated: ReadonlySet<string> = new Set([A2UI_EXTENSION_URI]);
+  return {
+    async reconcile(
+      view: Pick<TaskView, 'id' | 'contextId'>,
+      state: TaskView['status'],
+      emittedAtMs: number,
+    ): Promise<StreamResponse | undefined> {
+      const parts: Part[] = [];
+      const revisions: string[] = [];
+      for (const surface of await surfaces.list(view.id)) {
+        if (surface.kind !== 'a2ui') continue;
+        const before = sent.get(surface.surfaceId);
+        if (before !== undefined && before.revision >= surface.revision) continue;
+        if (surface.representation === null) {
+          sent.set(surface.surfaceId, {
+            revision: surface.revision,
+            data: false,
+            created: '',
+            components: new Set(),
+          });
+          // A client that never held the surface learns nothing of its end.
+          if (before?.data !== true) continue;
+          parts.push(deleteSurfacePart(surface));
+        } else {
+          const next = sentOf(surface);
+          sent.set(surface.surfaceId, next);
+          const whole = surfaceParts([surface], activated, surfaces.supportedCatalogIds);
+          // A surface the client already holds is continued with its whole current state and no
+          // second `createSurface`, which A2UI v0.9.1 forbids for an existing surface id.
+          if (before?.data !== true) parts.push(...whole);
+          else if (
+            next.data &&
+            (before.created !== next.created ||
+              [...before.components].some((id) => !next.components.has(id)))
+          ) {
+            // `theme` and `sendDataModel` travel only in `createSurface`, and an
+            // `updateComponents` only adds or replaces components, so a surface whose replacement
+            // changed the first or dropped a component is deleted and begun again, whole.
+            parts.push(deleteSurfacePart(surface), ...whole);
+          } else parts.push(...whole.map(withoutCreateSurface));
+        }
+        revisions.push(`${surface.surfaceId}@${surface.revision}`);
+      }
+      if (parts.length === 0) return undefined;
+      return {
+        payload: {
+          $case: 'statusUpdate',
+          value: {
+            taskId: view.id,
+            contextId: view.contextId,
+            status: {
+              state: a2aStateOf(state),
+              message: agentMessage(view, `${view.id}:surfaces:${revisions.join(',')}`, parts),
+              timestamp: new Date(emittedAtMs).toISOString(),
+            },
+            metadata: undefined,
+          },
+        },
+      };
+    },
+  };
 }

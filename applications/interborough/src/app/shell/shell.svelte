@@ -19,11 +19,13 @@
   import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
+  import { subscribeScheduleInvalidation } from '../../lib/live-source/cache-integration.ts';
   import { stepChord } from '../../lib/navigation-shortcuts.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
+  import { connectNotificationFeed } from '../notification-feed.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
   import { ThemeStore } from '../theme.svelte.ts';
@@ -65,7 +67,7 @@
 
   const theme = new ThemeStore();
   const notifications = new NotificationStore();
-  const engineStatus = new EngineStatusController(initialClient, notifications);
+  const engineStatus = new EngineStatusController(initialClient);
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
   // `provideFleetEventSource()` doc: shares the ONE fleet SSE connection with
   // route components instead of each opening its own.
@@ -80,6 +82,9 @@
   $effect(() => {
     notifications.reportEngineStatus(engineStatus.status, Date.now());
   });
+
+  // What is waiting on the person, and what finished, comes from the Bureau.
+  connectNotificationFeed(notifications);
 
   // `g`, then a letter, opens a view (`../../lib/navigation-shortcuts.ts`); the sidebar's tooltips
   // name the same keys.
@@ -112,6 +117,9 @@
   // Dashboard's alerts without a manual refresh. This rides the one shared fleet subscription.
   const queryClient = useQueryClient();
   $effect(() => subscribeTaskEvidenceInvalidation(engineStatus.fleetSource, queryClient));
+  // A schedule that fires, and the run it launches settling, refresh what every schedule view shows
+  // of its last run, on whichever page is open.
+  $effect(() => subscribeScheduleInvalidation(engineStatus.fleetSource, queryClient));
 
   /**
    * `collapsed` doubles as "drawer closed" once Cinder's `Sidebar` switches
@@ -145,13 +153,7 @@
 <div class="weft-shell">
   <Sidebar {client} engineStatus={engineStatus.status} bind:collapsed={sidebarCollapsed} />
   <div class="weft-shell-main">
-    <Topbar
-      {notifications}
-      liveStatus={engineStatus.fleetSource.status}
-      {theme}
-      bind:paletteOpen
-      bind:sidebarCollapsed
-    />
+    <Topbar {notifications} {theme} bind:paletteOpen bind:sidebarCollapsed />
     <AuthModeBanner mode={principalStore.bannerMode} />
     <CriticalAlertStrip store={notifications} />
     <RouteOutlet />

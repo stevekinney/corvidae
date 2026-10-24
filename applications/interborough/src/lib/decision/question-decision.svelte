@@ -11,12 +11,14 @@
   interface QuestionDecisionProps {
     id: string;
     question: string;
+    /** The parts of the question that are identifiers (the agent's name), which are set in monospace. */
+    identifiers: readonly string[];
     sending: boolean;
     failure?: string | undefined;
     onSend: (answer: string) => void | Promise<void>;
   }
 
-  let { id, question, sending, failure, onSend }: QuestionDecisionProps = $props();
+  let { id, question, identifiers, sending, failure, onSend }: QuestionDecisionProps = $props();
   let answer = $state('');
 
   async function submit(event: SubmitEvent): Promise<void> {
@@ -28,7 +30,9 @@
 </script>
 
 <form class="ib-decision" data-kind="question" onsubmit={submit}>
-  <p class="ib-decision__question" id={`${id}-question`}><IdentifierText text={question} /></p>
+  <p class="ib-decision__question" id={`${id}-question`}>
+    <IdentifierText text={question} {identifiers} />
+  </p>
   <div class="ib-decision__answer">
     <Input
       id={`${id}-answer`}

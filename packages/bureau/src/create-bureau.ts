@@ -163,6 +163,11 @@ import {
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
+import {
+  humanInputEnabled,
+  humanInputSchemasOf,
+  validateHumanInputOption,
+} from './human-input-option';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
@@ -306,6 +311,7 @@ import {
   type LiveTask,
   type TaskRecord,
 } from './task-registry';
+import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
   EXPIRY_ACTOR,
@@ -513,9 +519,11 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
+import { scheduleInputPreview } from './schedule-input-preview';
 import { streamEventToFrame } from './websocket-frames';
 
 const BUREAU_AGENT_NAME = 'bureau';
+
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
 /** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
@@ -2002,6 +2010,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.sessionInput?.sessionBacklogLimit ?? DEFAULT_SESSION_INPUT_BACKLOG_LIMIT;
   const sessionInputPrincipalBacklogLimit =
     options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
+  // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
+  validateHumanInputOption(options.humanInput);
   validateAuditRetentionOption(options.auditRetention);
   validateRetentionWindowOption(options.eventRetention, 'eventRetention');
   validateRetentionWindowOption(options.taskRetention, 'taskRetention');
@@ -4091,6 +4101,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `BureauOptions.onEvent`.
   const BOOT_FRAME_BUFFER_LIMIT = 1024;
   let recoveryPassActive = false;
+  /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
+  let taskResyncBootPass: Promise<void> | undefined;
   const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
@@ -7358,7 +7370,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // one's `onServices` property in the `createActiveRun` options object
       // literal, silently breaking whichever tool composed first.
       const servicesRef: { current?: DurableRunDeps } = {};
-      const wantsHumanInput = !!(options.humanInput && runtime.durable);
+      const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
       const wantsWakeup = !!(options.wakeup && runtime.durable);
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
@@ -7368,6 +7380,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // (`runtime-composition.ts`), which used to omit it entirely.
       const runToolbox: BureauToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
+        inputSchemas: humanInputSchemasOf(options.humanInput),
         wakeup: wantsWakeup,
         runId,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
@@ -9077,6 +9090,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
+      // COR-1669: a task whose settlement was written but whose event never was. Not awaited, so
+      // the boot takes no extra turn; held in `taskResyncBootPass`, which `shutdown()` awaits
+      // before storage closes.
+      const repaired = taskResyncInstance?.repairAll().then(
+        () => undefined,
+        (error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not repair task histories at boot: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        },
+      );
+      if (repaired !== undefined) {
+        taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
+      }
       return report;
     } finally {
       recoveryPassActive = false;
@@ -10008,11 +10038,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * The agent an agent schedule runs, read from the stored input beside the owner. Only the name
-   * leaves: the input's text and its session stay in storage. A workflow file's schedule runs no
-   * agent of its own, so it has none.
+   * The stored input of an agent schedule, or `undefined` when there is no such schedule, when it
+   * is a workflow file's (which runs no agent of its own), or when no durable engine is composed.
    */
-  async function getScheduleAgentName(scheduleId: string): Promise<string | undefined> {
+  async function readScheduledAgentInput(
+    scheduleId: string,
+  ): Promise<ScheduledAgentRunInput | undefined> {
     if (!runtime.durable) return undefined;
     if (workflowRuntime !== undefined && (await workflowRuntime.scheduleExists(scheduleId))) {
       return undefined;
@@ -10024,7 +10055,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       typeof state === 'object' && state !== null
         ? (state as { input?: unknown }).input
         : undefined;
-    return isScheduledAgentRunInput(input) ? input.agentName : undefined;
+    return isScheduledAgentRunInput(input) ? input : undefined;
+  }
+
+  /**
+   * The agent an agent schedule runs, read from the stored input beside the owner. Only the name
+   * leaves here: the input's text is {@link getScheduleInputPreview}'s, and its session stays in
+   * storage. A workflow file's schedule runs no agent of its own, so it has none.
+   */
+  async function getScheduleAgentName(scheduleId: string): Promise<string | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    return stored?.agentName;
+  }
+
+  /**
+   * The start of the text an agent schedule sends each fire, at most 500 characters and ending in
+   * `…` when it was cut, so a schedule can be told by what it says (see
+   * {@link scheduleInputPreview}); an input of media alone has none, and its schedule has no
+   * preview.
+   */
+  async function getScheduleInputPreview(scheduleId: string): Promise<string | undefined> {
+    const stored = await readScheduledAgentInput(scheduleId);
+    if (stored === undefined) return undefined;
+    return scheduleInputPreview(stored.input);
   }
 
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
@@ -12416,6 +12469,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1669 — a task marked resync-pending, or settled with no event that says so.
+      try {
+        await taskResyncInstance?.repairAll();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual task-history repair pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       try {
         await reconcileAgentSnapshots();
         await retainAgentSnapshots();
@@ -12692,6 +12756,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic task retention pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        try {
+          await taskResyncInstance?.repairAll();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic task-history repair pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -16147,6 +16221,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 Object.entries(review).filter(([key]) => key !== 'inputSchema'),
               ) as unknown as PendingReview)
             : review,
+        // The schema's absence is not the form's: this marker is how a closed wait is known to
+        // have shown a form (COR-1674).
+        ...(review.kind === 'human-wait' && review.inputSchema !== undefined
+          ? { inputForm: true }
+          : {}),
         decision,
         ...(reason !== undefined ? { reason } : {}),
       },
@@ -17248,6 +17327,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (automaticRunOwnershipPruneCurrentPass) {
         await automaticRunOwnershipPruneCurrentPass;
       }
+      if (taskResyncBootPass) await taskResyncBootPass;
       // AB-388: drain any manual `runDurableMaintenance()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
@@ -17626,6 +17706,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // below, alongside `auditTrailInstance`, once `bureau` itself exists to
   // subscribe to.
   let durableEventProducerInstance: DurableEventProducer | undefined;
+  // COR-1669 — repairs a task's history after a failed append, at boot, and in maintenance.
+  let taskResyncInstance: TaskResync | undefined;
 
   /**
    * Whether `principal` may read `owner`'s durable history right now: the one
@@ -18315,7 +18397,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ),
     fileAgents,
     // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-    humanInput: options.humanInput === true && runtime.durable !== undefined,
+    humanInput: runtime.durable !== undefined ? options.humanInput : undefined,
     // COR-772 — a durable `bureau.run` parent aborted through its own handle
     // is a cancelled parent like any other. Once shutdown has begun, dispose
     // — not the policy — ends every live run, and boot recovery applies the
@@ -18628,6 +18710,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     getRun,
     getOwner,
     getScheduleAgentName,
+    getScheduleInputPreview,
     subscribeRunSnapshot,
     getRunReport,
     abortRun,
@@ -18820,8 +18903,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       eventHistoryInstance,
       runtimeServices,
       diagnose,
-      { signal: backgroundShutdownController.signal, eventTimestamp },
+      {
+        signal: backgroundShutdownController.signal,
+        eventTimestamp,
+        onAppendFailed: (owner) => void taskResyncInstance?.appendFailed(owner),
+      },
     );
+    taskResyncInstance = createTaskResync({
+      answerOf: (taskId) => {
+        const content = bureau.getRun(taskId)?.stepDetails.findLast((step) => step.final)?.content;
+        if (content === undefined || content === '') return undefined;
+        return {
+          text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+          truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+        };
+      },
+      tasks,
+      history: eventHistoryInstance,
+      producer: durableEventProducerInstance,
+      diagnose: (message, cause) =>
+        diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+    });
   }
 
   // Wire the webhook notifier (AB-21) now that the audit trail exists (an

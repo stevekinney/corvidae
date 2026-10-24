@@ -341,6 +341,13 @@ export interface BureauMemoryAuthorityOptions {
  */
 export type RetentionWindowOption = 'forever' | { readonly olderThan: number };
 
+/**
+ * COR-1674 — the shape of {@link BureauOptions.humanInput}: `true` offers `requestHumanInput`
+ * with free-form answers; the object form also supplies the answer schema per signal name.
+ */
+export type BureauHumanInputOption =
+  boolean | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
+
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
@@ -656,8 +663,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Omit
    * (the default) to leave the toolbox as configured — this tool is opt-in, never an ambient
    * grant.
+   *
+   * COR-1674 — pass `{ inputSchemas }` instead of `true` to give a signal a JSON Schema (2020-12)
+   * for the answer a person must give. `inputSchemas` maps a `signalName` to its schema; a call
+   * to `requestHumanInput` on that signal carries the schema into its park, so an A2A client sees
+   * a form and an answer that does not satisfy the schema is refused before the run resumes. The
+   * object form enables the tool exactly as `true` does; `createBureau` checks every schema
+   * eagerly with operative's `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one
+   * it cannot accept. A signal with no entry takes any answer, as before.
    */
-  humanInput?: boolean;
+  humanInput?: BureauHumanInputOption;
   /**
    * AB-201 — opt into operative's `scheduleWakeup` self-scheduling tool for
    * durable runs (`createRun` only; has no effect without a durable engine
@@ -1452,6 +1467,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * schedule, so a caller answers to {@link Bureau.getOwner} first.
    */
   getScheduleAgentName(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * The start of the text an agent schedule sends each fire: at most 500 characters, ending in `…`
+   * when it was cut, so a schedule can be told by what it says. `undefined` when there is no such
+   * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
+   * is composed. It reads the stored input beside {@link Bureau.getScheduleAgentName}, never its
+   * session, and does not check who may see the schedule, so a caller answers to
+   * {@link Bureau.getOwner} first.
+   */
+  getScheduleInputPreview(scheduleId: string): Promise<string | undefined>;
 
   /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),

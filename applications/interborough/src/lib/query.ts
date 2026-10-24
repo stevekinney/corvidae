@@ -45,6 +45,10 @@ export const queryKeys = {
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+    /** The chats a pending review names that the list's loaded pages do not hold, by id. */
+    waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
+    /** Every session the caller owns, read to count and date each agent's chats. */
+    usage: () => ['contexts', 'usage'] as const,
   },
   /** What an agent remembers (`bureau.memory.*`), under one agent's identifier. */
   memory: {
@@ -70,6 +74,11 @@ export const queryKeys = {
   /** The Workflows area: the engine's definitions joined with the Bureau's files (`lib/workflow-catalog.ts`). */
   workflowCatalog: {
     list: () => ['workflow-catalog', 'list'] as const,
+    /** What the engine says of the code-defined types the list shows: their counts and schedules. */
+    activity: (names: readonly string[]) => ['workflow-catalog', 'activity', names] as const,
+    /** The newest runs of one type, from the Bureau for a file and the engine for a code type. */
+    recentRuns: (kind: 'code' | 'agent-authored', type: string) =>
+      ['workflow-catalog', 'recent-runs', kind, type] as const,
     /** One type, and what each service says of it. */
     detail: (type: string) => ['workflow-catalog', 'detail', type] as const,
     /** One workflow file as `bureau.workflows.get` shows it, for the editor. */
@@ -86,6 +95,8 @@ export const queryKeys = {
   /** The audit trail, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
+    /** The first page of the whole trail, read for the types the Type select offers. */
+    types: () => ['audit', 'types'] as const,
   },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
@@ -160,7 +171,7 @@ export const queryKeys = {
   hostPaths: () => ['host', 'paths'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
-  /** `weft.system.lease` (COR-124), read only by the System route's Health & lease tab. */
+  /** `weft.system.lease` (COR-124), read only by the System route's Health tab. */
   systemLease: () => ['system', 'lease'] as const,
   /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {

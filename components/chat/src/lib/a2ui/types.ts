@@ -40,6 +40,13 @@ export type A2uiAction = {
   /** ISO 8601. */
   readonly timestamp: string;
   readonly context: Readonly<Record<string, A2uiJsonValue>>;
+  /**
+   * The revision of the surface the user acted on, when the host told the renderer
+   * (`A2uiSurfaceProps.surfaceRevision`). A server that checks it refuses an action taken on a
+   * surface that has since changed, so the host sends it back with the action (Bureau reads it as
+   * `metadata.a2uiSurfaceRevision`).
+   */
+  readonly surfaceRevision?: number | undefined;
 };
 
 /** What a diagnostic reports. */
@@ -81,6 +88,12 @@ export type A2uiAssetUrlResolver = (url: string) => Promise<string>;
 export type A2uiSurfaceProps = {
   /** The surface's id, reported on every action. */
   surfaceId: string;
+  /**
+   * The revision of the surface the components and data model show. The renderer reports it as
+   * `surfaceRevision` on every action, read when the action fires, so an action taken after an
+   * update carries the updated revision and one taken on stale content is refused by the server.
+   */
+  surfaceRevision?: number | undefined;
   /** Every component the surface has received; later entries replace earlier ones with the same id. */
   components: readonly A2uiComponent[];
   /**

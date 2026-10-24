@@ -712,7 +712,14 @@ function modelView(descriptor: BackendDescriptor): z.infer<typeof modelSchema> {
 const catalogInput = z.object({});
 const catalogOutput = z.object({
   models: z.array(modelSchema),
-  tools: z.array(z.object({ name: z.string(), description: z.string() })),
+  tools: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      /** The one line a screen shows for the tool, or `null` when it declares none. */
+      shortDescription: z.string().nullable(),
+    }),
+  ),
 });
 
 export const agentsCatalogOperation = defineOperation<
@@ -724,7 +731,7 @@ export const agentsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models and tools an agent may name',
   description:
-    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description` and a `shortDescription` (one line for a person, or `null` when the tool declares none). A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: catalogInput,

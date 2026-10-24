@@ -1,6 +1,7 @@
 export {
   SessionConflictError,
   StaleSessionIncarnationError,
+  clipText,
   createSessionStore,
   summarizeSession,
 } from './create-session-store';
@@ -30,6 +31,13 @@ export {
   sessionLineageOf,
 } from './session-lineage';
 export type { SessionLineage } from './session-lineage';
+export {
+  DEFAULT_SESSION_ORIGIN,
+  SESSION_ORIGINS,
+  SESSION_ORIGIN_METADATA_KEY,
+  sessionOriginOf,
+} from './session-origin';
+export type { SessionOrigin } from './session-origin';
 export { LOCAL_SESSION_OWNER, SESSION_OWNER_METADATA_KEY, sessionOwnerOf } from './session-owner';
 export { resumeSession } from './session-resume';
 export type { ResumeSessionOptions, ResumeSessionResult } from './session-resume';

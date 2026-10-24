@@ -9,6 +9,7 @@
 
 import type { HumanInputSchema } from '@lostgradient/operative';
 
+import type { AuditRecord } from '../audit-trail.ts';
 import type { TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
 
@@ -19,17 +20,91 @@ export type WaitForm = {
   readonly signalName: string;
   readonly prompt: string | undefined;
   readonly inputSchema: HumanInputSchema;
+  /**
+   * The review of the run's previous form wait, whose surface this one replaces: a repeated park
+   * closes the surface before it, whatever signal it waited on. `undefined` for the first form.
+   */
+  readonly previousReviewId?: string | undefined;
 };
+
+/** The part of a Bureau the forms read: a review, and the audit trail that holds the closed ones. */
+type FormsBureau = Pick<Bureau, 'getReview'> & Partial<Pick<Bureau, 'auditTrail'>>;
+
+/** The ordinal a human-wait review id ends in; ordinals count the parks of a whole run. */
+function parkOrdinalOf(reviewId: string): number {
+  return Number(reviewId.slice(reviewId.lastIndexOf(':') + 1));
+}
+
+/** How many of a run's newest closed form waits the previous-form lookup reads. */
+const FORM_LOOKUP_LIMIT = 10;
+
+/** The review id of the form wait a trail record closed, or `undefined` for any other record. */
+function closedFormWaitId(record: AuditRecord): string | undefined {
+  if (!record.type.startsWith('review.human-wait.')) return undefined;
+  const detail = record.detail as { review?: { id?: unknown }; inputForm?: unknown } | null;
+  const id = detail?.review?.id;
+  if (detail?.inputForm !== true || typeof id !== 'string') return undefined;
+  return Number.isInteger(parkOrdinalOf(id)) ? id : undefined;
+}
+
+/**
+ * The run's newest closed human-wait reviews that showed a form, oldest first, as the audit trail
+ * recorded them when they closed (the record carries an `inputForm` marker, not the schema). The
+ * form filter runs in the query before its limit counts, so plain waits never crowd a form out.
+ * Empty without a trail.
+ */
+async function recordedFormWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
+  const records = await bureau.auditTrail
+    ?.query({
+      runId,
+      filter: (record) => closedFormWaitId(record) !== undefined,
+      select: 'newest',
+      limit: FORM_LOOKUP_LIMIT,
+    })
+    .catch(() => undefined);
+  const found = new Set<string>();
+  for (const record of records ?? []) {
+    const id = closedFormWaitId(record);
+    if (id !== undefined) found.add(id);
+  }
+  return [...found].toSorted((left, right) => parkOrdinalOf(left) - parkOrdinalOf(right));
+}
+
+/** The latest of the run's closed form waits before `ordinal`. */
+async function formReviewBefore(
+  bureau: FormsBureau,
+  runId: string,
+  ordinal: number,
+): Promise<string | undefined> {
+  const recorded = await recordedFormWaitIds(bureau, runId);
+  return recorded.filter((id) => parkOrdinalOf(id) < ordinal).at(-1);
+}
+
+/**
+ * Adds to each form the review of the run's previous form wait, whose surface the form replaces.
+ * Only a client that renders forms needs it, so a read that activated A2UI calls it and no other
+ * caller pays for it. It reads only the run's newest closed form waits, a bounded number,
+ * and no review.
+ */
+export async function withPreviousForms(
+  bureau: FormsBureau,
+  view: TaskView,
+  forms: readonly WaitForm[],
+): Promise<WaitForm[]> {
+  return Promise.all(
+    forms.map(async (form) => ({
+      ...form,
+      previousReviewId: await formReviewBefore(bureau, view.id, parkOrdinalOf(form.reviewId)),
+    })),
+  );
+}
 
 /**
  * The forms a task's open human waits ask for, in wait order. A task that is not waiting, or whose
  * waits carry no schema, has none. A review that cannot be read leaves its wait without a form: the
  * task is still projected, with the text that names the wait.
  */
-export async function formsOf(
-  bureau: Pick<Bureau, 'getReview'>,
-  view: TaskView,
-): Promise<WaitForm[]> {
+export async function formsOf(bureau: FormsBureau, view: TaskView): Promise<WaitForm[]> {
   if (view.status !== 'input-required') return [];
   const forms = await Promise.all(
     view.openWaits.map(async (wait): Promise<WaitForm | undefined> => {
@@ -50,16 +125,4 @@ export async function formsOf(
 /** The surface id of a wait's form: one per review, so a repeated wait on a signal is a new surface. */
 export function formSurfaceId(reviewId: string): string {
   return `input-form:${reviewId}`;
-}
-
-/**
- * The review id of the wait that parked on the same signal just before this one, or `undefined`
- * for the first park. Review ids end in the park ordinal (`human-wait:<run>:<signal>:<n>`), and a
- * wait on a signal opens only once the previous park on it has closed.
- */
-export function previousParkReviewId(reviewId: string): string | undefined {
-  const split = reviewId.lastIndexOf(':');
-  const ordinal = Number(reviewId.slice(split + 1));
-  if (split < 0 || !Number.isInteger(ordinal) || ordinal < 1) return undefined;
-  return `${reviewId.slice(0, split)}:${ordinal - 1}`;
 }

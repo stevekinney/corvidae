@@ -291,7 +291,7 @@
   }
 }
 
-/* Notification bell + dropdown panel (design `Weft New Surfaces.dc.html` §C). */
+/* Notification bell + dropdown panel: one flat, one-line row per item. */
 
 .weft-notification-bell__icon {
   position: relative;
@@ -302,8 +302,8 @@
   position: absolute;
   inset-block-start: calc(-1 * var(--cinder-space-2));
   inset-inline-end: calc(-1 * var(--cinder-space-2));
-  min-width: 15px;
-  height: 15px;
+  min-width: 1rem;
+  height: 1rem;
   padding: 0 var(--cinder-space-1);
   display: grid;
   place-items: center;
@@ -314,35 +314,29 @@
   font-weight: 700;
 }
 
-.weft-notification-panel {
-  width: 380px;
-  max-width: calc(100vw - 32px);
-  background: var(--cinder-surface-raised);
-  border-radius: var(--cinder-radius-lg);
+/* Cinder's popover pads its panel and caps it at 28rem; the rows run edge to edge, in a panel one width on every screen. */
+.weft-notification-popover {
+  padding: 0;
+  width: 30rem;
+  max-width: calc(100vw - var(--cinder-space-8));
   overflow: hidden;
 }
 
 .weft-notification-panel__header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: var(--cinder-space-2);
   padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   border-bottom: 1px solid var(--cinder-border-muted);
 }
 
 /*
- * WFC-11 design-fidelity fix: the panel's own `overflow: hidden` (copied
- * faithfully from `Weft New Surfaces.dc.html`'s §C mockup, which only ever
- * shows a handful of static sample items) has no paired `max-height`, so a
- * live feed with dozens of notifications rendered as one unbounded panel —
- * confirmed live at 50 seeded notifications: a 2842px-tall, unscrollable
- * dropdown whose footer (the Connection Indicator §0 second instance and
- * "Open alerts view" link) sat entirely off-screen with no way to reach it.
- * Capping and scrolling just the item list, not the header/footer, keeps
- * both always visible regardless of feed size.
+ * Only the list scrolls. The panel's own `overflow: hidden` has no paired `max-height`, so without
+ * this a long list rendered as one unbounded panel (WFC-11).
  */
 .weft-notification-panel__list {
-  max-height: min(60vh, 420px);
+  max-height: min(60vh, 26rem);
   overflow-y: auto;
 }
 
@@ -351,47 +345,14 @@
   font-weight: 600;
 }
 
-.weft-notification-panel__mark-read {
-  margin-inline-start: auto;
-  border: 0;
-  background: transparent;
-  color: var(--cinder-accent-text);
-  font: inherit;
-  font-size: var(--cinder-text-2xs);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.weft-notification-panel__group-label {
-  padding: var(--cinder-space-2) var(--cinder-density-pad-inline) var(--cinder-space-1);
-  font-size: var(--cinder-text-2xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--cinder-text-subtle);
-  border-top: 1px solid var(--cinder-border-muted);
-}
-
-.weft-notification-panel__group-label:first-of-type {
-  border-top: 0;
-}
-
-.weft-notification-panel__group-label[data-tier='critical'] {
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-notification-panel__group-label[data-tier='warning'] {
-  color: var(--cinder-status-warning-text);
-}
-
+/* A row is a marker, an icon, a sentence with what it is about, and the time. It wraps on a narrow screen. */
 .weft-notification-panel__item {
   display: flex;
-  gap: 10px;
-  align-items: flex-start;
+  gap: var(--cinder-space-2);
+  align-items: baseline;
   padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
   text-decoration: none;
   color: var(--cinder-text-default);
-  border-inline-start: 2px solid transparent;
 }
 
 @media (hover: hover) {
@@ -400,53 +361,51 @@
   }
 }
 
-.weft-notification-panel__item[data-tier='critical'] {
-  border-inline-start-color: var(--cinder-status-danger-border);
+/* The mark on an unread row; a read row keeps the space, so the icons stay in one column. */
+.weft-notification-panel__item::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
 }
 
-.weft-notification-panel__item[data-tier='warning'] {
-  border-inline-start-color: var(--cinder-status-warning-border);
+.weft-notification-panel__item[data-read='false']::before {
+  background: var(--cinder-accent-solid);
 }
 
 .weft-notification-panel__item-icon {
   flex: none;
-  margin-top: 2px;
+  align-self: center;
   color: var(--cinder-text-subtle);
-}
-
-.weft-notification-panel__item[data-tier='critical'] .weft-notification-panel__item-icon {
-  color: var(--cinder-status-danger-text);
 }
 
 .weft-notification-panel__item[data-tier='warning'] .weft-notification-panel__item-icon {
   color: var(--cinder-status-warning-text);
 }
 
-.weft-notification-panel__item-body {
+.weft-notification-panel__item[data-tier='critical'] .weft-notification-panel__item-icon {
+  color: var(--cinder-status-danger-text);
+}
+
+.weft-notification-panel__item-text {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--cinder-space-2);
+  font-size: var(--cinder-text-xs);
 }
 
 .weft-notification-panel__item-title {
-  display: block;
-  font-size: var(--cinder-text-xs);
   font-weight: 600;
 }
 
-/**
- * T9.4 accessibility pass: this used to be a blanket `opacity: 0.65` on the
- * whole `.weft-notification-panel__item` row (design §C: "read at 0.65
- * opacity"). Measured in a real browser with `ctx.globalAlpha` (canvas 2D
- * composites exactly like CSS `opacity`, in gamma-encoded sRGB — a naive
- * `color-mix(in oklch, …)` stand-in reads noticeably higher and is NOT
- * trustworthy near a 4.5:1 threshold), both themes: `--cinder-text-default` (this
- * title) holds AA at 0.65 opacity (5.61:1 light / 5.98:1 dark), but the
- * icon/detail/time already render in `--cinder-text-subtle`/
- * `--cinder-text-disabled` — dimming THOSE further dropped body text to
- * ~3.3–3.5:1, under WCAG AA's 4.5:1 for normal text. Scoping the opacity to
- * the title only (which also already gets the `font-weight: 400` non-color
- * signal below) keeps the read/unread distinction — now doubly non-color,
- * weight AND opacity — without taking the icon/detail/time below AA.
+/*
+ * A read item drops to regular weight and fades its sentence, so the difference is never color
+ * alone. The opacity is on the sentence only: the chat and the time are already in the subtle
+ * text colors, and dimming those too would take them under WCAG AA's 4.5:1 (T9.4).
  */
 .weft-notification-panel__item[data-read='true'] .weft-notification-panel__item-title {
   font-weight: 400;
@@ -454,19 +413,17 @@
 }
 
 .weft-notification-panel__item-detail {
-  display: block;
-  font-size: var(--cinder-text-2xs);
-  color: var(--cinder-text-subtle);
-  margin-top: 1px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--cinder-text-subtle);
 }
 
 .weft-notification-panel__item-time {
   flex: none;
   font-size: var(--cinder-text-2xs);
-  color: var(--cinder-text-disabled);
+  color: var(--cinder-text-subtle);
   white-space: nowrap;
 }
 
@@ -476,24 +433,6 @@
   text-align: center;
   font-size: var(--cinder-text-sm);
   color: var(--cinder-text-subtle);
-}
-
-.weft-notification-panel__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-top: 1px solid var(--cinder-border-muted);
-}
-
-.weft-notification-panel__alerts-link {
-  border: 0;
-  background: transparent;
-  color: var(--cinder-accent-text);
-  font: inherit;
-  font-size: var(--cinder-text-2xs);
-  font-weight: 600;
-  cursor: pointer;
 }
 
 /* Critical-alert strip (design §C: "below header, dismissible"). */
@@ -695,7 +634,54 @@
   color: var(--cinder-text-muted);
 }
 
+/* The frame's empty, not-found and forbidden states are Cinder's EmptyState, which pads itself
+ * 48px by 32px. The shell's outlet already pads the page (COR-1647), so the state adds none. */
+.weft-view__empty {
+  padding: 0;
+}
+
 .weft-view__action {
   color: var(--cinder-accent-text);
   font-weight: 600;
+}
+
+/* The welcome's line naming the agents a person can start with. */
+.ib-welcome-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: baseline;
+  justify-content: center;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-welcome-agents__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-welcome-agents__list li + li::before {
+  content: '·';
+  margin-inline-end: var(--cinder-space-2);
+}
+
+/* The address that matched nothing, above the way back. It wraps so a long one never scrolls. */
+.weft-not-found__action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cinder-space-3, 0.75rem);
+  max-width: 100%;
+}
+
+.weft-not-found__path {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  color: var(--cinder-text-muted);
 }

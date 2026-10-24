@@ -66,6 +66,8 @@ const goalSchema = z.object({
       attemptId: z.string(),
       attemptIndex: z.number().int(),
       runId: z.string(),
+      /** The session the attempt ran in, which `bureau.contexts.get` reads. */
+      sessionId: z.string(),
       status: z.enum(['running', 'evaluating', 'passed', 'failed', 'aborted']),
       startedAt: z.string(),
       completedAt: z.string().nullable(),

@@ -10,7 +10,9 @@ import type { ViewName } from './views.ts';
  * (`src/lib/router.svelte.ts`) owns matching semantics, and the first matching pattern wins.
  *
  * The host serves `index.html` for exactly these patterns (`src/host/host.ts`), so a route added
- * here is served there with no second list to edit.
+ * here is served there with no second list to edit. It also serves it for any other address a
+ * browser navigates to (`src/host/shell-request.ts`), and the route outlet renders the not-found
+ * view for the ones that match no pattern here.
  */
 export interface RouteDefinition {
   /** Path pattern, e.g. `/runs/:id`. */
@@ -61,6 +63,8 @@ export const routes: readonly RouteDefinition[] = [
   // `/workflows` is the catalog of workflow definitions, and under it one type's page, its runs, and
   // its editor. A run lives under `/runs`. One component dispatches on the pattern.
   { pattern: '/workflows', view: 'workflows', load: workflowArea },
+  // `new` is a path segment, not a workflow: this route comes before `/workflows/:type`.
+  { pattern: '/workflows/new', view: 'workflows', load: workflowArea },
   { pattern: '/workflows/:type', view: 'workflows', load: workflowArea },
   { pattern: '/workflows/:type/runs', view: 'workflows', load: workflowArea },
   { pattern: '/workflows/:type/edit', view: 'workflows', load: workflowArea },

@@ -23,9 +23,12 @@ const FILE: WorkflowFileListing = {
   state: 'ready',
   owner: 'anonymous:local',
   hash: 'hash-1',
+  description: null,
   agent: 'assistant',
   paused: false,
   version: 'v1',
+  trigger: { kind: 'schedule', spec: '1h' },
+  runs: { active: 0, last24Hours: 0, lastRunAt: null },
   problem: null,
 };
 

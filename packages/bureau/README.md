@@ -27,6 +27,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
+  - [Multimodal content and managed assets](#multimodal-content-and-managed-assets)
   - [Governed memory (COR-41)](#governed-memory-cor-41)
 - [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog)
   - [Agent files (COR-1524)](#agent-files-cor-1524)
@@ -60,6 +61,29 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 `createRun(request)` (`agentName` is required) loads or creates a session, appends the request message to its conversation, builds an `ActiveRun` via `operative`'s `createActiveRun`, and registers it with the store. If a durable engine is composed, the run is routed through it instead of the in-memory loop, so it can crash and resume from its last completed step. Terminal run events (`run.completed`, `run.aborted`) persist the session's status with a bounded retry.
 
 A `createRun` request names a catalog agent (`agentName`, required) and runs it. The session run uses the agent's own `generate`, tools, skills, guardrails, system prompt (the request's `systemPrompt` wins, then the agent's), `maximumSteps`, `maximumTokens`, and stop conditions, with the Bureau's memory, identity, and opt-in tools (`requestHumanInput`, `scheduleWakeup`) composed around it. A session is bound to the agent that created it: a later run omits `agentName` or repeats it, and naming another is a `BAD_REQUEST`. A name outside the catalog is `NOT_FOUND`, which includes `bureau`: the implicit Bureau-wide agent that ran on `BureauOptions.generate` and its siblings no longer exists, and a session, schedule, or recovered run stored under it is refused (a new run, a schedule fire) or fails with a diagnostic (a recovered run) rather than running. A durable named run recovers as its agent. If the agent has left the catalog the run fails, and if its definition revision changed Bureau logs a warning and resumes with the current definition. A schedule's fire and a scheduler task (`submitSchedulerTask({ agentName, … })`) run their named agent the same way, resolved through the catalog. A task naming an agent the catalog lacks is refused with `NOT_FOUND`, and a fire whose agent is missing settles as unavailable with the reason. A skill an agent activates survives a crash: Bureau snapshots the active records of the agent's own `createAgentSkills` client into the session after every step and, on recovery, re-validates them against the live catalog before the run's first step.
+
+`humanInput` is `true`, or an object `{ inputSchemas }` that also enables the tool and maps a `signalName` to a JSON Schema (2020-12) for the answer a person must give (COR-1674). A park on a signal with a schema carries it: an A2A client that activated A2UI's extension sees an A2UI form beside the prompt (any other client sees the prompt text alone), and an answer that does not satisfy the schema is refused before the run resumes. `createBureau` checks every schema with Operative's `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one it cannot accept, and a run recovered after a restart parks with the same schemas. A signal with no entry takes any answer, as with `true`.
+
+```ts
+import { createBureau } from '@lostgradient/bureau';
+
+declare const agents: Parameters<typeof createBureau>[0]['agents'];
+
+const bureau = await createBureau({
+  agents,
+  durableExecution: true,
+  humanInput: {
+    inputSchemas: {
+      deploy: {
+        type: 'object',
+        properties: { environment: { type: 'string', enum: ['staging', 'production'] } },
+        required: ['environment'],
+        additionalProperties: false,
+      },
+    },
+  },
+});
+```
 
 With `humanInput: true` on a durable Bureau, an agent can call `requestHumanInput` to park its run, whichever way the run was started (a `createRun` run, or a `bureau.run()` run of an agent that resolves definitions; a child run or a goal attempt is not offered the tool, and neither is anything on a Bureau with no durable engine). The park appears in `listPendingReviews()` as a `human-wait` review. A `createRun` run's review carries its `sessionId`; a `bureau.run()` run has no session, so its review has no `sessionId` and is addressed by its `runId`. `resolveReview` resumes either one: `approve` delivers the optional `payload`, and `deny` and `reject` deliver the same denial and rejection markers on the signal. A `bureau.run()` park is resolved through the engine by run id, under a delivery id derived from the review id (the review id itself, or a fixed-length hash of it when it exceeds Weft's 128-byte `signalId` limit, as a long `signalName` makes it), so a retried resolve delivers once. The engine's own record of what the run waits on decides whether a review is still pending, so resolving does not depend on the audit trail. After a restart a parked `bureau.run()` run is listed again under the id it had. The agent must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Tool approvals on `bureau.run()` runs are not reviewed. A schedule fire is offered `requestHumanInput` the same way, and what it waits on is a review of the fire: its `runId` is the fire's run id (its task id), its `sessionId` is the session the fire runs in, and its owner is the schedule's owner. A fire's park is listed live and after a restart, and `bureau.tasks.respond` or `resolveReview` answers it. A tool call a fire's step leaves awaiting approval is a `tool-approval` review of the fire in the same way, recorded with the fire's session, in the same write as its conversation, so a restart lists it again. A restart lists only the approvals the fire's run committed, whether the fire is still going or has ended: the run's checkpoint is the source of truth, and what the session holds is a claim made before the step committed. One from a step that crashed before its commit is not restored, the replayed step records its own, and the session is reconciled with the checkpoint when the fire settles. `resolveReview` with `approve` runs the tool, and the fire's task is `input-required` until it is decided. An approval nobody answers is swept by `sweepExpiredReviews` like any other, and a canceled fire's approvals are revoked and removed from its session, so a restart never brings one back to run a tool for a canceled run. The engine's own status decides whether a fire was canceled, at boot and again when an approval is decided: a fire the engine records as `cancelled`, whichever process canceled it and however far the cancel's bookkeeping got, restores nothing, and deciding its approval is refused with `CONFLICT`. A boot that cannot read the engine's status restores nothing and prunes nothing, and tries again at the next boot. A decided, expired, canceled or abandoned approval leaves nothing of its own in the session; what fences a concurrent resolver goes with the fire's task at retention. A fire announces each review it raises as `review.requested`, and its `bureau.tasks.events` stream reads `input-required` while a review is open and ends when the last one closes, decided or expired. A fire that takes another step after an approval writes its conversation back then, over the outcome an early decision would have recorded, so deciding such an approval throws `ApprovalOutcomeNotWrittenError`: configure the agent with `stopWhen.pendingApproval()`. Reviews of a fire are the same on every Bureau sharing its stores (COR-1613). Another instance answers a fire's `requestHumanInput` park through the engine by run id, without holding the fire, and the fire completes on its holder. A review closed by another instance, decided or expired, reaches the holder through the run's shared durable history: it drops its own copy and re-reads the task, whether or not a stream is open (COR-1621), so a `bureau.tasks.events` stream it serves ends when the last review closes anywhere. A peer's re-gate leaves the review listed at the round the session holds, and a decision on a round a peer has re-gated since is refused with `CONFLICT`. A `-1` reconnect to that stream is told the fire's current status first. A replayed step announces the same `review.requested` once, by review id from the run's history, and a request a replay abandoned (the model minted a new tool call id) is closed with `review.superseded` when the fire settles or is canceled. A canceled fire's approvals and parks are each closed once per round in the audit trail and the durable history, by whichever process finds them first, whichever route cancels the fire, and including after a crash and restart. A re-gate (`review.superseded`) does not close an approval: it stays pending under its id at the next round, and a task stream that replays the history does not drop it. The expiry sweep leaves a review alone while a decision on it is in flight. An approval or park the canceled fire was holding is recorded as `canceled` by principal `system:run-abort` only when no terminal record exists. A restored approval is decided under the skills the run has active now, which are the last set it committed (a fire's from its checkpoint, a session run's from its session snapshot), not the set that was active when the call was requested, so a skill activated after the request can narrow a tool away from it. A call those skills refuse is refused after a restart, and a tool the active skills do not permit cannot be approved even live (`CONFLICT`). The snapshot is read again on each approve (COR-1620), so a read that failed once does not fix the policy for good. When the policy that governed the call cannot be verified, the approve is refused with `CONFLICT` and runs nothing, and a deny still goes through. Unverifiable is a snapshot that fails to be read or deserialized, one that names another fire (a recurring schedule's newer fire) or another run, a stored skill the catalog refuses on recovery (a revoked source or a drifted digest), and a run with no toolbox of its own whose session names active skills, which the base toolbox cannot enforce. A snapshot that verifiably names no skill is not unverifiable: a run that never activated one is approved as before. A snapshot a later run cleared is unverifiable too: the start of a run in a session nulls the session's skill records and their run id, so a cleared snapshot whose run id is null while the session's last run is another run is that run's reset, not a record that this run had no skills (a Bureau with no skills has nothing to verify, and is not affected). The same holds for every toolbox recovery builds, not only the restore's: a fire replayed after its process died in a step, and a session run reattached the same way, are offered no tool and write no skill snapshot when their snapshot cannot be verified or a stored skill is refused on recovery, so what they persisted before is kept, and an approval they raise is refused at approve under the snapshot read again. The automatic maintenance profile runs `sweepExpiredReviews` on its own timer (every five minutes), so expired state goes without a host call, and an approval's session prune commits before its in-memory state is dropped: when the prune fails the approval stays hidden and refused, and the fire's next release retries it. A fire that settled with a review still open counts as activity for its context, so `bureau.contexts.list` and `get` read `awaiting-input` as `bureau.tasks.get` reads `input-required`.
 
@@ -428,7 +452,7 @@ Every route is authenticated by the handler first, and decides with the owner pr
 
 **Starting.** The mount reads `threadId`, `runId`, `messages`, `tools`, `protocolVersion`, and `resume`; `state`, `context`, and `forwardedProps` are accepted and ignored. The new rows are the messages whose ids the session lacks, and the run is `bureau.createRun({ sessionId: threadId, agentName, principal: owner, appendMessages, runCreationRequestId: runId })`, so a stable `runId` makes a retried start attach to the run it started. A `threadId` that names no session creates one, owned by the caller. A start is refused as `INVALID_INPUT` when `tools` is not empty (the mount runs the Bureau's tools only), when `protocolVersion` is anything but `1.0`, or when its last new row is not a user message, and as `THREAD_BUSY` when the thread's most recent run is unsettled, which is decided from what the store holds and so is the same answer in every process: the session says it is running and its durable record is unsettled (pending, running, or suspended; a run is pending until its launch has flushed) (a marker a crash left behind is settled by durable recovery, so it cannot hold the thread for ever), or it settled with a tool approval still pending (the session still holds the approval, which Bureau removes in the same write as whatever resolves it, from any process, and which stops holding the thread once its binding expires, read on the mount's clock, so it inherits the lease's skew assumption). A store that cannot be read counts as busy. A run's terminal session save writes the session's last-run fields (`lastRunId`, `lastRunStatus`, `lastFinishReason`, `lastError`) only while the stored `lastRunId` is still that run, so a save that lands late cannot make a newer run's session read as an older outcome. A known limit, which predates the mount: a start admitted after a run has settled durably but before that run's terminal save lands appends the settled run's final row after the new run's user row, so the transcript can read the first user message, the new user message, the first run's reply, then the new run's reply, and the new run's model never saw the first run's reply. Whether the thread is busy and the creation of the run that makes it busy are one decision, taken under a lease on the thread in the Bureau's own store (`ag-ui-lease:v1:thread:<threadId>`, a record of `{ claimant, expiresAt }` written by compare-and-swap, `expiresAt` read from the mount's clock): a start in any process that finds the lease held answers `THREAD_BUSY`, and the lease of a process that died expires after `leaseDurationMs` and is taken over by exactly one claimant. The Bureau's default `workflow-lease` posture lets several processes share a store, so the guarantee does not rest on one process. A start whose `runId` already names a run of another thread is `RUN_CONFLICT`. A start retried after the Bureau restarted attaches to the run it started and replays what the durable record holds: the conversation, and the outcome the run really had (its error, if it failed). A `threadId` of `.` or `..` that no session holds is refused as `INVALID_INPUT` with a message beginning `unopenable-session-identifier:`, because a browser resolves those out of the address a client would open the thread at (COR-1590); `createRun` and `createSchedule` refuse the same ids for a session that does not exist yet, as `BAD_REQUEST` with the same message, while `bureau.run` is unchanged.
 
-**Events.** A start stream is `RUN_STARTED`, `STATE_SNAPSHOT`, then the run's events, then `RUN_FINISHED` or `RUN_ERROR`; a run that stops at its step limit (`finishReason: 'maximum-steps'`) is a failure, so its stream ends with `RUN_ERROR` whose `code` is `MAXIMUM_STEPS` and whose `message` is the error's, after the answer an `onMaximumSteps` handler leaves, which streams first as its own text row, and a peer's stream for the same run ends the same way whether it reads the end from the run's history or from the workflow's status; a run that itself took input from `bureau.contexts.input` also ends with a `MESSAGES_SNAPSHOT` of its thread just before its terminal event, whichever way it ended (a later run on the same thread that took none does not), and the stream waits for the session to record the run's end however long that takes (`Bureau.whenRunRecorded`); if the thread cannot be read back it ends with a `RUN_ERROR` (code `RUN_FAILED`) rather than a success without the snapshot, because the input never streams as an event of its own and a client holding its row (under the id it sent the input with) learns from the snapshot that the run delivered it, and where. A run that ended without this process saving its end (it reported an error and was then abandoned after losing a checkpoint compare-and-swap) ends with the run's own `RUN_ERROR` when its result settles, never at the stream's deadline, and the client attaches again to read what the owner recorded. A run whose engine's checkpoint or workflow-state write storage refuses (a refused `wf:` or `ev:` write) is retried in process, five attempts: the first and then four retries after waits of 50, 100, 200 and 400 ms (750 ms in all). A write that is still refused fails the run as a `system` failure, so the stream ends with the run's own `RUN_ERROR`, the run record and the session read `error`, and the thread takes new input, all before the deadline. One case leaves the engine's durable record `running` until the next boot: when the failure write itself is refused on all five attempts, the engine stops driving the run and rejects its result, so the run, the session and the stream end as `error` now, and the next boot resumes the run from its last committed checkpoint, which settles the session again with whatever outcome it reaches (a client can read `error` and, after a restart, `completed`). An attach stream opens with `RUN_STARTED`, `MESSAGES_SNAPSHOT` (the conversation, with `thinking` and `redacted_thinking` parts taken out first), and `STATE_SNAPSHOT`, replays the step still in flight, and follows the run. Steps are `STEP_STARTED` and `STEP_FINISHED` with `stepName: 'step-<n>'`. Row ids are derived from the native run id so a streamed id and a later snapshot's agree: the assistant text of step `n` is `<AgentRun.id>:step:<n>`, a call is `<AgentRun.id>:step:<n>:call:<callId>` (the first call of a step with no text takes the step's own id), and the result for call `c` is `<AgentRun.id>:step:<n>:result:<c>`. `toolCallId` is the native call id. `STATE_SNAPSHOT` carries `{ revision, status, assessment, pendingInterruptIds }`; for a run the Bureau no longer holds there is no liveness to assess, so it carries `status: 'terminal'` and no `assessment`. There is no `STATE_DELTA`, `ACTIVITY_*`, or `REASONING_*`. A child run is a separate native run and never appears on its parent's stream. Its owner attaches to it at `GET <prefix>/runs/<childRunId>` and cancels it at `POST <prefix>/runs/<childRunId>/cancel` (through the child topology): the stream's thread is the parent's session, its `RUN_STARTED` carries `parentRunId`, and it opens with a `MESSAGES_SNAPSHOT` (the child's final text under its own row id, `<childRunId>:step:<n>`, once it has one) and a `STATE_SNAPSHOT` of its record, then streams that message if the child settles while attached, and ends (`RUN_FINISHED`, `cancelled` when it was cancelled, or `RUN_ERROR` `RUN_FAILED`). None of its events is labelled durable. Anyone else is answered `RUN_NOT_FOUND`.
+**Events.** A start stream is `RUN_STARTED`, `STATE_SNAPSHOT`, then the run's events, then `RUN_FINISHED` or `RUN_ERROR`; a run that stops at its step limit (`finishReason: 'maximum-steps'`) is a failure, so its stream ends with `RUN_ERROR` whose `code` is `MAXIMUM_STEPS` and whose `message` is the error's, after the answer an `onMaximumSteps` handler leaves, which streams first as its own text row, and a peer's stream for the same run ends the same way whether it reads the end from the run's history or from the workflow's status; a run that itself took input from `bureau.contexts.input` also ends with a `MESSAGES_SNAPSHOT` of its thread just before its terminal event, whichever way it ended (a later run on the same thread that took none does not), and the stream waits for the session to record the run's end however long that takes (`Bureau.whenRunRecorded`); if the thread cannot be read back it ends with a `RUN_ERROR` (code `RUN_FAILED`) rather than a success without the snapshot, because the input never streams as an event of its own and a client holding its row (under the id it sent the input with) learns from the snapshot that the run delivered it, and where. A run that ended without this process saving its end (it reported an error and was then abandoned after losing a checkpoint compare-and-swap) ends with the run's own `RUN_ERROR` when its result settles, never at the stream's deadline, and the client attaches again to read what the owner recorded. A run whose engine's checkpoint or workflow-state write storage refuses (a refused `wf:` or `ev:` write) is retried in process, five attempts: the first and then four retries after waits of 50, 100, 200 and 400 ms (750 ms in all). A write that is still refused fails the run as a `system` failure, so the stream ends with the run's own `RUN_ERROR`, the run record and the session read `error`, and the thread takes new input, all before the deadline. One case leaves the engine's durable record `running` until the next boot: when the failure write itself is refused on all five attempts, the engine stops driving the run and rejects its result, so the run, the session and the stream end as `error` now, and the next boot resumes the run from its last committed checkpoint, which settles the session again with whatever outcome it reaches (a client can read `error` and, after a restart, `completed`). An attach stream opens with `RUN_STARTED`, `MESSAGES_SNAPSHOT` (the conversation, with `thinking` and `redacted_thinking` parts taken out first), and `STATE_SNAPSHOT`, replays the step still in flight, and follows the run. Steps are `STEP_STARTED` and `STEP_FINISHED` with `stepName: 'step-<n>'`. Row ids are derived from the native run id so a streamed id and a later snapshot's agree: the assistant text of step `n` is `<AgentRun.id>:step:<n>`, a call is `<AgentRun.id>:step:<n>:call:<callId>` (the first call of a step with no text takes the step's own id), and the result for call `c` is `<AgentRun.id>:step:<n>:result:<c>`. `toolCallId` is the native call id. `STATE_SNAPSHOT` carries `{ revision, status, assessment, pendingInterruptIds }`; for a run the Bureau no longer holds there is no liveness to assess, so it carries `status: 'terminal'` and no `assessment`. There is no `STATE_DELTA`, `ACTIVITY_DELTA`, or `REASONING_*`, and the only `ACTIVITY_SNAPSHOT` is an interactive surface's (activity type `a2ui-surface`), sent to a client that opted in to A2UI (see [Interactive surfaces](./documentation/interactive-surface.md#a2ui-over-ag-ui)); the full list is under [Unsupported](./documentation/interactive-surface.md#unsupported). A child run is a separate native run and never appears on its parent's stream. Its owner attaches to it at `GET <prefix>/runs/<childRunId>` and cancels it at `POST <prefix>/runs/<childRunId>/cancel` (through the child topology): the stream's thread is the parent's session, its `RUN_STARTED` carries `parentRunId`, and it opens with a `MESSAGES_SNAPSHOT` (the child's final text under its own row id, `<childRunId>:step:<n>`, once it has one) and a `STATE_SNAPSHOT` of its record, then streams that message if the child settles while attached, and ends (`RUN_FINISHED`, `cancelled` when it was cancelled, or `RUN_ERROR` `RUN_FAILED`). None of its events is labelled durable. Anyone else is answered `RUN_NOT_FOUND`.
 
 **Multimodal content (COR-1547).** A user message may carry an asset a caller uploaded through `bureau.assets.uploads.*` as a part whose `source` is `{ type: 'file', provider: 'bureau', value: <assetId>, mimeType? }` (an `image`, `audio`, `video`, or `document` part). It becomes a `managed-asset` content source, so the run resolves it as the thread's owner; `mimeType` is optional because the asset's detected media type is authoritative. A start that names an asset its caller cannot read is refused as `INVALID_INPUT` with the message `Asset "<id>" was not found` (the same for another owner's asset as for a missing one), and one that names an asset the caller owns that is not `available` (pending, rejected, quarantined, expired or deleted) is refused as `INVALID_INPUT` with `Asset "<id>" is <state>`; either way nothing is added to the thread, because a run resolves every asset in the thread on every turn and a row naming an unusable one would fail every later turn. An agent's generated assets reach the stream as `CUSTOM` events named `bureau.asset-part` with the value `{ messageId, index, assetId, mediaType }`, one for each, in ascending `index` (the part's position among the step's parts), inside the step's message, after its `TEXT_MESSAGE_START` and before its `TEXT_MESSAGE_END`; a step with assets and no text gets a message of its own to hold them. A `MESSAGES_SNAPSHOT` (and `GET <prefix>/threads/<threadId>/messages`) carries a user row's assets in the same `file` shape, and an assistant row's in its `metadata['bureau:assetParts']` as `[{ index, assetId, mediaType }]`; nothing is sent again after a snapshot. A message whose every media part is refused because the selected model does not accept that kind of media (`modality-not-accepted` or `mime-family-not-accepted`) fails before generation as a `RUN_ERROR` with `code: 'UNSUPPORTED_MEDIA_TYPE'`; a message with any admitted part, and any other refusal (a flagged asset, a limit, an unbounded cost) or mix, keeps `MEDIA_NOT_ADMITTED`.
 
@@ -608,19 +632,18 @@ The handler has no run-starting operation of its own, so the host starts the run
 | Cleanup | Always | Reports whether a canceled task's cleanup finished, beside its terminal state. [Specification](../weft/documentation/a2a/extensions/cleanup-v1.md). |
 | Durable history | Where the Bureau keeps a durable event history | Makes `SubscribeToTask` resumable from a cursor in `Last-Event-ID`. [Specification](../weft/documentation/a2a/extensions/durable-history-v1.md). |
 | Command receipts | Always | The send's receipt and the task's revision, `expectedRevision` and `deadline` on a send, and a typed error for a reused `messageId`. [Specification](../weft/documentation/a2a/extensions/command-receipts-v1.md). |
-| A2UI v0.9.1 | Always | Carries A2UI surfaces to a client that renders them. A human wait with an input schema projects its form as A2UI whether or not the request activated the extension; see [interactive surfaces](./documentation/interactive-surface.md). |
+| A2UI v0.9.1 | Always | Carries A2UI surfaces to a client that renders them. A human wait with an input schema projects its form as A2UI only for a request that activated the extension; every other read, stream, and push notification carries the prompt text alone. See [interactive surfaces](./documentation/interactive-surface.md#human-input-forms-cor-1487-and-cor-1309). |
 
-**Content.** A message carries text and data parts, and any other part is `ContentTypeNotSupportedError` (`-32005`). Generated media leaves a completed task as file parts whose `url` is the authenticated asset route `<publicUrl>/assets/<id>/content`, never inline bytes, and a small generated JSON document is a data part; the card's `defaultOutputModes` follow the agent's backend descriptors. The shape mapping is [Conversationalist's A2A content mapping](../conversationalist/README.md#a2a-content-mapping).
+**Content.** A message carries text, file, and data parts. A file part's `url` must be exactly this server's asset route, `<publicUrl>/assets/<id>/content`, naming an asset the caller owns and may read (`bureau.assets:read`); inline `raw` bytes are admitted as the caller's own asset (`bureau.assets:write`) and the task's history keeps the route, never the bytes. Any other address, and an asset that is another owner's, missing, expired or deleted, is `-32602` (the last four read alike), and a part whose media type the card does not advertise is `ContentTypeNotSupportedError` (`-32005`), before any model call. The card's `defaultInputModes` are `text/plain` and `application/json` plus the media types of the modalities the agent's backend descriptors take in, narrowed by the asset policy's `allowedMediaTypes`; a Bureau without an asset service advertises text and data only. Generated media leaves a completed task as file parts whose `url` is the authenticated asset route `<publicUrl>/assets/<id>/content`, never inline bytes, and a small generated JSON document is a data part; the card's `defaultOutputModes` follow the agent's backend descriptors. The shape mapping is [Conversationalist's A2A content mapping](../conversationalist/README.md#a2a-content-mapping).
 
 **Not available.** Do not promise these to your own users:
 
 - `GetExtendedAgentCard`, and any binding other than JSON-RPC (HTTP+JSON and gRPC).
-- Inbound file parts. A message's file parts are refused, and the card's `defaultInputModes` stay `text/plain` and `application/json`, until COR-788 part 2 (#533) merges.
-- `task.resynced`, the repair of a failed durable append for push notifications (COR-1669 part 2b-3, still open).
+- Delivery of `task.resynced` over push notifications and A2A streams. The Bureau appends the event to repair a failed durable append and `bureau.tasks.events` serves it, but push and the A2A stream do not yet deliver it (COR-1669 part 2b-3c).
 - Authentication other than an API key, and the `bureau.deliveries.*` management operations.
 - Wiring a human-input form from an agent file or the catalog (COR-1674). An author can configure `inputSchemas` on Operative's `requestHumanInput` tool today, and the form is projected to the A2UI data part the extension row describes.
 
-**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key. The `ListTasks` request names `status: TaskState.TASK_STATE_UNSPECIFIED` explicitly because the server answers an undefined status with an empty list, which [COR-1679](https://linear.app/lost-gradient/issue/COR-1679) tracks; the example works around it.
+**Worked example.** The consumer path end to end: discover the card, send, read the task, list tasks, stream, cancel, and meet an operation the deployment does not serve. It runs in [`src/a2a-guide.test.ts`](./src/a2a-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. The client is the official `@a2a-js/sdk` client with its requests routed to the handler in process; over a network it needs only the agent URL and the API key.
 
 ```typescript
 import { type Message, Role, TaskState } from '@a2a-js/sdk';
@@ -736,7 +759,7 @@ console.log(TaskState[fetched.status?.state ?? 0]); // 'TASK_STATE_COMPLETED'
 const listed = await summarizer.listTasks({
   tenant: '',
   contextId: '', // empty filters match everything
-  status: TaskState.TASK_STATE_UNSPECIFIED,
+  status: TaskState.TASK_STATE_UNSPECIFIED, // no state filter
   pageToken: '',
   statusTimestampAfter: undefined,
 });
@@ -800,7 +823,7 @@ export const askSummarizer = createPeerCallTool({
 
 ### Interactive surfaces (COR-1631)
 
-`bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
+`bureau.surfaces` keeps a task's interactive surfaces: an `input-form` (a JSON Schema form, the kind every host must render), an `a2ui` surface pinned to A2UI v0.9.1, or an `mcp-app`. Each surface belongs to its task, is owned by the task's owner, and changes only by compare-and-swap on its `revision`; every change is one event in the task's durable history, written in the same storage batch as the surface's state. `create`, `update`, `snapshot`, `close`, `abort`, and `cleanup` answer with typed receipts, `list` reads every surface of a task, and `act` admits or denies an action from a renderer and returns the continuation (`resolveReview` or `signalSession`) the caller runs. A task's surfaces freeze, still readable, when it is cancelled or ends, and are deleted with it. `bureau.surfaces` is `undefined` on a Bureau without persistent durable execution (`durableExecution` over persistent storage), because surfaces live in the durable history the engine keeps. [`documentation/interactive-surface.md`](./documentation/interactive-surface.md) is the contract (`bureau.interactive-surface.v1`), with how A2UI, MCP Apps, and human-input forms map onto it and how it grows.
 
 ### MCP adapter (COR-839, COR-910)
 
@@ -1057,6 +1080,164 @@ A goal's audit events are recorded in the durable event history under a `goal` o
 `close` is for a goal that has ended. It sets `closedAt` once and answers with the truthful cleanup acknowledgement for the checkpoint history of the controller workflow and of every attempt's run under the bureau's `checkpointRetention`, the least favorable of them: `not-required` when the policy keeps everything or the goal never had a workflow, `completed` once pruned, `unresolved` or `failed` when any could not be. Attempt histories are pruned here, not as each attempt ends, because the goal reads an ended attempt's checkpoint until it is terminal. Calling it again retries the cleanup. A `canceled` goal is closed only once the same read-back `cancel` answers from finds its controller, finalizer, and attempt run ended: until then `close` answers `cancellation-pending` with `awaiting` and leaves `closedAt` unset, because a closed goal leaves the boot sweep and nothing would be left to finish it.
 
 Not supported: `retry-now`, pause and resume, goals on an ephemeral bureau (`create` answers `durable-unavailable`), and the Bureau test harness's `startManagedGoal`.
+
+### Multimodal content and managed assets
+
+Bureau carries images, audio, video, documents, and files as **managed assets**: bytes that Bureau's asset service admitted, inspected, and now owns, referenced everywhere else by a `{ kind: 'managed-asset', assetId, revision? }` content source. This section is the map and the contract in one place: which package documents each surface, how an asset moves through its lifecycle, a worked example that runs as a test, and what is not supported. It links to the detailed sections instead of repeating them; the as-built wire contract is [`documentation/external-control-plane.md`](./documentation/external-control-plane.md#assets).
+
+**Where each surface is documented.**
+
+| Surface | What it carries | Documentation |
+| --- | --- | --- |
+| Content vocabulary | `ContentSource`, `Modality`, `MediaLimits`, the portable parts and their A2A mapping | [Conversationalist](../conversationalist/README.md#a2a-content-mapping), `src/multi-modal.ts` |
+| Tool results | `toolContent(parts, { value })` from a native tool, and MCP content blocks both ways | [Armorer README](../armorer/README.md) ("Text and media parts") and [MCP](../armorer/documentation/mcp.md) |
+| Agent input | An ordered list of parts, the admission invariant, safety verdicts, selection, and cost | [Operative: Media input](../operative/README.md#media-input-cor-716), [Bureau: Media input](#media-input-cor-716) |
+| Model output | Response `parts`, streamed parts, and generated media admitted before anything sees it | [Operative: Response parts](../operative/README.md#response-parts-and-generated-media-cor-713), [Bureau: Generated media](#generated-media-cor-713) |
+| Management plane | `bureau.assets.uploads.create`, `append`, `complete`, `bureau.assets.get`, and `GET /assets/{assetId}/content` | [External control plane](./documentation/external-control-plane.md#assets) |
+| AG-UI | A user row's `file` parts, the `bureau.asset-part` events, and `UNSUPPORTED_MEDIA_TYPE` | [The AG-UI mount](#the-ag-ui-mount-cor-855) ("Multimodal content") |
+| A2A | Inbound text, file, and data parts, outbound file parts on the asset route, and the card's input and output modes | [A2A](#a2a) ("Content") |
+
+**The asset lifecycle.** An asset is admitted from bounded inline bytes, a completed upload, an authorized URL, a provider file identifier, or an existing asset, and `admit` answers at once with the asset's identity while the rest of the admission runs as started work (`work.result()` settles as `completed`, `failed` with the rejection, or `aborted`, and never throws). It starts `pending` and settles `available`, `rejected` (for example `media-type-mismatch`), or `quarantined` (a safety gate flagged it); later it can be `expired` or `deleted`. Only an `available` asset resolves. Each asset has one owner, the principal that admitted it, and a monotonic revision. A row that references an asset claims it, so retention cannot expire one a persisted row names. Events and audit records never carry bytes, secrets, or signed URLs.
+
+**Authority.** Three boundaries hold on every surface. An asset is the owner's: another principal's read, a guessed identifier, an expired asset, and a deleted asset all read as missing, with nothing that tells them apart. A scope (`bureau.assets:read`, `bureau.assets:write`) gates who may ask and never grants access across owners. And the route `GET /assets/{assetId}/content` is an address, not a credential: it needs the same authentication as every other call and is never a signed URL.
+
+**Setup.** Media needs `assets` on `createBureau` (a storage, and optionally a `policy` of limits, an allowed media-type list, and retention). Without it, Bureau refuses media input, the Agent Card advertises text and data only, and `createBureauHandler` throws at construction. What an agent can take or give is its backend descriptors, not a guess: a function with no descriptor is a text-only agent, and none of the shipped catalog rows advertises media output, so generated media comes from a backend you describe.
+
+**Worked example.** The path end to end: admit an asset, run an agent on it, receive generated media as an asset, read it back as its owner, and fetch it over the asset route as the owner and as someone else. It runs in [`src/multimodal-guide.test.ts`](./src/multimodal-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and keeps its body equal to this block, so the two cannot drift. [`src/http/a2a-ag-ui-contract.test.ts`](./src/http/a2a-ag-ui-contract.test.ts) pins the A2A and AG-UI views of one multimodal exchange.
+
+```typescript
+import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
+import {
+  createAgent,
+  createModelCatalog,
+  withBackendDescriptors,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { principalFromApiKey } from '@lostgradient/weft';
+
+// A backend's descriptor says which media it takes in and gives out. Bureau admits only what a
+// descriptor advertises, so a function with no descriptor is a text-only agent.
+const visionBackends = createModelCatalog().descriptors.filter(
+  (descriptor) => descriptor.provider === 'anthropic',
+);
+const drawingBackends = visionBackends.map((descriptor) => ({
+  ...descriptor,
+  modalities: {
+    ...descriptor.modalities,
+    image: { ...descriptor.modalities.image, output: true },
+  },
+}));
+
+// The viewer reads an image. The painter answers with one: a 1x1 PNG standing in for the bytes
+// a model returns.
+const png =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const pixel = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
+const view: GenerateFunction = async ({ conversation }) => {
+  const kinds = conversation
+    .getMessages()
+    .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+    .map((part) => part.type);
+  return { content: `I received: ${kinds.join(', ')}`, toolCalls: [] };
+};
+const paint: GenerateFunction = async () => ({
+  content: 'Here it is.',
+  parts: [
+    { type: 'text', text: 'Here it is.' },
+    {
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'inline', encoding: 'base64', data: png },
+    },
+  ],
+  toolCalls: [],
+});
+const bureau = await createBureau({
+  agents: {
+    viewer: createAgent({
+      name: 'viewer',
+      generate: withBackendDescriptors(view, visionBackends),
+    }),
+    painter: createAgent({
+      name: 'painter',
+      generate: withBackendDescriptors(paint, drawingBackends),
+    }),
+  },
+  // The asset service is what makes media possible: without `assets`, Bureau refuses media input
+  // and has nowhere to put generated media.
+  assets: { storage: createMemoryAssetStorage() },
+});
+
+// Admit: bytes become an asset the principal owns. `admit` answers at once with the asset's
+// identity, and `work.result()` waits for inspection and the safety gates to settle it, as a
+// value (`completed`, `failed` with the rejection, or `aborted`) and never a throw. The id is the
+// one the handler derives from an API key whose subject is `alice`.
+const alice = { id: 'api-key:alice' };
+const admission = await bureau.assets!.admit(
+  { source: { kind: 'inline', bytes: pixel }, declaredMediaType: 'image/png' },
+  alice,
+);
+const settled = await admission.work.result();
+if (settled.outcome !== 'completed') throw new Error('the asset was not admitted');
+console.log(settled.value.state, settled.value.mediaType); // 'available' 'image/png'
+
+// Input: a run takes an ordered list of parts. The asset travels as a reference, never as bytes.
+const viewing = bureau.run(
+  'viewer',
+  [
+    { type: 'text', text: 'What is in this picture?' },
+    { type: 'image', mimeType: 'image/png', source: admission.source },
+  ],
+  { principal: alice.id },
+);
+const seen = await viewing.result();
+console.log(seen.content); // 'I received: text, image'
+
+// Output: media a model generates is admitted as the run's owner before anything sees it, so the
+// result holds a reference to an asset, and the bytes are read back through the asset service.
+const painting = bureau.run('painter', 'Draw a pixel.', { principal: alice.id });
+const painted = await painting.result();
+const image = painted.parts.find((part) => part.type === 'image');
+if (image?.source.kind !== 'managed-asset') throw new Error('generated media is an asset');
+console.log(image.source.kind); // 'managed-asset'
+const owned = await bureau.assets!.resolve(image.source, alice);
+console.log(owned.content.kind === 'bytes' && owned.content.bytes.byteLength > 0); // true
+
+// Authority: the owner reads the asset, and anybody else is told it does not exist.
+const bob = { id: 'api-key:bob' };
+const refusal = await bureau.assets!.resolve(image.source, bob).catch((error: unknown) => error);
+console.log(refusal instanceof Error); // true
+
+// Wire: over HTTP the bytes come from the authenticated asset route, as the credential's owner.
+const keys: Record<string, string> = { 'alice-key': 'alice', 'bob-key': 'bob' };
+const handler = createBureauHandler(bureau, {
+  authentication: {
+    auditSink: () => undefined,
+    resolveApiKeyPrincipal: async (key) =>
+      keys[key] === undefined
+        ? null
+        : principalFromApiKey({ subject: keys[key], scopes: ['bureau.assets:read'] }),
+  },
+});
+const route = `http://localhost/assets/${admission.assetId}/content`;
+const fetched = await handler(new Request(route, { headers: { 'X-API-Key': 'alice-key' } }));
+console.log(fetched.status, fetched.headers.get('Content-Type')); // 200 'image/png'
+const other = await handler(new Request(route, { headers: { 'X-API-Key': 'bob-key' } }));
+console.log(other.status); // 404: another owner's asset reads as missing
+
+await bureau.dispose();
+```
+
+**Not supported, and pending.** Do not promise these to your own users.
+
+- **Media the backend does not advertise.** An unadvertised modality, source form, MIME family, or limit is refused before any provider call (`MediaAdmissionError`; `UNSUPPORTED_MEDIA_TYPE` over AG-UI, `-32005` over A2A). Bureau does no silent OCR, captioning, extraction, or transcoding to make a part fit.
+- **Remote URLs** are deny-by-default: an A2A file part is accepted only on this server's own asset route or as inline bytes, and a URL admitted as an asset needs an asset policy that authorizes it.
+- **The MCP adapter** does not read assets or carry media. Its tools are the observe-and-steer set; upload and read stay on the management plane. A tool's own result can carry MCP content blocks ([Armorer MCP](../armorer/documentation/mcp.md)); Bureau does not project them through its adapter.
+- **Asset deletion and upload abort** are not served on the management plane: an upload that is never completed expires, and aborting one is for the embedding host through `AssetService`.
+- **One protocol's private blocks** do not appear on another. A2UI surfaces, AG-UI `CUSTOM` events, and MCP Apps stay on their protocol.
+- **An unreferenced asset** (a step admitted it and then no persisted row named it) stays `available` until the policy's default retention expires it; no reconciliation runs. [Generated media](#generated-media-cor-713) lists each path.
+- **An ambiguous ledger claim** on an inbound A2A send can delete assets an exact retry then expects: when the claim write commits but its response is lost, the discard runs without checking. [COR-1680](https://linear.app/lost-gradient/issue/COR-1680) tracks it.
+- **Not goals of this project:** an OpenAI-compatible endpoint, an MCP Apps renderer, arbitrary public asset URLs, one hard-coded object-storage vendor, treating validated JSON output as conversational media, and a host's own upload interface.
 
 ### Generated media (COR-713)
 

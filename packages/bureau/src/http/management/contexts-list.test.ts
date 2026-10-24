@@ -31,6 +31,7 @@ type Context = {
   agentName: string;
   title: string | null;
   lastMessagePreview: string | null;
+  origin: string;
   messageCount: number;
   createdAt: string;
   updatedAt: string;
@@ -260,6 +261,95 @@ describe('bureau.contexts.list', () => {
   });
 });
 
+describe('bureau.contexts origin', () => {
+  it('reads a chat for a context that records no origin, as every context made before origins existed', async () => {
+    await withBureau(catalog, async (opened) => {
+      const run = await finishedSession(opened, { principal: OWNER.alice, message: 'a chat' });
+      const stored = await opened.bureau.sessionStore!.load(run.sessionId);
+      // A person's chat writes no origin: the default is what the record reads as, not a stored value.
+      expect(stored?.metadata['sessionOrigin']).toBeUndefined();
+
+      const list = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
+      const get = await rpc(
+        opened.handler,
+        'bureau.contexts.get',
+        { contextId: run.sessionId },
+        'alice-key',
+      );
+
+      expect(contextsOf(list).map((context) => context.origin)).toEqual(['chat']);
+      expect(get.result).toMatchObject({ id: run.sessionId, origin: 'chat' });
+    });
+  });
+
+  it('shows the origin a goal or a schedule’s fire recorded, and a chat for a value that is none of them', async () => {
+    await withBureau(catalog, async (opened) => {
+      const goal = await finishedSession(opened, { principal: OWNER.alice, message: 'goal' });
+      const fire = await finishedSession(opened, { principal: OWNER.alice, message: 'fire' });
+      const garbled = await finishedSession(opened, { principal: OWNER.alice, message: 'odd' });
+      const store = opened.bureau.sessionStore!;
+      await store.updateMetadata(goal.sessionId, { sessionOrigin: 'goal' });
+      await store.updateMetadata(fire.sessionId, { sessionOrigin: 'schedule' });
+      await store.updateMetadata(garbled.sessionId, { sessionOrigin: 'cron' });
+
+      const list = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
+
+      const originOf = new Map(contextsOf(list).map((context) => [context.id, context.origin]));
+      expect(originOf.get(goal.sessionId)).toBe('goal');
+      expect(originOf.get(fire.sessionId)).toBe('schedule');
+      expect(originOf.get(garbled.sessionId)).toBe('chat');
+    });
+  });
+
+  it('filters by origin before it pages, so a page of chats holds chats however many fires are newer', async () => {
+    await withBureau(catalog, async (opened) => {
+      const chat = await finishedSession(opened, { principal: OWNER.alice, message: 'the chat' });
+      const goal = await finishedSession(opened, { principal: OWNER.alice, message: 'goal' });
+      const fire = await finishedSession(opened, { principal: OWNER.alice, message: 'fire' });
+      const store = opened.bureau.sessionStore!;
+      await store.updateMetadata(goal.sessionId, { sessionOrigin: 'goal' });
+      await store.updateMetadata(fire.sessionId, { sessionOrigin: 'schedule' });
+
+      const chats = await rpc(
+        opened.handler,
+        'bureau.contexts.list',
+        { origin: 'chat', limit: 1 },
+        'alice-key',
+      );
+      const goals = await rpc(
+        opened.handler,
+        'bureau.contexts.list',
+        { origin: 'goal' },
+        'alice-key',
+      );
+      const fires = await rpc(
+        opened.handler,
+        'bureau.contexts.list',
+        { origin: 'schedule' },
+        'alice-key',
+      );
+
+      expect(contextsOf(chats).map((context) => context.id)).toEqual([chat.sessionId]);
+      expect(chats.result?.['nextOffset']).toBeNull();
+      expect(contextsOf(goals).map((context) => context.id)).toEqual([goal.sessionId]);
+      expect(contextsOf(fires).map((context) => context.id)).toEqual([fire.sessionId]);
+    });
+  });
+
+  it('refuses an origin it does not know as invalid parameters', async () => {
+    await withBureau(catalog, async (opened) => {
+      const body = await rpc(
+        opened.handler,
+        'bureau.contexts.list',
+        { origin: 'cron' },
+        'alice-key',
+      );
+
+      expect(body.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
+    });
+  });
+});
+
 describe('bureau.contexts.list activity', () => {
   /** Runs that hold, park on a human wait, or finish, by their message. */
   const byMessage: GenerateFunction = ({ conversation, signal }) => {
@@ -384,6 +474,7 @@ describe('bureau.contexts.get', () => {
         'lastMessagePreview',
         'messageCount',
         'model',
+        'origin',
         'owner',
         'parentContextId',
         'title',

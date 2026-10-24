@@ -217,7 +217,7 @@ function harness(initial: DurableEventEnvelope[] = []) {
             history: [],
             metadata: { snapshotOf: view.status },
           };
-          return { task, record: undefined };
+          return { task, record: undefined, surfaces: [] };
         },
       },
       timers: createDefaultRuntimeServices().timers,
@@ -601,6 +601,32 @@ describe('the push projector', () => {
 
     await eventually(() => fixture.receiver.requests.length === 1);
     expect(fixture.receiver.kinds()).toEqual(['status:TASK_STATE_INPUT_REQUIRED']);
+  });
+
+  it('delivers the wait’s prompt as text alone, with no A2UI form, since push has no activation', async () => {
+    const fixture = harness([started, requested(1)]);
+    fixture.setView({
+      ...VIEW,
+      status: 'input-required',
+      openWaits: [
+        { kind: 'human-wait', reviewId: 'human-wait:task-1:deploy:0', signalName: 'deploy' },
+      ],
+    });
+    (fixture.bureau as { getReview: unknown }).getReview = async () => ({
+      kind: 'human-wait',
+      id: 'human-wait:task-1:deploy:0',
+      prompt: 'Where should this deploy?',
+      inputSchema: { type: 'object', properties: { environment: { type: 'string' } } },
+    });
+    await fixture.configure('-1');
+    fixture.startDelivery();
+
+    await fixture.projector.pump('task-1', 'config-1');
+    await eventually(() => fixture.receiver.requests.length === 1);
+
+    const parts = fixture.receiver.requests[0]?.body.statusUpdate.status.message.parts;
+    expect(parts).toHaveLength(1);
+    expect(parts[0].text).toContain('Where should this deploy?');
   });
 
   it('deletes a removed task’s configurations and checkpoints, and a queued delivery never arrives', async () => {

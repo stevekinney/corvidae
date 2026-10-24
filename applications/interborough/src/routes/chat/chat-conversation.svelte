@@ -23,7 +23,9 @@
    * (`branch-origin.svelte`).
    *
    * A new chat (`isNew`, at `/chat/new`) has no session yet. The client names the thread, the agent
-   * is chosen above the composer, and the first message starts the run. When the run has started
+   * is chosen in the header, the transcript's place shows the agent's card and the prompts it suggests
+   * (`new-chat-welcome.svelte`; a prompt fills the composer and sends nothing), and the first message
+   * starts the run. When the run has started
    * the address becomes `/chat/:sessionId` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
@@ -64,6 +66,8 @@
   import { ChatSessionState } from './chat-session.svelte.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import ModelPicker from './model-picker.svelte';
+  import NewChatWelcome from './new-chat-welcome.svelte';
+  import { startableAgents } from './new-chat.ts';
   import { toolGroups } from './tool-activity.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
@@ -74,14 +78,25 @@
     agentName: string;
     /** Whether this is a chat that has no session until its first run starts. */
     isNew?: boolean;
+    /** For a new chat: whether the address names the agent, rather than the default being used. */
+    agentChosen?: boolean;
   }
 
-  let { sessionId, title, agentName, isNew = false }: ChatConversationProps = $props();
+  let {
+    sessionId,
+    title,
+    agentName,
+    isNew = false,
+    agentChosen = false,
+  }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
   // The agent is chosen until the run starts, and fixed once the session exists.
   let agent = $state(untrack(() => agentName));
   let choosing = $state(untrack(() => isNew));
+  // Whether the person has picked the agent: the address named it, or they chose one since.
+  let chosen = $state(untrack(() => agentChosen));
+  let chat = $state<ReturnType<typeof Chat> | undefined>();
 
   const session = new ChatSessionState({
     sessionId: untrack(() => sessionId),
@@ -161,7 +176,19 @@
 
   function chooseAgent(value: string): void {
     agent = value;
+    chosen = true;
     router.navigate(`/chat/new?agent=${encodeURIComponent(value)}`, { replace: true });
+  }
+
+  /**
+   * Puts a suggested prompt in the composer for the person to send or change; it sends nothing.
+   * The prompt replaces whatever was typed, in one operation on the textarea's own range, because
+   * the composer's value only catches up with a cleared textarea after the next render.
+   */
+  function fillComposer(prompt: string): void {
+    const typed = chat?.getEditorElement()?.value ?? chat?.getComposerValue() ?? '';
+    chat?.insertAtRange({ start: 0, end: typed.length }, prompt);
+    chat?.focusInput();
   }
 
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
@@ -225,6 +252,7 @@
       );
       return {
         toolCallId: result.callId,
+        toolName: call?.name,
         question: approvalQuestion({
           toolName: call?.name ?? 'a tool',
           arguments: call?.arguments,
@@ -234,7 +262,7 @@
     }),
   );
   const approvalsByCall = $derived(
-    new Map(approvals.map((entry) => [entry.toolCallId, entry.question] as const)),
+    new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
   const activity = $derived(toolGroups(session.conversation));
 
@@ -337,7 +365,18 @@
 <section class="weft-chat-route" aria-label={CHAT_COPY.regionLabel} data-session={sessionId}>
   <header class="weft-chat-header">
     <h1 class="weft-chat-header__title">{displayTitle}</h1>
-    {#if !choosing}
+    {#if choosing}
+      <div class="weft-chat-header__choice">
+        <Combobox
+          id="weft-chat-agent"
+          aria-label={CHAT_COPY.agentLabel}
+          placeholder={CHAT_COPY.agentPlaceholder}
+          options={choices}
+          value={agent}
+          onValueChange={chooseAgent}
+        />
+      </div>
+    {:else}
       <a
         class="weft-chat-header__agent"
         href={router.href(agentPath(agent))}
@@ -378,21 +417,9 @@
     </Alert>
   {/if}
 
-  {#if choosing}
-    <div class="weft-chat-agent">
-      <Combobox
-        id="weft-chat-agent"
-        label={CHAT_COPY.agentLabel}
-        placeholder={CHAT_COPY.agentPlaceholder}
-        options={choices}
-        value={agent}
-        onValueChange={chooseAgent}
-      />
-    </div>
-  {/if}
-
   <div class="weft-chat-surface">
     <Chat
+      bind:this={chat}
       id={`chat-${sessionId}`}
       conversation={shown}
       adapter={session.chatAdapter}
@@ -404,6 +431,19 @@
       maxFileSize={settings?.maxFileSize}
       formatAttachmentError={chatAttachmentErrorMessage}
     >
+      {#snippet empty()}
+        {#if choosing}
+          <NewChatWelcome
+            agents={startableAgents(agents.data ?? [])}
+            selected={agent}
+            {chosen}
+            onChoose={chooseAgent}
+            onExample={fillComposer}
+          />
+        {:else}
+          <p class="chat-empty" role="status">{CHAT_COPY.noMessages}</p>
+        {/if}
+      {/snippet}
       {#snippet composerActions()}
         {#if !choosing}
           <ModelPicker
@@ -437,11 +477,12 @@
         {#if group !== undefined}
           <ToolCalls id={`tools-${message.id}`} entries={group.entries}>
             {#snippet decision(entry)}
-              {@const question = approvalsByCall.get(entry.callId)}
-              {#if question !== undefined}
+              {@const asked = approvalsByCall.get(entry.callId)}
+              {#if asked !== undefined}
                 <ApprovalDecision
                   id={`tools-${message.id}-${entry.callId}`}
-                  {question}
+                  question={asked.question}
+                  identifiers={asked.toolName === undefined ? [] : [asked.toolName]}
                   deciding={deciding || session.streaming}
                   onDecide={(choice) => void decide(entry.callId, choice)}
                 />

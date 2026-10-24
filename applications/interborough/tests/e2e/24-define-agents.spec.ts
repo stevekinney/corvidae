@@ -18,9 +18,11 @@ import {
   faultCodeOf,
   readAgent,
   readCatalog,
+  readProviderPaths,
   removeAgent,
 } from './agent-support.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -44,6 +46,21 @@ async function makeAgent(
 
 function editor(page: Page) {
   return page.locator('[data-view="agent-editor"]');
+}
+
+/**
+ * Nothing on the page scrolls sideways. The shell clips the document (`.weft-shell` is
+ * `overflow: hidden`), so a page that is too wide scrolls the outlet instead and a measurement of
+ * the document passes; the outlet is what must not overflow, as in `15-view-states.spec.ts`.
+ */
+async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> {
+  const outlet = await page.locator('main.weft-shell-outlet').evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(outlet.scrollWidth, `${where} scrolls the outlet sideways`).toBeLessThanOrEqual(
+    outlet.clientWidth,
+  );
 }
 
 const copy = AGENT_EDITOR_COPY;
@@ -108,6 +125,70 @@ test.describe('a new agent', () => {
     });
   }
 
+  test('shows every field, and a way to save, at 1280 by 812 without scrolling', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 812 });
+    await page.goto('/agents/new');
+    await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    for (const field of [
+      page.getByRole('textbox', { name: /^Name/ }),
+      page.getByRole('textbox', { name: /^Identifier/ }),
+      page.getByRole('textbox', { name: /^Description/ }),
+      page.getByRole('combobox', { name: 'Model' }),
+      page.getByRole('textbox', { name: /^Instructions/ }),
+      page.getByRole('button', { name: copy.createAction }),
+    ]) {
+      await expect(field).toBeInViewport({ ratio: 1 });
+    }
+    // Four titled sections, in the order a person fills them in. The tools are a group of
+    // checkboxes, so its title is the group's legend rather than a heading.
+    await expect(editor(page).getByRole('heading', { level: 2 })).toHaveText([
+      copy.sections.identity,
+      copy.sections.model,
+      copy.sections.instructions,
+    ]);
+    await expect(page.getByRole('group', { name: copy.sections.tools })).toBeVisible();
+  });
+
+  for (const width of WIDTHS) {
+    test(`shows one line for each tool, and what the model is told only on request, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/agents/new');
+      await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      const catalog = await readCatalog(request);
+
+      // No row shows more than 120 characters until it is expanded, whatever the tool says.
+      const lines = await page.getByTestId('agent-tool-line').allTextContents();
+      expect(lines).toHaveLength(catalog.tools.length);
+      for (const line of lines) expect(Array.from(line).length).toBeLessThanOrEqual(120);
+
+      // A tool whose description is a long prompt shows the line written for a person.
+      const created = catalog.tools.find((tool) => tool.name === 'workflows-create');
+      expect(created?.description.length).toBeGreaterThan(120);
+      expect(created?.shortDescription).not.toBeNull();
+      const row = page.locator('[data-tool="workflows-create"]');
+      await expect(row.getByTestId('agent-tool-line')).toHaveText(created?.shortDescription ?? '');
+      await expect(row.getByTestId('agent-tool-full')).toHaveCount(0);
+
+      // A tool that declares nothing shows its description, which already fits, with nothing to open.
+      const lookup = page.locator('[data-tool="lookup-order"]');
+      await expect(lookup.getByTestId('agent-tool-line')).toHaveText(
+        catalog.tools.find((tool) => tool.name === 'lookup-order')?.description ?? '',
+      );
+      await expect(lookup.getByRole('button', { name: copy.toolDisclosure })).toHaveCount(0);
+
+      await row.getByRole('button', { name: copy.toolDisclosure }).click();
+      await expect(row.getByTestId('agent-tool-full')).toHaveText(created?.description ?? '');
+      await expectNoSidewaysScroll(page, 'the form with a tool opened');
+      await checkA11y(`new agent with a tool opened at ${width}px`);
+    });
+  }
+
   test('refuses a name that makes the identifier new, which is the address of this page', async ({
     page,
   }) => {
@@ -141,6 +222,60 @@ test.describe('a new agent', () => {
   });
 });
 
+// The second host (`e2e-constants.ts`) has a home with no `configuration.json`, so its model catalog
+// is empty, which is what a fresh installation looks like.
+test.describe('a new agent on a host with no model provider', () => {
+  test.use({ baseURL: E2E_BUREAU_URL });
+
+  for (const width of WIDTHS) {
+    test(`shows where to add a provider instead of the form, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const catalog = await readCatalog(request);
+      expect(catalog.models).toEqual([]);
+      const paths = await readProviderPaths(request);
+
+      await page.goto('/agents/new');
+      await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      await expect(page.getByRole('heading', { level: 1, name: copy.createHeading })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { level: 2, name: copy.noProvider.title }),
+      ).toBeVisible();
+
+      // The paths are this installation's own, as the host says them.
+      await expect(page.getByTestId('provider-configuration-file')).toHaveText(
+        paths.configurationFile,
+      );
+      expect(paths.configurationFile).toMatch(/configuration\.json$/);
+      for (const provider of paths.providers) {
+        await expect(page.locator(`[data-provider="${provider.name}"]`)).toContainText(
+          provider.secretFile,
+        );
+      }
+      await expect(editor(page)).toContainText('"providers"');
+      await expect(editor(page)).toContainText('chmod 600');
+
+      // No form: nothing to fill in, nothing to choose, nothing to save.
+      await expect(editor(page).getByRole('textbox')).toHaveCount(0);
+      await expect(editor(page).getByRole('combobox')).toHaveCount(0);
+      await expect(editor(page).getByRole('checkbox')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: copy.createAction })).toHaveCount(0);
+      await expectNoSidewaysScroll(page, 'the no-provider state');
+      await checkA11y(`new agent with no provider at ${width}px`);
+
+      // Reloading asks again; there is still no provider, so the state stays.
+      await page.getByRole('button', { name: copy.noProvider.reload }).click();
+      await expect(page.getByRole('button', { name: copy.noProvider.reload })).toBeEnabled();
+      await expect(
+        page.getByRole('heading', { level: 2, name: copy.noProvider.title }),
+      ).toBeVisible();
+    });
+  }
+});
+
 test.describe('an agent that exists', () => {
   for (const width of WIDTHS) {
     test(`is edited in place, keeps its skills, and shows its file and history, at ${width} pixels`, async ({
@@ -167,6 +302,21 @@ test.describe('an agent that exists', () => {
         page.getByRole('heading', { level: 2, name: copy.revisions.heading }),
       ).toBeVisible();
       await expect(page.getByTestId('agent-revisions-empty')).toHaveText(copy.revisions.empty);
+      await expectNoSidewaysScroll(page, 'the edit page');
+
+      // The footer sticks to the foot of the outlet, so scrolled all the way down the revision
+      // history must start below it, not under its last pixels.
+      await page
+        .locator('main.weft-shell-outlet')
+        .evaluate((element) => void (element.scrollTop = element.scrollHeight));
+      const footer = await page.locator('.weft-agent-form__footer').boundingBox();
+      const history = await page.locator('.weft-agent-revisions').boundingBox();
+      expect(footer, 'the footer is on the page').not.toBeNull();
+      expect(history, 'the revision history is on the page').not.toBeNull();
+      expect(
+        history?.y ?? 0,
+        'the revision history starts below the footer, not under it',
+      ).toBeGreaterThanOrEqual((footer?.y ?? 0) + (footer?.height ?? 0));
       await checkA11y(`edit agent at ${width}px`);
 
       await page.getByRole('textbox', { name: /^Instructions/ }).fill('Edited in the browser.');
@@ -228,9 +378,15 @@ test.describe('an agent that exists', () => {
     const afterSave = await readAgent(request, 'e2e-publish');
     expect(afterSave.published).toBe(true);
     expect(afterSave.definition?.published).toBe(true);
-    // Its page says it is published, and offers a chat with it.
-    await expect(page.getByText('Published').first()).toBeVisible();
+    // Its page offers a chat with it and carries no badge: published is the normal state, and it
+    // shows the file's own model, tools and version.
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
+    await expect(page.getByText('Not published')).toHaveCount(0);
+    await expect(page.getByText('Published', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('agent-facts')).toContainText('anthropic/sonnet');
+    await expect(page.getByTestId('agent-file-version')).toContainText(
+      afterSave.hash?.slice(0, 8) ?? '',
+    );
 
     await page.goto('/agents/e2e-publish/edit');
     const again = page.getByRole('switch', { name: copy.publishedLabel });

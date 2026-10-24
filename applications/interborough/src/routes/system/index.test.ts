@@ -43,10 +43,13 @@ beforeEach(() => {
   resetLocation();
 });
 
-afterEach(() => {
+/** Puts back the `fetch` the last render scripted. */
+function restoreScripted(): void {
   scripted?.restore();
   scripted = undefined;
-});
+}
+
+afterEach(restoreScripted);
 
 async function renderSystemRoute(
   registry: RegistrySnapshotSource = {
@@ -72,10 +75,42 @@ async function renderSystemRoute(
 }
 
 describe('System route', () => {
-  test('defaults to the Registry tab when no ?tab= is present', async () => {
+  test('defaults to the Workflow types tab when no ?tab= is present', async () => {
     const { findByRole } = await renderSystemRoute();
-    const registryTrigger = await findByRole('tab', { name: 'Registry' });
+    const registryTrigger = await findByRole('tab', { name: 'Workflow types' });
     expect(registryTrigger.getAttribute('aria-selected')).toBe('true');
+  });
+
+  test('names every tab in words, and keeps the address each one had', async () => {
+    const { findAllByRole, unmount } = await renderSystemRoute();
+
+    const tabs = await findAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual([
+      'Workflow types',
+      'Realms',
+      'Metrics',
+      'Discovery',
+      'Operations',
+      'Health',
+      'Alerts',
+      'Scopes',
+    ]);
+    unmount();
+    // Each render installs its own scripted `fetch` over the last, so the one before is put back first.
+    restoreScripted();
+
+    // `registry` and `health` are what the tabs were called, and addresses that name them still work.
+    for (const [value, name] of [
+      ['registry', 'Workflow types'],
+      ['health', 'Health'],
+    ] as const) {
+      resetLocation(`/system?tab=${value}`);
+      const opened = await renderSystemRoute();
+      const tab = await opened.findByRole('tab', { name });
+      expect(tab.getAttribute('aria-selected')).toBe('true');
+      opened.unmount();
+      restoreScripted();
+    }
   });
 
   test('clicking a tab updates the URL and renders that tab', async () => {
@@ -95,7 +130,7 @@ describe('System route', () => {
     expect(alertsTrigger.getAttribute('aria-selected')).toBe('true');
   });
 
-  test('switching to Metrics, Discovery, Operations, and Health & lease mounts each tab panel', async () => {
+  test('switching to Metrics, Discovery, Operations, and Health mounts each tab panel', async () => {
     const { findAllByText, findByRole, findByText } = await renderSystemRoute();
     scripted?.routeJsonRpcMethod('weft.system.metrics', {});
     scripted?.routeUrl('/openapi.json', { paths: {} });
@@ -128,15 +163,15 @@ describe('System route', () => {
       }),
     ).not.toBeNull();
 
-    await fireEvent.click(await findByRole('tab', { name: 'Health & lease' }));
+    await fireEvent.click(await findByRole('tab', { name: 'Health' }));
     expect(await findByRole('heading', { name: 'Engine lease' })).not.toBeNull();
     expect(await findByText('Lease ownership is not configured for this engine.')).not.toBeNull();
   });
 
-  test('an unrecognized ?tab= value falls back to Registry rather than erroring', async () => {
+  test('an unrecognized ?tab= value falls back to Workflow types rather than erroring', async () => {
     resetLocation('/system?tab=nonsense');
     const { findByRole } = await renderSystemRoute();
-    const registryTrigger = await findByRole('tab', { name: 'Registry' });
+    const registryTrigger = await findByRole('tab', { name: 'Workflow types' });
     expect(registryTrigger.getAttribute('aria-selected')).toBe('true');
   });
 

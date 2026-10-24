@@ -89,6 +89,11 @@ export interface WorkflowToolListing {
   readonly paused: boolean;
   /** The trigger's `kind`, or `null` for an `invalid` file. */
   readonly triggerKind: string | null;
+  /**
+   * What the workflow is for, or `null` when it has none. `workflows-update` replaces the whole
+   * definition, so an agent that updates a workflow passes this back to keep it.
+   */
+  readonly description: string | null;
   /** Why an `invalid` file cannot run, so its author can fix it; `null` for a ready one. */
   readonly problem: string | null;
 }
@@ -133,6 +138,13 @@ const stepsSchema = z
   .array(z.record(z.string(), z.unknown()))
   .describe(
     'The steps, run in order: { "kind": "activity", "handler": "agent", "input": { "agent": "...", "message": "..." } }, { "kind": "sleep", "duration": "5m" }, or { "kind": "await-signal", "signal": "..." }.',
+  );
+
+const descriptionSchema = z
+  .string()
+  .optional()
+  .describe(
+    'One sentence on what the workflow is for, shown beside its name in the workflow list. Leave it out for none.',
   );
 
 const pausedSchema = z
@@ -230,9 +242,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     input: {
       trigger: Record<string, unknown>;
       steps: Record<string, unknown>[];
+      description?: string | undefined;
       paused?: boolean | undefined;
     },
   ): WorkflowFileDefinition => ({
+    ...(input.description === undefined ? {} : { description: input.description }),
     agent,
     ...(input.paused === undefined ? {} : { paused: input.paused }),
     trigger: input.trigger as WorkflowFileDefinition['trigger'],
@@ -248,11 +262,13 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       .describe(
         'The identifier, lowercase letters, digits, and hyphens, starting with a letter and at most 64 characters. Derived from `name` when you leave it out.',
       ),
+    description: descriptionSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
   });
   const updateInput = guardedInput.extend({
+    description: descriptionSchema,
     trigger: triggerSchema,
     steps: stepsSchema,
     paused: pausedSchema,
@@ -263,6 +279,9 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description:
       'Create a workflow: a JSON file of a trigger and steps that Bureau runs. `name` is what the workflow is called, and its identifier is derived from it (lowercase, with runs of other characters turned into one hyphen) unless you give `id`. A taken identifier is a conflict. The workflow is yours to change and starts working as soon as the call returns.',
     input: createInput,
+    metadata: {
+      shortDescription: 'Create a workflow Bureau runs on a schedule or a signal.',
+    },
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const derived = input.id === undefined ? deriveWorkflowIdentifier(input.name) : undefined;
       const provisional =
@@ -292,8 +311,9 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const update = createTool({
     name: 'workflows-update',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, and you become the agent that wrote it. Leave `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, description included, and you become the agent that wrote it. Pass back the `description` workflows-list returned to keep it; leave it out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
+    metadata: { shortDescription: 'Replace a workflow’s trigger and steps.' },
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const calling = await caller(context, input.id);
       if ('refusal' in calling) return calling.refusal;
@@ -318,6 +338,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         ? 'Pause a workflow, if its file still has the `hash` workflows-list returned. A paused workflow starts nothing new; instances already running finish.'
         : 'Resume a paused workflow, if its file still has the `hash` workflows-list returned.',
       input: guardedInput,
+      metadata: {
+        shortDescription: paused
+          ? 'Pause a workflow so it starts nothing new.'
+          : 'Resume a paused workflow.',
+      },
       execute: async (input, context): Promise<WorkflowToolResult> => {
         const calling = await caller(context, input.id);
         if ('refusal' in calling) return calling.refusal;
@@ -339,8 +364,9 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   const list = createTool({
     name: 'workflows-list',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, and its trigger kind. A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, and its description (pass it back to workflows-update to keep it, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
+    metadata: { shortDescription: 'List the workflows and their state.' },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
       const calling = await caller(context, '');
       if ('refusal' in calling) {
@@ -358,6 +384,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           state: listing.state,
           paused: listing.paused,
           triggerKind: listing.triggerKind,
+          description: listing.description,
           problem: listing.problem?.code ?? null,
         })),
       };

@@ -22,6 +22,7 @@ import {
 } from '../lib/router.svelte.ts';
 import {
   workflowEditPath,
+  workflowNewPath,
   workflowRunsPath,
   workflowTypePath,
 } from '../lib/workflow-type-paths.ts';
@@ -140,8 +141,10 @@ describe('the route table', () => {
       pattern: '/workflows/:type/edit',
       params: { type: 'invoice' },
     });
+    expect(matchRoute('/workflows/new')).toEqual({ pattern: '/workflows/new', params: {} });
     for (const pattern of [
       '/workflows',
+      '/workflows/new',
       '/workflows/:type',
       '/workflows/:type/runs',
       '/workflows/:type/edit',
@@ -153,6 +156,12 @@ describe('the route table', () => {
         'workflows',
       );
     }
+  });
+
+  test('registers the page that makes a workflow before the page of a type, so new is never read as a type', () => {
+    const patterns = routes.map((route) => route.pattern);
+    expect(patterns.indexOf('/workflows/new')).toBeGreaterThan(-1);
+    expect(patterns.indexOf('/workflows/new')).toBeLessThan(patterns.indexOf('/workflows/:type'));
   });
 
   test('never reads a type’s runs or editor as a type, because a path segment is one name', () => {
@@ -231,6 +240,7 @@ describe('a link to a workflow type', () => {
     expect(workflowRunsPath('order-processing')).toBe('/workflows/order-processing/runs');
     expect(workflowEditPath('order-processing')).toBe('/workflows/order-processing/edit');
     expect(matchRoute(workflowRunsPath('a/b'))?.params).toEqual({ type: 'a/b' });
+    expect(workflowNewPath()).toBe('/workflows/new');
   });
 });
 
@@ -250,8 +260,9 @@ describe('a link to a run', () => {
       const text = await Bun.file(join(sourceRoot, path)).text();
       // A quoted path, or a template literal, that begins `/workflows/` or `/workflows?`. A route's
       // pattern, which names a workflow type as `:type`, is how the Workflows area is addressed and
-      // is not a link to a run.
-      if (/['"`]\/workflows[/?](?!:type)/.test(text)) offenders.push(path);
+      // is not a link to a run, and neither is the literal `/workflows/new`, the page that makes a
+      // workflow, which no run's address can be.
+      if (/['"`]\/workflows[/?](?!:type|new['"`])/.test(text)) offenders.push(path);
     }
     expect(offenders).toEqual([]);
   });

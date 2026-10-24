@@ -48,7 +48,7 @@
 
 <script lang="ts">
   /**
-   * Paginated source picker for the Dynamic workflow sources panel. It reads
+   * Paginated source picker for the Workflow sources panel. It reads
    * `weft.catalog.sources.list`, which is process-local source runtime state:
    * enough to select an exact `(name, revision)` key, never a substitute for
    * the per-key diagnostics/preload calls below it.
@@ -225,9 +225,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: var(--cinder-density-pad-card);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
   }
 
   .weft-source-list__header {

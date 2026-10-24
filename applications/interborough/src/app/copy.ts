@@ -90,6 +90,16 @@ export const ROUTE_LOAD_FAILURE_COPY = {
   action: 'Reload the page',
 } as const;
 
+/**
+ * The words for an address no route matches. It is not one of a view's states: no view owns the
+ * address, so the outlet shows this in its own frame (`data-view="not-found"`).
+ */
+export const NOT_FOUND_ROUTE_COPY = {
+  title: 'This page does not exist',
+  description: 'That address is not a page in Interborough.',
+  action: { label: 'Go to chats', href: '/chat' },
+} as const;
+
 /** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:id/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',
@@ -100,12 +110,18 @@ export const AGENT_EDITOR_COPY = {
   fileLabel: 'File',
   /** The directory under the state directory that holds agent files, when the host does not say where. */
   fallbackDirectory: 'agents',
+  /** The titles of the form's four sections. */
+  sections: {
+    identity: 'Identity',
+    model: 'Model',
+    instructions: 'Instructions',
+    tools: 'Tools',
+  },
   nameLabel: 'Name',
-  nameDescription: 'A label for people. It need not be unique.',
+  nameDescription: 'What people see. It need not be unique.',
   identifierLabel: 'Identifier',
-  identifierCreateDescription:
-    'The agent’s file name without .md. It follows the name until you change it, and it cannot be changed after the first save.',
-  identifierEditDescription: 'The agent’s file name without .md. It cannot be changed.',
+  identifierCreateDescription: 'The file name, without .md. Fixed once saved.',
+  identifierEditDescription: 'The file name, without .md. It cannot change.',
   identifierInvalid:
     'Use lowercase letters, digits, and hyphens, starting and ending with a letter or digit, in at most 64 characters.',
   /** `new` is the address of the page that creates an agent, so an agent called `new` could never be opened. */
@@ -118,23 +134,30 @@ export const AGENT_EDITOR_COPY = {
   descriptionLabel: 'Description',
   descriptionDescription: 'What the agent does. Optional.',
   modelLabel: 'Model',
-  modelDescription: 'Only the models this installation offers are listed.',
+  modelDescription: 'The models this installation offers.',
   modelPlaceholder: 'Choose a model',
-  noModels: {
-    /** The only option the model field shows when there is no model to choose. */
-    option: 'No models available',
-    title: 'No models are available',
-    description:
-      'An agent cannot be saved without a model. Add a model provider to configuration.json in the state directory, then restart the host.',
+  /**
+   * What the page shows instead of the form when the catalog holds no model: an agent cannot be
+   * saved without one, and nothing in the application can add a provider.
+   */
+  noProvider: {
+    title: 'Add a model provider to create agents',
+    description: 'Agents run on a model. This installation has none configured.',
+    configurationStep:
+      'Put this in the configuration file. If the file exists, add the provider to its providers.',
+    secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
+    restartStep: 'Restart the host, then reload this page.',
+    reload: 'Reload this page',
+    snippetLabel: 'Provider configuration',
   },
-  toolsLabel: 'Tools',
   toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
+  /** The disclosure on a tool row that shows the full text the model is told about the tool. */
+  toolDisclosure: 'What the agent is told',
   instructionsLabel: 'Instructions',
   instructionsDescription: 'What the agent should do. This is the body of its file.',
   publishedLabel: 'Published',
-  publishedDescription:
-    'A published agent can be started in a new chat. A withdrawn agent cannot, and keeps its history.',
+  publishedDescription: 'A published agent can start new chats. A withdrawn one keeps its history.',
   /** The action on the agent list that opens the form for a new agent. */
   newAction: 'New agent',
   /** The action on an agent's page that opens its editor. */
@@ -184,10 +207,11 @@ export const AGENT_EDITOR_COPY = {
 
 /** The words the Workflows area uses outside its view states (`/workflows` and under it). */
 export const WORKFLOW_COPY = {
-  /** The badge on every workflow the Bureau holds a file for. A code-defined type has none. */
+  /** The badge on every workflow the Bureau holds a file for. */
   agentAuthoredBadge: 'Agent-authored',
-  /** The label for the agent that owns a file, shown only when the file names one. */
-  owner: (agent: string): string => `Agent: ${agent}`,
+  /** The badge on a workflow type that code registered. */
+  codeBadge: 'Code',
+  newAction: 'New workflow',
   /** The badge on a file the Bureau cannot use. */
   invalidBadge: 'Invalid file',
   pausedBadge: 'Paused',
@@ -198,39 +222,78 @@ export const WORKFLOW_COPY = {
   fileLabel: 'File',
   problemLabel: 'Problem',
   issuesLabel: 'Issues',
-  agentLabel: 'Agent',
-  triggerLabel: 'Trigger',
   stepsLabel: 'Steps',
   noSteps: 'This workflow has no steps.',
-  runsAction: 'Runs',
+  /** The link from a workflow's recent runs to all of them. */
+  runsAction: 'All runs',
   editAction: 'Edit',
   pauseAction: 'Pause',
   resumeAction: 'Resume',
   deleteAction: 'Delete',
   /** The accessible name of a link to a workflow's page. */
   listLabel: 'Workflows',
-  definition: {
-    heading: 'Definition',
-    descriptionLabel: 'Description',
-    noDescription: 'No description.',
+  /** The list at `/workflows`. */
+  list: {
+    /** The disclosure that holds the types the Bureau runs itself. */
+    engineWorkflows: (count: number): string => `Engine workflows (${String(count)})`,
+    engineDescription:
+      'The Bureau runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
+    emptyTitle: 'No workflows yet',
+    emptyBeforeTool: 'Chat with an agent that has the',
+    emptyTool: 'workflows-create',
+    emptyBeforeDirectory: 'tool, or add a JSON file to',
+    schedules: (count: number): string => `${String(count)} schedules`,
+    runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
+    running: (count: number): string => `(${String(count)} running)`,
+    neverRun: 'No runs yet',
+    lastRun: (relative: string): string => `last run ${relative}`,
+    onSignal: 'On the signal',
+  },
+  /** The page of one workflow. */
+  page: {
+    /** The status line under the name: the cadence, then whether the workflow is running. */
+    statusActive: 'Active',
+    statusPaused: 'Paused',
+    recentRuns: 'Recent runs',
+    noRuns: 'Nothing has run this workflow yet.',
+    runsFailed: 'The recent runs could not be loaded.',
+    runDuration: (milliseconds: string): string => `took ${milliseconds}`,
+    details: 'Details',
+    trigger: 'Trigger',
+    engine: 'Engine',
+    schedulesHeading: 'Schedules',
+    schedulesFailed: 'The schedules could not be loaded.',
+    scheduleActive: 'Active',
+    schedulePaused: 'Paused',
+    /** The facts of the Details disclosure, each shown only when the workflow has it. */
     inputSchema: 'Input schema',
     outputSchema: 'Output schema',
-    noSchema: 'None declared.',
     signals: 'Accepted signals',
     updates: 'Updates',
     queries: 'Queries',
-    none: 'None',
-    revision: 'Active revision',
-    noRevision: 'None active',
-    /** An agent-authored workflow the engine has not registered yet, so it has no definition to show. */
-    notRegistered: 'The engine has no definition for this workflow yet.',
+    activeRevision: 'Active revision',
   },
-  schedules: {
-    heading: 'Schedules',
-    none: 'No schedule starts this workflow.',
-    failed: 'The schedules could not be loaded.',
-    active: 'Active',
-    paused: 'Paused',
+  /** `/workflows/new`. */
+  creator: {
+    heading: 'New workflow',
+    textLabel: 'Workflow file',
+    textDescription:
+      'The file’s JSON. Its name is the workflow’s identifier, and it cannot be changed after the first save.',
+    saveAction: 'Create workflow',
+    cancelAction: 'Cancel',
+    saveFailed: 'The workflow was not created',
+    noName: 'Give the workflow a name: a "name" key holding its identifier.',
+    invalidName:
+      'The name must use lowercase letters, digits, and hyphens, start with a letter, and be at most 64 characters.',
+    reservedName:
+      'This name is reserved: /workflows/new is the page that creates a workflow, so a workflow called new could never be opened. Choose another.',
+    taken: (name: string): string =>
+      `A workflow called ${name} already exists. Choose another name.`,
+    /** What the editor starts with: a name, a description, a schedule trigger, and one agent step. */
+    templateName: 'my-workflow',
+    templateDescription: 'Says what this workflow is for in a sentence.',
+    templateSpec: '1h',
+    templateMessage: 'Say hello.',
   },
   revisions: {
     heading: 'Revisions that have run',
@@ -334,15 +397,65 @@ export const STALE_COPY = {
 
 /** The words the schedules area (`/schedules` and under it) uses outside its view states. */
 export const SCHEDULE_COPY = {
-  /** What a schedule starts, by the service that owns it. */
+  /** What a workflow's schedule says it starts; an agent run is said by its agent alone. */
   kind: {
-    'agent-run': 'Agent run',
     'workflow-file': 'Agent-authored workflow',
     code: 'Code-defined workflow',
   },
   /** A Bureau schedule the caller may not read the agent of. */
   unnamedAgent: 'An agent',
-  startsLabel: 'Starts',
+  /** In a sentence, for a schedule whose agent the caller may not read. */
+  anAgent: 'an agent',
+  /** The name of a schedule that has no description, by what it starts. */
+  nameFor: (target: string): string => `Schedule for ${target}`,
+  /** The name of a Bureau schedule that has no description and whose agent the caller may not read. */
+  unnamedAgentRun: 'Scheduled agent run',
+  title: 'Schedules',
+  newAction: 'New schedule',
+  filtersLabel: 'Filter schedules',
+  statusLabel: 'Status',
+  anyStatus: 'All statuses',
+  agentLabel: 'Agent',
+  anyAgent: 'All agents',
+  loading: 'Loading schedules',
+  empty: { title: 'No schedules', description: 'Create one to run an agent on a cadence.' },
+  noMatch: {
+    title: 'No matching schedules',
+    description: 'No schedule matches the current filters. Clear a filter to see more.',
+  },
+  actionsFor: (name: string): string => `Actions for ${name}`,
+  copyId: 'Copy id',
+  idCopied: 'Schedule id copied',
+  idCopyFailed: 'The schedule id was not copied',
+  next: (when: string): string => `next ${when}`,
+  neverFired: 'not fired yet',
+  lastSucceeded: 'last run succeeded',
+  lastFailed: 'last run did not succeed',
+  missed: (count: number): string => `${String(count)} missed`,
+  sends: 'Sends',
+  nextFires: 'Next fires',
+  recentRuns: 'Recent runs',
+  noRuns: 'No runs yet. This schedule has not fired.',
+  notScheduled: (status: string): string => `Not scheduled. This schedule is ${status}.`,
+  engine: 'Engine',
+  engineRows: {
+    cron: 'Cron',
+    interval: 'Interval',
+    jitter: 'Jitter',
+    revisionPolicy: 'Revision policy',
+  },
+  runningNow: 'Running now',
+  queuedRuns: 'Queued runs',
+  noActiveRuns: 'No active or queued runs.',
+  /** The one line that says what happens when a fire is due while a run is still going. */
+  overlapLine: {
+    skip: 'Skips a fire if the previous run is still going',
+    queue: 'Queues a fire if the previous run is still going',
+    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
+    allow: 'Starts a fire even if the previous run is still going',
+  },
+  moreActions: 'More actions',
+  backToList: 'Back to schedules',
   /** The action that opens the editor of the workflow whose file holds a schedule's trigger. */
   editWorkflowAction: 'Edit workflow',
   editWorkflowNote:
@@ -364,23 +477,24 @@ export const SCHEDULE_COPY = {
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
   form: {
-    startsLabel: 'Start',
-    startsAgent: 'An agent run',
-    startsWorkflow: 'A workflow type',
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
     agentDescription: 'The agent each fire runs. It must be in this installation’s catalog.',
     agentFreeTextDescription: 'The list of agents is unavailable. Enter the agent’s name.',
     noAgents: 'This installation lists no agents.',
-    inputLabel: 'Input',
+    inputLabel: 'What to send',
     inputDescription: 'The text each fire sends to the agent.',
     sessionLabel: 'Session',
     sessionDescription:
       'Optional. Each fire continues this session. Without one, every fire is a new session.',
     sessionWithAllow: 'A schedule that continues a session cannot allow its fires to overlap.',
     overlapLabel: 'If a run is still going when the next fire is due',
+    skipOverlapLabel: 'Skip a fire if the previous run is still going',
+    advancedLabel: 'Advanced',
+    advancedWorkflowLabel: 'Advanced: start a code-defined workflow',
     descriptionLabel: 'Description',
-    descriptionDescription: 'Optional. Shown to operators alongside the schedule.',
+    descriptionDescription:
+      'Optional. It names the schedule; without one the schedule is named by its agent.',
     cadenceLabel: 'Cadence',
     exactCadenceDescription:
       'The cadence builder counts in whole minutes at the smallest, so this schedule’s exact timing is kept unless you change it.',
@@ -391,7 +505,7 @@ export const SCHEDULE_COPY = {
     inputRequired: 'Enter the text to send.',
     inputTooLong: 'The input is too long.',
     reservedAgentRun:
-      'Agent runs are scheduled with “An agent run”, which checks the agent and its owner.',
+      'Agent runs are scheduled by choosing an agent, which checks the agent and its owner.',
     reservedBureauWorkflow:
       'The Bureau starts this workflow itself, with checks a schedule made here would skip.',
     reservedAgentAuthored:
@@ -470,12 +584,20 @@ export const AUDIT_COPY = {
   /** The accessible name of the search form. */
   searchLabel: 'Search the audit trail',
   sinceLabel: 'Since',
-  sinceDescription: 'Only records at or after this time, as YYYY-MM-DDTHH:mm in your time zone.',
+  /** Shown in the time field while it is empty, so the field names what it narrows without a label above it. */
+  sincePlaceholder: 'Any time',
   typeLabel: 'Type',
-  typeDescription: 'The kind of record, such as run.completed or schedule.created.',
-  resourceLabel: 'Run or resource',
-  resourceDescription:
-    'A run id, or schedule:<id>, session:<id>, agent:<id>, or workflow:<id>, to see what happened to one thing.',
+  /** The select's first option: no narrowing by type. */
+  anyType: 'Any type',
+  /** The select's last option, which brings a field for a type the trail has not shown yet. */
+  otherType: 'Other…',
+  otherTypeLabel: 'Other type',
+  otherTypePlaceholder: 'Type, such as run.completed',
+  resourceLabel: 'Resource',
+  /** The first option of the resource picker: no narrowing by what a record is about. */
+  anyResource: 'Any resource',
+  resourceIdLabel: 'Resource id',
+  resourceIdPlaceholder: 'Id',
   searchAction: 'Search',
   clearAction: 'Clear',
   loadMore: 'Load more',
@@ -487,6 +609,8 @@ export const AUDIT_COPY = {
   actorColumn: 'Actor',
   detailColumn: 'Details',
   noActor: 'None',
+  /** The small heading above a record's raw JSON, under the disclosure each row opens. */
+  rawRecord: 'Raw record',
   noMatches: {
     title: 'No records match',
     description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
@@ -498,6 +622,29 @@ export const AUDIT_COPY = {
   },
 } as const;
 
+/**
+ * The words the agent list and an agent's page use for what an agent is and has: its model, its
+ * tools, how much it has been used, and the one badge an agent can carry.
+ * Where an agent is defined, and that it is published, are facts for the developer or the normal
+ * state, so neither is worded: only an agent that is not published says so.
+ */
+export const AGENTS_COPY = {
+  notPublished: 'Not published',
+  notPublishedHint: 'This agent is not published, so no one can start a chat with it.',
+  modelLabel: 'Model',
+  toolsLabel: 'Tools',
+  skillsLabel: 'Skills',
+  noTools: 'No tools',
+  toolCount: (count: number): string => (count === 1 ? '1 tool' : `${count} tools`),
+  chatCount: (count: number): string => (count === 1 ? '1 chat' : `${count} chats`),
+  noChats: 'No chats yet',
+  lastChat: (when: string): string => `Last chat ${when}`,
+  /** The Memory action with the agent's memory count; `more` is true when pages of it are unread. */
+  memoryWithCount: (shown: number, more: boolean): string => `Memory (${shown}${more ? '+' : ''})`,
+  fileVersion: 'File version',
+  history: 'History',
+} as const;
+
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
@@ -506,17 +653,30 @@ export const CHAT_COPY = {
   agentLabel: 'Agent',
   agentPlaceholder: 'Search agents',
   sessionsTitle: 'Chats',
+  /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
+  groups: {
+    'needs-you': 'Needs you',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    earlier: 'Earlier',
+  },
+  /** What a session with no message in it says in place of its transcript. */
+  noMessages: 'No messages yet',
+  /** What a new chat shows where its transcript will be. */
+  newChatWelcome: {
+    try: 'Try',
+    /** Said before the agents' identifiers under the welcome of a fresh Interborough. */
+    agentsLine: 'Agents:',
+    promptsLabel: 'Example prompts',
+    otherAgents: 'Or start with another agent',
+    chooseAgent: 'Choose an agent to start with',
+  },
+  /** What a chat with no message to show says it holds. */
+  messageCount: (count: number): string =>
+    count === 1 ? '1 message' : `${String(count)} messages`,
   loadMore: 'Load more',
   noSessions: 'No chats yet',
   loadingSessions: 'Loading chats',
-  agentKind: { code: 'Defined in code', file: 'Defined in a file' },
-  agentNotPublished: 'Not published',
-  agentPublished: 'Published',
-  agentModel: 'Model',
-  agentTools: 'Tools',
-  agentSkills: 'Skills',
-  agentRevision: 'Revision',
-  noneListed: 'None',
   agentsTitle: 'Agents',
   tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',
@@ -871,6 +1031,7 @@ export const TASK_COPY = {
   unknownAgent: 'An agent',
   untitledChat: 'Untitled chat',
   goal: 'goal',
+  schedule: 'schedule',
   startedDirectly: 'Started directly',
   sessionLabel: 'Session',
   anyStatus: 'Any status',
@@ -913,6 +1074,8 @@ export const TASK_COPY = {
   createdFact: 'Started',
   updatedFact: 'Updated',
   openChat: 'Open chat',
+  /** The link to the session of a run a goal or a schedule's fire started, which is no chat. */
+  openSession: 'Open the session',
   /** The link on a run's page to the task the run is, when it is one. */
   viewTask: 'View the task',
   answerHeading: 'Answer',
@@ -925,6 +1088,7 @@ export const TASK_COPY = {
     description: 'The Bureau did not answer. Check that the host is running, then try again.',
   },
   startedFromChat: 'Started from the chat',
+  startedFromSchedule: 'Started by a schedule, in the session',
   startedFromGoal: 'Started by the goal',
   runTitle: 'Run',
   tabsLabel: 'Run sections',
@@ -1058,12 +1222,38 @@ export const PALETTE_COPY = {
   noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
 } as const;
 
+/**
+ * The words of the notification bell: what needs the person, and what finished. Each sentence
+ * names the agent and is followed by the chat or schedule it is about, never a run.
+ */
+export const NOTIFICATION_COPY = {
+  panelTitle: 'Notifications',
+  markAllRead: 'Mark all read',
+  empty: 'Nothing needs you right now.',
+  /** What the bell button is called; the count says how many items need the person. */
+  bellLabel: (count: number): string =>
+    count === 0 ? 'Notifications' : `Notifications, ${count} need${count === 1 ? 's' : ''} you`,
+  needsApproval: (agent: string): string => `${agent} needs your approval`,
+  askedQuestion: (agent: string): string => `${agent} asked a question`,
+  answered: (agent: string): string => `${agent} answered`,
+  failed: (subject: string): string => `${subject} failed`,
+  /** What an agent is called when the Bureau names none. */
+  unnamedAgent: 'An agent',
+  /** Read between a sentence and the chat it is about, by a screen reader only. */
+  inJoiner: ' in ',
+  /** Read between a failed schedule and the first line of its error. */
+  errorJoiner: ': ',
+  noErrorText: 'No reason was given',
+} as const;
+
 /** The words of the navigation: its two groups of views, and what the engine status says. */
 export const NAVIGATION_COPY = {
   /** The views for working with agents. */
   workGroup: 'Work',
   /** The views for operating the engine. */
   engineGroup: 'Engine',
+  /** The group's first entry: how the engine is doing, before any one page of it. */
+  engineOverview: 'Overview',
   engineLink: 'Engine',
   /** What the engine status dot says, by the state of the live feed. */
   engineStatus: {
@@ -1092,8 +1282,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'Checking that the Bureau is ready to take messages.',
     },
     empty: {
-      title: 'No conversations yet',
-      description: 'Start one with an agent, and it will be listed here.',
+      title: 'Start a chat',
+      description:
+        'Pick an agent and say what you need. Your chats are kept here, and anything an agent needs from you shows in Reviews.',
       action: { label: 'New chat', href: '/chat/new' },
     },
     error: {
@@ -1190,8 +1381,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     empty: {
       title: 'No workflows yet',
       description:
-        'Neither the engine nor the Bureau has a workflow. Ask an agent to write one, or add a JSON file to the workflows directory.',
-      action: { label: 'See the runs', href: '/runs' },
+        'Chat with an agent that has the workflows-create tool, or add a JSON file to the workflows directory.',
+      action: { label: 'New workflow', href: '/workflows/new' },
     },
     error: {
       title: 'Workflows are unavailable',

@@ -42,6 +42,7 @@ import type {
   StepRecord,
   StopCondition,
   StreamEventMap,
+  HumanInputSchema,
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
@@ -87,6 +88,7 @@ import {
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
+  SESSION_ORIGIN_METADATA_KEY,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
@@ -102,6 +104,7 @@ import {
   type SkillEventMap,
   type ToolPolicy,
 } from './skills';
+import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import {
   type AnyWorkflowDefinition,
   type ConditionalTextValueStore,
@@ -269,6 +272,11 @@ export function hasDispatchEvent(value: unknown): value is HumanWaitEventDispatc
 export interface WireDurableOptInToolsOptions {
   /** Wires `requestHumanInput` in when true (AB-13/AB-41/AB-43). */
   readonly humanInput?: boolean;
+  /**
+   * COR-1674 — per-signal answer schemas handed to `requestHumanInput`. Ignored when `humanInput`
+   * is falsy. Every wiring site, fresh and recovered, passes the same map.
+   */
+  readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined;
   /** Wires `scheduleWakeup` in when true (AB-201). */
   readonly wakeup?: boolean;
   readonly runId: string;
@@ -318,6 +326,7 @@ export function wireDurableOptInTools(
     const humanWaitContext = createHumanWaitContext(servicesRef, options.runId);
     const rawHumanInputTool = createRequestHumanInputTool({
       context: humanWaitContext,
+      ...(options.inputSchemas ? { inputSchemas: options.inputSchemas } : {}),
       ...(options.humanInputEmitter ? { emitter: options.humanInputEmitter } : {}),
     });
     const humanInputToolbox = createToolbox([
@@ -3990,11 +3999,12 @@ async function buildRuntimeComposition(
     // this function returns).
     let runToolbox: BureauToolbox = runRuntime.toolbox;
     const servicesRef: { current?: DurableRunDeps } = {};
-    const wantsHumanInput = options.humanInput === true && runId !== undefined;
+    const wantsHumanInput = humanInputEnabled(options.humanInput) && runId !== undefined;
     const wantsWakeup = options.wakeup === true && runId !== undefined;
     if (wantsHumanInput || wantsWakeup) {
       runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
+        inputSchemas: humanInputSchemasOf(options.humanInput),
         wakeup: wantsWakeup,
         // `runId` is non-undefined here (both `wantsHumanInput`/`wantsWakeup`
         // require it); `?? ''` only satisfies the type checker.
@@ -4247,7 +4257,11 @@ async function buildRuntimeComposition(
                 : {}),
               [runId]: owner,
             },
-            ...(existing === undefined ? { [SESSION_OWNER_METADATA_KEY]: owner } : {}),
+            // COR-1645 — and its origin, written once with the owner: a session a fire creates is
+            // not a chat a person started, while one a fire continues keeps the origin it has.
+            ...(existing === undefined
+              ? { [SESSION_OWNER_METADATA_KEY]: owner, [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }
+              : {}),
             ...(sessionOwnedByAnotherRunningRun || skillPolicyUnverified()
               ? {}
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
@@ -4613,7 +4627,7 @@ async function buildRuntimeComposition(
     // child nor a goal attempt. The tool parks through the services object being returned, so
     // that object is captured once it exists, as `buildRunDepsFromSession` does.
     const offersHumanInput =
-      options.humanInput === true &&
+      humanInputEnabled(options.humanInput) &&
       durable !== undefined &&
       record.goalAttempt === undefined &&
       record.workflowStep === undefined &&
@@ -4622,6 +4636,7 @@ async function buildRuntimeComposition(
     const toolbox = offersHumanInput
       ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
           humanInput: true,
+          inputSchemas: humanInputSchemasOf(options.humanInput),
           wakeup: false,
           runId,
           humanInputEmitter: {
@@ -5074,9 +5089,10 @@ async function buildRuntimeComposition(
     // catalog run captures it.
     const humanInputServices: { current?: DurableRunDeps } = {};
     const fireToolbox =
-      options.humanInput === true && durable !== undefined
+      humanInputEnabled(options.humanInput) && durable !== undefined
         ? wireDurableOptInTools(runRuntime.toolbox, humanInputServices, {
             humanInput: true,
+            inputSchemas: humanInputSchemasOf(options.humanInput),
             wakeup: false,
             runId,
             humanInputEmitter: {

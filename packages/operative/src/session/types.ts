@@ -3,6 +3,7 @@ import type { JSONValue } from 'armorer/protocol';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
+import type { SessionOrigin } from './session-origin';
 
 /**
  * Options for listing sessions with filtering, pagination, and sorting.
@@ -15,6 +16,12 @@ export interface SessionListOptions {
    * sessions and another owner's cost it no slot.
    */
   owner?: string | undefined;
+  /**
+   * Only the sessions this origin started (`sessionOriginOf` of their metadata): `chat` is every
+   * session that records no origin. Applied to the summary index before `offset` and `limit`, like
+   * `owner`, so a page is full of sessions of this origin.
+   */
+  origin?: SessionOrigin | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   sortBy?: ('createdAt' | 'updatedAt') | undefined;

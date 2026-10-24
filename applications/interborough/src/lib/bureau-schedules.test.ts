@@ -19,6 +19,7 @@ const VIEW = {
   id: 's-1',
   owner: 'anonymous:local',
   agentName: 'assistant',
+  inputPreview: 'Summarize what happened yesterday.',
   workflowType: 'agentRun',
   description: null,
   cronExpression: '0 9 * * *',
@@ -78,6 +79,7 @@ describe('the Bureau’s schedules', () => {
     });
 
     expect(created.agentName).toBe('assistant');
+    expect(created.inputPreview).toBe('Summarize what happened yesterday.');
     expect(stub.callsTo('bureau.schedules.create')[0]?.params).toEqual({
       agentName: 'assistant',
       spec: '1h',

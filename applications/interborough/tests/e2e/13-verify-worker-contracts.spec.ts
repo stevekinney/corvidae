@@ -23,6 +23,8 @@ import { expect, test } from './fixtures.ts';
 
 test('operator reads a worker’s contract verification status', async ({ page, checkA11y }) => {
   await page.goto('/workers?tab=list&worker=e2e-fleet-worker-1');
+  // The page is the full fleet view: a worker is connected, and the address names it.
+  await expect(page.getByRole('tablist', { name: 'Workers views' })).toBeVisible();
 
   const verification = page.getByRole('region', { name: 'Contract verification' });
   await expect(verification).toBeVisible();

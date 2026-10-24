@@ -7,7 +7,7 @@ import { requireElement } from '../../../tests/dom.test-support.ts';
  * (COR-1539).
  */
 import { HttpClient } from '@lostgradient/weft';
-import { fireEvent, render, within } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { stubStorageFetch, type StubbedFetchCall } from './storage-fetch-stub.test-support.ts';
@@ -84,12 +84,77 @@ describe('Storage route', () => {
     expect(queryByText('Storage access requires storage:admin')).toBeNull();
   });
 
-  test('shows the reserved-prefix awareness banner when unlocked', async () => {
+  test('offers the non-reserved prefixes found in storage in the Scan panel', async () => {
+    const keys = ['agent-session:a', 'agent-session:b', 'bureau-goal:g1', 'wf:one'];
+    activeStub = stubStorageFetch((call) => {
+      if (isCapabilitiesCall(call)) {
+        return Response.json({ jsonrpc: '2.0', id: 1, result: CAPABILITIES });
+      }
+      const params = new URL(call.url).searchParams;
+      const gte = params.get('gte');
+      const rows = keys
+        .filter((key) => gte === null || key >= gte)
+        .slice(0, 1)
+        .map((key) => JSON.stringify({ key, value: Buffer.from('v').toString('base64') }));
+      return new Response(rows.length > 0 ? `${rows.join('\n')}\n` : '', {
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      });
+    });
+
+    const { getByLabelText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
+
+    // The field to type into stands until the prefixes have been read, and the picker takes its place.
+    await waitFor(() => expect(getByLabelText('Prefix').tagName).toBe('SELECT'));
+    const picker = getByLabelText('Prefix') as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.textContent?.trim())).toEqual([
+      'Any key',
+      'agent-session:',
+      'bureau-goal:',
+      'Other…',
+    ]);
+  });
+
+  test('aborts the prefix discovery when the view unmounts', async () => {
+    activeStub = stubStorageFetch((call) =>
+      isCapabilitiesCall(call)
+        ? Response.json({ jsonrpc: '2.0', id: 1, result: CAPABILITIES })
+        : // The first read of the walk never answers, so only the signal can end it.
+          new Promise<Response>(() => {}),
+    );
+
+    const view = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    const scanSignal = () => activeStub?.calls.find((call) => !isCapabilitiesCall(call))?.signal;
+    await waitFor(() => expect(scanSignal()).toBeDefined());
+    expect(scanSignal()?.aborted).toBe(false);
+
+    view.unmount();
+
+    await waitFor(() => expect(scanSignal()?.aborted).toBe(true));
+  });
+
+  test('keeps the field to type a prefix into when the prefixes cannot be read', async () => {
     activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
 
-    const { getByText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    const { findByLabelText } = render(StorageRouteHarness, { props: { client: fakeClient() } });
+
+    const field = await findByLabelText('Prefix');
+    expect(field.tagName).toBe('INPUT');
+  });
+
+  test('shows the reserved-prefix warning beside the write switch when unlocked, and writes start off', async () => {
+    activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
+
+    const { getByText, getByRole, queryByRole } = render(StorageRouteHarness, {
+      props: { client: fakeClient() },
+    });
 
     expect(getByText(/used internally by the/)).not.toBeNull();
+    expect(getByRole('switch', { name: 'Allow writes' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(queryByRole('tab', { name: 'Put' })).toBeNull();
+    expect(queryByRole('tab', { name: 'Delete' })).toBeNull();
+    expect(queryByRole('tab', { name: 'Batch' })).toBeNull();
   });
 
   test('reads the capabilities from weft.storage.capabilities and never probes with a batch', async () => {
@@ -141,6 +206,7 @@ describe('Storage route', () => {
   test('offers conditional batching only when the backend reports it', async () => {
     activeStub = stubStorageFetch(capabilitiesHandler(CAPABILITIES));
     const supported = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    await fireEvent.click(supported.getByRole('switch', { name: 'Allow writes' }));
     await fireEvent.click(supported.getByText('Batch'));
     expect(
       await supported.findByRole('switch', { name: 'Conditional (compare-and-swap)' }),
@@ -152,14 +218,17 @@ describe('Storage route', () => {
       capabilitiesHandler({ ...CAPABILITIES, conditionalBatch: false }),
     );
     const unsupported = render(StorageRouteHarness, { props: { client: fakeClient() } });
+    await fireEvent.click(unsupported.getByRole('switch', { name: 'Allow writes' }));
     await fireEvent.click(unsupported.getByText('Batch'));
     await unsupported.findByText('Apply batch · confirm');
     // The capabilities read has settled once the Capabilities tab shows its rows.
     await fireEvent.click(unsupported.getByText('Capabilities'));
     await unsupported.findByText('Conditional batch');
     await fireEvent.click(unsupported.getByText('KV browser'));
-    // Returning to the KV browser remounts it on its default operation, so Batch is chosen again:
-    // without this the assertion below would hold whatever the backend reported.
+    // Returning to the KV browser remounts it on its default operation, read-only again, so writes are
+    // allowed and Batch is chosen again: without this the assertion below would hold whatever the
+    // backend reported.
+    await fireEvent.click(unsupported.getByRole('switch', { name: 'Allow writes' }));
     await fireEvent.click(unsupported.getByText('Batch'));
     await unsupported.findByText('Apply batch · confirm');
     expect(

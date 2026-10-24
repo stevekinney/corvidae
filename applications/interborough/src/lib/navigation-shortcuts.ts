@@ -12,6 +12,7 @@ export const NAVIGATION_SHORTCUTS: Readonly<Record<string, string>> = {
   '/runs': 'r',
   '/schedules': 's',
   '/reviews': 'v',
+  '/engine': 'e',
   '/workers': 'o',
   '/storage': 't',
   '/system': 'y',

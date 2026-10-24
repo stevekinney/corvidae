@@ -8,8 +8,9 @@
  *   is the catalog name its interface URL ends in plus `version`, its definition revision.
  * - `description` is the agent's, else a sentence naming it.
  * - Input modes are `text/plain` and `application/json` (an approval's decision travels as a
- *   data part) and output is `text/plain`, plus the media types of every modality the agent's
- *   backend descriptors put out (COR-788); see {@link mediaOutputModesOf}.
+ *   data part), plus the media types of every modality the agent's backend descriptors take in
+ *   and the asset policy admits (COR-788); output is `text/plain`, plus the media types of every
+ *   modality they put out. See {@link mediaInputModesOf} and {@link mediaOutputModesOf}.
  * - `skills` are the agent's skill descriptors, or one skill standing for the agent itself.
  * - `capabilities.streaming` is `true`; `pushNotifications` is `true` only where the Bureau composes both an outbox and the durable
  *   event history (COR-1543),
@@ -21,6 +22,7 @@
  * @module a2a-agent-card
  */
 
+import { normalizeMediaType } from '../assets/media-inspection.ts';
 import type { AgentCard, AgentExtension, AgentSkill } from '@a2a-js/sdk';
 import type { A2AAgentCardInput, A2ASecurityDeclaration } from '@lostgradient/weft/a2a';
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
@@ -29,8 +31,11 @@ import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 
-/** The A2UI A2A extension of the pinned A2UI release (`v0.9.1`). */
-export const A2UI_EXTENSION_URI = 'https://a2ui.org/a2a-extension/a2ui/v0.9.1';
+import {
+  A2UI_BASIC_CATALOG_ID,
+  A2UI_CINDER_CATALOG_ID,
+  A2UI_EXTENSION_URI,
+} from '../a2ui/catalogs.ts';
 
 /** The media types every Bureau agent reads over A2A: text, and a data part (an approval's decision). */
 export const A2A_INPUT_MODES: readonly string[] = ['text/plain', 'application/json'];
@@ -51,8 +56,7 @@ const MODALITY_MEDIA_TYPES: Readonly<Record<string, readonly string[]>> = {
  * The media types an agent answers with: the text mode every agent has, then each modality some
  * backend descriptor behind its `generate` puts out (`BackendDescriptor.modalities`). An agent
  * whose `generate` carries no descriptor is text-only. Generated JSON is a document, so a document
- * or file output also advertises `application/json`. Input modes stay {@link A2A_INPUT_MODES}: a
- * message's file parts are not read yet (COR-788, part 2).
+ * or file output also advertises `application/json`.
  */
 export function mediaOutputModesOf(
   descriptors: readonly {
@@ -70,6 +74,50 @@ export function mediaOutputModesOf(
   return [...output];
 }
 
+/**
+ * The media types an agent reads: text and a data part, then each modality some backend
+ * descriptor behind its `generate` takes in (`BackendDescriptor.modalities[m].input`), narrowed to
+ * what the asset policy admits (`allowedMediaTypes`). An agent whose `generate` carries no
+ * descriptor, and a Bureau with no asset service, read text and data only: a file part is a
+ * managed asset, so without the service none can be read. A document input is advertised as
+ * `application/pdf`, the one document type the card names, and is also what lets a data part
+ * enter a task as a JSON document.
+ */
+export function mediaInputModesOf(
+  descriptors: readonly {
+    readonly modalities: Readonly<Record<string, { input: boolean }>>;
+  }[],
+  allowedMediaTypes: readonly string[] | undefined,
+): readonly string[] {
+  const input = new Set(A2A_INPUT_MODES);
+  for (const descriptor of descriptors) {
+    for (const [modality, support] of Object.entries(descriptor.modalities)) {
+      if (!support.input) continue;
+      for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) {
+        if (allowedMediaTypes === undefined) {
+          input.add(type);
+          continue;
+        }
+        // Admission matches an allowlist entry exactly, so a family the descriptor takes is
+        // advertised as the exact types the policy allows within it, never as the whole family.
+        for (const allowed of allowedMediaTypes) {
+          const exact = normalizeMediaType(allowed);
+          if (overlaps(type, exact)) input.add(exact);
+        }
+      }
+    }
+  }
+  return [...input];
+}
+
+/** Whether a media type and an allowlist entry can name the same type, a `type/*` family included. */
+function overlaps(advertised: string, allowed: string): boolean {
+  if (advertised === allowed) return true;
+  const family = (value: string) => (value.endsWith('/*') ? value.slice(0, -1) : undefined);
+  const prefix = family(advertised) ?? family(allowed);
+  return prefix !== undefined && advertised.startsWith(prefix) && allowed.startsWith(prefix);
+}
+
 /** What the card of one agent is built from. */
 export type A2AAgentCardSource = {
   /** The agent's catalog name: the last segment of its interface URL. */
@@ -81,6 +129,8 @@ export type A2AAgentCardSource = {
   readonly skillDescriptors: readonly AgentSkillDescriptor[] | undefined;
   /** The media types the agent answers with, from its backend descriptors; text-only when it has none. */
   readonly outputModes?: readonly string[] | undefined;
+  /** The media types the agent reads, from its backend descriptors and the asset policy. */
+  readonly inputModes?: readonly string[] | undefined;
   /** The credentials the handler enforces; `undefined` when every request is the local caller. */
   readonly security: A2ASecurityDeclaration | undefined;
   /** Whether the Bureau keeps a durable event history, which the durable-history extension needs. */
@@ -117,9 +167,17 @@ const COMMAND_RECEIPTS_EXTENSION: AgentExtension = {
 
 const A2UI_EXTENSION: AgentExtension = {
   uri: A2UI_EXTENSION_URI,
-  description: 'Carries A2UI surfaces to a client that renders them.',
+  description:
+    'Carries A2UI surfaces to a client that renders them. Experimental: pinned to A2UI v0.9.1.',
   required: false,
-  params: {},
+  // `supportedCatalogIds` and `acceptsInlineCatalogs` are the A2UI extension's own parameter names
+  // (the basic catalog is offered by default; Cinder's only to a client that lists it), and
+  // `experimental` marks Bureau's support until a stable A2UI 1.0 compatibility review.
+  params: {
+    supportedCatalogIds: [A2UI_BASIC_CATALOG_ID, A2UI_CINDER_CATALOG_ID],
+    acceptsInlineCatalogs: false,
+    experimental: true,
+  },
 };
 
 /** The URIs of the extensions a card declares: the ones a request may activate. */
@@ -180,11 +238,11 @@ export function createBureauAgentCard(source: A2AAgentCardSource): A2AAgentCardI
         ...(source.durableHistory ? [DURABLE_HISTORY_EXTENSION] : []),
         COMMAND_RECEIPTS_EXTENSION,
         A2UI_EXTENSION,
-      ].map((extension) => ({ ...extension, params: {} })),
+      ],
     },
     securitySchemes: { ...source.security?.securitySchemes },
     securityRequirements: [...(source.security?.securityRequirements ?? [])],
-    defaultInputModes: [...A2A_INPUT_MODES],
+    defaultInputModes: [...(source.inputModes ?? A2A_INPUT_MODES)],
     defaultOutputModes: [...(source.outputModes ?? A2A_OUTPUT_MODES)],
     skills,
     iconUrl: undefined,

@@ -325,6 +325,66 @@ describe('the lists and details the chat and agents views read', () => {
     });
   });
 
+  test('listContexts asks for the sessions of one origin, and reads the origin each one records', async () => {
+    const session = {
+      id: 'c1',
+      owner: 'anonymous:local',
+      agentName: 'assistant',
+      title: 'Say hello.',
+      lastMessagePreview: null,
+      parentContextId: null,
+      forkedFromMessageId: null,
+      messageCount: 2,
+      createdAt: '2026-10-19T00:00:00.000Z',
+      updatedAt: '2026-10-19T00:00:00.000Z',
+      activity: 'idle',
+    };
+    const stub = answering(
+      result({
+        contexts: [
+          { ...session, id: 'goal-session', origin: 'goal' },
+          // A Bureau that names no origin has a chat in this one.
+          { ...session, id: 'older-session' },
+        ],
+        nextOffset: null,
+      }),
+    );
+
+    const page = await withStub(stub.fetch, () => listContexts({ origin: 'chat', limit: 20 }));
+
+    expect(stub.calls[0]?.body).toMatchObject({ params: { origin: 'chat', limit: 20 } });
+    expect(page.contexts.map((context) => context.origin)).toEqual(['goal', 'chat']);
+  });
+
+  test('listContexts keeps a session whose origin it does not know, as one that is not a chat', async () => {
+    const stub = answering(
+      result({
+        contexts: [
+          {
+            id: 'c1',
+            owner: null,
+            agentName: 'assistant',
+            title: 'Kept',
+            lastMessagePreview: null,
+            parentContextId: null,
+            forkedFromMessageId: null,
+            // A Bureau newer than this browser may name a fourth way to start a session.
+            origin: 'cron',
+            messageCount: 0,
+            createdAt: '2026-10-19T00:00:00.000Z',
+            updatedAt: '2026-10-19T00:00:00.000Z',
+            activity: 'idle',
+          },
+        ],
+        nextOffset: null,
+      }),
+    );
+
+    const page = await withStub(stub.fetch, () => listContexts());
+
+    expect(page.contexts.map((context) => [context.id, context.origin])).toEqual([['c1', 'other']]);
+  });
+
   test('listContexts refuses a page that is not one', async () => {
     const stub = answering(result({ items: [] }));
 
@@ -392,6 +452,47 @@ describe('the lists and details the chat and agents views read', () => {
     const agents = await withStub(answering(result({ agents: [agent] })).fetch, () => listAgents());
 
     expect(agents[0]?.media).toEqual(media);
+  });
+
+  test('listAgents carries each agent’s tool names, and keeps an empty list apart from none stated', async () => {
+    const base = {
+      displayName: 'Agent',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+    };
+    const wire = [
+      { ...base, name: 'busy', tools: ['search-web', 'send-mail'] },
+      { ...base, name: 'bare', tools: [] },
+      { ...base, name: 'silent' },
+    ];
+
+    const agents = await withStub(answering(result({ agents: wire })).fetch, () => listAgents());
+
+    expect(agents.map((agent) => [agent.name, agent.tools])).toEqual([
+      ['busy', ['search-web', 'send-mail']],
+      ['bare', []],
+      ['silent', undefined],
+    ]);
+  });
+
+  test.each(['search-web', [1], [null], null])('listAgents refuses tools of %j', async (tools) => {
+    const agent = {
+      name: 'busy',
+      displayName: 'Busy',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+      tools,
+    };
+
+    const refusal = await rejectionOf(
+      withStub(answering(result({ agents: [agent] })).fetch, () => listAgents()),
+    );
+
+    expect(refusal).toBeInstanceOf(Error);
   });
 
   test('getThreadMessages returns the messages the mount gives for a thread', async () => {

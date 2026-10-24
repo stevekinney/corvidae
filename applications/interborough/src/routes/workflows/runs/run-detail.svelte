@@ -27,6 +27,7 @@
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
     getTask,
+    isScheduleFire,
     isTerminalState,
     type TaskCleanup,
     type TaskView,
@@ -100,10 +101,13 @@
     },
   });
 
-  onMount(() => {
-    follower.start();
-    return () => follower.dispose();
+  // The stream is opened once the Bureau has answered for the task. A run the Bureau does not know
+  // (an engine run, or a goal's attempt) has no task to follow, and its subscription answers 404,
+  // which the browser logs as a failed request (COR-1643).
+  $effect(() => {
+    if (task.data !== undefined) follower.start();
   });
+  onMount(() => () => follower.dispose());
 
   $effect(() => {
     if (follower.state !== 'ended') return;
@@ -153,6 +157,18 @@
     return undefined;
   });
 
+  // The session a goal's attempt ran in. A goal's session is not listed under Chat, so the attempt's
+  // page is where a person reaches it, while the Bureau still has it.
+  const attemptSession = createQuery(
+    () => ({
+      queryKey: queryKeys.contexts.detail(attempt?.attempt.sessionId ?? ''),
+      queryFn: ({ signal }) => getContext(attempt?.attempt.sessionId ?? '', { signal }),
+      enabled: attempt !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+
   // A run only the engine knows (no task, and no goal made it) has nothing on its Summary tab, so it
   // opens on the Engine tab, where the workflow is. Either tab can still be asked for by name.
   const engineOnly = $derived(notFound && attempt === undefined && engineAllowed);
@@ -162,6 +178,11 @@
     if (asked === 'engine' || asked === 'summary') return asked;
     return engineOnly ? 'engine' : 'summary';
   });
+  // A run only the engine knows has no header of its own while its Engine tab is open: the workflow's
+  // title is then the page's one level-1 heading. On its Summary tab the page still names itself.
+  const leadsWithEngine = $derived(
+    engineOnly && task.data === undefined && !task.isPending && view === 'engine',
+  );
   let tab = $state(untrack(() => view));
   $effect(() => {
     tab = view;
@@ -209,7 +230,12 @@
     onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
   />
 {:else}
-  <article class="ib-run" aria-labelledby="ib-run-title">
+  <!-- A run only the engine knows has no heading of its own: the workflow it holds leads the page. -->
+  <article
+    class="ib-run"
+    aria-labelledby={leadsWithEngine ? undefined : 'ib-run-title'}
+    aria-label={leadsWithEngine ? TASK_COPY.runTitle : undefined}
+  >
     {#if task.data}
       {@const current = task.data}
       {@const presentation = taskStatePresentation(current.status)}
@@ -228,7 +254,7 @@
               variant="secondary"
               size="lg"
               href={router.href(chatHref)}
-              label={TASK_COPY.openChat}
+              label={chat.data?.origin === 'chat' ? TASK_COPY.openChat : TASK_COPY.openSession}
               onclick={(event) => {
                 if (
                   event.metaKey ||
@@ -247,7 +273,7 @@
         </div>
         <p class="ib-run__origin">
           {#if chat.isSuccess}
-            {TASK_COPY.startedFromChat}
+            {isScheduleFire(current) ? TASK_COPY.startedFromSchedule : TASK_COPY.startedFromChat}
             <a
               href={router.href(chatSessionPath(current.contextId))}
               onclick={(event) => {
@@ -263,6 +289,8 @@
                 router.navigate(chatSessionPath(current.contextId));
               }}>{chat.data.title ?? TASK_COPY.untitledChat}</a
             >
+          {:else if isScheduleFire(current)}
+            {TASK_COPY.startedFromSchedule}
           {:else}
             {TASK_COPY.startedDirectly}
           {/if}
@@ -291,6 +319,29 @@
           </h1>
           <Badge variant={presentation.variant}>{presentation.label}</Badge>
         </div>
+        {#if attemptSession.isSuccess}
+          {@const sessionHref = chatSessionPath(attemptSession.data.id)}
+          <div class="ib-run__actions">
+            <Button
+              variant="secondary"
+              size="lg"
+              href={router.href(sessionHref)}
+              label={TASK_COPY.openSession}
+              onclick={(event) => {
+                if (
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.button !== 0
+                )
+                  return;
+                event.preventDefault();
+                router.navigate(sessionHref);
+              }}
+            />
+          </div>
+        {/if}
         <p class="ib-run__origin">
           {TASK_COPY.startedFromGoal}
           <a
@@ -308,7 +359,7 @@
       </header>
     {:else if task.isPending}
       <Skeleton height="2rem" width="40%" />
-    {:else}
+    {:else if !leadsWithEngine}
       <header class="ib-run__header">
         <div class="ib-run__heading">
           <h1 id="ib-run-title" class="ib-run__title">{TASK_COPY.runTitle}</h1>
@@ -359,7 +410,7 @@
       </Tabs.Panel>
       {#if engineAllowed}
         <Tabs.Panel value="engine">
-          {#if tab === 'engine'}<WorkflowDetail />{/if}
+          {#if tab === 'engine'}<WorkflowDetail headingLevel={leadsWithEngine ? 1 : 2} />{/if}
         </Tabs.Panel>
       {/if}
     </Tabs>

@@ -259,11 +259,13 @@ function resolveNextScanCursor(
 export async function storageScan(
   connection: StorageConnection,
   options: StorageScanOptions,
+  signal?: AbortSignal,
 ): Promise<StorageScanPage> {
   const params = buildScanQueryParams(options);
   const response = await fetch(`${storageUrl(connection, '')}?${params.toString()}`, {
     method: 'GET',
     headers: storageHeaders(connection),
+    ...(signal === undefined ? {} : { signal }),
   });
 
   if (!response.ok) return throwStorageError(response);

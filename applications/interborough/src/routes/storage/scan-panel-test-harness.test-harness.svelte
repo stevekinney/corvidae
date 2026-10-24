@@ -8,13 +8,14 @@
 
   interface ScanPanelTestHarnessProps {
     client: StorageConnection;
+    knownPrefixes?: readonly string[];
   }
 
-  let { client }: ScanPanelTestHarnessProps = $props();
+  let { client, knownPrefixes = [] }: ScanPanelTestHarnessProps = $props();
 
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <ScanPanel {client} />
+  <ScanPanel {client} {knownPrefixes} />
 </QueryClientProvider>

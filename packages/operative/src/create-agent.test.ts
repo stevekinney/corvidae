@@ -7,7 +7,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createAgent } from './create-agent';
+import { createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+
+import { AGENT_EXAMPLE_LIMITS, createAgent } from './create-agent';
 import { readGenerationProfile } from './generation-profile';
 import { hasDefinitionResolver, OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
 
@@ -115,4 +118,100 @@ describe('createAgent: generation profile revision (COR-1584)', () => {
       expect(() => createAgent({ generate: mockGenerate(), revision })).toThrow(/revision/u);
     },
   );
+});
+
+describe('createAgent: tool names', () => {
+  const lookup = createTool({
+    name: 'lookup-order',
+    description: 'Look up an order',
+    input: z.object({ id: z.string() }),
+    execute: async () => 'found',
+  });
+  const refund = createTool({
+    name: 'refund-order',
+    description: 'Refund an order',
+    input: z.object({ id: z.string() }),
+    execute: async () => 'refunded',
+  });
+
+  it('lists the keys of the tools map, which are the names the model calls them by', () => {
+    const agent = createAgent({ generate: mockGenerate(), tools: { 'look-up': lookup, refund } });
+
+    expect(agent.toolNames).toEqual(['look-up', 'refund']);
+  });
+
+  it('lists an empty array, not undefined, for an agent created without tools', () => {
+    expect(createAgent({ generate: mockGenerate() }).toolNames).toEqual([]);
+  });
+
+  it('lists the tools of a pre-built toolbox by their own names', () => {
+    const agent = createAgent({
+      generate: mockGenerate(),
+      toolbox: createToolbox([lookup, refund]),
+    });
+
+    expect(agent.toolNames).toEqual(['lookup-order', 'refund-order']);
+  });
+
+  it('lists a name once when a pre-built toolbox holds two tools under it', () => {
+    const lookupAgain = createTool({
+      name: 'lookup-order',
+      namespace: 'second',
+      description: 'Look up an order a second way',
+      input: z.object({ id: z.string() }),
+      execute: async () => 'found again',
+    });
+    const toolbox = createToolbox([lookup, refund, lookupAgain]);
+    // The toolbox keeps both: the duplicate is real, not an artifact of how the test built it.
+    expect(toolbox.tools().map((tool) => tool.name)).toEqual([
+      'lookup-order',
+      'refund-order',
+      'lookup-order',
+    ]);
+
+    const agent = createAgent({ generate: mockGenerate(), toolbox });
+
+    expect(agent.toolNames).toEqual(['lookup-order', 'refund-order']);
+  });
+
+  it('hands out a frozen list, so a caller cannot change what the agent reports', () => {
+    const agent = createAgent({ generate: mockGenerate(), tools: { refund } });
+
+    expect(Object.isFrozen(agent.toolNames)).toBe(true);
+  });
+});
+
+describe('createAgent examples', () => {
+  it('reports the prompts it was created with, in order, as a frozen copy', () => {
+    const given = ['Refund order 1234', 'Look up order 1001'];
+    const agent = createAgent({ generate: mockGenerate(), examples: given });
+
+    expect(agent.examples).toEqual(['Refund order 1234', 'Look up order 1001']);
+    expect(Object.isFrozen(agent.examples)).toBe(true);
+    // A later change to the caller's array does not change what the agent reports.
+    given.push('Another');
+    expect(agent.examples).toHaveLength(2);
+  });
+
+  it('refuses more prompts than the limit, an empty or blank prompt, and one that is too long', () => {
+    const { maxPrompts, maxLength } = AGENT_EXAMPLE_LIMITS;
+    const examples = (prompts: string[]) => () =>
+      createAgent({ generate: mockGenerate(), examples: prompts });
+
+    expect(
+      examples(Array.from({ length: maxPrompts }, (_, index) => `Prompt ${index}`)),
+    ).not.toThrow();
+    expect(examples(['a'.repeat(maxLength)])).not.toThrow();
+    expect(examples([])).not.toThrow();
+    expect(
+      examples(Array.from({ length: maxPrompts + 1 }, (_, index) => `Prompt ${index}`)),
+    ).toThrow(/at most 3 prompts/);
+    expect(examples([''])).toThrow(/non-empty/);
+    expect(examples(['   '])).toThrow(/non-empty/);
+    expect(examples(['a'.repeat(maxLength + 1)])).toThrow(/at most 200 characters/);
+  });
+
+  it('omits the field for an agent created without any, so none is not an empty list', () => {
+    expect('examples' in createAgent({ generate: mockGenerate() })).toBe(false);
+  });
 });

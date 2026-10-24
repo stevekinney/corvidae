@@ -1,7 +1,7 @@
 /**
  * The Workflows area against the real host: `/workflows` lists the engine's definitions with the
- * Bureau's workflow files, `/workflows/:type` shows one and acts on its file, `/workflows/:type/runs`
- * lists its runs, and `/workflows/:type/edit` edits its JSON. A workflow is a JSON file in the
+ * Bureau's workflow files, `/workflows/new` makes one, `/workflows/:type` shows one and acts on its
+ * file, `/workflows/:type/runs` lists its runs, and `/workflows/:type/edit` edits its JSON. A workflow is a JSON file in the
  * host's temporary home, so the specs create, change, and delete real files; three are seeded by
  * `e2e-server.ts`. Every page meets axe at the two widths the application is built for.
  *
@@ -14,7 +14,9 @@ import type { Page } from '@playwright/test';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 
 import { VIEW_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
+import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import {
   APPROVAL_SIGNAL,
@@ -61,6 +63,9 @@ const area = (page: Page) => page.locator('[data-view="workflows"]');
 const detail = (page: Page) => page.locator('[data-page="workflow-detail"]');
 const row = (page: Page, name: string) => page.locator(`[data-workflow="${name}"]`);
 
+/** The types the Bureau registers for itself: the host whose console is the Bureau's engine holds them, and the fixtures' engine does not. */
+const ENGINE_TYPES = ['agentRun', 'durableHeartbeatTick', 'goalRun'] as const;
+
 test.describe('the list', () => {
   for (const width of WIDTHS) {
     test(`has a row for a code-defined type, a file with an agent, and an invalid file, at ${width} pixels`, async ({
@@ -72,19 +77,46 @@ test.describe('the list', () => {
       await page.goto('/workflows');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       await expect(page.getByRole('heading', { level: 1, name: 'Workflows' })).toBeVisible();
+      await expect(page.getByRole('link', { name: WORKFLOW_COPY.newAction })).toHaveAttribute(
+        'href',
+        '/workflows/new',
+      );
 
-      // A code-defined type: its name, and no badge.
+      // A code-defined type: its name, the code badge, and what the engine says of it.
       const code = row(page, 'inventory-sync-sweep');
       await expect(code).toHaveAttribute('data-kind', 'code');
       await expect(code.getByRole('link', { name: 'inventory-sync-sweep' })).toBeVisible();
+      await expect(code).toContainText(WORKFLOW_COPY.codeBadge);
       await expect(code).not.toContainText(WORKFLOW_COPY.agentAuthoredBadge);
+      await expect(code.getByTestId('workflow-run-counts')).toHaveText(
+        /^(\d+ runs? in 24 hours( \(\d+ running\))?|No runs yet)$/,
+      );
 
-      // A file that loads: the agent-authored badge and the agent that owns it.
+      // A file that loads: its description, the agent-authored badge, the agent that owns it
+      // (monospace, since it is an identifier), its cadence in words, and its counts.
       const digest = row(page, SEEDED_WORKFLOWS.digest);
       await expect(digest).toHaveAttribute('data-kind', 'agent-authored');
       await expect(digest).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(digest).toContainText(WORKFLOW_COPY.owner('assistant'));
+      await expect(digest.getByTestId('workflow-description')).toHaveText(
+        'Writes the daily digest.',
+      );
+      await expect(digest.getByTestId('workflow-agent')).toHaveText('assistant');
+      await expect(digest.getByTestId('workflow-agent')).toHaveCSS(
+        'font-family',
+        /mono|Menlo|Consolas|Courier/i,
+      );
+      await expect(digest.getByTestId('workflow-cadence')).toHaveText(
+        describeCadence({ intervalMs: 86_400_000 }),
+      );
+      await expect(digest.getByTestId('workflow-run-counts')).toHaveText(
+        WORKFLOW_COPY.list.neverRun,
+      );
       await expect(digest.getByTestId('workflow-problem')).toHaveCount(0);
+
+      // A file started by a signal names the signal.
+      await expect(
+        row(page, SEEDED_WORKFLOWS.approval).getByTestId('workflow-cadence'),
+      ).toContainText(APPROVAL_START_SIGNAL);
 
       // A file the Bureau cannot use: its error, its issues, and its path.
       const broken = row(page, SEEDED_WORKFLOWS.broken);
@@ -96,6 +128,7 @@ test.describe('the list', () => {
       await expect(broken.getByTestId('workflow-file-path')).toHaveText(
         await workflowFilePath(request, SEEDED_WORKFLOWS.broken),
       );
+      await expect(broken.getByTestId('workflow-run-counts')).toHaveCount(0);
 
       // A source with no file is the engine's alone, so it is left out: the list reads the same
       // before and after a restart.
@@ -124,11 +157,192 @@ test.describe('the list', () => {
     await page.reload();
     await expect(row(page, 'e2e-listed')).toHaveCount(0);
   });
+
+  test('counts a file’s instances: running, and begun in the last day', async ({
+    page,
+    request,
+  }) => {
+    await makeWorkflow(request, 'e2e-counted', {
+      trigger: { kind: 'signal', name: 'e2e-counted-go' },
+      steps: [{ kind: 'await-signal', signal: 'e2e-counted-wait' }],
+    });
+    await bureau(request, 'bureau.workflows.signal', { name: 'e2e-counted-go' });
+    try {
+      await page.goto('/workflows');
+      const counts = row(page, 'e2e-counted').getByTestId('workflow-run-counts');
+      await expect(counts).toHaveText('1 run in 24 hours (1 running)');
+      await expect(row(page, 'e2e-counted').getByTestId('workflow-last-run')).toContainText(
+        'last run',
+      );
+    } finally {
+      // Let the instance finish, so it does not stay in the host.
+      await expect
+        .poll(async () => {
+          await bureau(request, 'bureau.workflows.signal', { name: 'e2e-counted-wait' });
+          const runs = await listWorkflowRuns(request, 'e2e-counted');
+          return runs[0]?.status;
+        })
+        .toBe('completed');
+    }
+  });
+
+  test.describe('on the host whose console is the Bureau’s own engine', () => {
+    test.use({ baseURL: E2E_BUREAU_URL });
+
+    for (const width of WIDTHS) {
+      test(`keeps the types the Bureau registers for itself under a collapsed disclosure, at ${width} pixels`, async ({
+        page,
+        checkA11y,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/workflows');
+        await expect(area(page)).toHaveAttribute('data-state', 'ready');
+        await expect(row(page, SEEDED_WORKFLOWS.digest)).toBeVisible();
+
+        const disclosure = area(page).getByRole('button', {
+          name: WORKFLOW_COPY.list.engineWorkflows(ENGINE_TYPES.length),
+        });
+        await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+        for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
+        await checkA11y(`the list with the Bureau’s own types collapsed at ${width}px`);
+
+        await disclosure.click();
+        await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+        for (const name of ENGINE_TYPES) await expect(row(page, name)).toBeVisible();
+        await expect(row(page, 'agentRun').getByRole('link', { name: 'agentRun' })).toHaveAttribute(
+          'href',
+          '/workflows/agentRun',
+        );
+        await checkA11y(`the list with the Bureau’s own types open at ${width}px`);
+      });
+    }
+
+    for (const width of WIDTHS) {
+      test(`on a host with no workflow of its own, says there are none yet, offers New workflow, and keeps the Bureau’s types collapsed, at ${width} pixels`, async ({
+        page,
+        request,
+        checkA11y,
+      }) => {
+        await page.setViewportSize({ width, height: 900 });
+        // A fresh host: the Bureau has no file. The engine holds only the types the Bureau registers.
+        await page.route(/\/bureau\/jsonrpc/, async (route) => {
+          const body = route.request().postData() ?? '';
+          if (!body.includes('"bureau.workflows.list"')) {
+            await route.fallback();
+            return;
+          }
+          const id = (JSON.parse(body) as { id?: unknown }).id ?? null;
+          await route.fulfill({
+            json: { jsonrpc: '2.0', id, result: { workflows: [], nextOffset: null } },
+          });
+        });
+        await page.goto('/workflows');
+        await expect(area(page)).toHaveAttribute('data-state', 'ready');
+        const empty = area(page).getByTestId('workflows-empty');
+        await expect(empty).toContainText(WORKFLOW_COPY.list.emptyTitle);
+        await expect(empty).toContainText(WORKFLOW_COPY.list.emptyTool);
+        await expect(empty.getByTestId('workflow-directory')).toHaveText(
+          await workflowDirectory(request),
+        );
+        await expect(page.getByRole('link', { name: WORKFLOW_COPY.newAction })).toBeVisible();
+        const disclosure = area(page).getByRole('button', {
+          name: WORKFLOW_COPY.list.engineWorkflows(ENGINE_TYPES.length),
+        });
+        await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+        for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
+        await checkA11y(`the list of a host with no workflow at ${width}px`);
+      });
+    }
+  });
+});
+
+test.describe('a new workflow', () => {
+  for (const width of WIDTHS) {
+    test(`is written from the template, saved as a file the Bureau lists as ready, and opened, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      created.add('e2e-brand-new');
+      await page.goto('/workflows');
+      await page.getByRole('link', { name: WORKFLOW_COPY.newAction }).click();
+      await expect(page).toHaveURL(/\/workflows\/new$/);
+      await expect(area(page)).toHaveAttribute('data-state', 'ready');
+      const root = page.locator('[data-page="workflow-creator"]');
+      await expect(
+        root.getByRole('heading', { level: 1, name: WORKFLOW_COPY.creator.heading }),
+      ).toBeVisible();
+
+      const editor = root.getByRole('textbox', { name: WORKFLOW_COPY.creator.textLabel });
+      const template = JSON.parse(await editor.inputValue()) as Record<string, unknown>;
+      expect(template).toMatchObject({
+        name: WORKFLOW_COPY.creator.templateName,
+        trigger: { kind: 'schedule' },
+        steps: [{ kind: 'activity', handler: 'agent' }],
+      });
+      await checkA11y(`the new-workflow editor at ${width}px`);
+
+      template['name'] = 'e2e-brand-new';
+      template['description'] = 'Made from the template.';
+      await editor.fill(JSON.stringify(template, null, 2));
+      await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+
+      await expect(page).toHaveURL(/\/workflows\/e2e-brand-new$/);
+      await expect(detail(page).getByRole('heading', { level: 1 })).toHaveText('e2e-brand-new');
+      await expect(detail(page).getByTestId('workflow-description')).toHaveText(
+        'Made from the template.',
+      );
+      const made = await readWorkflow(request, 'e2e-brand-new');
+      expect(made.state).toBe('ready');
+      const listed = await bureau(request, 'bureau.workflows.list', {});
+      const entry = (
+        listed.result as { workflows: Array<{ id: string; state: string }> }
+      ).workflows.find((workflow) => workflow.id === 'e2e-brand-new');
+      expect(entry?.state).toBe('ready');
+      await page.goto('/workflows');
+      await expect(row(page, 'e2e-brand-new')).toHaveAttribute('data-kind', 'agent-authored');
+    });
+  }
+
+  test('refuses a name that is taken, and one that is not an identifier, and writes nothing', async ({
+    page,
+  }) => {
+    await page.goto('/workflows/new');
+    const root = page.locator('[data-page="workflow-creator"]');
+    const editor = root.getByRole('textbox', { name: WORKFLOW_COPY.creator.textLabel });
+    const template = JSON.parse(await editor.inputValue()) as Record<string, unknown>;
+
+    template['name'] = SEEDED_WORKFLOWS.digest;
+    await editor.fill(JSON.stringify(template));
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+    await expect(root).toContainText(WORKFLOW_COPY.creator.taken(SEEDED_WORKFLOWS.digest));
+
+    template['name'] = 'Not An Identifier';
+    await editor.fill(JSON.stringify(template));
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+    await expect(root).toContainText(WORKFLOW_COPY.creator.invalidName);
+
+    template['name'] = 'new';
+    await editor.fill(JSON.stringify(template));
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+    await expect(root).toContainText(WORKFLOW_COPY.creator.reservedName);
+    await expect(page).toHaveURL(/\/workflows\/new$/);
+  });
+
+  test('cancel goes back to the list', async ({ page }) => {
+    await page.goto('/workflows/new');
+    await page
+      .locator('[data-page="workflow-creator"]')
+      .getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction })
+      .click();
+    await expect(page).toHaveURL(/\/workflows$/);
+  });
 });
 
 test.describe('a code-defined type', () => {
   for (const width of WIDTHS) {
-    test(`shows its definition, the schedules that start it, and the engine’s revisions, at ${width} pixels`, async ({
+    test(`leads with what starts it and its runs, shows no row for what it lacks, and keeps the engine’s revisions behind a disclosure, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -138,14 +352,10 @@ test.describe('a code-defined type', () => {
       await expect(
         detail(page).getByRole('heading', { level: 1, name: 'inventory-sync-sweep' }),
       ).toBeVisible();
+      await expect(detail(page)).toContainText(WORKFLOW_COPY.codeBadge);
       await expect(detail(page)).not.toContainText(WORKFLOW_COPY.agentAuthoredBadge);
 
-      const definition = detail(page).getByTestId('workflow-definition');
-      await expect(definition).toBeVisible();
-      await expect(definition).toContainText(WORKFLOW_COPY.definition.inputSchema);
-      await expect(definition).toContainText(WORKFLOW_COPY.definition.outputSchema);
-
-      // The active and the paused schedule, each once.
+      // The active and the paused schedule, each once, with what starts it said in words.
       const schedules = detail(page).locator('[data-schedule]');
       await expect(schedules).toHaveCount(2);
       await expect(
@@ -154,19 +364,55 @@ test.describe('a code-defined type', () => {
       await expect(
         detail(page).locator('[data-schedule="nightly-inventory-audit"]'),
       ).toHaveAttribute('data-status', 'paused');
+      await expect(detail(page).getByTestId('workflow-trigger')).toHaveText(
+        WORKFLOW_COPY.list.schedules(2),
+      );
+      await expect(detail(page).getByTestId('workflow-recent-runs')).toBeVisible();
 
-      // The engine's own revision panel, and none of a file's actions.
-      await expect(detail(page).locator('.weft-revisions-panel')).toBeVisible();
+      // Nothing the type lacks is a row, and no form to install a revision is on the page.
+      await expect(detail(page)).not.toContainText(/\bNone\b/);
+      await expect(detail(page)).not.toContainText('Install a revision');
+      await expect(detail(page).locator('.weft-revisions-panel')).toHaveCount(0);
       await expect(page.getByRole('button', { name: WORKFLOW_COPY.deleteAction })).toHaveCount(0);
       await expect(page.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveCount(0);
+
+      // The engine's contract for this type declares no signal, update, query, or schema, so there
+      // is nothing for a Details disclosure to hold, and the page has none.
+      await expect(
+        detail(page).getByRole('button', { name: WORKFLOW_COPY.page.details }),
+      ).toHaveCount(0);
+      await expect(detail(page).getByTestId('workflow-definition')).toHaveCount(0);
+
+      // Engine holds the revisions, and the install form with them.
+      const engine = detail(page).getByRole('button', { name: WORKFLOW_COPY.page.engine });
+      await expect(engine).toHaveAttribute('aria-expanded', 'false');
+      await engine.click();
+      await expect(detail(page).locator('.weft-revisions-panel')).toBeVisible();
       await checkA11y(`a code-defined type at ${width}px`);
     });
   }
+
+  test.describe('on the host whose console is the Bureau’s own engine', () => {
+    test.use({ baseURL: E2E_BUREAU_URL });
+
+    test('a type the Bureau registers for itself has no Engine disclosure and no install form', async ({
+      page,
+    }) => {
+      await page.goto('/workflows/agentRun');
+      await expect(area(page)).toHaveAttribute('data-state', 'ready');
+      await expect(detail(page).getByRole('heading', { level: 1, name: 'agentRun' })).toBeVisible();
+      await expect(
+        detail(page).getByRole('button', { name: WORKFLOW_COPY.page.engine }),
+      ).toHaveCount(0);
+      await expect(detail(page)).not.toContainText('Install a revision');
+      await expect(detail(page)).not.toContainText(/\bNone\b/);
+    });
+  });
 });
 
 test.describe('an agent-authored type', () => {
   for (const width of WIDTHS) {
-    test(`shows its steps, trigger, agent, path, and the versions that have run, at ${width} pixels`, async ({
+    test(`leads with its agent, description, cadence and state, and its steps, and keeps its file and the versions behind disclosures, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -177,22 +423,39 @@ test.describe('an agent-authored type', () => {
       const root = detail(page);
       await expect(root.getByRole('heading', { level: 1 })).toHaveText(SEEDED_WORKFLOWS.digest);
       await expect(root).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(root.getByTestId('workflow-agent')).toContainText('assistant');
-      await expect(root.getByTestId('workflow-trigger')).toContainText('24h');
+      await expect(root.getByTestId('workflow-agent')).toHaveText('assistant');
+      await expect(root.getByTestId('workflow-description')).toHaveText('Writes the daily digest.');
+      await expect(root.getByTestId('workflow-trigger')).toHaveText(
+        describeCadence({ intervalMs: 86_400_000 }),
+      );
+      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
       await expect(root.getByTestId('workflow-steps').getByRole('listitem')).toHaveCount(2);
-      await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.digest),
+      // Nothing has run it.
+      await expect(root.getByTestId('workflow-recent-runs')).toContainText(
+        WORKFLOW_COPY.page.noRuns,
       );
-      // Nothing has run it, so no version has run, and the page does not offer to activate one.
-      await expect(root.getByTestId('workflow-revisions')).toContainText(
-        WORKFLOW_COPY.revisions.empty,
-      );
-      await expect(root.getByRole('button', { name: /Activate/ })).toHaveCount(0);
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
       await expect(root.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveAttribute(
         'href',
         `/workflows/${SEEDED_WORKFLOWS.digest}/edit`,
       );
+      await expect(root).not.toContainText(/\bNone\b/);
+
+      // Details holds where the file is, and the trigger as written.
+      await expect(root.getByTestId('workflow-file-path')).toHaveCount(0);
+      await root.getByRole('button', { name: WORKFLOW_COPY.page.details }).click();
+      await expect(root.getByTestId('workflow-file-path')).toHaveText(
+        await workflowFilePath(request, SEEDED_WORKFLOWS.digest),
+      );
+      await expect(root.getByTestId('workflow-trigger-source')).toContainText('24h');
+
+      // Engine holds the versions that ran: none has, and the page does not offer to activate one.
+      await expect(root.getByTestId('workflow-revisions')).toHaveCount(0);
+      await root.getByRole('button', { name: WORKFLOW_COPY.page.engine }).click();
+      await expect(root.getByTestId('workflow-revisions')).toContainText(
+        WORKFLOW_COPY.revisions.empty,
+      );
+      await expect(root.getByRole('button', { name: /Activate/ })).toHaveCount(0);
       await checkA11y(`an agent-authored type at ${width}px`);
     });
   }
@@ -216,6 +479,7 @@ test.describe('an agent-authored type', () => {
       },
     });
     await page.goto('/workflows/e2e-ran');
+    await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.engine }).click();
     await expect(detail(page).getByTestId('workflow-revisions').getByRole('listitem')).toHaveCount(
       1,
     );
@@ -285,18 +549,18 @@ test.describe('pause, resume, and delete', () => {
       await page.goto('/workflows/e2e-pausable');
       const root = detail(page);
       await expect(root).toHaveAttribute('data-condition', 'ready');
-      await expect(root).not.toContainText(WORKFLOW_COPY.pausedBadge);
+      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
 
       await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
-      await expect(root).toContainText(WORKFLOW_COPY.pausedBadge);
+      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusPaused);
       const paused = await readWorkflow(request, 'e2e-pausable');
       expect(paused.paused).toBe(true);
       await checkA11y(`a paused workflow at ${width}px`);
 
       await root.getByRole('button', { name: WORKFLOW_COPY.resumeAction }).click();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
-      await expect(root).not.toContainText(WORKFLOW_COPY.pausedBadge);
+      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
       const resumed = await readWorkflow(request, 'e2e-pausable');
       expect(resumed.paused).toBe(false);
 
@@ -360,7 +624,9 @@ test.describe('pause, resume, and delete', () => {
     // Reload shows what is on disk, and then pause works.
     await root.getByRole('button', { name: WORKFLOW_COPY.stale.action }).click();
     await expect(root).toHaveAttribute('data-condition', 'ready');
-    await expect(root.getByTestId('workflow-trigger')).toContainText('12h');
+    await expect(root.getByTestId('workflow-trigger')).toHaveText(
+      describeCadence({ intervalMs: 12 * 3_600_000 }),
+    );
     await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
     await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
     const paused = await readWorkflow(request, 'e2e-stale');
@@ -389,6 +655,8 @@ test.describe('send signal', () => {
     await expect(
       form.getByRole('status', { name: WORKFLOW_COPY.signal.resultLabel }),
     ).toContainText(WORKFLOW_COPY.signal.result(1, 0));
+    // The page's recent runs take the new instance without a reload.
+    await expect(detail(page).locator('[data-run]').first()).toBeVisible();
     const after = await listWorkflowRuns(request, id);
     const running = after.filter((run) => run.status === 'running');
     expect(running).toHaveLength(waiting.length + 1);
@@ -495,7 +763,9 @@ test.describe('the editor', () => {
       await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
 
       await expect(page).toHaveURL(/\/workflows\/e2e-editable$/);
-      await expect(detail(page).getByTestId('workflow-trigger')).toContainText('6h');
+      await expect(detail(page).getByTestId('workflow-trigger')).toHaveText(
+        describeCadence({ intervalMs: 6 * 3_600_000 }),
+      );
       const saved = JSON.parse(
         await readFile(await workflowFilePath(request, 'e2e-editable'), 'utf8'),
       ) as Record<string, unknown>;

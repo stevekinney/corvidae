@@ -15,6 +15,9 @@ export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<
 /** Where the host mounts the Bureau handler. */
 export const BUREAU_PATH = '/bureau';
 
+/** The origins the Bureau can be asked to filter sessions by. */
+export type ContextOrigin = 'chat' | 'goal' | 'schedule';
+
 /** A session (a Bureau context), as `bureau.contexts.get` and `.list` show it. */
 export const chatContextSchema = z.object({
   id: z.string(),
@@ -26,6 +29,17 @@ export const chatContextSchema = z.object({
   parentContextId: z.string().nullable(),
   /** The message of the parent this one was branched at, or `null`. */
   forkedFromMessageId: z.string().nullable(),
+  /**
+   * What started the session: a person's `chat`, a `goal`, or a `schedule`'s fire. The Bureau
+   * records it when a goal or a fire creates the session, and a session that records none is a chat,
+   * which is also how an answer that names none reads here. A value this client does not know (a
+   * Bureau newer than the browser) reads `other`: the session is kept, and since only a `chat`
+   * is shown in Chat, it is not one.
+   */
+  origin: z
+    .enum(['chat', 'goal', 'schedule'])
+    .or(z.unknown().transform((): 'other' => 'other'))
+    .default('chat'),
   messageCount: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -205,9 +219,18 @@ const contextPageSchema = z.object({
 
 export type ContextPage = z.infer<typeof contextPageSchema>;
 
-/** One page of the caller's sessions, newest update first (`bureau.contexts.list`). */
+/**
+ * One page of the caller's sessions, newest update first (`bureau.contexts.list`). `origin` keeps
+ * only the sessions that were started that way, before the page is cut, so `chat` lists the
+ * sessions a person started and none a goal or a schedule's fire did.
+ */
 export async function listContexts(
-  input: { readonly agentName?: string; readonly limit?: number; readonly offset?: number } = {},
+  input: {
+    readonly agentName?: string;
+    readonly origin?: ContextOrigin;
+    readonly limit?: number;
+    readonly offset?: number;
+  } = {},
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextPage> {
   return contextPageSchema.parse(await callBureau('bureau.contexts.list', input, options));
@@ -219,15 +242,20 @@ const CONTEXTS_PAGE_SIZE = 100;
 /**
  * Every session the caller owns: pages are read, `nextOffset` followed, until the Bureau has no
  * more. An offset that does not move forward ends the read, so a Bureau that repeats itself cannot
- * loop it.
+ * loop it. `origin` is passed to the Bureau on every page, so it filters before a page is cut.
  */
 export async function listAllContexts(options?: {
   readonly signal?: AbortSignal;
+  readonly origin?: ContextOrigin;
 }): Promise<ChatContext[]> {
   const contexts: ChatContext[] = [];
+  const { origin, ...requestOptions } = options ?? {};
   let offset = 0;
   for (;;) {
-    const page = await listContexts({ limit: CONTEXTS_PAGE_SIZE, offset }, options);
+    const page = await listContexts(
+      { limit: CONTEXTS_PAGE_SIZE, offset, ...(origin === undefined ? {} : { origin }) },
+      requestOptions,
+    );
     contexts.push(...page.contexts);
     if (page.nextOffset === null || page.nextOffset <= offset) return contexts;
     offset = page.nextOffset;
@@ -253,6 +281,16 @@ export const agentSummarySchema = z.object({
   publishState: z.enum(['published', 'withdrawn', 'unpublished']),
   /** `null` for an agent that names no model, which can take no attachment. */
   media: agentMediaSchema.nullable().default(null),
+  /**
+   * The names of the agent's tools. Absent when the Bureau does not say, which is not the same as
+   * `[]`, an agent it says has none.
+   */
+  tools: z.array(z.string()).optional(),
+  /**
+   * Prompts that show what a person might ask the agent, which a new chat offers as buttons.
+   * Absent when the agent has none.
+   */
+  examples: z.array(z.string()).optional(),
 });
 
 export type AgentSummary = z.infer<typeof agentSummarySchema>;

@@ -1,11 +1,10 @@
 <script lang="ts">
   /**
    * System route (plan §9.7, T7.2–T7.6; design `Weft UI.dc.html`
-   * "System" tab bar). Seven tabs, URL-owned via `?tab=` (plan §4: "URL owns
-   * filter/pagination/tab state") — matches `sysTabs`'s six-tab order from
-   * the console shell mock plus Alerts (plan §9.7's eighth bullet /
-   * `Weft New Surfaces.dc.html` §D, not in the older shell mock's tab list
-   * but a distinct T7.6 System sub-view per the plan text).
+   * "System" tab bar). Eight tabs, URL-owned via `?tab=` (plan §4: "URL owns
+   * filter/pagination/tab state"). Each tab is named in words (COR-1658) while its `?tab=` value
+   * stays what it was, so an address that links to one keeps working: `registry` is "Workflow
+   * types" and `health` is "Health".
    */
   import { Tabs } from '@lostgradient/cinder';
 
@@ -20,12 +19,12 @@
   import ScopePanel from './scope-panel.svelte';
 
   const SYSTEM_TABS = [
-    { value: 'registry', label: 'Registry' },
+    { value: 'registry', label: 'Workflow types' },
     { value: 'realms', label: 'Realms' },
     { value: 'metrics', label: 'Metrics' },
     { value: 'discovery', label: 'Discovery' },
     { value: 'operations', label: 'Operations' },
-    { value: 'health', label: 'Health & lease' },
+    { value: 'health', label: 'Health' },
     { value: 'alerts', label: 'Alerts' },
     { value: 'scopes', label: 'Scopes' },
   ] as const;

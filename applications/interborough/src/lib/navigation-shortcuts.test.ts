@@ -30,7 +30,8 @@ describe('the list of shortcuts', () => {
   test('names the keys of a path, and none for a path without one', () => {
     expect(shortcutKeys('/chat')).toEqual(['g', 'c']);
     expect(shortcutKeys('/agents')).toEqual(['g', 'a']);
-    expect(shortcutKeys('/engine')).toBeUndefined();
+    expect(shortcutKeys('/engine')).toEqual(['g', 'e']);
+    expect(shortcutKeys('/goals')).toBeUndefined();
   });
 });
 

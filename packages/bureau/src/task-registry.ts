@@ -161,6 +161,18 @@ export interface TaskRecord {
    * written before it was kept.
    */
   readonly cleanupAcknowledgement?: TaskCleanupAcknowledgement | undefined;
+  /**
+   * How many times the record has changed since it was written (COR-1669); absent in a record
+   * written before it was kept, which reads as `0`. A `task.resynced` event carries the revision
+   * it described, so a repair that raced a later change is known not to cover it.
+   */
+  readonly revision?: number | undefined;
+  /**
+   * Whether a durable event of the task failed to append and the history has not been repaired
+   * since (COR-1669). Set before the repair is attempted and cleared only once the
+   * `task.resynced` event it appends has committed, so a crash in between leaves the repair owed.
+   */
+  readonly resyncPending?: boolean | undefined;
 }
 
 /** A cleanup acknowledgement as a task record keeps it: its status and, when unresolved, why. */
@@ -413,6 +425,22 @@ export interface TaskRegistry {
    * history event of a fire whose process died between writing the settlement and appending it.
    */
   settledFires(): Promise<readonly TaskRecord[]>;
+  /**
+   * The records a history repair may owe (COR-1669): every session run's record that is marked
+   * resync-pending or has settled. A schedule fire and a catalog task write no `run.*` events and
+   * are never listed.
+   */
+  resyncCandidates(): Promise<readonly TaskRecord[]>;
+  /**
+   * Marks a task resync-pending without counting it as a change of the task. Resolves `false`
+   * when the task has no record.
+   */
+  markResyncPending(taskId: string): Promise<boolean>;
+  /**
+   * Clears the mark, but only while the record is still at `revision`: a change that landed since
+   * the repair read the task keeps the repair owed. Resolves whether the mark is clear.
+   */
+  clearResyncPending(taskId: string, revision: number): Promise<boolean>;
   /**
    * Follows a task's `closed()` acknowledgement and records where its cleanup
    * ended. A second call for a task already followed returns the first.
@@ -747,6 +775,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   async function update(
     taskId: string,
     mutate: (record: TaskRecord) => TaskRecord | undefined,
+    counted = true,
   ): Promise<boolean> {
     const key = recordKey(taskId);
     for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
@@ -759,7 +788,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       if (next === undefined) return true;
       const committed = await kv.conditionalBatch(
         [{ key, expectedValue: raw }],
-        [{ type: 'set', key, value: JSON.stringify(next) }],
+        [
+          {
+            type: 'set',
+            key,
+            value: JSON.stringify(
+              counted ? { ...next, revision: (current.revision ?? 0) + 1 } : next,
+            ),
+          },
+        ],
       );
       if (committed) return true;
     }
@@ -1323,6 +1360,45 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async unsettled() {
       const records = await allRecords();
       return records.filter((record) => record.settled === undefined);
+    },
+
+    async resyncCandidates() {
+      const records = await allRecords();
+      return records.filter(
+        (record) =>
+          record.kind !== 'schedule-fire' &&
+          record.incarnation !== '' &&
+          (record.resyncPending === true || record.settled !== undefined),
+      );
+    },
+
+    async markResyncPending(taskId) {
+      const marked = await update(
+        taskId,
+        (record) =>
+          record.resyncPending === true ? undefined : { ...record, resyncPending: true },
+        false,
+      );
+      return marked;
+    },
+
+    async clearResyncPending(taskId, revision) {
+      let clear = false;
+      await update(
+        taskId,
+        (record) => {
+          if (record.resyncPending !== true) {
+            clear = true;
+            return undefined;
+          }
+          if ((record.revision ?? 0) !== revision) return undefined;
+          clear = true;
+          const { resyncPending: _cleared, ...rest } = record;
+          return rest;
+        },
+        false,
+      );
+      return clear;
     },
 
     async settledFires() {

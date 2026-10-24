@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createToolbox } from 'armorer';
+import { createToolbox, readToolShortDescription, type Tool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -157,6 +157,27 @@ describe('workflows-create', () => {
     const detail = await harness.bureau.workflows!.get('nightly-digest');
     expect(detail?.state).toBe('ready');
     expect(detail?.schedule?.status).toBe('active');
+  });
+
+  it('writes the description it is given, and none when it is left out', async () => {
+    const harness = await start();
+
+    await harness.callTool('workflows-create', {
+      name: 'Described',
+      description: 'Writes the nightly digest.',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await harness.callTool('workflows-create', { name: 'Bare', trigger: TRIGGER, steps: STEPS });
+
+    expect(await fileOf(harness, 'described')).toMatchObject({
+      description: 'Writes the nightly digest.',
+    });
+    expect(await fileOf(harness, 'bare')).not.toHaveProperty('description');
+    expect(harness.bureau.workflows!.list().map((listing) => listing.description)).toEqual([
+      null,
+      'Writes the nightly digest.',
+    ]);
   });
 
   it('takes an explicit identifier, and answers a taken one as a conflict naming it, with no suffix', async () => {
@@ -412,6 +433,7 @@ describe('workflows-list', () => {
           state: 'invalid',
           paused: false,
           triggerKind: null,
+          description: null,
           problem: 'invalid-json',
         },
         {
@@ -420,6 +442,7 @@ describe('workflows-list', () => {
           state: 'ready',
           paused: false,
           triggerKind: 'schedule',
+          description: null,
           problem: null,
         },
         {
@@ -428,10 +451,51 @@ describe('workflows-list', () => {
           state: 'ready',
           paused: true,
           triggerKind: 'signal',
+          description: null,
           problem: null,
         },
       ],
     });
+  });
+
+  it('lists the description, so an agent can pass it back and keep it through an update', async () => {
+    const harness = await start();
+    await harness.callTool('workflows-create', {
+      name: 'Digest',
+      description: 'Writes the daily digest.',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const listing = await harness.callTool('workflows-list', {});
+    const listed = listing.result as {
+      workflows: Array<{ id: string; hash: string; description: string | null }>;
+    };
+    expect(listed.workflows).toMatchObject([
+      { id: 'digest', description: 'Writes the daily digest.' },
+    ]);
+
+    const { result } = await harness.callTool('workflows-update', {
+      id: 'digest',
+      expectedHash: listed.workflows[0]!.hash,
+      description: listed.workflows[0]!.description,
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(result).toMatchObject({ status: 'ok' });
+    const afterListing = await harness.callTool('workflows-list', {});
+    const after = afterListing.result as {
+      workflows: Array<{ description: string | null }>;
+    };
+    expect(after.workflows[0]?.description).toBe('Writes the daily digest.');
+  });
+
+  it('tells the model that an update replaces the whole definition, description included', () => {
+    const tools = createWorkflowTools({
+      workflows: () => undefined,
+      runIdentity: async () => ({ agent: undefined, owner: undefined }),
+    });
+    expect(tools['workflows-update']?.description).toContain('description included');
+    expect(tools['workflows-list']?.description).toContain('description');
   });
 
   it('hands the hash it lists to the tools that change a file', async () => {
@@ -586,5 +650,20 @@ describe('a file written by hand', () => {
     });
     expect(result).toMatchObject({ status: 'ok', id: 'by-hand' });
     expect(await fileOf(harness, 'by-hand')).toMatchObject({ agent: 'someone', paused: true });
+  });
+});
+
+describe('what a person is shown of each tool', () => {
+  it('is one line of at most 120 characters per tool, apart from the prompt the model reads', () => {
+    const tools: Record<string, Tool> = createWorkflowTools({
+      workflows: () => undefined,
+      runIdentity: async () => ({ agent: undefined, owner: undefined }),
+    });
+    for (const name of WORKFLOW_TOOL_NAMES) {
+      const line = readToolShortDescription(tools[name]?.metadata);
+      expect(line, name).toBeDefined();
+      expect(line?.length, name).toBeLessThanOrEqual(120);
+      expect(line, name).not.toBe(tools[name]?.description);
+    }
   });
 });

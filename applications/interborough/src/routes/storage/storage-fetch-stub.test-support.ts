@@ -11,6 +11,8 @@ export interface StubbedFetchCall {
   readonly method: string;
   /** The request body when it was a string (a JSON-RPC envelope, for example). */
   readonly body?: string;
+  /** The abort signal the request was made with, when it had one. */
+  readonly signal?: AbortSignal;
 }
 
 export function stubStorageFetch(
@@ -23,6 +25,7 @@ export function stubStorageFetch(
       url: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
       method: init?.method ?? 'GET',
       ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+      ...(init?.signal ? { signal: init.signal } : {}),
     };
     calls.push(call);
     return handler(call);

@@ -48,6 +48,14 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
+ * How many example prompts an agent may suggest, and how long each may be. One definition for every
+ * place that checks them: `createAgent`, an agent file's `examples` frontmatter, and the Bureau's
+ * `bureau.agents.list` output. A prompt is a button label on a new chat, so a long one is a
+ * paragraph in a button, not a suggestion.
+ */
+export const AGENT_EXAMPLE_LIMITS = Object.freeze({ maxPrompts: 3, maxLength: 200 });
+
+/**
  * Fields shared by every `CreateAgentOptions` tool-configuration variant.
  * Split out from `CreateAgentOptions` so the exclusive tool-configuration
  * union below can be intersected with it.
@@ -76,6 +84,16 @@ export interface CreateAgentOptionsBase {
    * `AgentCard.description`.
    */
   description?: string | undefined;
+
+  /**
+   * Prompts that show what a person might ask this agent, for a host that offers them as buttons
+   * on a new chat. Pure description: they are never sent to the model on their own and do not
+   * affect a run. Not the same as an A2A skill's `examples`, which belong to one skill; these
+   * describe the agent as a whole. Left out, the agent suggests none. At most
+   * {@link AGENT_EXAMPLE_LIMITS}`.maxPrompts` prompts, each non-blank and at most
+   * {@link AGENT_EXAMPLE_LIMITS}`.maxLength` characters; `createAgent` throws otherwise.
+   */
+  examples?: readonly string[] | undefined;
 
   /**
    * Descriptive metadata for the capabilities this agent offers, in the shape
@@ -427,6 +445,26 @@ function freezeAllowedCandidates(
  * Validates the mutually-exclusive option combinations in
  * `CreateAgentOptions` once, at `createAgent()` call time (not per-run).
  */
+function validateExamples(examples: readonly string[] | undefined): void {
+  if (examples === undefined) return;
+  const { maxPrompts, maxLength } = AGENT_EXAMPLE_LIMITS;
+  if (examples.length > maxPrompts) {
+    throw new Error(
+      `createAgent: \`examples\` holds at most ${String(maxPrompts)} prompts; received ${String(examples.length)}.`,
+    );
+  }
+  for (const prompt of examples) {
+    if (typeof prompt !== 'string' || prompt.trim() === '') {
+      throw new Error('createAgent: each of `examples` must be a non-empty string.');
+    }
+    if (prompt.length > maxLength) {
+      throw new Error(
+        `createAgent: each of \`examples\` is at most ${String(maxLength)} characters; received ${String(prompt.length)}.`,
+      );
+    }
+  }
+}
+
 function validateCreateAgentOptions(options: CreateAgentOptions): void {
   if (options.tools && options.toolbox) {
     throw new Error(
@@ -446,6 +484,8 @@ function validateCreateAgentOptions(options: CreateAgentOptions): void {
       `createAgent: \`revision\` must be a positive safe integer; received ${String(options.revision)}.`,
     );
   }
+
+  validateExamples(options.examples);
 
   if (options.toolbox && options.permissions) {
     throw new Error(
@@ -497,6 +537,13 @@ export interface StandaloneAgent<
    * `AgentCard.description`.
    */
   readonly description?: string | undefined;
+
+  /**
+   * The prompts this agent was created with (`options.examples`), in order, for a host that offers
+   * them on a new chat. Omitted when the agent was created with none. Read-only description: it
+   * never reaches a run. Frozen once.
+   */
+  readonly examples?: readonly string[] | undefined;
 
   /**
    * Descriptive metadata for the capabilities this agent offers, in the shape
@@ -551,6 +598,16 @@ export interface StandaloneAgent<
 
   /** This agent's skills, exactly as `options.skills` supplied them (COR-1367). */
   readonly skills?: AgentSkills | undefined;
+
+  /**
+   * The names of the tools this agent was created with, in definition order: the keys of
+   * `options.tools` (the canonical names the model calls them by), or the names of the tools in
+   * `options.toolbox`, each name once even when the toolbox holds two tools under it. Read-only
+   * description for a host that wants to show what the agent can do: it never reaches a run, and it
+   * leaves out the skill tools (`activate_skill`, `deactivate_skill`) a run adds when `skills` is
+   * set. An agent created without tools lists `[]`.
+   */
+  readonly toolNames: readonly string[];
 
   /**
    * Always `true`: a `createAgent` agent resolves its own guardrails and
@@ -708,6 +765,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     output,
     name: configuredName,
     description,
+    examples,
     skillDescriptors,
     // Default to `noToolCalls()` when the caller doesn't supply a `stopWhen`
     // — see the doc comment on `CreateAgentOptionsBase.stopWhen`. Falls back
@@ -802,6 +860,15 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
         name: key,
       }))
     : [];
+
+  // The names the model calls the tools by: the map keys (see above), or the names in a supplied
+  // toolbox, which has no way to add a tool after it is built. A pre-built toolbox may hold two
+  // tools under one name, and a name is listed once: a host keys what it shows by it. Frozen once.
+  const toolNames: readonly string[] = Object.freeze(
+    providedToolbox === undefined
+      ? Object.keys(tools ?? {})
+      : [...new Set(providedToolbox.tools().map((tool) => tool.name))],
+  );
 
   // Shared by `run()` and the AB-21 definition-resolution protocol below —
   // both need the exact same `RunOptions` bag; only what happens to it
@@ -963,6 +1030,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     name: resolvedName,
     hasOutput: output !== undefined,
     ...(description === undefined ? {} : { description }),
+    ...(examples === undefined ? {} : { examples: Object.freeze([...examples]) }),
     ...(skillDescriptors === undefined ? {} : { skillDescriptors }),
     generationProfile,
     // COR-1265 — omitted entirely rather than set to `undefined` when the
@@ -972,6 +1040,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // COR-1367 — omitted when not declared, matching `hooks` above.
     ...(declaredGuardrails === undefined ? {} : { guardrails: declaredGuardrails }),
     ...(skills === undefined ? {} : { skills }),
+    toolNames,
     [OPERATIVE_RESOLVES_GUARDRAILS]: true,
     run(input: AgentInput, context?: AgentRunContext): AgentRun<unknown, boolean> {
       // AB-241 review finding: `createActiveRun` derives `LivenessSnapshot.owner`

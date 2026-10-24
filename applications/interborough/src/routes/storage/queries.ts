@@ -10,4 +10,6 @@
  */
 export const storageQueryKeys = {
   capabilities: () => ['storage', 'capabilities'] as const,
+  /** The non-reserved prefixes in storage, which the Scan panel offers (`prefix-discovery.ts`). */
+  prefixes: () => ['storage', 'prefixes'] as const,
 };

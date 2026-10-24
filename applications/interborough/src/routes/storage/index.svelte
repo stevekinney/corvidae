@@ -8,7 +8,7 @@
    */
   import { untrack } from 'svelte';
 
-  import { Callout, EmptyState, Tabs } from '@lostgradient/cinder';
+  import { EmptyState, Tabs } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
 
   import { createQuery } from '@tanstack/svelte-query';
@@ -17,6 +17,7 @@
   import { getPrincipalStore, scopeReason } from '../../lib/scopes.svelte.ts';
   import CapabilitiesPanel from './capabilities-panel.svelte';
   import KvBrowser from './kv-browser.svelte';
+  import { discoverPrefixes } from './prefix-discovery.ts';
   import { storageQueryKeys } from './queries.ts';
 
   const client = getClient();
@@ -48,6 +49,20 @@
     undefined,
   );
 
+  // The prefixes the Scan panel offers. Only the picker depends on them: a read that fails leaves the
+  // panel with the field to type a prefix into, as it always had. The query hands its abort signal to
+  // the walk, so leaving the route (the last observer going) cancels the reads still to come.
+  const prefixesQuery = createQuery(
+    () => ({
+      queryKey: storageQueryKeys.prefixes(),
+      queryFn: ({ signal }) => discoverPrefixes(client, { signal }),
+      enabled: untrack(() => hasStorageAdmin),
+      staleTime: 5 * 60_000,
+      retry: false,
+    }),
+    undefined,
+  );
+
   let activeTab = $state('browser');
 </script>
 
@@ -62,20 +77,17 @@
       {#snippet icon()}<Lock aria-hidden="true" size={22} />{/snippet}
     </EmptyState>
   {:else}
-    <Callout variant="warning" semantic="note" class="weft-storage-reserved-banner">
-      Keys under Weft-reserved prefixes (<code class="weft-storage-inline-code">wf:</code>,
-      <code class="weft-storage-inline-code">state:</code>,
-      <code class="weft-storage-inline-code">lease:</code>, and others) are used internally by the
-      engine. Writing to or deleting them directly may disrupt recovery.
-    </Callout>
-
     <Tabs bind:value={activeTab} fill>
       <Tabs.List label="Storage views">
         <Tabs.Trigger value="browser">KV browser</Tabs.Trigger>
         <Tabs.Trigger value="capabilities">Capabilities</Tabs.Trigger>
       </Tabs.List>
       <Tabs.Panel value="browser">
-        <KvBrowser {client} conditionalBatchSupported={capabilitiesQuery.data?.conditionalBatch} />
+        <KvBrowser
+          {client}
+          conditionalBatchSupported={capabilitiesQuery.data?.conditionalBatch}
+          knownPrefixes={prefixesQuery.data ?? []}
+        />
       </Tabs.Panel>
       <Tabs.Panel value="capabilities">
         <CapabilitiesPanel

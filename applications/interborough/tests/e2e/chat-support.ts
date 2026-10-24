@@ -28,15 +28,19 @@ function runInput(threadId: string, message: string, extra: Record<string, unkno
   };
 }
 
-/** Starts a run and reads its stream to the end; the session exists afterwards. */
+/**
+ * Starts a run and reads its stream to the end; the session exists afterwards. `origin` is the host
+ * the run starts on: the main host unless a spec names another.
+ */
 export async function runToEnd(
   request: APIRequestContext,
   agent: string,
   threadId: string,
   message: string,
   extra: Record<string, unknown> = {},
+  origin: string = E2E_BASE_URL,
 ): Promise<string> {
-  const response = await request.post(`${AG_UI}/agents/${agent}/run`, {
+  const response = await request.post(`${origin}/bureau/ag-ui/agents/${agent}/run`, {
     headers: { accept: 'text/event-stream' },
     data: runInput(threadId, message, extra),
   });

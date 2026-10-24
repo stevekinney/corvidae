@@ -26,11 +26,12 @@
  * refuses, so no new workflow or catalog mutation survives it) and one new
  * schedule — safe anywhere in the run order relative to the other flows.
  */
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 test('operator inspects revision bindings, attempts a rejected explicit-revision fork, and pins a schedule', async ({
   page,
   checkA11y,
+  pageErrors,
 }) => {
   await page.goto('/workflows/order-processing/runs');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
@@ -74,6 +75,11 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(revisionSelect).toBeVisible();
   await revisionSelect.selectOption('order-processing-candidate-2');
 
+  // The refusal is a 409, which Chromium logs as a console error; the test causes it on purpose.
+  pageErrors.expect({
+    pattern: loggedFailedResponse(409, /\/v1\/workflows\/[^/]+\/fork/),
+    reason: 'the test forks a revision the server refuses, and the server answers 409',
+  });
   await page.getByRole('button', { name: 'Create fork' }).click();
 
   // A real rejected fork — `WorkflowRevisionUnavailableError` — never a
@@ -87,9 +93,10 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   // Second half: a pinned schedule shows "Pinned (rev X)" on its own detail
   // page (WFT-117's schedule create/edit surface).
   await page.goto('/schedules');
-  await page.getByRole('button', { name: 'Create schedule' }).click();
+  await page.getByRole('button', { name: 'New schedule' }).click();
   const drawer = page.getByRole('dialog', { name: 'Create schedule' });
   await expect(drawer).toBeVisible();
+  await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
 
   const workflowTypeField = drawer.getByRole('combobox', { name: 'Workflow type' });
   await expect(workflowTypeField).toBeVisible();
@@ -104,6 +111,8 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(drawer).not.toBeVisible();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
+  // The revision policy is the engine's, so it is under the Engine disclosure.
+  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
   await checkA11y('schedule detail — pinned revision policy shown');
 });

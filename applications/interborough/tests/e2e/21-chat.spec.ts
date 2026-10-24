@@ -14,7 +14,7 @@ import {
   releaseBarrier,
   runToEnd,
 } from './chat-support.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const BARRIER = 'barrier';
 const BARRIER_SHORT = 'barrier-short';
@@ -408,7 +408,14 @@ for (const width of [375, 1280] as const) {
       test(`is ${outcome} when the Bureau answers that way, and passes axe`, async ({
         page,
         checkA11y,
+        pageErrors,
       }) => {
+        if (outcome !== 'loading') {
+          pageErrors.expect({
+            pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /bureau\/jsonrpc/),
+            reason: `the test answers the session probe with a ${outcome === 'error' ? 500 : 403}`,
+          });
+        }
         await answerSessionProbe(page, outcome);
         await page.goto('/chat/any-session');
         const frame = page.locator('[data-view="chat"]');
@@ -419,5 +426,102 @@ for (const width of [375, 1280] as const) {
         await checkA11y(`a session, ${outcome}, at ${width}px`);
       });
     }
+  });
+}
+
+for (const width of [375, 1280] as const) {
+  test.describe(`a new chat's agent card at ${width} pixels`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+    });
+
+    test('shows the agent, what it does, its tools and its example prompt, and a prompt fills the composer without sending it', async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.goto('/chat/new?agent=tool-runner');
+
+      const card = page.getByTestId('agent-card');
+      await expect(card).toBeVisible();
+      await expect(card.getByRole('heading', { level: 2 })).toHaveText('tool-runner');
+      await expect(card.getByRole('heading', { level: 2 }).locator('code')).toHaveCount(1);
+      await expect(card).toContainText('Looks an order up, then asks for approval to refund it.');
+      await expect(card).toContainText('2 tools');
+      // `?agent=` is the person's own choice, so the other agents are not offered as cards.
+      await expect(page.getByRole('heading', { name: 'Or start with another agent' })).toHaveCount(
+        0,
+      );
+      await checkA11y(`a new chat with the tool-runner's card at ${width}px`);
+
+      await card.getByRole('button', { name: 'Refund order 1234' }).click();
+
+      await expect(composer(page)).toHaveValue('Refund order 1234');
+      await expect(composer(page)).toBeFocused();
+      // Filling the composer starts nothing: the address is still the new chat's.
+      await expect(page).toHaveURL(/\/chat\/new\?agent=tool-runner$/);
+    });
+
+    test('wraps a long example prompt inside its button, and the outlet does not scroll sideways', async ({
+      page,
+    }) => {
+      // The longest prompt the Bureau allows, with a word too long for any line.
+      const prompt = `Look up ${'x'.repeat(150)} and refund it`;
+      expect(prompt.length).toBeLessThanOrEqual(200);
+      await page.route('**/bureau/jsonrpc', async (route) => {
+        if (!(route.request().postData() ?? '').includes('"bureau.agents.list"')) {
+          await route.fallback();
+          return;
+        }
+        const response = await route.fetch();
+        const body = await response.json();
+        for (const agent of body.result.agents) {
+          if (agent.name === 'tool-runner') agent.examples = [prompt];
+        }
+        await route.fulfill({ response, json: body });
+      });
+      await page.goto('/chat/new?agent=tool-runner');
+
+      const button = page.getByTestId('agent-card').getByRole('button', { name: prompt });
+      await expect(button).toBeVisible();
+      const outlet = page.locator('main.weft-shell-outlet');
+      const outletBox = await outlet.boundingBox();
+      const buttonBox = await button.boundingBox();
+      expect(buttonBox?.x ?? 0).toBeGreaterThanOrEqual((outletBox?.x ?? 0) - 1);
+      expect((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0)).toBeLessThanOrEqual(
+        (outletBox?.x ?? 0) + (outletBox?.width ?? 0) + 1,
+      );
+      // It wrapped: taller than a line and a half of its own text.
+      expect(
+        await button.evaluate(
+          (element) =>
+            element.clientHeight > parseFloat(getComputedStyle(element).lineHeight) * 1.5,
+        ),
+      ).toBe(true);
+      // Neither the outlet nor the page scrolls sideways.
+      expect(await outlet.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    });
+
+    test('offers the other agents as cards until one is chosen, and choosing one selects it', async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.goto('/chat/new');
+      await expect(page.getByTestId('agent-card')).toContainText('assistant');
+      const others = page.getByRole('heading', { name: 'Or start with another agent' });
+      await expect(others).toBeVisible();
+      await checkA11y(`a new chat with the agents to choose from at ${width}px`);
+
+      await page.getByRole('button', { name: /request-human-input/ }).click();
+
+      await expect(page).toHaveURL(/\/chat\/new\?agent=request-human-input$/);
+      await expect(page.getByTestId('agent-card')).toContainText('request-human-input');
+      await expect(page.getByTestId('agent-card').getByRole('button')).toHaveText(
+        'Ship the release',
+      );
+      await expect(others).toHaveCount(0);
+    });
   });
 }

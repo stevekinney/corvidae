@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Dynamic workflow sources panel (WFT-116) — mounted on System → Registry,
+   * Workflow sources panel (WFT-116) — mounted on System → Workflow types,
    * above the registered-definitions table. Looks up the loading lifecycle
    * of one `engine.registerSource()`-registered `(name, revision)` key and
    * offers the one scoped action Weft exposes for it: preload.
@@ -29,8 +29,8 @@
    * refreshed diagnostics is the only classified account of why the load
    * failed (`preload-workflow-revision.ts`'s own catch says so explicitly).
    */
-  import { Badge, Button, Checkbox, Input } from '@lostgradient/cinder';
-  import { Ban, CircleCheck, TriangleAlert } from '@lucide/svelte';
+  import { Badge, Button, Checkbox, Input, Tooltip } from '@lostgradient/cinder';
+  import { Ban, CircleCheck, CircleQuestionMark, TriangleAlert } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
@@ -54,6 +54,10 @@
     readonly name: string;
     readonly revision: string;
   }
+
+  /** What a workflow source is, for the person who has not met one: shown from the help button beside the title. */
+  const SOURCES_HELP =
+    'Dynamic workflows never appear in the registered-definitions table. Select a registered source revision, or enter the exact workflow name and revision its registerSource() descriptor declares. Load diagnostics describe the engine that answered.';
 
   const client = getClient();
   const principal = getPrincipalStore();
@@ -243,20 +247,16 @@
 
 <section class="weft-dynamic-source" aria-labelledby="weft-dynamic-source-title">
   <div class="weft-dynamic-source__header">
-    <h2 class="weft-dynamic-source__title" id="weft-dynamic-source-title">
-      Dynamic workflow sources
-    </h2>
-    <p class="weft-dynamic-source__note">
-      Dynamic workflows never appear in the registered-definitions table below. Select a registered
-      source revision, or enter the exact workflow name and revision its <code
-        >registerSource()</code
-      >
-      descriptor declares.
-    </p>
-    <p class="weft-dynamic-source__note">
-      Load diagnostics describe the responding engine process. Use a stable per-engine endpoint;
-      load-balanced responses may come from different engines.
-    </p>
+    <div class="weft-dynamic-source__title-row">
+      <h2 class="weft-dynamic-source__title" id="weft-dynamic-source-title">Workflow sources</h2>
+      <Tooltip text={SOURCES_HELP}>
+        <Button variant="ghost" size="sm" iconOnly label="About workflow sources">
+          {#snippet leadingIcon()}
+            <CircleQuestionMark aria-hidden="true" size={14} />
+          {/snippet}
+        </Button>
+      </Tooltip>
+    </div>
   </div>
 
   <DynamicSourceList selectedKey={lookup} onSelect={selectSource} />
@@ -386,6 +386,12 @@
     gap: 4px;
   }
 
+  .weft-dynamic-source__title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
   .weft-dynamic-source__title {
     margin: 0;
     font-size: var(--cinder-text-sm);
@@ -409,9 +415,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: var(--cinder-density-pad-card);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    padding-block: var(--cinder-space-2);
   }
 
   .weft-dynamic-source__result-identity {
