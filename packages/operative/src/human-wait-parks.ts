@@ -96,3 +96,25 @@ export function humanWaitParkSignalNames(results: ReadonlyArray<ParkableResult>)
 export function countHumanWaitParks(results: ReadonlyArray<ParkableResult>): number {
   return humanWaitParks(results).length;
 }
+
+/**
+ * A tool result as the model reads it. A parked `requestHumanInput` result carries the schema its
+ * author configured so the step record the checkpoint commits can rebuild the wait after a restart
+ * (see {@link parkedHumanWait}); the schema is for the form a client renders, so the model's copy
+ * leaves it out. Any other result is returned as it is, and the step record keeps the original.
+ */
+export function modelFacingToolResult<
+  Result extends ParkableResult & { readonly content?: unknown },
+>(result: Result): Result {
+  if (parkedHumanWait(result)?.inputSchema === undefined) return result;
+  const withoutSchema = (value: unknown): unknown => {
+    if (typeof value !== 'object' || value === null || !('inputSchema' in value)) return value;
+    const { inputSchema: _inputSchema, ...rest } = value as Record<string, unknown>;
+    return rest;
+  };
+  return {
+    ...result,
+    content: withoutSchema(result.content),
+    result: withoutSchema(result.result),
+  };
+}
