@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
+type HappyDomControls = { settings: { enableIframePageLoading: boolean } };
+
 setupHappyDom();
 
 const nativeDataTransfer = globalThis.DataTransfer;
@@ -1500,8 +1502,13 @@ describe('FileUpload drag state and accessibility', () => {
   });
 
   test('interactive controls use the dropzone document realm', async () => {
+    // happy-dom 21 disables iframe page loading by default, which leaves contentDocument null.
+    const settings = (window as unknown as { happyDOM: HappyDomControls }).happyDOM.settings;
+    const previous = settings.enableIframePageLoading;
+    settings.enableIframePageLoading = true;
     const iframe = document.createElement('iframe');
     document.body.append(iframe);
+    settings.enableIframePageLoading = previous;
     const { container } = render(FileUpload, {
       target: iframe.contentDocument!.body,
       props: { id: 'upload' },
