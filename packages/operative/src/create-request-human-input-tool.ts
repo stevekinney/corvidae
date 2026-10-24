@@ -40,7 +40,8 @@ export interface RequestHumanInputResult {
   /**
    * The JSON Schema the author configured for this signal, when one is. It rides in the tool
    * result so the step record the checkpoint commits carries it, and a restarted run reads the
-   * wait's schema back from there.
+   * wait's schema back from there. The model never reads it: the conversation row appended for
+   * the model leaves it out (see `modelFacingToolResult`).
    */
   inputSchema?: HumanInputSchema | undefined;
   /** Human-readable message the LLM can use in its response. */
