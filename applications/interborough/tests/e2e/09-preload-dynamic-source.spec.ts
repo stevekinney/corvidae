@@ -1,7 +1,7 @@
 /**
  * Primary WFT-116 operator flow against the seeded real Weft server: open
  * System → Registry, inspect a dynamic workflow source's loading lifecycle
- * in the Dynamic workflow sources panel, preload an idle revision and watch
+ * in the Workflow sources panel, preload an idle revision and watch
  * it become ready with a real load duration, then preload a revision whose
  * loader cannot reach its artifact and see the refusal reported with the
  * bounded failure category Weft classified it under.
@@ -27,7 +27,7 @@ import {
   DYNAMIC_SOURCE_WORKFLOW_NAME,
 } from '../../fixtures/dynamic-sources.ts';
 
-const PANEL_NAME = 'Dynamic workflow sources';
+const PANEL_NAME = 'Workflow sources';
 
 async function inspectSource(
   page: import('@playwright/test').Page,
@@ -110,7 +110,7 @@ test('a refused preload reports the bounded failure category Weft recorded', asy
   await expect(diagnostics.getByText(/Last failure category:/)).toBeVisible();
 });
 
-test('the Dynamic workflow sources panel is usable across supported widths and themes', async ({
+test('the Workflow sources panel is usable across supported widths and themes', async ({
   page,
 }) => {
   for (const theme of ['light', 'dark'] as const) {

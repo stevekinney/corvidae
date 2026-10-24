@@ -238,13 +238,6 @@
   margin-bottom: 7px;
 }
 
-.weft-overview-tab__tags-row {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
 .weft-overview-tab__failure {
   background: var(--cinder-status-danger-background);
   border: 1px solid var(--cinder-status-danger-border);

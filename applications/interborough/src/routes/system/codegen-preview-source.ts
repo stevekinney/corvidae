@@ -1,5 +1,5 @@
 /**
- * Picks the codegen-preview source workflow for the Health & lease tab's
+ * Picks the codegen-preview source workflow for the Health tab's
  * codegen panel (plan §9.7 T7.5) — the first *active* registered workflow
  * (codepoint order, for determinism) that has an `inputSchema`, so the
  * preview always shows something concrete rather than an arbitrary/empty

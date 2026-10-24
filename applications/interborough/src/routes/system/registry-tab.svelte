@@ -157,7 +157,7 @@
   -->
   <EmptyState
     title="Registry · 3-step onboarding"
-    description="No eagerly registered workflow or activity definitions appear in this engine's registry snapshot. Dynamic sources never appear here — use Dynamic workflow sources above."
+    description="No eagerly registered workflow or activity definitions appear in this engine's registry snapshot. Dynamic sources never appear here — use Workflow sources above."
   >
     {#snippet icon()}
       <GitBranch aria-hidden="true" size={26} />

@@ -32,6 +32,8 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await failedRow.getByRole('link').click();
 
   await expect(page.locator('h1.weft-workflow-detail__title')).toBeVisible();
+  // A run only the engine knows has the workflow's title as its page's one level-1 heading.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(
     page.getByText(
       'The workflow or an activity threw an error that did not match a timeout, cancellation, resource, or system failure.',

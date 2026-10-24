@@ -36,6 +36,7 @@ interface HeaderPropOverrides {
   onRunQuery?: (name: string, input: string) => Promise<unknown>;
   activeRevision?: WorkflowCatalogActivePointerLike | null | undefined;
   onRestart?: (() => void) | undefined;
+  headingLevel?: 1 | 2;
 }
 
 /** Renders `Header` with sensible defaults, overridable per test — keeps each test focused on what it varies rather than repeating the full prop set. */
@@ -52,6 +53,7 @@ function renderHeader(overrides: HeaderPropOverrides = {}) {
       onRunQuery: overrides.onRunQuery ?? noopAsync,
       activeRevision: overrides.activeRevision,
       ...(overrides.onRestart !== undefined ? { onRestart: overrides.onRestart } : {}),
+      ...(overrides.headingLevel !== undefined ? { headingLevel: overrides.headingLevel } : {}),
     },
   });
 }
@@ -82,6 +84,17 @@ describe('WorkflowDetailHeader', () => {
     expect(router.pathname).not.toBe('/workflows/order-fulfillment');
     link.click();
     expect(router.pathname).toBe('/workflows/order-fulfillment');
+  });
+
+  test('is the level-1 heading by default and a level-2 heading under a page that has its own', () => {
+    const lead = renderHeader();
+    expect(lead.getAllByRole('heading', { level: 1 }).length).toBe(1);
+    expect(lead.queryAllByRole('heading', { level: 2 }).length).toBe(0);
+    lead.unmount();
+
+    const under = renderHeader({ headingLevel: 2 });
+    expect(under.queryAllByRole('heading', { level: 1 }).length).toBe(0);
+    expect(under.getByRole('heading', { level: 2, name: 'order-fulfillment' })).not.toBeNull();
   });
 
   test('renders a distinct revision badge when the workflow has one', async () => {

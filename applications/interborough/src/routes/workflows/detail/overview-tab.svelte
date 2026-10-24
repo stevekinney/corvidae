@@ -2,8 +2,7 @@
   /**
    * Overview tab (plan T2.4/§9.2): `DescriptionList` + `PayloadInspector` for
    * input/result/error, failure-category badge + plain-language explanation,
-   * a small inline tag editor (design shows tag add/remove in this panel —
-   * the header only shows tags read-only, see `header.svelte`), and the
+   * a tag editor (Cinder's `TagInput`; the header only shows tags read-only, see `header.svelte`), and the
    * Lineage panel (T2.7, `lineage-panel.svelte`).
    *
    * ## Revision row (WFT-117)
@@ -18,17 +17,18 @@
    */
   import {
     Badge,
-    Button,
     Collapsible,
     DescriptionList,
-    Input,
     PayloadInspector,
+    TagInput,
   } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
-  import { CircleX, Plus, X } from '@lucide/svelte';
+  import { CircleX } from '@lucide/svelte';
+  import { untrack } from 'svelte';
 
   import { queryKeys } from '../../../lib/query.ts';
+  import { createSerialQueue } from '../../../lib/serial-queue.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import AttributesPanel from './attributes/attributes-panel.svelte';
   import type { AttributesClient } from './attributes/attributes-data.ts';
@@ -96,11 +96,9 @@
     unknown: ' — active revision unknown',
   };
 
-  const revisionDefinitionText = $derived.by((): string => {
-    const comparison = classifyRevisionAgainstActive(workflow.revision, activeRevision);
-    if (comparison === 'unpinned') return 'Unpinned (pre-revision record)';
-    return `${workflow.revision}${REVISION_COMPARISON_SUFFIX[comparison]}`;
-  });
+  const revisionComparison = $derived(
+    classifyRevisionAgainstActive(workflow.revision, activeRevision),
+  );
 
   const queryClient = useQueryClient();
 
@@ -108,22 +106,50 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(workflow.id) });
   }
 
+  // Each change the editor reports is one write per tag. The writes go through one queue, in the order
+  // they were made, and each starts once the one before it has settled: an add and a remove of the same
+  // tag sent independently can land in either order, and a late add then durably restores a tag the
+  // person removed. The page reads the tags again once the queue is empty, whatever the engine
+  // answered, so a write that failed puts the field back to what the engine holds; reading between
+  // two queued writes would show the engine's half-way state.
+  const tagWrites = createSerialQueue();
+  function invalidateWhenWritesHaveSettled(): void {
+    if (tagWrites.pending === 0) invalidateDetail();
+  }
   const addTagMutation = createMutation(() => ({
-    mutationFn: (tag: string) => client.addTags(workflow.id, tag),
-    onSuccess: invalidateDetail,
+    mutationFn: (tag: string) => {
+      const id = workflow.id;
+      return tagWrites.run(() => client.addTags(id, tag));
+    },
+    onSettled: invalidateWhenWritesHaveSettled,
   }));
   const removeTagMutation = createMutation(() => ({
-    mutationFn: (tag: string) => client.removeTags(workflow.id, tag),
-    onSuccess: invalidateDetail,
+    mutationFn: (tag: string) => {
+      const id = workflow.id;
+      return tagWrites.run(() => client.removeTags(id, tag));
+    },
+    onSettled: invalidateWhenWritesHaveSettled,
   }));
 
-  let newTag = $state('');
+  // `requested` is the list the engine was last asked for, so a change is the difference from it and
+  // not from the tags the engine last answered with: two quick edits before the engine answers each
+  // send their own write, and a tag added and removed in between is not lost.
+  let tags = $state<string[]>(untrack(() => [...(workflow.tags ?? [])]));
+  let requested: readonly string[] = untrack(() => [...(workflow.tags ?? [])]);
+  $effect(() => {
+    tags = [...(workflow.tags ?? [])];
+    requested = [...(workflow.tags ?? [])];
+  });
 
-  function submitNewTag(): void {
-    const trimmed = newTag.trim();
-    if (trimmed.length === 0) return;
-    addTagMutation.mutate(trimmed);
-    newTag = '';
+  function changeTags(next: string[]): void {
+    const before = requested;
+    requested = [...next];
+    for (const tag of next.filter((candidate) => !before.includes(candidate))) {
+      addTagMutation.mutate(tag);
+    }
+    for (const tag of before.filter((candidate) => !next.includes(candidate))) {
+      removeTagMutation.mutate(tag);
+    }
   }
 
   const errorStack = $derived(workflow.errorStack ?? '');
@@ -141,14 +167,14 @@
   );
 
   const definitionItems = $derived([
-    { id: 'type', term: 'Type', definition: workflow.type },
-    { id: 'version', term: 'Version', definition: versionSummaryText },
+    { id: 'type', term: 'Type', definition: typeDefinition },
+    { id: 'version', term: 'Version', definition: versionDefinition },
     // Distinct from "Version": `revision` is the exact executable artifact
     // this run started against (identity/diagnostics/pinning), while
     // `versionTuple` above is the sole semantic-compatibility axis. Two
     // revisions can share one workflowVersion (e.g. a doc-only redeploy).
     // Always shown — see module doc "Revision row (WFT-117)".
-    { id: 'revision', term: 'Revision', definition: revisionDefinitionText },
+    { id: 'revision', term: 'Revision', definition: revisionDefinition },
     { id: 'created', term: 'Created', definition: new Date(workflow.createdAt).toISOString() },
     ...(workflow.executionDeadline !== undefined
       ? [
@@ -162,55 +188,39 @@
   ]);
 </script>
 
+{#snippet typeDefinition()}
+  <code class="ib-identifier weft-overview-tab__code">{workflow.type}</code>
+{/snippet}
+
+{#snippet versionDefinition()}
+  <code class="ib-identifier weft-overview-tab__code">{versionSummaryText}</code>
+{/snippet}
+
+{#snippet revisionDefinition()}
+  {#if revisionComparison === 'unpinned'}
+    Unpinned (pre-revision record)
+  {:else}
+    <code class="ib-identifier weft-overview-tab__code">{workflow.revision}</code
+    >{REVISION_COMPARISON_SUFFIX[revisionComparison]}
+  {/if}
+{/snippet}
+
 <div class="weft-overview-tab">
   <div class="weft-overview-tab__panel">
     <div class="weft-overview-tab__panel-header">Definition</div>
     <DescriptionList items={definitionItems} variant="default" />
-    <div class="weft-overview-tab__tags">
-      <div class="weft-overview-tab__tags-label">Tags</div>
-      <div class="weft-overview-tab__tags-row">
-        {#each workflow.tags ?? [] as tag (tag)}
-          <Badge variant="neutral">
-            {tag}
-            <button
-              type="button"
-              class="weft-overview-tab__tag-remove"
-              aria-label={`Remove tag ${tag}`}
-              disabled={tagGate.disabled || removeTagMutation.isPending}
-              title={tagGate.title}
-              onclick={() => removeTagMutation.mutate(tag)}
-            >
-              <X aria-hidden="true" size={10} />
-            </button>
-          </Badge>
-        {/each}
-        <Input
-          id={`workflow-detail-new-tag-${workflow.id}`}
-          label="Add tag"
-          labelVisible={false}
-          placeholder="Add tag"
-          disabled={tagGate.disabled}
-          bind:value={newTag}
-          onkeydown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              submitNewTag();
-            }
-          }}
-        />
-        <Button
-          variant="ghost"
-          size="sm"
-          iconOnly
-          label="Add tag"
-          disabled={tagGate.disabled || newTag.trim().length === 0 || addTagMutation.isPending}
-          onclick={submitNewTag}
-        >
-          {#snippet leadingIcon()}
-            <Plus aria-hidden="true" size={12} />
-          {/snippet}
-        </Button>
+    <div class="weft-overview-tab__tags" title={tagGate.disabled ? tagGate.title : undefined}>
+      <div class="weft-overview-tab__tags-label" id={`workflow-detail-tags-label-${workflow.id}`}>
+        Tags
       </div>
+      <TagInput
+        id={`workflow-detail-tags-${workflow.id}`}
+        aria-labelledby={`workflow-detail-tags-label-${workflow.id}`}
+        placeholder="Add tag"
+        disabled={tagGate.disabled}
+        bind:value={tags}
+        onValueChange={changeTags}
+      />
     </div>
   </div>
 
@@ -277,14 +287,10 @@
 </div>
 
 <style>
-  .weft-overview-tab__tag-remove {
-    display: inline-flex;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    padding: 0;
-    margin-inline-start: 2px;
+  /* A revision is a long hash with no break points, so it wraps wherever the card ends. */
+  .weft-overview-tab__code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
   }
 
   .weft-overview-tab__spinner {

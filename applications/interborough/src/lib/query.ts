@@ -95,6 +95,8 @@ export const queryKeys = {
   /** The audit trail, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
+    /** The first page of the whole trail, read for the types the Type select offers. */
+    types: () => ['audit', 'types'] as const,
   },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
@@ -169,7 +171,7 @@ export const queryKeys = {
   hostPaths: () => ['host', 'paths'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
-  /** `weft.system.lease` (COR-124), read only by the System route's Health & lease tab. */
+  /** `weft.system.lease` (COR-124), read only by the System route's Health tab. */
   systemLease: () => ['system', 'lease'] as const,
   /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {

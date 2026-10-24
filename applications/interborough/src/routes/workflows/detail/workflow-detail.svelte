@@ -87,6 +87,16 @@
     type WorkflowContextualAction,
   } from './workflow-status.ts';
 
+  interface WorkflowDetailProps {
+    /**
+     * The level of the run's title: 1 when this page is the whole page, 2 when the page already has
+     * a heading of its own (a run the Bureau knows, whose page leads with its agent).
+     */
+    headingLevel?: 1 | 2;
+  }
+
+  let { headingLevel = 1 }: WorkflowDetailProps = $props();
+
   const client: HttpClient = getClient();
   const queryClient = useQueryClient();
   const principalStore = getPrincipalStore();
@@ -308,6 +318,7 @@
       onRestart={() => (restartOpen = true)}
       {actionGate}
       {queryGate}
+      {headingLevel}
     />
 
     {#if restartOpen}

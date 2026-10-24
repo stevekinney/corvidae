@@ -215,7 +215,7 @@ describe('WorkflowDetail — active-revision comparison (WFT-117)', () => {
     });
     resetLocation(`/runs/${id}`);
 
-    const { findByText } = render(WorkflowDetailHarness, {
+    const { container, findByText } = render(WorkflowDetailHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
@@ -223,8 +223,15 @@ describe('WorkflowDetail — active-revision comparison (WFT-117)', () => {
     expect(await findByText('Active')).not.toBeNull();
     // Overview tab's Revision DescriptionList row (same page, both tabs
     // render simultaneously — only the active Tabs.Panel is visible, but
-    // Svelte still mounts every panel here per this route's own Tabs usage).
-    expect(await findByText('order-rev-a — active')).not.toBeNull();
+    // Svelte still mounts every panel here per this route's own Tabs usage). The hash is in
+    // monospace and the comparison follows it as words.
+    await waitFor(() =>
+      expect(
+        [...container.querySelectorAll('dt')]
+          .find((element) => element.textContent?.trim() === 'Revision')
+          ?.nextElementSibling?.textContent?.trim(),
+      ).toBe('order-rev-a — active'),
+    );
   });
 
   test('denied workflows:read leaves activeRevision undefined and the page still renders', async () => {

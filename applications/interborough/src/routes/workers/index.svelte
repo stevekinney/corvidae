@@ -52,6 +52,8 @@
   import DeploymentsPanel from './deployments-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
   import FleetView from './fleet-view.svelte';
+  import InProcessNotice from './in-process-notice.svelte';
+  import { runsInProcessOnly } from './in-process-engine.ts';
   import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
   import TaskDeliveryHistory from './task-delivery-history.svelte';
   import QueueListView from './queue-list-view.svelte';
@@ -312,9 +314,21 @@
   // Each tab gates on its OWN query, not a blanket loading/error state for
   // the whole route — a failure fetching, say, task queues must not hide an
   // already-successful Diagnostics tab behind a shared error screen.
-  const fleetLoading = $derived(workersQuery.isPending);
+  // No worker, deployment, queue, or task: the engine runs in-process, and the page says so instead of
+  // showing five tabs of zeros. A fleet that has not been read yet, or could not be, is not that.
+  // The page is a skeleton until the workers, the queues, and the diagnostics have all answered, so
+  // the tabs never appear and then go (or the sentence appear and then give way to them) when one
+  // list is quicker than another. A list that failed has settled, and says nothing about the fleet.
+  const fleetSettling = $derived(
+    workersQuery.isPending || queuesQuery.isPending || diagnosticsQuery.isPending,
+  );
+  const inProcessOnly = $derived(
+    workersQuery.data !== undefined &&
+      queuesQuery.data !== undefined &&
+      diagnosticsQuery.data !== undefined &&
+      runsInProcessOnly(workersQuery.data, queuesQuery.data, diagnosticsQuery.data, router.search),
+  );
   const fleetError = $derived(workersQuery.error ?? null);
-  const queuesLoading = $derived(queuesQuery.isPending);
   const queuesError = $derived(queuesQuery.error ?? null);
   const diagnosticsLoading = $derived(diagnosticsTabQuery.isPending);
   const diagnosticsErrorValue = $derived(diagnosticsTabQuery.error ?? null);
@@ -323,7 +337,9 @@
 <div class="weft-workers-route">
   <div class="weft-workers-route__header">
     <h1 class="weft-workers-route__title">Workers</h1>
-    <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
+    {#if !inProcessOnly}
+      <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
+    {/if}
   </div>
 
   {#if locked}
@@ -332,6 +348,18 @@
         <Lock size={28} aria-hidden="true" />
       {/snippet}
     </EmptyState>
+  {:else if fleetSettling}
+    <div
+      class="weft-workers-route__skeleton"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading fleet"
+    >
+      <Skeleton height="1.5rem" width="40%" />
+      <Skeleton height="8rem" />
+    </div>
+  {:else if inProcessOnly}
+    <InProcessNotice />
   {:else}
     <Tabs value={activeTab} onValueChange={(next) => selectTab(next)}>
       <TabList label="Workers views">
@@ -341,17 +369,7 @@
       </TabList>
 
       <TabPanel value="fleet">
-        {#if fleetLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading fleet"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if fleetError}
+        {#if fleetError}
           <EmptyState
             title={FAULT_TREATMENT_TITLE[faultTreatment(fleetError).kind]}
             description={faultTreatment(fleetError).message}
@@ -374,17 +392,7 @@
       </TabPanel>
 
       <TabPanel value="list">
-        {#if fleetLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading workers"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if fleetError}
+        {#if fleetError}
           <EmptyState
             title={FAULT_TREATMENT_TITLE[faultTreatment(fleetError).kind]}
             description={faultTreatment(fleetError).message}
@@ -424,17 +432,7 @@
       </TabPanel>
 
       <TabPanel value="queues">
-        {#if queuesLoading}
-          <div
-            class="weft-workers-route__skeleton"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading task queues"
-          >
-            <Skeleton height="1.5rem" width="40%" />
-            <Skeleton height="8rem" />
-          </div>
-        {:else if queuesError}
+        {#if queuesError}
           <EmptyState
             title={FAULT_TREATMENT_TITLE[faultTreatment(queuesError).kind]}
             description={faultTreatment(queuesError).message}
