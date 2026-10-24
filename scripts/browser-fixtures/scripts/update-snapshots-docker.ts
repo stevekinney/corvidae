@@ -19,7 +19,7 @@
  * `scripts/browser-fixtures/visual-baselines.md`.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { environmentConfiguration } from '../environment-configuration.ts';
@@ -56,7 +56,7 @@ import {
   dockerArchitectureProblem,
   dockerBuildArguments,
   dockerRunArguments,
-  extractArchive,
+  extractCommitArchive,
   hostOwnershipEnvironment,
   parseWrapperArguments,
   readDockerArchitecture,
@@ -117,6 +117,8 @@ export async function startRendererRun(
   process.stdout.write(
     `Running ${mode} for ${sha} in ${containerName}. Host at start: ${describeHostLoad(loadAtStart)}.\n`,
   );
+  // The run directory outlives the run for review, but the source archive is only the container's
+  // input, and at about 130 MB it was most of what every kept run directory weighed.
   const exitCode = await runContainerWithCleanup(
     docker,
     dockerRunArguments({
@@ -133,7 +135,7 @@ export async function startRendererRun(
     }),
     containerName,
     sourceArchive,
-  );
+  ).finally(() => rm(sourceArchive, { force: true }));
   const loadAtEnd = readHostLoad();
   process.stdout.write(
     `Container output: ${outputDirectory}\nHost at end: ${describeHostLoad(loadAtEnd)}.\n`,
@@ -350,9 +352,12 @@ async function main(): Promise<number> {
     {
       baselineDirectory: resolve(REPOSITORY_ROOT, LINUX_BASELINE_DIRECTORY),
       extractCommitted: (sha, destination) => {
-        const archive = join(run.runDirectory, 'committed.tar');
-        archiveCommit(sha, archive, [LINUX_BASELINE_DIRECTORY, 'scripts/browser-fixtures/tests']);
-        extractArchive(archive, destination);
+        extractCommitArchive(
+          sha,
+          join(run.runDirectory, 'committed.tar'),
+          [LINUX_BASELINE_DIRECTORY, 'scripts/browser-fixtures/tests'],
+          destination,
+        );
       },
     },
     {

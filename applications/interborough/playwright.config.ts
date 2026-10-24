@@ -20,6 +20,9 @@ export default defineConfig({
     // alone, not a URL that answers earlier, so a spec never reads a half-seeded server.
     wait: { stdout: /Interborough E2E host listening/ },
     reuseExistingServer: !continuousIntegration,
+    // Without this, Playwright SIGKILLs the server, so its SIGTERM handler never removes the
+    // `interborough-e2e-*` scratch directory (a build and four homes) and every run leaks it.
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     stdout: 'pipe',
     stderr: 'pipe',
   },
