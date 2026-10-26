@@ -32,8 +32,7 @@
  * extension (AB-264/tst-03e). Drivers for product surfaces that do not
  * exist yet on this baseline (managed goals — AB-101/AB-102) are named as
  * unsupported through `supports()` and a typed throw, never silently stubbed
- * out. Settled scheduler-task retrieval is supported: `getSchedulerTaskResult`
- * and `awaitSchedulerTask` wrap `Bureau.locateSchedulerTask` / `awaitSchedulerTask`.
+ * out.
  */
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
@@ -46,8 +45,6 @@ import {
   type DispatchChildRunOptions,
   type MutableChildRunRegistry,
   type ResourceScope,
-  type RunResult,
-  type SchedulerTaskLocation,
   waitForCondition,
 } from '@lostgradient/operative';
 import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
@@ -69,8 +66,6 @@ import type {
   ResolveReviewInput,
   ResolveReviewResult,
   RunSummary,
-  SubmitSchedulerTaskRequest,
-  SubmitSchedulerTaskResponse,
 } from '../types';
 import type { BureauQuiescenceReport } from './quiescence';
 import { assertBureauQuiescent, BureauQuiescenceError } from './quiescence';
@@ -204,8 +199,8 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
    * When `shutdownOptions.timeoutMilliseconds` is set (a bounded policy),
    * this ALSO owns advancing this harness's `ManualRuntimeServices` by
    * exactly that many milliseconds (Coordinator ruling on AB-338):
-   * `BureauOptions.shutdownTimeoutSleep` stays driven by the resolved
-   * runtime — the deterministic contract AB-260 established — but a
+   * the bounded wait stays driven by the resolved runtime's timers — the
+   * deterministic contract AB-260 established — but a
    * `ManualRuntimeServices` never advances on its own, so nothing would
    * ever fire that sleep's timer, and a bounded `shutdown()` would hang
    * forever, unless something here does. A caller never needs to advance
@@ -237,9 +232,6 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
     options?: Omit<DispatchChildRunOptions, 'parentRunId' | 'agentName'>,
   ): ChildRunHandle<unknown, boolean>;
 
-  /** Thin wrapper over `Bureau.submitSchedulerTask`. */
-  submitSchedulerTask(request: SubmitSchedulerTaskRequest): Promise<SubmitSchedulerTaskResponse>;
-
   /** Thin wrapper over `Bureau.createSchedule`. */
   createRecurringSchedule(
     definition: DurableScheduleDefinition,
@@ -262,12 +254,6 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
    * managed goals do not exist on this baseline (AB-101/AB-102).
    */
   startManagedGoal(...args: unknown[]): never;
-
-  /** Thin wrapper over `Bureau.locateSchedulerTask`. */
-  getSchedulerTaskResult(taskId: string): SchedulerTaskLocation;
-
-  /** Thin wrapper over `Bureau.awaitSchedulerTask`. */
-  awaitSchedulerTask(taskId: string): Promise<RunResult | null>;
 }
 
 function throwUnsupported(capability: BureauHarnessCapability): never {
@@ -482,10 +468,6 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
       });
     },
 
-    submitSchedulerTask(request) {
-      return readyBureau.submitSchedulerTask(request);
-    },
-
     createRecurringSchedule(definition) {
       return readyBureau.createSchedule(definition);
     },
@@ -508,14 +490,6 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
 
     startManagedGoal() {
       return throwUnsupported('managed-goal');
-    },
-
-    getSchedulerTaskResult(taskId) {
-      return readyBureau.locateSchedulerTask(taskId);
-    },
-
-    awaitSchedulerTask(taskId) {
-      return readyBureau.awaitSchedulerTask(taskId);
     },
   };
 

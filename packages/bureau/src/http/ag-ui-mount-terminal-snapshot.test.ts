@@ -118,7 +118,6 @@ const say = (content: string): ScriptedGenerateStep => ({
 async function openBureau(options: {
   script: readonly ScriptedGenerateStep[];
   behavior?: StorageBehavior;
-  retryDelayMilliseconds?: number;
   /** Collects what the Bureau reports, which a scenario that breaks storage on purpose expects to. */
   diagnostics?: string[];
 }) {
@@ -133,7 +132,6 @@ async function openBureau(options: {
     },
     storage: storage.storage,
     durableExecution: true,
-    sessionPersistenceRetryDelayMilliseconds: options.retryDelayMilliseconds ?? 0,
     ...(options.diagnostics === undefined
       ? {}
       : {
@@ -225,7 +223,6 @@ describe('the end-of-run snapshot over storage that is not instant', () => {
     const opened = await openBureau({
       script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')],
       behavior: { failFirstSessionWrite: true },
-      retryDelayMilliseconds: 10,
     });
     try {
       const stream = await runThatTakesInput(opened, mountOver(opened.bureau), {

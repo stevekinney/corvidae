@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   createFaultEngine,
@@ -11,7 +11,7 @@ import {
   stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { file } from 'bun';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -27,7 +27,11 @@ import {
   BureauQuiescenceError,
   type BureauQuiescenceReport,
 } from './quiescence';
-import { createMemoryStorageFixture, createSqliteStorageFixture } from './storage-fixtures';
+import {
+  type BureauStorageFixture,
+  createMemoryStorageFixture,
+  createSqliteStorageFixture,
+} from './storage-fixtures';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -75,7 +79,7 @@ function blockingGenerate(): GenerateFunction {
  * fault-engine-wrapped path; every other key (session store, anything
  * else) reaches `raw` untouched.
  */
-function routeAuditWritesThroughFaultEngine<T extends ReturnType<typeof textValueStore>>(
+function routeAuditWritesThroughFaultEngine<T extends Storage>(
   raw: T,
   engine: ReturnType<typeof createFaultEngine>,
 ): T {
@@ -83,23 +87,81 @@ function routeAuditWritesThroughFaultEngine<T extends ReturnType<typeof textValu
   const isAuditKey = (key: string) => key.startsWith('audit:v1:');
   return new Proxy(raw, {
     get(target, property, receiver) {
-      if (property === 'set') {
-        return async (key: string, value: string) =>
-          isAuditKey(key) ? faulted.set(key, value) : target.set(key, value);
-      }
       if (property === 'conditionalBatch') {
         return async (
-          conditions: Parameters<T['conditionalBatch']>[0],
-          operations: Parameters<T['conditionalBatch']>[1],
+          conditions: Parameters<NonNullable<T['conditionalBatch']>>[0],
+          operations: Parameters<NonNullable<T['conditionalBatch']>>[1],
         ) =>
           operations.some((operation) => isAuditKey(operation.key))
-            ? faulted.conditionalBatch(conditions, operations)
-            : target.conditionalBatch(conditions, operations);
+            ? faulted.conditionalBatch!(conditions, operations)
+            : target.conditionalBatch!(conditions, operations);
       }
       const value: unknown = Reflect.get(target, property, receiver);
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
+}
+
+/**
+ * A storage fixture whose backend routes the audit trail's writes through `engine`, over a bare
+ * `MemoryStorage` that the memory fixture's handle accounting never sees, so a blocked audit write
+ * stays an audit-trail fact and never becomes an `openStorageResources` leak.
+ */
+function faultedAuditStorageFixture(
+  engine: ReturnType<typeof createFaultEngine>,
+): BureauStorageFixture & { readonly rawStorage: MemoryStorage } {
+  const rawStorage = new MemoryStorage();
+  return {
+    configuration: routeAuditWritesThroughFaultEngine(rawStorage, engine),
+    owned: false,
+    openHandles: () => [],
+    dispose: async () => {},
+    rawStorage,
+  };
+}
+
+/**
+ * Starts a harness whose first audit write blocks, then waits until it is reached, so a bounded
+ * shutdown has an owner (the audit trail) that cannot finish.
+ */
+async function harnessWithHungAuditTrail(runtime: ManualRuntimeServices) {
+  let reached = false;
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const engine = createFaultEngine(
+    [
+      {
+        id: 'blocked-audit-write',
+        boundary: 'before-work',
+        operation: 'storage:conditionalBatch',
+        occurrence: { kind: 'nth', n: 1 },
+        effect: {
+          kind: 'block',
+          release: released,
+          onReached: () => {
+            reached = true;
+          },
+        },
+      },
+    ],
+    runtime,
+  );
+  const storage = faultedAuditStorageFixture(engine);
+  const harness = await createBureauTestHarness({
+    agents: { default: createAgent({ generate: mockGenerate() }) },
+    storage,
+    runtime,
+  });
+  disposals.push(async () => {
+    release();
+    await harness.bureau.dispose();
+    storage.rawStorage[Symbol.dispose]();
+  });
+  await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+  await waitForCondition(() => reached, 'fault engine block on the audit write was never reached');
+  return { harness, release };
 }
 
 /**
@@ -192,7 +254,6 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     expect(report.activeDescendants).toEqual([]);
     expect(report.pendingWebhookDeliveries).toEqual([]);
     expect(report.durableAttempts).toEqual([]);
-    expect(report.runningScheduleFires).toEqual([]);
     expect(report.parkedWaits).toEqual([]);
     expect(report.pendingHookEffects).toEqual([]);
     expect(report.pendingAuditWrites).toEqual([]);
@@ -544,94 +605,19 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     }
   });
 
-  it('distinguishes "incomplete" (a bounded shutdown wait elapsed) from "leaked" — an unresolved owner is reported under incomplete, never leaked, and quiescent stays true', async () => {
-    let capturedSignal: AbortSignal | undefined;
-    let releaseSleep!: () => void;
-    const sleep = (_milliseconds: number, signal: AbortSignal) => {
-      capturedSignal = signal;
-      return new Promise<void>((resolve) => {
-        releaseSleep = resolve;
-        signal.addEventListener('abort', () => resolve(), { once: true });
-      });
-    };
-
-    const storage = createMemoryStorageFixture();
-    const harness = await createBureauTestHarness({
-      agents: {
-        default: createAgent({ generate: hungGenerate() }),
-      },
-      storage,
-      scheduler: { enabled: true, idleDelay: 1 },
-      shutdownTimeoutSleep: sleep,
-    });
-    disposals.push(async () => {
-      await harness.bureau.dispose();
-      await storage.dispose();
-    });
-
-    await harness.submitSchedulerTask({
-      agentName: 'default',
-      priority: 'background',
-      message: 'never finishes',
-    });
-    await waitForCondition(
-      () => harness.bureau.scheduler?.getState().activeTask !== undefined,
-      'scheduler task never started running',
-    );
-
-    const reportPromise = assertBureauQuiescent(harness, { timeoutMilliseconds: 50 });
-    await waitForCondition(() => capturedSignal !== undefined, 'injected sleep was never called');
-    releaseSleep();
-
-    const report = await reportPromise;
-
-    const schedulerIncomplete = report.incomplete.find((entry) => entry.kind === 'scheduler');
-    expect(schedulerIncomplete?.reason).toBe('unresolved');
-    expect(report.leaked.some((leak) => leak.kind === 'queue-item')).toBe(false);
-    expect(report.quiescent).toBe(true);
-  });
-
-  it('AB-338: BureauTestHarness.close() with a bounded drain resolves a hung run as incomplete under the manual runtime, with no wall-clock wait and no manual clock advance in the test body', async () => {
-    // Deliberately the REAL default `shutdownTimeoutSleep`
-    // (`createDefaultShutdownTimeoutSleep`, driven by `runtime.timers` —
-    // AB-260's deterministic contract), not an injected fake as the
-    // preceding test uses: this test's whole point is that
-    // `BureauTestHarness.close()` itself, not the test body, is what
-    // advances a `ManualRuntimeServices` far enough for that real sleep to
-    // ever resolve. Before AB-338, this `close()` call hung forever —
-    // nothing in the harness or this test advanced the clock, so the
-    // default sleep's timer never fired.
-    const storage = createMemoryStorageFixture();
-    const harness = await createBureauTestHarness({
-      agents: {
-        default: createAgent({ generate: hungGenerate() }),
-      },
-      storage,
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-    disposals.push(async () => {
-      await harness.bureau.dispose();
-      await storage.dispose();
-    });
-
-    // The hung run: a scheduler-dispatched background task whose generate
-    // call never resolves and is never aborted under a 'drain' policy —
-    // `scheduler.stop()` awaits it directly, so it is what makes the
-    // 'scheduler' owner unresolved when the bounded wait elapses.
-    await harness.submitSchedulerTask({
-      agentName: 'default',
-      priority: 'background',
-      message: 'never finishes',
-    });
-    await waitForCondition(
-      () => harness.bureau.scheduler?.getState().activeTask !== undefined,
-      'scheduler task never started running',
-    );
+  it('AB-338: BureauTestHarness.close() with a bounded drain resolves a hung owner as incomplete under the manual runtime, with no wall-clock wait and no manual clock advance in the test body', async () => {
+    // The bounded wait is a sleep on the bureau's own `runtime.timers`: this test's whole point is
+    // that `BureauTestHarness.close()` itself, not the test body, is what advances a
+    // `ManualRuntimeServices` far enough for that sleep to ever resolve. Before AB-338, this
+    // `close()` call hung forever — nothing in the harness or this test advanced the clock, so the
+    // sleep's timer never fired. The hung owner is the audit trail, whose write is blocked.
+    const { harness } = await harnessWithHungAuditTrail(createManualRuntimeServices());
 
     const report = await harness.close({ policy: 'drain', timeoutMilliseconds: 50 });
 
-    const schedulerIncomplete = report.incomplete.find((entry) => entry.kind === 'scheduler');
-    expect(schedulerIncomplete?.reason).toBe('unresolved');
+    const incomplete = report.incomplete.find((entry) => entry.kind === 'audit-trail');
+    expect(incomplete?.reason).toBe('unresolved');
+    expect(report.leaked.some((leak) => leak.kind === 'queue-item')).toBe(false);
     expect(report.quiescent).toBe(true);
   });
 
@@ -663,33 +649,12 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     // clamped deadline it is waiting for, or it would report a false
     // "timeout was never armed" against a timer that, in fact, armed and
     // fired exactly as expected (review finding, PR #533).
-    const storage = createMemoryStorageFixture();
-    const harness = await createBureauTestHarness({
-      agents: {
-        default: createAgent({ generate: hungGenerate() }),
-      },
-      storage,
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-    disposals.push(async () => {
-      await harness.bureau.dispose();
-      await storage.dispose();
-    });
-
-    await harness.submitSchedulerTask({
-      agentName: 'default',
-      priority: 'background',
-      message: 'never finishes',
-    });
-    await waitForCondition(
-      () => harness.bureau.scheduler?.getState().activeTask !== undefined,
-      'scheduler task never started running',
-    );
+    const { harness } = await harnessWithHungAuditTrail(createManualRuntimeServices());
 
     const report = await harness.close({ policy: 'drain', timeoutMilliseconds: -50 });
 
-    const schedulerIncomplete = report.incomplete.find((entry) => entry.kind === 'scheduler');
-    expect(schedulerIncomplete?.reason).toBe('unresolved');
+    const incomplete = report.incomplete.find((entry) => entry.kind === 'audit-trail');
+    expect(incomplete?.reason).toBe('unresolved');
     expect(report.quiescent).toBe(true);
   });
 
@@ -703,7 +668,6 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       detached: [{ kind: 'durable-owner', id: 'detached-run-1' }],
       activeRoots: [],
       activeDescendants: [],
-      runningScheduleFires: [],
       parkedWaits: [],
       pendingHookEffects: [],
       pendingAuditWrites: [],
@@ -713,7 +677,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       durableAttempts: [],
       assetWork: [],
       abortingRuns: [{ runId: 'run-leaked-abort', since: 1_700_000_000_000 }],
-      incomplete: [{ kind: 'scheduler', id: 'task-1', reason: 'unresolved' }],
+      incomplete: [{ kind: 'audit-trail', id: 'task-1', reason: 'unresolved' }],
       shutdownReport: {
         admissionClosed: true,
         policy: 'abort',
@@ -722,7 +686,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         failed: 0,
         unresolved: 1,
         notRequired: 0,
-        owners: [{ kind: 'scheduler', id: 'task-1', outcome: 'unresolved' }],
+        owners: [{ kind: 'audit-trail', id: 'task-1', outcome: 'unresolved' }],
       },
     };
 
@@ -730,7 +694,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
     expect(error.message).toContain('leaked-timer');
     expect(error.message).toContain('Incomplete');
-    expect(error.message).toContain('scheduler "task-1" (unresolved)');
+    expect(error.message).toContain('audit-trail "task-1" (unresolved)');
     expect(error.message).toContain('Detached');
     expect(error.message).toContain('durable-owner "detached-run-1"');
     expect(error.message).toContain('abortingRuns');
@@ -788,69 +752,6 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 });
 
 describe('AB-322: fault-forced leftovers populate the corresponding rows', () => {
-  it('a schedule fire blocked (createFaultEngine) past a bounded shutdown names the task in runningScheduleFires, not leaked — the "scheduler" owner is already incomplete', async () => {
-    const runtime = createManualRuntimeServices();
-    let onReachedCalled = false;
-    let releaseFire!: () => void;
-    const release = new Promise<void>((resolve) => {
-      releaseFire = resolve;
-    });
-    const plan: FaultPlan = [
-      {
-        id: 'blocked-schedule-fire',
-        boundary: 'before-work',
-        operation: 'generate',
-        occurrence: { kind: 'every' },
-        effect: {
-          kind: 'block',
-          release,
-          onReached: () => {
-            onReachedCalled = true;
-          },
-        },
-      },
-    ];
-    const engine = createFaultEngine(plan, runtime);
-
-    const storage = createMemoryStorageFixture();
-    const harness = await createBureauTestHarness({
-      agents: {
-        default: createAgent({ generate: engine.wrapGenerate(mockGenerate()) }),
-      },
-      storage,
-      runtime,
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-    disposals.push(async () => {
-      releaseFire();
-      await harness.bureau.dispose();
-      await storage.dispose();
-    });
-
-    await harness.submitSchedulerTask({
-      agentName: 'default',
-      priority: 'background',
-      message: 'blocked fire',
-    });
-    await waitForCondition(
-      () => onReachedCalled,
-      'fault engine block on the schedule fire was never reached',
-    );
-
-    const report = await harness.close({ timeoutMilliseconds: 50 });
-
-    expect(report.runningScheduleFires).toHaveLength(1);
-    const fire = report.runningScheduleFires[0]!;
-    expect(fire.identifier).toBeDefined();
-    expect(fire.discoveredVia).toBe('public-snapshot');
-    expect(report.leaked).not.toContainEqual(fire);
-    const incomplete = report.incomplete.find((entry) => entry.kind === 'scheduler');
-    expect(incomplete?.reason).toBe('unresolved');
-    expect(report.quiescent).toBe(true);
-
-    releaseFire();
-  });
-
   it('a judge evaluation blocked (createFaultEngine.wrapStorage, on the evaluation\'s own audit-record write) past a bounded shutdown names it in activeEvaluations, not leaked — the "online-evals" owner is already incomplete', async () => {
     // Deliberately NOT `wrapGenerate` on the judge's own model call: online
     // evals' `evaluateRun` (`online-evals.ts`) races EVERY judge call
@@ -886,17 +787,12 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       },
     ];
     const engine = createFaultEngine(plan, runtime);
-    const rawStorage = new MemoryStorage();
-    const kv = textValueStore(rawStorage);
-    const wrappedKv = routeAuditWritesThroughFaultEngine(kv, engine);
-
-    const storage = createMemoryStorageFixture();
+    const storage = faultedAuditStorageFixture(engine);
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
         default: createAgent({ generate: mockGenerate() }),
       },
-      persistence: wrappedKv,
       storage,
       runtime,
       onlineEvals: {
@@ -915,8 +811,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     disposals.push(async () => {
       releaseWrite();
       await harness.bureau.dispose();
-      await storage.dispose();
-      rawStorage[Symbol.dispose]();
+      storage.rawStorage[Symbol.dispose]();
     });
 
     // `bureau.run()` catalog dispatch (`harness.startRun`) never touches
@@ -975,25 +870,19 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       },
     ];
     const engine = createFaultEngine(plan, runtime);
-    const rawStorage = new MemoryStorage();
-    const kv = textValueStore(rawStorage);
-    const wrappedKv = routeAuditWritesThroughFaultEngine(kv, engine);
-
-    const storage = createMemoryStorageFixture();
+    const storage = faultedAuditStorageFixture(engine);
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
         default: createAgent({ generate: mockGenerate() }),
       },
-      persistence: wrappedKv,
       storage,
       runtime,
     });
     disposals.push(async () => {
       releaseWrite();
       await harness.bureau.dispose();
-      await storage.dispose();
-      rawStorage[Symbol.dispose]();
+      storage.rawStorage[Symbol.dispose]();
     });
 
     // `harness.startRun` (catalog dispatch) never touches the operative

@@ -1,5 +1,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'bun:test';
 
 import { shutdownThenRethrow } from './composition-failure';
@@ -31,13 +33,16 @@ describe('composition failure after the asset service started', () => {
         agents: {
           default: createAgent({ generate: async () => ({ content: 'ok', toolCalls: [] }) }),
         },
-        durableExecution: true,
-        persistence: textValueStore(new MemoryStorage()),
+        // A storage backend that cannot open: the composition fails after the asset service started.
+        storage: {
+          type: 'sqlite',
+          path: join(tmpdir(), 'cor-1695-no-such-directory', 'bureau.sqlite'),
+        },
         runtime,
         assets: { storage: fixture.storage, garbageCollectionIntervalMilliseconds: 1_000 },
       }),
     );
-    expect(String(thrown)).toContain('durableExecution: true is incompatible');
+    expect(thrown).toBeInstanceOf(Error);
     expect(runtime.pendingTimers()).toHaveLength(0);
     await fixture.dispose();
   });

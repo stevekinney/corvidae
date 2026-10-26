@@ -41,6 +41,7 @@ import {
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();
 
@@ -246,7 +247,7 @@ describe('the automatic sweep and a decision in flight', () => {
     });
     await started.promise;
     // The binding's time has passed and a maintenance tick lands, with the tool still running.
-    const swept = await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000);
+    const swept = await expireReviews(bureau, Date.now() + 60 * 60 * 1000);
     gate.resolve();
     await deciding;
 
@@ -501,7 +502,6 @@ describe('a fire approval this process expires, with a task stream open', () => 
     );
     const bureau = await harness.open({
       storage,
-      sessionPersistenceRetryDelayMilliseconds: 0,
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -517,7 +517,7 @@ describe('a fire approval this process expires, with a task stream open', () => 
     await sleep(100);
 
     failing.on = true;
-    await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000).catch(() => undefined);
+    await expireReviews(bureau, Date.now() + 60 * 60 * 1000).catch(() => undefined);
     await sleep(250);
     failing.on = false;
 

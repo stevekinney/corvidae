@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
+import { storageOverTextStore } from './testing/text-store-storage.test-support';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const SIDE_RECORD_PREFIX = 'session-deletion-owner:v1:';
@@ -45,7 +46,8 @@ async function openBlockedBureau(storage: MemoryStorage, blocked: { value: boole
     agents: {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    persistence,
+    storage: storageOverTextStore(persistence),
+    durableExecution: false,
   });
   return { bureau, base };
 }
@@ -99,7 +101,8 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
+      storage: storage,
+      durableExecution: false,
     });
     try {
       await second.runDurableMaintenance();
@@ -133,7 +136,8 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
+      storage: storage,
+      durableExecution: false,
     });
     try {
       await second.runDurableMaintenance();
@@ -181,7 +185,8 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      persistence: flaky,
+      storage: storageOverTextStore(flaky),
+      durableExecution: false,
     });
     try {
       // Boot drained while every read of the owner record failed, so the deletion was neither audited nor acknowledged,
@@ -219,7 +224,8 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
+      storage: storage,
+      durableExecution: false,
     });
     try {
       // Another session's deletion queues behind the poisoned one.
@@ -254,15 +260,16 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      persistence: intercepted(
-        textValueStore(storage, { disposeUnderlyingStorage: false }),
-        (method, args) =>
+      storage: storageOverTextStore(
+        intercepted(textValueStore(storage, { disposeUnderlyingStorage: false }), (method, args) =>
           method === 'get' && String(args[0]).startsWith(SIDE_RECORD_PREFIX) && reading.fails
             ? Promise.reject(
                 new TypeError('Unable to connect. Is the computer able to access the url?'),
               )
             : undefined,
+        ),
       ),
+      durableExecution: false,
     });
     try {
       // The failure is the store's, not the record's: the deletion waits, owner intact.

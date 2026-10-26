@@ -28,8 +28,8 @@
  * Delivery is durable, not fire-and-forget: each delivery is persisted to
  * the bureau's KV store (`webhook-delivery:v1:` prefix, the same store the
  * audit trail uses) before the first attempt, retried with exponential
- * backoff (`sleep`/`now` are both injectable for deterministic tests, same
- * pattern as `sessionPersistenceSleep`), and marked `delivered` or
+ * backoff (`sleep`/`now` are both injectable for deterministic tests),
+ * and marked `delivered` or
  * `exhausted` in place. An exhausted delivery is also recorded in the audit
  * trail (`webhook.delivery.exhausted`) so the failure is visible on the
  * bureau's existing audit surface, not just buried in a KV record nobody

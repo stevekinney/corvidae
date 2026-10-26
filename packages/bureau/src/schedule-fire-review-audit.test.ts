@@ -3,6 +3,7 @@
  * history, whichever way the fire is canceled and wherever a crash lands, and an approval's session
  * prune commits before its in-memory state is dropped.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -27,6 +28,8 @@ import {
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
+import { withAdvancingClock } from './testing/advancing-turn.test-support';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();
 
@@ -230,10 +233,15 @@ describe('a fire approval’s session prune commits before its in-memory state i
         }),
     );
     const charges: number[] = [];
+    // A manual clock keeps the task inside retention until the test moves it, so the maintenance
+    // pass that expires the approval is not also the pass that releases the fire's task.
+    const runtime = createManualRuntimeServices();
+    const diagnostics: string[] = [];
     const bureau = await harness.open({
       storage,
-      taskRetention: { olderThan: 1 },
-      sessionPersistenceRetryDelayMilliseconds: 0,
+      runtime,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      taskRetention: { olderThan: 60_000 },
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -251,9 +259,13 @@ describe('a fire approval’s session prune commits before its in-memory state i
 
     // The approval expires, and its release cannot commit the session prune.
     failing.on = true;
-    await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000).catch(() => undefined);
+    await withAdvancingClock(runtime, expireReviews(bureau, Date.now() + 60 * 60 * 1000));
     failing.on = false;
 
+    // The maintenance pass reports the failed release instead of throwing it.
+    expect(diagnostics.some((message) => message.includes('expired-review sweep failed'))).toBe(
+      true,
+    );
     expect(reviewsOf(bureau, fireId)).toEqual([]);
     const refusal = await rejectionOf(
       bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
@@ -267,9 +279,9 @@ describe('a fire approval’s session prune commits before its in-memory state i
     ]);
 
     // The next release of the fire, here its task leaving retention, retries it.
+    await runtime.advance(60_001);
     await pollUntil(async () => {
-      await sleep(5);
-      await bureau.runDurableMaintenance(Date.now());
+      await bureau.runDurableMaintenance();
       return (await bureau.tasks.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 

@@ -1004,7 +1004,7 @@ export function auditTrailSessionOwnerId(sessionId: string): string {
 /**
  * Creates an audit trail attached to the given bureau.
  *
- * When `kv` is provided (bureau has `.persistence()`), sinks qualifying
+ * When `kv` is provided (bureau has `storage`), sinks qualifying
  * action events into the KV store. When `kv` is absent, the trail still
  * subscribes (so `dispose()` is always safe) but writes nowhere — the
  * glass-box audit surface is Layer A only.

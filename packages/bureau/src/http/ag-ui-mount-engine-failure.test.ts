@@ -150,6 +150,13 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       toolbox: createToolbox<readonly Tool[]>([noopTool]),
     });
     try {
+      // The run's report: the usage of the step that committed, before the write that was refused.
+      const reportedUsage: number[] = [];
+      bureau.subscribeLiveFrames((frame) => {
+        if (frame.type === 'run-envelope' && frame.frame.type === 'run-finished') {
+          reportedUsage.push(frame.frame.report.usage.total);
+        }
+      });
       const summary = await bureau.createRun({
         agentName: 'default',
         message: 'Go.',
@@ -161,7 +168,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       await bureau.whenRunRecorded(summary.id);
 
       expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');
-      expect(bureau.getRunReport(summary.id)?.usage.total).toBe(15);
+      expect(reportedUsage).toEqual([15]);
       expect(await transcriptOf(bureau)).toEqual([
         'user:Go.',
         'assistant:Calling the tool.',
