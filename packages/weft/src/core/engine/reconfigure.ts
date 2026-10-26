@@ -154,9 +154,10 @@ function stagePatch(patch: unknown): StagedPatch {
  *   same path `register()` uses, which re-reads the interval. No timer is armed where none was:
  *   with no retention configured, under `backgroundTasks: 'manual'`, or after disposal.
  *
- * A patch that changes neither interval touches no timer, so a `retention` patch that makes
- * retention configured for the first time does not arm a sweep that is not already running; the
- * next `register()` does, as it always has.
+ * A `retention` patch reconciles the sweep timer the way `register()` does: retention that is now
+ * configured arms a sweep at the effective interval, retention that is no longer configured
+ * clears it, and a running timer is left alone, so its phase is kept. A patch with neither key
+ * touches no timer.
  *
  * @throws {EngineDisposedError} On a disposed engine, as every other `Engine` method throws. A
  * disposed engine has no timers, and re-arming one would hold the process open.
@@ -178,10 +179,15 @@ export function reconfigureEngine(
   if (schedulerPollIntervalMs !== previousPollIntervalMs) {
     internals.scheduler.setPollInterval(schedulerPollIntervalMs);
   }
+  let reconcileSweep = 'retention' in staged.resolved;
   if (retentionSweepIntervalMs !== previousSweepIntervalMs && internals.retentionSweepInterval) {
     clearInterval(internals.retentionSweepInterval);
     internals.retentionSweepInterval = null;
-    ensureRetentionSweepInterval();
+    reconcileSweep = true;
   }
+  // Re-enter the path `register()` uses when the timer was cleared above or retention changed:
+  // it arms a sweep for newly configured retention, clears one when none is configured any more,
+  // and leaves a running timer alone, so a retention patch alone never resets the sweep's phase.
+  if (reconcileSweep) ensureRetentionSweepInterval();
   return { outcome: 'applied', applied: staged.applied };
 }

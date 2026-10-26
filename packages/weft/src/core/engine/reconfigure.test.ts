@@ -272,6 +272,25 @@ describe('Engine.reconfigure', () => {
       engine[Symbol.dispose]();
     });
 
+    it('does not arm a sweep for a patch that carries neither retention nor the interval', () => {
+      useFakeTimers(START);
+      const unarmed = new Engine({ storage: new MemoryStorage() });
+      unarmed.register(
+        workflow({ name: 'retained', retention: { completed: '1h' } }).execute(async function* () {
+          return 'done';
+        }),
+      );
+      const internals = getInternals(unarmed);
+      internals.retentionSweepInterval = null;
+      const timersBefore = jest.getTimerCount();
+
+      unarmed.reconfigure({ payloadSize: { maxBytes: 1_024 } });
+
+      expect(internals.retentionSweepInterval).toBeNull();
+      expect(jest.getTimerCount()).toBe(timersBefore);
+      unarmed[Symbol.dispose]();
+    });
+
     it('arms no timers under manual background tasks', () => {
       useFakeTimers(START);
       const engine = new Engine({
@@ -287,6 +306,97 @@ describe('Engine.reconfigure', () => {
       expect(internals.retentionSweepInterval).toBeNull();
       expect(jest.getTimerCount()).toBe(timersBefore);
       engine[Symbol.dispose]();
+    });
+  });
+
+  describe('retention', () => {
+    it('arms a sweep at the current interval when retention becomes configured', async () => {
+      useFakeTimers(START);
+      const engine = new Engine({ storage: new MemoryStorage(), retentionSweepInterval: '10s' });
+      const internals = getInternals(engine);
+      expect(internals.retentionSweepInterval).toBeNull();
+      const timersBefore = jest.getTimerCount();
+
+      const result = engine.reconfigure({ retention: { completed: '1h' } });
+
+      expect(result.outcome).toBe('applied');
+      expect(internals.retentionSweepInterval).not.toBeNull();
+      expect(jest.getTimerCount()).toBe(timersBefore + 1);
+      expect(internals.nextRetentionSweepAt).toBe(START + 10_000);
+      await advanceTimersByTime(10_000);
+      expect(internals.nextRetentionSweepAt).toBe(START + 20_000);
+      engine[Symbol.dispose]();
+    });
+
+    it('arms the sweep at the patched interval when the patch carries both keys', async () => {
+      useFakeTimers(START);
+      const engine = new Engine({ storage: new MemoryStorage(), retentionSweepInterval: '10s' });
+      const internals = getInternals(engine);
+
+      engine.reconfigure({ retention: { completed: '1h' }, retentionSweepInterval: '2s' });
+
+      expect(internals.nextRetentionSweepAt).toBe(START + 2_000);
+      await advanceTimersByTime(2_000);
+      expect(internals.nextRetentionSweepAt).toBe(START + 4_000);
+      engine[Symbol.dispose]();
+    });
+
+    it('clears the sweep and stops sweeping when retention is no longer configured', async () => {
+      const engine = createArmedEngine();
+      const internals = getInternals(engine);
+      const timersBefore = jest.getTimerCount();
+
+      const result = engine.reconfigure({ retention: {} });
+
+      expect(result.outcome).toBe('applied');
+      expect(internals.options.retention).toBeNull();
+      expect(internals.retentionSweepInterval).toBeNull();
+      expect(internals.nextRetentionSweepAt).toBeNull();
+      expect(jest.getTimerCount()).toBe(timersBefore - 1);
+      await advanceTimersByTime(30_000);
+      expect(internals.nextRetentionSweepAt).toBeNull();
+      engine[Symbol.dispose]();
+    });
+
+    it('keeps a running sweep timer, and its phase, when only the policy changes', async () => {
+      const engine = createArmedEngine();
+      const internals = getInternals(engine);
+      const handle = internals.retentionSweepInterval;
+
+      await advanceTimersByTime(4_000);
+      engine.reconfigure({ retention: { completed: '2h' } });
+
+      expect(internals.retentionSweepInterval).toBe(handle);
+      expect(internals.nextRetentionSweepAt).toBe(START + 10_000);
+      await advanceTimersByTime(6_000);
+      expect(internals.nextRetentionSweepAt).toBe(START + 20_000);
+      engine[Symbol.dispose]();
+    });
+
+    it('arms no sweep under manual background tasks', () => {
+      useFakeTimers(START);
+      const engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+      const timersBefore = jest.getTimerCount();
+
+      engine.reconfigure({ retention: { completed: '1h' } });
+
+      expect(getInternals(engine).retentionSweepInterval).toBeNull();
+      expect(jest.getTimerCount()).toBe(timersBefore);
+      engine[Symbol.dispose]();
+    });
+
+    it('arms no sweep on a disposed engine', () => {
+      useFakeTimers(START);
+      const engine = new Engine({ storage: new MemoryStorage() });
+      engine[Symbol.dispose]();
+      const timersBefore = jest.getTimerCount();
+
+      expect(() => engine.reconfigure({ retention: { completed: '1h' } })).toThrow(
+        EngineDisposedError,
+      );
+
+      expect(getInternals(engine).retentionSweepInterval).toBeNull();
+      expect(jest.getTimerCount()).toBe(timersBefore);
     });
   });
 

@@ -3324,8 +3324,10 @@ export class Engine<
    * leaves every option and timer as it was. `schedulerPollIntervalMs` re-arms a running poll
    * timer, so the next poll lands one new interval from now; `retentionSweepInterval` clears an
    * armed retention-sweep timer and arms it again at the new interval. The other keys are read
-   * where they are used, so they take effect on the next operation that reads them. A patch that
-   * changes neither interval touches no timer.
+   * where they are used, so they take effect on the next operation that reads them. A `retention`
+   * patch arms the sweep when retention becomes configured and clears it when none is configured
+   * any more, and leaves a running sweep timer alone. A patch with none of those keys touches no
+   * timer.
    *
    * @throws {EngineDisposedError} After the engine is disposed, like every other engine method.
    *   Nothing is applied and no timer is armed.
