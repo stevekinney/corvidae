@@ -202,6 +202,8 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
     input: z.object({
       signalName: z
         .string()
+        // The longest name Bureau carries in a surface continuation and admits to a signal.
+        .max(256)
         .describe(
           'The signal name the run will park on. The human sends the same name when ' +
             'releasing the run (e.g. "human-response").',

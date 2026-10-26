@@ -174,7 +174,7 @@ A surface follows its task: it stays readable, frozen or closed, until `BureauOp
 
 ## Payload limits
 
-A surface's content, its representation, data, summary, actions, and audience as JSON, is capped at `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, 1 MiB, which is the default `maxRequestBodyBytes` of `createBureauHandler`, so a surface that fits the cap fits in one request. A larger create or update is rejected as `payload-too-large`. Identifiers, each audience principal among them, are at most 256 characters of well-formed Unicode with no control characters, except the ones Bureau composes from others, a `taskId` (a session id plus `:<sequence>`) and a review id, which may be up to 1,024, and a summary at most 4,096.
+A surface's content, its representation, data, summary, actions, and audience as JSON, is capped at `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, 1 MiB, which is the default `maxRequestBodyBytes` of `createBureauHandler`, so a surface that fits the cap fits in one request. A larger create or update is rejected as `payload-too-large`, before its schemas are compiled (the proposal as sent is measured first, and the stored content again). A command that is not plain JSON data, such as a cyclic object passed in process, is `invalid`. Identifiers, each audience principal among them, are at most 256 characters of well-formed Unicode with no control characters, except the ones Bureau composes from others, a `taskId` (a session id plus `:<sequence>`) and a review id, which may be up to 1,024, and a summary at most 4,096. A signal continuation's `signalName` is at most 256 characters, which is the longest signal name `requestHumanInput` accepts.
 
 ## Accessibility
 
