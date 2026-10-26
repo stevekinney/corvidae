@@ -171,6 +171,7 @@ describe('the list of sessions', () => {
       agentName: 'assistant',
       owner: 'anonymous:local',
       actor: null,
+      kind: 'chat',
       status,
       finishReason: null,
       statusMessage: null,

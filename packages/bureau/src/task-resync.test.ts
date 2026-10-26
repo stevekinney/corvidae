@@ -27,6 +27,7 @@ const view: TaskView = {
   agentName: 'default',
   owner: 'api-key:alice',
   actor: null,
+  kind: 'chat',
   status: 'completed',
   finishReason: 'stop',
   statusMessage: null,
