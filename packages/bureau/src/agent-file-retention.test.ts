@@ -84,13 +84,45 @@ describe('snapshot retention', () => {
     expect(await revisionCount(harness)).toBe(0);
   });
 
-  it('releases the snapshot of a settled scheduler task once it is past task retention (COR-1662)', async () => {
-    const harness = await start({ scheduler: { enabled: true, idleDelay: 1 } });
+  for (const durable of [true, false]) {
+    it(`holds the snapshot of a settled scheduler task for task retention, then releases it (COR-1662, durable execution ${durable})`, async () => {
+      const harness = await start({
+        scheduler: { enabled: true, idleDelay: 1 },
+        durableExecution: durable,
+      });
+      const { bureau, runtime, at } = harness;
+      const task = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' });
+      await bureau.awaitSchedulerTask(task.taskId);
+      await runtime.deferred.drain();
+      expect(await revisionCount(harness)).toBe(1);
+
+      // Past the unstarted-run grace, and still inside the retention window: held.
+      at(11 * 60 * 1000);
+      await bureau.runDurableMaintenance();
+      expect(await revisionCount(harness)).toBe(1);
+      at(30 * DAY_MS - 1);
+      await bureau.runDurableMaintenance();
+      expect(await revisionCount(harness)).toBe(1);
+
+      at(30 * DAY_MS + 1);
+      await bureau.runDurableMaintenance();
+      expect(await revisionCount(harness)).toBe(0);
+    });
+  }
+
+  it('holds the snapshot of a scheduler task that fails, then releases it past retention (COR-1662)', async () => {
+    const harness = await start({ scheduler: { enabled: true, idleDelay: 1 } }, async () => {
+      throw new Error('model unavailable');
+    });
     const { bureau, runtime, at } = harness;
     const task = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' });
-    await bureau.awaitSchedulerTask(task.taskId);
+    await bureau.awaitSchedulerTask(task.taskId).catch(() => null);
     await runtime.deferred.drain();
+    expect(await revisionCount(harness)).toBe(1);
 
+    at(11 * 60 * 1000);
+    await bureau.runDurableMaintenance();
+    expect(await revisionCount(harness)).toBe(1);
     at(30 * DAY_MS + 1);
     await bureau.runDurableMaintenance();
     expect(await revisionCount(harness)).toBe(0);

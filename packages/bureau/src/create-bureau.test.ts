@@ -121,6 +121,7 @@ import {
   resolveCancelDurableRun,
   ScheduleLocatorUnavailableError,
   wireFlowControlSchedulerEvents,
+  wireSchedulerAgentSnapshotSettlement,
   wireStreamEventTargetFrames,
 } from './create-bureau';
 import type {
@@ -436,6 +437,30 @@ describe('create-bureau helper coverage', () => {
       'settle:dropped-task',
       'resume:dispatched-task',
     ]);
+  });
+
+  it("settles a scheduler task's agent snapshot reference only when the task is over, and removes the listeners on dispose (COR-1662)", () => {
+    const scheduler = new EventTarget();
+    const settled: string[] = [];
+    const cleanup = wireSchedulerAgentSnapshotSettlement(scheduler, {
+      settleRun: async (taskId) => void settled.push(taskId),
+    });
+
+    scheduler.dispatchEvent(new SchedulerTaskCompletedEvent('completed-task', {} as never));
+    scheduler.dispatchEvent(new SchedulerTaskFailedEvent('failed-task', new Error('boom')));
+    scheduler.dispatchEvent(new TaskCancelledEvent('cancelled-task', 'queued'));
+    scheduler.dispatchEvent(new TaskPreemptedEvent('requeued-task', 'higher priority task', true));
+    scheduler.dispatchEvent(
+      new TaskPreemptedEvent('dropped-task', 'cancelled during preemption', false),
+    );
+    scheduler.dispatchEvent(new TaskDispatchedEvent('dispatched-task', 'background'));
+
+    // A requeued task keeps its reference for the next attempt; a dispatch settles nothing.
+    expect(settled).toEqual(['completed-task', 'failed-task', 'cancelled-task', 'dropped-task']);
+
+    cleanup.forEach((dispose) => dispose());
+    scheduler.dispatchEvent(new SchedulerTaskCompletedEvent('ignored-after-cleanup', {} as never));
+    expect(settled).toHaveLength(4);
   });
 
   it('finds recovered scheduled sessions by explicit id and stateless session naming', async () => {
