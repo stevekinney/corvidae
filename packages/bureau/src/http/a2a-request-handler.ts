@@ -721,6 +721,30 @@ function refuseWithoutScopes(
 }
 
 /** Whether an error is the handler's own refusal of a send: raised before anything took effect. */
+/** Whether a task's A2A record holds an entry for the message `messageId`. */
+function holdsMessage(record: A2ATaskRecord | undefined, messageId: string): boolean {
+  return record?.history.some((held) => held['messageId'] === messageId) === true;
+}
+
+/** The refusal of a send whose `expectedRevision` is no longer the task's revision. */
+function staleRevision(
+  messageId: string,
+  taskId: string,
+  expectedRevision: string,
+  currentRevision: string,
+): CommandReceiptError {
+  return new CommandReceiptError(
+    'STALE_REVISION',
+    `expectedRevision ${expectedRevision} is stale.`,
+    {
+      commandId: messageId,
+      taskId,
+      expectedRevision,
+      currentRevision,
+    },
+  );
+}
+
 function isRefusal(error: unknown): boolean {
   return (
     error instanceof RequestMalformedError ||
@@ -1302,10 +1326,15 @@ export function createBureauA2ARequestHandler(
     inbound: Inbound,
   ): Promise<void> {
     const entry = historyEntryOf(inbound.history, view.id, view.contextId);
-    const append = (current: A2ATaskRecord): A2ATaskRecord | undefined =>
-      current.history.some((held) => held['messageId'] === message.messageId)
-        ? undefined
-        : { ...current, history: [...current.history, entry] };
+    // A slot reserved before the claim may hold another attempt's form of this message (its own
+    // admitted assets): the entry takes the form the claim recorded, in place.
+    const text = JSON.stringify(entry);
+    const append = (current: A2ATaskRecord): A2ATaskRecord | undefined => {
+      const index = current.history.findIndex((held) => held['messageId'] === message.messageId);
+      if (index === -1) return { ...current, history: [...current.history, entry] };
+      if (JSON.stringify(current.history[index]) === text) return undefined;
+      return { ...current, history: current.history.with(index, entry) };
+    };
     if ((await records.update(view.id, append)) !== undefined) return;
     const stored = await bureau.tasks.record(view.id);
     const created = await records.create({
@@ -1322,6 +1351,100 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
+   * Reserves a continuation's slot in the task's A2A history for a send that names an
+   * `expectedRevision`: a compare-and-set that appends its entry only while the history still holds
+   * `expectedLength` messages, the length its revision was checked at. Every Bureau instance
+   * sharing the store writes the same record, so of two sends naming one revision exactly one
+   * reserves, and the other is refused before it has any effect (COR-1694). A slot this message
+   * already holds, which an earlier attempt reserved, is its own. Resolves whether the slot is
+   * this message's; {@link recordContinuation} then finds the entry already there.
+   */
+  async function reserveContinuation(
+    message: Message,
+    view: TaskView,
+    inbound: Inbound,
+    expectedLength: number,
+  ): Promise<boolean> {
+    const entry = historyEntryOf(inbound.history, view.id, view.contextId);
+    const holds = (record: A2ATaskRecord | undefined) => holdsMessage(record, message.messageId);
+    const reserve = (current: A2ATaskRecord): A2ATaskRecord | undefined =>
+      holds(current) || current.history.length !== expectedLength
+        ? undefined
+        : { ...current, history: [...current.history, entry] };
+    const updated = await records.update(view.id, reserve);
+    if (updated !== undefined) return holds(updated);
+    if (expectedLength !== 0) return false;
+    // A task another transport started has no record until its first continuation over A2A.
+    const stored = await bureau.tasks.record(view.id);
+    const created = await records.create({
+      recordVersion: 1,
+      taskId: view.id,
+      contextId: view.contextId,
+      incarnation: stored?.incarnation ?? '',
+      history: [entry],
+      replyRecorded: false,
+    });
+    if (!holds(created)) return false;
+    recordReplyWhenSettled(view.id);
+    return true;
+  }
+
+  /** Gives back a slot {@link reserveContinuation} took, for a send refused before any effect. */
+  async function releaseContinuation(message: Message, taskId: string): Promise<void> {
+    await records.update(taskId, (current) =>
+      holdsMessage(current, message.messageId)
+        ? {
+            ...current,
+            history: current.history.filter((held) => held['messageId'] !== message.messageId),
+          }
+        : undefined,
+    );
+  }
+
+  /**
+   * The history length a send naming `expectedRevision` reserves its slot at, once the revision is
+   * checked; `undefined` for a send that names none. A slot an earlier attempt of this message
+   * reserved before it could claim moved the revision itself, so it passes.
+   */
+  async function slotLengthOf(
+    message: Message,
+    view: TaskView,
+    expectedRevision: string | undefined,
+  ): Promise<number | undefined> {
+    if (expectedRevision === undefined) return undefined;
+    const record = await records.read(view.id);
+    const current = revisionOf(view, record);
+    if (!holdsMessage(record, message.messageId) && current !== expectedRevision) {
+      throw staleRevision(message.messageId, view.id, expectedRevision, current);
+    }
+    return record?.history.length ?? 0;
+  }
+
+  /**
+   * Reserves a send's slot (see {@link reserveContinuation}), or refuses the send as stale. No
+   * claim names what the send admitted yet, so a refusal or a failed write discards it.
+   */
+  async function reserveOrRefuse(
+    message: Message,
+    view: TaskView,
+    inbound: Inbound,
+    slot: { readonly length: number; readonly revision: string },
+    discard: () => Promise<void>,
+  ): Promise<void> {
+    let reserved: boolean;
+    try {
+      reserved = await reserveContinuation(message, view, inbound, slot.length);
+    } catch (error) {
+      await discard();
+      throw error;
+    }
+    if (reserved) return;
+    await discard();
+    const current = revisionOf(view, await records.read(view.id));
+    throw staleRevision(message.messageId, view.id, slot.revision, current);
+  }
+
+  /**
    * A send that continues a task and carries an inline push configuration runs under that task's
    * fence, from the preflight check to the install, so a concurrent create or delete of the same
    * configuration cannot land between the check and the install it vouched for.
@@ -1332,9 +1455,9 @@ export function createBureauA2ARequestHandler(
   ): Promise<Admitted> {
     const taskId = params.message?.taskId ?? '';
     if (taskId === '') return admitUnfenced(params, context, false);
-    // Continuations of one task are admitted one at a time, from the revision check to the
-    // recorded message: two that name the same `expectedRevision` would otherwise both pass it, and
-    // the command-receipts contract wants one winner.
+    // Continuations of one task are admitted one at a time in this instance, from the revision
+    // check to the recorded message. The command-receipts contract's one winner among sends naming
+    // one `expectedRevision` is the history slot's compare-and-set, which holds across instances.
     return continuationFence(taskId, async () => {
       if (push === undefined || params.configuration?.taskPushNotificationConfig === undefined) {
         return admitUnfenced(params, context, false);
@@ -1346,9 +1469,8 @@ export function createBureauA2ARequestHandler(
 
   /**
    * Runs `work` once every earlier continuation of `taskId` has finished, whether it succeeded or
-   * not. The fence lives in this handler instance: a deployment serving one task from several
-   * instances still has the revision's own durable part (the A2A history's length) to refuse a
-   * stale name, but no mutual exclusion across them.
+   * not. The fence lives in this handler instance and only spares it racing itself: a send that
+   * names a revision is fenced across instances by {@link reserveContinuation}.
    */
   function continuationFence<T>(taskId: string, work: () => Promise<T>): Promise<T> {
     const previous = continuationFences.get(taskId) ?? Promise.resolve();
@@ -1505,25 +1627,10 @@ export function createBureauA2ARequestHandler(
         ? await planInbound(message, inboundContextOfCaller)
         : undefined;
     // A pending claim's effect may already have moved the revision it was checked against.
-    if (
-      pending === undefined &&
-      continued !== undefined &&
-      request.expectedRevision !== undefined
-    ) {
-      const current = revisionOf(continued, await records.read(continued.id));
-      if (current !== request.expectedRevision) {
-        throw new CommandReceiptError(
-          'STALE_REVISION',
-          `expectedRevision ${request.expectedRevision} is stale.`,
-          {
-            commandId: message.messageId,
-            taskId: continued.id,
-            expectedRevision: request.expectedRevision,
-            currentRevision: current,
-          },
-        );
-      }
-    }
+    const slotLength =
+      pending === undefined && continued !== undefined
+        ? await slotLengthOf(message, continued, request.expectedRevision)
+        : undefined;
 
     // The install this send owes is decided here, once, and recorded in the claim: a retry of a
     // claim left pending reads it back, so it installs the same configuration at the same cursor
@@ -1558,6 +1665,19 @@ export function createBureauA2ARequestHandler(
       plan === undefined || expired
         ? undefined
         : projectionOf(message, plan, mine, options.publicUrl);
+    // The slot is reserved before the claim, so every claim a fenced send leaves pending holds its
+    // slot, and a retry of that claim finishes the effect it reserved. A slot reserved by an attempt
+    // that died before claiming is found by the exact retry above and is its own.
+    const reserving = continued !== undefined && slotLength !== undefined && !expired;
+    if (reserving) {
+      await reserveOrRefuse(
+        message,
+        continued,
+        inboundOf(message, projection),
+        { length: slotLength, revision: request.expectedRevision as string },
+        discardMine,
+      );
+    }
     let claimed;
     try {
       claimed = await ledger.claim(identity, digest, {
@@ -1680,8 +1800,12 @@ export function createBureauA2ARequestHandler(
         if (refused || (delivered.length === 0 && recorded === undefined)) {
           const released = await ledger.release(entry).catch(() => false);
           // Deleted only when this send provably took no effect and the claim is really gone:
-          // otherwise another attempt may have completed it and its rows name these assets.
-          if (refused && released) await discardMine();
+          // otherwise another attempt may have completed it and its rows name these assets. The
+          // history slot it reserved is given back on the same evidence.
+          if (refused && released) {
+            await discardMine();
+            if (reserving) await releaseContinuation(message, continued.id);
+          }
         }
       }
       throw error;
