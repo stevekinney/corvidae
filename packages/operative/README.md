@@ -157,7 +157,7 @@ const result = await run.result(); // await—same handle
 | `contextManagement` | `ContextManagementOptions` | Automatic context compaction. |
 | `permissions` | `HeadlessPermissionPolicyConfiguration` | Deny-by-default headless mode (AB-94). Mutually exclusive with `toolbox`. |
 
-`agent.run(input)` accepts a plain `string` (starts a fresh conversation—`instructions`, if given, is appended as a system message, then `input` as a user message), an ordered array of user-admissible parts (text, and image, audio, video, document, or file parts addressed by a `ContentSource`; the array becomes exactly one user message, in order, and an empty array throws an `AgentContractError`), or `{ conversation: ConversationHistory }` (resumes an existing history—see the next section). `SessionHandle.run` and `MonitorOptions.input` accept the same string-or-parts payload.
+`agent.run(input)` accepts a plain `string` (starts a fresh conversation—`instructions`, if given, is appended as a system message, then `input` as a user message), an ordered array of user-admissible parts (text, and image, audio, video, document, or file parts addressed by a `ContentSource`; the array becomes exactly one user message, in order, and an empty array throws an `AgentContractError`; so does a part with an `mcp-resource` source, which only a tool result may introduce, in a run input and in a session or schedule payload alike), or `{ conversation: ConversationHistory }` (resumes an existing history—see the next section). `SessionHandle.run` and `MonitorOptions.input` accept the same string-or-parts payload.
 
 ### Stateless chat host: resume a conversation, share a toolbox, park on approval
 
