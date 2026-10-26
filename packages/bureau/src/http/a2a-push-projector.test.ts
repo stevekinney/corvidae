@@ -106,6 +106,7 @@ function standIn(initial: DurableEventEnvelope[] = []) {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
     tasks: {
+      record: async () => undefined,
       get: async (taskId: string) => {
         if (getFailures > 0) {
           getFailures -= 1;

@@ -11661,8 +11661,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       cutoff,
       bound,
       async (record) => {
-        if (record.kind !== 'schedule-fire') return;
-        await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
+        if (record.kind === 'schedule-fire') {
+          await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
+          return;
+        }
+        // A task the Bureau no longer holds a run for (one a restart left, or one that never had
+        // a run) leaves the store without a `run.removed` of its own, so announce its removal here:
+        // the state kept for it elsewhere (an A2A task record, a push configuration) ends with it.
+        emitter.dispatch(new RunRemovedEvent(record.taskId));
       },
       // COR-1631: a task's surfaces stay readable until its retention ends, and end with it. They
       // go first: a failure keeps the task's record, so the next pass finds the task and retries.
@@ -13639,6 +13645,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         `"payload" is invalid: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    // COR-1661: `expiresAt` bounds how long the input may wait, so it must be an instant.
+    if (
+      callerRequest.expiresAt !== undefined &&
+      Number.isNaN(Date.parse(callerRequest.expiresAt))
+    ) {
+      toBadRequest('"expiresAt" must be an ISO 8601 timestamp');
+    }
     // The caller owns its payload and may edit it as soon as this call yields, but the
     // admission awaits the session, its liveness, and the mailbox before it persists.
     // Copy what was validated, now, and admit the copy.
@@ -13656,6 +13669,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     // COR-1481: input to a context being deleted reads as input to one that is gone.
     if (inFlightSessionDeletions.has(sessionId)) return { outcome: 'not-found' };
+    // COR-1661: input checked against an earlier incarnation of the context is input to a session
+    // that is not there, whatever now answers to its id.
+    if (request.incarnation !== undefined && request.incarnation !== session.incarnation) {
+      return { outcome: 'not-found' };
+    }
     // COR-301/COR-1569: the same live-run-aware checks steering makes,
     // across every process sharing this backend. A request carries no run
     // id, so authorization targets the session's sole live run.
@@ -18620,6 +18638,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const bureau: Bureau<D> = {
     id: bureauId,
     hasExplicitId: options.id !== undefined,
+    runtimeServices,
     taskRetention: taskRetentionOf(options),
     hasDurableEngine: runCreationLedger !== undefined,
     eventFeed,

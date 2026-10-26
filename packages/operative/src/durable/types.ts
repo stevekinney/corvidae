@@ -323,8 +323,15 @@ export interface SessionInputAdmissionRequest<
   readonly principal: string;
   readonly deliveryMode: SessionInputDeliveryMode;
   readonly payload: TPayload;
-  readonly expiresAt?: string | undefined; // ISO
+  /** ISO. The input is not delivered at a step boundary after this instant (COR-1661). */
+  readonly expiresAt?: string | undefined;
   readonly supersedes?: string | undefined;
+  /**
+   * The incarnation of the session the caller checked the input against. A session deleted and
+   * created again under the same id is a new incarnation, and input naming an earlier one is
+   * answered `not-found`, never admitted to the new one. Omitted, the session as it is now.
+   */
+  readonly incarnation?: string | undefined;
 }
 
 // Illustrative: submitSessionInput(sessionId: string, request: SessionInputAdmissionRequest): Promise<SessionInputAdmissionOutcome>

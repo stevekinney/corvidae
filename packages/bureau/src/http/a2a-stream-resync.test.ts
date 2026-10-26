@@ -100,3 +100,47 @@ describe('SubscribeToTask across a lost run.completed append', () => {
     expect(kinds.slice(1)).toEqual(['artifact:repaired answer', 'status:TASK_STATE_COMPLETED']);
   });
 });
+
+describe('SubscribeToTask when neither the run.completed append nor its repair can land', () => {
+  it('closes with a live terminal update read from the registry, rather than waiting for a history that never comes', async () => {
+    const { storage, faults } = await faultyStorage(cleanups);
+    faults.failCompletions = 1;
+    faults.failResyncs = 1_000;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const generate: GenerateFunction = async () => {
+      await gate;
+      return { content: 'live answer', toolCalls: [] };
+    };
+    const opened: OpenedBureau = await openBureau({
+      agents: { asker: createAgent({ name: 'asker', generate }) },
+      publish: ['asker'],
+      storage,
+      handlerOptions: { publicUrl: 'http://localhost' },
+    });
+    cleanups.push(() => opened.dispose());
+    const sent = await opened.handler(
+      rpc('SendMessage', {
+        message: { messageId: 'm-live', role: 'ROLE_USER', parts: [{ text: 'go' }] },
+        configuration: { returnImmediately: true },
+      }),
+    );
+    const sentBody: Json = await sent.json();
+    const taskId = sentBody.result.task.id;
+    await waitForCondition(() => opened.bureau.getRun(taskId)?.status === 'running', 'running');
+
+    const streaming = drain(await opened.handler(rpc('SubscribeToTask', { id: taskId })));
+    release();
+    const kinds = await Promise.race([
+      streaming,
+      new Promise<string[]>((_resolve, reject) =>
+        setTimeout(() => reject(new Error('the stream never closed')), 8_000),
+      ),
+    ]);
+
+    expect(kinds[0]).toMatch(/^task:/);
+    expect(kinds.slice(1)).toEqual(['artifact:live answer', 'status:TASK_STATE_COMPLETED']);
+  });
+});

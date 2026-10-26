@@ -445,6 +445,20 @@ async function commitSessionInputIdentity(
   );
 }
 
+/**
+ * The longest `commandTimeoutMs` the mailbox accepts, a year (Weft's mailbox validation does not
+ * export it). A test admits an input a year and more out, so a change on either side shows.
+ */
+const MAILBOX_MAXIMUM_COMMAND_TIMEOUT_MS = 31_536_000_000;
+
+/**
+ * The message a command is refused with at delivery when the `expiresAt` it persisted has passed.
+ * The mailbox's own deadline is set from the clock at admission and so can trail `expiresAt` by
+ * however long the admission took, so delivery checks the persisted instant itself, and the receipt
+ * reads a command refused with this message as `expired`.
+ */
+export const SESSION_INPUT_EXPIRED_MESSAGE = 'the input expired before it was delivered';
+
 /** Reason recorded on a command cancelled because its identity was taken over by another session. */
 export const SESSION_INPUT_IDENTITY_TAKEN_REASON =
   'the same input id was admitted to another session while this admission was in flight';
@@ -502,6 +516,7 @@ function buildReceipt(
   receipt: ApplicationCommandReceipt,
   deliveryMode: SessionInputDeliveryMode,
   promotion: SessionInputPromotion | undefined,
+  nowMs?: number,
 ): SessionInputReceipt {
   if (receipt.idempotencyKey === undefined) {
     // Every admission through this module always supplies `idempotencyKey`
@@ -517,7 +532,7 @@ function buildReceipt(
     deliveryMode,
     admissionSequence: receipt.sequence,
     revision: 1,
-    state: receiptState(receipt, deliveryMode, promotion),
+    state: receiptState(receipt, deliveryMode, promotion, nowMs),
     admittedAt: new Date(receipt.acceptedAt).toISOString(),
   };
 }
@@ -532,15 +547,25 @@ function receiptState(
   receipt: ApplicationCommandReceipt,
   deliveryMode: SessionInputDeliveryMode,
   promotion: SessionInputPromotion | undefined,
+  nowMs: number | undefined,
 ): SessionInputState {
   if (promotion !== undefined || receipt.state === 'applied') return 'promoted';
+  // The mailbox dead-letters a command past its deadline when it next tries to lease it, so a
+  // command still open at `nowMs` after its deadline is reported as what it will be: expired.
+  if (
+    nowMs !== undefined &&
+    OPEN_STATES.has(receipt.state) &&
+    nowMs >= receipt.absoluteDeadlineAt
+  ) {
+    return 'expired';
+  }
   switch (receipt.state) {
     case 'dead-lettered':
       return receipt.failure?.reason === 'deadline-exceeded' ? 'expired' : 'failed';
     case 'cancelled':
       return 'canceled';
     case 'rejected':
-      return 'failed';
+      return receipt.failure?.message === SESSION_INPUT_EXPIRED_MESSAGE ? 'expired' : 'failed';
     default:
       return deliveryMode === 'steer' ? 'accepted' : 'queued';
   }
@@ -666,6 +691,10 @@ export async function admitSessionInput(
     return readSessionInputPromotion(kv, sessionId, commandId);
   }
 
+  // Only an input that asked for an expiry is reported `expired` ahead of the mailbox's own
+  // dead-lettering: the receipt is read against the clock the deadline was set on.
+  const expiryClock = payload.expiresAt === undefined ? undefined : attempt.nowMs;
+
   const claim = await resolveSessionInputIdentity(attempt);
 
   if (claim.kind === 'conflict') {
@@ -710,6 +739,19 @@ export async function admitSessionInput(
     kind: encodeSessionInputKind(deliveryMode),
     payload: { form: 'inline', value: payload as unknown as Record<string, unknown> },
     idempotencyKey: id,
+    // An input that is still waiting when its `expiresAt` passes is not delivered: the mailbox's
+    // own absolute deadline does it, and dead-letters the command as `deadline-exceeded`, which
+    // the receipt reads as `expired`. An instant that has passed already admits a command that is
+    // dead at once (the mailbox needs a positive timeout), and one further out than the mailbox
+    // accepts (a year) is held to that cap rather than refused: any instant is a valid `expiresAt`.
+    ...(payload.expiresAt === undefined
+      ? {}
+      : {
+          commandTimeoutMs: Math.min(
+            MAILBOX_MAXIMUM_COMMAND_TIMEOUT_MS,
+            Math.max(1, Date.parse(payload.expiresAt) - attempt.nowMs),
+          ),
+        }),
   });
 
   // With a record in this session's mailbox, the identity commits to
@@ -758,6 +800,7 @@ export async function admitSessionInput(
           admission.receipt,
           decodeSessionInputKind(admission.receipt.kind),
           await currentPromotion(admission.receipt.commandId),
+          expiryClock,
         ),
       };
     case 'conflict': {
@@ -776,6 +819,7 @@ export async function admitSessionInput(
             admission.receipt,
             decodeSessionInputKind(admission.receipt.kind),
             await currentPromotion(admission.receipt.commandId),
+            expiryClock,
           ),
         },
       };
