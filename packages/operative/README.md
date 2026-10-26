@@ -1576,6 +1576,40 @@ const withFallback = createFallbackGenerate({
 });
 ```
 
+### Decisions
+
+A `DecisionModel` answers one question and returns a typed `Decision`. A `DecisionRequest` has one of four kinds: `boolean` (the value is a `boolean`), `choice` (the value is the chosen option's `key`), `scale` (the value is the index of the chosen level, lowest first), and `structured` (the value is an object validated against a Zod or Standard Schema). `context` is text. A decision carries the `provider` and `model` that answered, the summed `usage`, and a `probability` when the model reports one; thresholds belong to the caller.
+
+`llmDecisionModel({ generate, descriptor })` serves all four kinds on any `GenerateFunction` by asking for structured output. It validates the answer, retries once with the bad answer and the validation error appended, and throws `DecisionSchemaError` (with `usage` summed across both attempts) after the second failure. An error thrown by `generate` is a provider error: it is not retried and not wrapped. A `structured` request with a bare Standard Schema (one that cannot describe itself as JSON Schema) asks the model for plain JSON, and the retry does the rest.
+
+`typesafeJev({ apiKey, fetch? })` serves `boolean`, `choice`, and `scale` through TypeSafe's Jev model and reports Jev's probability for the answer. It needs the optional peers `@tanstack/ai` and `@tanstack/ai-typesafe`, imports them when called, and returns a promise that rejects with `DecisionProviderUnavailableError` when either is missing.
+
+```ts
+import { llmDecisionModel, typesafeJev } from '@lostgradient/operative';
+import type { DecisionModel, GenerateFunction } from '@lostgradient/operative';
+
+declare const generate: GenerateFunction;
+declare const apiKey: string;
+
+const fallback: DecisionModel = llmDecisionModel({
+  generate,
+  descriptor: { provider: 'anthropic', model: 'claude-haiku-5-5' },
+});
+const jev: DecisionModel = await typesafeJev({ apiKey });
+
+// Route by kind: Jev for the questions it serves, the language model for the rest.
+const model = (kind: 'boolean' | 'choice' | 'scale' | 'structured') =>
+  jev.kinds.has(kind) ? jev : fallback;
+
+const refund = await model('boolean').decide({
+  kind: 'boolean',
+  question: 'Is the customer asking for a refund?',
+  context: 'I was charged twice this month.',
+});
+refund.value; // true or false
+refund.probability; // Jev's probability for that value; undefined from a plain language model
+```
+
 ### Multi-Agent Patterns
 
 For the whole lifecycle across packages—addressing, observation, signals, budgets, cancellation, recovery, and what is unsupported—read [Multi-agent lifecycle and communication](../../documentation/multi-agent-lifecycle.md). Communication is supervisor-mediated only (COR-807): a parent can address its own children, and nothing here lets a child address a sibling, an unrelated run, or a global mailbox. To pass information between siblings, the parent observes one and signals the other.
