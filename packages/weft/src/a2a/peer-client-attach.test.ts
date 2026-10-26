@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { A2APeerError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
 import { createA2APeerClient } from './peer-client.ts';
@@ -115,10 +116,12 @@ describe('a send with a messageId', () => {
     const peer = createScriptedPeer();
     const client = clientFor(peer);
 
-    await expect(client.send({ text: 'hi', messageId: '' })).rejects.toThrow(TypeError);
-    await expect(client.send({ text: 'hi', messageId: 7 as unknown as string })).rejects.toThrow(
+    expect(await throwingRejectionOf(client.send({ text: 'hi', messageId: '' }))).toThrow(
       TypeError,
     );
+    expect(
+      await throwingRejectionOf(client.send({ text: 'hi', messageId: 7 as unknown as string })),
+    ).toThrow(TypeError);
     expect(peer.methods().filter((method) => method.startsWith('Send'))).toEqual([]);
   });
 });
@@ -213,16 +216,17 @@ describe('attach', () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(
+    const reason = await rejectionOf(
       clientFor(peer).attach({ taskId: 'any', signal: controller.signal }),
-    ).rejects.toBeDefined();
+    );
+    expect(reason).toBeDefined();
     expect(peer.methods()).not.toContain('GetTask');
   });
 
   test('is refused without a task identifier', async () => {
     const peer = createScriptedPeer();
 
-    await expect(clientFor(peer).attach({ taskId: '' })).rejects.toThrow(TypeError);
+    expect(await throwingRejectionOf(clientFor(peer).attach({ taskId: '' }))).toThrow(TypeError);
     expect(peer.methods()).not.toContain('GetTask');
   });
 

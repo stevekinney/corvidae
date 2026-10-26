@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { z } from 'zod';
 
+import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { PEER_CALL_KEY_PREFIX } from './child-topology-store';
@@ -285,9 +286,9 @@ describe('the Bureau peer call journal', () => {
     const key = { parentRunId: run.id, operationKey: 'op-1' };
     await bureau.peerCalls.write(key, entry);
 
-    await expect(bureau.peerCalls.write(key, { ...entry, taskId: 'task-2' })).rejects.toMatchObject(
-      { code: 'CONFLICT' },
-    );
+    expect(
+      await rejectionOf(bureau.peerCalls.write(key, { ...entry, taskId: 'task-2' })),
+    ).toMatchObject({ code: 'CONFLICT' });
     expect(await bureau.peerCalls.read(key)).toEqual(entry);
   });
 
@@ -306,22 +307,26 @@ describe('the Bureau peer call journal', () => {
   it('refuses a record that names no task or no operation', async () => {
     const { bureau, run } = await bureauWithRun();
 
-    await expect(
+    const noTask = await rejectionOf(
       bureau.peerCalls.write(
         { parentRunId: run.id, operationKey: 'op-1' },
         { ...entry, taskId: '' },
       ),
-    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    await expect(
+    );
+    const noOperation = await rejectionOf(
       bureau.peerCalls.write({ parentRunId: run.id, operationKey: '' }, entry),
-    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    );
+    expect(noTask).toMatchObject({ code: 'BAD_REQUEST' });
+    expect(noOperation).toMatchObject({ code: 'BAD_REQUEST' });
   });
 
   it('refuses a write for a run it never knew', async () => {
     const { bureau } = await bureauWithRun();
     const key = { parentRunId: 'run-that-never-was', operationKey: 'op-1' };
 
-    await expect(bureau.peerCalls.write(key, entry)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(await rejectionOf(bureau.peerCalls.write(key, entry))).toMatchObject({
+      code: 'NOT_FOUND',
+    });
     expect(await bureau.peerCalls.read(key)).toBeUndefined();
   });
 });
