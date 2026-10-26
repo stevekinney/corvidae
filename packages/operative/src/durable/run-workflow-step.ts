@@ -207,6 +207,7 @@ export function runStepMemo(
           content: pushed.content,
           parts: pushed.parts,
           ...(pushed.messageId === undefined ? {} : { messageId: pushed.messageId }),
+          ...(pushed.contextEpochId === undefined ? {} : { contextEpochId: pushed.contextEpochId }),
           toolCalls: pushed.toolCalls,
           results: pushed.results,
           ...(pushed.usage ? { usage: pushed.usage } : {}),

@@ -605,6 +605,22 @@ describe('createCheckpointStore', () => {
       expect(await store.loadSteps('run-1', { strict: true })).toEqual([record]);
     });
 
+    it('round-trips the context epoch a step ran under', async () => {
+      const store = createCheckpointStore(createStore());
+      const record: StepRecord = {
+        schemaVersion: 2,
+        step: 0,
+        content: 'Done',
+        parts: [{ type: 'text', text: 'Done' }],
+        toolCalls: [],
+        results: [],
+        contextEpochId: 'epoch-1',
+        final: true,
+      };
+      await store.saveStep('run-1', record);
+      expect(await store.loadSteps('run-1', { strict: true })).toEqual([record]);
+    });
+
     it('round-trips a cursor with the final row parts and the replacement flag', async () => {
       const store = createCheckpointStore(createStore());
       const replaced: RunCursor = {
