@@ -297,14 +297,20 @@ describe('a non-durable Bureau offers neither tool', () => {
   });
 });
 
-describe('humanInput: true and wakeup: true are refused', () => {
-  it.each(['humanInput', 'wakeup'] as const)('refuses %s: true as BAD_REQUEST', async (name) => {
+describe('humanInput and wakeup accept only their documented forms', () => {
+  it.each([
+    ['humanInput', true],
+    ['wakeup', true],
+    ['wakeup', 'yes'],
+    ['wakeup', null],
+    ['humanInput', 'yes'],
+  ] as const)('refuses %s: %p as BAD_REQUEST', async (name, value) => {
     const error = await rejectionOf(
       createBureau<AgentDefinitions>({
         agents: { default: recordingAgent([]) },
         storage: { type: 'memory' },
         durableExecution: true,
-        [name]: true,
+        [name]: value,
       } as unknown as BureauOptions<AgentDefinitions>),
     );
     expect(error).toBeInstanceOf(BureauError);

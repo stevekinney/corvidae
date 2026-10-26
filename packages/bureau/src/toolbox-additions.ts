@@ -33,7 +33,9 @@ export function toolPolicyOf(toolbox: AnyToolbox): (() => ToolPolicy | undefined
  * `withAddedTools` adds tools without rebuilding: it answers for the additions itself and hands
  * everything else, and every call to a tool `base` owns, to `base` untouched, so each wrapper the
  * base carries stays in force. `additions` is a plain toolbox that holds only the added tools. A
- * name both hold is `base`'s, so a host tool never loses its place to a Bureau tool.
+ * name both hold is `base`'s, so a host tool never loses its place to a Bureau tool. The listing
+ * and conversion members (`tools`, `getTool`, `getAvailable`, `toJSON`, the provider formats) cover
+ * both; `inspect()` is a debugging summary of `base` alone.
  */
 export function withAddedTools(base: AnyToolbox, additions: AnyToolbox): AnyToolbox {
   const policy = toolPolicyOf(base);
@@ -57,9 +59,11 @@ function composeAddedTools(base: AnyToolbox, additions: AnyToolbox): AnyToolbox 
 
   /** A batch with calls for both: one batch for `base`, one call per addition, in call order. */
   const executeMixed = async (
-    input: ToolCallInput[],
+    batch: ToolCallInput[],
     options: Parameters<AnyToolbox['execute']>[1],
   ): Promise<ToolExecutionResult[]> => {
+    // The caller owns the array and may reuse it once this yields, so read a copy after the await.
+    const input = [...batch];
     const baseResults = await base.execute(
       input.filter((call) => !isAdded(call)),
       options,

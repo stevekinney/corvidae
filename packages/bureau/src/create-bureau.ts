@@ -1713,11 +1713,11 @@ function validateRetentionWindowOption(
  * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
  */
 function rejectOptInToolOption(name: 'humanInput' | 'wakeup', value: unknown): void {
-  if (value === true) {
-    toBadRequest(
-      `"options.${name}" is on by default for a durable Bureau, so \`true\` is not accepted; omit it, or pass \`false\` to turn it off`,
-    );
-  }
+  if (value === undefined || value === false) return;
+  if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
+  toBadRequest(
+    `"options.${name}" is on by default for a durable Bureau, so ${value === true ? '`true`' : 'that value'} is not accepted; omit it, or pass \`false\` to turn it off`,
+  );
 }
 
 /** COR-1477 — {@link BureauOptions.eventRetention}'s default window: 7 days. */
