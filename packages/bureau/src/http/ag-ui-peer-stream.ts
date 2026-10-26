@@ -389,7 +389,7 @@ async function tail(
     };
     if (settled) fromStatus(durable);
     else {
-      // Under `durableBackgroundTasks: 'manual'` the wait is refused, and the history's terminal
+      // Under `maintenance: 'manual'` the wait is refused, and the history's terminal
       // and the stream's deadline are what end the stream.
       bureau.waitForDurableRun(nativeRunId).then(fromStatus, () => undefined);
     }

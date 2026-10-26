@@ -58,7 +58,7 @@ async function finishReason(
       }),
     },
     storage: { type: 'memory' },
-    ...(dispatch === 'durable' ? { durableExecution: true } : {}),
+    ...(dispatch === 'durable' ? { durable: true } : {}),
   });
   try {
     const result = await bureau.run('worker', input).result();

@@ -77,7 +77,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
     const bureau = await createBureau({
       agents: { echo: echoAgent() },
       storage: { type: 'sqlite', path: nextDatabasePath() },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = bureau.run('echo', 'hi', { principal: 'alice' });
@@ -146,7 +146,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
           ...(branch.durable
             ? {
                 storage: { type: 'sqlite', path: nextDatabasePath() } as const,
-                durableExecution: true,
+                durable: true,
               }
             : {}),
         });
@@ -195,7 +195,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
           ...(branch.durable
             ? {
                 storage: { type: 'sqlite', path: nextDatabasePath() } as const,
-                durableExecution: true,
+                durable: true,
               }
             : {}),
         });
@@ -268,7 +268,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
         agents: { echo: gated.agent },
         store,
         storage: { type: 'sqlite', path: nextDatabasePath() },
-        durableExecution: true,
+        durable: true,
       });
       try {
         const run = bureau.run('echo', 'hi', { principal: 'alice' });
@@ -325,7 +325,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
     const bureau = await createBureau({
       agents: { echo: echoAgent() },
       storage: { type: 'sqlite', path: nextDatabasePath() },
-      durableExecution: true,
+      durable: true,
       onlineEvals: {
         judges: [
           {

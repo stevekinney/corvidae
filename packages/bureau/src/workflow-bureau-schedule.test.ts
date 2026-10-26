@@ -203,7 +203,7 @@ describe('the engine’s scheduler', () => {
       const bureau = await createBureau({
         agents: {},
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       cleanups.push(() => bureau.dispose());
       expect(recorder.events).toEqual(['scheduler-start']);

@@ -135,7 +135,7 @@ async function open(
       default: createAgent({ generate: finishes, toolbox: createToolbox([]) }),
     },
     storage,
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
     ...(diagnostics === undefined
       ? {}

@@ -81,7 +81,7 @@ type Store = Awaited<ReturnType<typeof createStore>>;
 
 async function openBureau(
   store: Store,
-  agents: Parameters<typeof createBureau>[0]['agents'],
+  agents: NonNullable<Parameters<typeof createBureau>[0]['agents']>,
   extra: Partial<Parameters<typeof createBureau>[0]> = {},
 ): Promise<Bureau> {
   const bureau = await createBureau({
@@ -89,7 +89,7 @@ async function openBureau(
     runtime: store.runtime,
     assets: { storage: store.fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
     storage: store.storage,
-    durableExecution: true,
+    durable: true,
     // A second Bureau may take over the run the first one never released.
     durableOwnership: { ownership: 'none' },
     ...extra,

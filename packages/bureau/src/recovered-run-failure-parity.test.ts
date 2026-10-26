@@ -162,7 +162,7 @@ async function withFreshRun<T>(
       }),
     },
     storage: { type: 'sqlite', path: databasePath },
-    durableExecution: true,
+    durable: true,
     // The AG-UI handler the stream test mounts serves the asset routes, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },
   });
@@ -206,7 +206,7 @@ async function withRecoveredRun<T>(
       },
       id: BUREAU_ID,
       storage: crashed.storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
@@ -227,7 +227,7 @@ async function withRecoveredRun<T>(
       },
       id: BUREAU_ID,
       storage: replayed.storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       // The AG-UI handler the stream test mounts serves the asset routes, so it needs the service.
       assets: { storage: createMemoryAssetStorage() },

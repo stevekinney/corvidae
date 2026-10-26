@@ -85,7 +85,7 @@ async function start(
     agents: { ...agents },
     memory,
     storage: { type: 'memory' },
-    durableExecution: false,
+    durable: false,
   });
   bureaus.push(bureau);
   return bureau;

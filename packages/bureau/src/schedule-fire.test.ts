@@ -93,7 +93,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -143,7 +143,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -197,7 +197,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -240,7 +240,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       try {

@@ -56,7 +56,7 @@ describe('a peer answers a fire’s human wait', () => {
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         durableOwnership: OWNERSHIP,
         // A holder hears a peer's signal through its own background claim renewal.
-        durableBackgroundTasks: 'automatic' as const,
+        maintenance: 'automatic' as const,
       };
       const holder = await harness.open({
         ...options,
@@ -95,7 +95,7 @@ describe('a peer closing a fire’s last review ends the stream another instance
     generate: chargesOnce,
     stopWhen: stopAtApproval,
     durableOwnership: OWNERSHIP,
-    durableBackgroundTasks: 'automatic' as const,
+    maintenance: 'automatic' as const,
   };
 
   /** A fire that settled holding a pending approval, and a peer that restored it from the session. */

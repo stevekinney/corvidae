@@ -114,7 +114,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
             },
         },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
         // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
         wakeup: false,
         durableOwnership: {
@@ -209,11 +209,11 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
         // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
         wakeup: false,
         durableOwnership: { ownership: 'none' },
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
         runtime: yearOn,
       });
       const before = await Promise.all([

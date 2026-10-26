@@ -81,7 +81,7 @@ async function openBureau(
   const bureau = await createBureau({
     agents: { echo },
     storage: environment.persistence,
-    durableExecution: false,
+    durable: false,
     runtime: environment.runtime,
     onDiagnostic: (diagnostic) => environment.diagnostics.push(diagnostic),
     ...(options.assets === false

@@ -53,9 +53,9 @@ describe.each([
       ...(answer === undefined ? {} : { onMaximumSteps: answer }),
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
+      maintenance: 'manual',
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });

@@ -147,7 +147,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
       },
       workflowSource: workflowFileDirectory(workflowsPath),
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic: () => undefined,
     });
@@ -169,7 +169,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });

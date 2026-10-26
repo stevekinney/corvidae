@@ -71,7 +71,7 @@ async function openDurable(
 ): Promise<FileBureauHarness> {
   return open({
     ...options,
-    overrides: { storage, durableExecution: true, ...options.overrides },
+    overrides: { storage, durable: true, ...options.overrides },
   });
 }
 
@@ -140,7 +140,7 @@ describe('a run resumed after a restart', () => {
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durableOwnership: { ownership: 'none' as const },
-      durableBackgroundTasks: 'manual' as const,
+      maintenance: 'manual' as const,
     };
 
     const firstStorage = await resolveStorage({ type: 'sqlite', path: storagePath });

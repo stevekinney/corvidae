@@ -48,7 +48,7 @@ async function open(fixture: ReturnType<typeof newFixture>): Promise<Bureau<Agen
       default: createAgent({ generate, toolbox: createToolbox([]) }),
     },
     storage: fixture.configuration,
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   bureaus.push(bureau);

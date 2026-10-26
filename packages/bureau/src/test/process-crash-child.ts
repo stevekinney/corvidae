@@ -125,7 +125,7 @@ async function parkAfterStepZero(): Promise<void> {
       }),
     },
     storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
-    durableExecution: true,
+    durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,
@@ -384,7 +384,7 @@ async function relaunchRecover(): Promise<void> {
       }),
     },
     storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
-    durableExecution: true,
+    durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

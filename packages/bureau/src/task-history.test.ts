@@ -34,7 +34,7 @@ describe('a task’s own message history', () => {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const session = await bureau.createRun({
@@ -72,7 +72,7 @@ describe('a task’s own message history', () => {
           default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
         storage: fixture.configuration,
-        durableExecution: true,
+        durable: true,
       });
     try {
       const first = await open();
@@ -113,7 +113,7 @@ describe('a task’s own message history', () => {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -143,7 +143,7 @@ describe('a task’s own message history', () => {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
@@ -182,7 +182,7 @@ describe('a task’s own message history', () => {
           default: createAgent({ generate: parks, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
         storage: fixture.configuration,
-        durableExecution: true,
+        durable: true,
       });
     try {
       const first = await open();
@@ -239,7 +239,7 @@ describe('a task’s own message history', () => {
           default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
         storage,
-        durableExecution: true,
+        durable: true,
       });
     try {
       const first = await open(slowSettlements);
@@ -284,7 +284,7 @@ describe('a task’s own message history', () => {
           }),
         },
         storage: fixture.configuration,
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         ...(collect
           ? { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic.message) }

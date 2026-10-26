@@ -12,7 +12,7 @@
  *   run to leave `running` before shutting down.
  * - `read` only reads.
  *
- * Bureau composes its durable engine with `durableBackgroundTasks: 'manual'`
+ * Bureau composes its durable engine with `maintenance: 'manual'`
  * and `ownership: 'none'`. Bureau does not forward a `getNow` to that engine,
  * so its timers are scheduled on the wall clock; the driver's virtual clock
  * for these invocations therefore starts at the wall time, and only
@@ -69,8 +69,8 @@ const bureau = await createBureau<AgentDefinitions>({
     }),
   },
   storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-  durableExecution: true,
-  durableBackgroundTasks: 'manual',
+  durable: true,
+  maintenance: 'manual',
   durableOwnership: { ownership: 'none' },
   onDiagnostic: (diagnostic: BureauDiagnostic) => {
     diagnostics.push(`${diagnostic.level} ${diagnostic.scope}: ${diagnostic.message}`);

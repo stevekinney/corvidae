@@ -38,7 +38,7 @@
  *   (`emittedAtMs` is the settlement's own time), so a stream open on another process ends at the
  *   next boot of any Bureau on the store. This also covers a fire settled before this event
  *   existed, but only inside the window.
- * - A fire settled before the retention cutoff (`now` less `BureauOptions.eventRetention`) is left
+ * - A fire settled before the retention cutoff (`now` less `BureauRetentionOptions.events`) is left
  *   alone. Retention removes an event together with its deduplication marker, so such a fire has
  *   neither by design, and announcing it again would record one fire's end once per retention
  *   cycle. With events kept for ever, nothing is retired and there is no bound.

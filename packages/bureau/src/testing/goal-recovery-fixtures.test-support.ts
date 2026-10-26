@@ -64,9 +64,9 @@ export async function bootOver<D extends AgentDefinitions>(options: BootOptions<
       : { resolveFreshAttemptSource: options.resolveFreshAttemptSource }),
     ...(options.checkpointRetention === undefined
       ? {}
-      : { checkpointRetention: options.checkpointRetention }),
+      : { retention: { checkpoints: options.checkpointRetention } }),
     storage: { type: 'sqlite', path: options.path },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
     onDiagnostic: diagnostics.onDiagnostic,
   });
@@ -302,7 +302,7 @@ export async function seedFinishedRun(path: string, runId: string, content = 'do
     generate,
     toolbox,
     storage: { type: 'sqlite', path },
-    durableExecution: true,
+    durable: true,
   });
   const { engine, checkpointStore } = composition.durable!;
   try {

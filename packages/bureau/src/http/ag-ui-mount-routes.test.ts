@@ -574,7 +574,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         storage: 'sqlite',
         bureauRuntime: later,
         // Bureau does no expiry work of its own, so only the mount's rule can free the thread.
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
       },
       async (harness) => {
         const peer = await harness.peer([say('B done.')], { runtime: later });

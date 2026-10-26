@@ -14,7 +14,7 @@ async function openBureau() {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     storage: { type: 'memory' },
-    durableExecution: false,
+    durable: false,
   });
 }
 

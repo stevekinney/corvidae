@@ -270,6 +270,127 @@ export type RetentionWindowOption = 'forever' | { readonly olderThan: number };
 export type BureauHumanInputOption =
   false | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
 
+/**
+ * COR-1701 — the retention windows {@link BureauOptions.retention} groups. Each field is optional and
+ * keeps the meaning and default it had as a flat option.
+ */
+export interface BureauRetentionOptions {
+  /**
+   * AB-388: retention policy for the durable audit trail
+   * ({@link Bureau.auditTrail}). Defaults to `'forever'` — unbounded,
+   * exactly today's behavior — so a long-lived deployment must opt in
+   * before any postmortem evidence is ever removed.
+   *
+   * `{ olderThan: milliseconds }` prunes any audit record older than that
+   * many milliseconds by the runtime clock, but never a record newer than
+   * the Weft fleet feed's own retention floor — audit evidence always
+   * outlives the durable events it describes, even when `olderThan` would
+   * otherwise have allowed pruning it sooner. Pruning runs inside the
+   * existing durable maintenance pass: {@link Bureau.runDurableMaintenance}
+   * for a `'manual'` host's own alarm/Cron trigger, and — under the
+   * default `'automatic'` profile — the same background interval that
+   * already prunes stale run ownership (AB-374). It is never driven on a
+   * separate schedule of its own.
+   *
+   * Each pass that actually prunes something writes exactly one
+   * `audit.pruned` record into the trail itself, naming the count and the
+   * effective cutoff, and persists the highest pruned sequence so a
+   * restart's boot-time sequence scan
+   * ({@link computeInitialAuditSequence}) never reissues a value a pruned
+   * record already used.
+   */
+  audit?: AuditRetentionOption;
+  /**
+   * COR-625: checkpoint-retention policy applied by the terminal-run cleanup
+   * step. Defaults to `'keep-all'` — unbounded, exactly today's behavior —
+   * so a long-lived deployment must opt in before any checkpoint history is
+   * ever pruned.
+   *
+   * `{ keepLast }` must be a positive integer, and `timeoutMilliseconds`, when
+   * supplied, a finite non-negative number; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   *
+   * On every terminal transition of a durable run — completion, error, abort,
+   * or {@link Bureau.cancelDurableRun} — bureau runs exactly ONE cleanup step
+   * for that run, however many of those triggers fire. The step re-reads the
+   * run's durable record first and prunes only once the engine reports a
+   * terminal status, so a checkpoint can never be pruned ahead of the
+   * transition it belongs to.
+   *
+   * The step's own acknowledgement is written to the audit trail as one
+   * `run.cleanup-settled` record. It also folds into the run's `closed()`,
+   * but only ever DOWNGRADES it: a step that prunes cleanly (or has nothing
+   * to prune) leaves a `completed` run `completed`, while a step that fails
+   * or cannot be resolved surfaces in its place. Has effect only when a
+   * durable engine is composed.
+   */
+  checkpoints?: CheckpointRetentionOption;
+  /**
+   * COR-424 — how long a run-creation request id stays bound to its run after
+   * the run settles, in milliseconds: a positive integer, default 86400000
+   * (24 hours, the same as Weft's mailbox `terminalRetentionMs`). Measured on
+   * the runtime clock from the run's terminal action; a run that settled
+   * before a restart and was not reattached is measured from when the ledger
+   * first observes it settled. A run still in progress holds its binding.
+   * Once the window has passed, {@link Bureau.locateRunCreationReceipt}
+   * reports `expired`, the same request id creates a new run, and durable
+   * maintenance deletes the binding. `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')` for any other value.
+   */
+  receipts?: BureauReceiptRetentionOption | undefined;
+  /**
+   * COR-1477 — how long the durable event history keeps an event, measured
+   * from when it was emitted on the runtime clock. Default
+   * `{ olderThan: 604800000 }` (7 days); `'forever'` keeps every event. Each
+   * durable maintenance pass advances the fleet feed's retention floor past
+   * the events older than the window (`FleetEventFeed.retain()`), so the
+   * history is bounded. A reader that resumes from a cursor below the new
+   * floor receives one gap event instead of a silent skip, and an open
+   * subscription the floor overtakes receives it too. The audit trail's own
+   * {@link BureauRetentionOptions.audit} never prunes a record the retained
+   * history still describes, so a shorter event window lets audit pruning
+   * proceed no further than its own setting allows. Has effect only where a
+   * persistent durable event history is composed. `olderThan` must be a
+   * finite, non-negative number; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   */
+  events?: RetentionWindowOption;
+  /**
+   * COR-1477 — how long a terminal task (a run that completed, errored, or was
+   * aborted) is kept, measured on the runtime clock from its closing
+   * `run.completed` or `run.aborted` action (`run.error` is followed by
+   * `run.completed`, so it does not start the window). Default
+   * `{ olderThan: 2592000000 }` (30 days); `'forever'` keeps every task.
+   * Durable maintenance removes a terminal task older than the window through
+   * the run store, so Bureau's existing `run.removed` event fires for it and
+   * everything keyed on the task releases its own state; deleting a task is
+   * also what eventually releases a withdrawn agent's tombstone mount. A
+   * running task, and a terminal one not yet older than the window, is never
+   * removed. Only tasks in this process's run store are candidates, so a
+   * terminal run from before a restart is not removed. The pass runs from
+   * {@link Bureau.runDurableMaintenance} and from the automatic maintenance timer,
+   * which starts only for a durable bureau or one with KV-backed audit
+   * retention; an ephemeral bureau with neither keeps its terminal tasks until
+   * something calls `runDurableMaintenance`. A task is also kept for as long as its run-creation binding
+   * ({@link BureauRetentionOptions.receipts}) is stored, so an
+   * exact retry of the request that created it always finds its task.
+   * `olderThan` must be a finite, non-negative number; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  tasks?: RetentionWindowOption;
+}
+
+/**
+ * COR-1701 — how long a run-creation request id stays bound to its run after the run settles, as
+ * {@link BureauRetentionOptions.receipts}. Only the `{ olderThan }` form exists: a receipt is a
+ * deduplication ledger entry, and keeping it forever would pin every settled run, so `'forever'`
+ * is refused with `BureauError(..., 'BAD_REQUEST')`.
+ */
+export interface BureauReceiptRetentionOption {
+  /** Milliseconds after the run settles; a positive integer. Default `86400000` (24 hours). */
+  readonly olderThan: number;
+}
+
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
@@ -280,18 +401,20 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * so it supplies them.
    *
    * It is also the tenant of the memory every run writes (COR-1546), so a Bureau with
-   * persistent {@link BureauOptions.memory} needs a stable `id`: the generated default changes
-   * on every restart, and a restarted Bureau would then read and write a partition that holds
-   * none of what it remembered before. Nothing refuses or warns; the memory is simply not
-   * found.
+   * {@link BureauOptions.memory} over a {@link BureauOptions.storage} needs a stable `id`: the
+   * generated default changes on every restart, and a restarted Bureau would then read and write
+   * a partition that holds none of what it remembered before. COR-1701: `createBureau` refuses
+   * that combination, `memory` with `storage` and no `id`, with `BureauError(..., 'BAD_REQUEST')`.
    */
   id?: string;
   /**
    * The typed agent catalog (AB-15, AB-22) — a plain literal map of agent
    * name to `RunnableAgent`, exposed read-only as {@link Bureau.agents} and
-   * dispatched by name through {@link Bureau.run}. Required — pass `{}` for a
-   * bureau that only uses the session/durability-backed `createRun` surface
-   * and doesn't dispatch through the catalog at all. There is no
+   * dispatched by name through {@link Bureau.run}. Optional (COR-1701): omitted
+   * means `{}`, typed `Record<never, never>`, for a bureau that only uses the
+   * session/durability-backed `createRun` surface or file agents
+   * ({@link BureauOptions.agentSource}) and doesn't dispatch through the code
+   * catalog at all. There is no
    * register/unregister lifecycle: the map is fixed for the bureau's
    * lifetime, independent of and additive to `createRun` (a bureau may use
    * either surface or both). Every run and schedule fire
@@ -301,7 +424,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * which no longer exists); an entry called `bureau` is refused with
    * `BureauError` (`BAD_REQUEST`).
    */
-  agents: D;
+  agents?: D;
   /**
    * COR-1702 — where agent definitions are loaded from, watched in, and written back to. Pass
    * `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of
@@ -391,117 +514,21 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * {@link Bureau.getRun} and live event subscribers see them before resumed
    * user code advances.
    */
-  durableExecution?: boolean;
+  durable?: boolean;
   /**
    * Select how the durable engine's periodic maintenance is driven. The
    * default `'automatic'` profile uses in-process intervals. Cloudflare
    * Durable Objects and other serverless hosts should use `'manual'`, then
    * call {@link Bureau.runDurableMaintenance} from each alarm or Cron wake-up.
    */
-  durableBackgroundTasks?: 'automatic' | 'manual';
+  maintenance?: 'automatic' | 'manual';
   /**
-   * AB-388: retention policy for the durable audit trail
-   * ({@link Bureau.auditTrail}). Defaults to `'forever'` — unbounded,
-   * exactly today's behavior — so a long-lived deployment must opt in
-   * before any postmortem evidence is ever removed.
-   *
-   * `{ olderThan: milliseconds }` prunes any audit record older than that
-   * many milliseconds by the runtime clock, but never a record newer than
-   * the Weft fleet feed's own retention floor — audit evidence always
-   * outlives the durable events it describes, even when `olderThan` would
-   * otherwise have allowed pruning it sooner. Pruning runs inside the
-   * existing durable maintenance pass: {@link Bureau.runDurableMaintenance}
-   * for a `'manual'` host's own alarm/Cron trigger, and — under the
-   * default `'automatic'` profile — the same background interval that
-   * already prunes stale run ownership (AB-374). It is never driven on a
-   * separate schedule of its own.
-   *
-   * Each pass that actually prunes something writes exactly one
-   * `audit.pruned` record into the trail itself, naming the count and the
-   * effective cutoff, and persists the highest pruned sequence so a
-   * restart's boot-time sequence scan
-   * ({@link computeInitialAuditSequence}) never reissues a value a pruned
-   * record already used.
+   * COR-1701 — how long each kind of Bureau history is kept: `audit`, `checkpoints`, `events`,
+   * `tasks`, and `receipts`. See {@link BureauRetentionOptions}. Every window is read at the next
+   * maintenance pass. Omitted fields keep their defaults. Invalid values make `createBureau`
+   * throw `BureauError(..., 'BAD_REQUEST')`.
    */
-  auditRetention?: AuditRetentionOption;
-  /**
-   * COR-625: checkpoint-retention policy applied by the terminal-run cleanup
-   * step. Defaults to `'keep-all'` — unbounded, exactly today's behavior —
-   * so a long-lived deployment must opt in before any checkpoint history is
-   * ever pruned.
-   *
-   * `{ keepLast }` must be a positive integer, and `timeoutMilliseconds`, when
-   * supplied, a finite non-negative number; otherwise `createBureau` throws
-   * `BureauError(..., 'BAD_REQUEST')`.
-   *
-   * On every terminal transition of a durable run — completion, error, abort,
-   * or {@link Bureau.cancelDurableRun} — bureau runs exactly ONE cleanup step
-   * for that run, however many of those triggers fire. The step re-reads the
-   * run's durable record first and prunes only once the engine reports a
-   * terminal status, so a checkpoint can never be pruned ahead of the
-   * transition it belongs to.
-   *
-   * The step's own acknowledgement is written to the audit trail as one
-   * `run.cleanup-settled` record. It also folds into the run's `closed()`,
-   * but only ever DOWNGRADES it: a step that prunes cleanly (or has nothing
-   * to prune) leaves a `completed` run `completed`, while a step that fails
-   * or cannot be resolved surfaces in its place. Has effect only when a
-   * durable engine is composed.
-   */
-  checkpointRetention?: CheckpointRetentionOption;
-  /**
-   * COR-424 — how long a run-creation request id stays bound to its run after
-   * the run settles, in milliseconds: a positive integer, default 86400000
-   * (24 hours, the same as Weft's mailbox `terminalRetentionMs`). Measured on
-   * the runtime clock from the run's terminal action; a run that settled
-   * before a restart and was not reattached is measured from when the ledger
-   * first observes it settled. A run still in progress holds its binding.
-   * Once the window has passed, {@link Bureau.locateRunCreationReceipt}
-   * reports `expired`, the same request id creates a new run, and durable
-   * maintenance deletes the binding. `createBureau` throws
-   * `BureauError(..., 'BAD_REQUEST')` for any other value.
-   */
-  runCreationTerminalRetentionMs?: number | undefined;
-  /**
-   * COR-1477 — how long the durable event history keeps an event, measured
-   * from when it was emitted on the runtime clock. Default
-   * `{ olderThan: 604800000 }` (7 days); `'forever'` keeps every event. Each
-   * durable maintenance pass advances the fleet feed's retention floor past
-   * the events older than the window (`FleetEventFeed.retain()`), so the
-   * history is bounded. A reader that resumes from a cursor below the new
-   * floor receives one gap event instead of a silent skip, and an open
-   * subscription the floor overtakes receives it too. The audit trail's own
-   * {@link BureauOptions.auditRetention} never prunes a record the retained
-   * history still describes, so a shorter event window lets audit pruning
-   * proceed no further than its own setting allows. Has effect only where a
-   * persistent durable event history is composed. `olderThan` must be a
-   * finite, non-negative number; otherwise `createBureau` throws
-   * `BureauError(..., 'BAD_REQUEST')`.
-   */
-  eventRetention?: RetentionWindowOption;
-  /**
-   * COR-1477 — how long a terminal task (a run that completed, errored, or was
-   * aborted) is kept, measured on the runtime clock from its closing
-   * `run.completed` or `run.aborted` action (`run.error` is followed by
-   * `run.completed`, so it does not start the window). Default
-   * `{ olderThan: 2592000000 }` (30 days); `'forever'` keeps every task.
-   * Durable maintenance removes a terminal task older than the window through
-   * the run store, so Bureau's existing `run.removed` event fires for it and
-   * everything keyed on the task releases its own state; deleting a task is
-   * also what eventually releases a withdrawn agent's tombstone mount. A
-   * running task, and a terminal one not yet older than the window, is never
-   * removed. Only tasks in this process's run store are candidates, so a
-   * terminal run from before a restart is not removed. The pass runs from
-   * {@link Bureau.runDurableMaintenance} and from the automatic maintenance timer,
-   * which starts only for a durable bureau or one with KV-backed audit
-   * retention; an ephemeral bureau with neither keeps its terminal tasks until
-   * something calls `runDurableMaintenance`. A task is also kept for as long as its run-creation binding
-   * ({@link BureauOptions.runCreationTerminalRetentionMs}) is stored, so an
-   * exact retry of the request that created it always finds its task.
-   * `olderThan` must be a finite, non-negative number; otherwise
-   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
-   */
-  taskRetention?: RetentionWindowOption;
+  retention?: BureauRetentionOptions;
   /**
    * COR-41 — governed memory for the Bureau's recall and persistence hooks.
    * Recall goes through mandatory recall admission (trust minimums, detector
@@ -1124,7 +1151,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly runtimeServices: RuntimeServices;
   /**
-   * How long a settled task stays addressable: {@link BureauOptions.taskRetention}, or its
+   * How long a settled task stays addressable: {@link BureauRetentionOptions.tasks}, or its
    * 30-day default when none was given.
    */
   readonly taskRetention: RetentionWindowOption;
@@ -1163,9 +1190,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * run this bureau started.
    *
    * A feed outlives its run's completion and is reaped when the run's task
-   * expires under {@link BureauOptions.taskRetention}, so a client that
+   * expires under {@link BureauRetentionOptions.tasks}, so a client that
    * subscribes on hearing `run.completed` still gets the whole history. A
-   * host that keeps `taskRetention` at `'forever'` retains them.
+   * host that keeps `retention.tasks` at `'forever'` retains them.
    *
    * Read-only: entries are bureau's to create and remove.
    */
@@ -1209,7 +1236,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * neither.
    *
    * When this bureau has a durable engine composed (a persistent `storage`
-   * backend, or `durableExecution: true`) and the named agent supports the
+   * backend, or `durable: true`) and the named agent supports the
    * definition-resolution capability (every `createAgent`/`createLazyAgent`
    * result does), the run is driven through that SAME durable engine so it
    * survives a crash and resumes — exactly like a `createRun` run. Otherwise
@@ -1278,7 +1305,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * payload returns the original run and receipt rather than creating
    * another run; reusing the request id with a different payload rejects
    * with `BureauLedgerConflictError`. Both hold while the binding is retained
-   * ({@link BureauOptions.runCreationTerminalRetentionMs}); after that the
+   * ({@link BureauRetentionOptions.receipts}); after that the
    * request id creates a new run.
    */
   createRun(request: CreateRunRequest): Promise<CreatedRunSummary>;
@@ -1305,7 +1332,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * A run this process holds, by id: a `createRun` run's `RunSummary.id`, or
    * the `id` on a `bureau.run()` handle (COR-1302). A `createRun` run is held
-   * after it settles, until its task expires under {@link BureauOptions.taskRetention}. A `bureau.run()` run is held from the
+   * after it settles, until its task expires under {@link BureauRetentionOptions.tasks}. A `bureau.run()` run is held from the
    * moment `bureau.run()` returns until it settles, and then released on its
    * own, as it was before it could be read by id. Until its agent's run is
    * built — and for its whole life when Bureau cannot build it (a
@@ -1446,7 +1473,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * resolves immediately. It rejects when Weft's result waiter fails for a reason that leaves the
    * run non-terminal in the store (a disposed engine, a transient read failure), and it rejects
    * with an `UNSUPPORTED_CAPABILITY` `BureauError` for a non-terminal run under
-   * `durableBackgroundTasks: 'manual'`, where nothing re-reads the store between maintenance
+   * `maintenance: 'manual'`, where nothing re-reads the store between maintenance
    * passes: use `runDurableMaintenance()` and `getDurableRun()` there.
    */
   waitForDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
@@ -1482,15 +1509,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * Run one host-driven durable-engine maintenance cycle. This fires due
    * timers and schedules and performs Weft's cleanup, retention, and alert
-   * maintenance. Intended for `durableBackgroundTasks: 'manual'` hosts.
+   * maintenance. Intended for `maintenance: 'manual'` hosts.
    *
    * Also prunes a session's `lastRunOwningPrincipals` entries (AB-359) once
    * a run's entire durable event history has fallen below the fleet feed's
    * retention floor (AB-363) — never on a run's terminal transition, and
    * never on a count. AB-388: also prunes the durable audit trail per
-   * `BureauOptions.auditRetention` (default `'forever'`, a no-op) — see
+   * `BureauRetentionOptions.audit` (default `'forever'`, a no-op) — see
    * that option's own doc comment. COR-424: also deletes run-creation
-   * receipts whose `runCreationTerminalRetentionMs` window has passed, with
+   * receipts whose `retention.receipts` window has passed, with
    * their conflict records; the automatic profile does the same on its own
    * maintenance interval.
    *
@@ -1498,7 +1525,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * return value"): resolves `true` whenever there was ANY maintenance
    * surface to drive — a composed durable engine, OR just a KV-backed
    * audit trail with no durable engine at all (a persistent backend with
-   * `durableExecution: false`). This
+   * `durable: false`). This
    * used to document `undefined` for "no durable engine is composed",
    * which was accurate before this issue but is no longer: a KV-only
    * bureau now genuinely has maintenance to run (audit retention) even
@@ -1508,7 +1535,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * nothing at all for this method to do.
    *
    * COR-1477: task retention is part of that surface. A pass that removed
-   * terminal tasks past `BureauOptions.taskRetention` resolves `true` even in
+   * terminal tasks past `BureauRetentionOptions.tasks` resolves `true` even in
    * a fully ephemeral bureau, because it did maintain something; one that
    * removed none there still resolves `undefined`.
    */
@@ -1978,7 +2005,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * snapshot, action admission, close, owner abort, and cleanup, kept in the
    * task's durable history (see `documentation/interactive-surface.md`).
    * `undefined` for a Bureau without persistent durable execution
-   * (`durableExecution` over persistent storage), which keeps no durable history.
+   * (`durable` over persistent storage), which keeps no durable history.
    */
   readonly surfaces: InteractiveSurfaces | undefined;
   /**
@@ -2058,7 +2085,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   internal/trusted caller, or a gateway request from a privileged
    *   connection).
    * - When the owner's live Bureau record is gone (the session was
-   *   deleted, or the run's task expired under `taskRetention`) but this
+   *   deleted, or the run's task expired under `retention.tasks`) but this
    *   store still holds committed events for it, this returns
    *   `{ outcome: 'deleted-aggregate', owner, events, hasMore, nextCursor?
    *   }` instead of an ordinary page — distinguishable from BOTH an
@@ -2135,7 +2162,7 @@ export interface EventHistoryNotFoundOutcome {
 
 /**
  * Returned by {@link Bureau.eventHistory} (AB-313) when `owner`'s live
- * Bureau record is gone (its task expired under `taskRetention`, or a deleted session) but this store
+ * Bureau record is gone (its task expired under `retention.tasks`, or a deleted session) but this store
  * still holds committed durable events for it — distinguishable from both
  * an ordinary empty {@link DurableEventPage} (an id nothing was ever
  * recorded under) and {@link EventHistoryNotFoundOutcome} (no committed
@@ -2362,7 +2389,7 @@ export interface CreateRunRequest {
    * needs an authenticated caller to belong to, and a bureau with a durable
    * engine (`NOT_CONFIGURED` otherwise), since a receipt promises a retry
    * after a restart finds the original run. The request id stays bound to its
-   * run until {@link BureauOptions.runCreationTerminalRetentionMs} after the
+   * run until {@link BureauRetentionOptions.receipts} after the
    * run settles; after that it creates a new run.
    */
   runCreationRequestId?: string | undefined;
