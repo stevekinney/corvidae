@@ -201,7 +201,27 @@ export interface A2APeerSendRequest {
   readonly taskId?: string | undefined;
   /** Continue this context; required by some peers when `taskId` is set. */
   readonly contextId?: string | undefined;
+  /**
+   * The message's identifier, for a caller that must be able to repeat the send. The default is a
+   * fresh random one, fixed before the first attempt. Passing the same identifier again, for
+   * example from a replayed tool call after a restart, is the retry the A2A spec describes: a
+   * peer that keeps its message history answers with the task the first send created instead of
+   * starting another. Must be a non-empty string.
+   */
+  readonly messageId?: string | undefined;
   /** Aborting it cancels the remote task; the returned task's `result()` then settles `canceled`. */
+  readonly signal?: AbortSignal | undefined;
+  /** Called with each state change this client observes. */
+  readonly onUpdate?: ((update: A2APeerUpdate) => void) | undefined;
+}
+
+/** A request to follow a task that already exists on a peer, without sending a message. */
+export interface A2APeerAttachRequest {
+  /** The task's identifier on the peer. */
+  readonly taskId: string;
+  /** The task's context identifier, when the caller kept it. */
+  readonly contextId?: string | undefined;
+  /** Aborting it cancels the remote task, as it does for `send`. */
   readonly signal?: AbortSignal | undefined;
   /** Called with each state change this client observes. */
   readonly onUpdate?: ((update: A2APeerUpdate) => void) | undefined;
@@ -236,4 +256,11 @@ export interface A2APeerClient {
   card(options?: { readonly refresh?: boolean | undefined }): Promise<A2APeerCard>;
   /** Sends a message and resolves once the peer has accepted it and named the task. */
   send(request: A2APeerSendRequest): Promise<A2APeerTask>;
+  /**
+   * Follows a task the peer already holds, without sending a message: a caller that kept the
+   * `taskId` from an earlier `send` (a restarted process, for example) picks the task up again.
+   * Resolves once the peer has reported the task's current state, so a task that already stopped
+   * is returned stopped. Rejects with `task-not-found` when the peer no longer knows the task.
+   */
+  attach(request: A2APeerAttachRequest): Promise<A2APeerTask>;
 }

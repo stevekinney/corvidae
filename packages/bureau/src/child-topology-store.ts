@@ -1,7 +1,7 @@
 /**
  * COR-772 — the durable half of Bureau's parent-child topology.
  *
- * Three record families share Bureau's conditional key-value store
+ * Four record families share Bureau's conditional key-value store
  * (`BureauOptions.persistence`/`storage`, or an in-memory store for an
  * ephemeral bureau):
  *
@@ -23,6 +23,11 @@
  *   Live counters are process-local (COR-336: use and exhaustion are
  *   ephemeral); this ledger is what a restarted process reconciles them
  *   from.
+ *
+ * - **Peer call records** (COR-1670) — one per durable A2A peer call, keyed by
+ *   the calling run and the tool call's operation key. It names the peer task
+ *   the call started, so a replay of the same tool call after a restart follows
+ *   that task instead of sending again. Create-if-absent; deleted with the run.
  *
  * Every read fails closed: a record, grant, or ledger entry that does not
  * decode to its exact shape is treated as absent and reported through
@@ -151,6 +156,27 @@ export interface DelegationLedgerEntry {
   readonly at: number;
 }
 
+/**
+ * The peer task one durable peer call started (COR-1670). The key is the calling run plus the
+ * tool call's operation key; the rest is what a replay needs to follow the task.
+ */
+export interface BureauPeerCallRecord {
+  readonly parentRunId: string;
+  /** The tool call's durable operation key, stable across a replay of the same call. */
+  readonly operationKey: string;
+  /** The task's identifier on the peer. */
+  readonly taskId: string;
+  /** The task's context identifier on the peer. */
+  readonly contextId: string;
+  /**
+   * A digest of the request the call sent. The operation key is a position in a run, not a
+   * request, so a replay compares this before it follows the task.
+   */
+  readonly requestDigest: string;
+  /** Epoch milliseconds, from Bureau's runtime clock. */
+  readonly recordedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // Keys
 // ---------------------------------------------------------------------------
@@ -159,6 +185,7 @@ export const CHILD_RECORD_KEY_PREFIX = 'bureau-child:record:';
 export const CHILD_PARENT_INDEX_KEY_PREFIX = 'bureau-child:parent:';
 export const DELEGATION_GRANT_KEY_PREFIX = 'bureau-delegation:grant:';
 export const DELEGATION_LEDGER_KEY_PREFIX = 'bureau-delegation:ledger:';
+export const PEER_CALL_KEY_PREFIX = 'bureau-peer-call:record:';
 
 // `encodeURIComponent` escapes `:`, so the separators between encoded
 // segments stay unambiguous whatever characters an identifier contains.
@@ -186,6 +213,14 @@ function ledgerPrefix(grantId: string): string {
 
 function ledgerKey(entry: DelegationLedgerEntry): string {
   return `${ledgerPrefix(entry.grantId)}${encode(entry.childRunId)}:${encode(entry.childGrantId)}:${entry.kind}:${entry.dimension}`;
+}
+
+function peerCallPrefix(parentRunId: string): string {
+  return `${PEER_CALL_KEY_PREFIX}${encode(parentRunId)}:`;
+}
+
+function peerCallKey(parentRunId: string, operationKey: string): string {
+  return `${peerCallPrefix(parentRunId)}${encode(operationKey)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +300,20 @@ function isLedgerEntry(value: unknown): value is DelegationLedgerEntry {
   );
 }
 
+function isPeerCallRecord(value: unknown): value is BureauPeerCallRecord {
+  return (
+    isRecord(value) &&
+    typeof value['parentRunId'] === 'string' &&
+    typeof value['operationKey'] === 'string' &&
+    typeof value['taskId'] === 'string' &&
+    value['taskId'] !== '' &&
+    typeof value['contextId'] === 'string' &&
+    typeof value['requestDigest'] === 'string' &&
+    value['requestDigest'] !== '' &&
+    typeof value['recordedAt'] === 'number'
+  );
+}
+
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
@@ -292,6 +341,11 @@ export type DelegationGrantLoad =
   | { readonly status: 'missing' }
   | { readonly status: 'corrupt' };
 
+export type PeerCallRecording =
+  | { readonly status: 'recorded' }
+  /** `existing` is absent when the record already stored there is unreadable. */
+  | { readonly status: 'exists'; readonly existing?: BureauPeerCallRecord };
+
 export interface ChildTopologyStore {
   /** Create-if-absent. Writes the record and its parent index atomically. */
   register(record: BureauChildRecord): Promise<ChildRegistration>;
@@ -313,6 +367,12 @@ export interface ChildTopologyStore {
   /** Idempotent. `false` when this exact reserve or release was already recorded. */
   appendLedgerEntry(entry: DelegationLedgerEntry): Promise<boolean>;
   listLedger(grantId: string): Promise<DelegationLedgerEntry[]>;
+  /** Create-if-absent: the record a durable peer call keeps for its operation key. */
+  recordPeerCall(record: BureauPeerCallRecord): Promise<PeerCallRecording>;
+  /** The record for `operationKey`, or `undefined` when none is stored or it is unreadable. */
+  getPeerCall(parentRunId: string, operationKey: string): Promise<BureauPeerCallRecord | undefined>;
+  /** Removes every peer call record of `parentRunId`. Idempotent. */
+  deletePeerCalls(parentRunId: string): Promise<void>;
 }
 
 export interface ChildTopologyStoreOptions {
@@ -377,6 +437,15 @@ export function createChildTopologyStore(
     return stored
       .map((entry) => entry?.record)
       .filter((record): record is BureauChildRecord => record !== undefined);
+  }
+
+  async function readPeerCall(key: string): Promise<BureauPeerCallRecord | undefined> {
+    const raw = await kv.get(key);
+    if (raw === null) return undefined;
+    const parsed = parseJson(raw);
+    if (isPeerCallRecord(parsed)) return parsed;
+    onCorrupt(key);
+    return undefined;
   }
 
   return {
@@ -463,6 +532,22 @@ export function createChildTopologyStore(
         [{ key, expectedValue: null }],
         [{ type: 'set', key, value: JSON.stringify(entry) }],
       );
+    },
+    async recordPeerCall(record) {
+      const key = peerCallKey(record.parentRunId, record.operationKey);
+      const committed = await kv.conditionalBatch(
+        [{ key, expectedValue: null }],
+        [{ type: 'set', key, value: JSON.stringify(record) }],
+      );
+      if (committed) return { status: 'recorded' };
+      const existing = await readPeerCall(key);
+      return existing === undefined ? { status: 'exists' } : { status: 'exists', existing };
+    },
+    getPeerCall: (parentRunId, operationKey) =>
+      readPeerCall(peerCallKey(parentRunId, operationKey)),
+    async deletePeerCalls(parentRunId) {
+      // The trailing separator keeps `run-1` from matching the records of `run-10`.
+      await kv.deletePrefix(peerCallPrefix(parentRunId));
     },
     async listLedger(grantId) {
       const keys = await kv.list(ledgerPrefix(grantId));
