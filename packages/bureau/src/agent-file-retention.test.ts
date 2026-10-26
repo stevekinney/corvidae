@@ -91,19 +91,26 @@ describe('snapshot retention', () => {
 
   it('releases a session run’s snapshot when its task is deleted, not before', async () => {
     const harness = await start();
-    const { bureau, runtime } = harness;
+    const { bureau, runtime, at } = harness;
     const first = await bureau.createRun({ message: 'one', agentName: 'researcher' });
     await waitForRunState(bureau, first.id);
+    at(10 * DAY_MS);
     const second = await bureau.createRun({ message: 'two', agentName: 'researcher' });
     await waitForRunState(bureau, second.id);
     await runtime.deferred.drain();
 
-    await bureau.deleteRun(first.id);
+    // 30 days after the first settled but only 20 after the second: its task goes, the snapshot
+    // stays for the second's.
+    at(30 * DAY_MS + 1);
+    await bureau.runDurableMaintenance();
     await runtime.deferred.drain();
+    expect(bureau.getRun(first.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(1);
 
-    await bureau.deleteRun(second.id);
+    at(40 * DAY_MS + 1);
+    await bureau.runDurableMaintenance();
     await runtime.deferred.drain();
+    expect(bureau.getRun(second.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
   });
 

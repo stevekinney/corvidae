@@ -23,7 +23,6 @@ import {
   type AuthorizationScope,
   MemoryStorage,
   principalFromApiKey,
-  textValueStore,
 } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -119,7 +118,8 @@ async function open(options: { memory?: GovernedMemory | null } = {}) {
     agents: {
       assistant: createAgent({ generate: recording() }),
     },
-    persistence: textValueStore(new MemoryStorage()),
+    storage: { type: 'memory' },
+    durableExecution: false,
     // The handler serves the asset operations too, so it needs an asset service.
     assets: { storage: createMemoryAssetStorage() },
     ...(memory === undefined ? {} : { memory }),
@@ -356,7 +356,8 @@ describe('the scopes bureau.memory:read and bureau.memory:write', () => {
       agents: {
         assistant: createAgent({ generate: recording() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       assets: { storage: createMemoryAssetStorage() },
       memory,
     });

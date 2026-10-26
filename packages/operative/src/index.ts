@@ -127,6 +127,7 @@ export type {
   TypedScratchpad,
 } from './create-scratchpad';
 export * from './create-subagent-tool';
+export * from './decisions/index';
 export {
   AbortAgentRunError,
   AgentContractError,

@@ -45,6 +45,8 @@
     "@shikijs/themes": "^3.21.0",
     "@shikijs/types": "^3.21.0",
     "@standard-schema/spec": "^1.1.0",
+    "@tanstack/ai": "^1.0.0",
+    "@tanstack/ai-typesafe": "^1.0.0",
     "@tanstack/svelte-query": "^6.2.1",
     "@tanstack/virtual-core": "^3.17.1",
     "@testing-library/dom": "^10.4.1",

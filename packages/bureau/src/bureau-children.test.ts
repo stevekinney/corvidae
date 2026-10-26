@@ -37,6 +37,7 @@ import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { storageOverTextStore } from './testing/text-store-storage.test-support';
 
 /**
  * Every bureau here reports into this sink instead of the console. Disposing
@@ -442,7 +443,12 @@ describe('bureau.children over an ephemeral bureau', () => {
           ? Promise.reject(new Error('child index offline'))
           : base.list(prefix),
     };
-    const bureau = await createBureau({ agents: {}, persistence: failing, onDiagnostic });
+    const bureau = await createBureau({
+      agents: {},
+      storage: storageOverTextStore(failing),
+      durableExecution: false,
+      onDiagnostic,
+    });
 
     try {
       expect(diagnostics).toContainEqual(

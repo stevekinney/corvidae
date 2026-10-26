@@ -129,7 +129,6 @@ export async function openBureau(options: {
     ...(options.maximumHistoryEvents === undefined
       ? {}
       : { durableGuardrails: { history: { maxEvents: options.maximumHistoryEvents } } }),
-    sessionPersistenceRetryDelayMilliseconds: 0,
     onDiagnostic: () => undefined,
   });
   const handler = createBureauHandler(bureau, {

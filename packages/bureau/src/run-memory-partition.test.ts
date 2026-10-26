@@ -16,7 +16,7 @@ import {
   type MemoryAuthority,
 } from '@lostgradient/memory';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -84,7 +84,8 @@ async function start(
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
     agents: { ...agents },
     memory,
-    persistence: textValueStore(new MemoryStorage()),
+    storage: { type: 'memory' },
+    durableExecution: false,
   });
   bureaus.push(bureau);
   return bureau;

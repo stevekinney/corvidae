@@ -9,8 +9,6 @@
 // this file, which imports both ONLY from the barrel (`./index`), is the
 // actual tripwire: it fails to compile if either re-export regresses.
 
-import type { RunResult, SchedulerTaskLocation } from '@lostgradient/operative';
-
 import type {
   AgentRunForName,
   AssembleReproductionArtifactOptions,
@@ -60,7 +58,6 @@ import {
   RUN_CREATION_OPERATION_VERSION,
   RunCreationReceiptUnrecordedError,
   selectAuditWriteFaultTarget,
-  selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
 } from './index';
 
@@ -80,7 +77,6 @@ void createSqliteStorageFixture;
 void DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE;
 void locateWorkspaceRoot;
 void selectAuditWriteFaultTarget;
-void selectSchedulerTaskFaultTarget;
 void selectWebhookDeliveryFaultTarget;
 
 declare const artifactOptions: AssembleReproductionArtifactOptions;
@@ -122,18 +118,40 @@ void historyOptions;
 void historyRecord;
 void runRegistration;
 
-// COR-636: the scheduler task locator surface returns operative's types
-// unchanged, so each side is assignable to the other.
-type LocateReturn = ReturnType<Bureau['locateSchedulerTask']>;
-type AwaitReturn = ReturnType<Bureau['awaitSchedulerTask']>;
-declare const locateFromBureau: LocateReturn;
-declare const awaitFromBureau: AwaitReturn;
-declare const locationFromOperative: SchedulerTaskLocation;
-declare const awaitFromOperative: Promise<RunResult | null>;
-export const locateToOperative: SchedulerTaskLocation = locateFromBureau;
-export const locateFromOperative: LocateReturn = locationFromOperative;
-export const awaitToOperative: Promise<RunResult | null> = awaitFromBureau;
-export const awaitFromOperativeToBureau: AwaitReturn = awaitFromOperative;
+// COR-1695: members and options nothing outside Bureau's own tests used are
+// gone. Each assertion fails to compile if its type declares any removed name.
+type RemovedBureauMember =
+  | 'updateSession'
+  | 'querySession'
+  | 'sessionVerbCapabilities'
+  | 'getConfiguration'
+  | 'getTools'
+  | 'getRunReport'
+  | 'deleteRun'
+  | 'sweepExpiredReviews'
+  | 'getRequestAuthorityValidator'
+  | 'submitSchedulerTask'
+  | 'locateSchedulerTask'
+  | 'awaitSchedulerTask'
+  | 'scheduler';
+type RemovedBureauOption =
+  | 'cache'
+  | 'streaming'
+  | 'scheduler'
+  | 'persistence'
+  | 'sessionPersistenceSleep'
+  | 'shutdownTimeoutSleep'
+  | 'sessionPersistenceRetryDelayMilliseconds';
+export const bureauDeclaresNoRemovedMember: [Extract<keyof Bureau, RemovedBureauMember>] extends [
+  never,
+]
+  ? true
+  : never = true;
+export const bureauOptionsDeclareNoRemovedOption: [
+  Extract<keyof BureauOptions, RemovedBureauOption>,
+] extends [never]
+  ? true
+  : never = true;
 
 // COR-424: the run-creation command ledger and its receipt are on the barrel,
 // and `createRun` resolves with a summary that can carry the receipt.

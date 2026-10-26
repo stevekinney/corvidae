@@ -13,7 +13,7 @@ import {
   waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   appendMessages,
@@ -68,7 +68,8 @@ async function openBureau() {
   cleanups.push(() => fixture.dispose());
   const bureau = await createBureau({
     agents: { painter },
-    persistence: textValueStore(new MemoryStorage()),
+    storage: { type: 'memory' },
+    durableExecution: false,
     runtime,
     assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
   });

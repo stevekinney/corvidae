@@ -22,18 +22,14 @@ import {
 import {
   createAgent,
   createMockGenerate,
-  type GenerateResponse,
   stopWhen,
-  waitForCondition,
   waitForRunState,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
-import { createBureau, type SubmitSchedulerTaskResponse } from './index';
+import { createBureau } from './index';
 import type { AgentDefinitions } from './agent-catalog';
 
 /**
@@ -89,85 +85,6 @@ function auditorFor(tenantId: string, ownerId: string) {
     policyRevision: 'audit:1',
     projection: 'audit',
   });
-}
-
-/** A tool that lets a model's answer arrive one step later. */
-const lookup = createTool({
-  name: 'lookup',
-  description: 'Looks something up.',
-  input: z.object({}),
-  execute: () => Promise.resolve('found'),
-});
-
-/**
- * Preempts a background `submitSchedulerTask` task with a second task once the
- * first task's answer is stored, before the step that wrote it completes. A
- * durable engine suspends the preempted task and resumes it from its last
- * completed step; without one, the task is aborted and starts again. Either way
- * the step runs again under the same task id. `respond` answers each model call,
- * numbered from 1 in the order the scheduler makes them.
- */
-async function preemptAfterFirstAnswer(
-  durability: 'in-memory' | 'durable',
-  respond: (call: number) => GenerateResponse,
-) {
-  let calls = 0;
-  let preempting: Promise<SubmitSchedulerTaskResponse> | undefined;
-  const { memory } = governedMemory(async (notification) => {
-    if (notification.type !== 'memory.write.admitted' || preempting !== undefined) return;
-    preempting = bureau.submitSchedulerTask({ agentName: 'default', message: 'Preempt it.' });
-    // A durable preemption suspends the run without waiting for the step, so
-    // hold the step until the run is suspended. An in-memory preemption aborts
-    // the run and waits for the step, so the step cannot be held.
-    if (durability === 'durable') {
-      await waitForCondition(
-        () => bureau.scheduler?.getState().preemptedCount === 1,
-        'the first task was not suspended',
-      );
-    }
-  });
-  const bureau = await createBureau<AgentDefinitions>({
-    id: BUREAU_ID,
-    agents: {
-      default: createAgent({
-        generate: () => Promise.resolve(respond(++calls)),
-        toolbox: createToolbox([lookup]),
-        stopWhen: stopWhen.noToolCalls(),
-      }),
-    },
-    scheduler: { enabled: true, idleDelay: 1 },
-    memory,
-    ...(durability === 'durable'
-      ? { storage: { type: 'memory' as const }, durableExecution: true }
-      : {}),
-  });
-  try {
-    const { taskId } = await bureau.submitSchedulerTask({
-      agentName: 'default',
-      message: 'Remember this.',
-      priority: 'background',
-    });
-    await waitForCondition(
-      () => bureau.scheduler?.getState().completedCount === 2,
-      'both tasks did not complete',
-      500,
-    );
-    const auditor = auditorFor(BUREAU_ID, LOCAL_OWNER);
-    const { taskId: preemptingTaskId } = await preempting!;
-    // Both tasks write into the default agent's collection; each record names its task.
-    const everything = await memory.list(auditor, { collection: DEFAULT_AGENT });
-    const writtenBy = (id: string) =>
-      everything.filter((record) => record.metadata['sessionId'] === id);
-    return {
-      taskId,
-      calls,
-      preemptedCount: bureau.scheduler?.getState().preemptedCount,
-      stored: writtenBy(taskId),
-      preemptingStored: writtenBy(preemptingTaskId),
-    };
-  } finally {
-    await bureau.dispose();
-  }
 }
 
 describe('packages/bureau/README.md — Governed memory', () => {
@@ -305,91 +222,6 @@ describe('documented Bureau memory limits', () => {
     } finally {
       await bureau.dispose();
     }
-  });
-
-  it('writes a submitSchedulerTask answer with a <taskId>:<step> dedupe key, as the task id, into its agent’s collection, naming the task as its session', async () => {
-    const { memory } = governedMemory();
-    const bureau = await createBureau<AgentDefinitions>({
-      id: BUREAU_ID,
-      agents: {
-        default: createAgent({
-          generate: createMockGenerate([{ content: 'Scheduled answer.', toolCalls: [] }]),
-          stopWhen: stopWhen.noToolCalls(),
-        }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-      memory,
-    });
-    try {
-      const { taskId } = await bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'Remember this.',
-      });
-      await waitForCondition(
-        () => bureau.scheduler?.getState().completedCount === 1,
-        'scheduled task did not complete',
-      );
-      const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
-        collection: DEFAULT_AGENT,
-      });
-      expect(stored?.content).toBe('Scheduled answer.');
-      expect(stored?.metadata).toEqual({
-        step: 0,
-        replay: 'effectful',
-        sessionId: taskId,
-        dedupeKey: `${taskId}:0`,
-      });
-      expect(stored?.governance?.attribution.delegationChain.map((link) => link.principal)).toEqual(
-        [
-          { kind: 'service', id: 'bureau' },
-          { kind: 'service', id: 'system:scheduler' },
-          { kind: 'run', id: taskId },
-        ],
-      );
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  for (const durability of ['in-memory', 'durable'] as const) {
-    it(`stores a submitSchedulerTask answer once when preemption repeats its final step (${durability})`, async () => {
-      const outcome = await preemptAfterFirstAnswer(durability, (call) => ({
-        content: `Answer ${call}.`,
-        toolCalls: [],
-      }));
-      // The first task's step generated twice, and only its first answer was stored.
-      expect(outcome.preemptedCount).toBe(1);
-      expect(outcome.calls).toBe(3);
-      expect(outcome.stored.map((record) => [record.content, record.metadata])).toEqual([
-        [
-          'Answer 1.',
-          {
-            step: 0,
-            replay: 'effectful',
-            sessionId: outcome.taskId,
-            dedupeKey: `${outcome.taskId}:0`,
-          },
-        ],
-      ]);
-      expect(outcome.preemptingStored.map((record) => record.content)).toEqual(['Answer 2.']);
-    });
-  }
-
-  it('stores a second answer when an in-memory submitSchedulerTask starts again and answers on a later step', async () => {
-    // The restarted task calls a tool first, so its answer comes from step 1, not step 0.
-    const outcome = await preemptAfterFirstAnswer('in-memory', (call) =>
-      call === 3
-        ? { content: 'Checking.', toolCalls: [{ name: 'lookup', arguments: {} }] }
-        : { content: `Answer ${call}.`, toolCalls: [] },
-    );
-    expect(outcome.calls).toBe(4);
-    expect(outcome.stored).toHaveLength(2);
-    expect(outcome.stored.map((record) => [record.content, record.metadata['dedupeKey']])).toEqual(
-      expect.arrayContaining([
-        ['Answer 1.', `${outcome.taskId}:0`],
-        ['Answer 4.', `${outcome.taskId}:1`],
-      ]),
-    );
   });
 
   it('fails a run whose memory hook throws, even after the final answer was stored', async () => {

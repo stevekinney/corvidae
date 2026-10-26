@@ -301,7 +301,7 @@ export class ReviewRejectedEvent extends ReviewLifecycleEvent {
 }
 
 /**
- * Fired when `Bureau.sweepExpiredReviews` transitions a tool-approval
+ * Fired when the expiry sweep transitions a tool-approval
  * review past its binding's `expiresAt` (AB-224). Always attributed to the
  * synthetic principal `'system:expiry'`.
  */

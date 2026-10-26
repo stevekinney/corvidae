@@ -21,7 +21,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import { principalFromApiKey } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
+import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
 import type { AgentDefinitions } from './agent-catalog';
 
 let databasePath = '';
@@ -282,34 +282,6 @@ const never: GenerateFunction = ({ signal }) =>
   });
 
 describe('the limits the documentation names', () => {
-  it('refuses updateSession and querySession whatever a durable engine could do', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: () => new Promise<never>(() => {}) }),
-      },
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-    try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'Wait for a signal' });
-      await waitForCondition(async () => {
-        const session = await bureau.getSession(run.sessionId);
-        return session?.metadata['lastRunStatus'] === 'running';
-      }, 'the run did not start');
-
-      for (const verb of ['updateSession', 'querySession'] as const) {
-        const error = await bureau[verb](run.sessionId, 'anything').then(
-          () => undefined,
-          (rejection: unknown) => rejection,
-        );
-        expect(error).toBeInstanceOf(BureauError);
-        expect((error as BureauError).code).toBe('UNSUPPORTED_CAPABILITY');
-      }
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
   it('answers bureau.tasks.events with UnsupportedCapability when there is no persistent storage', async () => {
     const { bureau, handler } = await servedBureau(answers);
     try {

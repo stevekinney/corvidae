@@ -59,12 +59,11 @@
  *   identity or tracking surface yet (AB-35, Backlog); this stays empty
  *   for the same reason as `parkedWaits`.
  *
- * The other four (`runningScheduleFires`, `activeEvaluations`,
+ * The other three (`activeEvaluations`,
  * `pendingAuditWrites`, `openStorageResources`) were ALSO permanently
  * empty on AB-262's baseline, on the argument that an UNBOUNDED
  * `shutdown()` awaits each owner's real drain as part of `ownerDrains`
- * (`settleOwner('scheduler', ...)` awaits `scheduler.stop()`, which
- * itself awaits every running task's result; `settleOwner('online-evals',
+ * (`settleOwner('online-evals',
  * () => onlineEvalSampler.dispose())` awaits `Promise.allSettled([
  * ...activeEvaluations])`; `audit-trail.ts`'s `dispose()` awaits
  * `Promise.allSettled([...activeWrites])`), so nothing genuinely
@@ -76,7 +75,7 @@
  * rather than approximated.
  *
  * AB-265's fault engine changes this: `createFaultEngine(...).wrapGenerate`/
- * `.wrapStorage` can block a schedule fire's model call or a `kv.set` write
+ * `.wrapStorage` can block a `kv.set` write
  * (an audit write, or — this is the part that took a second design pass,
  * see the test file — an evaluation's OWN audit-record write, never the
  * judge's own generate call: `online-evals.ts`'s `evaluateRun` races EVERY
@@ -86,17 +85,11 @@
  * itself ever settles — never observable past shutdown that way. Blocking
  * `recordScore`'s write instead, which is NOT raced against that signal,
  * keeps the evaluation genuinely in flight) — deterministically, past a
- * bounded `shutdown({ timeoutMilliseconds })` — so these four rows are now
+ * bounded `shutdown({ timeoutMilliseconds })` — so these three rows are now
  * populated from a REAL public snapshot read once `bureau.shutdown()`
  * returns, whether or not anything is actually still running (the common
  * case: nothing is, and every row below reads empty):
  *
- * - `runningScheduleFires` — `bureau.scheduler.getState().activeTask`
- *   (public: the same read `create-bureau.ts` itself uses to report
- *   `'scheduler.state'`). `scheduler.stop()`'s own `running` map entry for
- *   a still-executing task is not deleted until the task's dispatch
- *   completion path runs, so `getState()` keeps reporting it live for the
- *   whole window a bounded `shutdown()` raced past.
  * - `activeEvaluations` — `bureau.onlineEvalSampler.activeEvaluationSnapshots()`,
  *   already documented as "every evaluation currently in flight" — read
  *   AFTER `shutdown()` returns, so an evaluation blocked on its own
@@ -115,15 +108,15 @@
  * - `openStorageResources` — the storage fixture's OWN public handle
  *   accounting (`BureauStorageFixture.openHandles()`, AB-322): a call the
  *   fixture's wrapped `Storage` instance has started but not yet
- *   finished. Unlike the other three, this is not shadowed by any
+ *   finished. Unlike the other two, this is not shadowed by any
  *   `BureauShutdownReport` owner — `bureau.shutdown()` tracks no
  *   "raw storage call" owner at all — so a lingering handle here is the
- *   ONLY place this leak is ever reported, and (unlike the other three
+ *   ONLY place this leak is ever reported, and (unlike the other two
  *   rows) it IS folded into `leaked`/`quiescent` below.
  *
- * `runningScheduleFires`/`activeEvaluations`/`pendingAuditWrites` are
+ * `activeEvaluations`/`pendingAuditWrites` are
  * deliberately NOT folded into `leaked`: the owner each names
- * (`scheduler`/`online-evals`/`audit-trail`) is already reported under
+ * (`online-evals`/`audit-trail`) is already reported under
  * `incomplete` when a bounded `shutdown()` times out on it — promoting
  * these into `leaked` too would report the identical bounded-shutdown-
  * timeout fact under two different report fields for the same root
@@ -166,7 +159,6 @@ export interface BureauQuiescenceReport {
   readonly detached: readonly { readonly kind: string; readonly id: string }[];
   readonly activeRoots: readonly LeakedResource[];
   readonly activeDescendants: readonly LeakedResource[];
-  readonly runningScheduleFires: readonly LeakedResource[];
   readonly parkedWaits: readonly LeakedResource[];
   readonly pendingHookEffects: readonly LeakedResource[];
   readonly pendingAuditWrites: readonly LeakedResource[];
@@ -205,7 +197,6 @@ export interface BureauQuiescenceReport {
 const NAMED_ROWS = [
   'activeRoots',
   'activeDescendants',
-  'runningScheduleFires',
   'parkedWaits',
   'pendingHookEffects',
   'pendingAuditWrites',
@@ -384,21 +375,10 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   // Read AFTER `shutdown()` returns (AB-322): a bounded call races a
   // still-draining owner's real work via `Promise.race` (`create-bureau.ts`'s
   // `shutdown()`), so the moment this call resolves is exactly when a
-  // fault-forced leftover (AB-265's engine blocking a schedule fire, an
-  // audit write, or an evaluation's judge call) is still genuinely live on
+  // fault-forced leftover (AB-265's engine blocking an audit write, or
+  // an evaluation's judge call) is still genuinely live on
   // each public surface below — see the module doc for why each is (or is
   // not) folded into `leaked`.
-  const runningScheduleFires: LeakedResource[] = [];
-  const activeTask = bureau.scheduler?.getState().activeTask;
-  if (activeTask) {
-    runningScheduleFires.push({
-      kind: 'queue-item',
-      identifier: activeTask.id,
-      owner: activeTask.priority,
-      discoveredVia: 'public-snapshot',
-    });
-  }
-
   const activeEvaluations: LeakedResource[] = (
     bureau.onlineEvalSampler?.activeEvaluationSnapshots() ?? []
   ).map((snapshot) => ({
@@ -477,7 +457,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   }
 
   // `openStorageResources` is folded in (see the module doc); the other
-  // three fault-forced rows above are deliberately NOT — their owner is
+  // two fault-forced rows above are deliberately NOT — their owner is
   // already named under `incomplete`.
   const leaked: LeakedResource[] = [
     ...scopeReport.leaked,
@@ -497,7 +477,6 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
     detached,
     activeRoots,
     activeDescendants,
-    runningScheduleFires,
     parkedWaits: [],
     pendingHookEffects: [],
     pendingAuditWrites,

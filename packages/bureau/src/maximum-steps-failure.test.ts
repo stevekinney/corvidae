@@ -4,7 +4,7 @@ import {
   createAgent,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, type BatchOperation } from '@lostgradient/weft';
+import { MemoryStorage, type BatchOperation } from '@lostgradient/weft';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -69,7 +69,7 @@ async function runToLimit(bureau: Bureau) {
 
 /** The in-process loop and the durable workflow both end a run at its step limit. */
 const EXECUTIONS: readonly (readonly [string, Partial<BureauOptions>])[] = [
-  ['in process', { persistence: textValueStore(new MemoryStorage()) }],
+  ['in process', { storage: { type: 'memory' }, durableExecution: false }],
   ['durably', { storage: { type: 'memory' }, durableExecution: true }],
 ];
 
@@ -131,10 +131,16 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
   it('reports the run as failed in its run report', async () => {
     const bureau = await openStepLimitBureau(options);
+    const reported: string[] = [];
+    bureau.subscribeLiveFrames((frame) => {
+      if (frame.type === 'run-envelope' && frame.frame.type === 'run-finished') {
+        reported.push(frame.frame.report.status);
+      }
+    });
 
-    const run = await runToLimit(bureau);
+    await runToLimit(bureau);
 
-    expect(bureau.getRunReport(run.id)?.status).toBe('failed');
+    expect(reported).toEqual(['failed']);
   });
 });
 
@@ -193,7 +199,7 @@ const FAILURES: readonly (readonly [string, { readonly generate?: GenerateFuncti
 ];
 
 const SETTLING_EXECUTIONS = [
-  ['in process', (storage: MemoryStorage) => ({ persistence: textValueStore(storage) })],
+  ['in process', (storage: MemoryStorage) => ({ storage: storage, durableExecution: false })],
   ['durably', (storage: MemoryStorage) => ({ storage, durableExecution: true })],
 ] as const;
 

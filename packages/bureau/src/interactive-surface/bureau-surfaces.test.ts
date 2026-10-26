@@ -3,16 +3,16 @@
  * revision survives a restart, and cancelling its task freezes it and resolves
  * the task's cleanup evidence.
  */
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
-import { rejectionOf } from '../testing/promise-outcome.test-support';
+import { retireSettledTasks, SHORT_TASK_RETENTION } from '../testing/run-retirement.test-support';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
-import type { Bureau } from '../types';
+import type { Bureau, BureauOptions } from '../types';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './types';
 
 const version = INTERACTIVE_SURFACE_CONTRACT_VERSION;
@@ -24,7 +24,10 @@ const parks: GenerateFunction = ({ signal }) =>
     signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
   });
 
-function open(path: ReturnType<typeof createSqliteStorageFixture>['configuration']) {
+function open(
+  path: ReturnType<typeof createSqliteStorageFixture>['configuration'],
+  extra: Partial<BureauOptions<AgentDefinitions>> = {},
+) {
   return createBureau<AgentDefinitions>({
     id: 'surface-bureau',
     agents: {
@@ -32,6 +35,7 @@ function open(path: ReturnType<typeof createSqliteStorageFixture>['configuration
     },
     storage: path,
     durableExecution: true,
+    ...extra,
   });
 }
 
@@ -158,9 +162,10 @@ describe('interactive surfaces on a Bureau', () => {
     }
   });
 
-  it('keeps a run whose surfaces could not be removed, so deleting it again retries', async () => {
-    const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const bureau = await open(fixture.configuration);
+  it('keeps a run whose surfaces could not be removed, so the next retention pass retries', async () => {
+    const runtime = createManualRuntimeServices();
+    const fixture = createSqliteStorageFixture({ runtime });
+    const bureau = await open(fixture.configuration, { runtime, ...SHORT_TASK_RETENTION });
     try {
       const taskId = await startTask(bureau);
       await createForm(bureau, taskId);
@@ -175,13 +180,12 @@ describe('interactive surfaces on a Bureau', () => {
         throw new Error('storage unavailable');
       });
 
-      expect(await rejectionOf(bureau.deleteRun(taskId))).toMatchObject({
-        message: 'storage unavailable',
-      });
+      await retireSettledTasks(bureau, runtime);
       expect(await bureau.getRun(taskId)).toBeDefined();
 
       Reflect.set(surfaces, 'removeTask', removeTask);
-      await bureau.deleteRun(taskId);
+      await retireSettledTasks(bureau, runtime);
+      expect(await bureau.getRun(taskId)).toBeUndefined();
       expect(
         await surfaces.snapshot(
           { type: 'surface.snapshot', contractVersion: version, taskId, surfaceId: 'confirm' },

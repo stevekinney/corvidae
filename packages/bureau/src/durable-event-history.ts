@@ -2366,7 +2366,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   bureau.addEventListener('schedule.resumed', scheduleTransitionListener);
   bureau.addEventListener('schedule.cancelled', scheduleTransitionListener);
 
-  // AB-313 — a run's explicit removal (`Bureau.deleteRun`) is the
+  // AB-313 — a run's removal (task retention) is the
   // "Bureau-level record was removed" evidence `bureau.eventHistory`'s
   // deleted-aggregate detection looks for inside a run's own durable page.
   // Recorded under the removed run's own `{ kind: 'run', id: runId }`
