@@ -25,7 +25,7 @@
 import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers';
 import * as jestDomMatchers from '@testing-library/jest-dom/matchers';
 import { plugin } from 'bun';
-import { afterEach, expect } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { sveltePlugin } from '@lostgradient/testing';
@@ -159,4 +159,40 @@ afterEach(() => {
   if (!(window instanceof Window)) return;
   window.happyDOM.setURL('http://localhost/');
   window.dispatchEvent(new window.PopStateEvent('popstate'));
+});
+
+// `globalThis.fetch` is process-wide, and the coverage run shares one process across every test
+// file, so a test that scripts it and does not put it back changes what every later test reaches:
+// the suites that talk to a real server through Bun's own `fetch` then hit the leftover script
+// instead (COR-1690, found by COR-1658's worker). Record `fetch` before each test and fail the
+// test that leaves it different, then put the recorded value back so one leak fails one test
+// rather than every test after it. Bun runs a preload's hooks outside a test file's own, so
+// `beforeEach` records the value before a file's setup replaces it and `afterEach` compares after
+// the file's teardown has had its chance to restore it.
+let fetchBeforeTest: typeof globalThis.fetch | undefined;
+let fetchBeforeFile: typeof globalThis.fetch | undefined;
+
+/** Fails with the leak's `scope` named, after restoring `recorded` so later tests are unaffected. */
+function assertFetchRestored(recorded: typeof globalThis.fetch | undefined, scope: string): void {
+  if (recorded === undefined || globalThis.fetch === recorded) return;
+  globalThis.fetch = recorded;
+  throw new Error(
+    `${scope} left globalThis.fetch replaced. Restore the original in afterEach/afterAll (or use a scoped helper) so later tests do not run against this test's stub. The original has been put back.`,
+  );
+}
+
+beforeAll(() => {
+  fetchBeforeFile = globalThis.fetch;
+});
+
+beforeEach(() => {
+  fetchBeforeTest = globalThis.fetch;
+});
+
+afterEach(() => {
+  assertFetchRestored(fetchBeforeTest, 'This test');
+});
+
+afterAll(() => {
+  assertFetchRestored(fetchBeforeFile, 'This test file');
 });
