@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError, createBureau, ReviewRoundChangedError } from './create-bureau';
 import { reviewDecisionKey } from './review-decision-record';
 import * as runtimeCompositionModule from './runtime-composition';
 import {
@@ -539,28 +539,72 @@ describe('a tool approval two processes hold (COR-1579)', () => {
     expect(charges.charged).toHaveLength(0);
   });
 
-  it('fences a decision on the round another process has since advanced (COR-1659)', async () => {
-    const charges = newCharges();
-    const { a, b, review } = await settledApproval(charges);
-    charges.regate = true;
-    // A supersedes round 0, so the review is durably at round 1. B still holds round 0 in memory.
-    await a.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
-    expect(a.bureau.listPendingReviews()).toMatchObject([{ id: review.id, round: 1 }]);
-    charges.regate = false;
+  describe('when a peer has re-gated the approval and this process still lists the round it left (COR-1659)', () => {
+    /** A re-gates round 0 to 1; B has not heard of it yet. */
+    async function regatedByA() {
+      const charges = newCharges();
+      const { a, b, review } = await settledApproval(charges);
+      charges.regate = true;
+      await a.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
+      expect(a.bureau.listPendingReviews()).toMatchObject([{ id: review.id, round: 1 }]);
+      charges.regate = false;
+      return { b, review, charges };
+    }
 
-    // A decision made on the round-0 view B showed is refused before the tool can run.
-    const stale = await rejectionOf(
-      b.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'bob', round: 0 }),
-    );
-    expect(codeOf(stale)).toBe('CONFLICT');
-    expect((stale as Error).message).toContain('round');
-    expect(charges.charged).toHaveLength(0);
+    it('refuses a decision on the round it left with the typed refusal, and then accepts the current round', async () => {
+      const { b, review, charges } = await regatedByA();
 
-    // The round A reports decides, even through B, whose own view is a round behind.
-    expect(
-      await b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob', round: 1 }),
-    ).toMatchObject({ id: review.id, decision: 'deny' });
-    expect(charges.charged).toHaveLength(0);
+      const stale = await rejectionOf(
+        b.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'bob', round: 0 }),
+      );
+      expect(stale).toBeInstanceOf(ReviewRoundChangedError);
+      expect(codeOf(stale)).toBe('CONFLICT');
+      expect(charges.charged).toHaveLength(0);
+
+      // The refusal caught this process up, so the round the caller reads next decides.
+      expect(
+        await b.bureau.resolveReview({
+          id: review.id,
+          decision: 'deny',
+          principal: 'bob',
+          round: 1,
+        }),
+      ).toMatchObject({ id: review.id, decision: 'deny' });
+      expect(charges.charged).toHaveLength(0);
+    });
+
+    it('accepts the current round at once, with no earlier refusal to catch it up', async () => {
+      const { b, review, charges } = await regatedByA();
+
+      expect(
+        await b.bureau.resolveReview({
+          id: review.id,
+          decision: 'deny',
+          principal: 'bob',
+          round: 1,
+        }),
+      ).toMatchObject({ id: review.id, decision: 'deny' });
+      expect(charges.charged).toHaveLength(0);
+    });
+
+    it('refuses a round that is ahead of every round it knows of', async () => {
+      const { b, review } = await regatedByA();
+
+      const ahead = await rejectionOf(
+        b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob', round: 5 }),
+      );
+      expect(ahead).toBeInstanceOf(ReviewRoundChangedError);
+    });
+
+    it('still refuses a decision that names no round with a plain conflict', async () => {
+      const { b, review } = await regatedByA();
+
+      const unfenced = await rejectionOf(
+        b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob' }),
+      );
+      expect(codeOf(unfenced)).toBe('CONFLICT');
+      expect(unfenced).not.toBeInstanceOf(ReviewRoundChangedError);
+    });
   });
 
   it("releases a session approval's claim on a proven pre-execution failure", async () => {

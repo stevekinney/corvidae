@@ -15738,10 +15738,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function refuseStaleRoundOfHeldClaim(
     review: PendingReview,
     claimHeld: boolean,
+    expectedRound: number | undefined,
   ): Promise<void> {
     if (!claimHeld || review.kind !== 'tool-approval') return;
     const session = await runtime.sessionStore?.load(review.sessionId);
-    await refuseStaleApprovalRound(review, session?.metadata);
+    await refuseStaleApprovalRound(review, session?.metadata, { expectedRound, mayRetry: false });
   }
 
   /**
@@ -15756,15 +15757,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function refuseStaleApprovalRound(
     review: PendingReview,
     sessionMetadata: Record<string, JSONValue> | undefined,
-  ): Promise<void> {
-    if (review.kind !== 'tool-approval') return;
+    fence?: { readonly expectedRound: number | undefined; readonly mayRetry: boolean },
+  ): Promise<'adopted' | undefined> {
+    if (review.kind !== 'tool-approval') return undefined;
     const persisted = persistedApprovalOf(sessionMetadata, review.id);
-    if (persisted === undefined || persisted.round <= review.round) return;
+    if (persisted === undefined || persisted.round <= review.round) return undefined;
     await adoptPersistedApprovalRound(review.runId, review.id, persisted);
-    throw new BureauError(
-      `Review "${review.id}" was re-gated since it was listed (round ${review.round}, now ${persisted.round}); read it again before deciding it`,
-      'CONFLICT',
-    );
+    // COR-1659: a caller that names the round the session is at read the current one: this process
+    // only lagged, and it has caught up, so the decision can be made afresh on the refreshed review.
+    if (fence?.mayRetry === true && fence.expectedRound === persisted.round) return 'adopted';
+    const message = `Review "${review.id}" was re-gated since it was listed (round ${review.round}, now ${persisted.round}); read it again before deciding it`;
+    // A caller that named a round is told so by the typed refusal, not by a plain conflict.
+    if (fence?.expectedRound !== undefined) throw new ReviewRoundChangedError(message);
+    throw new BureauError(message, 'CONFLICT');
   }
 
   /**
@@ -15784,11 +15789,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * COR-1659 — fence a decision on the round the caller read, once the session has been read and
+   * `resolvingReviewIds` is held (so no other resolver here can supersede before the claim). The
+   * round compared is the higher of this process's and the session's: this process can lag a peer
+   * that re-gated. A caller that names the session's round is let through after this process
+   * catches up (`'retry'`); any other round is refused with {@link ReviewRoundChangedError}.
+   */
+  async function fenceReviewRound(
+    review: PendingReview,
+    input: ResolveReviewInput,
+    sessionMetadata: Record<string, JSONValue> | undefined,
+    mayRetry: boolean,
+  ): Promise<'retry' | undefined> {
+    const caughtUp = await refuseStaleApprovalRound(review, sessionMetadata, {
+      expectedRound: input.round,
+      mayRetry,
+    });
+    if (caughtUp === 'adopted') return 'retry';
+    assertExpectedReviewRound(input, review);
+    return undefined;
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
     // state by `resolveAnyReview` when this process lists no review under the id.
     derived?: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+    // COR-1659: set on the one re-entry after this process caught up with a peer's re-gate.
+    afterCatchUp = false,
   ): Promise<ResolveReviewResult> {
     // AB-46: `reject` requires a non-empty `reason` for BOTH review kinds —
     // `resolveReview` is the validation boundary, so this throws before any
@@ -15896,15 +15925,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
-    // COR-1659: the round the caller read is compared with the review just found, in the same
-    // synchronous stretch that claims `resolvingReviewIds` below, so no other resolver's
-    // supersession can fall between the two. It is refused before anything is claimed or decided.
-    assertExpectedReviewRound(input, review);
     if (resolvingReviewIds.has(review.id)) {
       throw new BureauError(`Review with id "${review.id}" is already being resolved`, 'CONFLICT');
     }
     resolvingReviewIds.add(review.id);
 
+    let retryAfterCatchUp = false;
     try {
       // AB-391 (Codex P1 review finding, PR #601, "Fence concurrent
       // resolutions before performing the action"): everything below this
@@ -15956,10 +15982,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           );
         }
       }
-      await refuseStaleApprovalRound(review, existingSession?.metadata);
+      retryAfterCatchUp =
+        (await fenceReviewRound(review, input, existingSession?.metadata, !afterCatchUp)) ===
+        'retry';
     } catch (error) {
       resolvingReviewIds.delete(review.id);
       throw error;
+    }
+    if (retryAfterCatchUp) {
+      resolvingReviewIds.delete(review.id);
+      return resolveReview(input, derived, true);
     }
 
     // COR-1579: claim the decision durably before anything irreversible. See
@@ -15997,7 +16029,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let result: unknown;
     let keepPending = false;
     try {
-      await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined);
+      await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined, input.round);
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was

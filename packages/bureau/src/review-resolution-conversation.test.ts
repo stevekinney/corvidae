@@ -277,7 +277,11 @@ describe('fencing a resolution on the round the caller read (COR-1659)', () => {
       expect(error).toBeInstanceOf(ReviewRoundChangedError);
       expect((error as BureauError).code).toBe('CONFLICT');
       // Nothing took effect: the review is still pending at its own round, with no decision and no write.
-      expect(bureau.listPendingReviews()).toEqual(moved);
+      // Ages move with the clock; everything else about the pending review stays put.
+      const unchanged = bureau
+        .listPendingReviews()
+        .map(({ ageMilliseconds: _age, ...rest }) => rest);
+      expect(unchanged).toEqual(moved.map(({ ageMilliseconds: _age, ...rest }) => rest));
       expect(resultRow(await sessionRows(bureau, run.sessionId), 'call-1')).toEqual(before);
       const reread = await bureau.getReview(review.id);
       expect(reread?.status).toBe('pending');
