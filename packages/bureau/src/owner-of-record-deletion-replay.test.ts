@@ -47,7 +47,7 @@ async function openBlockedBureau(storage: MemoryStorage, blocked: { value: boole
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     storage: storageOverTextStore(persistence),
-    durableExecution: false,
+    durable: false,
   });
   return { bureau, base };
 }
@@ -102,7 +102,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: storage,
-      durableExecution: false,
+      durable: false,
     });
     try {
       await second.runDurableMaintenance();
@@ -137,7 +137,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: storage,
-      durableExecution: false,
+      durable: false,
     });
     try {
       await second.runDurableMaintenance();
@@ -186,7 +186,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: storageOverTextStore(flaky),
-      durableExecution: false,
+      durable: false,
     });
     try {
       // Boot drained while every read of the owner record failed, so the deletion was neither audited nor acknowledged,
@@ -225,7 +225,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: storage,
-      durableExecution: false,
+      durable: false,
     });
     try {
       // Another session's deletion queues behind the poisoned one.
@@ -269,7 +269,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
             : undefined,
         ),
       ),
-      durableExecution: false,
+      durable: false,
     });
     try {
       // The failure is the store's, not the record's: the deletion waits, owner intact.

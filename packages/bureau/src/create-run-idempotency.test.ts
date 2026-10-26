@@ -86,7 +86,7 @@ async function withDurableBureau(
     },
     runtime,
     storage: fixture.configuration,
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   try {

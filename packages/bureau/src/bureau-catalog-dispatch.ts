@@ -114,8 +114,9 @@ export interface CatalogDispatcherDependencies {
    */
   readonly onCatalogRunEnded?: ((ended: CatalogRunEnded) => void | Promise<void>) | undefined;
   /**
-   * COR-1577 — `BureauOptions.humanInput`: offer `requestHumanInput` to a durable `bureau.run()`
-   * run. Not to a child or a goal attempt, whose park nothing would be listening for.
+   * COR-1577, COR-1700 — `BureauOptions.humanInput`: `requestHumanInput` is offered to a durable
+   * `bureau.run()` run unless this is `false`, which the caller also passes for a non-durable
+   * Bureau. Not to a child or a goal attempt, whose park nothing would be listening for.
    */
   readonly humanInput?: BureauHumanInputOption | undefined;
   /**

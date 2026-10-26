@@ -16,7 +16,7 @@ import type {
 } from '@lostgradient/operative';
 import { AGENT_POLICY_HOOK_SOURCE, withActiveSkillToolPolicy } from '@lostgradient/operative';
 import type { AnyToolbox } from 'armorer';
-import { combineToolboxes, createToolbox } from 'armorer';
+import { createToolbox } from 'armorer';
 
 import {
   createSkillArtifactLoader,
@@ -30,6 +30,7 @@ import {
   type SkillGuardrailOptions,
 } from './skills';
 import type { SkillClient } from './skills/client/skill-client';
+import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 
 /**
  * The names of the skill lifecycle tools. An active skill's `allowed-tools` never narrows these
@@ -212,7 +213,7 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
           },
           { id: 'agent:skill-client-catalog', source: AGENT_POLICY_HOOK_SOURCE, replay: 'safe' },
         );
-        toolbox = combineToolboxes(
+        toolbox = withAddedTools(
           toolbox,
           createToolbox([
             toolset.activateSkill,
@@ -238,9 +239,8 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
         },
       );
 
-      return withActiveSkillToolPolicy(toolbox, () =>
-        activeSkillToolPolicy(client.narrowedTools()),
-      );
+      const policy = () => activeSkillToolPolicy(client.narrowedTools());
+      return withToolboxLayer(toolbox, (rebuilt) => withActiveSkillToolPolicy(rebuilt, policy));
     },
   };
 }

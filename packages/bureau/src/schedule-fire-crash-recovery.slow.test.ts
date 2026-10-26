@@ -11,7 +11,7 @@
  * 2. the interrupted fire is recorded, and recovery brings it to a terminal state;
  * 3. no second fire is recorded for the same scheduled instant.
  *
- * Nothing waits on the clock: both Bureaus run `durableBackgroundTasks:
+ * Nothing waits on the clock: both Bureaus run `maintenance:
  * 'manual'`, so only `runDurableMaintenance(now)` ever ticks the schedule; the
  * child is awaited by process exit and its marker file; and `ownership: 'none'`
  * leaves no dead holder's claim to wait out.
@@ -90,8 +90,8 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
         }),
       },
       storage: { type: backend, path: storagePath },
-      durableExecution: true,
-      durableBackgroundTasks: 'manual',
+      durable: true,
+      maintenance: 'manual',
       durableOwnership: { ownership: 'none' },
     });
     scope.onHang(() => bureau.shutdown());

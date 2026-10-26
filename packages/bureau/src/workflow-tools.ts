@@ -1,7 +1,7 @@
 /**
  * The tools an agent manages its workflows with (COR-1529): `workflows-create`, `workflows-update`,
  * `workflows-pause`, `workflows-resume`, and `workflows-list`. Bureau adds them to the deployment's
- * tool catalog itself when `workflowDirectory` is set, so an agent file receives them only when it
+ * tool catalog itself when `workflowSource` is set, so an agent file receives them only when it
  * lists them in `tools`. They write through `Bureau.workflows`, the same operations HTTP callers
  * use, never to the filesystem directly.
  *
@@ -38,13 +38,11 @@ export const WORKFLOW_TOOL_NAMES = [
   'workflows-list',
 ] as const;
 
-/** The name of a tool in `agentTools` that one of the five would collide with, if there is one. */
+/** The name of a tool in the agent source's `tools` that one of the five would collide with, if there is one. */
 export function collidingWorkflowToolName(
-  agentTools: Readonly<Record<string, unknown>> | undefined,
+  tools: Readonly<Record<string, unknown>> | undefined,
 ): string | undefined {
-  return WORKFLOW_TOOL_NAMES.find(
-    (name) => agentTools !== undefined && Object.hasOwn(agentTools, name),
-  );
+  return WORKFLOW_TOOL_NAMES.find((name) => tools !== undefined && Object.hasOwn(tools, name));
 }
 
 /** What the tools read from the Bureau that owns them. */

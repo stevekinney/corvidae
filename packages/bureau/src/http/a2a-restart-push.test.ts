@@ -104,7 +104,6 @@ async function createWorld(
     directory,
     overrides: {
       id: 'restart-push-bureau',
-      humanInput: true,
       models: { generate: () => parksOnRequest },
       storage: fixture.configuration,
     },
@@ -215,7 +214,6 @@ async function createWorld(
         directory: previous.harness.directory,
         overrides: {
           id: 'restart-push-bureau',
-          humanInput: true,
           models: { generate: () => parksOnRequest },
           storage: fixture.configuration,
         },

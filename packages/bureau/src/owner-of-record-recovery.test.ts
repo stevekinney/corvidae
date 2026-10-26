@@ -38,7 +38,7 @@ async function crashAndRecover(principal: string | undefined) {
       }),
     },
     storage: { type: 'sqlite', path },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   const run = await crashed.createRun({
@@ -57,7 +57,7 @@ async function crashAndRecover(principal: string | undefined) {
       }),
     },
     storage: { type: 'sqlite', path },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   await waitForCondition(

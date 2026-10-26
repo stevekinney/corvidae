@@ -27,6 +27,7 @@ import {
 } from '../create-bureau-handler.ts';
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import { workflowFileDirectory } from '../../sources/workflow-file-directory';
 
 export interface Served {
   readonly bureau: Bureau;
@@ -61,9 +62,9 @@ export async function serveWorkflows(
     agents: {
       ...(options.agents ?? agents),
     },
-    workflowDirectory: directory,
+    workflowSource: workflowFileDirectory(directory),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
   });
   cleanups.push(async () => {

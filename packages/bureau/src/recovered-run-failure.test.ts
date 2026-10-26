@@ -47,7 +47,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
       generate,
       toolbox: createToolbox([]),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       stopWhen: stopWhen.noToolCalls(),
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -85,7 +85,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
         }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
       onDiagnostic: () => undefined,
     });
     try {

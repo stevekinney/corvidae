@@ -125,7 +125,7 @@ async function parkAfterStepZero(): Promise<void> {
       }),
     },
     storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
-    durableExecution: true,
+    durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,
@@ -329,7 +329,6 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     storagePath: storagePath as string,
     generate: async () => ({ content: '', toolCalls: twoCalls ? [park, secondPark] : [park] }),
     toolbox: createToolbox([]),
-    humanInput: true,
   });
   const run = await bureau.createRun({
     agentName: 'default',
@@ -385,7 +384,7 @@ async function relaunchRecover(): Promise<void> {
       }),
     },
     storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
-    durableExecution: true,
+    durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

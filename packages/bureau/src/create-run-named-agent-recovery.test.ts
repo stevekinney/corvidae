@@ -96,7 +96,7 @@ async function bureauOver(
           },
         }),
     storage: { type: 'sqlite', path: databasePath },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   bureaus.push(bureau);
@@ -200,8 +200,7 @@ describe('requestHumanInput on a named session run', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
     });
     bureaus.push(bureau);
 

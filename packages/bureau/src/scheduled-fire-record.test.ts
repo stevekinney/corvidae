@@ -59,7 +59,7 @@ describe('the schedule.fired entry (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const trail = bureau.auditTrail!;

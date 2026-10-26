@@ -120,7 +120,7 @@ function createEnvironment(): Environment {
 
 async function openBureau(
   environment: Environment,
-  agents: Parameters<typeof createBureau>[0]['agents'],
+  agents: NonNullable<Parameters<typeof createBureau>[0]['agents']>,
   extra: Partial<Parameters<typeof createBureau>[0]> = {},
 ): Promise<Bureau> {
   const bureau = await createBureau({
@@ -209,7 +209,7 @@ function runRowPrefix(runId: string): string {
 }
 
 describe.each([
-  ['a durable engine', { storage: { type: 'memory' as const }, durableExecution: true }],
+  ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
   ['no durable engine (the in-process path)', {}],
 ] as const)('a sessionless bureau.run() with a supplied image, on %s', (_name, extra) => {
   it('keeps the input asset resolvable while the run is parked past the retention floor', async () => {
@@ -280,7 +280,7 @@ describe('a sessionless bureau.run() across a restart', () => {
     // Nothing owns the dead process's run any more, so the next boot recovers it at once.
     const durable = {
       storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' as const },
     };
     const seen: GenerateContext[] = [];
@@ -315,7 +315,7 @@ describe('a sessionless bureau.run() across a restart', () => {
     const first = await openBureau(
       environment,
       { viewer: viewer(seen, new Promise<void>(() => {})) },
-      { storage, durableExecution: true },
+      { storage, durable: true },
     );
     const image = await suppliedImage(first);
     first.run('viewer', [image], { principal: alice.id });
@@ -326,7 +326,7 @@ describe('a sessionless bureau.run() across a restart', () => {
     const second = await openBureau(
       environment,
       { viewer: viewer([]) },
-      { storage, durableExecution: true },
+      { storage, durable: true },
     );
     const report = await pastTheFloor(environment, second);
 
@@ -338,7 +338,7 @@ describe('a sessionless bureau.run() across a restart', () => {
 describe('a child run', () => {
   async function bureauWithParent(
     environment: Environment,
-    agents: Parameters<typeof createBureau>[0]['agents'],
+    agents: NonNullable<Parameters<typeof createBureau>[0]['agents']>,
   ) {
     const bureau = await openBureau(environment, {
       ...agents,
@@ -435,7 +435,7 @@ describe('a child run', () => {
 });
 
 describe.each([
-  ['a durable engine', { storage: { type: 'memory' as const }, durableExecution: true }],
+  ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
   ['no durable engine (the in-process path)', {}],
 ] as const)('a generated image from a sessionless bureau.run(), on %s', (_name, extra) => {
   it('is claimed under the run when the row commits, and let go when the run ends', async () => {

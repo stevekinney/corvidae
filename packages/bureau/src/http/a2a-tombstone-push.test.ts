@@ -76,7 +76,6 @@ async function serve(): Promise<Served> {
   const harness = await startFileBureau({
     overrides: {
       id: 'tombstone-push-bureau',
-      humanInput: true,
       models: { generate: () => parksOnRequest },
       storage: fixture.configuration,
     },

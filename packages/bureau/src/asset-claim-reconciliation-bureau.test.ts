@@ -100,7 +100,7 @@ describe('a run that ended in a process that died before it released', () => {
       runtime: store.runtime,
       assets: { storage: assetStorage, policy: { defaultRetentionMilliseconds: 1_000 } },
       storage: store.storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     let disposed = false;
@@ -207,7 +207,7 @@ describe('a run that ended in a process that died before it released', () => {
 
 describe('a session deleted while its claims are being taken', () => {
   async function open(
-    extra: { durableBackgroundTasks?: 'manual' } = {},
+    extra: { maintenance?: 'manual' } = {},
   ): Promise<{ bureau: Bureau; runtime: ManualRuntimeServices }> {
     const fixture = createMemoryAssetStorageFixture({});
     cleanups.push(() => fixture.dispose());
@@ -223,7 +223,7 @@ describe('a session deleted while its claims are being taken', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
       ...extra,
@@ -312,7 +312,7 @@ describe('a session deleted while its claims are being taken', () => {
   });
 
   it('releases the claim of a row the session no longer holds when the session is deleted, with manual background tasks', async () => {
-    const { bureau } = await open({ durableBackgroundTasks: 'manual' });
+    const { bureau } = await open({ maintenance: 'manual' });
     const { assetId: compactedOut } = await admitImage(bureau);
     const { assetId: kept } = await admitImage(bureau);
     await saveSession(bureau, 'session-1', kept);

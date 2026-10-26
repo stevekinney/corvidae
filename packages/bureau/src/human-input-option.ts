@@ -2,9 +2,12 @@ import { checkHumanInputSchemas, type HumanInputSchema } from '@lostgradient/ope
 
 import type { BureauHumanInputOption } from './types';
 
-/** COR-1674 — whether {@link BureauHumanInputOption} offers `requestHumanInput` (`true` or an object). */
+/**
+ * COR-1700 — whether {@link BureauHumanInputOption} offers `requestHumanInput`: it does unless the
+ * option is `false`. Callers still decide whether the run kind and engine can offer it at all.
+ */
 export function humanInputEnabled(option: BureauHumanInputOption | undefined): boolean {
-  return option === true || (typeof option === 'object' && option !== null);
+  return option !== false;
 }
 
 /** COR-1674 — the per-signal answer schemas the option carries, if any. */

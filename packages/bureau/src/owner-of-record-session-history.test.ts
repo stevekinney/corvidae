@@ -33,7 +33,7 @@ async function openBureau() {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   return { bureau, directory };

@@ -49,7 +49,7 @@ async function boot(
 ) {
   const bureau = await createBureau({
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     onDiagnostic: diagnostics.onDiagnostic,
     ...options,
   });
@@ -194,7 +194,7 @@ describe('bureau.goals', () => {
         agents: { worker: workerAgent(hangUntilAborted) },
         validators: [createCheckValidator(), createCheckValidator()],
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       }),
     );
 
@@ -570,7 +570,7 @@ describe('bureau.goals', () => {
       const { bureau } = await boot({
         agents: { worker: workerAgent(hangUntilAborted) },
         validators: [createCheckValidator()],
-        durableExecution: false,
+        durable: false,
       });
 
       expect(await bureau.goals.create(goalRequest())).toMatchObject({
@@ -773,7 +773,7 @@ describe('bureau.goals', () => {
       const { bureau } = await boot({
         agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
         validators: [createCheckValidator()],
-        checkpointRetention: { keepLast: 1 },
+        retention: { checkpoints: { keepLast: 1 } },
       });
       await bureau.goals.create(goalRequest());
       await finished(bureau);
@@ -796,7 +796,7 @@ describe('bureau.goals', () => {
             }),
           },
           validators: [createCheckValidator()],
-          checkpointRetention: { keepLast: 1 },
+          retention: { checkpoints: { keepLast: 1 } },
         });
         await bureau.goals.create(goalRequest());
         await finished(bureau);
@@ -867,7 +867,7 @@ describe('bureau.goals', () => {
       const { bureau } = await boot({
         agents: { worker: workerAgent(hangUntilAborted) },
         validators: [createCheckValidator({ determinism: 'stochastic' })],
-        checkpointRetention: { keepLast: 1 },
+        retention: { checkpoints: { keepLast: 1 } },
       });
       await bureau.goals.create(goalRequest({ requireDeterministicValidation: true }));
 

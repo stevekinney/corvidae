@@ -50,7 +50,7 @@ async function buildBureau(
     ...(options.persist === true || options.durable === true
       ? { storage: { type: 'memory' as const } }
       : {}),
-    ...(options.durable === true ? { durableExecution: true } : {}),
+    ...(options.durable === true ? { durable: true } : {}),
     // The handler serves the asset operations, so it needs the service behind them.
     ...(options.assets === false ? {} : { assets: { storage: createMemoryAssetStorage() } }),
   });
@@ -142,7 +142,7 @@ describe('createBureauHandler options', () => {
     });
   });
 
-  it('refuses to serve A2A over a taskRetention shorter than a send binding is kept (COR-903)', async () => {
+  it('refuses to serve A2A over a task retention shorter than a send binding is kept (COR-903)', async () => {
     await withBureau({}, (bureau) => {
       const retaining = (taskRetention: TestBureau['taskRetention']) => () =>
         createBureauHandler(
@@ -153,7 +153,7 @@ describe('createBureauHandler options', () => {
           { unauthenticatedAccess: 'allow', publicUrl: 'https://example.test' },
         );
       expect(bureau.taskRetention).toEqual({ olderThan: 30 * 86_400_000 });
-      expect(retaining({ olderThan: 86_399_999 })).toThrow(/taskRetention to be at least/);
+      expect(retaining({ olderThan: 86_399_999 })).toThrow(/retention.tasks window to be at least/);
       expect(retaining({ olderThan: 86_400_000 })).not.toThrow();
       expect(retaining('forever')).not.toThrow();
     });

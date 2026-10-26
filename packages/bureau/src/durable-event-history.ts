@@ -725,7 +725,7 @@ export interface DurableEventHistory {
    * was a real bug this fixed (Codex review, PR #597): it removed the
    * clamp entirely for the normal, common case (`retain()` is never called
    * automatically — see this module's own top-of-file doc comment), letting
-   * `auditRetention` delete audit records for durable events that remain
+   * `retention.audit` delete audit records for durable events that remain
    * fully pageable.
    *
    * Scans the ENTIRE retained window via `feed.replay({})` rather than
@@ -744,7 +744,7 @@ export interface DurableEventHistory {
    * emitted before `cutoffMs` (epoch milliseconds on the runtime clock),
    * through Weft's `FleetEventFeed.retain()`, and resolves how many events
    * were deleted. This is the maintenance pass's one call that moves the floor;
-   * `eventRetention` supplies the cutoff.
+   * `retention.events` supplies the cutoff.
    *
    * The floor only ever advances over a contiguous prefix: it stops at the
    * first retained event emitted at or after `cutoffMs`, so an older event

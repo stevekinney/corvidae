@@ -72,8 +72,8 @@ export function createScheduleFireHarness() {
       const bureau = await createBureau<AgentDefinitions>({
         id: 'schedule-fire-reviews-bureau',
         storage: { type: 'memory' },
-        durableExecution: true,
-        durableBackgroundTasks: 'manual',
+        durable: true,
+        maintenance: 'manual',
         durableOwnership: { ownership: 'none' },
         // `createBureauHandler` serves the asset operations, so it needs a Bureau with assets.
         assets: { storage: createMemoryAssetStorage() },

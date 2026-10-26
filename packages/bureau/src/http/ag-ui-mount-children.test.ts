@@ -77,7 +77,7 @@ async function withParentAndChild<T>(
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     children: {},
   });
   const handler = createBureauHandler(bureau, { authentication, publish: ['assistant'], agUi: {} });

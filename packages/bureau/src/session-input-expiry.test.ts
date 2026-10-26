@@ -52,7 +52,7 @@ async function open(
     },
     runtime,
     storage,
-    durableExecution: true,
+    durable: true,
   });
   return { bureau, runtime };
 }

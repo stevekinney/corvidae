@@ -112,7 +112,6 @@ async function humanWaitScenario(
         return { content: 'resumed after the crash', toolCalls: [] };
       },
       toolbox: createToolbox([]),
-      humanInput: true,
     });
     const bureau = recoverer;
     const report = await bureau.waitForRecovery?.();

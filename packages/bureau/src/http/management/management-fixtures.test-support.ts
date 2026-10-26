@@ -212,7 +212,7 @@ export async function openBureau(
     assetStorage?: AssetStorage;
     /** The asset service's injected ports: a metadata extractor or a safety gate a test scripts. */
     assetPorts?: AssetPorts;
-    /** Further `createBureau` options, such as a manual `runtime` and a `taskRetention`. */
+    /** Further `createBureau` options, such as a manual `runtime` and a `retention.tasks`. */
     bureauOptions?: Partial<Parameters<typeof createBureau>[0]>;
     /** Passed to `createBureauHandler` beside the authentication. */
     handlerOptions?: Omit<
@@ -241,7 +241,7 @@ export async function openBureau(
       }),
     },
     storage: options.storage ?? fixture?.configuration ?? { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     assets: {
       storage: options.assetStorage ?? createMemoryAssetStorage(),
       ...(options.assetPolicy === undefined ? {} : { policy: options.assetPolicy }),
