@@ -82,6 +82,7 @@ import type {
   BureauAgentCatalog,
 } from './agent-catalog';
 import type { BureauAssetOptions } from './assets/asset-service';
+import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
@@ -792,6 +793,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `'assets'` owner. Omit to compose none — the default.
    */
   assets?: BureauAssetOptions;
+  /**
+   * Reads the MCP resource an `mcp-resource` part of a tool result links to (COR-1634), so the
+   * step after a tool returned an MCP `resource_link` can send the linked bytes to a provider.
+   * Bureau holds no MCP connections, so the host that connected the server supplies the read, and
+   * decides whether the run's principal may read that server's resource. Without it, a run whose
+   * row holds such a link fails its next generation with a `MediaAdmissionError`. See
+   * {@link McpResourceReader}.
+   */
+  mcpResources?: McpResourceReader;
   /**
    * Host sink for internal operational diagnostics — recovery failures,
    * live-frame listener exceptions, dispose errors, and persistence
