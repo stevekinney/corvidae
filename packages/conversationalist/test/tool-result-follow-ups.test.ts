@@ -227,6 +227,37 @@ describe('message plugins and a tool result’s media', () => {
     expect((error as ConversationalistError).message).toMatch(/plugin.*tool result.*media/i);
   });
 
+  it('allows a plugin that rebuilds a locator source with its keys in another order', () => {
+    const locators: ToolResultPart[] = [
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'managed-asset', assetId: 'asset-1', revision: 2 },
+      },
+      { type: 'file', source: { kind: 'mcp-resource', serverId: 'files', uri: 'file:///a' } },
+    ];
+    const reorder = defineMessagePlugin({ id: 'reorder', revision: 1 }, (input: MessageInput) => {
+      if (input.role !== 'tool-result' || input.toolResult?.parts === undefined) return input;
+      return {
+        ...input,
+        toolResult: {
+          ...input.toolResult,
+          parts: input.toolResult.parts.map((part) => {
+            if (part.type === 'text') return part;
+            const reversed = Object.fromEntries(Object.entries(part.source).toReversed());
+            return { ...part, caption: 'edited', source: reversed as typeof part.source };
+          }),
+        },
+      };
+    });
+    const parts = lastResult(withResult(locators, { environment: { plugins: [reorder] } }))?.parts;
+    expect(parts?.[0]).toMatchObject({
+      caption: 'edited',
+      source: locators[0]?.type === 'image' ? locators[0].source : undefined,
+    });
+    expect(parts).toHaveLength(2);
+  });
+
   it('allows a plugin to rewrite text parts and a media part’s descriptive fields', () => {
     const conversation = withResult(PARTS, { environment: { plugins: [reword] } });
     const parts = lastResult(conversation)?.parts;

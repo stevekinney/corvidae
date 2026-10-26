@@ -24,7 +24,32 @@ function sameSource(before: MediaContent['source'], after: MediaContent['source'
   // The body of an inline or data-URL source is the part's content, which redaction rewrites;
   // every other kind names bytes elsewhere, and where it names is what admission governed.
   if (before.kind === 'inline' || before.kind === 'data-url') return true;
-  return JSON.stringify(before) === JSON.stringify(after);
+  return sameValue(before, after);
+}
+
+/** Structural equality of two JSON values, independent of object key order. */
+function sameValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameValue(value, right[index]))
+    );
+  }
+  const leftKeys = Object.keys(left);
+  return (
+    leftKeys.length === Object.keys(right).length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(right, key) &&
+        sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]),
+    )
+  );
 }
 
 function problem(
