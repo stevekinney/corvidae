@@ -24,7 +24,6 @@ afterEach(async () => {
 describe('a fire’s seed state', () => {
   it('is held while the fire is in flight and gone once it has settled', async () => {
     const bureau = await harness.open({
-      humanInput: true,
       storage: await harness.sqliteStorage(harness.nextDatabasePath()),
       agents: {
         default: createAgent({

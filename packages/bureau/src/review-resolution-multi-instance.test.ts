@@ -166,7 +166,6 @@ async function open(
 ): Promise<OpenedProcess> {
   const opened = await openProcess(path, generate, {
     id: 'review-resolution-multi-instance',
-    humanInput: true,
     durableOwnership: OWNERSHIP,
     ...options,
     agents: {
@@ -225,7 +224,6 @@ async function settledApproval(charges: Charges) {
   const generate = charging();
   const setup = await openProcess(path, generate, {
     id: 'review-resolution-multi-instance',
-    humanInput: true,
     durableOwnership: OWNERSHIP,
     agents: {
       default: createAgent({
@@ -578,7 +576,6 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
       },
       storage,
       durableExecution: true,
-      humanInput: true,
     });
     composition.mockRestore();
     try {

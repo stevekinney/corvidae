@@ -56,7 +56,6 @@ async function serveWriter(): Promise<Served> {
   const harness = await startFileBureau({
     overrides: {
       id: 'tombstone-bureau',
-      humanInput: true,
       resolveAgentGenerate: () => parksOnRequest,
       runtime: { ...runtime, clock: { ...runtime.clock, now: () => runtime.clock.now() + offset } },
     },

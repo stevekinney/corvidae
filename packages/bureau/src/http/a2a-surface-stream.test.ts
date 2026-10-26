@@ -100,7 +100,6 @@ async function withTask(
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers() }) },
     publish: ['asker'],
-    humanInput: true,
     ...(storage === undefined ? { durableHistory: true } : { storage }),
     handlerOptions: { publicUrl: 'http://localhost' },
   });

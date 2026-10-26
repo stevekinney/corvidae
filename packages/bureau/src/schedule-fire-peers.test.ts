@@ -53,7 +53,6 @@ describe('a peer answers a fire’s human wait', () => {
       const seen: string[] = [];
       const options = {
         generate: askingGenerate('answer', seen),
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         durableOwnership: OWNERSHIP,
         // A holder hears a peer's signal through its own background claim renewal.

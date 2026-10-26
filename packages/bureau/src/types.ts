@@ -269,11 +269,12 @@ export interface BureauMemoryAuthorityOptions {
 export type RetentionWindowOption = 'forever' | { readonly olderThan: number };
 
 /**
- * COR-1674 — the shape of {@link BureauOptions.humanInput}: `true` offers `requestHumanInput`
- * with free-form answers; the object form also supplies the answer schema per signal name.
+ * COR-1674, COR-1700 — the shape of {@link BureauOptions.humanInput}: `false` removes
+ * `requestHumanInput`; the object form keeps it and supplies the answer schema per signal name.
+ * `true` is refused with `BAD_REQUEST`, because the tool is already the default.
  */
 export type BureauHumanInputOption =
-  boolean | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
+  false | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
 
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
@@ -548,46 +549,45 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   flowControl?: FlowControlPolicy;
   /**
-   * F3 — opt into operative's `requestHumanInput` HITL tool for durable runs. COR-1577: it is
-   * offered to a durable `createRun` run (a Bureau-wide one, or one of a named catalog agent) and
-   * to a durable `bureau.run()` run of an agent that resolves definitions. It is not offered
-   * without a durable engine, nor to a child run or a goal attempt. When `true`, bureau adds a
-   * `requestHumanInput` tool to the run's toolbox, bound to that run's OWN event emitter and its
-   * real `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
+   * F3, COR-1700 — whether a durable Bureau offers operative's `requestHumanInput` HITL tool.
+   * It is offered by default (COR-1577) to a durable `createRun` run (a Bureau-wide one, or one of
+   * a named catalog agent), to a schedule fire, and to a durable `bureau.run()` run of an agent
+   * that resolves definitions. It is never offered without a durable engine, whatever this option
+   * says, nor to a child run, a goal attempt, or a workflow-file agent step. An agent file's
+   * `tools:` list does not gate it. The tool is bound to that run's OWN event emitter and its real
+   * `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
    * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
    * flow-control `markParked`) and `listPendingReviews` (AB-20). The park is a `human-wait`
    * review: a `createRun` run's carries its `sessionId`, and a `bureau.run()` run's, which has no
    * session, is addressed by its `runId` and resumed through the engine by that id. The agent
-   * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Omit
-   * (the default) to leave the toolbox as configured — this tool is opt-in, never an ambient
-   * grant.
+   * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park.
    *
-   * COR-1674 — pass `{ inputSchemas }` instead of `true` to give a signal a JSON Schema (2020-12)
-   * for the answer a person must give. `inputSchemas` maps a `signalName` to its schema; a call
-   * to `requestHumanInput` on that signal carries the schema into its park, so an A2A client sees
-   * a form and an answer that does not satisfy the schema is refused before the run resumes. The
-   * object form enables the tool exactly as `true` does; `createBureau` checks every schema
-   * eagerly with operative's `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one
-   * it cannot accept. A signal with no entry takes any answer, as before.
+   * Pass `false` to remove the tool. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool
+   * is already the default.
+   *
+   * COR-1674 — pass `{ inputSchemas }` to give a signal a JSON Schema (2020-12) for the answer a
+   * person must give. `inputSchemas` maps a `signalName` to its schema; a call to
+   * `requestHumanInput` on that signal carries the schema into its park, so an A2A client sees a
+   * form and an answer that does not satisfy the schema is refused before the run resumes. The
+   * object form keeps the tool on; `createBureau` checks every schema eagerly with operative's
+   * `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one it cannot accept. A
+   * signal with no entry takes any answer.
    */
   humanInput?: BureauHumanInputOption;
   /**
-   * AB-201 — opt into operative's `scheduleWakeup` self-scheduling tool for
-   * durable runs (`createRun` only; has no effect without a durable engine
-   * composed), mirroring {@link BureauOptions.humanInput}'s wiring exactly.
-   * When `true`, bureau adds a `scheduleWakeup` tool to each durable run's
-   * toolbox, bound to that run's real `ctx.services` object so a call
-   * genuinely parks the workflow via `ctx.sleep` (AB-41's decision record)
-   * rather than merely returning a success-shaped no-op. Omit (the default,
-   * or `false`) to leave the toolbox as configured — this tool is opt-in,
-   * never an ambient grant, and is simply absent from the toolbox rather than
-   * wired to throw when disabled (mirroring `requestHumanInput`'s own
-   * omission behavior). A standalone `scheduleWakeup` tool built outside
-   * Bureau's composition with `durable: false` throws
-   * `DurableCapabilityUnavailableError` instead (AB-41 / AB-43), unchanged by
-   * this option.
+   * AB-201, COR-1700 — whether a durable Bureau offers operative's `scheduleWakeup`
+   * self-scheduling tool to a durable `createRun` run, mirroring
+   * {@link BureauOptions.humanInput}'s wiring exactly. It is offered by default: Bureau adds a
+   * `scheduleWakeup` tool to each durable run's toolbox, bound to that run's real `ctx.services`
+   * object so a call genuinely parks the workflow via `ctx.sleep` (AB-41's decision record)
+   * rather than merely returning a success-shaped no-op. Without a durable engine it is absent
+   * whatever this option says. Pass `false` to leave the tool out of the toolbox; it is simply
+   * absent rather than wired to throw (mirroring `requestHumanInput`'s own omission behavior).
+   * Passing `true` throws `BureauError` `BAD_REQUEST`: the tool is already the default. A
+   * standalone `scheduleWakeup` tool built outside Bureau's composition with `durable: false`
+   * throws `DurableCapabilityUnavailableError` instead (AB-41 / AB-43), unchanged by this option.
    */
-  wakeup?: boolean;
+  wakeup?: false;
   /**
    * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
    * default interceptor; pass an {@link ObservabilityOptions} (minus `eventTarget`,

@@ -377,7 +377,7 @@ describe('bureau.contexts.list activity', () => {
   };
 
   it('is running for a working session, awaiting-input for one waiting on a human, and idle otherwise', async () => {
-    await withBureau({ generate: byMessage, humanInput: true }, async (opened) => {
+    await withBureau({ generate: byMessage }, async (opened) => {
       const idle = await finishedSession(opened, { principal: OWNER.alice, message: 'idle' });
       const running = await opened.bureau.createRun({
         agentName: 'default',

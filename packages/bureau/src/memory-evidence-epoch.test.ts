@@ -421,7 +421,6 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
         memory,
         storage: fixture.configuration,
         durableExecution: true,
-        humanInput: true,
         durableOwnership: { ownership: 'none' },
         requestAuthorityValidator: () => true,
       });

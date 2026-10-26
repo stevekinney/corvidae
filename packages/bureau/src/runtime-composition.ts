@@ -3804,7 +3804,7 @@ async function buildRuntimeComposition(
     let runToolbox: BureauToolbox = runRuntime.toolbox;
     const servicesRef: { current?: DurableRunDeps } = {};
     const wantsHumanInput = humanInputEnabled(options.humanInput) && runId !== undefined;
-    const wantsWakeup = options.wakeup === true && runId !== undefined;
+    const wantsWakeup = options.wakeup !== false && runId !== undefined;
     if (wantsHumanInput || wantsWakeup) {
       runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,

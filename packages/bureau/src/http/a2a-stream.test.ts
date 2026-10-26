@@ -124,12 +124,11 @@ function parksThenAnswers(): GenerateFunction {
 async function withA2A<T>(
   generate: GenerateFunction,
   body: (opened: OpenedBureau) => Promise<T>,
-  options: { humanInput?: boolean; durableHistory?: boolean } = {},
+  options: { durableHistory?: boolean } = {},
 ): Promise<T> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate }) },
     publish: ['asker'],
-    ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.durableHistory === true ? { durableHistory: true } : {}),
     handlerOptions: { publicUrl: PUBLIC_URL },
   });
@@ -232,7 +231,7 @@ describe('SendStreamingMessage', () => {
           expect(seen.at(-1)).toBe('status:TASK_STATE_COMPLETED');
           expect(seen).toContain('status:TASK_STATE_WORKING');
         },
-        { humanInput: true, durableHistory },
+        { durableHistory },
       );
     },
   );
@@ -279,7 +278,7 @@ describe('SubscribeToTask', () => {
         expect(metadata.cursor).not.toBe('');
         expect(response.headers.get('A2A-Extensions')).toBe(DURABLE_HISTORY_EXTENSION_URI);
       },
-      { humanInput: true, durableHistory: true },
+      { durableHistory: true },
     );
   });
 
@@ -331,7 +330,7 @@ describe('SubscribeToTask', () => {
         const malformedBody: Json = await malformed.json();
         expect(malformedBody.error.code).toBe(-32602);
       },
-      { humanInput: true, durableHistory: true },
+      { durableHistory: true },
     );
   });
 
