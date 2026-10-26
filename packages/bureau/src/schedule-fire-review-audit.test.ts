@@ -144,7 +144,6 @@ describe('a fire canceled with a committed approval, then a crash before the can
 describe('a fire canceled while parked on a human wait', () => {
   const waitOptions = {
     generate: askingGenerate(),
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   };
 

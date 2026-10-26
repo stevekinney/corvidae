@@ -72,7 +72,6 @@ const bureau = await createBureau<AgentDefinitions>({
   durable: true,
   maintenance: 'manual',
   durableOwnership: { ownership: 'none' },
-  wakeup: true,
   onDiagnostic: (diagnostic: BureauDiagnostic) => {
     diagnostics.push(`${diagnostic.level} ${diagnostic.scope}: ${diagnostic.message}`);
   },

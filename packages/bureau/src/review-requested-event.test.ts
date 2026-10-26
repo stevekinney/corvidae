@@ -53,7 +53,6 @@ describe('review.requested', () => {
       },
       storage: fixture.configuration,
       durable: true,
-      humanInput: true,
     });
     try {
       const run = await bureau.createRun({

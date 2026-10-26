@@ -285,7 +285,6 @@ describe('a task’s own message history', () => {
         },
         storage: fixture.configuration,
         durable: true,
-        humanInput: true,
         durableOwnership: { ownership: 'none' },
         ...(collect
           ? { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic.message) }

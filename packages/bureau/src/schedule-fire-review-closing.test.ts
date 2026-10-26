@@ -65,7 +65,6 @@ const peerOptions = {
 
 const waitOptions = {
   generate: askingGenerate(),
-  humanInput: true,
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 };
 

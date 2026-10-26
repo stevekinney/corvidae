@@ -1709,6 +1709,18 @@ function validateRetentionWindowOption(
   }
 }
 
+/**
+ * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
+ * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
+ */
+function rejectOptInToolOption(name: 'humanInput' | 'wakeup', value: unknown): void {
+  if (value === undefined || value === false) return;
+  if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
+  toBadRequest(
+    `"options.${name}" is on by default for a durable Bureau, so ${value === true ? '`true`' : 'that value'} is not accepted; omit it, or pass \`false\` to turn it off`,
+  );
+}
+
 /** COR-1477 — {@link BureauRetentionOptions.events}'s default window: 7 days. */
 const DEFAULT_EVENT_RETENTION_MS = 7 * 86_400_000;
 
@@ -1975,6 +1987,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const sessionInputPrincipalBacklogLimit =
     options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
   // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
+  rejectOptInToolOption('humanInput', options.humanInput);
+  rejectOptInToolOption('wakeup', options.wakeup);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention);
   validateChildrenOption(options.children);
@@ -7288,7 +7302,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // literal, silently breaking whichever tool composed first.
       const servicesRef: { current?: DurableRunDeps } = {};
       const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
-      const wantsWakeup = !!(options.wakeup && runtime.durable);
+      const wantsWakeup = options.wakeup !== false && !!runtime.durable;
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       }
@@ -18107,7 +18121,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       ),
     fileAgents,
     // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-    humanInput: runtime.durable !== undefined ? options.humanInput : undefined,
+    humanInput: runtime.durable !== undefined ? options.humanInput : false,
     // COR-772 — a durable `bureau.run` parent aborted through its own handle
     // is a cancelled parent like any other. Once shutdown has begun, dispose
     // — not the policy — ends every live run, and boot recovery applies the

@@ -824,7 +824,6 @@ describe('a Bureau that shuts down', () => {
 describe('the human wait of a fire', () => {
   const waitOptions = {
     generate: askingGenerate('answer', []),
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     durableOwnership: OWNERSHIP,
     maintenance: 'automatic' as const,

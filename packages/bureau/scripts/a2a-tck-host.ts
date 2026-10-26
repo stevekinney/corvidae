@@ -224,7 +224,6 @@ export async function startTckHost(port = 0): Promise<TckHost> {
     },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
     durable: true,
-    humanInput: true,
     assets: { storage: createMemoryAssetStorage() },
   });
 

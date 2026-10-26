@@ -115,7 +115,6 @@ function approvalToolbox(): Toolbox {
 }
 
 const humanWaits = {
-  humanInput: true,
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 } as const;
 

@@ -84,7 +84,6 @@ export type HarnessOptions = {
   readonly maximumSteps?: number;
   /** The agents' answer for a run that reaches its step cap. */
   readonly onMaximumSteps?: (context: StepContext) => Promise<string | void>;
-  readonly humanInput?: boolean;
   /** Further published agents, each running the same script as `assistant`. */
   readonly otherAgents?: readonly string[];
   /** `'sqlite'` keeps a durable event history, so terminal events carry cursors. */
@@ -212,7 +211,6 @@ async function build(
     assets: { storage: createMemoryAssetStorage() },
     ...(options.bureauRuntime === undefined ? {} : { runtime: options.bureauRuntime }),
     ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
-    ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     ...(options.durableOwnership === undefined

@@ -201,7 +201,6 @@ describe('requestHumanInput on a named session run', () => {
       },
       storage: { type: 'memory' },
       durable: true,
-      humanInput: true,
     });
     bureaus.push(bureau);
 

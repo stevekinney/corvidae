@@ -459,66 +459,54 @@ describe('CancelTask', () => {
 
 describe('continuing a task', () => {
   it('answers a human wait with the message text, and the task completes', async () => {
-    await withA2A(
-      { asker: parksThenAnswers() },
-      async (opened) => {
-        const parked = await sendForTask(opened, 'asker', { message: message('start') });
-        expect(parked.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
-        expect(parked.status.message.metadata.signalNames).toEqual(['human-response']);
+    await withA2A({ asker: parksThenAnswers() }, async (opened) => {
+      const parked = await sendForTask(opened, 'asker', { message: message('start') });
+      expect(parked.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+      expect(parked.status.message.metadata.signalNames).toEqual(['human-response']);
 
-        const answered = await send(opened, 'asker', {
-          message: message('blue', { taskId: parked.id, contextId: parked.contextId }),
-        });
+      const answered = await send(opened, 'asker', {
+        message: message('blue', { taskId: parked.id, contextId: parked.contextId }),
+      });
 
-        expect(answered.body.error).toBeUndefined();
-        expect(taskOf(answered.body).status.state).toBe('TASK_STATE_COMPLETED');
-        expect(taskOf(answered.body).history.map((entry: Json) => entry.parts[0].text)).toEqual([
-          'start',
-          'blue',
-          'resolved',
-        ]);
-      },
-      { humanInput: true },
-    );
+      expect(answered.body.error).toBeUndefined();
+      expect(taskOf(answered.body).status.state).toBe('TASK_STATE_COMPLETED');
+      expect(taskOf(answered.body).history.map((entry: Json) => entry.parts[0].text)).toEqual([
+        'start',
+        'blue',
+        'resolved',
+      ]);
+    });
   });
 
   it('refuses another context with -32602 and a finished task with -32004, admitting nothing', async () => {
-    await withA2A(
-      { asker: parksThenAnswers(), done: answering('done') },
-      async (opened) => {
-        const parked = await sendForTask(opened, 'asker', { message: message('start') });
-        const wrongContext = await send(opened, 'asker', {
-          message: message('blue', { taskId: parked.id, contextId: 'another-context' }),
-        });
-        const finished = await sendForTask(opened, 'done', { message: message('x') });
-        const late = await send(opened, 'done', {
-          message: message('more', { taskId: finished.id }),
-        });
+    await withA2A({ asker: parksThenAnswers(), done: answering('done') }, async (opened) => {
+      const parked = await sendForTask(opened, 'asker', { message: message('start') });
+      const wrongContext = await send(opened, 'asker', {
+        message: message('blue', { taskId: parked.id, contextId: 'another-context' }),
+      });
+      const finished = await sendForTask(opened, 'done', { message: message('x') });
+      const late = await send(opened, 'done', {
+        message: message('more', { taskId: finished.id }),
+      });
 
-        expect(wrongContext.body.error.code).toBe(-32602);
-        expect(late.body.error.code).toBe(-32004);
-        const still = await opened.bureau.tasks.get(parked.id);
-        expect(still?.status).toBe('input-required');
-      },
-      { humanInput: true },
-    );
+      expect(wrongContext.body.error.code).toBe(-32602);
+      expect(late.body.error.code).toBe(-32004);
+      const still = await opened.bureau.tasks.get(parked.id);
+      expect(still?.status).toBe('input-required');
+    });
   });
 
   it('refuses a reject decision without a reason with -32602', async () => {
-    await withA2A(
-      { asker: parksThenAnswers() },
-      async (opened) => {
-        const parked = await sendForTask(opened, 'asker', { message: message('start') });
-        const refused = await send(opened, 'asker', {
-          message: {
-            ...message('', { taskId: parked.id }),
-            parts: [{ data: { decision: 'reject' }, mediaType: 'application/json' }],
-          },
-        });
-        expect(refused.body.error.code).toBe(-32602);
-      },
-      { humanInput: true },
-    );
+    await withA2A({ asker: parksThenAnswers() }, async (opened) => {
+      const parked = await sendForTask(opened, 'asker', { message: message('start') });
+      const refused = await send(opened, 'asker', {
+        message: {
+          ...message('', { taskId: parked.id }),
+          parts: [{ data: { decision: 'reject' }, mediaType: 'application/json' }],
+        },
+      });
+      expect(refused.body.error.code).toBe(-32602);
+    });
   });
 });
 

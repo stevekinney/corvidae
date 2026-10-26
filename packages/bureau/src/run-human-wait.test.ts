@@ -94,7 +94,6 @@ async function start(
     agents: { ...agents },
     storage: { type: 'memory' },
     durable: true,
-    humanInput: true,
     ...options,
   });
   bureaus.push(bureau);
@@ -434,7 +433,6 @@ describe('requestHumanInput on a catalog run', () => {
       agents: {
         asker: askingAgent(nonDurable),
       },
-      humanInput: true,
     });
     bureaus.push(memoryOnly);
 
