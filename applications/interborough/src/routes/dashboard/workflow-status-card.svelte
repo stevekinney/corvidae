@@ -5,8 +5,8 @@
    * own card, distinct from the workflows-domain card-slot registry entry).
    * Data is fetched once by the parent route (`./index.svelte`, which also needs the total for the
    * page-level empty-state gate) and passed in as a query result — this
-   * component only presents it. Each count opens the runs list on the state that status reads as
-   * (`runs-link.ts`).
+   * component only presents it. Each count opens the engine's run list on that status
+   * (`engine-runs-link.ts`).
    */
   import { Card, Skeleton, StatusDot } from '@lostgradient/cinder';
   import type { CreateQueryResult } from '@tanstack/svelte-query';
@@ -14,7 +14,8 @@
   import { router } from '../../lib/router.svelte.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import type { WorkflowAggregateResult } from './aggregate-output.ts';
-  import { runsPathForStatus } from './runs-link.ts';
+  import { ENGINE_RUNS_PATH } from '../../lib/workflow-type-paths.ts';
+  import { engineRunsPathForStatus } from './engine-runs-link.ts';
   import { STATUS_DISPLAY_ORDER, statusToneInfo } from './status-tone.ts';
 
   interface WorkflowStatusCardProps {
@@ -46,9 +47,9 @@
     <div class="weft-dashboard-card__header">
       <span class="weft-dashboard-card__title">Runs by status</span>
       <a
-        href={router.href('/runs')}
+        href={router.href(ENGINE_RUNS_PATH)}
         class="weft-dashboard-card__view-all"
-        onclick={(event) => open(event, '/runs')}>View all →</a
+        onclick={(event) => open(event, ENGINE_RUNS_PATH)}>View all →</a
       >
     </div>
   {/snippet}
@@ -69,7 +70,7 @@
       {#each STATUS_DISPLAY_ORDER as status (status)}
         {@const info = statusToneInfo(status)}
         {@const count = countByStatus.get(status) ?? 0}
-        {@const path = runsPathForStatus(status)}
+        {@const path = engineRunsPathForStatus(status)}
         <a
           href={router.href(path)}
           class="weft-status-card__cell"
