@@ -12,6 +12,7 @@
     type RunStepDetail,
   } from '@lostgradient/cinder';
   import { stringify } from '../../../utilities/stringify.ts';
+  import { toolResultText } from '../../../utilities/tool-result-text.ts';
   import type { ToolCallPair } from '../conversation-model.ts';
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
@@ -70,6 +71,16 @@
       : textDetail(id, label, String(value));
   }
 
+  /** A result's detail: its ordered parts as text when it has them, else its `content`. */
+  function resultPayloadDetail(
+    id: string,
+    result: NonNullable<ToolCallPair['result']>,
+  ): RunStepDetail {
+    return result.parts === undefined
+      ? payloadDetail(id, 'Result', result.content)
+      : textDetail(id, 'Result', toolResultText(result));
+  }
+
   function resultDetails(pair: ToolCallPair, detailPrefix: string): RunStepDetail[] {
     if (!pair.result) return [];
 
@@ -85,7 +96,7 @@
 
     if (pair.result.outcome === 'action_required') {
       const details = [
-        payloadDetail(`${detailPrefix}-result`, 'Result', pair.result.content),
+        resultPayloadDetail(`${detailPrefix}-result`, pair.result),
         textDetail(
           `${detailPrefix}-action`,
           'Action',
@@ -95,7 +106,7 @@
       return details;
     }
 
-    return [payloadDetail(`${detailPrefix}-result`, 'Result', pair.result.content)];
+    return [resultPayloadDetail(`${detailPrefix}-result`, pair.result)];
   }
 
   function statusText(pair: ToolCallPair): string {
