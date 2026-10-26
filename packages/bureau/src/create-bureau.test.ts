@@ -116,6 +116,7 @@ import {
 } from './create-bureau';
 import { createAgentSkills } from './agent-skills';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
+import { agentFileDirectory } from './sources/agent-file-directory';
 import {
   createHumanWaitContext,
   createMemoryPersistHook,
@@ -13551,8 +13552,11 @@ describe('Bureau.models', () => {
     }
   });
 
-  it('refuses agentDirectory without models.generate with BAD_REQUEST', async () => {
-    const refusal = await createBureau({ agents: {}, agentDirectory: '/nonexistent/agents' }).then(
+  it('refuses agentSource without models.generate with BAD_REQUEST', async () => {
+    const refusal = await createBureau({
+      agents: {},
+      agentSource: agentFileDirectory('/nonexistent/agents'),
+    }).then(
       () => undefined,
       (rejection: unknown) => rejection,
     );

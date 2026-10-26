@@ -30,6 +30,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { agentFileDirectory } from './sources/agent-file-directory';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -139,7 +140,7 @@ describe('a pending approval restored after a restart', () => {
     cleanups.push(() => built.mockRestore());
     const bureau: Bureau = await createBureau<AgentDefinitions>({
       agents: {},
-      agentDirectory: directory,
+      agentSource: agentFileDirectory(directory),
       models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
       storage,
       durableExecution: true,

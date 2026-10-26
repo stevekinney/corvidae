@@ -13,12 +13,12 @@ import { join } from 'node:path';
 import { type GenerateFunction } from '@lostgradient/operative';
 import { spyOn } from 'bun:test';
 
-import { nodeAgentFileOperations } from '../agent-file-operations';
+import { nodeAgentFileOperations } from '../sources/agent-file-operations';
 import { agentFileText, KNOWN_MODEL } from './agent-file-fixtures.test-support';
 
 export interface ConstructionWindowFixtures {
   /** A directory holding one valid agent file. Removed by `dispose()`. */
-  agentDirectoryWithOneFile(): Promise<string>;
+  directoryWithOneAgentFile(): Promise<string>;
   /** A scratch directory. Removed by `dispose()`. */
   scratchDirectory(prefix: string): Promise<string>;
   /**
@@ -36,7 +36,7 @@ export function createConstructionWindowFixtures(): ConstructionWindowFixtures {
   const directories: string[] = [];
   const restores: Array<() => void> = [];
   return {
-    async agentDirectoryWithOneFile() {
+    async directoryWithOneAgentFile() {
       const directory = await mkdtemp(join(tmpdir(), 'bureau-construction-window-'));
       directories.push(directory);
       await writeFile(
@@ -75,7 +75,7 @@ export function createConstructionWindowFixtures(): ConstructionWindowFixtures {
 }
 
 /** An `options.models.generate` for an agent directory: every file agent answers `answer`. */
-export const agentDirectoryGenerate = (): GenerateFunction => async () => ({
+export const constructionWindowGenerate = (): GenerateFunction => async () => ({
   content: 'answer',
   toolCalls: [],
 });

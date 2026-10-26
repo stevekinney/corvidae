@@ -2,7 +2,7 @@
 
 Bureau loads agent-authored workflows from JSON files in a directory the host names (COR-1527). You create and edit a workflow by hand, or through `bureau.workflows.create`, `update`, `pause`, `resume`, and `delete`; either way the workflow is a file. It follows the same rules as [agent files](agent-files.md): one file per workflow, the filename is the identifier, a file that cannot be used is listed and never runs, changes take effect without a restart, and a run keeps the revision it began on.
 
-Bureau does not know where the directory lives. The host passes a path (`BureauOptions.workflowDirectory`), and the Interborough host passes `workflows/` under its home. A directory that does not exist is an empty one. `workflowDirectory` needs a durable engine, because a schedule and an instance both persist; without one `createBureau` refuses it with `BureauError` (`BAD_REQUEST`).
+Bureau does not know where the directory lives. The host passes a workflow source (`BureauOptions.workflowSource`), usually `workflowFileDirectory(path)` from `@lostgradient/bureau/sources`, and the Interborough host passes `workflows/` under its home. A directory that does not exist is an empty one. `workflowSource` needs a durable engine, because a schedule and an instance both persist; without one `createBureau` refuses it with `BureauError` (`BAD_REQUEST`).
 
 ## A file
 
@@ -64,6 +64,7 @@ A file that cannot be used is listed by `bureau.workflows.list()` with `state: '
 
 ```ts
 import { createBureau } from '@lostgradient/bureau';
+import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import type { BackendDescriptor, GenerateFunction, StandaloneAgent } from '@lostgradient/operative';
 
 declare const writer: StandaloneAgent;
@@ -71,17 +72,19 @@ declare function generateFor(descriptor: BackendDescriptor): GenerateFunction;
 
 const bureau = await createBureau({
   agents: { writer },
-  agentDirectory: '/home/me/.interborough/agents',
-  workflowDirectory: '/home/me/.interborough/workflows',
+  agentSource: agentFileDirectory('/home/me/.interborough/agents'),
+  workflowSource: workflowFileDirectory('/home/me/.interborough/workflows'),
   storage: { type: 'sqlite', path: '/home/me/.interborough/bureau.sqlite' },
   durableExecution: true,
   models: { generate: generateFor },
 });
 ```
 
-Bureau registers the workflows before the engine recovers, and starts the engine's scheduler only after that, so a schedule that is due the moment the process starts cannot fire a workflow type Weft does not have yet. A Bureau with no `workflowDirectory` starts its scheduler exactly as it always did. `bureau.workflows` is `undefined` for a Bureau with no directory.
+Bureau registers the workflows before the engine recovers, and starts the engine's scheduler only after that, so a schedule that is due the moment the process starts cannot fire a workflow type Weft does not have yet. A Bureau with no `workflowSource` starts its scheduler exactly as it always did. `bureau.workflows` is `undefined` for a Bureau with no workflow source.
 
 ## Watching
+
+`workflowFileDirectory(path, { watch?, watchFactory? })` is a `WorkflowSource`, the same contract the agent files use (see [agent files](agent-files.md#sources)): `load()`, `watch()`, and `write` and `delete` with an `expectedHash`. Bureau calls `load()` after each of its own writes, and `bureau.workflows.refresh()` calls `load()`. `watch: false` means no `fs.watch` and no poll.
 
 Bureau watches the directory the way it watches the agent directory (see [agent files](agent-files.md#watching)): `fs.watch` is only a trigger, one single-flight loop rescans the whole directory, and a rescan every second (`DIRECTORY_POLL_INTERVAL_MILLISECONDS`) backs it up. A change to the directory registers the new document with the engine and puts the schedule back to match, one change at a time. A write through an operation returns only after that has happened. A hand edit takes effect within the watcher's event or the one-second backstop.
 
@@ -111,7 +114,7 @@ Bureau stores each revision in its database under `bureau-workflow-snapshot:v1:<
 
 ### At startup
 
-Before the engine recovers, Bureau asks the engine which `workflowVersion`s still have an instance in flight (`pending`, `running`, or `suspended`) for every workflow it has a file or a snapshot for. It registers every ready file's current document as `active`, and each in-flight version that is no longer the file's as `retained` from its snapshot. So an instance parked in a `sleep` or an `await-signal` whose file was edited or deleted resumes on its original revision after a restart. An instance Bureau cannot register a revision for is cancelled before the engine recovers, because the engine refuses to recover anything while an in-flight instance of an unregistered type remains, and one such instance would strand every durable run in the store on every boot. That is an instance pinned to a revision whose snapshot is not stored, is not valid, or no longer validates against this Bureau, or whose workflow's name is now a code-defined workflow's (an instance of that code workflow itself is never touched). Each cancellation is reported through the diagnostic sink as an error naming the instance, the workflow, and the reason. The reason is stored (`bureau-workflow-cancelled-run:v1:<runId>`), so `bureau.workflows.runs.get` returns the instance as `cancelled` with it in `error`, and `runs.list` still lists it. Bureau can only do this for a workflow it still holds a trace of: a file, a stored revision of any version, or an earlier cancellation. An instance of a type Bureau has no trace of, or one of a Bureau that has no `workflowDirectory` at all, is left untouched in storage: Bureau recovers every other run, and reports each one left behind in `waitForRecovery()`'s `skippedRuns` (which makes its `outcome` `partial`) and as one `scope: 'recovery'` `warn` diagnostic per run per boot. A later boot that registers the type recovers it.
+Before the engine recovers, Bureau asks the engine which `workflowVersion`s still have an instance in flight (`pending`, `running`, or `suspended`) for every workflow it has a file or a snapshot for. It registers every ready file's current document as `active`, and each in-flight version that is no longer the file's as `retained` from its snapshot. So an instance parked in a `sleep` or an `await-signal` whose file was edited or deleted resumes on its original revision after a restart. An instance Bureau cannot register a revision for is cancelled before the engine recovers, because the engine refuses to recover anything while an in-flight instance of an unregistered type remains, and one such instance would strand every durable run in the store on every boot. That is an instance pinned to a revision whose snapshot is not stored, is not valid, or no longer validates against this Bureau, or whose workflow's name is now a code-defined workflow's (an instance of that code workflow itself is never touched). Each cancellation is reported through the diagnostic sink as an error naming the instance, the workflow, and the reason. The reason is stored (`bureau-workflow-cancelled-run:v1:<runId>`), so `bureau.workflows.runs.get` returns the instance as `cancelled` with it in `error`, and `runs.list` still lists it. Bureau can only do this for a workflow it still holds a trace of: a file, a stored revision of any version, or an earlier cancellation. An instance of a type Bureau has no trace of, or one of a Bureau that has no `workflowSource` at all, is left untouched in storage: Bureau recovers every other run, and reports each one left behind in `waitForRecovery()`'s `skippedRuns` (which makes its `outcome` `partial`) and as one `scope: 'recovery'` `warn` diagnostic per run per boot. A later boot that registers the type recovers it.
 
 ### Retention
 
@@ -147,7 +150,7 @@ The operation needs the deployment's owner or `bureau.workflows:write`. Any othe
 
 ## Agent tools
 
-With a `workflowDirectory`, Bureau adds five tools to the deployment's tool catalog (`BureauOptions.agentTools`) itself, so an agent file receives them only when it lists them in `tools`: `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`, and `workflows-list` (COR-1529). The names use hyphens because provider tool-name grammars exclude dots. A host tool with one of these names is refused at `createBureau` with `BureauError` (`BAD_REQUEST`). Code-defined agents take their tools from their own definitions and are not given these.
+With a `workflowSource`, Bureau adds five tools to the deployment's tool catalog (the `tools` of the agent source) itself, so an agent file receives them only when it lists them in `tools`: `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`, and `workflows-list` (COR-1529). The names use hyphens because provider tool-name grammars exclude dots. A host tool with one of these names is refused at `createBureau` with `BureauError` (`BAD_REQUEST`). Code-defined agents take their tools from their own definitions and are not given these.
 
 The tools write through `Bureau.workflows`, the same methods the operations use, never to the filesystem directly.
 

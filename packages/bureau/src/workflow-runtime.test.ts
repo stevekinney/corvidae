@@ -27,6 +27,7 @@ import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-ho
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -86,7 +87,7 @@ async function world(): Promise<World> {
       cleanups.push(() => engine[Symbol.asyncDispose]());
       options.prepare?.(engine);
       const runtime = createWorkflowRuntime({
-        directory,
+        source: workflowFileDirectory(directory, { watch: false }),
         engine,
         host: createWorkflowDocumentHost({
           runAgentStep: async (request) => {
@@ -101,7 +102,6 @@ async function world(): Promise<World> {
         runtime: createDefaultRuntimeServices(),
         diagnose: (message) => diagnostics.push(message),
         createError: (message) => new Error(message),
-        watch: false,
       });
       cleanups.push(() => runtime.close());
       const start = await runtime.start();

@@ -1,7 +1,7 @@
 /**
  * COR-1527 — the child half of the workflow file crash tests.
  *
- * Usage: `bun workflow-file-crash-child.ts <mode> <storagePath> <workflowDirectory> <markerPath>`
+ * Usage: `bun workflow-file-crash-child.ts <mode> <storagePath> <workflowsPath> <markerPath>`
  *
  * `parked`: stands up a durable Bureau over a workflow directory holding `sleeper.json` (a sleep,
  * then an agent step), `waiter.json` (an await-signal, then an agent step), and `midstep.json` (an
@@ -23,16 +23,17 @@ import { BunSQLiteStorage, type Storage } from '@lostgradient/weft';
 import { createBureau } from '../create-bureau';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
+import { workflowFileDirectory } from '../sources/workflow-file-directory';
 
-const [mode, storagePath, workflowDirectory, markerPath] = process.argv.slice(2);
+const [mode, storagePath, workflowsPath, markerPath] = process.argv.slice(2);
 if (
   (mode !== 'parked' && mode !== 'claim') ||
   storagePath === undefined ||
-  workflowDirectory === undefined ||
+  workflowsPath === undefined ||
   markerPath === undefined
 ) {
   process.stderr.write(
-    'usage: workflow-file-crash-child <parked|claim> <storagePath> <workflowDirectory> <markerPath>\n',
+    'usage: workflow-file-crash-child <parked|claim> <storagePath> <workflowsPath> <markerPath>\n',
   );
   process.exit(2);
 }
@@ -76,7 +77,7 @@ const bureau = await createBureau<AgentDefinitions>({
       },
     }),
   },
-  workflowDirectory,
+  workflowSource: workflowFileDirectory(workflowsPath),
   storage: killingAfterStepClaim(new BunSQLiteStorage(storagePath)),
   durableExecution: true,
   durableOwnership: {

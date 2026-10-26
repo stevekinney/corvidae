@@ -22,6 +22,7 @@ import {
 } from './testing/agent-file-bureau.test-support';
 import { pollUntil } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { agentFileDirectory } from './sources/agent-file-directory';
 
 const harnesses: FileBureauHarness[] = [];
 
@@ -301,7 +302,9 @@ describe('createBureau with an agent directory', () => {
 
   it('refuses a directory without the means to run its models', async () => {
     const { createBureau } = await import('./create-bureau');
-    const refusal = await rejectionOf(createBureau({ agents: {}, agentDirectory: '/tmp/agents' }));
+    const refusal = await rejectionOf(
+      createBureau({ agents: {}, agentSource: agentFileDirectory('/tmp/agents') }),
+    );
     expect(refusal).toBeInstanceOf(BureauError);
     expect((refusal as BureauError).code).toBe('BAD_REQUEST');
   });

@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./skills": "./src/skills/index.ts"
+    "./skills": "./src/skills/index.ts",
+    "./sources": "./src/sources/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-documentation-coverage.ts",

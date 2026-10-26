@@ -333,6 +333,7 @@ import {
   payloadMaximumBytesOf,
   type WorkflowRuntime,
 } from './workflow-runtime';
+import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
@@ -1956,27 +1957,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   validateModelsOptions(options.models, toBadRequest);
   // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
   // host holds the credentials to do it. Refused here rather than leaving every file unusable.
-  if (options.agentDirectory !== undefined) {
-    if (typeof options.agentDirectory !== 'string' || options.agentDirectory.trim() === '') {
-      toBadRequest('"options.agentDirectory" must be a non-empty path');
-    }
+  if (options.agentSource !== undefined) {
+    validateDefinitionSource('agentSource', 'agent', options.agentSource, toBadRequest);
     if (options.models?.generate === undefined) {
       toBadRequest(
-        '"options.models.generate" is required with "options.agentDirectory": it turns a model in the model catalog into the generate an agent file runs with',
+        '"options.models.generate" is required with "options.agentSource": it turns a model in the model catalog into the generate an agent file runs with',
       );
     }
   }
-  // COR-1527: a workflow directory is a path, like the agent directory.
-  if (options.workflowDirectory !== undefined) {
-    if (typeof options.workflowDirectory !== 'string' || options.workflowDirectory.trim() === '') {
-      toBadRequest('"options.workflowDirectory" must be a non-empty path');
-    }
+  if (options.workflowSource !== undefined) {
+    validateDefinitionSource('workflowSource', 'workflow', options.workflowSource, toBadRequest);
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
     // already has one of their names would be silently shadowed or shadow them.
-    const colliding = collidingWorkflowToolName(options.agentTools);
+    const colliding = collidingWorkflowToolName(options.agentSource?.tools);
     if (colliding !== undefined) {
       toBadRequest(
-        `"options.agentTools" names a tool "${colliding}", which Bureau provides itself when "options.workflowDirectory" is set`,
+        `"options.agentSource.tools" names a tool "${colliding}", which Bureau provides itself when "options.workflowSource" is set`,
       );
     }
   }
@@ -2235,10 +2231,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   );
   // COR-1527: a workflow file's schedule and instances need the durable engine, so a Bureau
   // without one is refused rather than left with a directory that does nothing.
-  if (options.workflowDirectory !== undefined && !runtime.durable) {
+  if (options.workflowSource !== undefined && !runtime.durable) {
     await shutdownThenRethrow(
       new BureauError(
-        '"options.workflowDirectory" needs a durable engine: configure storage (or durableExecution) so workflow instances and schedules can persist',
+        '"options.workflowSource" needs a durable engine: configure storage (or durableExecution) so workflow instances and schedules can persist',
         'BAD_REQUEST',
       ),
       async () => {
@@ -2362,16 +2358,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `selector: 'available'` (AB-247/mod-02e's one named mechanism for this
     // transition).
     //
-    // COR-1524: with an `agentDirectory`, the Markdown files in it join the catalog. They are
+    // COR-1524: with an `agentSource`, the definitions in it join the catalog. They are
     // scanned before the catalog is handed out and before boot recovery runs, so the first
     // `bureau.agents.list()` and a resumed run both see the directory as it is now.
     // COR-1529: with a workflow directory the catalog also holds the workflow tools. They read the
     // workflow runtime and the run's identity when called, which is after construction has finished.
     agentToolCatalog =
-      options.workflowDirectory === undefined
-        ? (options.agentTools ?? {})
+      options.workflowSource === undefined
+        ? (options.agentSource?.tools ?? {})
         : {
-            ...options.agentTools,
+            ...options.agentSource?.tools,
             ...createWorkflowTools({
               workflows: () => workflowRuntime?.workflows,
               runIdentity: async (runId) => ({
@@ -2381,11 +2377,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }),
           };
     fileAgents =
-      options.agentDirectory === undefined || options.models?.generate === undefined
+      options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
         : createFileAgentRuntime({
             files: createAgentFileCatalog({
-              directory: options.agentDirectory,
+              source: options.agentSource,
               reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
               tools: agentToolCatalog,
               models,
@@ -2425,10 +2421,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
     // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
     workflowRuntime =
-      options.workflowDirectory === undefined || runtime.durable === undefined
+      options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
         : createWorkflowRuntime({
-            directory: options.workflowDirectory,
+            source: options.workflowSource,
             // The composition's engine type hides `register`; it is the one Weft `Engine`, and
             // registering documents (`registerSource`) is exactly what it is lent out for here.
             engine: runtime.durable.engine as Engine,

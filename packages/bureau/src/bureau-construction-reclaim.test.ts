@@ -26,11 +26,13 @@ import type { RuntimeComposition } from './runtime-composition';
 import * as workflowToolsModule from './workflow-tools';
 import {
   createConstructionWindowFixtures,
-  agentDirectoryGenerate,
+  constructionWindowGenerate,
 } from './testing/construction-window.test-support';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
+import { agentFileDirectory } from './sources/agent-file-directory';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures = createConstructionWindowFixtures();
@@ -146,8 +148,8 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
         agents: {
           writer: writerAnswering('recovered'),
         },
-        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        models: { generate: agentDirectoryGenerate },
+        agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
+        models: { generate: constructionWindowGenerate },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: leaseOptions,
@@ -234,8 +236,8 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        models: { generate: agentDirectoryGenerate },
+        agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
+        models: { generate: constructionWindowGenerate },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: leaseOptions,
@@ -333,8 +335,8 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       hold,
       createBureau<AgentDefinitions>({
         agents: {},
-        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        models: { generate: agentDirectoryGenerate },
+        agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
+        models: { generate: constructionWindowGenerate },
         storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
         durableExecution: true,
         durableBackgroundTasks: 'manual',
@@ -457,8 +459,8 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
         agents: {
           writer: writerAnswering('never runs'),
         },
-        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        models: { generate: agentDirectoryGenerate },
+        agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
+        models: { generate: constructionWindowGenerate },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: leaseOptions,
@@ -568,7 +570,9 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
 
     const outcome = await createBureau<AgentDefinitions>({
       agents: {},
-      workflowDirectory: await fixtures.scratchDirectory('bureau-reclaim-workflows-'),
+      workflowSource: workflowFileDirectory(
+        await fixtures.scratchDirectory('bureau-reclaim-workflows-'),
+      ),
       storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
       durableExecution: true,
       durableBackgroundTasks: 'manual',
