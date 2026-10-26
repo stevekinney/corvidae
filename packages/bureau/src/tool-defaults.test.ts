@@ -230,7 +230,8 @@ describe('a durable Bureau offers the tools by default', () => {
         }),
       );
       await harness.bureau.workflows?.refresh();
-      await (await harness.bureau.durableEngine()?.start('digest', null, { id: 'step' }))?.result();
+      const instance = await harness.bureau.durableEngine()?.start('digest', null, { id: 'step' });
+      await instance?.result();
 
       expect(offered.length).toBeGreaterThan(0);
       expect(offered.flat()).not.toContain('requestHumanInput');

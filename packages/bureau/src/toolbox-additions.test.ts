@@ -29,7 +29,7 @@ const REQUEST_CONTEXT: ToolRequestContext = {
     capabilities: ['tools:execute'],
     authorizationRevision: 'bureau:1',
   },
-} as ToolRequestContext;
+};
 
 function additionsToolbox(): AnyToolbox {
   return createToolbox([
@@ -39,7 +39,7 @@ function additionsToolbox(): AnyToolbox {
       input: z.object({}),
       execute: async () => 'added',
     }),
-  ]) as unknown as AnyToolbox;
+  ]);
 }
 
 function chargeTool(effects: string[]) {
@@ -99,7 +99,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
             input: z.object({}),
             execute: async () => 'visible',
           }),
-        ]) as unknown as AnyToolbox,
+        ]),
         () => policy,
       ),
       () => policy,
@@ -122,7 +122,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
 
   it('offers none of the added tools when the policy allows nothing', () => {
     const base = recordToolPolicy(
-      withActiveSkillToolPolicy(createToolbox([]) as unknown as AnyToolbox, () => ({
+      withActiveSkillToolPolicy(createToolbox([]), () => ({
         allowList: [],
       })),
       () => ({ allowList: [] }),
@@ -132,10 +132,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
 
   it('records the policy on what it returns, so a second addition is narrowed too', () => {
     const policy = () => ({ allowList: [] }) as ToolPolicy;
-    const base = recordToolPolicy(
-      withActiveSkillToolPolicy(createToolbox([]) as unknown as AnyToolbox, policy),
-      policy,
-    );
+    const base = recordToolPolicy(withActiveSkillToolPolicy(createToolbox([]), policy), policy);
     const once = withAddedTools(base, additionsToolbox());
     expect(toolPolicyOf(once)).toBe(policy);
     expect(withAddedTools(once, additionsToolbox()).tools()).toEqual([]);
@@ -154,7 +151,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
         return principal ?? 'none';
       },
     });
-    const inner = createToolbox([probe]) as unknown as AnyToolbox;
+    const inner = createToolbox([probe]);
     const bound = new Proxy(inner, {
       get(target, property, receiver) {
         if (property !== 'execute') return Reflect.get(target, property, receiver) as unknown;
@@ -174,10 +171,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
 
   it('answers for the added tools, in the order the calls came in', async () => {
     const effects: string[] = [];
-    const toolbox = withAddedTools(
-      createToolbox([chargeTool(effects)]) as unknown as AnyToolbox,
-      additionsToolbox(),
-    );
+    const toolbox = withAddedTools(createToolbox([chargeTool(effects)]), additionsToolbox());
     const results = await toolbox.execute([
       { id: 'a', name: 'added', arguments: {} },
       charge('b'),
@@ -197,7 +191,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
         input: z.object({}),
         execute: async () => 'host',
       }),
-    ]) as unknown as AnyToolbox;
+    ]);
     const toolbox = withAddedTools(base, additionsToolbox());
     expect(toolbox.tools().map((tool) => tool.name)).toEqual(['added']);
     const result = await toolbox.execute({ id: 'x', name: 'added', arguments: {} });
@@ -245,10 +239,7 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
       base: () => {
         const policy = allowOnly(['charge']);
         return recordToolPolicy(
-          withActiveSkillToolPolicy(
-            createToolbox([chargeTool([])]) as unknown as AnyToolbox,
-            policy,
-          ),
+          withActiveSkillToolPolicy(createToolbox([chargeTool([])]), policy),
           policy,
         );
       },
@@ -282,7 +273,7 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
             }),
           ],
           { approvalSecret: 'class-guard-secret', approvalPolicy: { mode: 'always' } },
-        ) as unknown as AnyToolbox,
+        ),
       holds: async (toolbox) => {
         const paused = await toolbox.execute(
           { id: 'p', name: 'pay', arguments: { cents: 1 } },
@@ -292,7 +283,7 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
               audience: 'operator',
               agentId: 'guard',
               runId: 'guard-run',
-            } as ToolRequestContext,
+            },
           },
         );
         expect(paused).toMatchObject({ outcome: 'action_required' });
@@ -316,12 +307,12 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
     );
     const toolbox = withAddedTools(stacked, additionsToolbox());
 
-    expect((await toolbox.execute(charge('1'))).outcome).toBe('success');
-    expect((await toolbox.execute(charge('2'))).outcome).toBe('success');
+    const first = await toolbox.execute(charge('1'));
+    const second = await toolbox.execute(charge('2'));
+    const hidden = await toolbox.execute({ id: 'g', name: 'added', arguments: {} });
+    expect([first.outcome, second.outcome]).toEqual(['success', 'success']);
     expect(effects).toEqual(['order-1']);
     expect(toolbox.tools().map((tool) => tool.name)).toEqual(['charge']);
-    expect((await toolbox.execute({ id: 'g', name: 'added', arguments: {} })).outcome).toBe(
-      'error',
-    );
+    expect(hidden.outcome).toBe('error');
   });
 });
