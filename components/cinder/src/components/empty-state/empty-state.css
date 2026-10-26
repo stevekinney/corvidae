@@ -16,6 +16,23 @@
     gap: var(--cinder-space-2);
   }
 
+  .cinder-empty-state[data-cinder-align='start'] {
+    align-items: flex-start;
+    text-align: start;
+  }
+
+  /* A start-aligned state explains what to do rather than marking an absence, so its title
+   * leads in the default text colour instead of the muted placeholder one. */
+  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-title {
+    font-size: var(--cinder-text-md);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-description {
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-empty-state-icon {
     display: flex;
     align-items: center;

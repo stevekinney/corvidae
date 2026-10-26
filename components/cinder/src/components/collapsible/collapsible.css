@@ -113,6 +113,52 @@
   }
 
   /* ----------------------------------------
+ * Flat variant — a row on the surrounding surface: no border, no raised
+ * trigger, no horizontal padding, and a semibold label.
+ * ---------------------------------------- */
+
+  .cinder-collapsible[data-cinder-variant='flat'] {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__trigger {
+    padding: var(--cinder-space-2) 0;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  @media (hover: hover) {
+    .cinder-collapsible[data-cinder-variant='flat']
+      .cinder-collapsible__trigger:hover:not(:disabled) {
+      background: transparent;
+    }
+
+    .cinder-collapsible[data-cinder-variant='flat']
+      .cinder-collapsible__trigger:hover:not(:disabled)
+      .cinder-collapsible__chevron {
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-collapsible[data-cinder-variant='flat']
+    .cinder-collapsible__trigger:active:not(:disabled) {
+    background: transparent;
+  }
+
+  /* A flat disclosure heads a section of a flat page, so its label reads as a heading. */
+  .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__label {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-collapsible[data-cinder-variant='flat'] .cinder-collapsible__panel-inner {
+    padding: var(--cinder-space-2) 0 var(--cinder-space-3);
+    background: transparent;
+    border-radius: 0;
+  }
+
+  /* ----------------------------------------
  * Reduced motion — skip chevron rotation animation
  * (the slide transition duration is collapsed in the component)
  * ---------------------------------------- */

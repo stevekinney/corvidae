@@ -65,3 +65,26 @@ export function injectStrippedStyles(...cssTexts: string[]): () => void {
   document.head.append(style);
   return () => style.remove();
 }
+
+/**
+ * Declarations of the first rule whose selector list contains exactly `selector`
+ * (whitespace-normalised), as a property-to-value map. happy-dom cannot resolve
+ * `var()` shorthands or flex alignment through `getComputedStyle`, so tests that
+ * pin what a component sidecar declares read the parsed rule instead. Looks
+ * through the `@layer cinder.components` wrapper and any nested `@media` block.
+ */
+export function declarationsFor(css: string, selector: string): Map<string, string> {
+  const wanted = selector.replace(/\s+/g, ' ').trim();
+  const found = new Map<string, string>();
+  let matched = false;
+  parse(css).walkRules((rule) => {
+    if (matched) return;
+    const selectors = rule.selector.split(',').map((entry) => entry.replace(/\s+/g, ' ').trim());
+    if (!selectors.includes(wanted)) return;
+    matched = true;
+    rule.walkDecls((declaration) => {
+      found.set(declaration.prop, declaration.value);
+    });
+  });
+  return found;
+}

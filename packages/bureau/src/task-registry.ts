@@ -106,6 +106,23 @@ export type TaskCleanupState =
 /** The kinds of task that are not ordinary runs. */
 export type TaskKind = 'schedule-fire';
 
+/**
+ * What a task reads as in the management plane (COR-1689), by how its record was written: a record
+ * of the `schedule-fire` kind is `schedule-fire`; otherwise a non-empty incarnation, the session
+ * incarnation the run ran in, is `chat`; and anything else is `catalog`. A `bureau.run()` dispatch
+ * records no incarnation, so it is `catalog` and its `contextId` is its own handle unless the
+ * caller named a session. A Bureau without a session store records none for a `createRun` task
+ * either, so that task reads `catalog` too: `catalog` means no session incarnation was recorded,
+ * not that the run is a dispatch. The kind a record stores ({@link TaskKind}) is only the fire.
+ */
+export type TaskViewKind = 'chat' | 'schedule-fire' | 'catalog';
+
+/** The kind a task record reads as. See {@link TaskViewKind}. */
+export function taskViewKindOf(record: Pick<TaskRecord, 'kind' | 'incarnation'>): TaskViewKind {
+  if (record.kind === 'schedule-fire') return 'schedule-fire';
+  return record.incarnation === '' ? 'catalog' : 'chat';
+}
+
 /** One message in a task's own history: what the requester said, not the session transcript. */
 export interface TaskMessage {
   readonly messageId: string;
@@ -219,6 +236,8 @@ export interface TaskView {
   readonly owner: string;
   /** The service principal that started the task for its owner, or `null` when its owner did. */
   readonly actor: string | null;
+  /** What `contextId` names. See {@link TaskViewKind}. */
+  readonly kind: TaskViewKind;
   readonly status: TaskState;
   readonly finishReason: string | null;
   readonly statusMessage: string | null;
@@ -876,6 +895,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       agentName: record.agentName,
       owner: record.owner,
       actor: record.actor ?? null,
+      kind: taskViewKindOf(record),
       status,
       finishReason,
       statusMessage,

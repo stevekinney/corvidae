@@ -1,6 +1,9 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+/** Visual treatment of the disclosure: a bordered card, or a flat row with no box. */
+export type CollapsibleVariant = 'default' | 'flat';
+
 /** State passed to a trigger snippet so labels can react to open/disabled. */
 export type CollapsibleTriggerState = { open: boolean; disabled: boolean };
 
@@ -38,6 +41,13 @@ export type CollapsibleProps = Omit<
   triggerClass?: string;
   /** Additional class names applied to the trigger label wrapper. */
   labelClass?: string;
+  /**
+   * Visual treatment. `'default'` is a bordered card with a raised trigger.
+   * `'flat'` drops the border, the raised trigger background, and the horizontal
+   * padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.
+   * @default 'default'
+   */
+  variant?: CollapsibleVariant;
   /**
    * Whether opening and closing uses the slide transition.
    * @default true
@@ -83,6 +93,13 @@ export interface CollapsibleSchemaProps {
   triggerClass?: string;
   /** Additional class names applied to the trigger label wrapper. */
   labelClass?: string;
+  /**
+   * Visual treatment. `'default'` is a bordered card with a raised trigger.
+   * `'flat'` drops the border, the raised trigger background, and the horizontal
+   * padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.
+   * @default 'default'
+   */
+  variant?: CollapsibleVariant;
   /**
    * Whether opening and closing uses the slide transition.
    * @default true

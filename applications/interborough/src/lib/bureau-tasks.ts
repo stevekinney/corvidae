@@ -57,6 +57,12 @@ export const taskViewSchema = z.object({
   agentName: z.string().nullable(),
   owner: z.string(),
   actor: z.string().nullable(),
+  /**
+   * How the Bureau's record of the task reads: `chat` when it recorded the session incarnation the
+   * run ran in (so `contextId` is a session), `schedule-fire` for a schedule's fire, and `catalog`
+   * otherwise: a dispatch's handle, or a run in a Bureau without a session store.
+   */
+  kind: z.enum(['chat', 'schedule-fire', 'catalog']),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().nullable(),

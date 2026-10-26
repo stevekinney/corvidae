@@ -200,7 +200,11 @@ export { default as CodeBlock } from './components/code-block/index.ts';
 export type { CodeBlockProps } from './components/code-block/index.ts';
 
 export { default as Collapsible } from './components/collapsible/index.ts';
-export type { CollapsibleProps, CollapsibleTriggerState } from './components/collapsible/index.ts';
+export type {
+  CollapsibleProps,
+  CollapsibleTriggerState,
+  CollapsibleVariant,
+} from './components/collapsible/index.ts';
 
 export { default as ColorField } from './components/color-field/index.ts';
 export type {
@@ -356,10 +360,10 @@ export { default as DropdownTrigger } from './components/dropdown-trigger/index.
 export type { DropdownTriggerProps } from './components/dropdown-trigger/index.ts';
 
 export { default as EmptyState } from './components/empty-state/index.ts';
-export type { EmptyStateProps } from './components/empty-state/index.ts';
+export type { EmptyStateAlign, EmptyStateProps } from './components/empty-state/index.ts';
 
 export { default as ErrorState } from './components/error-state/index.ts';
-export type { ErrorStateProps } from './components/error-state/index.ts';
+export type { ErrorStateProps, ErrorStateVariant } from './components/error-state/index.ts';
 
 export { default as FilterBar } from './components/filter-bar/index.ts';
 export type {

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init, so register happy-dom's globals first.
@@ -136,4 +137,42 @@ test('no console errors on render', () => {
   } finally {
     console.error = originalError;
   }
+});
+
+describe('ErrorState variant', () => {
+  test('the default variant boxes the error in an alert inside padded space', () => {
+    const { container } = render(ErrorState, { props: { title: 'Failed', description: 'Nope.' } });
+    const root = container.querySelector('.cinder-error-state');
+    expect(root?.hasAttribute('data-cinder-variant')).toBe(false);
+    expect(root?.querySelector('.cinder-alert')).not.toBeNull();
+  });
+
+  test('flat renders no Alert box and keeps the error announced as a labelled alert', () => {
+    const { container, getByRole } = render(ErrorState, {
+      props: {
+        title: 'Could not load runs',
+        description: 'Nope.',
+        detail: 'E1',
+        variant: 'flat',
+        onRetry: () => {},
+      },
+    });
+    const root = container.querySelector('.cinder-error-state');
+    expect(root?.getAttribute('data-cinder-variant')).toBe('flat');
+    expect(root?.querySelector('.cinder-alert')).toBeNull();
+    const alert = getByRole('alert');
+    expect(alert.getAttribute('aria-labelledby')).toBe(
+      container.querySelector('.cinder-error-state-title')?.id ?? null,
+    );
+    expect(alert.textContent).toContain('Nope.');
+    expect(alert.textContent).toContain('E1');
+    expect(getByRole('button', { name: 'Try again' })).not.toBeNull();
+  });
+
+  test('flat declares no padding of its own and aligns to the inline start', async () => {
+    const css = await Bun.file(new URL('./error-state.css', import.meta.url)).text();
+    const flat = declarationsFor(css, ".cinder-error-state[data-cinder-variant='flat']");
+    expect(flat.get('padding')).toBe('0');
+    expect(flat.get('align-items')).toBe('flex-start');
+  });
 });

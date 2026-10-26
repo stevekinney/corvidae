@@ -22,6 +22,12 @@ const schema = {
       description: 'Heading level for the title element.',
       default: 3,
     },
+    align: {
+      enum: ['center', 'start'],
+      description:
+        "Alignment of the content. `'center'` centres the icon, text, and action in\nthe region; `'start'` aligns them to the inline start, for a state that\nreads as instructions rather than a placeholder. A start-aligned state also leads with\na larger, semibold, default-colour title and a muted description.",
+      default: 'center',
+    },
   },
   additionalProperties: false,
   required: ['title'],
