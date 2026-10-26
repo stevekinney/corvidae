@@ -83,7 +83,7 @@ describe('a fire canceled with a committed approval, then a crash before the can
       await sleep(50);
       hold.arm();
       cancel(first, fireId);
-      await Promise.race([hold.reached, sleep(3000)]);
+      await hold.reached;
       expect(hold.held).toBe(true);
       expect(await durableStatus(first, fireId)).toBe('cancelled');
 
@@ -183,7 +183,7 @@ describe('a fire canceled while parked on a human wait', () => {
     const review = await reviewOf(first, fireId);
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
-    await Promise.race([hold.reached, sleep(3000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     const restarted = await harness.open({

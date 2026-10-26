@@ -311,7 +311,7 @@ describe('a close that waits for the seed read', () => {
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-order');
     const review = await reviewOf(bureau, fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     // The wait is answered while the fire's seed read, which the request waits on, is under way.
@@ -339,7 +339,7 @@ describe('a close that waits for the seed read', () => {
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-cancel');
     await reviewOf(bureau, fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     void bureau.durableEngine()?.cancel(fireId);
@@ -376,7 +376,7 @@ describe('a tool approval’s decision that waits for the seed read', () => {
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-approval');
     const review = await reviewOf(bureau, fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBeGreaterThan(0);
 
     let decided = false;
@@ -542,7 +542,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
     );
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     // The next boot reads a checkpoint whose latest step cannot be read. A tolerant read would

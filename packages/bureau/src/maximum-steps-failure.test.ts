@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 /**
  * COR-1627: a run that stops at its step limit is a failure on every Bureau surface. Its run
@@ -251,7 +252,7 @@ describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_na
         'the settled listener was never told the task ended',
       );
       // Let any second settlement the run's remaining terminal actions would write land.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await quietFor(100);
 
       expect(announced).toEqual(['failed']);
       expect(storage.settlements).toHaveLength(1);

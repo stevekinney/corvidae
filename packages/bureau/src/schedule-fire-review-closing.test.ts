@@ -290,7 +290,7 @@ describe('a canceled human wait gets one canceled record, whichever route cancel
       hold.arm();
 
       const canceling = cancel(bureau, fireId);
-      await Promise.race([hold.reached, sleep(3000)]);
+      await hold.reached;
       expect(hold.held).toBe(true);
       await sleep(300);
       hold.release();
@@ -387,7 +387,7 @@ describe('a re-gated fire approval that is canceled', () => {
     await first.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
-    await Promise.race([hold.reached, sleep(3000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     const restarted = await harness.open({
@@ -448,7 +448,7 @@ describe('a canceled approval whose process died between its record and its prun
       }
       hold.arm();
       void first.durableEngine()?.cancel(fireId);
-      await Promise.race([hold.reached, sleep(3000)]);
+      await hold.reached;
       expect(hold.held).toBe(true);
       expect(
         await auditRecordsOf(first, fireId, 'review.tool-approval.canceled', review.id),

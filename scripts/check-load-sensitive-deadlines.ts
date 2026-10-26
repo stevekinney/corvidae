@@ -575,6 +575,9 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
     ...findIterationCapWaits(sourceFile, constants),
     ...findWallClockPolls(sourceFile),
     ...findDefaultedBudgets(sourceFile, constants),
+    ...findSleepSynchronization(sourceFile, constants),
+    ...findTimerRejections(sourceFile, constants),
+    ...findTimerRaces(sourceFile, constants),
   ];
 }
 
@@ -803,6 +806,163 @@ function findDefaultedBudgets(
     const isAttempts = !BUDGET_PROPERTIES.has(name);
     if (isAttempts ? resolved < 2 : resolved >= HANG_GUARD_MILLISECONDS) return;
     violations.push(violation(sourceFile, node, 'wait-budget-default'));
+  });
+  return violations;
+}
+
+const SLEEP_CALLEES = new Set(['sleep', 'delay', 'wait', 'pause', 'nap']);
+
+/** The delay of `await sleep(n)`, `await Bun.sleep(n)` or `await new Promise((r) => setTimeout(r, n))`. */
+function awaitedSleepDelay(expression: ts.Expression): ts.Expression | null {
+  const operand = unwrap(expression);
+  if (ts.isCallExpression(operand)) {
+    const callee = unwrap(operand.expression);
+    const name = ts.isIdentifier(callee)
+      ? callee.text
+      : ts.isPropertyAccessExpression(callee) && callee.expression.getText() === 'Bun'
+        ? callee.name.text
+        : null;
+    if (name !== null && SLEEP_CALLEES.has(name)) return operand.arguments[0] ?? null;
+    return null;
+  }
+  if (ts.isNewExpression(operand) && operand.expression.getText() === 'Promise') {
+    const executor = operand.arguments?.[0];
+    if (executor === undefined) return null;
+    let delay: ts.Expression | null = null;
+    walk(executor, (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        /^(globalThis\.)?setTimeout$/.test(unwrap(node.expression).getText()) &&
+        node.arguments.length >= 2 &&
+        node.arguments[0] !== undefined &&
+        ts.isIdentifier(unwrap(node.arguments[0])) &&
+        (unwrap(node.arguments[0]) as ts.Identifier).text ===
+          ((ts.isArrowFunction(executor) || ts.isFunctionExpression(executor)) &&
+          executor.parameters[0] !== undefined
+            ? executor.parameters[0].name.getText()
+            : '')
+      ) {
+        delay = node.arguments[1] ?? null;
+      }
+    });
+    return delay;
+  }
+  return null;
+}
+
+/**
+ * `await sleep(50)` as a statement of a test or hook body, not under a manual clock: the test waits
+ * a fixed time for something to settle and then asserts, so a host that needs longer fails it. Wait
+ * for the thing itself (`waitUntil`, an awaited event or promise), or drive a fake clock. Sleeps in
+ * helper functions and test doubles are not statements of the test body and are not read.
+ */
+function findSleepSynchronization(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isExpressionStatement(node) || !ts.isAwaitExpression(node.expression)) return;
+    const delay = awaitedSleepDelay(node.expression.expression);
+    if (delay === null) return;
+    const value = resolveNumber(delay, constants);
+    if (value !== null && value <= 0) return;
+    // A sleep inside a loop is a poll, which the loop rules cover. Only a bare pause in the body of a
+    // test or hook is read here: the nearest enclosing function is the registered callback.
+    if (
+      ts.findAncestor(
+        node,
+        (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
+      ) !== undefined
+    ) {
+      const nearest = ts.findAncestor(
+        node,
+        (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
+      );
+      if (nearest !== undefined && ts.isIterationStatement(nearest, false)) return;
+    }
+    const body = ts.findAncestor(node, ts.isFunctionLike);
+    if (
+      body === undefined ||
+      !ts.isCallExpression(body.parent) ||
+      !isRegistration(body.parent) ||
+      isUnderFakeTimers(node) ||
+      isLoadProof(sourceFile, node)
+    ) {
+      return;
+    }
+    violations.push(violation(sourceFile, node, 'sleep-synchronization'));
+  });
+  return violations;
+}
+
+/**
+ * `setTimeout` (or `AbortSignal.timeout`) whose callback rejects or throws, with a delay below the
+ * hang guard: the timer half of a `Promise.race` against real work, which a loaded host loses.
+ */
+function findTimerRejections(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const callee = unwrap(node.expression).getText();
+    if (callee === 'AbortSignal.timeout') {
+      const [delay] = node.arguments;
+      if (
+        delay !== undefined &&
+        isShort(delay, constants, { unresolvedIsShort: false, allowZero: true })
+      ) {
+        if (!isLoadProof(sourceFile, node))
+          violations.push(violation(sourceFile, node, 'timer-rejection'));
+      }
+      return;
+    }
+    if (!/^(globalThis\.)?setTimeout$/.test(callee)) return;
+    const [callback, delay] = node.arguments;
+    if (callback === undefined || delay === undefined) return;
+    if (!(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) return;
+    let rejects = false;
+    walk(callback.body, (child) => {
+      if (ts.isThrowStatement(child)) rejects = true;
+      if (
+        ts.isCallExpression(child) &&
+        /^(reject|rejectPromise|fail)$/.test(unwrap(child.expression).getText())
+      ) {
+        rejects = true;
+      }
+    });
+    if (!rejects || isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    if (!isShort(delay, constants, { unresolvedIsShort: false, allowZero: true })) return;
+    violations.push(violation(sourceFile, node, 'timer-rejection'));
+  });
+  return violations;
+}
+
+/**
+ * `Promise.race([work, sleep(3000)])`: the work against a timer. A loaded host lets the timer win
+ * over work that was merely late. Await the work (its own failure or the hang guard ends it); a
+ * race that checks the work is still pending belongs under `// load-proof:`.
+ */
+function findTimerRaces(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node) || unwrap(node.expression).getText() !== 'Promise.race') return;
+    const [racers] = node.arguments;
+    if (racers === undefined || !ts.isArrayLiteralExpression(unwrap(racers))) return;
+    for (const racer of (unwrap(racers) as ts.ArrayLiteralExpression).elements) {
+      const delay = awaitedSleepDelay(racer);
+      if (delay === null) continue;
+      const value = resolveNumber(delay, constants);
+      if (value === null || value <= 0 || value >= HANG_GUARD_MILLISECONDS) continue;
+      if (isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) continue;
+      violations.push(violation(sourceFile, node, 'timer-race'));
+      break;
+    }
   });
   return violations;
 }

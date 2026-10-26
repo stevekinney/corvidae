@@ -48,6 +48,7 @@ const catalogRunInfo = {
 /** Whether `promise` has settled, after the microtasks and one macrotask a wait would need. */
 async function settledWithin(promise: Promise<unknown>): Promise<boolean> {
   const marker = Symbol('pending');
+  // load-proof: the promise waits on a resolver that never arrives, so load can only keep it pending longer
   const winner = await Promise.race([
     promise,
     new Promise((resolve) => setTimeout(resolve, 20, marker)),

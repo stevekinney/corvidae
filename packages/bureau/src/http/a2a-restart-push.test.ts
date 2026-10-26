@@ -36,6 +36,7 @@ import { eventually, type Json, Receiver, SIGNING_SECRET } from './a2a-push.test
 import { A2A_PUSH_CHECKPOINT_KEY_PREFIX } from './a2a-push-checkpoint.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 /** Parks a task whose first message says `park` on a human wait once; answers anything else. */
 const parksOnRequest: GenerateFunction = async ({ conversation }) => {
@@ -276,7 +277,7 @@ describe('push Create before start-up recovery has reached the task', () => {
       settled = true;
     });
     // Recovery is held on its first read of the push store, and Create waits behind it.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
     expect(settled).toBe(false);
 
     held.open();

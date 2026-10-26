@@ -24,6 +24,7 @@ import {
   subscribeRequest,
   type SseFrame,
 } from './management-fixtures.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 type Faults = {
   /** How many of the next appends to the durable history fail. */
@@ -447,7 +448,7 @@ describe('the task event projection of task.resynced', () => {
     const disposing = second.bureau.shutdown().then(() => {
       disposed = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await quietFor(200);
     expect(disposed).toBe(false);
 
     release.resolve();

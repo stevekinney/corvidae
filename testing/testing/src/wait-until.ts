@@ -112,3 +112,18 @@ export async function* awakeTurns(options: WaitUntilOptions = {}): AsyncGenerato
     cancel();
   }
 }
+
+/**
+ * Let `milliseconds` of real time pass so that something that must NOT happen has its chance to.
+ *
+ * This is for a negative assertion only: "no further event arrives", "the listener is not called
+ * again". A busy host can only delay what the test is watching for, never bring it forward, so a
+ * test that passes through a quiet window cannot fail because of load. (It can pass when it should
+ * not have, which is why the window is also long enough to matter on a healthy host.) To wait for
+ * something that must happen, use `waitUntil`: a fixed pause there fails exactly when the host is
+ * slow. `scripts/check-load-sensitive-deadlines.ts` rejects a raw sleep in a test body, so the
+ * intent of each pause is named at its call.
+ */
+export async function quietFor(milliseconds: number): Promise<void> {
+  await new Promise<void>((resolve) => hostSetTimeout(resolve, milliseconds));
+}

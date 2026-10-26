@@ -25,7 +25,13 @@ export {
 export { ScenarioHangError, outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
 export { rejectionOf, throwingRejectionOf } from './helpers/promise-outcome.ts';
 export { requiredInstance, requiredValue } from './helpers/required-value.ts';
-export { awakeTurns, waitUntil, yieldEventLoopTurn, type WaitUntilOptions } from './wait-until.ts';
+export {
+  awakeTurns,
+  quietFor,
+  waitUntil,
+  yieldEventLoopTurn,
+  type WaitUntilOptions,
+} from './wait-until.ts';
 
 export { configureAsyncUtilityDeadline } from './helpers/async-utility-deadline.ts';
 export { setupHappyDom } from './helpers/happy-dom.ts';

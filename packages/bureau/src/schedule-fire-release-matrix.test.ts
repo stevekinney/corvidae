@@ -384,7 +384,7 @@ async function fireForCrash() {
     async cancelAndCrash(cancel: () => void) {
       armed = true;
       cancel();
-      await Promise.race([reached.promise, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      await reached.promise;
       expect(held).toBe(true);
     },
   };

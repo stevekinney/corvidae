@@ -46,7 +46,7 @@ import type { DefaultAgentFields } from './testing/default-agent.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -204,7 +204,7 @@ describe('a fire review a peer closes, with no stream open', () => {
       return only?.round === 1 ? only : undefined;
     }, 'the holder to list round 1');
     expect(listed.id).toBe(review.id);
-    await sleep(300);
+    await quietFor(300);
     expect(reviewsOf(holder, fireId).map((listed) => listed.id)).toEqual([review.id]);
   });
 });
@@ -238,7 +238,7 @@ describe('the fires a Bureau follows', () => {
     // The holder stops following, as if its subscription had been closed before the decision.
     fireReviewFollowerOf(holder).unfollow(fireId);
     await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
-    await sleep(300);
+    await quietFor(300);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
     // Following it again reads the history the subscription had not.
@@ -375,10 +375,7 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
     void peer
       .resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice })
       .catch(() => undefined);
-    await Promise.all([
-      Promise.race([holdHolder.reached, sleep(5_000)]),
-      Promise.race([holdPeer.reached, sleep(5_000)]),
-    ]);
+    await Promise.all([holdHolder.reached, holdPeer.reached]);
     expect(holdHolder.held).toBe(true);
     expect(holdPeer.held).toBe(true);
     holdHolder.release();
@@ -387,7 +384,7 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
       const records = await auditRecordsOf(holder, fireId, 'review.tool-approval.canceled');
       return records.length > 0 ? true : undefined;
     }, 'the canceled review to be recorded');
-    await sleep(400);
+    await quietFor(400);
 
     expect(
       await auditRecordsOf(holder, fireId, 'review.tool-approval.canceled', review.id),
@@ -471,7 +468,7 @@ describe('a decision whose round advances while its claim is being made', () => 
     const deciding = rejectionOf(
       holder.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     // The peer re-gates the approval and gives up its claim of round 0 while the holder waits.

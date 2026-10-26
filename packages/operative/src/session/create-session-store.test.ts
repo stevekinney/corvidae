@@ -83,7 +83,7 @@ function withForcedGetOrder(backing: BackingStore, slowKey: string, fastKey: str
           const value = await target.get(key);
           if (key === fastKey) fastResolved();
           if (key === slowKey) {
-            await Promise.race([fastDone, new Promise((resolve) => setTimeout(resolve, 25))]);
+            await fastDone;
           }
           return value;
         };
