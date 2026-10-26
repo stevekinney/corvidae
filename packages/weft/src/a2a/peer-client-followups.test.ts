@@ -1,0 +1,117 @@
+/**
+ * COR-1670: review findings of the peer client (COR-905) that needed a misbehaving peer: a card
+ * that answers in no text mode, an opening `SendMessage` whose body stalls, and a stream whose first
+ * frame names no task.
+ */
+import { describe, expect, test } from 'bun:test';
+
+import { A2APeerError } from './peer-client-types.ts';
+import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
+import { createA2APeerClient } from './peer-client.ts';
+
+const immediate = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+function connect(
+  peerOptions: ScriptedPeerOptions = {},
+  clientOptions: Partial<Parameters<typeof createA2APeerClient>[0]> = {},
+) {
+  const peer = createScriptedPeer(peerOptions);
+  const client = createA2APeerClient({
+    url: peer.url,
+    fetch: peer.fetch,
+    sleep: immediate,
+    retryBaseDelayMs: 1,
+    ...clientOptions,
+  });
+  return { peer, client };
+}
+
+async function codeOf(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof A2APeerError) return error.code;
+    throw error;
+  }
+  throw new Error('expected the promise to reject');
+}
+
+const outputModes =
+  (modes: readonly string[]): ScriptedPeerOptions['card'] =>
+  (card) => {
+    card.defaultOutputModes = [...modes];
+    return card;
+  };
+
+describe('a peer card that lists output modes', () => {
+  test('is refused when none is text, since the client accepts back only text/plain', async () => {
+    const { peer, client } = connect({ card: outputModes(['application/json', 'image/png']) });
+
+    expect(await codeOf(client.send({ text: 'hi' }))).toBe('content-type-not-supported');
+    expect(peer.methods()).not.toContain('SendStreamingMessage');
+  });
+
+  test.each([
+    { modes: ['application/json', 'text/plain'] },
+    { modes: ['text/plain; charset=utf-8'] },
+    { modes: ['text/*'] },
+    { modes: ['*/*'] },
+    { modes: [] },
+  ])('is accepted when it lists $modes', async ({ modes }) => {
+    const { client } = connect({ card: outputModes(modes) });
+
+    const task = await client.send({ text: 'hi' });
+    const outcome = await task.result();
+
+    expect(outcome.state).toBe('completed');
+  });
+});
+
+describe('the opening non-streaming send', () => {
+  test('is bounded by the task timeout when the response body never completes', async () => {
+    const { client } = connect(
+      {
+        card: (card) => {
+          if (card.capabilities !== undefined) card.capabilities.streaming = false;
+          return card;
+        },
+        // Headers arrive and the body never does; aborting the request errors the body, as fetch's does.
+        intercept: (request, method) =>
+          method === 'SendMessage'
+            ? new Response(
+                new ReadableStream({
+                  start(controller) {
+                    request.signal.addEventListener('abort', () =>
+                      controller.error(request.signal.reason),
+                    );
+                  },
+                }),
+                { headers: { 'content-type': 'application/json' } },
+              )
+            : undefined,
+      },
+      { taskTimeoutMs: 30, attempts: 1 },
+    );
+
+    expect(await codeOf(client.send({ text: 'hi' }))).toBe('timeout');
+  });
+});
+
+describe('a stream whose first frame names no task', () => {
+  test('fails the send as a protocol error rather than returning a task that cannot be canceled', async () => {
+    const { peer, client } = connect(
+      {
+        intercept: (_request, method) =>
+          method === 'SendStreamingMessage'
+            ? new Response('data: {"jsonrpc":"2.0","id":1,"result":{}}\n\n', {
+                headers: { 'content-type': 'text/event-stream' },
+              })
+            : undefined,
+      },
+      { attempts: 1 },
+    );
+
+    expect(await codeOf(client.send({ text: 'hi' }))).toBe('protocol');
+    expect(peer.methods()).not.toContain('CancelTask');
+  });
+});

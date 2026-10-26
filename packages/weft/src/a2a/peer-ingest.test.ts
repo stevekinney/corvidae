@@ -250,6 +250,102 @@ describe('the peer ingestion boundary', () => {
   });
 });
 
+/** Every wire path that carries a task or context identifier, feeding it a changed one. */
+const IDENTITY_PATHS: ReadonlyArray<{
+  name: string;
+  feed: (tracker: PeerTaskTracker, taskId: string, contextId: string) => void;
+}> = [
+  {
+    name: 'a task snapshot (first response, GetTask, resubscribe)',
+    feed: (tracker, taskId, contextId) =>
+      tracker.apply({
+        payload: { $case: 'task', value: { ...task([], '', taskId), contextId } },
+      }),
+  },
+  {
+    name: 'CancelTask or a GetTask poll (applyTask)',
+    feed: (tracker, taskId, contextId) => tracker.applyTask({ ...task([], '', taskId), contextId }),
+  },
+  {
+    name: 'a stream status update',
+    feed: (tracker, taskId, contextId) =>
+      tracker.apply({
+        payload: {
+          $case: 'statusUpdate',
+          value: { taskId, contextId, status: task([], '', taskId).status, metadata: undefined },
+        },
+      }),
+  },
+  {
+    name: 'a stream artifact update',
+    feed: (tracker, taskId, contextId) =>
+      tracker.apply({
+        payload: {
+          $case: 'artifactUpdate',
+          value: {
+            taskId,
+            contextId,
+            artifact: artifact([part({ $case: 'text', value: 'x' })]),
+            append: false,
+            lastChunk: false,
+            metadata: undefined,
+          },
+        },
+      }),
+  },
+  {
+    name: 'a bare message',
+    feed: (tracker, taskId, contextId) =>
+      tracker.apply({
+        payload: { $case: 'message', value: { ...(message('hi') as object), taskId, contextId } },
+      } as never),
+  },
+];
+
+describe('a peer task keeps the identity the peer first gave it', () => {
+  for (const path of IDENTITY_PATHS) {
+    describe(path.name, () => {
+      test('refuses a different task identifier', () => {
+        const tracker = newTracker();
+        tracker.applyTask(task([], '', 't'));
+
+        expect(() => path.feed(tracker, 'another-task', 'c')).toThrow(A2APeerError);
+        expect(tracker.taskId()).toBe('t');
+      });
+
+      test('refuses a different context identifier', () => {
+        const tracker = newTracker();
+        tracker.applyTask(task([], '', 't'));
+
+        expect(() => path.feed(tracker, 't', 'another-context')).toThrow(A2APeerError);
+        expect(tracker.contextId()).toBe('c');
+      });
+
+      test('accepts the same identity, and an identifier left unstated', () => {
+        const tracker = newTracker();
+        tracker.applyTask(task([], '', 't'));
+
+        path.feed(tracker, 't', 'c');
+        path.feed(tracker, 't', '');
+        path.feed(tracker, '', 'c');
+
+        expect(tracker.taskId()).toBe('t');
+      });
+    });
+  }
+
+  test('refuses a first response that names another task than the continuation addressed', () => {
+    const tracker = new PeerTaskTracker(
+      { agentName: 'p', agentVersion: '1', cardUrl: 'u' },
+      { text: '', taskId: 'addressed' },
+      LIMIT,
+      true,
+    );
+
+    expect(() => tracker.applyTask(task([], '', 'someone-else'))).toThrow(A2APeerError);
+  });
+});
+
 describe('the ingestion boundary is the only way in', () => {
   const sources = readdirSync(import.meta.dir)
     .filter((name) => name.startsWith('peer-') && name.endsWith('.ts') && !name.includes('.test'))
