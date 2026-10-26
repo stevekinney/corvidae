@@ -758,7 +758,6 @@ describe('a task stream whose notification fails after the review is dropped', (
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 20_000 },
     ).finally(() => {
       ended = true;
     });
@@ -917,7 +916,6 @@ describe('a close the holder cannot read durable state for', () => {
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 20_000 },
     ).finally(() => {
       ended = true;
     });

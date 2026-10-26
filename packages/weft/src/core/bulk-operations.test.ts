@@ -1291,68 +1291,60 @@ describe('bulk workflow operations', () => {
     }
   });
 
-  it(
-    'snapshots workflow ids before bulk cancel rewrites workflow state entries between batches',
-    async () => {
-      const now = 1_000;
-      const storage = new BulkWorkflowReorderingScanStorage();
-      const workflowCount = BULK_OPERATION_BATCH_SIZE + 1;
+  it('snapshots workflow ids before bulk cancel rewrites workflow state entries between batches', async () => {
+    const now = 1_000;
+    const storage = new BulkWorkflowReorderingScanStorage();
+    const workflowCount = BULK_OPERATION_BATCH_SIZE + 1;
 
-      for (let index = 0; index < workflowCount; index++) {
-        await writePendingWorkflowState(storage, `bulk-cancel-scan-${String(index)}`, now);
+    for (let index = 0; index < workflowCount; index++) {
+      await writePendingWorkflowState(storage, `bulk-cancel-scan-${String(index)}`, now);
+    }
+
+    const result = await cancelAll(createStorageBackedCancellationInternals(storage, now), {
+      status: 'pending',
+    });
+    const lastWorkflow = await readWorkflowState(
+      storage,
+      `bulk-cancel-scan-${String(workflowCount - 1)}`,
+    );
+
+    expect(result.cancelled).toBe(workflowCount);
+    expect(result.failed).toBe(0);
+    expect(result.errors).toEqual([]);
+    expect(lastWorkflow?.status).toBe('cancelled');
+  });
+
+  it('snapshots workflow ids before bulk signal rewrites workflow state entries between batches', async () => {
+    const storage = new BulkWorkflowReorderingScanStorage();
+    const engine = new Engine({ storage });
+    const waitForSignalWorkflow7 = workflow({ name: 'wait-for-signal' }).execute(
+      waitForSignalWorkflow,
+    );
+    engine.register(waitForSignalWorkflow7);
+
+    try {
+      const handles = [];
+      for (let index = 0; index < 1_001; index++) {
+        handles.push(
+          await engine.start('wait-for-signal', `bulk-signal-input-${String(index)}`, {
+            id: `bulk-signal-scan-${String(index)}`,
+          }),
+        );
       }
 
-      const result = await cancelAll(createStorageBackedCancellationInternals(storage, now), {
-        status: 'pending',
-      });
-      const lastWorkflow = await readWorkflowState(
-        storage,
-        `bulk-cancel-scan-${String(workflowCount - 1)}`,
-      );
+      await waitForWorkflowStatusCount(engine, 'running', handles.length, 10_000);
 
-      expect(result.cancelled).toBe(workflowCount);
-      expect(result.failed).toBe(0);
-      expect(result.errors).toEqual([]);
-      expect(lastWorkflow?.status).toBe('cancelled');
-    },
-    { timeout: 15_000 },
-  );
+      const result = await engine.signalAll({ status: 'running' }, 'continue', 'released');
 
-  it(
-    'snapshots workflow ids before bulk signal rewrites workflow state entries between batches',
-    async () => {
-      const storage = new BulkWorkflowReorderingScanStorage();
-      const engine = new Engine({ storage });
-      const waitForSignalWorkflow7 = workflow({ name: 'wait-for-signal' }).execute(
-        waitForSignalWorkflow,
-      );
-      engine.register(waitForSignalWorkflow7);
-
-      try {
-        const handles = [];
-        for (let index = 0; index < 1_001; index++) {
-          handles.push(
-            await engine.start('wait-for-signal', `bulk-signal-input-${String(index)}`, {
-              id: `bulk-signal-scan-${String(index)}`,
-            }),
-          );
-        }
-
-        await waitForWorkflowStatusCount(engine, 'running', handles.length, 10_000);
-
-        const result = await engine.signalAll({ status: 'running' }, 'continue', 'released');
-
-        expect(result).toEqual({ signalled: 1_001, failed: 0 });
-        expect(await handles[0]?.result()).toBe('bulk-signal-input-0:released');
-        expect(await handles[1_000]?.result()).toBe('bulk-signal-input-1000:released');
-        const lastWorkflow = await engine.get('bulk-signal-scan-1000');
-        expect(lastWorkflow?.status).toBe('completed');
-      } finally {
-        await engine[Symbol.asyncDispose]();
-      }
-    },
-    { timeout: 15_000 },
-  );
+      expect(result).toEqual({ signalled: 1_001, failed: 0 });
+      expect(await handles[0]?.result()).toBe('bulk-signal-input-0:released');
+      expect(await handles[1_000]?.result()).toBe('bulk-signal-input-1000:released');
+      const lastWorkflow = await engine.get('bulk-signal-scan-1000');
+      expect(lastWorkflow?.status).toBe('completed');
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
 
   it('skips workflows deleted after the bulk tag snapshot instead of aborting the whole operation', async () => {
     const storage = new BulkTagDeletionDuringMutationStorage();
@@ -1395,28 +1387,24 @@ describe('bulk workflow operations', () => {
     }
   });
 
-  it(
-    'snapshots all matching workflow ids before the first bulk cancellation mutation',
-    async () => {
-      const now = 1_000;
-      const storage = new BulkBatchTrackingStorage();
-      const workflowCount = BULK_OPERATION_BATCH_SIZE + 5;
+  it('snapshots all matching workflow ids before the first bulk cancellation mutation', async () => {
+    const now = 1_000;
+    const storage = new BulkBatchTrackingStorage();
+    const workflowCount = BULK_OPERATION_BATCH_SIZE + 5;
 
-      for (let index = 0; index < workflowCount; index++) {
-        await writePendingWorkflowState(storage, `bulk-batch-${String(index)}`, now);
-      }
+    for (let index = 0; index < workflowCount; index++) {
+      await writePendingWorkflowState(storage, `bulk-batch-${String(index)}`, now);
+    }
 
-      storage.shouldTrackBulkMutations = true;
+    storage.shouldTrackBulkMutations = true;
 
-      const result = await cancelAll(createStorageBackedCancellationInternals(storage, now), {
-        status: 'pending',
-      });
+    const result = await cancelAll(createStorageBackedCancellationInternals(storage, now), {
+      status: 'pending',
+    });
 
-      expect(result.cancelled).toBe(workflowCount);
-      expect(storage.firstMutationSeenAfterScanningCount).toBe(workflowCount);
-    },
-    { timeout: 15_000 },
-  );
+    expect(result.cancelled).toBe(workflowCount);
+    expect(storage.firstMutationSeenAfterScanningCount).toBe(workflowCount);
+  });
 
   it('previews bulk cancellation without mutating matching workflows', async () => {
     const storage = new MemoryStorage();

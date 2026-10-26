@@ -130,7 +130,6 @@ describe('a peer closing a fire’s last review ends the stream another instance
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 10_000 },
     );
     await sleep(100);
 
@@ -152,7 +151,6 @@ describe('a peer closing a fire’s last review ends the stream another instance
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 10_000 },
     );
     await sleep(100);
 

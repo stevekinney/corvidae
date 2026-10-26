@@ -145,7 +145,7 @@ async function waitForLine(
       found = output.lines().find(predicate);
       return found !== undefined;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: 'MCP stdio line' },
+    { intervalMs: 10, label: 'MCP stdio line' },
   );
   return found!;
 }
@@ -738,7 +738,7 @@ describe('runMcpStdioSession', () => {
         workflowId = workflows.items.find((entry) => entry.status === 'running')?.id ?? '';
         return workflowId.length > 0;
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'running stdio workflow' },
+      { intervalMs: 10, label: 'running stdio workflow' },
     );
 
     input.send({
@@ -752,7 +752,7 @@ describe('runMcpStdioSession', () => {
         const state = await engine.get(workflowId);
         return state?.status === 'cancelled';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'stdio workflow cancellation' },
+      { intervalMs: 10, label: 'stdio workflow cancellation' },
     );
 
     // The SDK follows the MCP rule that a cancelled request gets no response,
@@ -803,7 +803,7 @@ describe('runMcpStdioSession', () => {
         workflowId = workflows.items.find((entry) => entry.status === 'running')?.id ?? '';
         return workflowId.length > 0;
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'running stdio workflow' },
+      { intervalMs: 10, label: 'running stdio workflow' },
     );
 
     let cancellations = 0;

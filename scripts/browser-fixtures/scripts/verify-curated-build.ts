@@ -1,6 +1,7 @@
 import { buildBrowser } from '@lostgradient/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { TEST_TIMEOUT_ARGUMENT } from '../../test-deadlines.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 
 const fixtureDirectory = resolve(import.meta.dirname, '../fixtures/curated-highlighter');
@@ -15,7 +16,7 @@ for (const development of [true, false]) {
       development,
     });
     const verification = Bun.spawn(
-      ['bun', 'test', resolve(fixtureDirectory, 'artifacts.test.ts')],
+      ['bun', 'test', TEST_TIMEOUT_ARGUMENT, resolve(fixtureDirectory, 'artifacts.test.ts')],
       {
         env: { ...process.env, CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY: outputDirectory },
         stdout: 'inherit',

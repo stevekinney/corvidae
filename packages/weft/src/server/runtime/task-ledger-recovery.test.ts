@@ -285,7 +285,6 @@ describe('runTaskLedgerRecovery — queued', () => {
     await runTaskLedgerRecovery(context, options);
 
     await waitForCondition(() => context.taskQueue.isTracked(stored.operationId), {
-      timeoutMs: 1_000,
       intervalMs: 5,
       label: 'recovered queued task to reach the long-poll queue',
     });
@@ -507,7 +506,6 @@ describe('runTaskLedgerRecovery — shutdown interlock', () => {
     await runTaskLedgerRecovery(context, options);
 
     await waitForCondition(() => context.taskQueue.isTracked(first.operationId), {
-      timeoutMs: 1_000,
       intervalMs: 5,
       label: 'the record recovered before shutdown to reach the long-poll queue',
     });

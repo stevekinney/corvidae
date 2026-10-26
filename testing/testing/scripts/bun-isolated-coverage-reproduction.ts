@@ -16,6 +16,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 
 const PAD_LINES = 10;
 
@@ -59,6 +60,7 @@ async function coverageFor(directory: string, flags: string[]): Promise<Map<numb
     [
       'bun',
       'test',
+      TEST_TIMEOUT_ARGUMENT,
       ...flags,
       '--preload',
       './preload.ts',

@@ -92,7 +92,6 @@ describe('remote dispatch exclusions (COR-152 criterion 12)', () => {
       async () => (await engine.storage.get(KEYS.finalizerState(handle.id))) !== null,
       {
         label: 'workflow recorded finalizer state and parked',
-        timeoutMs: 2_000,
         intervalMs: 5,
       },
     );
@@ -105,7 +104,6 @@ describe('remote dispatch exclusions (COR-152 criterion 12)', () => {
 
     await waitForCondition(() => localDestroySandbox.mock.calls.length > 0, {
       label: 'finalizer to run',
-      timeoutMs: 2_000,
       intervalMs: 5,
     });
 

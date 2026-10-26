@@ -97,7 +97,6 @@ export async function followFire(bureau: Bureau, fireId: string, stopAfter?: num
       subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
     ),
     {
-      timeoutMs: 30_000,
       ...(stopAfter === undefined ? {} : { stop: (read) => read.length >= stopAfter }),
     },
   ).finally(() => {

@@ -20,5 +20,5 @@ describe('the shell server renderer', () => {
     } finally {
       resetShellRendererWarmupState();
     }
-  }, 60_000);
+  });
 });

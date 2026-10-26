@@ -67,11 +67,11 @@ describe('LongPollResultDelivery', () => {
 
     // The POST has been sent (fetch was called) but its response is held —
     // the entry must still be buffered.
-    await waitForCondition(() => fetchMock.mock.calls.length === 1, { timeoutMs: 1_000 });
+    await waitForCondition(() => fetchMock.mock.calls.length === 1);
     expect(delivery.unacknowledgedCount).toBe(1);
 
     releaseResponse?.();
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
   });
 
   it('retries on a transient failure (500) and acknowledges once a later attempt succeeds', async () => {
@@ -92,7 +92,7 @@ describe('LongPollResultDelivery', () => {
     });
     delivery.deliver(completedResult({ operationId: 'op-retry' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 2_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
@@ -114,7 +114,7 @@ describe('LongPollResultDelivery', () => {
     });
     delivery.deliver(completedResult({ operationId: 'op-network-retry' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 2_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
@@ -142,7 +142,7 @@ describe('LongPollResultDelivery', () => {
     });
     delivery.deliver(completedResult({ operationId: 'op-rejected' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     // No sleep needed: the correlated-403 branch calls outbox.reject() and
     // clearRetryTimer() synchronously within the same #send continuation
     // that just resolved unacknowledgedCount to 0 — no retry was ever
@@ -172,7 +172,7 @@ describe('LongPollResultDelivery', () => {
     });
     delivery.deliver(completedResult({ operationId: 'op-uncorrelated' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 2_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(fetchMock.mock.calls.length).toBe(2);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('uncorrelated 403'));
   });
@@ -187,7 +187,7 @@ describe('LongPollResultDelivery', () => {
     const delivery = new LongPollResultDelivery({ resultUrl: 'http://server/result' });
     delivery.deliver(completedResult({ operationId: 'op-dead-letter' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('dead-lettered'));
   });
 
@@ -200,7 +200,7 @@ describe('LongPollResultDelivery', () => {
     const delivery = new LongPollResultDelivery({ resultUrl: 'http://server/result' });
     delivery.deliver(completedResult({ operationId: 'op-duplicate' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
   });
 
   it('retries on a malformed 2xx body instead of assuming acknowledgement', async () => {
@@ -221,7 +221,7 @@ describe('LongPollResultDelivery', () => {
     });
     delivery.deliver(completedResult({ operationId: 'op-malformed-body' }));
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 2_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
@@ -269,7 +269,7 @@ describe('LongPollResultDelivery', () => {
       retryMaxDelayMs: 30_000,
     });
     delivery.deliver(completedResult({ operationId: 'op-flush' }));
-    await waitForCondition(() => fetchMock.mock.calls.length === 1, { timeoutMs: 1_000 });
+    await waitForCondition(() => fetchMock.mock.calls.length === 1);
 
     delivery.suspend();
     fetchMock.mockImplementationOnce(() =>
@@ -277,7 +277,7 @@ describe('LongPollResultDelivery', () => {
     );
     delivery.flush();
 
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
@@ -329,7 +329,7 @@ describe('LongPollResultDelivery', () => {
       new TaskResultOutbox(1),
     );
     const deliverPromise = delivery.deliver(completedResult());
-    await waitForCondition(() => fetchMock.mock.calls.length === 1, { timeoutMs: 1_000 });
+    await waitForCondition(() => fetchMock.mock.calls.length === 1);
 
     expect(delivery.full).toBe(true);
     expect(delivery.shouldWarnFull()).toBe(true);
@@ -337,7 +337,7 @@ describe('LongPollResultDelivery', () => {
 
     releaseResponses?.();
     await deliverPromise;
-    await waitForCondition(() => delivery.unacknowledgedCount === 0, { timeoutMs: 1_000 });
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
     expect(delivery.full).toBe(false);
   });
 });

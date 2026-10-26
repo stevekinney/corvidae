@@ -33,64 +33,60 @@ async function waitForReal(condition: () => Promise<boolean>, timeoutMs: number)
 }
 
 describe('a scheduled fire’s memory (COR-1546)', () => {
-  it(
-    'is written into the schedule owner’s partition',
-    async () => {
-      const memory = createGovernedMemory({
-        storage: createInMemoryMemoryRecordStorage(),
-        ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-        embedder: createMockEmbedder(64),
-        policy: createMemoryGovernancePolicy({ revision: 'governance:scheduled-fire' }),
+  it('is written into the schedule owner’s partition', async () => {
+    const memory = createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage(),
+      ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+      embedder: createMockEmbedder(64),
+      policy: createMemoryGovernancePolicy({ revision: 'governance:scheduled-fire' }),
+    });
+    const bureau = await createBureau<AgentDefinitions>({
+      id: 'scheduled-memory-bureau',
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'The digest is ready.', toolCalls: [] }),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durableExecution: true,
+      memory,
+    });
+    const as = (ownerId: string) =>
+      createMemoryAuthority({
+        principal: { kind: 'user', id: ownerId },
+        tenantId: 'scheduled-memory-bureau',
+        ownerId,
+        purpose: 'test',
+        capabilities: ['memory:list'],
+        policyRevision: 'bureau:test',
+        projection: 'bureau',
       });
-      const bureau = await createBureau<AgentDefinitions>({
-        id: 'scheduled-memory-bureau',
-        agents: {
-          default: createAgent({
-            generate: async () => ({ content: 'The digest is ready.', toolCalls: [] }),
-            stopWhen: stopWhen.noToolCalls(),
-          }),
-        },
-        storage: { type: 'memory' },
-        durableExecution: true,
-        memory,
+    try {
+      const schedule = await bureau.createSchedule({
+        agentName: 'default',
+        input: 'Write the digest.',
+        spec: '1s',
+        principal: 'api-key:alice',
       });
-      const as = (ownerId: string) =>
-        createMemoryAuthority({
-          principal: { kind: 'user', id: ownerId },
-          tenantId: 'scheduled-memory-bureau',
-          ownerId,
-          purpose: 'test',
-          capabilities: ['memory:list'],
-          policyRevision: 'bureau:test',
-          projection: 'bureau',
-        });
-      try {
-        const schedule = await bureau.createSchedule({
-          agentName: 'default',
-          input: 'Write the digest.',
-          spec: '1s',
-          principal: 'api-key:alice',
-        });
-        expect(schedule).toBeDefined();
+      expect(schedule).toBeDefined();
 
-        const hasWritten = async (): Promise<boolean> => {
-          const listed = await memory.list(as('api-key:alice'), { collection: 'default' });
-          return listed.length > 0;
-        };
-        const written = await waitForReal(hasWritten, FIRE_WAIT_MS);
-        await bureau.cancelSchedule(schedule!.id);
+      const hasWritten = async (): Promise<boolean> => {
+        const listed = await memory.list(as('api-key:alice'), { collection: 'default' });
+        return listed.length > 0;
+      };
+      const written = await waitForReal(hasWritten, FIRE_WAIT_MS);
+      await bureau.cancelSchedule(schedule!.id);
 
-        expect(written).toBe(true);
-        const [stored] = await memory.list(as('api-key:alice'), { collection: 'default' });
-        expect(stored?.content).toBe('The digest is ready.');
-        // The fire's run acts for its owner, so the scheduler's own identity owns nothing.
-        expect(await memory.list(as('system:scheduler'), { collection: 'default' })).toEqual([]);
-        expect(await memory.list(as('default'), { collection: 'default' })).toEqual([]);
-        expect(await memory.list(as('api-key:bob'), { collection: 'default' })).toEqual([]);
-      } finally {
-        await bureau.dispose();
-      }
-    },
-    FIRE_TIMEOUT_MS,
-  );
+      expect(written).toBe(true);
+      const [stored] = await memory.list(as('api-key:alice'), { collection: 'default' });
+      expect(stored?.content).toBe('The digest is ready.');
+      // The fire's run acts for its owner, so the scheduler's own identity owns nothing.
+      expect(await memory.list(as('system:scheduler'), { collection: 'default' })).toEqual([]);
+      expect(await memory.list(as('default'), { collection: 'default' })).toEqual([]);
+      expect(await memory.list(as('api-key:bob'), { collection: 'default' })).toEqual([]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
 });

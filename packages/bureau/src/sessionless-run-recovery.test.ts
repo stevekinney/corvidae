@@ -136,22 +136,14 @@ describe('a sessionless durable run recovered after a crash', () => {
     const during = await holdersOf(second, assetId);
 
     resume.resolve();
-    await waitForCondition(
-      async () => {
-        const state = await second.getRun(run.id);
-        return state?.status !== 'running';
-      },
-      'the recovered run never finished',
-      200,
-    );
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(second, assetId);
-        return holders.length === 0;
-      },
-      'the recovered run never released its claim',
-      200,
-    );
+    await waitForCondition(async () => {
+      const state = await second.getRun(run.id);
+      return state?.status !== 'running';
+    }, 'the recovered run never finished');
+    await waitForCondition(async () => {
+      const holders = await holdersOf(second, assetId);
+      return holders.length === 0;
+    }, 'the recovered run never released its claim');
 
     // The replay re-seeded the input row under its own id: one holder, then none once it ends.
     expect(before).toEqual([runRowHolderId(run.id, `${run.id}:input`)]);
@@ -199,7 +191,6 @@ describe('a sessionless durable run recovered after a crash', () => {
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === runId),
         'the run never asked for input',
-        4000,
       );
       return bureau.listPendingReviews().find((candidate) => candidate.runId === runId)!;
     };
@@ -236,14 +227,10 @@ describe('a sessionless durable run recovered after a crash', () => {
     }
     const assetId = image.source.assetId;
 
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(second, assetId);
-        return holders.length === 0;
-      },
-      'the recovered run never released its claim',
-      200,
-    );
+    await waitForCondition(async () => {
+      const holders = await holdersOf(second, assetId);
+      return holders.length === 0;
+    }, 'the recovered run never released its claim');
     // The commit claimed the image under the run, and the run's end released that same claim.
     const holder = expect.stringContaining(`run-row:${encodeURIComponent(run.id)}:`);
     expect(claims.filter((event) => event.assetId === assetId)).toEqual([

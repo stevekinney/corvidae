@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   generateSchemaForComponent,
@@ -34,10 +34,6 @@ function parseSchemaModuleJson(schemaModule: string) {
   const jsonText = JSON.parse(schemaModule.slice(start + startMarker.length, end));
   return JSON.parse(jsonText);
 }
-
-// Each test recompiles a TS project (beforeEach resets the schema cache), which
-// is inherently slow and exceeds the 5s default under CPU contention. Raise it.
-setDefaultTimeout(60_000);
 
 beforeEach(() => {
   resetSchemaProjectCache();

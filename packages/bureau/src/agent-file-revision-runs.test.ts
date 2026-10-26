@@ -26,7 +26,6 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-const ATTEMPTS = 400;
 const file = (instructions: string) => agentFileText({ model: KNOWN_MODEL }, instructions);
 
 async function open(
@@ -155,7 +154,6 @@ describe('a run resumed after a restart', () => {
     await waitForCondition(
       async () => (await recoveryRecordOf(firstStorage, run.id)) !== undefined,
       'the run is recorded',
-      ATTEMPTS,
     );
     expect(await recordedRevisionOf(firstStorage, run.id)).toBe(2);
     await edit(first, 'Version three.\n');

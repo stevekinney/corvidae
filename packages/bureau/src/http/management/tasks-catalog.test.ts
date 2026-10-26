@@ -66,7 +66,6 @@ describe('a catalog task', () => {
           await opened.handler(
             subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),
           ),
-          { timeoutMs: 1_500 },
         );
 
         expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot']);
@@ -91,7 +90,6 @@ describe('a catalog task', () => {
         await opened.handler(
           subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),
         ),
-        { timeoutMs: 1_500 },
       );
 
       expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot']);

@@ -73,112 +73,98 @@ async function scheduleAs(opened: OpenedBureau, key: string): Promise<string> {
 }
 
 describe('a schedule fire is a task of the schedule’s owner', () => {
-  it(
-    'lets the owner list, read, observe, and cancel it with no operator scope, and records the scheduler as the actor',
-    async () => {
-      const opened = await serve(parkingUntilAborted);
-      const scheduleId = await scheduleAs(opened, 'alice-key');
+  it('lets the owner list, read, observe, and cancel it with no operator scope, and records the scheduler as the actor', async () => {
+    const opened = await serve(parkingUntilAborted);
+    const scheduleId = await scheduleAs(opened, 'alice-key');
 
-      // List.
-      const task = await waitForReal(async () => {
-        const listed = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
-        return tasksOf(listed)[0];
-      }, 'the first fire to appear in the owner’s task list');
-      // One fire is enough; stop the schedule before it can fire again.
-      await rpc(opened.handler, 'bureau.schedules.cancel', { scheduleId }, 'alice-key');
+    // List.
+    const task = await waitForReal(async () => {
+      const listed = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
+      return tasksOf(listed)[0];
+    }, 'the first fire to appear in the owner’s task list');
+    // One fire is enough; stop the schedule before it can fire again.
+    await rpc(opened.handler, 'bureau.schedules.cancel', { scheduleId }, 'alice-key');
 
-      expect(task).toMatchObject({
-        owner: OWNER.alice,
-        actor: 'system:scheduler',
-        agentName: 'writer',
-      });
-      const awaited6 = await opened.bureau.tasks.record(task.id);
-      expect(awaited6?.actor).toBe('system:scheduler');
-      expect(await opened.bureau.getOwner({ kind: 'run', id: task.id })).toBe(OWNER.alice);
+    expect(task).toMatchObject({
+      owner: OWNER.alice,
+      actor: 'system:scheduler',
+      agentName: 'writer',
+    });
+    const awaited6 = await opened.bureau.tasks.record(task.id);
+    expect(awaited6?.actor).toBe('system:scheduler');
+    expect(await opened.bureau.getOwner({ kind: 'run', id: task.id })).toBe(OWNER.alice);
 
-      // Read.
-      const read = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
-      expect(read.result).toMatchObject({ id: task.id, owner: OWNER.alice });
-      // Anyone else answers as if there were no such task.
-      const other = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'bob-key');
-      expect(other.error?.data?.httpStatus).toBe(404);
-      expect(tasksOf(await rpc(opened.handler, 'bureau.tasks.list', {}, 'bob-key'))).toEqual([]);
+    // Read.
+    const read = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
+    expect(read.result).toMatchObject({ id: task.id, owner: OWNER.alice });
+    // Anyone else answers as if there were no such task.
+    const other = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'bob-key');
+    expect(other.error?.data?.httpStatus).toBe(404);
+    expect(tasksOf(await rpc(opened.handler, 'bureau.tasks.list', {}, 'bob-key'))).toEqual([]);
 
-      // Observe.
-      const eventsResponse = await opened.handler(
-        subscribeRequest('bureau.tasks.events', { taskId: task.id }, 'alice-key'),
-      );
-      const frames = await readFrames(eventsResponse, {
-        stop: (seen) => seen.length >= 1,
-        timeoutMs: 5_000,
-      });
-      expect(frames[0]).toMatchObject({
-        event: 'task.snapshot',
-        data: { taskId: task.id, status: 'working' },
-      });
+    // Observe.
+    const eventsResponse = await opened.handler(
+      subscribeRequest('bureau.tasks.events', { taskId: task.id }, 'alice-key'),
+    );
+    const frames = await readFrames(eventsResponse, {
+      stop: (seen) => seen.length >= 1,
+    });
+    expect(frames[0]).toMatchObject({
+      event: 'task.snapshot',
+      data: { taskId: task.id, status: 'working' },
+    });
 
-      // Cancel.
-      const canceled = await rpc(
+    // Cancel.
+    const canceled = await rpc(
+      opened.handler,
+      'bureau.tasks.cancel',
+      { taskId: task.id },
+      'alice-key',
+    );
+    expect(canceled.error).toBeUndefined();
+    const ended = await waitForReal(async () => {
+      const view = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
+      return view.result?.['status'] === 'canceled' ? view : undefined;
+    }, 'the fire’s task to read as canceled');
+    expect(ended.result).toMatchObject({ actor: 'system:scheduler' });
+  });
+
+  it('is found by its context, with the incarnation of the session it ran in, and settles with its answer', async () => {
+    const opened = await serve(answering('digest ready'));
+    const scheduleId = await scheduleAs(opened, 'alice-key');
+
+    const done = await waitForReal(async () => {
+      const listed = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
+      return tasksOf(listed).find((task) => task.status === 'completed');
+    }, 'a fire to complete');
+    await rpc(opened.handler, 'bureau.schedules.cancel', { scheduleId }, 'alice-key');
+
+    // Without the filter, and with it.
+    const filtered = await waitForReal(async () => {
+      const listed = await rpc(
         opened.handler,
-        'bureau.tasks.cancel',
-        { taskId: task.id },
+        'bureau.tasks.list',
+        { contextId: done.contextId },
         'alice-key',
       );
-      expect(canceled.error).toBeUndefined();
-      const ended = await waitForReal(async () => {
-        const view = await rpc(
-          opened.handler,
-          'bureau.tasks.get',
-          { taskId: task.id },
-          'alice-key',
-        );
-        return view.result?.['status'] === 'canceled' ? view : undefined;
-      }, 'the fire’s task to read as canceled');
-      expect(ended.result).toMatchObject({ actor: 'system:scheduler' });
-    },
-    FIRE_TIMEOUT_MS + 15_000,
-  );
+      return tasksOf(listed).length > 0 ? listed : undefined;
+    }, 'the fire to be found by its context');
+    expect(tasksOf(filtered).map((task) => task.id)).toContain(done.id);
+    const session = await opened.bureau.getSession(done.contextId);
+    const awaited7 = await opened.bureau.tasks.record(done.id);
+    expect(awaited7?.incarnation).toBe(session?.incarnation);
+    expect(session?.incarnation).toBeTruthy();
+    expect(
+      tasksOf(
+        await rpc(opened.handler, 'bureau.tasks.list', { contextId: done.contextId }, 'bob-key'),
+      ),
+    ).toEqual([]);
 
-  it(
-    'is found by its context, with the incarnation of the session it ran in, and settles with its answer',
-    async () => {
-      const opened = await serve(answering('digest ready'));
-      const scheduleId = await scheduleAs(opened, 'alice-key');
-
-      const done = await waitForReal(async () => {
-        const listed = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
-        return tasksOf(listed).find((task) => task.status === 'completed');
-      }, 'a fire to complete');
-      await rpc(opened.handler, 'bureau.schedules.cancel', { scheduleId }, 'alice-key');
-
-      // Without the filter, and with it.
-      const filtered = await waitForReal(async () => {
-        const listed = await rpc(
-          opened.handler,
-          'bureau.tasks.list',
-          { contextId: done.contextId },
-          'alice-key',
-        );
-        return tasksOf(listed).length > 0 ? listed : undefined;
-      }, 'the fire to be found by its context');
-      expect(tasksOf(filtered).map((task) => task.id)).toContain(done.id);
-      const session = await opened.bureau.getSession(done.contextId);
-      const awaited7 = await opened.bureau.tasks.record(done.id);
-      expect(awaited7?.incarnation).toBe(session?.incarnation);
-      expect(session?.incarnation).toBeTruthy();
-      expect(
-        tasksOf(
-          await rpc(opened.handler, 'bureau.tasks.list', { contextId: done.contextId }, 'bob-key'),
-        ),
-      ).toEqual([]);
-
-      // The scheduler is the actor on the fire's audit entry, as on its task.
-      const fired = await opened.bureau.auditTrail?.query({
-        runId: done.id,
-        type: 'schedule.fired',
-      });
-      expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
-    },
-    FIRE_TIMEOUT_MS + 15_000,
-  );
+    // The scheduler is the actor on the fire's audit entry, as on its task.
+    const fired = await opened.bureau.auditTrail?.query({
+      runId: done.id,
+      type: 'schedule.fired',
+    });
+    expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
+  });
 });

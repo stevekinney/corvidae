@@ -1466,8 +1466,7 @@ describe('createBureau', () => {
         return session?.metadata['lastRunStatus'] === 'completed';
       },
       'completed session metadata was not persisted after retry',
-      50,
-      advancingTurn(runtime),
+      { yieldTurn: advancingTurn(runtime) },
     );
 
     const session = await bureau.getSession(run.sessionId);

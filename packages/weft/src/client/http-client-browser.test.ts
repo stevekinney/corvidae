@@ -215,7 +215,7 @@ describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   it('a browser-constructed HttpClient can make a real request against a live server', async () => {
     rethrow(smokeSetup);
@@ -242,5 +242,5 @@ describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 });

@@ -441,5 +441,5 @@ describe('api contract', () => {
     // This test compiles/inspects every component's Props against the frozen
     // contract — inherently slow and prone to exceeding the 5s default under
     // CPU contention (e.g. parallel CI / multi-worktree). Generous timeout.
-  }, 60_000);
+  });
 });

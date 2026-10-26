@@ -199,20 +199,18 @@ describe('ScheduleList', () => {
     try {
       render(ScheduleListHarness, { props: { client } });
 
-      await waitFor(
-        () =>
-          expect(
-            row('fired-probe')
-              ?.querySelector('[data-testid="schedule-last-fire"]')
-              ?.getAttribute('data-outcome'),
-          ).toBe('succeeded'),
-        { timeout: 5000 },
+      await waitFor(() =>
+        expect(
+          row('fired-probe')
+            ?.querySelector('[data-testid="schedule-last-fire"]')
+            ?.getAttribute('data-outcome'),
+        ).toBe('succeeded'),
       );
       expect(row('idle-probe')?.textContent).toContain('not fired yet');
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('sets a cron expression it cannot put in words in monospace', async () => {
     const server = await startLiveSourceTestServer();
@@ -249,7 +247,7 @@ describe('ScheduleList', () => {
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('a schedule whose last run failed says so', async () => {
     const server = await startLiveSourceTestServer();
@@ -271,19 +269,17 @@ describe('ScheduleList', () => {
     try {
       render(ScheduleListHarness, { props: { client } });
 
-      await waitFor(
-        () =>
-          expect(
-            row('failing-probe')
-              ?.querySelector('[data-testid="schedule-last-fire"]')
-              ?.getAttribute('data-outcome'),
-          ).toBe('failed'),
-        { timeout: 5000 },
+      await waitFor(() =>
+        expect(
+          row('failing-probe')
+            ?.querySelector('[data-testid="schedule-last-fire"]')
+            ?.getAttribute('data-outcome'),
+        ).toBe('failed'),
       );
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('the actions menu resumes a paused schedule, opens its editor, and copies its identifier', async () => {
     const server = await startLiveSourceTestServer();
@@ -570,9 +566,7 @@ describe('ScheduleList', () => {
       props: { client },
     });
 
-    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull(), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull());
   });
 
   test('a ?status= URL query param (dashboard-card deep link) pre-filters the status Select', async () => {

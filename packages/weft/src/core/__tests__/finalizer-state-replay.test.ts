@@ -46,7 +46,7 @@ function registerGenerationWorkflow(
 async function waitForParked(engine: Engine, workflowId: string): Promise<void> {
   await waitForCondition(
     async () => (await engine.storage.get(KEYS.checkpoint(workflowId))) !== null,
-    { label: `workflow ${workflowId} parked`, timeoutMs: 2000, intervalMs: 5 },
+    { label: `workflow ${workflowId} parked`, intervalMs: 5 },
   );
 }
 

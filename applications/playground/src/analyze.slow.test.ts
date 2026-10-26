@@ -42,7 +42,7 @@ describe('shared ts-morph project over the full inventory', () => {
     // ~100 concurrent analyzeComponent calls must share a single Project, so
     // exactly one new instance is created for the whole run.
     expect(after - before).toBe(1);
-  }, 20_000);
+  });
 
   it('creates exactly one new Project after a reset', async () => {
     await analyzeAll(COMPONENTS_DIR);
@@ -50,7 +50,7 @@ describe('shared ts-morph project over the full inventory', () => {
     const before = getProjectCreationCount();
     await analyzeAll(COMPONENTS_DIR);
     expect(getProjectCreationCount() - before).toBe(1);
-  }, 20_000);
+  });
 
   it("keeps each package's analyses in its own Project so one package's dependency graph never taxes another's", async () => {
     resetProject();
@@ -76,7 +76,7 @@ describe('shared ts-morph project over the full inventory', () => {
       getProjectProgramFileNames(CINDER_COMPONENT_SOURCE.packageRoot).some(isLucideDeclaration),
     ).toBe(false);
     expect(getProjectCreationCount() - before).toBe(2);
-  }, 20_000);
+  });
 
   // Each package's tsconfig lists `types: ["bun"]` for its tests. Left in force for the analyzer,
   // that one entry pulls Bun's declarations and, through them, `@types/node` and `undici-types`
@@ -107,5 +107,5 @@ describe('shared ts-morph project over the full inventory', () => {
       expect(programFiles.some((path) => path.endsWith('/lib.dom.d.ts'))).toBe(true);
       expect(programFiles.filter(isAmbientTestRunnerDeclaration)).toEqual([]);
     }
-  }, 20_000);
+  });
 });

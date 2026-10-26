@@ -108,5 +108,5 @@ describe('durable agentRun per-step persistence', () => {
     // Each step's persisted result does not.
     expect(long.eventLogEntry).toBeLessThan(short.eventLogEntry * 1.5);
     expect(long.timelineRecord).toBeLessThan(short.timelineRecord * 1.5);
-  }, 60_000);
+  });
 });

@@ -52,7 +52,7 @@ describe('the previous form lookup on a long audit trail', () => {
     } finally {
       await fixture.opened.dispose();
     }
-  }, 30_000);
+  });
 
   it('still closes the previous form’s surface after 50 or more plain waits followed it', async () => {
     const plain = Array.from({ length: 51 }, (_, index) => `plain-${index}`);
@@ -89,5 +89,5 @@ describe('the previous form lookup on a long audit trail', () => {
     } finally {
       await fixture.opened.dispose();
     }
-  }, 60_000);
+  });
 });

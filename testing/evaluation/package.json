@@ -16,8 +16,8 @@
     "release-gate": "bun scripts/release-gate.ts",
     "replay": "bun scripts/replay.ts",
     "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
-    "test:slow": "bun test .slow.test.ts",
-    "test:coverage": "bun test --path-ignore-patterns='**/*.slow.test.ts' --coverage --coverage-reporter=text --coverage-reporter=lcov",
+    "test:slow": "bun ../../scripts/bun-test.ts .slow.test.ts",
+    "test:coverage": "bun ../../scripts/bun-test.ts --path-ignore-patterns='**/*.slow.test.ts' --coverage --coverage-reporter=text --coverage-reporter=lcov",
     "typecheck": "tsc -b tsconfig.json"
   },
   "dependencies": {

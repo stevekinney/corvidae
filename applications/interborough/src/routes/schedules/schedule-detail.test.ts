@@ -275,19 +275,16 @@ describe('ScheduleDetail', () => {
       // only link that says "queued …": the current-run row never does, so this can only pass
       // once a real `ScheduleQueuedRun` entry has round-tripped through the API.
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Engine' })));
-      const queuedLink = await waitFor(
-        () => {
-          const found = getAllByRole('link').find((link) => /queued /.test(link.textContent ?? ''));
-          expect(found).toBeDefined();
-          return found;
-        },
-        { timeout: 5000 },
-      );
+      const queuedLink = await waitFor(() => {
+        const found = getAllByRole('link').find((link) => /queued /.test(link.textContent ?? ''));
+        expect(found).toBeDefined();
+        return found;
+      });
       expect(queuedLink?.getAttribute('href')).toMatch(/^\/runs\//);
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('a current run is a link to its run under “Running now” in the Engine disclosure', async () => {
     const server = await startLiveSourceTestServer();
@@ -320,20 +317,17 @@ describe('ScheduleDetail', () => {
       });
 
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Engine' })));
-      const heading = await waitFor(() => getByText('Running now'), { timeout: 5000 });
-      const currentRunLink = await waitFor(
-        () => {
-          const link = heading.parentElement?.querySelector('a');
-          expect(link).not.toBeNull();
-          return link;
-        },
-        { timeout: 5000 },
-      );
+      const heading = await waitFor(() => getByText('Running now'));
+      const currentRunLink = await waitFor(() => {
+        const link = heading.parentElement?.querySelector('a');
+        expect(link).not.toBeNull();
+        return link;
+      });
       expect(currentRunLink?.getAttribute('href')).toMatch(/^\/runs\//);
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('recent runs (weft.workflows.list scheduleId filter, weft 0.13+) shows persisted history, not just live fires', async () => {
     const server = await startLiveSourceTestServer();
@@ -360,14 +354,14 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'history-probe' },
       });
 
-      const completedBadge = await waitFor(() => getByText('Completed'), { timeout: 5000 });
+      const completedBadge = await waitFor(() => getByText('Completed'));
       expect(completedBadge).not.toBeNull();
       const runLink = completedBadge.closest('li')?.querySelector('a');
       expect(runLink?.getAttribute('href')).toMatch(/^\/runs\//);
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('sets the cron expression in monospace, in the sentence and in the Engine list', async () => {
     const server = await startLiveSourceTestServer();
@@ -402,7 +396,7 @@ describe('ScheduleDetail', () => {
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('a cancelled run shows the failure glyph, as the list does', async () => {
     const server = await startLiveSourceTestServer();
@@ -433,14 +427,14 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'cancelled-probe' },
       });
 
-      const runs = await waitFor(() => getByTestId('schedule-runs'), { timeout: 5000 });
+      const runs = await waitFor(() => getByTestId('schedule-runs'));
       await waitFor(() => expect(within(runs).getAllByText('Cancelled').length).toBeGreaterThan(0));
       const cancelled = within(runs).getAllByText('Cancelled')[0]?.closest('li');
       expect(cancelled?.querySelector('.ib-schedule-glyph')).not.toBeNull();
     } finally {
       await server.stop();
     }
-  }, 15000);
+  });
 
   test('a failed run is marked as failed with how long it took, opens its run when clicked, and the back link returns to the list', async () => {
     const server = await startLiveSourceTestServer();
@@ -462,7 +456,7 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'failing-probe' },
       });
 
-      const runs = await waitFor(() => getByTestId('schedule-runs'), { timeout: 5000 });
+      const runs = await waitFor(() => getByTestId('schedule-runs'));
       await waitFor(() => expect(within(runs).getAllByText('Failed').length).toBeGreaterThan(0));
       const link = within(runs).getAllByRole('link')[0];
       if (link === undefined) throw new Error('expected a run link');
@@ -474,7 +468,7 @@ describe('ScheduleDetail', () => {
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('a paused schedule says it is not scheduled instead of listing next fires', async () => {
     const server = await startLiveSourceTestServer();
@@ -592,8 +586,6 @@ describe('ScheduleDetail', () => {
       props: { client, id: 'nightly-rollup' },
     });
 
-    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull(), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull());
   });
 });

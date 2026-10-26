@@ -176,5 +176,5 @@ describe('convention #9 — substantive-test gate', () => {
     }
 
     expect(stale).toEqual([]);
-  }, 30_000);
+  });
 });

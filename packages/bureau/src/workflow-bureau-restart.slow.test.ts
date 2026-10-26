@@ -115,6 +115,6 @@ for (const [label, ownership] of OWNERSHIPS) {
           .map((call) => call.message.split('\n')[0])
           .toSorted((left, right) => (left ?? '').localeCompare(right ?? '')),
       ).toEqual(['midstep original', 'sleeper original', 'waiter original']);
-    }, 30_000);
+    });
   });
 }

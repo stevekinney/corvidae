@@ -3,6 +3,7 @@ import { $, Glob } from 'bun';
 // Bun parses `bunfig.toml` natively when imported, so `coveragePathIgnorePatterns`
 // stays a single source of truth (no hand-rolled TOML parse that could drift). The
 // path resolves relative to THIS file, so it holds regardless of the invocation cwd.
+import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import bunfig from '../bunfig.toml';
 // The package manifest supplies the `test` script's own exclusions, for the same reason
 // `bunfig.toml` supplies the instrumentation ignores: one list, read where it is written.
@@ -192,7 +193,6 @@ export function assertNoAllowanceKeyIsCoverageIgnored(
   }
 }
 
-const COVERAGE_TEST_TIMEOUT_MS = 30_000;
 const COVERAGE_FAILURE_OUTPUT_TAIL_BYTES = 16 * 1024 * 1024;
 const COVERAGE_TEST_FILE_GLOBS = ['*test.ts', '*spec.ts'] as const;
 
@@ -2337,8 +2337,7 @@ export async function runCoverageShard(
   const args = [
     'bun',
     'test',
-    '--timeout',
-    `${COVERAGE_TEST_TIMEOUT_MS}`,
+    TEST_TIMEOUT_ARGUMENT,
     '--coverage',
     '--coverage-reporter=lcov',
     '--coverage-dir',

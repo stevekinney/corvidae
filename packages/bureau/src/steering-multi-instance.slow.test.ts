@@ -93,7 +93,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('delivers a pause and a resume admitted in another process to the run', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delivery-'));
@@ -188,7 +188,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('releases a paused run when another process deletes its session, without recreating it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-'));
@@ -303,5 +303,5 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 });

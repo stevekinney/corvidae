@@ -57,4 +57,4 @@ test('the engine event feed stays open through a quiet stretch', async () => {
   expect(endedByTheHost).toBe(false);
   controller.abort();
   await drain;
-}, 30_000);
+});

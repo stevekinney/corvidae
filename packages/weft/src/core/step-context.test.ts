@@ -417,7 +417,7 @@ describe('step-context durability', () => {
     expect(await throwingRejectionOf(handle.result())).toThrow('lone boom');
 
     engine[Symbol.dispose]();
-  }, 5_000);
+  });
 
   it('rejects a non-concrete (worker-mode) context with an actionable inline-only error', () => {
     // Worker execution mode drives the handler with a minimal

@@ -12,7 +12,7 @@
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte --parallel=4 src scripts",
     "test:memory-canary": "bun scripts/memory-canary.ts",
-    "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=4 --coverage --coverage-reporter=lcov src scripts && bun scripts/check-coverage-ratchet.ts",
+    "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test.ts --conditions browser --conditions svelte --parallel=4 --coverage --coverage-reporter=lcov src scripts && bun scripts/check-coverage-ratchet.ts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
     "validate:consumer": "bun scripts/validate-consumers.ts",

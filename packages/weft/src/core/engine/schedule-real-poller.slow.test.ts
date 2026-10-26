@@ -57,6 +57,6 @@ describe('the engine’s own poller over a backfilled schedule whose runs outlas
         engine.scheduler.stop();
         engine[Symbol.dispose]();
       }
-    }, 20_000);
+    });
   }
 });

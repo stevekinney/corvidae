@@ -160,7 +160,6 @@ async function startAndTerminate(
   const handle = await engine.start(type, null, { id });
   await waitForCondition(async () => (await storage.get(KEYS.finalizerState(id))) !== null, {
     label: `workflow ${id} recorded finalizer state and parked`,
-    timeoutMs: 2000,
     intervalMs: 5,
   });
   if (terminate === 'cancel') {
@@ -381,7 +380,6 @@ for (const mode of MULTI_ENGINE_MODES) {
           drives.push(engine.scheduler.tick(clock.now));
           await waitForCondition(() => starts === attempt, {
             label: `attempt ${attempt} started`,
-            timeoutMs: 2000,
             intervalMs: 5,
           });
           expect(await engine.getFinalizerStatus(id)).toMatchObject({

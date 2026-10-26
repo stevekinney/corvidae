@@ -172,11 +172,7 @@ async function pending(bureau: Bureau): Promise<number> {
 }
 
 async function drained(bureau: Bureau): Promise<void> {
-  await waitForCondition(
-    async () => (await pending(bureau)) === 0,
-    'the outbox never emptied',
-    200,
-  );
+  await waitForCondition(async () => (await pending(bureau)) === 0, 'the outbox never emptied');
 }
 
 async function pastTheFloor(environment: Environment, bureau: Bureau) {

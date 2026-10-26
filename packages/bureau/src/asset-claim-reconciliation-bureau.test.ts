@@ -121,14 +121,10 @@ describe('a run that ended in a process that died before it released', () => {
     const { assetId, source } = await admitImage(first);
     const run = first.run('viewer', [{ type: 'image', source }], { principal: alice.id });
     await run.result();
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(first, assetId);
-        return holders.length === 0;
-      },
-      'the dispatcher never released the run’s claim',
-      200,
-    );
+    await waitForCondition(async () => {
+      const holders = await holdersOf(first, assetId);
+      return holders.length === 0;
+    }, 'the dispatcher never released the run’s claim');
     // The process dies after the terminal commit and before the release: the claim is still there.
     const lost = runRowHolderId(run.id, 'row-lost');
     await first.assets!.retain(assetId, alice, {
@@ -141,14 +137,10 @@ describe('a run that ended in a process that died before it released', () => {
 
     // The boot's reconciliation runs beside the caller, after recovery, so it is waited for.
     const second = await openBureau(store);
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(second, assetId);
-        return holders.length === 0;
-      },
-      'the boot never released the lost claim',
-      200,
-    );
+    await waitForCondition(async () => {
+      const holders = await holdersOf(second, assetId);
+      return holders.length === 0;
+    }, 'the boot never released the lost claim');
     await second.dispose();
 
     // The third boot's reconciliation is observed from the asset store: each pass lists every
@@ -170,7 +162,6 @@ describe('a run that ended in a process that died before it released', () => {
     await waitForCondition(
       () => recordListings >= 2,
       'the third boot never reconciled its run and session claims',
-      200,
     );
     // Disposing waits for the tracked reconciliation, so it has finished when this returns.
     expect(await holdersOf(third, assetId)).toEqual([]);
@@ -188,14 +179,10 @@ describe('a run that ended in a process that died before it released', () => {
     const { assetId, source } = await admitImage(bureau);
     const run = bureau.run('viewer', [{ type: 'image', source }], { principal: alice.id });
     const holders = async () => holdersOf(bureau, assetId);
-    await waitForCondition(
-      async () => {
-        const held = await holders();
-        return held.length > 0;
-      },
-      'the run never claimed its input',
-      200,
-    );
+    await waitForCondition(async () => {
+      const held = await holders();
+      return held.length > 0;
+    }, 'the run never claimed its input');
     const before = await holders();
 
     await bureau.runDurableMaintenance();

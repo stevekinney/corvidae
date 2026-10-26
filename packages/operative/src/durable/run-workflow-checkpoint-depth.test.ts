@@ -102,5 +102,5 @@ describe('durable agentRun checkpoint nesting', () => {
     expect(longDepth).toBeLessThan(MSGPACK_DEPTH_LIMIT / 4);
     expect(depthOf(long.checkpoint.conversation)).toBeLessThan(MSGPACK_DEPTH_LIMIT / 4);
     expect(depthOf(long.checkpoint.cursor)).toBeLessThan(10);
-  }, 60_000);
+  });
 });

@@ -51,7 +51,6 @@ async function connectAndRegisterWorker(
     }),
   );
   await waitForCondition(() => wsServer.registry.getWorker(options.workerId) !== undefined, {
-    timeoutMs: 5000,
     intervalMs: 25,
     label: `worker "${options.workerId}" to register`,
   });
@@ -171,7 +170,7 @@ describe('task state invariant (server integration)', () => {
 
     await waitForCondition(
       async () => (await readLedgerState(storage, 'ws-resolve-1')) === 'resolved',
-      { timeoutMs: 5000, intervalMs: 25, label: 'ws-resolve-1 to reach resolved' },
+      { intervalMs: 25, label: 'ws-resolve-1 to reach resolved' },
     );
 
     const state = await readLedgerState(storage, 'ws-resolve-1');
@@ -295,7 +294,6 @@ describe('task state invariant (server integration)', () => {
     ws.close();
     await waitForCondition(async () => (await readLedgerState(storage, 'dc-op-1')) === 'queued', {
       label: 'worker disconnect to requeue the ledger record',
-      timeoutMs: 1_000,
       intervalMs: 5,
     });
   });

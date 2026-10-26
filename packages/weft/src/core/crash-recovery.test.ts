@@ -613,7 +613,6 @@ describe('crash recovery', () => {
     // committed; recovery therefore cannot pass by consuming the original `ev` for
     // the first time.
     await waitForCondition(async () => !(await hasBufferedEv()), {
-      timeoutMs: 2000,
       label: 'race consumed the ev signal and checkpointed before the crash',
     });
     expect(await storage.get(STORAGE_KEYS.checkpoint('wf-race-signal'))).not.toBeNull();
@@ -663,7 +662,6 @@ describe('crash recovery', () => {
     await flush();
     await engine1.signal('wf-keyed-race', 'event', 'event-payload');
     await waitForCondition(async () => !(await hasBufferedEvent()), {
-      timeoutMs: 2000,
       label: 'keyed race consumed the event and checkpointed before the crash',
     });
     expect(await storage.get(STORAGE_KEYS.checkpoint('wf-keyed-race'))).not.toBeNull();
@@ -723,7 +721,6 @@ describe('crash recovery', () => {
     release();
 
     await waitForCondition(async () => !(await hasBufferedSignal()), {
-      timeoutMs: 2000,
       label: 'zero-duration drain consumed and checkpointed the buffered signal',
     });
     expect(await storage.get(STORAGE_KEYS.checkpoint('zero-duration-drain'))).not.toBeNull();
@@ -1576,7 +1573,7 @@ describe('crash recovery', () => {
         const state = await firstEngine.get('idem-crash-444');
         return state?.status === 'running' && executeCount === 1;
       },
-      { timeoutMs: 2000, label: 'keyed activity completed and workflow parked' },
+      { label: 'keyed activity completed and workflow parked' },
     );
     expect(executeCount).toBe(1);
     firstEngine[Symbol.dispose]();
@@ -1590,7 +1587,7 @@ describe('crash recovery', () => {
         const state = await recoveredEngine.get('idem-crash-444');
         return state?.status === 'completed';
       },
-      { timeoutMs: 2000, label: 'recovered workflow completed' },
+      { label: 'recovered workflow completed' },
     );
 
     const recovered = await recoveredEngine.get('idem-crash-444');
@@ -1648,7 +1645,7 @@ describe('crash recovery', () => {
         const state = await firstEngine.get('stc-crash-449');
         return state?.status === 'running' && executeCount === 1;
       },
-      { timeoutMs: 2000, label: 'attempt 1 failed and the workflow parked on the backoff sleep' },
+      { label: 'attempt 1 failed and the workflow parked on the backoff sleep' },
     );
     expect(executeCount).toBe(1);
     firstEngine[Symbol.dispose]();
@@ -1665,7 +1662,7 @@ describe('crash recovery', () => {
         const state = await recoveredEngine.get('stc-crash-449');
         return state?.status === 'failed';
       },
-      { timeoutMs: 2000, label: 'recovered workflow failed at the schedule-to-close boundary' },
+      { label: 'recovered workflow failed at the schedule-to-close boundary' },
     );
 
     const recovered = await recoveredEngine.get('stc-crash-449');

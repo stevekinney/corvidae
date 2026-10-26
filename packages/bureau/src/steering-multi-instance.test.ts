@@ -216,7 +216,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it("gives a recreated session a fresh log and frees the deleted incarnation's keys", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-recreate-'));
@@ -251,7 +251,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it("schedules each session's steering poll on the Bureau's own timers", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-poll-timers-'));
@@ -345,7 +345,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('folds a run boundary and a completion to the same command states everywhere', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-boundary-'));
@@ -458,7 +458,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('folds a key reused after another process deleted its session, without stale state', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-deleted-elsewhere-'));
@@ -494,7 +494,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('replays a policy-resolved command for an exact retry, even where the policy is gone', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-policy-'));
@@ -629,7 +629,7 @@ describe('durable steering across two Bureau processes', () => {
       await withChangedPolicy.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('fails a run start on a corrupt steering log, leaving the session failed rather than running', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-corrupt-start-'));
@@ -661,7 +661,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('binds pause and resume against live runs in every process, not just its own', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-liveness-'));
@@ -711,7 +711,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('counts every run promoted in the log as starting until its workflow exists', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-starting-runs-'));
@@ -775,7 +775,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it("folds starting runs before the terminal check, reads markers only as far as admission needs, and surfaces a named run's liveness failure", async () => {
     // The engine every Bureau composes: its reads are counted, then failed.
@@ -1007,7 +1007,7 @@ describe('durable steering across two Bureau processes', () => {
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it("counts only the current session incarnation's runs as live, and handles any session id", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-incarnation-liveness-'));
@@ -1140,7 +1140,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('answers a reused key only to a caller still authorized for the command it discloses', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-reauthorize-'));
@@ -1275,7 +1275,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('fails closed on an applied version no admission before it issued', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-applied-beyond-'));
@@ -1314,7 +1314,7 @@ describe('durable steering across two Bureau processes', () => {
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('fails closed on a run ending the log never promoted', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ghost-ending-'));
@@ -1347,7 +1347,7 @@ describe('durable steering across two Bureau processes', () => {
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('ends a run quietly when another process already logged its end', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ended-elsewhere-'));
@@ -1411,7 +1411,7 @@ describe('durable steering across two Bureau processes', () => {
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('fails closed on an applied event outside its run, and on a key decided twice', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-impossible-history-'));
@@ -1491,7 +1491,7 @@ describe('durable steering across two Bureau processes', () => {
       for (const reader of readers) await reader.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it("fails closed on a run applying another run's version, and counts a run saved but not yet promoted", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-visible-versions-'));
@@ -1815,7 +1815,7 @@ describe('durable steering across two Bureau processes', () => {
       for (const reader of readers) await reader.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('reports a committed deletion as done even when its steering log cannot be removed', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-delete-cleanup-'));
@@ -1859,7 +1859,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('answers a failed log read only to a caller still authorized for the session', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-fold-failure-authority-'));
@@ -1902,7 +1902,7 @@ describe('durable steering across two Bureau processes', () => {
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('records starting entries only where durable steering runs', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-non-durable-start-'));
@@ -1925,7 +1925,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('keeps failing on a live session whose log lost entries, rather than refolding it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-shortened-log-'));
@@ -1960,7 +1960,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('fails closed on a key binding that does not name its own admission', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-bad-binding-'));
@@ -2013,5 +2013,5 @@ describe('durable steering across two Bureau processes', () => {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 });

@@ -272,12 +272,9 @@ describe('additional coverage', () => {
     // Once the reconnect attempt actually starts (a second fetch call),
     // `caughtUp` must not keep reporting stale catch-up state from the prior
     // connection — `#connect()` resets it before issuing that fetch.
-    await waitFor(
-      () => {
-        expect(scripted.calls).toHaveLength(2);
-      },
-      { timeout: RECONNECT_DELAY_MS + 1000 },
-    );
+    await waitFor(() => {
+      expect(scripted.calls).toHaveLength(2);
+    });
     expect(source.caughtUp).toBe(false);
     source.close();
   });

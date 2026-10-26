@@ -113,7 +113,7 @@ async function waitForStatus(
       const state = await engine.get(workflowId);
       return state?.status === status;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: `workflow ${workflowId} to reach ${status}` },
+    { intervalMs: 10, label: `workflow ${workflowId} to reach ${status}` },
   );
 }
 
@@ -1021,7 +1021,6 @@ describe('MCP Streamable HTTP transport', () => {
         content: [{ text: 'Workflow cancelled' }],
       });
       await waitForCondition(() => warnings.length > 0, {
-        timeoutMs: 2_000,
         intervalMs: 10,
         label: 'cancellation failure warning',
       });
@@ -1330,7 +1329,7 @@ async function runningHoldForCancel(engine: Engine): Promise<string> {
       workflowId = list.items.find((item) => item.status === 'running')?.id ?? '';
       return workflowId.length > 0;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: 'running MCP workflow tool call' },
+    { intervalMs: 10, label: 'running MCP workflow tool call' },
   );
   return workflowId;
 }

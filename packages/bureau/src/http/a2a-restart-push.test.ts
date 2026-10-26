@@ -285,7 +285,7 @@ describe('push Create before start-up recovery has reached the task', () => {
     expect(created.result.id).toBe('after');
     const listed = await served.call('ListTaskPushNotificationConfigs', { taskId });
     expect(listed.result.configs.map((config: Json) => config.id)).toEqual(['before', 'after']);
-  }, 15_000);
+  });
 });
 
 /** A live parked task on a withdrawn agent's mount, with a Bureau whose recovery is held. */
@@ -330,7 +330,7 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
     const checkpoints = await served.harness.bureau.kv?.list(A2A_PUSH_CHECKPOINT_KEY_PREFIX);
     expect(checkpoints ?? []).toEqual([]);
     expect(world.receiver.requests).toEqual([]);
-  }, 15_000);
+  });
 
   it('delivers the terminal event to the new webhook when the task ends after the cursor', async () => {
     let reached: () => void = () => undefined;
@@ -359,5 +359,5 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
     const created = await pending;
     expect(created.error).toBeUndefined();
     await eventually(() => world.receiver.kinds().includes('status:TASK_STATE_CANCELED'));
-  }, 15_000);
+  });
 });

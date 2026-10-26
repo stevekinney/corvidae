@@ -64,7 +64,6 @@ async function waitForWorkflowPresence(
     },
     {
       label: `workflow "${workflowId}" existence to become ${String(shouldExist)}`,
-      timeoutMs: 400,
       intervalMs: 5,
     },
   );
@@ -209,7 +208,7 @@ async function waitForRunningWorkflow(engine: Engine, workflowId: string): Promi
       const state = await engine.get(workflowId);
       return state?.status === 'running';
     },
-    { label: `workflow "${workflowId}" to reach running state`, timeoutMs: 400, intervalMs: 5 },
+    { label: `workflow "${workflowId}" to reach running state`, intervalMs: 5 },
   );
 }
 
@@ -344,7 +343,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'first retention sweep to delete exactly one workflow',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -356,7 +354,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'second retention sweep to delete the remaining workflow',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -397,7 +394,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'exactly one workflow to be purged while the first retention sweep is in flight',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -1071,7 +1067,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'retention sweep to delete orphaned terminal workflow index entries',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );

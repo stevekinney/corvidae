@@ -84,7 +84,7 @@ async function observe(opened: OpenedBureau, taskId: string) {
     subscribeRequest('bureau.tasks.events', { taskId }, 'alice-key'),
   );
   expect(response.status).toBe(200);
-  return readFrames(response, { timeoutMs: 10_000 });
+  return readFrames(response);
 }
 
 /** Step 0 saves the fire's session (a tool call the toolbox lacks); step 1 waits on `gate`. */
@@ -109,174 +109,134 @@ async function waitForBound(opened: OpenedBureau, taskId: string): Promise<void>
 }
 
 describe('the event stream of a schedule fire', () => {
-  it(
-    'follows a fire that is not yet bound to its session to its end, and then ends',
-    async () => {
-      const opened = await serve(parkingUntilAborted);
-      const task = await firstFire(opened);
-      const unbound = await opened.bureau.tasks.record(task.id);
-      expect(unbound?.incarnation).toBe('');
+  it('follows a fire that is not yet bound to its session to its end, and then ends', async () => {
+    const opened = await serve(parkingUntilAborted);
+    const task = await firstFire(opened);
+    const unbound = await opened.bureau.tasks.record(task.id);
+    expect(unbound?.incarnation).toBe('');
 
-      const frames = observe(opened, task.id);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      await rpc(opened.handler, 'bureau.tasks.cancel', { taskId: task.id }, 'alice-key');
-      const seen = await frames;
+    const frames = observe(opened, task.id);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await rpc(opened.handler, 'bureau.tasks.cancel', { taskId: task.id }, 'alice-key');
+    const seen = await frames;
 
-      expect(seen.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
-      expect(seen[0]?.data).toMatchObject({ status: 'working' });
-      expect(seen[1]?.data).toMatchObject({ status: 'canceled', taskId: task.id });
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+    expect(seen.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
+    expect(seen[0]?.data).toMatchObject({ status: 'working' });
+    expect(seen[1]?.data).toMatchObject({ status: 'canceled', taskId: task.id });
+  });
 
-  it(
-    'follows a fire that is bound to its session to its end, with its answer, and then ends',
-    async () => {
-      const gate = Promise.withResolvers<void>();
-      const opened = await serve(gatedAfterFirstStep(gate.promise));
-      const task = await firstFire(opened);
-      await waitForBound(opened, task.id);
+  it('follows a fire that is bound to its session to its end, with its answer, and then ends', async () => {
+    const gate = Promise.withResolvers<void>();
+    const opened = await serve(gatedAfterFirstStep(gate.promise));
+    const task = await firstFire(opened);
+    await waitForBound(opened, task.id);
 
-      const frames = observe(opened, task.id);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      gate.resolve();
-      const seen = await frames;
+    const frames = observe(opened, task.id);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    gate.resolve();
+    const seen = await frames;
 
-      expect(seen.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
-      expect(seen[1]?.data).toMatchObject({
-        status: 'completed',
-        artifact: { text: 'fire answer' },
-      });
+    expect(seen.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
+    expect(seen[1]?.data).toMatchObject({
+      status: 'completed',
+      artifact: { text: 'fire answer' },
+    });
+    const view = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
+    expect(view.result).toMatchObject({ status: 'completed' });
+  });
+
+  it('answers a fire that is already over with its end at once, and an empty stream to a client that has seen it', async () => {
+    const opened = await serve(async () => ({ content: 'done at once', toolCalls: [] }));
+    const task = await firstFire(opened);
+    await waitForReal(async () => {
       const view = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
-      expect(view.result).toMatchObject({ status: 'completed' });
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+      return view.result?.['status'] === 'completed' ? true : undefined;
+    }, 'the fire to complete');
 
-  it(
-    'answers a fire that is already over with its end at once, and an empty stream to a client that has seen it',
-    async () => {
-      const opened = await serve(async () => ({ content: 'done at once', toolCalls: [] }));
-      const task = await firstFire(opened);
-      await waitForReal(async () => {
-        const view = await rpc(
-          opened.handler,
-          'bureau.tasks.get',
-          { taskId: task.id },
-          'alice-key',
-        );
-        return view.result?.['status'] === 'completed' ? true : undefined;
-      }, 'the fire to complete');
+    const seen = await observe(opened, task.id);
+    expect(seen.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
+    expect(seen[1]?.data).toMatchObject({
+      status: 'completed',
+      artifact: { text: 'done at once' },
+    });
 
-      const seen = await observe(opened, task.id);
-      expect(seen.map((frame) => frame.event)).toEqual(['task.snapshot', 'task.status']);
-      expect(seen[1]?.data).toMatchObject({
-        status: 'completed',
-        artifact: { text: 'done at once' },
-      });
-
-      const cursor = (seen[1] as { id?: string }).id!;
-      const resumed = await readFrames(
-        await opened.handler(
-          subscribeRequest('bureau.tasks.events', { taskId: task.id }, 'alice-key', cursor),
-        ),
-        { timeoutMs: 5_000 },
-      );
-      expect(resumed).toEqual([]);
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+    const cursor = (seen[1] as { id?: string }).id!;
+    const resumed = await readFrames(
+      await opened.handler(
+        subscribeRequest('bureau.tasks.events', { taskId: task.id }, 'alice-key', cursor),
+      ),
+    );
+    expect(resumed).toEqual([]);
+  });
 });
 
 describe('a running schedule fire and its context', () => {
-  it(
-    'keeps the context live while it runs, and is cancelled when the context is deleted',
-    async () => {
-      const gate = Promise.withResolvers<void>();
-      const opened = await serve(gatedAfterFirstStep(gate.promise));
-      const task = await firstFire(opened);
-      await waitForBound(opened, task.id);
+  it('keeps the context live while it runs, and is cancelled when the context is deleted', async () => {
+    const gate = Promise.withResolvers<void>();
+    const opened = await serve(gatedAfterFirstStep(gate.promise));
+    const task = await firstFire(opened);
+    await waitForBound(opened, task.id);
 
-      const listed = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
-      const contexts = (listed.result?.['contexts'] ?? []) as Array<{
-        id: string;
-        activity: string;
-      }>;
-      expect(contexts.find((context) => context.id === task.contextId)?.activity).toBe('running');
+    const listed = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
+    const contexts = (listed.result?.['contexts'] ?? []) as Array<{
+      id: string;
+      activity: string;
+    }>;
+    expect(contexts.find((context) => context.id === task.contextId)?.activity).toBe('running');
 
-      const deleted = await rpc(
-        opened.handler,
-        'bureau.contexts.delete',
-        { contextId: task.contextId },
-        'alice-key',
-      );
-      expect(deleted.error).toBeUndefined();
-      // A fire has no cleanup to acknowledge: its stop is reported as one nothing confirms, with
-      // no wait for it, as the default wait of zero gives.
-      expect(deleted.result?.['receipt']).toBe('cleanup-unresolved');
-      expect(deleted.result?.['tasks']).toEqual([
-        expect.objectContaining({ taskId: task.id, cleanup: 'cleanup-unresolved' }),
-      ]);
-      const after = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
-      expect(after.result).toMatchObject({ status: 'canceled' });
-      gate.resolve();
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+    const deleted = await rpc(
+      opened.handler,
+      'bureau.contexts.delete',
+      { contextId: task.contextId },
+      'alice-key',
+    );
+    expect(deleted.error).toBeUndefined();
+    // A fire has no cleanup to acknowledge: its stop is reported as one nothing confirms, with
+    // no wait for it, as the default wait of zero gives.
+    expect(deleted.result?.['receipt']).toBe('cleanup-unresolved');
+    expect(deleted.result?.['tasks']).toEqual([
+      expect.objectContaining({ taskId: task.id, cleanup: 'cleanup-unresolved' }),
+    ]);
+    const after = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
+    expect(after.result).toMatchObject({ status: 'canceled' });
+    gate.resolve();
+  });
 
-  it(
-    'does not keep the context live once it has ended',
-    async () => {
-      const gate = Promise.withResolvers<void>();
-      const opened = await serve(gatedAfterFirstStep(gate.promise));
-      const task = await firstFire(opened);
-      await waitForBound(opened, task.id);
-      gate.resolve();
-      await waitForReal(async () => {
-        const view = await rpc(
-          opened.handler,
-          'bureau.tasks.get',
-          { taskId: task.id },
-          'alice-key',
-        );
-        return view.result?.['status'] === 'completed' ? true : undefined;
-      }, 'the fire to complete');
+  it('does not keep the context live once it has ended', async () => {
+    const gate = Promise.withResolvers<void>();
+    const opened = await serve(gatedAfterFirstStep(gate.promise));
+    const task = await firstFire(opened);
+    await waitForBound(opened, task.id);
+    gate.resolve();
+    await waitForReal(async () => {
+      const view = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
+      return view.result?.['status'] === 'completed' ? true : undefined;
+    }, 'the fire to complete');
 
-      const listed = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
-      const contexts = (listed.result?.['contexts'] ?? []) as Array<{
-        id: string;
-        activity: string;
-      }>;
-      expect(contexts.find((context) => context.id === task.contextId)?.activity).toBe('idle');
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+    const listed = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
+    const contexts = (listed.result?.['contexts'] ?? []) as Array<{
+      id: string;
+      activity: string;
+    }>;
+    expect(contexts.find((context) => context.id === task.contextId)?.activity).toBe('idle');
+  });
 });
 
 describe('a schedule fire that timed out', () => {
-  it(
-    'settles its task as failed',
-    async () => {
-      const opened = await serve(parkingUntilAborted);
-      const task = await firstFire(opened);
+  it('settles its task as failed', async () => {
+    const opened = await serve(parkingUntilAborted);
+    const task = await firstFire(opened);
 
-      opened.bureau
-        .durableEngine()!
-        .dispatchEvent(new WorkflowTimedOutEvent(task.id, 'execution', 1));
+    opened.bureau
+      .durableEngine()!
+      .dispatchEvent(new WorkflowTimedOutEvent(task.id, 'execution', 1));
 
-      const failed = await waitForReal(async () => {
-        const view = await rpc(
-          opened.handler,
-          'bureau.tasks.get',
-          { taskId: task.id },
-          'alice-key',
-        );
-        return view.result?.['status'] === 'failed' ? view : undefined;
-      }, 'the timed-out fire’s task to read as failed');
-      expect(failed.result).toMatchObject({ finishReason: 'timed-out' });
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+    const failed = await waitForReal(async () => {
+      const view = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
+      return view.result?.['status'] === 'failed' ? view : undefined;
+    }, 'the timed-out fire’s task to read as failed');
+    expect(failed.result).toMatchObject({ finishReason: 'timed-out' });
+  });
 });
 
 /** Storage that refuses to change a task record once it exists, as a registry that cannot write. */
@@ -295,40 +255,36 @@ class StuckTaskRecordStorage extends MemoryStorage {
 }
 
 describe('a task registry that cannot write', () => {
-  it(
-    'is diagnosed, and the fire still runs to its end',
-    async () => {
-      const diagnostics: string[] = [];
-      const completed: string[] = [];
-      const bureau = await createBureau<AgentDefinitions>({
-        id: 'stuck-registry',
-        agents: {
-          default: createAgent({
-            generate: async () => ({ content: 'ran anyway', toolCalls: [] }),
-            toolbox: createToolbox([]),
-            stopWhen: stopWhen.noToolCalls(),
-          }),
-        },
-        storage: new StuckTaskRecordStorage(),
-        durableExecution: true,
-        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
-      });
-      cleanups.push(() => bureau.dispose());
-      bureau.addEventListener('schedule.completed', (event) => completed.push(event.runId));
+  it('is diagnosed, and the fire still runs to its end', async () => {
+    const diagnostics: string[] = [];
+    const completed: string[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      id: 'stuck-registry',
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'ran anyway', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: new StuckTaskRecordStorage(),
+      durableExecution: true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    cleanups.push(() => bureau.dispose());
+    bureau.addEventListener('schedule.completed', (event) => completed.push(event.runId));
 
-      const schedule = await bureau.createSchedule({
-        agentName: 'default',
-        spec: '1s',
-        input: 'tick',
-        principal: 'api-key:alice',
-        sessionId: 'recurring',
-      });
-      await waitForReal(async () => (completed.length > 0 ? true : undefined), 'the fire to end');
-      await bureau.cancelSchedule(schedule!.id);
+    const schedule = await bureau.createSchedule({
+      agentName: 'default',
+      spec: '1s',
+      input: 'tick',
+      principal: 'api-key:alice',
+      sessionId: 'recurring',
+    });
+    await waitForReal(async () => (completed.length > 0 ? true : undefined), 'the fire to end');
+    await bureau.cancelSchedule(schedule!.id);
 
-      expect(completed.length).toBeGreaterThan(0);
-      expect(diagnostics.some((message) => message.includes('Could not bind the task'))).toBe(true);
-    },
-    FIRE_TIMEOUT_MS + 25_000,
-  );
+    expect(completed.length).toBeGreaterThan(0);
+    expect(diagnostics.some((message) => message.includes('Could not bind the task'))).toBe(true);
+  });
 });

@@ -651,7 +651,6 @@ describe('a fire’s task stream ends when its last review closes', () => {
         await handlerOf(bureau)(
           subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
         ),
-        { timeoutMs: 8_000 },
       );
     return { bureau, fireId, follow, release: () => gate.resolve(), charges };
   }
@@ -741,7 +740,6 @@ describe('a fire’s task stream ends when its last review closes', () => {
       await handlerOf(bureau)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 8_000 },
     );
     gate.resolve();
     const review = await reviewOf(bureau, fireId);
@@ -854,7 +852,7 @@ describe('a fire’s review is announced', () => {
       await handlerOf(approval)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { stop: (seen) => seen.length >= 1, timeoutMs: 5_000 },
+      { stop: (seen) => seen.length >= 1 },
     );
     expect(frames[0]).toMatchObject({
       event: 'task.snapshot',

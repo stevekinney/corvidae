@@ -96,7 +96,6 @@ async function followTask(bureau: Bureau, fireId: string) {
     await handlerOf(bureau)(
       subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
     ),
-    { timeoutMs: 20_000 },
   ).finally(() => {
     ended = true;
   });
