@@ -238,8 +238,12 @@ describe('OpenAI formatters keep a non-success outcome beside parts', () => {
 });
 
 describe('truncation middleware shares one budget across the text parts', () => {
-  async function truncate(parts: ToolResultPart[], maxCharacters: number) {
-    const configuration = createTruncationMiddleware({ maxCharacters, marker: '…' })({
+  async function truncate(
+    parts: ToolResultPart[],
+    maxCharacters: number,
+    extra: { isError?: boolean; errorMaxCharacters?: number } = {},
+  ) {
+    const configuration = createTruncationMiddleware({ maxCharacters, marker: '…', ...extra })({
       name: 't',
       description: 't',
       execute: async () => toolContent(parts),
@@ -273,6 +277,14 @@ describe('truncation middleware shares one budget across the text parts', () => 
     expect(text[1]?.endsWith('…')).toBe(true);
     // Media is kept, in place; the part that no longer fits is dropped.
     expect(parts.map((part) => part.type)).toEqual(['text', 'image', 'text']);
+  });
+
+  it('uses the error budget when isError is set, as the string path does', async () => {
+    const parts = await truncate([{ type: 'text', text: 'e'.repeat(2000) }], 1000, {
+      isError: true,
+      errorMaxCharacters: 20,
+    });
+    expect(parts).toEqual([{ type: 'text', text: `${'e'.repeat(19)}…` }]);
   });
 
   it('leaves parts that fit the whole budget unchanged', async () => {

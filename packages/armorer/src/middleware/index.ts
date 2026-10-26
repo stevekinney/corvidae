@@ -5,6 +5,7 @@ import { isToolContent, toolContent, type ToolResultPart } from '../protocol';
 import {
   containsBase64Data,
   createTruncatingAsyncIterable,
+  DEFAULT_ERROR_MAX_CHARACTERS,
   DEFAULT_MAX_CHARACTERS,
   DEFAULT_TRUNCATION_MARKER,
   stripBase64Data,
@@ -392,7 +393,10 @@ function truncatePartsWithinBudget(
   options: ToolResultTruncationOptions | undefined,
 ): ToolResultPart[] {
   const marker = options?.marker ?? DEFAULT_TRUNCATION_MARKER;
-  let remaining = options?.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
+  // The budget is the one the string path uses: an error's own limit when `isError` is set.
+  let remaining = options?.isError
+    ? (options.errorMaxCharacters ?? DEFAULT_ERROR_MAX_CHARACTERS)
+    : (options?.maxCharacters ?? DEFAULT_MAX_CHARACTERS);
   let state: 'open' | 'spent' | 'cut' = 'open';
   return parts.flatMap((part): ToolResultPart[] => {
     if (part.type !== 'text' || state === 'cut') return part.type === 'text' ? [] : [part];
