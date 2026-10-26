@@ -9826,6 +9826,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
+    // COR-1662 — a file agent's definition is stored, and this task tied to it, before the task is
+    // queued, so every attempt (a preempted task starts again) and a task that waits in the queue
+    // run the definition this submission resolved, not whatever the file has become. A write that
+    // fails refuses the submission: a task that could not be pinned is not queued.
+    if (resolution.run.agentBinding !== undefined) {
+      try {
+        await fileAgents?.recordBoundRun(resolution.run.agentBinding, taskId);
+        // The record is a stale read once `shutdown()` may have started during the await.
+        assertRunAdmissionOpen('scheduler task');
+      } catch (error) {
+        // Nothing was queued: give back the flow-control slot and the reference, if it was written.
+        flowController?.settle(taskId);
+        await fileAgents?.releaseRun(taskId);
+        throw error;
+      }
+    }
+
     const task: Parameters<NonNullable<typeof runtime.scheduler>['submit']>[0] = {
       id: taskId,
       priority,
@@ -9838,10 +9855,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assertRunAdmissionOpen('scheduler task');
         // Each attempt resolves its own agent run: a preempted-and-requeued task starts a fresh
         // conversation, and the guardrail hooks and skill client of the earlier attempt are stateful.
+        // The definition the submission recorded (COR-1662), never the file's current one.
+        const pinned = await fileAgents?.snapshots.reference(taskId);
         const attempt = await runtime.resolveSessionAgentRun(
           agentName,
           taskId,
           ownerOrLocal(undefined),
+          pinned === undefined || pinned.id !== agentName
+            ? undefined
+            : { agentDefinitionHash: pinned.hash, definitionRevision: pinned.definitionRevision },
         );
         if (attempt.status !== 'resolved') {
           throw new BureauError(
