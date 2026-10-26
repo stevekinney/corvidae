@@ -1233,6 +1233,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly hasExplicitId: boolean;
   /**
+   * The runtime this bureau runs on: {@link BureauOptions.runtime}, or the process's own services
+   * when none was given. An adapter that compares a deadline or schedules a timer for the
+   * bureau (the A2A mount of `createBureauHandler`) reads it here, so a custom runtime governs
+   * the adapter too and not only the bureau.
+   */
+  readonly runtimeServices: RuntimeServices;
+  /**
    * How long a settled task stays addressable: {@link BureauOptions.taskRetention}, or its
    * 30-day default when none was given.
    */

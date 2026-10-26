@@ -249,6 +249,10 @@ export function createTaskEventProjector(
     get ended(): boolean {
       return ended;
     },
+    /** The reviews open on the task, as of the events projected so far. */
+    openReviewIds(): readonly string[] {
+      return [...open];
+    },
     project(event: TaskEventSource): TaskEvent | undefined {
       switch (event.kind) {
         case 'run.completed': {

@@ -502,6 +502,7 @@ function buildReceipt(
   receipt: ApplicationCommandReceipt,
   deliveryMode: SessionInputDeliveryMode,
   promotion: SessionInputPromotion | undefined,
+  nowMs?: number,
 ): SessionInputReceipt {
   if (receipt.idempotencyKey === undefined) {
     // Every admission through this module always supplies `idempotencyKey`
@@ -517,7 +518,7 @@ function buildReceipt(
     deliveryMode,
     admissionSequence: receipt.sequence,
     revision: 1,
-    state: receiptState(receipt, deliveryMode, promotion),
+    state: receiptState(receipt, deliveryMode, promotion, nowMs),
     admittedAt: new Date(receipt.acceptedAt).toISOString(),
   };
 }
@@ -532,8 +533,18 @@ function receiptState(
   receipt: ApplicationCommandReceipt,
   deliveryMode: SessionInputDeliveryMode,
   promotion: SessionInputPromotion | undefined,
+  nowMs: number | undefined,
 ): SessionInputState {
   if (promotion !== undefined || receipt.state === 'applied') return 'promoted';
+  // The mailbox dead-letters a command past its deadline when it next tries to lease it, so a
+  // command still open at `nowMs` after its deadline is reported as what it will be: expired.
+  if (
+    nowMs !== undefined &&
+    OPEN_STATES.has(receipt.state) &&
+    nowMs >= receipt.absoluteDeadlineAt
+  ) {
+    return 'expired';
+  }
   switch (receipt.state) {
     case 'dead-lettered':
       return receipt.failure?.reason === 'deadline-exceeded' ? 'expired' : 'failed';
@@ -666,6 +677,10 @@ export async function admitSessionInput(
     return readSessionInputPromotion(kv, sessionId, commandId);
   }
 
+  // Only an input that asked for an expiry is reported `expired` ahead of the mailbox's own
+  // dead-lettering: the receipt is read against the clock the deadline was set on.
+  const expiryClock = payload.expiresAt === undefined ? undefined : attempt.nowMs;
+
   const claim = await resolveSessionInputIdentity(attempt);
 
   if (claim.kind === 'conflict') {
@@ -710,6 +725,13 @@ export async function admitSessionInput(
     kind: encodeSessionInputKind(deliveryMode),
     payload: { form: 'inline', value: payload as unknown as Record<string, unknown> },
     idempotencyKey: id,
+    // An input that is still waiting when its `expiresAt` passes is not delivered: the mailbox's
+    // own absolute deadline does it, and dead-letters the command as `deadline-exceeded`, which
+    // the receipt reads as `expired`. An instant that has passed already admits a command that is
+    // dead at once (the mailbox needs a positive timeout).
+    ...(payload.expiresAt === undefined
+      ? {}
+      : { commandTimeoutMs: Math.max(1, Date.parse(payload.expiresAt) - attempt.nowMs) }),
   });
 
   // With a record in this session's mailbox, the identity commits to
@@ -758,6 +780,7 @@ export async function admitSessionInput(
           admission.receipt,
           decodeSessionInputKind(admission.receipt.kind),
           await currentPromotion(admission.receipt.commandId),
+          expiryClock,
         ),
       };
     case 'conflict': {
@@ -776,6 +799,7 @@ export async function admitSessionInput(
             admission.receipt,
             decodeSessionInputKind(admission.receipt.kind),
             await currentPromotion(admission.receipt.commandId),
+            expiryClock,
           ),
         },
       };

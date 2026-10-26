@@ -87,9 +87,10 @@ export function decodeSessionInputCommand(
  * session's delivery store, keyed by the mailbox command, which also holds the
  * promotion the checkpoint write commits with the transcript.
  *
- * Delivery does not honour a record's `expiresAt` or `supersedes`: neither has a
- * terminal state recorded anywhere yet, so an expired or superseded input is
- * delivered like any other.
+ * Delivery honours a record's `expiresAt` through the mailbox's absolute deadline, set when the
+ * input is admitted: a claim past it is refused and the command dead-letters as
+ * `deadline-exceeded` (COR-1661). It does not honour `supersedes`: that has no terminal state
+ * recorded anywhere yet, so a superseded input is delivered like any other.
  */
 export function createSessionInputDeliveryGate(
   options: SessionInputDeliveryOptions,

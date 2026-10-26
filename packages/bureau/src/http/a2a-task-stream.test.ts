@@ -61,6 +61,7 @@ function standIn(
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
     tasks: {
+      record: async () => undefined,
       get: async () => {
         if (overrides.getDelayMs !== undefined) {
           await new Promise((resolve) => setTimeout(resolve, overrides.getDelayMs));

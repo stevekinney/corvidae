@@ -20,7 +20,11 @@
  *
  * ## Closing
  *
- * A stream ends once the task is terminal. It is closed early, and the client reconnects with
+ * A stream ends once the task is terminal, by the history's terminal event. Where that event could
+ * not be appended and its repair has not landed (the task's record is marked resync-pending), the
+ * stream ends with a live update read from the registry instead, sent without an `id`: the same
+ * status and answer the repair will state, so the client is not left waiting on a history that
+ * may not come. It is closed early, and the client reconnects with
  * `Last-Event-ID`, when its reader falls behind the buffer (every stream for a task must carry the
  * same events, A2A 1.0.1 section 3.5.2, so it is not thinned), or when the history's retention
  * floor overtakes its next cursor. A stream's end never cancels the task.
@@ -30,7 +34,7 @@
 
 import type { Artifact, Part, StreamResponse, Task, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
-import type { RuntimeTimers } from '@lostgradient/lifecycle';
+import type { RuntimeTimeoutHandle, RuntimeTimers } from '@lostgradient/lifecycle';
 import { decodeCursor, encodeCursor } from '@lostgradient/weft';
 import { withStreamEventCursor } from '@lostgradient/weft/a2a';
 
@@ -81,7 +85,7 @@ export type A2AStreamBureau = Pick<
   | 'removeEventListener'
   | 'getReview'
 > & {
-  readonly tasks: Pick<TaskRegistry, 'get' | 'onSettled' | 'onChanged'>;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'record' | 'onSettled' | 'onChanged'>;
 };
 
 /** The durable event kinds that change a surface: each one makes a stream re-read its surfaces. */
@@ -382,6 +386,33 @@ export async function readRetained(
 export type RetainedEvents = NonNullable<Awaited<ReturnType<typeof readRetained>>>;
 
 /**
+ * The view with the waits the durable events say are open. A registry read made after an event can
+ * lag it, listing fewer waits than the event opened; the waits an `INPUT_REQUIRED` update names are
+ * those of the events folded, each read as the registry lists it or, failing that, from its review.
+ */
+async function withOpenWaits(
+  bureau: A2AStreamBureau,
+  view: TaskView,
+  reviewIds: readonly string[],
+): Promise<TaskView> {
+  const openWaits: TaskView['openWaits'][number][] = [];
+  for (const reviewId of reviewIds) {
+    const listed = view.openWaits.find((wait) => wait.reviewId === reviewId);
+    if (listed !== undefined) {
+      openWaits.push(listed);
+      continue;
+    }
+    const review = await bureau.getReview(reviewId).catch(() => undefined);
+    if (review?.kind === 'human-wait') {
+      openWaits.push({ kind: 'human-wait', reviewId, signalName: review.signalName });
+    } else if (review?.kind === 'tool-approval') {
+      openWaits.push({ kind: 'tool-approval', reviewId, callId: review.approval.callId });
+    }
+  }
+  return { ...view, openWaits };
+}
+
+/**
  * The projector that folds a task's retained durable events to its status. Reviews are known
  * only from their durable events, so a review is never counted twice; the terminal state comes
  * from the history when its event survived, and from the task otherwise.
@@ -428,7 +459,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     retained === undefined
       ? undefined
       : (retained.events.at(-1)?.cursor ?? retained.reached ?? '-1');
-  const snapshotView: TaskView =
+  const foldedView: TaskView =
     folded === undefined
       ? initial
       : {
@@ -437,6 +468,10 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           finishReason: folded.finishReason,
           statusMessage: folded.message,
         };
+  const snapshotView =
+    folded?.status === 'input-required'
+      ? await withOpenWaits(bureau, foldedView, projector.openReviewIds())
+      : foldedView;
   const { task, surfaces: shownInSnapshot } = await options.snapshot(snapshotView);
   if (options.durableHistoryActive && cursor !== undefined) {
     task.metadata = {
@@ -467,6 +502,11 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   const abort = () => queue.end();
   signal?.addEventListener('abort', abort, { once: true });
 
+  // Whether the history's own terminal event reached the queue, and whether the registry's live
+  // terminal update did (a lost append that has not been repaired, see the module comment).
+  let endedByHistory = false;
+  let endedByRegistry = false;
+  let recheck: { readonly handle: RuntimeTimeoutHandle } | undefined;
   // The facts with no durable event: a run starting and, without a history, every change. A
   // view a listener is handed is the change itself, so a short-lived state (WORKING between a
   // review's close and the run's end) is seen even when the task has moved on by the next read.
@@ -497,10 +537,43 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         for (const event of eventsOf(view, element, reply, forms, options.a2ui))
           queue.push({ event });
         if (isTerminal(view.status)) queue.end();
-      } else if (lastStatus === 'submitted' && view.status !== 'submitted') {
-        lastStatus = 'working';
-        sentState = 'working';
-        queue.push({ event: statusUpdate(view, a2aStateOf('working'), view.updatedAt) });
+      } else {
+        if (lastStatus === 'submitted' && view.status !== 'submitted') {
+          lastStatus = 'working';
+          sentState = 'working';
+          queue.push({ event: statusUpdate(view, a2aStateOf('working'), view.updatedAt) });
+        }
+        if (isTerminal(view.status) && !endedByHistory && !endedByRegistry) {
+          // The task has ended and its terminal event is not in the history yet. A task whose
+          // append failed is marked until the repair commits, and ends here with a live update;
+          // otherwise the event is on its way, and the registry is looked at again shortly.
+          const stored = await bureau.tasks.record(taskId);
+          if (stored?.resyncPending === true) {
+            endedByRegistry = true;
+            const reply = view.status === 'completed' ? await options.replyOf(view) : undefined;
+            const element = {
+              kind: 'task.status' as const,
+              taskId,
+              cursor: '',
+              emittedAtMs: Date.parse(view.updatedAt),
+              status: view.status,
+              finishReason: view.finishReason,
+              message: view.statusMessage,
+              artifact: null,
+            };
+            const mapped = eventsOf(view, element, reply, await formsFor(view), options.a2ui);
+            for (const [index, event] of mapped.entries()) {
+              queue.push({ event, ends: index === mapped.length - 1 });
+            }
+          } else if (recheck === undefined) {
+            recheck = {
+              handle: options.timers.setTimeout(() => {
+                recheck = undefined;
+                void bureau.tasks.get(taskId).then(consider, () => undefined);
+              }, FOLLOW_POLL_MS),
+            };
+          }
+        }
       }
     });
     return considering;
@@ -516,6 +589,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
       bureau.tasks.onSettled(taskId, notified),
       () => {
         watching = false;
+        if (recheck !== undefined) options.timers.clearTimeout(recheck.handle);
       },
     );
     for (;;) {
@@ -563,10 +637,13 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         payload: { reviewId: event.reviewId },
       });
       if (element?.kind !== 'task.status' || isTerminal(element.status)) return;
+      const openIds = projector.openReviewIds();
       considering = chained(considering, async () => {
         if (!watching || element.status === lastStatus) return;
         lastStatus = element.status;
-        const view = (await bureau.tasks.get(taskId)) ?? initial;
+        const read = (await bureau.tasks.get(taskId)) ?? initial;
+        const view =
+          element.status === 'input-required' ? await withOpenWaits(bureau, read, openIds) : read;
         const forms = await formsFor(view);
         for (const mapped of eventsOf(view, element, undefined, forms, options.a2ui)) {
           queue.push({ event: mapped });
@@ -614,10 +691,15 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         // Whether this element ended the task, read now: a later event may end it before this
         // one is mapped.
         const endsTask = projector.ended;
+        if (endsTask) endedByHistory = true;
+        const openIds = projector.openReviewIds();
         // Events are mapped one after another, so a slow reply lookup never lets a later event
         // overtake an earlier one.
         mapping = chained(mapping, async () => {
-          const view = (await bureau.tasks.get(taskId)) ?? initial;
+          const read = (await bureau.tasks.get(taskId)) ?? initial;
+          // The waits an update names are the events', not the registry read's, which can lag.
+          const view =
+            status.status === 'input-required' ? await withOpenWaits(bureau, read, openIds) : read;
           const reply = status.status === 'completed' ? await options.replyOf(view) : undefined;
           const events = eventsOf(view, status, reply, await formsFor(view), options.a2ui);
           // One last reconcile before the stream ends, so a surface the task froze or closed with
