@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setSystemTime, test } from 'bun:test';
 
 import type { A2uiEvaluationContext } from './functions.ts';
 import {
@@ -59,6 +59,16 @@ describe('node helpers', () => {
     expect(dateTimeForControl('09:00Z', 'time', 'UTC')).toBe('09:00');
     expect(dateTimeForControl('09:00:00.5-0530', 'time', 'UTC')).toBe('14:30');
     expect(dateTimeForControl('09:00:00Z', 'day', 'UTC')).toBeUndefined();
+  });
+
+  test('a zoned time-only value uses the offset of the display zone’s own day', () => {
+    // 2025-03-09T02:00Z is still 21:00 on the 8th in New York, a day before the clocks change.
+    setSystemTime(new Date('2025-03-09T02:00:00Z'));
+    try {
+      expect(dateTimeForControl('12:00:00Z', 'time', 'America/New_York')).toBe('07:00');
+    } finally {
+      setSystemTime();
+    }
   });
 
   test('timeOutOfRange honors zoned time-only bounds', () => {

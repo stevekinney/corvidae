@@ -290,11 +290,11 @@ export function dateTimeForControl(
     date = local[1];
     time = local[2];
   } else if (zonedTime !== null) {
-    // A time of day in a stated zone, shown in `timeZone` on today's date, which fixes the zones'
-    // current offsets. It has no calendar date of its own.
+    // A time of day in a stated zone, shown in `timeZone` on that zone's current date, which fixes
+    // the zones' current offsets. It has no calendar date of its own.
     const digits = (zonedTime[2] ?? '').toUpperCase().replace(':', '');
     const offset = digits === 'Z' ? 'Z' : `${digits.slice(0, 3)}:${digits.slice(3, 5) || '00'}`;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = zonedParts(new Date(), timeZone).date;
     const parsed = new Date(`${today}T${zonedTime[1]}${offset}`);
     if (Number.isNaN(parsed.getTime())) return undefined;
     time = zonedParts(parsed, timeZone).time;
