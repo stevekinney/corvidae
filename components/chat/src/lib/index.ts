@@ -2,6 +2,10 @@ import ChatComponent from './components/chat/index.ts';
 
 export default ChatComponent;
 export { default as A2uiSurface } from './a2ui/a2ui-surface.svelte';
+export {
+  A2UI_SURFACE_CATALOG_ID,
+  A2UI_SURFACE_CLIENT_CAPABILITIES,
+} from './a2ui/client-capabilities.ts';
 export type {
   A2uiAction,
   A2uiActionEvent,
