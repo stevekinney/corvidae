@@ -2,7 +2,7 @@
  * COR-1583 — a run whose workflow type is not registered must never stop the other runs in the
  * store from recovering, and Bureau must say which runs it left behind. Two stores reach that
  * state: one whose last trace of a workflow is gone, and one opened by a Bureau that has no
- * `workflowDirectory` at all.
+ * `workflowSource` at all.
  */
 import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -19,6 +19,7 @@ import { scriptedAgents, startWorkflowBureau } from './testing/workflow-bureau.t
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
 import type { BureauDiagnostic } from './types';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -109,7 +110,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
   });
 });
 
-describe('a Bureau started without workflowDirectory over a store with workflow instances in flight', () => {
+describe('a Bureau started without workflowSource over a store with workflow instances in flight', () => {
   it('boots, recovers every other run, and reports the workflow instances it left behind', async () => {
     const root = await temporaryRoot();
     const databasePath = join(root, 'bureau.sqlite');
@@ -123,10 +124,10 @@ describe('a Bureau started without workflowDirectory over a store with workflow 
 
     // The first Bureau has a workflow file, an instance of it parked on a signal, and an agent run
     // that is mid-flight. It is never disposed, which is what a crash looks like to the store.
-    const workflowDirectory = join(root, 'workflows');
-    await mkdir(workflowDirectory, { recursive: true });
+    const workflowsPath = join(root, 'workflows');
+    await mkdir(workflowsPath, { recursive: true });
     await writeFile(
-      join(workflowDirectory, 'digest.json'),
+      join(workflowsPath, 'digest.json'),
       workflowFileText('digest', parked('digest question')),
     );
     let reachedSecondStep = false;
@@ -144,7 +145,7 @@ describe('a Bureau started without workflowDirectory over a store with workflow 
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      workflowDirectory,
+      workflowSource: workflowFileDirectory(workflowsPath),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },

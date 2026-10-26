@@ -8,13 +8,11 @@ import { join } from 'node:path';
 
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
-import type { AgentFileOperations } from '../agent-file-operations.ts';
-import {
-  createWorkflowFileCatalog,
-  type WorkflowFileCatalog,
-  type WorkflowFileCatalogOptions,
-} from '../workflow-file-catalog.ts';
-import type { DirectoryChange } from '../watched-directory.ts';
+import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
+import type { WorkflowSource } from '../sources/definition-source.ts';
+import { workflowFileDirectory } from '../sources/workflow-file-directory.ts';
+import type { DefinitionChange } from '../definition-scanner.ts';
+import { createWorkflowFileCatalog, type WorkflowFileCatalog } from '../workflow-file-catalog.ts';
 import { createWorkflowDocumentHost } from '../workflow-host.ts';
 
 /** A schedule fast enough for a test to see it fire. */
@@ -41,7 +39,7 @@ export interface WorkflowFileFixture {
   /** Write a file into the directory without going through the catalog. */
   put(name: string, text: string | Uint8Array): Promise<void>;
   /** Resolves with the next change that satisfies `predicate`. */
-  nextChange(predicate?: (change: DirectoryChange) => boolean): Promise<DirectoryChange>;
+  nextChange(predicate?: (change: DefinitionChange) => boolean): Promise<DefinitionChange>;
   dispose(): Promise<void>;
 }
 
@@ -51,8 +49,12 @@ export interface WorkflowFileFixtureOptions {
   readonly codeWorkflows?: readonly string[];
   readonly watch?: boolean;
   readonly operations?: AgentFileOperations;
+  /** A source to run over instead of the fixture's directory; the directory options then do nothing. */
+  readonly source?: WorkflowSource;
   readonly runtime?: RuntimeServices;
-  readonly openWatcher?: WorkflowFileCatalogOptions['openWatcher'];
+  /** Where scan and watcher failures are reported. Defaults to throwing. */
+  readonly diagnose?: (message: string, cause: unknown) => void;
+  readonly openWatcher?: NonNullable<Parameters<typeof workflowFileDirectory>[1]>['watchFactory'];
 }
 
 export async function createWorkflowFileFixture(
@@ -64,17 +66,26 @@ export async function createWorkflowFileFixture(
     runAgentStep: async () => ({ content: '', output: null, finishReason: 'stop-condition' }),
   });
   const codeWorkflows = new Set(options.codeWorkflows ?? ['code-workflow']);
+  const runtime = options.runtime ?? createDefaultRuntimeServices();
+  const diagnose =
+    options.diagnose ??
+    ((message: string, cause: unknown): never => {
+      throw new Error(`${message} ${String(cause)}`);
+    });
   const catalog = createWorkflowFileCatalog({
-    directory,
+    source:
+      options.source ??
+      workflowFileDirectory(directory, {
+        runtime,
+        diagnose,
+        ...(options.watch === undefined ? {} : { watch: options.watch }),
+        ...(options.openWatcher === undefined ? {} : { watchFactory: options.openWatcher }),
+        ...(options.operations === undefined ? {} : { operations: options.operations }),
+      }),
     host,
     isCodeWorkflow: (id) => codeWorkflows.has(id),
-    runtime: options.runtime ?? createDefaultRuntimeServices(),
-    diagnose: (message, cause) => {
-      throw new Error(`${message} ${String(cause)}`);
-    },
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
-    ...(options.operations === undefined ? {} : { operations: options.operations }),
+    runtime,
+    diagnose,
   });
   return {
     directory,

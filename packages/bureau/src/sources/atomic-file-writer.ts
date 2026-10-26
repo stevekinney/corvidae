@@ -16,8 +16,8 @@
 
 import { join } from 'node:path';
 
-import { hashAgentFileBytes } from './agent-file';
 import type { AgentFileOperations } from './agent-file-operations';
+import { hashDefinitionBytes } from './definition-source';
 
 export interface AtomicFileWriterOptions {
   readonly directory: string;
@@ -68,7 +68,7 @@ export function createAtomicFileWriter(options: AtomicFileWriterOptions): Atomic
   async function check(id: string, expectedHash: string): Promise<Uint8Array> {
     const bytes = await operations.read(pathOf(id));
     if (bytes === undefined) throw options.notFound(id);
-    const hash = hashAgentFileBytes(bytes);
+    const hash = hashDefinitionBytes(bytes);
     if (hash !== expectedHash) throw options.changed(id, hash);
     return bytes;
   }
@@ -93,7 +93,7 @@ export function createAtomicFileWriter(options: AtomicFileWriterOptions): Atomic
 
     async assertAbsent(id) {
       const current = await operations.read(pathOf(id));
-      if (current !== undefined) throw options.exists(id, hashAgentFileBytes(current));
+      if (current !== undefined) throw options.exists(id, hashDefinitionBytes(current));
     },
 
     async publish(id, bytes, beforeRename) {

@@ -7,7 +7,7 @@
  * `bureau.agents` exposes over it — `get`/`find`/`has`/`names`/`entries`/
  * `query`, and nothing that mutates.
  *
- * With `BureauOptions.agentDirectory` (COR-1524) the catalog also holds agents loaded from
+ * With `BureauOptions.agentSource` (COR-1524) the catalog also holds agents loaded from
  * Markdown files, which change at run time. Those are reached by runtime string: `find`, `list`,
  * `revisions`, and the file write API. The `D`-typed accessors stay the code-defined map's.
  */
@@ -214,7 +214,7 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   /**
    * Rescan the agent directory now, and when the model catalog has changed since the last scan,
    * revalidate against it. Resolves once the catalog reflects the directory. A no-op without
-   * `BureauOptions.agentDirectory`.
+   * `BureauOptions.agentSource`.
    */
   refresh(): Promise<void>;
   /** Called after every rescan that added, changed, or removed a file agent. Returns its unsubscribe. */
@@ -248,7 +248,7 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
  */
 export interface CreateAgentCatalogOptions {
   readonly selectorAvailable?: boolean;
-  /** The agents loaded from `BureauOptions.agentDirectory` (COR-1524). */
+  /** The agents loaded from `BureauOptions.agentSource` (COR-1524). */
   readonly files?: AgentFileCatalog | undefined;
   /** Where file agents' run snapshots live. */
   readonly snapshots?: AgentSnapshotStore | undefined;
@@ -284,7 +284,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     if (files === undefined) {
       throw new AgentFileError(
         'agent-directory-not-configured',
-        'This Bureau has no agent directory. Pass BureauOptions.agentDirectory to use agent files.',
+        'This Bureau has no agent source. Pass BureauOptions.agentSource to use agent files.',
       );
     }
     return files;

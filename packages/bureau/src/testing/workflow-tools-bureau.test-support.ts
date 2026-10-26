@@ -18,6 +18,8 @@ import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools.ts';
 import { agentFileText, KNOWN_MODEL } from './agent-file-fixtures.test-support.ts';
+import { agentFileDirectory } from '../sources/agent-file-directory';
+import { workflowFileDirectory } from '../sources/workflow-file-directory';
 
 /** Wait, by the clock and not by a count of turns, until a session run is no longer running. */
 async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
@@ -31,8 +33,8 @@ async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Prom
 
 export interface WorkflowToolsHarness {
   readonly bureau: Bureau<AgentDefinitions>;
-  readonly workflowDirectory: string;
-  readonly agentDirectory: string;
+  readonly workflowsPath: string;
+  readonly agentsPath: string;
   /** Runs `agent` as `principal` so it makes one call to `tool` and answers what the tool returned. */
   callTool(
     tool: string,
@@ -67,8 +69,8 @@ export async function startWorkflowToolsBureau(
   options: WorkflowToolsOptions = {},
 ): Promise<WorkflowToolsHarness> {
   const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-tools-'));
-  const workflowDirectory = join(root, 'workflows');
-  const agentDirectory = join(root, 'agents');
+  const workflowsPath = join(root, 'workflows');
+  const agentsPath = join(root, 'agents');
   let plan: { tool: string; args: Record<string, unknown> } | undefined;
   let captured: unknown;
   const offered: string[][] = [];
@@ -98,8 +100,8 @@ export async function startWorkflowToolsBureau(
         generate: async () => ({ content: 'a', toolCalls: [] }),
       }),
     },
-    agentDirectory,
-    workflowDirectory,
+    agentSource: agentFileDirectory(agentsPath),
+    workflowSource: workflowFileDirectory(workflowsPath),
     models: { generate: (_descriptor: BackendDescriptor) => generate },
     storage: { type: 'memory' },
     durableExecution: true,
@@ -110,18 +112,18 @@ export async function startWorkflowToolsBureau(
     tools: readonly string[] = WORKFLOW_TOOL_NAMES,
   ): Promise<void> => {
     await writeFile(
-      join(agentDirectory, `${id}.md`),
+      join(agentsPath, `${id}.md`),
       agentFileText({ name: id, model: KNOWN_MODEL, tools: `[${tools.join(', ')}]` }),
     );
     await bureau.agents.refresh();
   };
-  await mkdir(agentDirectory, { recursive: true });
+  await mkdir(agentsPath, { recursive: true });
   for (const id of options.agents ?? ['scribe']) await putAgent(id);
   await bureau.workflows?.refresh();
   return {
     bureau,
-    workflowDirectory,
-    agentDirectory,
+    workflowsPath,
+    agentsPath,
     offered,
     putAgent,
     async callTool(tool, args, callOptions = {}) {

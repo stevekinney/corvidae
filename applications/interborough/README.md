@@ -70,7 +70,7 @@ The host passes the catalog rows as `models.catalog` when it creates the Bureau,
 
 ## Agent files
 
-Agents can be Markdown files in `agents/` under the state directory, `~/.interborough/agents/` or `$INTERBOROUGH_HOME/agents/`. The host creates the directory and passes it to the Bureau as `agentDirectory`, so a file `researcher.md` is the agent `researcher` and a change to the directory takes effect without a restart.
+Agents can be Markdown files in `agents/` under the state directory, `~/.interborough/agents/` or `$INTERBOROUGH_HOME/agents/`. The host creates the directory and passes it to the Bureau as an `agentSource` (`agentFileDirectory` from `@lostgradient/bureau/sources`), so a file `researcher.md` is the agent `researcher` and a change to the directory takes effect without a restart.
 
 ```md
 ---
@@ -107,7 +107,7 @@ The Playwright suite gives its host a provider configuration and a fixture key i
 
 ## Workflow files
 
-Workflows are JSON files in `workflows/` under the same directory, `~/.interborough/workflows/` or `$INTERBOROUGH_HOME/workflows/`. The host creates the directory and passes it to the Bureau as `workflowDirectory`, so a file `nightly-digest.json` is the workflow `nightly-digest`: it runs on the schedule its `trigger` names, its `agent` steps run any agent above, and a change to the directory takes effect without a restart. Every workflow belongs to the one local owner. See the Bureau's `documentation/workflow-files.md` for the format.
+Workflows are JSON files in `workflows/` under the same directory, `~/.interborough/workflows/` or `$INTERBOROUGH_HOME/workflows/`. The host creates the directory and passes it to the Bureau as a `workflowSource` (`workflowFileDirectory`), so a file `nightly-digest.json` is the workflow `nightly-digest`: it runs on the schedule its `trigger` names, its `agent` steps run any agent above, and a change to the directory takes effect without a restart. Every workflow belongs to the one local owner. See the Bureau's `documentation/workflow-files.md` for the format.
 
 ## The Workflows area
 
