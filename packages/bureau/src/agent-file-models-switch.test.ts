@@ -29,7 +29,7 @@ function recordingResolver(options: { readonly cannotSetUp?: string } = {}) {
   const calls: string[] = [];
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const resolveAgentGenerate = (descriptor: BackendDescriptor): GenerateFunction => {
+  const generate = (descriptor: BackendDescriptor): GenerateFunction => {
     if (descriptor.model === options.cannotSetUp) {
       throw new Error(`no credentials for ${descriptor.model}`);
     }
@@ -51,7 +51,7 @@ function recordingResolver(options: { readonly cannotSetUp?: string } = {}) {
   };
   return {
     calls,
-    resolveAgentGenerate,
+    generate,
     entered: entered.promise,
     release: () => release.resolve(),
   };
@@ -64,7 +64,7 @@ async function start(
 ) {
   const harness = await startFileBureau({
     overrides: {
-      resolveAgentGenerate: resolver.resolveAgentGenerate,
+      models: { generate: resolver.generate },
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     },
   });

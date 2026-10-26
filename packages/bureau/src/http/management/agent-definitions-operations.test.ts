@@ -15,7 +15,6 @@ import {
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../../create-bureau.ts';
-import { createModelCatalogService } from '../../model-catalog-refresh.ts';
 import {
   agentFileText,
   KNOWN_MODEL,
@@ -852,19 +851,11 @@ describe('bureau.agents.catalog', () => {
   }
 
   it('returns the models in the catalog unfiltered, projected for the general audience, to a principal holding only bureau.agents:read', async () => {
-    const seed = createModelCatalog();
-    const service = createModelCatalogService({
-      seed,
-      descriptorSource: () => Promise.resolve(seed.descriptors),
-      now: () => '2026-10-18T00:00:00.000Z',
-      newRefreshId: () => 'refresh',
-    });
     const installed = rows();
-    service.replaceCatalog(installed);
-    const served = await serve({ overrides: { modelCatalog: service } });
+    const served = await serve({ overrides: { models: { catalog: installed } } });
     // Every row is restamped as an operator override, so the set to compare against is what the
     // catalog holds now, not the rows passed in.
-    const held = served.bureau.modelCatalog.catalog().descriptors;
+    const held = served.bureau.models.catalog().descriptors;
     expect(held.some((row) => row.pricing !== undefined)).toBe(true);
     expect(held.some((row) => row.endpointAmbiguous === true)).toBe(true);
     expect(held.some((row) => row.lifecycle === 'retired')).toBe(true);
@@ -900,7 +891,7 @@ describe('bureau.agents.catalog', () => {
     const fromOperator = await rpc(served.keyed, 'bureau.agents.catalog', {}, 'operator-key');
     expect(fromOwner.result).toEqual(fromOperator.result as never);
     expect(listOf(fromOwner, 'models').length).toBe(
-      served.bureau.modelCatalog.catalog().descriptors.length,
+      served.bureau.models.catalog().descriptors.length,
     );
   });
 

@@ -11,7 +11,7 @@ import {
 import { createTool } from 'armorer';
 import { z } from 'zod';
 
-import { createModelCatalogService, type ModelCatalogService } from '../model-catalog-refresh.ts';
+import type { ModelsOptions } from '../models/create-models.ts';
 
 /** A catalog row, named the way a model override names it. */
 export interface ModelChoice {
@@ -22,30 +22,25 @@ export interface ModelChoice {
 export const OPUS_5_5: ModelChoice = { provider: 'anthropic', model: 'claude-opus-5-5' };
 export const OPUS_5: ModelChoice = { provider: 'anthropic', model: 'claude-opus-5' };
 export const GPT_4_1: ModelChoice = { provider: 'openai', model: 'gpt-4.1' };
-/** The row `twinModelCatalog` adds: OpenAI serving a model named like Anthropic's. */
+/** The row `twinModels` adds: OpenAI serving a model named like Anthropic's. */
 export const TWIN_OF_OPUS_5_5: ModelChoice = { provider: 'openai', model: 'claude-opus-5-5' };
 
-/** A model catalog service over exactly `descriptors`. */
-export function modelCatalogOf(descriptors: readonly BackendDescriptor[]): ModelCatalogService {
-  return createModelCatalogService({
-    seed: { ...createModelCatalog(), descriptors },
-    descriptorSource: () => Promise.resolve(descriptors),
-    now: () => '2026-10-22T00:00:00.000Z',
-    newRefreshId: () => 'refresh',
-  });
+/** The `models` option for a Bureau whose catalog is exactly `descriptors`. */
+export function modelsOf(descriptors: readonly BackendDescriptor[]): ModelsOptions {
+  return { catalog: descriptors };
 }
 
 /**
  * The default catalog plus one row in which OpenAI serves a model named like an Anthropic one, so
  * two providers share the model name `claude-opus-5-5`.
  */
-export function twinModelCatalog(): ModelCatalogService {
+export function twinModels(): ModelsOptions {
   const rows = createModelCatalog().descriptors;
   const original = rows.find(
     (row) => row.provider === OPUS_5_5.provider && row.model === OPUS_5_5.model,
   );
   if (original === undefined) throw new Error('The default catalog has no claude-opus-5-5 row.');
-  return modelCatalogOf([...rows, { ...original, provider: 'openai' }]);
+  return modelsOf([...rows, { ...original, provider: 'openai' }]);
 }
 
 /** What one step was told to use. */
