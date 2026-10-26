@@ -2,7 +2,12 @@ import { describe, expect, it } from 'bun:test';
 
 import { fromGeminiMessages } from '../src/adapters/gemini/inbound';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
-import { appendMessages, appendToolResult, createConversationHistory } from '../src/conversation';
+import {
+  appendMessages,
+  appendToolResult,
+  createConversationHistory,
+  replaceToolResult,
+} from '../src/conversation';
 import { defineMessagePlugin } from '../src/environment';
 import { ConversationalistError } from '../src/errors';
 import type { ToolResultPart } from '../src/multi-modal';
@@ -206,6 +211,20 @@ describe('message plugins and a tool result’s media', () => {
   it('refuses a plugin that adds a media part', () => {
     const error = refusal(() => withResult(PARTS, { environment: { plugins: [addMedia] } }));
     expect(error).toBeInstanceOf(ConversationalistError);
+  });
+
+  it('refuses a plugin that changes the media of a result replaced later', () => {
+    const conversation = withResult(PARTS);
+    const error = refusal(() =>
+      replaceToolResult(
+        conversation,
+        'call-1',
+        { callId: 'call-1', outcome: 'success', content: null, parts: PARTS },
+        { plugins: [swapSource] },
+      ),
+    );
+    expect(error).toBeInstanceOf(ConversationalistError);
+    expect((error as ConversationalistError).message).toMatch(/plugin.*tool result.*media/i);
   });
 
   it('allows a plugin to rewrite text parts and a media part’s descriptive fields', () => {
