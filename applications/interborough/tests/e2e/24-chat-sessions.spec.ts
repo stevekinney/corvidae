@@ -8,7 +8,7 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
-import { newThreadId, runToEnd } from './chat-support.ts';
+import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -63,19 +63,8 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   const fireInput = `e2e-fire-${crypto.randomUUID().slice(0, 8)}`;
   const chatTitle = `A chat I started ${crypto.randomUUID().slice(0, 8)}`;
 
-  test.afterAll(async ({ playwright }) => {
-    const request = await playwright.request.newContext({ baseURL: E2E_BUREAU_URL });
-    for (const contextId of made) {
-      await request.post('/bureau/jsonrpc', {
-        data: {
-          jsonrpc: '2.0',
-          id: 'cleanup',
-          method: 'bureau.contexts.delete',
-          params: { contextId },
-        },
-      });
-    }
-    await request.dispose();
+  test.afterAll(async () => {
+    await deleteChats(made, E2E_BUREAU_URL);
   });
 
   for (const width of WIDTHS) {

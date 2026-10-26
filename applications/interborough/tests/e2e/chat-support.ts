@@ -1,7 +1,7 @@
 /**
  * What the chat specs share: sessions seeded through the AG-UI mount (the way a client other than
- * the page would start one), and the barrier the specs hold a run on (`barrier-agent.ts`), so no
- * case waits on a clock.
+ * the page would start one), the barrier the specs hold a run on (`barrier-agent.ts`), so no case
+ * waits on a clock, and the cleanup that gives a host back its seed (`deleteChats`).
  */
 import type { APIRequestContext } from '@playwright/test';
 
@@ -46,6 +46,38 @@ export async function runToEnd(
   });
   expect(response.status()).toBe(200);
   return response.text();
+}
+
+/**
+ * Deletes the chats a spec started, through the Bureau's management plane, so the host holds only
+ * what it held before the spec. A spec on a host that a later spec reads as fresh (the second
+ * host's `/chat` is empty until a case starts a chat, and the Bureau lists every chat, approval and
+ * notification in it) deletes what it started in an `afterAll`, whether the run passed or not. A
+ * chat that was never started is not an error, so a case that failed before it started one cleans
+ * up like one that did not. Anything else the Bureau refuses fails the hook loudly.
+ */
+export async function deleteChats(
+  threadIds: readonly string[],
+  origin: string = E2E_BASE_URL,
+): Promise<void> {
+  for (const contextId of threadIds) {
+    const response = await fetch(`${origin}/bureau/jsonrpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: `delete-${contextId}`,
+        method: 'bureau.contexts.delete',
+        params: { contextId },
+      }),
+    });
+    expect(response.status, `deleting ${contextId}`).toBe(200);
+    const body = (await response.json()) as { error?: { message?: string } };
+    const message = body.error?.message;
+    if (message !== undefined && !message.startsWith('No context with id')) {
+      throw new Error(`The Bureau did not delete ${contextId}: ${message}`);
+    }
+  }
 }
 
 /** A run left going: its stream is open and the caller reads nothing, so the run waits where it is. */
