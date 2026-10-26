@@ -539,6 +539,30 @@ describe('a tool approval two processes hold (COR-1579)', () => {
     expect(charges.charged).toHaveLength(0);
   });
 
+  it('fences a decision on the round another process has since advanced (COR-1659)', async () => {
+    const charges = newCharges();
+    const { a, b, review } = await settledApproval(charges);
+    charges.regate = true;
+    // A supersedes round 0, so the review is durably at round 1. B still holds round 0 in memory.
+    await a.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
+    expect(a.bureau.listPendingReviews()).toMatchObject([{ id: review.id, round: 1 }]);
+    charges.regate = false;
+
+    // A decision made on the round-0 view B showed is refused before the tool can run.
+    const stale = await rejectionOf(
+      b.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'bob', round: 0 }),
+    );
+    expect(codeOf(stale)).toBe('CONFLICT');
+    expect((stale as Error).message).toContain('round');
+    expect(charges.charged).toHaveLength(0);
+
+    // The round A reports decides, even through B, whose own view is a round behind.
+    expect(
+      await b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob', round: 1 }),
+    ).toMatchObject({ id: review.id, decision: 'deny' });
+    expect(charges.charged).toHaveLength(0);
+  });
+
   it("releases a session approval's claim on a proven pre-execution failure", async () => {
     const charges = newCharges();
     const { a, b, review } = await settledApproval(charges);
