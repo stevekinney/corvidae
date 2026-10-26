@@ -191,7 +191,7 @@ export function copyWorkflowDefinition(
   };
 }
 
-function resolveRetentionFields(
+export function resolveRetentionFields(
   options: EngineConstructorOptions | undefined,
 ): Pick<ResolvedOptions, 'retention' | 'retentionSweepIntervalMs' | 'retentionSweepBatchSize'> {
   return {
@@ -228,7 +228,7 @@ function resolveBooleanDefaults(
   };
 }
 
-function resolveNumericDefaults(
+export function resolveNumericDefaults(
   options: EngineConstructorOptions | undefined,
 ): Pick<
   ResolvedOptions,
@@ -250,7 +250,7 @@ function resolveNumericDefaults(
   };
 }
 
-function resolveHistoryFields(
+export function resolveHistoryFields(
   options: EngineConstructorOptions | undefined,
 ): Pick<ResolvedOptions, 'historyPolicy' | 'archiveAdapter' | 'payloadSizePolicy'> {
   return {
