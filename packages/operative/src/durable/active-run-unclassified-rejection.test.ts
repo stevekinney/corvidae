@@ -551,7 +551,7 @@ describe('a run a real engine failed before replay', () => {
         { id: runId, services: { marker: 1 } },
       );
       void handle.result().catch(() => {});
-      for await (const turn of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         const state = await first.engine.get(runId);
         if (state?.status === 'running') break;
         await yieldToPortableEventLoop();

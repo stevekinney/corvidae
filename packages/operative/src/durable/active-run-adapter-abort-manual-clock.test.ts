@@ -13,43 +13,6 @@ import { createDurableActiveRun } from './active-run-create';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine } from './create-run-engine';
 import { createRunWorkflow } from './run-workflow';
-
-/**
- * AB-348: split out of `active-run-adapter.test.ts`'s "B6 — abort-into-generate
- * load-bearing abort" describe block (originally AB-330). The original form
- * measured real elapsed wall-clock time (`performance.now()` before/after
- * `abort()`, asserting settlement within ~1 second), reasoned as necessary
- * because "nothing here is manually advanced; the assertion IS that the real
- * wall clock barely moves."
- *
- * `abort()` (read directly in both `create-run.ts` and
- * `active-run-adapter.ts`) is purely synchronous — `abortController.abort()`
- * — and never registers a real or `RuntimeServices` timer on either path;
- * the settlement chain the ~1s bound was guarding is entirely microtask-
- * driven promise resolution, not anything a clock advance could represent.
- * Both `createActiveRun` and `createDurableActiveRun` already accept an
- * injectable `runtime` (AB-92/AB-252/AB-253 seam) — these tests supply a
- * `ManualRuntimeServices` and, instead of measuring how much real wall-clock
- * time settlement took, assert directly on the property the wall-clock bound
- * was a proxy for: the manual clock's `monotonic.now()` is unchanged and it
- * has zero pending timers after `abort()` settles — proving nothing here
- * ever needed a timer or a clock tick to resolve, load-bearing or otherwise.
- * The original `setTimeout(resolve, 10)` warm-up wait (letting the deferred-
- * microtask `drive()` call start and `generate` begin) is replaced with a
- * bounded poll driven by `yieldToPortableEventLoop` (Weft's own
- * `MessageChannel`-based macrotask-plus-microtask-drain yield, not a real
- * timer — it falls back to `setTimeout(0)` only where `MessageChannel` is
- * unavailable, never a nonzero delay) for the durable path, whose
- * `Engine.start()` genuinely needs a macrotask boundary before `generate`
- * runs; the in-memory path's `drive()` starts via a bare
- * `Promise.resolve().then(...)` microtask, so a pure microtask flush
- * suffices there.
- */
-
-// Bounded poll — never waits a nonzero real duration, so a regression that
-// makes the awaited condition depend on an actual timer delay fails loudly
-// (attempts exhausted) rather than silently passing.
-const EVENT_LOOP_POLL_MAX_ATTEMPTS = 200;
 async function waitForEventLoop(predicate: () => boolean): Promise<void> {
   await waitUntil(predicate, { message: 'waitForEventLoop' });
 }

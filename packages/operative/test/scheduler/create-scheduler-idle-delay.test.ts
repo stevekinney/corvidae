@@ -54,9 +54,6 @@ function makeTask(
     ...overrides,
   };
 }
-
-// Bounded, event-loop-turn poll — never a real timer delay.
-const EVENT_LOOP_POLL_MAX_ATTEMPTS = 200;
 async function waitForEventLoop(predicate: () => boolean): Promise<void> {
   await waitUntil(predicate, { message: 'waitForEventLoop' });
 }

@@ -304,7 +304,7 @@ describe('recover() — running reference selection', () => {
       // settle (via the success branch's fire-and-forget write, so poll for
       // it rather than reading the store synchronously).
       let persistedStatus: string | undefined;
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         const persisted = await secondStore.load(sessionId);
         persistedStatus = persisted?.runs.find((r) => r.runId === runId)?.status;
         if (persistedStatus === 'completed') break;

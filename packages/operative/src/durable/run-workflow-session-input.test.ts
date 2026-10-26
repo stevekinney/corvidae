@@ -959,7 +959,7 @@ describe('session input delivery store and gate (COR-1476)', () => {
   }
 
   async function until(check: () => Promise<boolean>): Promise<void> {
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (await check()) return;
       await yieldToPortableEventLoop();
     }
@@ -1381,7 +1381,7 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
   }
 
   async function until(check: () => Promise<boolean>): Promise<void> {
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (await check()) return;
       await yieldToPortableEventLoop();
     }

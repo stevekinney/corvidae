@@ -290,7 +290,7 @@ export function isAlive(pid: number): boolean {
 
 /** Wait for a process that something else is ending to disappear. */
 export async function waitUntilGone(pid: number): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (!isAlive(pid)) break;
     await Bun.sleep(5);
   }

@@ -203,7 +203,7 @@ describe('context changes made before the previous one has landed', () => {
     workbench.setContext({ ...workbench.requestedContext, colorMode: 'dark' });
     workbench.setContext({ ...workbench.requestedContext, motion: 'reduced' });
     expect(workbench.requestedContext).toEqual({ colorMode: 'dark', motion: 'reduced' });
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (!(workbench.context.motion !== 'reduced')) break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }

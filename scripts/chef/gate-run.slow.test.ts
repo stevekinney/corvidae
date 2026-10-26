@@ -293,7 +293,7 @@ scenarios.describe('runGate', () => {
       const result = await running;
       expect(result.interrupted).toBe('SIGTERM');
       expect(result.code).not.toBe(0);
-      for await (const waited of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!pids.some(alive)) break;
         await Bun.sleep(20);
       }

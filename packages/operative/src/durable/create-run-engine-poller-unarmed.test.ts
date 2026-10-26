@@ -84,9 +84,6 @@ function makeSleepingWorkflow(sleepMilliseconds: number) {
     return { doubled: input.value * 2 };
   });
 }
-
-// Generously-bounded poll: yield the portable event loop until `predicate` holds.
-const POLL_UNTIL_MAX_ATTEMPTS = 1000;
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
   await waitUntil(predicate, { message: 'pollUntil' });
 }

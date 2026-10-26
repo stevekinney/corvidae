@@ -32,9 +32,6 @@ import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result'
 const RUN_ID = 'cor-1302-recovered-run';
 
 type RecoveredWorkflowInfo = Parameters<NonNullable<RecoverAllOptions['onRecoveredWorkflow']>>[0];
-
-// Bounded, event-loop-turn poll — never a real timer delay.
-const EVENT_LOOP_POLL_MAX_ATTEMPTS = 500;
 async function waitForEventLoop(predicate: () => Promise<boolean> | boolean): Promise<void> {
   await waitUntil(predicate, { message: 'waitForEventLoop' });
 }

@@ -135,13 +135,6 @@ function makeSleepingWorkflow(sleepMilliseconds: number) {
     return { doubled: input.value * 2 };
   });
 }
-
-// Generously-bounded poll: yield the portable event loop until `predicate` holds.
-// The bound exists only to turn a genuine hang into a clear failure; it sits far
-// above what any non-hung durable transition needs, so loaded-CI scheduling jitter
-// and the inline-launch starvation this file otherwise guards against cannot turn a
-// passing run red. It is a backstop, NOT a tuned timing value.
-const POLL_UNTIL_MAX_ATTEMPTS = 1000;
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
   await waitUntil(predicate, { message: 'pollUntil' });
 }

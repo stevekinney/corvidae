@@ -842,7 +842,7 @@ function createMockGenerateOnce(content: string): GenerateFunction {
 }
 
 async function waitFor(check: () => boolean): Promise<void> {
-  for await (const i of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (check()) return;
     // Yield a macrotask (MessageChannel via Weft's portable helper) rather than a
     // fixed wall-clock sleep: the durable engine schedules inline launches on

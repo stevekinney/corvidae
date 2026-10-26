@@ -189,8 +189,6 @@ describe('ScheduleList', () => {
       input: { warehouseId: 'wh-main' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    // The last run is read from the engine, so the page opens once a run has completed.
-    const deadline = Date.now() + 8_000;
     for await (const _turn of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'fired-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'completed')) break;
@@ -260,7 +258,6 @@ describe('ScheduleList', () => {
       input: { orderId: 'order-1' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    const deadline = Date.now() + 8_000;
     for await (const _turn of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'failed')) break;

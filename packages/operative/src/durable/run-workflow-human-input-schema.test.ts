@@ -111,7 +111,7 @@ describe('the model-facing requestHumanInput result', () => {
         { runId: 'schema-run', sessionId: 'schema-run', agentName: 'asker', prompt: 'start' },
         { id: 'schema-run', services },
       );
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (container.ref.pendingHumanWait !== undefined) break;
         await yieldToPortableEventLoop();
       }

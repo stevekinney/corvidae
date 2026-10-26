@@ -26,8 +26,6 @@ const PASTE_BYTES = 60_000;
 const MAXIMUM_PASTES = 4;
 const ACCEPTED_AT_MOST = 2 * 65_536;
 const FINAL_MARKER = 'END';
-/** Attempts to release the child, 5 ms apart: ten seconds, the hang guard's order of magnitude. */
-const GATE_TURNS = 2_000;
 
 let launches = 0;
 
@@ -110,7 +108,7 @@ async function pasteUntilHeld(
  */
 async function releaseGate(path: string): Promise<boolean> {
   let released = false;
-  for await (const turn of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (!!released) break;
     released = await attempt(() =>
       closeSync(openSync(path, constants.O_WRONLY | constants.O_NONBLOCK)),
@@ -135,7 +133,7 @@ async function outputReaches(rig: Rig, length: number): Promise<void> {
 /** Offer `input` until the host accepts it: the view is writable again. */
 async function untilAccepted(rig: Rig, input: string): Promise<boolean> {
   let accepted = false;
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (!!accepted) break;
     const answer = await offer(rig, input);
     accepted = answer.kind === 'operation-ack';

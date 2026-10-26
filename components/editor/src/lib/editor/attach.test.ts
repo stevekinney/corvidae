@@ -55,7 +55,7 @@ async function flushMicrotasks(): Promise<void> {
  * attaching rather than synchronously.
  */
 async function untilEditorCreationStarts(): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (createEditorMock.mock.calls.length > 0) return;
     await new Promise((resolve) => setTimeout(resolve, 0));
   }

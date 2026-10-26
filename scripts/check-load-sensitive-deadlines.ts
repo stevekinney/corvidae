@@ -85,7 +85,15 @@ const SKIPPED_DIRECTORIES = new Set([
 ]);
 
 export type DeadlineRule =
-  'bun-test-timeout' | 'testing-library-timeout' | 'wait-budget' | 'iteration-cap-wait';
+  | 'bun-test-timeout'
+  | 'testing-library-timeout'
+  | 'wait-budget'
+  | 'iteration-cap-wait'
+  | 'wait-budget-default'
+  | 'wall-clock-poll'
+  | 'sleep-synchronization'
+  | 'timer-rejection'
+  | 'timer-race';
 export type DeadlineViolation = {
   rule: DeadlineRule;
   line: number;

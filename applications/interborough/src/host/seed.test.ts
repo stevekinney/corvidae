@@ -244,7 +244,6 @@ describe('the seeded schedule and goal', () => {
 
   test('the goal passes its validator', async () => {
     const host = await start();
-    const deadline = Date.now() + 5_000;
     let status = await goalStatus(host);
     for await (const _turn of awakeTurns()) {
       if (!(status !== 'succeeded')) break;
@@ -269,8 +268,6 @@ describe('the seeded schedule and goal', () => {
       const goal = await host.bureau.goals.get('goal-that-never-passes');
       return goal?.status;
     };
-    // The agent answers at once, and then the validator is what the goal waits on.
-    const deadline = Date.now() + 5_000;
     for await (const _turn of awakeTurns()) {
       if (!((await statusOf()) !== 'evaluating')) break;
       await Bun.sleep(25);
@@ -305,7 +302,7 @@ describe('the seeded schedule and goal', () => {
 });
 
 async function waitForReview(host: Host, runId: string) {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const review = host.bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
     await Bun.sleep(5);

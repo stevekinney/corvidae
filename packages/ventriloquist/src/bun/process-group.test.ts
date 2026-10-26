@@ -218,7 +218,7 @@ async function startZombieGroup(): Promise<{ readonly group: number; end(): Prom
     await parent.exited;
   };
   // The child must have exited before it can be a zombie; wait until the table says so.
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const states = (await readGroupMemberStates(group)) ?? [];
     // `Z` is the zombie state; ps may add flags to it, such as `N` for a niced process.
     if (states.length > 0 && states.every((state) => state.startsWith('Z'))) return { group, end };

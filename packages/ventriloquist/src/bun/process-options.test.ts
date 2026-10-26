@@ -691,7 +691,7 @@ const scenario20 = scenario('leaves no descriptor behind', async () => {
   const before = await lowestOver(50);
   for (let round = 0; round < 3; round += 1) await attempt();
   let after = descriptors();
-  for await (const turn of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (!(after > before)) break;
     await Bun.sleep(1);
     after = descriptors();

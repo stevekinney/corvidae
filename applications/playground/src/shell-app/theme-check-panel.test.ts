@@ -72,7 +72,7 @@ afterEach(() => {
 });
 
 async function until(condition: () => boolean): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (!!condition()) break;
     await new Promise((resolve) => setTimeout(resolve, 25));
     flushSync();
