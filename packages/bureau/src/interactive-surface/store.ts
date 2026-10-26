@@ -276,6 +276,9 @@ const REMOVAL_MARKER_PREFIX = 'bureau-removed-surfaces:v1:';
  */
 const REMOVAL_MARKER_RETENTION_MILLISECONDS = 24 * 60 * 60 * 1000;
 
+/** How often a removal sweeps the markers: an hour, so a removal costs a read of the set only now and then. */
+const REMOVAL_MARKER_SWEEP_INTERVAL_MILLISECONDS = 60 * 60 * 1000;
+
 /**
  * Marks a task whose surfaces were removed. It lives outside the task's prefix,
  * so removing the prefix keeps it, and every commit is conditioned on its
@@ -428,6 +431,7 @@ export function createInteractiveSurfaces(
   const schemas = new InteractiveSurfaceSchemaCompiler();
   const maxPayloadBytes = options.maxPayloadBytes ?? INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES;
   const isoNow = (): string => new Date(options.now()).toISOString();
+  let nextMarkerSweepAt = 0;
 
   async function load(taskId: string, surfaceId: string): Promise<Loaded> {
     const text = await store.get(surfaceKey(taskId, surfaceId));
@@ -1456,10 +1460,19 @@ export function createInteractiveSurfaces(
    * whose value is not a time (written before markers carried one) is retired as well.
    */
   async function retireRemovalMarkers(): Promise<void> {
-    const cutoff = options.now() - REMOVAL_MARKER_RETENTION_MILLISECONDS;
+    // Once per interval: the markers listed and read are every one still kept, so a pass per
+    // removal would read the whole set each time.
+    const now = options.now();
+    if (now < nextMarkerSweepAt) return;
+    nextMarkerSweepAt = now + REMOVAL_MARKER_SWEEP_INTERVAL_MILLISECONDS;
+    const cutoff = now - REMOVAL_MARKER_RETENTION_MILLISECONDS;
     for (const key of await store.list(REMOVAL_MARKER_PREFIX)) {
-      const writtenAt = Number(await store.get(key));
-      if (!Number.isFinite(writtenAt) || writtenAt < cutoff) await store.delete(key);
+      const value = await store.get(key);
+      if (value === null) continue;
+      const writtenAt = Number(value);
+      if (Number.isFinite(writtenAt) && writtenAt >= cutoff) continue;
+      // Only the value that was read: a removal that rewrote the marker meanwhile keeps its own.
+      await store.conditionalBatch([{ key, expectedValue: value }], [{ type: 'delete', key }]);
     }
   }
 
