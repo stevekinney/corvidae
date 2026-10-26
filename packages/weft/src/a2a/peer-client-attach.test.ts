@@ -124,6 +124,17 @@ describe('a send with a messageId', () => {
     ).toThrow(TypeError);
     expect(peer.methods().filter((method) => method.startsWith('Send'))).toEqual([]);
   });
+
+  test('is refused without text, before anything is sent', async () => {
+    const peer = createScriptedPeer();
+
+    const refusal = await throwingRejectionOf(
+      clientFor(peer).send({ text: undefined as unknown as string }),
+    );
+
+    expect(refusal).toThrow(TypeError);
+    expect(peer.methods()).toEqual([]);
+  });
 });
 
 describe('attach', () => {
