@@ -24,7 +24,7 @@ import {
   stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -151,7 +151,8 @@ async function start(
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    persistence: textValueStore(new MemoryStorage()),
+    storage: { type: 'memory' },
+    durableExecution: false,
     ...(options.withoutMemory ? {} : { memory: built.served }),
     ...(options.manual === false ? {} : { durableBackgroundTasks: 'manual' as const }),
     runtime: built.runtime,

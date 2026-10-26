@@ -17,7 +17,7 @@ import {
   waitForRunState,
   createAgent,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import type { Message } from 'conversationalist';
@@ -107,8 +107,8 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
         stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
     },
-    persistence: textValueStore(new MemoryStorage()),
-    sessionPersistenceRetryDelayMilliseconds: 0,
+    storage: { type: 'memory' },
+    durableExecution: false,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
   });
   const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
@@ -409,7 +409,6 @@ describe('an approval resolved while its run is still going', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      sessionPersistenceRetryDelayMilliseconds: 0,
       onDiagnostic: () => undefined,
     });
     try {
@@ -464,7 +463,8 @@ describe('createRun with neither message nor appendMessages', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'Hello.', toolCalls: [] }) }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     try {
       const first = await bureau.createRun({ agentName: 'default', message: 'Hi' });

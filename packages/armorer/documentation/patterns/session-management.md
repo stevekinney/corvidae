@@ -34,7 +34,7 @@ export class SessionManager {
     return this.sessions.get(sessionId);
   }
 
-  updateSession(sessionId: string, updates: Partial<Session>): void {
+  patchSession(sessionId: string, updates: Partial<Session>): void {
     const session = this.sessions.get(sessionId);
     if (session) {
       Object.assign(session, updates);

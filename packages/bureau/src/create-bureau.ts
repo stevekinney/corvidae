@@ -54,8 +54,6 @@ import {
   resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
   RunRemovedEvent as StoreRunRemovedEvent,
-  type RunReport,
-  type RunResult,
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
@@ -64,9 +62,6 @@ import {
   SchedulePausedEvent,
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleResumedEvent,
-  SchedulerTaskCompletedEvent,
-  SchedulerTaskFailedEvent,
-  type SchedulerTaskLocation,
   ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
@@ -88,9 +83,6 @@ import {
   StoreActionEvent,
   type StreamEventMap,
   type Subscription,
-  TaskCancelledEvent,
-  TaskDispatchedEvent,
-  TaskPreemptedEvent,
   SESSION_OWNER_METADATA_KEY,
   createSessionHandle,
   ForkThroughMessageError,
@@ -132,7 +124,6 @@ import {
 import {
   Conversation,
   type ConversationHistory,
-  createConversationHistory,
   CURRENT_SCHEMA_VERSION,
   isConversationHistory,
   materializeToolResultAsync,
@@ -249,7 +240,6 @@ import { createModelCatalogService, type ModelCatalogService } from './model-cat
 import { createModelPolicyPlanner } from './model-policy';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
-  buildPartialRunReport,
   buildTerminalReportFromAbortedEvent,
   buildTerminalReportFromCompletedEvent,
   createRunFrameForwarder,
@@ -268,7 +258,6 @@ import type {
 import {
   createMaintenanceMemoryAuthority,
   createRuntimeComposition,
-  createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
   isScheduledFireAuthority,
   recordRecoveredSkillPolicy,
@@ -414,11 +403,7 @@ import {
   scheduleFireSettledDedupeKey,
   type ScheduleFireSettledPayload,
 } from './schedule-fire-settled-event';
-import {
-  copyAgentOwnedRunOptions,
-  scheduledAgentRunOptions,
-  sessionExecuteOptions,
-} from './session-agent-options';
+import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
@@ -511,9 +496,6 @@ import type {
   ReviewStatus,
   RunSummary,
   ServerFrame,
-  SubmitSchedulerTaskRequest,
-  SubmitSchedulerTaskResponse,
-  ToolSummary,
 } from './types';
 import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
@@ -547,7 +529,6 @@ const SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS = 60_000;
  * exists only so a run that ignores it cannot hold shutdown open.
  */
 export const ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS = 1_000;
-const SCHEDULER_PRIORITIES = ['immediate', 'scheduled', 'background', 'ambient'] as const;
 
 /**
  * Returns whether a persisted session can still resume under transport-issued
@@ -658,35 +639,32 @@ function omitStringsWithPrefix(values: readonly JSONValue[], prefix: string): JS
 }
 
 /**
- * Factory for the default `BureauOptions.sessionPersistenceSleep` — a real
- * sleep driven by the composed {@link RuntimeServices.timers} (AB-260),
- * defaulting to the real-globals runtime when called with no argument (the
- * baseline behavior, unchanged from before `RuntimeServices` composition).
- * The timer-scheduling and timer-clearing members are destructured once so
+ * Builds the sleep the session-persistence retry loops wait on — a real
+ * sleep driven by the composed {@link RuntimeServices.timers} (AB-260), so a
+ * `ManualRuntimeServices` clock advances it. The timer-scheduling and timer-clearing members are destructured once so
  * the call sites below read `scheduleTimeout(...)` rather than a literal
  * `timers` method call — see `runtime-composition.ts`'s equivalent pattern
  * for why: the AB-260 binary completion check greps for the literal global
  * timer-scheduling call text, and only a destructured alias avoids it while
  * still routing through the injected timers.
  */
-export function createDefaultSessionPersistenceSleep(
-  timers: RuntimeServices['timers'] = createDefaultRuntimeServices().timers,
+function createSessionPersistenceSleep(
+  timers: RuntimeServices['timers'],
 ): (milliseconds: number) => Promise<void> {
   const { setTimeout: scheduleTimeout } = timers;
   return (milliseconds) => new Promise((resolve) => scheduleTimeout(resolve, milliseconds));
 }
 
 /**
- * Factory for the default `BureauOptions.shutdownTimeoutSleep` — a real
+ * Builds the sleep that bounds `shutdown({ timeoutMilliseconds })`'s wait — a
  * sleep driven by the composed {@link RuntimeServices.timers} (AB-260),
  * cleared (never resolving) if `signal` aborts first so a `shutdown()` whose
  * real teardown wins the race does not leave this timer pending for the
- * rest of its duration. Defaults to the real-globals runtime when called
- * with no argument — the baseline behavior, unchanged from before
- * `RuntimeServices` composition.
+ * rest of its duration. Under a `ManualRuntimeServices` nothing advances it
+ * but the caller's clock.
  */
-export function createDefaultShutdownTimeoutSleep(
-  timers: RuntimeServices['timers'] = createDefaultRuntimeServices().timers,
+function createShutdownTimeoutSleep(
+  timers: RuntimeServices['timers'],
 ): (milliseconds: number, signal: AbortSignal) => Promise<void> {
   const { setTimeout: scheduleTimeout, clearTimeout: cancelTimeout } = timers;
   return (milliseconds, signal) =>
@@ -914,62 +892,15 @@ export async function resolveCancelDurableRun(
   }
 }
 
-type FlowControlScheduler = Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
-
-type FlowControlSchedulerEvent =
-  | SchedulerTaskCompletedEvent
-  | SchedulerTaskFailedEvent
-  | TaskCancelledEvent
-  | TaskPreemptedEvent
-  | TaskDispatchedEvent;
-
-export function wireFlowControlSchedulerEvents(
-  scheduler: FlowControlScheduler,
-  flowController: Pick<FlowController, 'settle' | 'markParked' | 'markResumed'>,
-): Array<() => void> {
-  function settleScheduledTask(
-    event: SchedulerTaskCompletedEvent | SchedulerTaskFailedEvent | TaskCancelledEvent,
-  ) {
-    flowController.settle(event.taskId);
-  }
-
-  function handlePreemptedTask(event: TaskPreemptedEvent) {
-    if (event.requeued) {
-      flowController.markParked(event.taskId);
-      return;
-    }
-
-    flowController.settle(event.taskId);
-  }
-
-  function handleDispatchedTask(event: TaskDispatchedEvent) {
-    flowController.markResumed(event.taskId);
-  }
-
-  const listeners: ReadonlyArray<readonly [FlowControlSchedulerEvent['type'], EventListener]> = [
-    [SchedulerTaskCompletedEvent.type, settleScheduledTask as EventListener],
-    [SchedulerTaskFailedEvent.type, settleScheduledTask as EventListener],
-    [TaskCancelledEvent.type, settleScheduledTask as EventListener],
-    [TaskPreemptedEvent.type, handlePreemptedTask as EventListener],
-    [TaskDispatchedEvent.type, handleDispatchedTask as EventListener],
-  ];
-
-  return listeners.map(([eventType, listener]) => {
-    scheduler.addEventListener(eventType, listener);
-    return () => scheduler.removeEventListener(eventType, listener);
-  });
-}
-
 /**
  * Discriminates *why* a `BureauError` with code `NOT_CONFIGURED` was thrown.
  * `NOT_CONFIGURED` alone is not enough for a consumer to decide an HTTP status:
  * some subjects mean "this deployment does not compose that capability at all"
- * (`durable`, `scheduler` — a 501 case), others mean "the capability exists but
+ * (`durable` — a 501 case), others mean "the capability exists but
  * is unconfigured, and the operator can fix it" (`generate`, `persistence`,
  * `approval` — a 503 case). Only set on `NOT_CONFIGURED` errors.
  */
-export type BureauErrorNotConfiguredSubject =
-  'generate' | 'scheduler' | 'durable' | 'persistence' | 'approval';
+export type BureauErrorNotConfiguredSubject = 'generate' | 'durable' | 'persistence' | 'approval';
 
 class BureauError extends Error {
   readonly code:
@@ -1386,31 +1317,6 @@ function validateBureauRunOptions(
   }
   const principalReason = principalDefect(capturedPrincipal, 'options.principal');
   if (principalReason !== undefined) toBadRequest(principalReason);
-}
-
-function validateSubmitSchedulerTaskRequest(request: SubmitSchedulerTaskRequest): void {
-  validateMessageRequest(request);
-  if (typeof request.agentName !== 'string' || request.agentName.trim().length === 0) {
-    toBadRequest('"agentName" must be a non-empty string');
-  }
-
-  if (request.metadata !== undefined) {
-    if (
-      typeof request.metadata !== 'object' ||
-      request.metadata === null ||
-      Array.isArray(request.metadata)
-    ) {
-      toBadRequest('"metadata" must be an object');
-    }
-  }
-
-  if (request.priority !== undefined && !SCHEDULER_PRIORITIES.includes(request.priority)) {
-    toBadRequest('"priority" must be one of: immediate, scheduled, background, ambient');
-  }
-
-  if (request.requeue !== undefined && typeof request.requeue !== 'boolean') {
-    toBadRequest('"requeue" must be a boolean');
-  }
 }
 
 /**
@@ -2627,8 +2533,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   });
   // AB-13 — declarative flow control (concurrency/rate-limit/singleton). One
   // controller instance shared across BOTH `createRun` (API-triggered) and
-  // `submitSchedulerTask` (scheduler-originated), so a per-agent concurrency
-  // cap counts runs from either surface against the same limit.
+  // durable schedule fires, so a per-agent concurrency cap counts runs from
+  // either surface against the same limit.
   const flowController: FlowController | undefined = options.flowControl
     ? createFlowController(options.flowControl)
     : undefined;
@@ -4137,9 +4043,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // Frames emitted while the first subscriber is being replayed queue behind
   // the remaining replay instead of interleaving with it.
   let frameReplayQueue: ServerFrame[] | undefined;
-  // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
-  // event fires so `getRunReport` never needs to re-derive them.
-  const runReports = new Map<string, RunReport>();
   // COR-625: one memoized terminal-cleanup step per run id. Every trigger
   // MUST route through `runTerminalCheckpointCleanup` rather than calling the
   // step directly — the exactly-once guarantee is the memo, not the triggers.
@@ -4150,7 +4053,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // makes the step exactly-once across its three independent triggers — the
   // live run's terminal listeners, a recovered run's terminal listeners, and
   // `cancelDurableRun` on a run this process holds no `ActiveRun` for. Its
-  // entries are released alongside that run's report (`releaseRunReport`), so
+  // entries are released when the run is deleted (`deleteRun`), so
   // a long-lived bureau does not retain one promise per run forever.
   const terminalCheckpointCleanups = new Map<string, Promise<RunCleanupAcknowledgement>>();
   // COR-625: registered on a durable run's `closed()` only when a retention
@@ -4221,13 +4124,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   function seedRunSeqGeneration(runId: string): void {
     runSequenceCounters.set(runId, runtimeServices.clock.now());
   }
-  const sessionPersistenceRetryDelayMilliseconds =
-    options.sessionPersistenceRetryDelayMilliseconds ??
-    SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS;
-  const sessionPersistenceSleep =
-    options.sessionPersistenceSleep ?? createDefaultSessionPersistenceSleep(runtimeServices.timers);
-  const shutdownTimeoutSleep =
-    options.shutdownTimeoutSleep ?? createDefaultShutdownTimeoutSleep(runtimeServices.timers);
+  const sessionPersistenceRetryDelayMilliseconds = SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS;
+  const sessionPersistenceSleep = createSessionPersistenceSleep(runtimeServices.timers);
+  const shutdownTimeoutSleep = createShutdownTimeoutSleep(runtimeServices.timers);
 
   function getRunSessionIdentifier(runState: { activeRun: ActiveRun }): string {
     return runSessionIdentifiers.get(runState.activeRun) ?? '';
@@ -5004,60 +4903,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   });
 
-  const schedulerEventTypes = [
-    'task.queued',
-    'task.dispatched',
-    'task.completed',
-    'task.failed',
-    'task.preempted',
-    'task.cancelled',
-    'scheduler.idle',
-    'scheduler.started',
-    'scheduler.stopped',
-  ] as const;
-
-  function emitSchedulerLiveFrame(event: Event): void {
-    if (event.type === 'task.preempted') {
-      const preemptedEvent = event as Event & { taskId: string; reason: string };
-      emitLiveFrame({
-        type: 'scheduler.task.preempted',
-        taskId: preemptedEvent.taskId,
-        reason: preemptedEvent.reason,
-        state: runtime.scheduler!.getState(),
-      });
-      return;
-    }
-
-    emitLiveFrame({
-      type: 'scheduler.state',
-      state: runtime.scheduler!.getState(),
-    });
-  }
-
-  const schedulerCleanup =
-    runtime.scheduler === undefined
-      ? []
-      : schedulerEventTypes.map((eventType) => {
-          runtime.scheduler!.addEventListener(eventType, emitSchedulerLiveFrame);
-          return () => runtime.scheduler?.removeEventListener(eventType, emitSchedulerLiveFrame);
-        });
-
-  // AB-13 — enforce the flow-control lifecycle for scheduler-originated
-  // tasks. Preemption (`task.preempted`, `requeued: true`) is this scheduler's
-  // OWN notion of "parked" — the run is suspended and will be redispatched
-  // later — so it maps directly onto `markParked`/`markResumed`, freeing the
-  // concurrency slot while the task sits preempted. `markResumed` is a no-op
-  // when the slot was never parked (e.g. a task's FIRST dispatch), so it is
-  // safe to call on every `task.dispatched`.
-  const flowControlSchedulerCleanup: Array<() => void> =
-    flowController === undefined || runtime.scheduler === undefined
-      ? []
-      : wireFlowControlSchedulerEvents(runtime.scheduler, flowController);
-
   function requireSessionStore(): SessionStore {
     if (!runtime.sessionStore) {
       throw new BureauError(
-        'No SessionStore configured (set options.persistence with a StorageConfiguration or PersistenceOptions)',
+        'No SessionStore configured (set options.storage)',
         'NOT_CONFIGURED',
         'persistence',
       );
@@ -7758,7 +7607,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         const lastRunStatus = isFailureFinishReason(finishReason) ? 'error' : 'completed';
 
         const report = buildTerminalReportFromCompletedEvent(runId, event);
-        runReports.set(runId, report);
         emitLiveFrame({
           type: 'run-envelope',
           runId,
@@ -7818,7 +7666,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           steps: store.getRun(runId)?.steps ?? [],
           conversation: event.conversation,
         });
-        runReports.set(runId, report);
         emitLiveFrame({
           type: 'run-envelope',
           runId,
@@ -8441,7 +8288,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const lastError = isFailureFinishReason(finishReason) ? event.error : undefined;
 
       const report = buildTerminalReportFromCompletedEvent(runId, event);
-      runReports.set(runId, report);
       emitLiveFrame({
         type: 'run-envelope',
         runId,
@@ -8482,7 +8328,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         steps: store.getRun(runId)?.steps ?? [],
         conversation: event.conversation,
       });
-      runReports.set(runId, report);
       emitLiveFrame({
         type: 'run-envelope',
         runId,
@@ -9786,187 +9631,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
-  async function submitSchedulerTask(
-    request: SubmitSchedulerTaskRequest,
-  ): Promise<SubmitSchedulerTaskResponse> {
-    validateSubmitSchedulerTaskRequest(request);
-    // Snapshot what the request carries before the first `await`: the caller owns the object.
-    const { message, maximumSteps, metadata, requeue, systemPrompt: requestSystemPrompt } = request;
-
-    if (!runtime.scheduler) {
-      throw new BureauError('Scheduler not configured', 'NOT_CONFIGURED', 'scheduler');
-    }
-    assertRunAdmissionOpen('scheduler task');
-
-    const taskId = runtimeServices.identifiers.next('scheduler-task');
-    const priority = request.priority ?? 'scheduled';
-    // COR-323 — a task runs as a named catalog agent, with that agent's own `generate`, tools,
-    // stop condition, and instructions. An unknown name is refused before anything is queued.
-    const agentName = request.agentName.trim();
-    const resolution = await runtime.resolveSessionAgentRun(
-      agentName,
-      taskId,
-      ownerOrLocal(undefined),
-    );
-    if (resolution.status === 'missing-agent') {
-      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
-    }
-    if (resolution.status === 'not-durable-capable') {
-      throw new BureauError(
-        `Agent "${agentName}" cannot run a scheduler task: it exposes no definition resolver.`,
-        'UNSUPPORTED_CAPABILITY',
-      );
-    }
-    if (resolution.status === 'resolver-failed') throw resolution.error;
-    // The agent resolved above is a stale read once `shutdown()` may have started during the await.
-    assertRunAdmissionOpen('scheduler task');
-
-    // AB-13 — same admission gate as `createRun`, applied to the
-    // scheduler-originated surface. `taskId` doubles as the flow-control run
-    // identity: it is stable for the task's whole lifecycle (queued →
-    // dispatched → completed, including any preempt/requeue cycles), which is
-    // exactly the identity `markParked`/`markResumed`/`settle` need. There is
-    // per-task `agentName` on `SubmitSchedulerTaskRequest` is the grouping key.
-    if (flowController) {
-      const decision = flowController.admit({
-        runId: taskId,
-        agentName,
-        source: 'scheduler',
-        message: message,
-        ...(metadata !== undefined ? { metadata: metadata } : {}),
-      });
-      if (!decision.allowed) {
-        throw new BureauError(
-          `Scheduler task rejected by flow control policy (${decision.reason})`,
-          'RATE_LIMITED',
-        );
-      }
-    }
-
-    // COR-1662 — a file agent's definition is stored, and this task tied to it, before the task is
-    // queued, so every attempt (a preempted task starts again) and a task that waits in the queue
-    // run the definition this submission resolved, not whatever the file has become. A write that
-    // fails refuses the submission: a task that could not be pinned is not queued.
-    if (resolution.run.agentBinding !== undefined) {
-      try {
-        await fileAgents?.recordBoundRun(resolution.run.agentBinding, taskId);
-        // The record is a stale read once `shutdown()` may have started during the await.
-        assertRunAdmissionOpen('scheduler task');
-      } catch (error) {
-        // Nothing was queued: give back the flow-control slot and the reference, if it was written.
-        flowController?.settle(taskId);
-        await fileAgents?.releaseRun(taskId);
-        throw error;
-      }
-    }
-
-    const task: Parameters<NonNullable<typeof runtime.scheduler>['submit']>[0] = {
-      id: taskId,
-      priority,
-      metadata: metadata,
-      requeue: requeue,
-      async createRun() {
-        // COR-690: a task queued before `shutdown()` started must not be
-        // dispatched into a new run once it has; the scheduler records the
-        // failed dispatch.
-        assertRunAdmissionOpen('scheduler task');
-        // Each attempt resolves its own agent run: a preempted-and-requeued task starts a fresh
-        // conversation, and the guardrail hooks and skill client of the earlier attempt are stateful.
-        // The definition the submission recorded (COR-1662), never the file's current one.
-        const pinned = await fileAgents?.snapshots.reference(taskId);
-        const attempt = await runtime.resolveSessionAgentRun(
-          agentName,
-          taskId,
-          ownerOrLocal(undefined),
-          pinned === undefined || pinned.id !== agentName
-            ? undefined
-            : { agentDefinitionHash: pinned.hash, definitionRevision: pinned.definitionRevision },
-        );
-        if (attempt.status !== 'resolved') {
-          throw new BureauError(
-            `Agent "${agentName}" can no longer run scheduler task ${taskId}: ${attempt.status}`,
-            'NOT_FOUND',
-          );
-        }
-        const taskAgent = attempt.run;
-        const taskRequestContext = createSchedulerServiceRequestContext(taskId, agentName, taskId);
-        const runRuntime = await runtime.createRunRuntime(
-          {
-            agentName,
-            message: message,
-            maximumSteps: maximumSteps,
-            systemPrompt: requestSystemPrompt,
-            sessionId: taskId,
-            // The task id is the run identity for the same reason it is the
-            // flow-control identity above: it survives preemption. A requeued
-            // task resumes from its last completed step (durable engine) or
-            // starts again (no engine), so a step that wrote memory can run
-            // twice, and the memory write deduplicates on `<taskId>:<step>`.
-            runId: taskId,
-            requestContext: taskRequestContext,
-          },
-          // A scheduler task has no principal, so its memory is `anonymous:local`'s (COR-1546), not
-          // the request authority's owner, which for a task is the agent's name.
-          { liveStreaming: false, memoryOwner: ownerOrLocal(undefined), sessionAgent: taskAgent },
-        );
-
-        const conversation = new Conversation(createConversationHistory({ id: taskId }));
-        const systemPrompt = requestSystemPrompt ?? taskAgent.instructions;
-        if (systemPrompt) {
-          conversation.appendSystemMessage(systemPrompt);
-        }
-        conversation.appendUserMessage(message);
-
-        return {
-          conversation,
-          ...scheduledAgentRunOptions(taskAgent.options, taskRequestContext),
-          ...sessionRunMediaOptions(taskAgent, {}),
-          generate: runRuntime.generate,
-          toolbox: runRuntime.toolbox,
-          maximumSteps: maximumSteps ?? taskAgent.options.maximumSteps ?? runtime.maximumSteps,
-          // AB-260: the bureau's single composed RuntimeServices instance,
-          // snapshotted into every scheduler task run it starts.
-          runtime: runtimeServices,
-          sessionId: taskId,
-          // COR-1265 — the Bureau tier, snapshotted.
-          // COR-323 — the task's agent keeps its own tier (guardrails, skills), as a session run's does.
-          hooks: mergeHookRegistries(runRuntime.hooks, taskAgent.options.hooks),
-          stopWhen: taskAgent.options.stopWhen,
-        };
-      },
-    };
-
-    // COR-1662 — the reference that pins the definition is settled when the task itself ends, not on
-    // an event: with durable execution a `task.failed` can come from a suspend write that failed
-    // while the task goes on, and a task preempted and requeued is not over. `submit` settles once,
-    // when the task has run to its end, is cancelled, or is discarded, and held for task retention
-    // from then like a run-store run's reference. `settleRun` never rejects.
-    const settleReference = (): void => {
-      detachBestEffortPromise(fileAgents?.settleRun(taskId) ?? Promise.resolve());
-    };
-    detachBestEffortPromise(runtime.scheduler.submit(task).then(settleReference, settleReference));
-
-    return Promise.resolve({
-      taskId,
-      priority,
-      status: 'queued',
-    });
-  }
-
-  function locateSchedulerTask(taskId: string): SchedulerTaskLocation {
-    if (!runtime.scheduler) {
-      throw new BureauError('Scheduler not configured', 'NOT_CONFIGURED', 'scheduler');
-    }
-    return runtime.scheduler.locateTask(taskId);
-  }
-
-  function awaitSchedulerTask(taskId: string): Promise<RunResult | null> {
-    if (!runtime.scheduler) {
-      throw new BureauError('Scheduler not configured', 'NOT_CONFIGURED', 'scheduler');
-    }
-    return runtime.scheduler.awaitTask(taskId);
-  }
-
   function listRuns(status?: string): RunSummary[] {
     const state = store.getState();
     const summaries: RunSummary[] = [];
@@ -10230,19 +9894,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
-  function getRunReport(id: string): RunReport | undefined {
-    const cached = runReports.get(id);
-    if (cached) return cached;
-
-    // Not yet terminal (or unknown) — build a partial report synchronously
-    // from the live RunState. This is the graceful-shutdown path: safe to
-    // call from an abort() call site or a SIGTERM handler with no await.
-    const runState = store.getRun(id);
-    if (!runState) return undefined;
-
-    return buildPartialRunReport(id, runState, 'Run report requested before a terminal result');
-  }
-
   /**
    * AB-37/AB-205: idempotent. A repeat call, or one arriving after the run
    * finished on its own, returns the run's current summary instead of
@@ -10502,13 +10153,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await retryRunDeletionPersistenceWrite('resolved-reviews', sessionId, `approval:${id}:`);
       await retryRunDeletionPersistenceWrite('resolved-reviews', sessionId, `human-wait:${id}:`);
     }
-    // AB-96 — drop the cached terminal RunReport too, or a long-lived bureau
-    // that creates/deletes many runs would retain one forever per run id.
-    runReports.delete(id);
-    // COR-625: released on the same boundary as the report it belongs to.
-    // The step has already recorded its acknowledgement durably by the time
-    // a report is released, so nothing observable is lost — only the
-    // in-memory memo, whose exactly-once duty is over once every trigger for
+    // COR-625: released when the run is deleted. The step has already
+    // recorded its acknowledgement durably by then, so nothing observable is
+    // lost — only the in-memory memo, whose exactly-once duty is over once every trigger for
     // this run id has passed.
     terminalCheckpointCleanups.delete(id);
   }
@@ -11647,14 +11294,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       now: runtimeServices.clock.now(),
       isLive: (runId) => {
         const status = store.getRun(runId)?.status;
-        // COR-1662: a scheduler task waiting in the queue has no run yet, but is not a start that
-        // failed: its reference holds the definition it will run under.
-        return (
-          status === 'running' ||
-          status === 'aborting' ||
-          findCatalogRun(runId) !== undefined ||
-          runtime.scheduler?.locateTask(runId).status === 'in-progress'
-        );
+        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
       },
       durableState: async (reference) => {
         // Without a durable engine nothing outlives the process, so a reference from before this
@@ -11818,7 +11458,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // unhandled rejection, and `cancelDurableRun` AWAITS it while its own
     // public doc comment promises it never rejects. `classifyTerminalCheckpointCleanup`
     // classifies the outcomes it can see, but it also awaits a
-    // caller-supplied `shutdownTimeoutSleep`, so it cannot promise this on
+    // runtime-timer sleep and the engine's prune, so it cannot promise this on
     // its own — the same reason `shutdown()` wraps its identical
     // `shutdownTimeoutSleep` race in `settleNeverRejecting`.
     let acknowledgement: RunCleanupAcknowledgement;
@@ -11932,24 +11572,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             pruneAbort.abort();
             return { status: 'unresolved', reason: 'timed-out' };
           },
-          // `shutdownTimeoutSleep` is a public, caller-injectable seam
-          // (`BureauOptions.shutdownTimeoutSleep`), so it CAN reject even
-          // though the default never does. A rejection means the bound
-          // could not be applied at all: the prune is still stopped —
-          // leaving it running behind an answer nobody owns is precisely
-          // what this bound exists to prevent — and the failure is
-          // classified as the unresolved wait it is, carrying the error
-          // rather than being silently reported as a clean timeout.
-          (error: unknown): RunCleanupAcknowledgement => {
-            pruneAbort.abort();
-            return { status: 'unresolved', reason: 'timed-out', error };
-          },
         ),
       ]);
       return outcome;
     } finally {
-      // Release whichever side of the race lost, so neither a pending timer
-      // nor a caller-supplied sleep outlives this step.
+      // Release whichever side of the race lost, so a pending
+      // timer does not outlive this step.
       sleepAbort.abort();
     }
   }
@@ -11958,10 +11586,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * AB-388 (Codex review, PR #597, "Run audit retention for KV-backed
    * non-durable bureaus" / "Isolate the manual audit-retention sub-pass"):
    * `auditTrailInstance` is built whenever `runtime.kv` exists — a
-   * persistent backend with `durableExecution: false`, or a custom KV-only
-   * `persistence` (`ConditionalTextValueStore`), both give it a `kv`
-   * without ever giving `runtime.durable` a durable engine (see
-   * `runtime-composition.ts`'s `hasKvOnlyPersistence`). Gating this whole
+   * storage backend with `durableExecution: false` gives it a `kv`
+   * without ever giving `runtime.durable` a durable engine. Gating this whole
    * function's body on `!runtime.durable` (the ORIGINAL shape) made a
    * configured `auditRetention` policy unreachable for exactly that
    * configuration — a manual host's own alarm/Cron trigger calling this
@@ -12688,8 +12314,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let automaticRunOwnershipPruneCurrentPass: Promise<void> | undefined;
   // AB-388 (Codex review, PR #597, "Run audit retention for KV-backed
   // non-durable bureaus"): widened from `runtime.durable` alone — a
-  // persistent backend with `durableExecution: false`, or a custom
-  // KV-only `persistence`, gives `runtime.kv` a value (and therefore later
+  // storage backend with `durableExecution: false` gives `runtime.kv` a value (and therefore later
   // builds `auditTrailInstance`, further down this factory function)
   // without ever giving `runtime.durable` a durable engine. Checking
   // `runtime.kv` here rather than `auditTrailInstance` itself: that `let`
@@ -13601,53 +13226,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     flowController?.markResumed(runId);
   }
 
-  async function updateSession(
-    sessionId: string,
-    _name: string,
-    _payload?: unknown,
-  ): Promise<unknown> {
-    if (!runtime.durable)
-      throw new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable');
-    const runId = await requireSessionRunId(sessionId);
-    const requestContext = runRequestContexts.get(runId);
-    if (
-      requestContext &&
-      isTransportIssuedAuthority(requestContext) &&
-      (!requestAuthorityValidator || !(await requestAuthorityValidator(requestContext)))
-    ) {
-      throw new BureauError(
-        'Cannot update: the request authority is no longer current.',
-        'CONFLICT',
-      );
-    }
-    // AB-192 / AB-41 coordinator ruling: the built-in `agentRun` workflow
-    // registers no `ctx.onUpdate` handler, so this call can never reach the
-    // engine successfully. Kept, not withdrawn (AB-42/AB-67 ratify update and
-    // query as the distinct session-verb family) — an unconditional throw,
-    // no detection branch, since there is no handler-registration signal to
-    // check. See `bureau.sessionVerbCapabilities`.
-    throw new BureauError(
-      'updateSession()/querySession() are unsupported: the built-in agentRun workflow registers no ctx.onUpdate/ctx.onQuery handler.',
-      'UNSUPPORTED_CAPABILITY',
-    );
-  }
-
-  async function querySession(
-    sessionId: string,
-    _name: string,
-    _input?: unknown,
-  ): Promise<unknown> {
-    if (!runtime.durable)
-      throw new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable');
-    await requireSessionRunId(sessionId);
-    // AB-192 / AB-41 coordinator ruling: see the identical throw in
-    // `updateSession` above — no `ctx.onQuery` handler is registered either.
-    throw new BureauError(
-      'updateSession()/querySession() are unsupported: the built-in agentRun workflow registers no ctx.onUpdate/ctx.onQuery handler.',
-      'UNSUPPORTED_CAPABILITY',
-    );
-  }
-
   /**
    * AB-42/AB-194 — admit a caller's session input. Pre-admission checks run
    * in AB-42's fixed order: authorization (`not-found`) first, then session
@@ -13692,7 +13270,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionId: string,
     callerRequest: SessionInputAdmissionRequest,
   ): Promise<SessionInputAdmissionOutcome> {
-    // Unlike signalSession/updateSession/querySession, this does NOT throw
+    // Unlike signalSession, this does NOT throw
     // BureauError('NOT_CONFIGURED') when no session store is composed: an
     // ephemeral bureau (no persistence/storage) is a supported configuration,
     // and every sessionId is necessarily unknown in it — the correct outcome
@@ -16656,8 +16234,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Host-driven expiry sweep (AB-46). See the {@link Bureau.sweepExpiredReviews}
-   * doc comment.
+   * Expiry sweep (AB-46), run by every maintenance pass and by the lazy timer
+   * armed while an approval is held: scans every tool-approval review past its
+   * binding's `expiresAt` that is not already resolved, transitions each to
+   * `status: 'expired'`, writes one `review.tool-approval.expired` audit entry
+   * per review attributed to the synthetic principal `'system:expiry'`, and
+   * returns the count swept. `human-wait` reviews are never swept — their
+   * expiry is Weft's own wait timeout. `now` defaults to the bureau's own clock.
    */
   async function sweepExpiredReviews(now?: number): Promise<number> {
     const effectiveNow = now ?? runtimeServices.clock.now();
@@ -17091,17 +16674,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return true;
   }
 
-  function getToolSummaries(): ToolSummary[] {
-    return runtime.getToolSummaries();
-  }
-
   /**
    * Every subsystem kind {@link BureauShutdownReport.owners} can report on.
    * `'heartbeat'` is reserved for the day Bureau composes one — see
    * `composedOwnerKinds` below, which decides which kinds actually get a row.
    */
   const ALL_SHUTDOWN_OWNER_KINDS = [
-    'scheduler',
     'online-evals',
     'webhook-notifier',
     'audit-trail',
@@ -17151,7 +16729,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Which owners this bureau actually composes — a report row is emitted
     // ONLY for a composed owner (2026-09-02 coordinator ruling).
     const composedOwnerKinds = ALL_SHUTDOWN_OWNER_KINDS.filter((kind) => {
-      if (kind === 'scheduler') return Boolean(runtime.scheduler);
       if (kind === 'online-evals') return Boolean(onlineEvalSamplerInstance);
       if (kind === 'webhook-notifier') return Boolean(webhookNotifierInstance);
       if (kind === 'audit-trail') return Boolean(auditTrailInstance);
@@ -17512,17 +17089,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // cleanly (the webhook notifier also abandons in-flight backoff
           // waits so a disposed bureau never fires a webhook late).
           const ownerDrains: Array<Promise<void>> = [];
-          if (runtime.scheduler) {
-            const scheduler = runtime.scheduler;
-            // AB-260: registered with the composed `RuntimeServices.deferred`
-            // under the stable `'scheduler-stop'` label, layered on top of
-            // (never replacing) the `settleOwner`/`ownerDrains` tracking this
-            // shutdown chain already awaits below — the SAME promise
-            // instance is both tracked and awaited, never called twice.
-            const schedulerStop = scheduler.stop();
-            runtimeServices.deferred.track(schedulerStop, 'scheduler-stop');
-            ownerDrains.push(settleOwner('scheduler', () => schedulerStop));
-          }
           if (auditTrailInstance) {
             const auditTrail = auditTrailInstance;
             ownerDrains.push(settleOwner('audit-trail', () => auditTrail.dispose()));
@@ -17590,12 +17156,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             disposeRunEventFeed(feedRunId, runEventFeeds);
           }
           eventFeed.dispose();
-          for (const disposeListener of schedulerCleanup) {
-            disposeListener();
-          }
-          for (const disposeListener of flowControlSchedulerCleanup) {
-            disposeListener();
-          }
           emitter.complete();
         } catch (error) {
           diagnose({
@@ -17710,8 +17270,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     // `shutdown()` is documented to never reject — every internal step above
     // is already best-effort (`settleOwner` catches and records failures),
-    // but a caller-supplied `shutdownTimeoutSleep` rejecting, or some other
-    // unforeseen failure inside `chain`, must not propagate through
+    // but some unforeseen failure inside `chain` or the timeout sleep must not propagate through
     // `Promise.race`/the bare chain reference. This `.catch` is the single
     // fallback fence: diagnose, then resolve with the best-effort report
     // `buildReport()` can still produce from whatever `ownerOutcomes` were
@@ -18304,8 +17863,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * COR-1302: registers the `ActiveRun` behind a `bureau.run()` dispatch on
    * `store` while it runs, so `getRun(run.id)`, `abortRun(run.id)`, and
    * `subscribeRunSnapshot` resolve the handle's id on both the direct and the
-   * durable branch. (`getRunReport` resolves it too, but only as a partial
-   * report: the terminal report cache is filled by `createRunFromRequest`.)
+   * durable branch.
    * Before this runs, and for a catalog run that never builds an `ActiveRun`,
    * `getRun`/`abortRun` fall back to the unsettled handle (`findCatalogRun`).
    *
@@ -18758,7 +18316,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runEventFeeds,
     store,
     memory: runtime.memory,
-    scheduler: runtime.scheduler,
     sessionStore: runtime.sessionStore,
     kv: runtime.kv,
     tasks,
@@ -18835,19 +18392,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     },
     createRun: createRunFromRequest,
     locateRunCreationReceipt,
-    submitSchedulerTask,
-    locateSchedulerTask,
-    awaitSchedulerTask,
     listRuns,
     getRun,
     getOwner,
     getScheduleAgentName,
     getScheduleInputPreview,
     subscribeRunSnapshot,
-    getRunReport,
     abortRun,
     listAbortingRuns,
-    deleteRun,
     getDurableRun,
     durableEngine,
     waitForDurableRun,
@@ -18858,19 +18410,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     getSession,
     deleteSession,
     signalSession,
-    updateSession,
-    querySession,
     submitSessionInput,
     whenRunRecorded,
     sessionInputsDeliveredBy,
     submitSteeringCommand,
     getSessionSteering,
     forkSession,
-    // AB-192: constant, not computed from runtime state — the built-in
-    // `agentRun` workflow never registers `ctx.onUpdate`/`ctx.onQuery`
-    // handlers, so `update`/`query` are unsupported today regardless of
-    // configuration. `signal` has a real delivery path (`signalSession`).
-    sessionVerbCapabilities: { signal: true, update: false, query: false },
     // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
     // resolves through the engine by run id. Every other review resolves exactly as before.
     listPendingReviews: (): PendingReview[] => [...listPendingReviews(), ...runHumanWaits.list()],
@@ -18879,7 +18424,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // here all the same, fenced by the durable decision record.
     resolveReview: resolveAnyReview,
     pendingHumanWaitsOfRun,
-    sweepExpiredReviews,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);
@@ -18916,9 +18460,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         void recovery.then(() => trackCatalogAssetRelease(reconcileAssetClaims()));
       }
     },
-    getRequestAuthorityValidator() {
-      return requestAuthorityValidator;
-    },
     waitForRecovery() {
       return durableRecoveryBarrier;
     },
@@ -18929,7 +18470,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     resumeSchedule,
     cancelSchedule,
     updateSchedule,
-    getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
       let active = true;
       const unsubscribe = () => {

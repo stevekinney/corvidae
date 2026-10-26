@@ -210,7 +210,6 @@ async function build(
     durableExecution: true,
     // The handler serves the asset operations and the content route, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },
-    sessionPersistenceRetryDelayMilliseconds: 0,
     ...(options.bureauRuntime === undefined ? {} : { runtime: options.bureauRuntime }),
     ...(options.durableBackgroundTasks === undefined
       ? {}

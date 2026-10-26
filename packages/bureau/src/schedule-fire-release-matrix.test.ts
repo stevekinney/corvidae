@@ -27,6 +27,7 @@ import {
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();
 
@@ -123,7 +124,7 @@ const stopped = {
     await bureau.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.alice });
   },
   expired: async ({ bureau }: Context) => {
-    expect(await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(bureau, Date.now() + 60 * 60 * 1000)).toBe(1);
   },
   'removed with its task, the approval expired but not swept': async ({
     bureau,
@@ -269,7 +270,7 @@ describe('a fire with several approvals', () => {
       authorities: [fireId],
     });
 
-    expect(await bureau.sweepExpiredReviews(Date.now())).toBe(1);
+    expect(await expireReviews(bureau, Date.now())).toBe(1);
 
     await expectNothingRemains(bureau, fireId, options);
     expect(charges).toEqual([200]);

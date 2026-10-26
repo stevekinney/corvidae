@@ -1,5 +1,4 @@
 import { stopWhen, type GenerateFunction, createAgent } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -59,7 +58,8 @@ describe('the schedule.fired entry (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     try {
       const trail = bureau.auditTrail!;

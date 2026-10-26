@@ -6,7 +6,6 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, UnknownScheduleAgentError } from './create-bureau';
@@ -21,7 +20,6 @@ import {
   type Observation,
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
-import { AGENT_RUN_REFERENCE_KEY_PREFIX } from './agent-snapshot-store';
 import { pollUntil } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 
@@ -211,77 +209,6 @@ describe('bureau.run of a file agent', () => {
 
     gate.release();
     expect(await midRun.unwrap()).toBe('survived');
-  });
-});
-
-describe('a scheduler task of a file agent', () => {
-  it('runs the definition it was submitted under when the file is edited before it dispatches (COR-1662)', async () => {
-    const gate = gated('first answer');
-    const { bureau, put, observed } = await start({
-      scripts: { [OPUS_5_5]: gate.script, [OPUS_5]: () => 'edited answer' },
-      overrides: { scheduler: { enabled: true, idleDelay: 1 } },
-    });
-    await put('researcher.md', RESEARCHER);
-    await bureau.agents.refresh();
-
-    // The first task holds the scheduler's one slot, so the second waits in the queue.
-    const first = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' });
-    await gate.started;
-    const second = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'two' });
-
-    await put('researcher.md', agentFileText({ model: OTHER_MODEL }, 'Edited instructions.\n'));
-    await bureau.agents.refresh();
-    // A task submitted after the edit takes the edited definition: only the queued one is pinned.
-    const third = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'three' });
-
-    gate.release();
-    for (const task of [first, second, third]) await bureau.awaitSchedulerTask(task.taskId);
-    // OPUS_5_5's script holds the gate, so the first two both ran the original model.
-    expect(observed.map((seen) => [seen.model, seen.systemPrompt])).toEqual([
-      [OPUS_5_5, 'You are a careful researcher.'],
-      [OPUS_5_5, 'You are a careful researcher.'],
-      [OPUS_5, 'Edited instructions.'],
-    ]);
-  });
-});
-
-describe('a scheduler task whose definition cannot be pinned', () => {
-  it('is refused before it is queued, and holds neither a flow-control slot nor a reference (COR-1662)', async () => {
-    // A backing store that refuses the write that ties a run to its definition, once armed.
-    let failReferences = false;
-    class ReferenceRefusingStorage extends MemoryStorage {
-      override async put(key: string, value: Uint8Array): Promise<void> {
-        if (failReferences && key.includes(AGENT_RUN_REFERENCE_KEY_PREFIX)) {
-          throw new Error('reference write refused');
-        }
-        await super.put(key, value);
-      }
-    }
-    const storage = new ReferenceRefusingStorage();
-    const { bureau, put, observed } = await start({
-      scripts: { [OPUS_5_5]: () => 'pinned answer' },
-      overrides: {
-        storage,
-        scheduler: { enabled: true, idleDelay: 1 },
-        flowControl: { concurrency: { limit: 1 } },
-      },
-    });
-    await put('researcher.md', RESEARCHER);
-    await bureau.agents.refresh();
-
-    failReferences = true;
-    const refusal = await rejectionOf(
-      bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' }),
-    );
-    expect((refusal as Error).message).toContain('reference write refused');
-    expect(observed).toEqual([]);
-
-    // The slot the refused submission took was given back: the next submission is admitted, runs, and
-    // is pinned.
-    failReferences = false;
-    const next = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'two' });
-    expect(await bureau.awaitSchedulerTask(next.taskId)).not.toBeNull();
-    expect(observed.map((seen) => seen.model)).toEqual([OPUS_5_5]);
   });
 });
 

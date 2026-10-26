@@ -20,7 +20,7 @@ import {
   waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { appendMessages, createConversationHistory } from 'conversationalist';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -222,7 +222,8 @@ describe('a session deleted while its claims are being taken', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
       ...extra,
