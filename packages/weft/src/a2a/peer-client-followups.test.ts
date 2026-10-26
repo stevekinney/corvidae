@@ -43,6 +43,23 @@ const outputModes =
     return card;
   };
 
+const nonStreaming: ScriptedPeerOptions['card'] = (card) => {
+  if (card.capabilities !== undefined) card.capabilities.streaming = false;
+  return card;
+};
+
+/** Headers arrive and the body never does; aborting the request errors the body, as fetch's does. */
+function stalledBody(request: Request): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        request.signal.addEventListener('abort', () => controller.error(request.signal.reason));
+      },
+    }),
+    { headers: { 'content-type': 'application/json' } },
+  );
+}
+
 describe('a peer card that lists output modes', () => {
   test('is refused when none is text, since the client accepts back only text/plain', async () => {
     const { peer, client } = connect({ card: outputModes(['application/json', 'image/png']) });
@@ -71,29 +88,31 @@ describe('the opening non-streaming send', () => {
   test('is bounded by the task timeout when the response body never completes', async () => {
     const { client } = connect(
       {
-        card: (card) => {
-          if (card.capabilities !== undefined) card.capabilities.streaming = false;
-          return card;
-        },
-        // Headers arrive and the body never does; aborting the request errors the body, as fetch's does.
+        card: nonStreaming,
         intercept: (request, method) =>
-          method === 'SendMessage'
-            ? new Response(
-                new ReadableStream({
-                  start(controller) {
-                    request.signal.addEventListener('abort', () =>
-                      controller.error(request.signal.reason),
-                    );
-                  },
-                }),
-                { headers: { 'content-type': 'application/json' } },
-              )
-            : undefined,
+          method === 'SendMessage' ? stalledBody(request) : undefined,
       },
       { taskTimeoutMs: 30, attempts: 1 },
     );
 
     expect(await codeOf(client.send({ text: 'hi' }))).toBe('timeout');
+  });
+
+  test('ends when the caller aborts while the response body is stalled', async () => {
+    const { client } = connect(
+      {
+        card: nonStreaming,
+        intercept: (request, method) =>
+          method === 'SendMessage' ? stalledBody(request) : undefined,
+      },
+      { taskTimeoutMs: 10_000, attempts: 1 },
+    );
+    const controller = new AbortController();
+
+    const sending = client.send({ text: 'hi', signal: controller.signal });
+    setTimeout(() => controller.abort(new Error('caller gave up')), 20);
+
+    expect(String(await sending.catch((error: unknown) => error))).toContain('caller gave up');
   });
 });
 
