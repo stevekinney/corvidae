@@ -45,7 +45,7 @@ describe('waitForCondition', () => {
     const neverTrue = () => false;
     expect(
       await throwingRejectionOf(
-        waitForCondition(neverTrue, 'expected failure message', 3, async () => {}),
+        waitForCondition(neverTrue, 'expected failure message', 3, async () => {}, 0),
       ),
     ).toThrow('expected failure message');
   });
@@ -103,7 +103,7 @@ describe('waitForRunState', () => {
     };
     expect(
       await throwingRejectionOf(
-        waitForRunState({ getRun: store.getRun }, 'run-never', (r) => r.status === 'completed'),
+        waitForRunState({ getRun: store.getRun }, 'run-never', (r) => r.status === 'completed', 0),
       ),
     ).toThrow('run-never');
   });
