@@ -103,7 +103,7 @@ import {
   type ToolPolicy,
 } from './skills';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
-import { recordToolPolicy, withAddedTools } from './toolbox-additions';
+import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
   type ConditionalTextValueStore,
@@ -508,41 +508,44 @@ function withDefaultToolboxRequestContext(
 ): AnyToolbox {
   if (!requestContext) return toolbox;
 
-  const executeWithDefaultRequestContext = (async (
-    input: ToolCallInput | ToolCallInput[],
-    executeOptions?: ToolboxExecuteOptions,
-  ) => {
-    const options =
-      executeOptions?.requestContext === undefined
-        ? { ...executeOptions, requestContext }
-        : executeOptions;
-    const executionRequestContext = options.requestContext;
-    const authorizationRevision = executionRequestContext?.authority.authorizationRevision;
-    const requiresTransportValidation =
-      authorizationRevision !== undefined &&
-      authorizationRevision !== 'bureau:1' &&
-      authorizationRevision !== 'bureau:scheduler:1';
-    if (requiresTransportValidation && executionRequestContext) {
-      const validator = requestAuthorityValidator();
-      if (
-        !validator ||
-        !(await raceRequestAuthorityValidation(
-          validator(executionRequestContext),
-          options,
-          runtimeServices,
-        ))
-      ) {
-        throw new Error('Request authority is no longer current.');
+  // A layer, so that adding a tool to the toolbox puts this binding back around the result.
+  return withToolboxLayer(toolbox, (inner) => {
+    const executeWithDefaultRequestContext = (async (
+      input: ToolCallInput | ToolCallInput[],
+      executeOptions?: ToolboxExecuteOptions,
+    ) => {
+      const options =
+        executeOptions?.requestContext === undefined
+          ? { ...executeOptions, requestContext }
+          : executeOptions;
+      const executionRequestContext = options.requestContext;
+      const authorizationRevision = executionRequestContext?.authority.authorizationRevision;
+      const requiresTransportValidation =
+        authorizationRevision !== undefined &&
+        authorizationRevision !== 'bureau:1' &&
+        authorizationRevision !== 'bureau:scheduler:1';
+      if (requiresTransportValidation && executionRequestContext) {
+        const validator = requestAuthorityValidator();
+        if (
+          !validator ||
+          !(await raceRequestAuthorityValidation(
+            validator(executionRequestContext),
+            options,
+            runtimeServices,
+          ))
+        ) {
+          throw new Error('Request authority is no longer current.');
+        }
       }
-    }
-    return Array.isArray(input) ? toolbox.execute(input, options) : toolbox.execute(input, options);
-  }) as AnyToolbox['execute'];
+      return Array.isArray(input) ? inner.execute(input, options) : inner.execute(input, options);
+    }) as AnyToolbox['execute'];
 
-  return new Proxy(toolbox, {
-    get(target, property, receiver) {
-      if (property === 'execute') return executeWithDefaultRequestContext;
-      return Reflect.get(target, property, receiver) as unknown;
-    },
+    return new Proxy(inner, {
+      get(target, property, receiver) {
+        if (property === 'execute') return executeWithDefaultRequestContext;
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
   });
 }
 
@@ -3592,15 +3595,18 @@ async function buildRuntimeComposition(
       // context. Order matters only for readability here: both are proxies and
       // neither observes the other, but filtering nearest the toolbox keeps the
       // request-context wrapper the outermost thing a caller sees.
-      skillToolPolicy ? withActiveSkillToolPolicy(toolbox, skillToolPolicy) : toolbox,
+      skillToolPolicy
+        ? withToolboxLayer(toolbox, (rebuilt) =>
+            withActiveSkillToolPolicy(rebuilt, skillToolPolicy),
+          )
+        : toolbox,
       requestContext,
       () => requestAuthorityValidator,
       runtimeServices,
     );
     return Promise.resolve({
       generate,
-      // The policy rides with the toolbox, so a tool added to it later is narrowed too.
-      toolbox: skillToolPolicy ? recordToolPolicy(runToolbox, skillToolPolicy) : runToolbox,
+      toolbox: runToolbox,
       hooks,
       streamEventTarget,
       getActiveSkillRecords,

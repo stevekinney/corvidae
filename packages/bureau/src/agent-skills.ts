@@ -30,7 +30,7 @@ import {
   type SkillGuardrailOptions,
 } from './skills';
 import type { SkillClient } from './skills/client/skill-client';
-import { recordToolPolicy, withAddedTools } from './toolbox-additions';
+import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 
 /**
  * The names of the skill lifecycle tools. An active skill's `allowed-tools` never narrows these
@@ -240,7 +240,7 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
       );
 
       const policy = () => activeSkillToolPolicy(client.narrowedTools());
-      return recordToolPolicy(withActiveSkillToolPolicy(toolbox, policy), policy);
+      return withToolboxLayer(toolbox, (rebuilt) => withActiveSkillToolPolicy(rebuilt, policy));
     },
   };
 }

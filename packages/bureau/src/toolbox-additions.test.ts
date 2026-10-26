@@ -1,10 +1,12 @@
 /**
- * COR-1700 — adding tools to a toolbox must not rebuild it. Before this, Bureau added
- * `requestHumanInput` and `scheduleWakeup` with armorer's `combineToolboxes`, which rebuilds from
- * tool configurations and so dropped everything the base toolbox carried on itself (the same
- * class as COR-321, which dropped approval settings one property at a time). Each test builds a
- * base toolbox with one toolbox-level behavior, adds a tool, and holds the behavior to what it
- * was without the addition. The last test is the class guard: it carries every behavior at once.
+ * COR-1700 — adding tools to a toolbox must keep everything the toolbox carries. Before this,
+ * Bureau added `requestHumanInput` and `scheduleWakeup` with armorer's `combineToolboxes`, which
+ * rebuilds from tool configurations and so dropped what the base carried on itself (the same class
+ * as COR-321, which dropped approval settings one property at a time). `withAddedTools` extends
+ * the base instead, so the added tools share its approval policy, execution mode, operation keys,
+ * and provider conversions, and re-applies the layers (`withToolboxLayer`) around it. Each test
+ * holds one behavior to what it was without the addition. The class guard carries every behavior
+ * at once.
  */
 import { type ToolPolicy, withActiveSkillToolPolicy } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
@@ -19,7 +21,7 @@ import {
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { recordToolPolicy, toolPolicyOf, withAddedTools } from './toolbox-additions';
+import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 
 const REQUEST_CONTEXT: ToolRequestContext = {
   authority: {
@@ -62,6 +64,24 @@ function idempotent(effects: string[]): AnyToolbox {
   });
 }
 
+/** The active-skill gate, as Bureau layers it, so adding a tool re-applies it. */
+const gate = (inner: AnyToolbox, policy: () => ToolPolicy | undefined): AnyToolbox =>
+  withToolboxLayer(inner, (rebuilt) => withActiveSkillToolPolicy(rebuilt, policy));
+
+/** A default request context, as Bureau layers it, so adding a tool re-applies it. */
+const bindRequestContext = (inner: AnyToolbox): AnyToolbox =>
+  withToolboxLayer(
+    inner,
+    (rebuilt) =>
+      new Proxy(rebuilt, {
+        get(target, property, receiver) {
+          if (property !== 'execute') return Reflect.get(target, property, receiver) as unknown;
+          return (call: never, options?: object) =>
+            target.execute(call, { requestContext: REQUEST_CONTEXT, ...options });
+        },
+      }),
+  );
+
 const charge = (id: string) => ({ id, name: 'charge', arguments: { orderId: 'order-1' } });
 
 describe('withAddedTools keeps the base toolbox in force', () => {
@@ -89,19 +109,16 @@ describe('withAddedTools keeps the base toolbox in force', () => {
   it('leaves a tool the active skill hid uncallable, and narrows the added tools by the same policy', async () => {
     let policy: ToolPolicy | undefined = { allowList: ['visible'] };
     const effects: string[] = [];
-    const base = recordToolPolicy(
-      withActiveSkillToolPolicy(
-        createToolbox([
-          chargeTool(effects),
-          createTool({
-            name: 'visible',
-            description: 'visible',
-            input: z.object({}),
-            execute: async () => 'visible',
-          }),
-        ]),
-        () => policy,
-      ),
+    const base = gate(
+      createToolbox([
+        chargeTool(effects),
+        createTool({
+          name: 'visible',
+          description: 'visible',
+          input: z.object({}),
+          execute: async () => 'visible',
+        }),
+      ]),
       () => policy,
     );
     const toolbox = withAddedTools(base, additionsToolbox());
@@ -121,20 +138,13 @@ describe('withAddedTools keeps the base toolbox in force', () => {
   });
 
   it('offers none of the added tools when the policy allows nothing', () => {
-    const base = recordToolPolicy(
-      withActiveSkillToolPolicy(createToolbox([]), () => ({
-        allowList: [],
-      })),
-      () => ({ allowList: [] }),
-    );
+    const base = gate(createToolbox([]), () => ({ allowList: [] }));
     expect(withAddedTools(base, additionsToolbox()).tools()).toEqual([]);
   });
 
-  it('records the policy on what it returns, so a second addition is narrowed too', () => {
-    const policy = () => ({ allowList: [] }) as ToolPolicy;
-    const base = recordToolPolicy(withActiveSkillToolPolicy(createToolbox([]), policy), policy);
+  it('keeps its layers through a second addition, so that one is narrowed too', () => {
+    const base = gate(createToolbox([]), () => ({ allowList: [] }));
     const once = withAddedTools(base, additionsToolbox());
-    expect(toolPolicyOf(once)).toBe(policy);
     expect(withAddedTools(once, additionsToolbox()).tools()).toEqual([]);
   });
 
@@ -152,13 +162,7 @@ describe('withAddedTools keeps the base toolbox in force', () => {
       },
     });
     const inner = createToolbox([probe]);
-    const bound = new Proxy(inner, {
-      get(target, property, receiver) {
-        if (property !== 'execute') return Reflect.get(target, property, receiver) as unknown;
-        return (call: never, options?: object) =>
-          target.execute(call, { requestContext: REQUEST_CONTEXT, ...options });
-      },
-    });
+    const bound = bindRequestContext(inner);
 
     await withAddedTools(bound, additionsToolbox()).execute({
       id: 'probe-1',
@@ -199,6 +203,181 @@ describe('withAddedTools keeps the base toolbox in force', () => {
   });
 });
 
+const APPROVAL_CONTEXT: ToolRequestContext = {
+  ...REQUEST_CONTEXT,
+  audience: 'operator',
+  agentId: 'default',
+  runId: 'approval-run',
+};
+
+/** A versioned tool, as approval requires, that records each run. */
+function versionedTool(name: string, ran: string[]) {
+  return createTool({
+    name,
+    version: '1.0.0',
+    description: name,
+    input: z.object({}),
+    execute: async () => {
+      ran.push(name);
+      return name;
+    },
+  });
+}
+
+describe('an added tool is held to the base toolbox’s approval policy', () => {
+  const withApproval = (mode: 'always' | 'deny', ran: string[]) =>
+    withAddedTools(
+      createToolbox([versionedTool('host', ran)], {
+        approvalSecret: 'additions-secret',
+        approvalPolicy: { mode },
+      }),
+      createToolbox([versionedTool('added', ran)]),
+    );
+  const call = { id: 'a', name: 'added', arguments: {} };
+
+  it('refuses it under mode: deny, as it refuses the host’s own tool', async () => {
+    const ran: string[] = [];
+    const toolbox = withApproval('deny', ran);
+    const host = await toolbox.execute(
+      { ...call, name: 'host' },
+      { requestContext: APPROVAL_CONTEXT },
+    );
+    const added = await toolbox.execute(call, { requestContext: APPROVAL_CONTEXT });
+    expect(host.outcome).toBe(added.outcome);
+    expect(added.outcome).not.toBe('success');
+    expect(ran).toEqual([]);
+  });
+
+  it('asks for approval under mode: always, and does not run it', async () => {
+    const ran: string[] = [];
+    const added = await withApproval('always', ran).execute(call, {
+      requestContext: APPROVAL_CONTEXT,
+    });
+    expect(added).toMatchObject({ outcome: 'action_required' });
+    expect(ran).toEqual([]);
+  });
+
+  it('runs it on a reusable grant once, then asks again', async () => {
+    const ran: string[] = [];
+    const toolbox = withApproval('always', ran);
+    await toolbox.issueGrant({
+      principalId: 'alice',
+      tenantId: 'bureau',
+      ownerId: 'alice',
+      agentId: 'default',
+      toolName: 'added',
+      scope: 'principal',
+      expiresAt: Number.MAX_SAFE_INTEGER,
+      maxUses: 1,
+      delegationBehavior: 'does-not-propagate',
+    });
+    const first = await toolbox.execute(call, { requestContext: APPROVAL_CONTEXT });
+    const second = await toolbox.execute(
+      { ...call, id: 'b' },
+      { requestContext: APPROVAL_CONTEXT },
+    );
+    expect(first.outcome).toBe('success');
+    expect(second).toMatchObject({ outcome: 'action_required' });
+    expect(ran).toEqual(['added']);
+  });
+});
+
+describe('a batch keeps its execution mode and its order across base and added tools', () => {
+  /** Tools that log when they start and end, yielding in between so overlap would show. */
+  function loggingToolbox(log: string[]) {
+    const logging = (name: string) =>
+      createTool({
+        name,
+        description: name,
+        input: z.object({}),
+        execute: async () => {
+          log.push(`start:${name}`);
+          for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+          log.push(`end:${name}`);
+          return name;
+        },
+      });
+    return withAddedTools(
+      createToolbox([logging('first'), logging('third')]),
+      createToolbox([logging('second')]),
+    );
+  }
+  const calls = ['first', 'second', 'third'].map((name) => ({
+    id: name,
+    name,
+    arguments: {},
+  }));
+
+  it('runs a sequential batch one call at a time, in the order the calls came in', async () => {
+    const log: string[] = [];
+    const results = await loggingToolbox(log).execute(calls, { mode: 'sequential' });
+    expect(log).toEqual([
+      'start:first',
+      'end:first',
+      'start:second',
+      'end:second',
+      'start:third',
+      'end:third',
+    ]);
+    expect(results.map((result) => result.toolName)).toEqual(['first', 'second', 'third']);
+  });
+
+  it('returns a parallel batch’s results at the calls’ positions', async () => {
+    const results = await loggingToolbox([]).execute(calls, { mode: 'parallel' });
+    expect(results.map((result) => result.toolName)).toEqual(['first', 'second', 'third']);
+  });
+
+  it('gives each call the key of its position in the whole batch', async () => {
+    const keys: string[] = [];
+    const keyed = (name: string) =>
+      createTool({
+        name,
+        description: name,
+        input: z.object({}),
+        execute: async (_input, context) => {
+          keys.push(`${name}=${(context as { durableOperationKey?: string }).durableOperationKey}`);
+          return name;
+        },
+      });
+    const toolbox = withAddedTools(createToolbox([keyed('host')]), createToolbox([keyed('added')]));
+    await toolbox.execute(
+      [
+        { id: '0', name: 'added', arguments: {} },
+        { id: '1', name: 'host', arguments: {} },
+        { id: '2', name: 'added', arguments: {} },
+      ],
+      { durableOperationKey: (_call, index) => `key-${index}` },
+    );
+    expect(keys.toSorted()).toEqual(['added=key-0', 'added=key-2', 'host=key-1']);
+  });
+});
+
+describe('a shadowed addition is advertised nowhere', () => {
+  it('lists the host’s tool alone in tools(), toJSON(), and the provider conversions', async () => {
+    const host = createToolbox([
+      createTool({
+        name: 'added',
+        description: 'the host’s own',
+        input: z.object({ note: z.string() }),
+        execute: async () => 'host',
+      }),
+    ]);
+    const toolbox = withAddedTools(host, additionsToolbox());
+    const openAI = await toolbox.toOpenAITools();
+    const anthropic = await toolbox.toAnthropicTools();
+
+    // One entry each, and none of them the shadowed Bureau tool (its description is distinct).
+    expect(toolbox.tools()).toHaveLength(1);
+    expect(openAI).toHaveLength(1);
+    expect(anthropic).toHaveLength(1);
+    expect(toolbox.toJSON()).toHaveLength(1);
+    for (const advertised of [toolbox.tools(), openAI, anthropic, toolbox.toJSON()]) {
+      expect(JSON.stringify(advertised)).not.toContain('a tool Bureau adds');
+    }
+    expect(JSON.stringify(openAI)).toContain('note');
+  });
+});
+
 describe('class guard: every toolbox-level behavior survives an addition', () => {
   /** One toolbox-level behavior, the base that carries it, and what must still hold. */
   type Behavior = {
@@ -208,15 +387,6 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
   };
 
   const allowOnly = (names: readonly string[]) => (): ToolPolicy => ({ allowList: [...names] });
-  const bindRequestContext = (inner: AnyToolbox): AnyToolbox =>
-    new Proxy(inner, {
-      get(target, property, receiver) {
-        if (property !== 'execute') return Reflect.get(target, property, receiver) as unknown;
-        return (call: never, options?: object) =>
-          target.execute(call, { requestContext: REQUEST_CONTEXT, ...options });
-      },
-    });
-
   const behaviors: readonly Behavior[] = [
     {
       name: 'idempotency',
@@ -237,11 +407,7 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
     {
       name: 'skill gate',
       base: () => {
-        const policy = allowOnly(['charge']);
-        return recordToolPolicy(
-          withActiveSkillToolPolicy(createToolbox([chargeTool([])]), policy),
-          policy,
-        );
+        return gate(createToolbox([chargeTool([])]), allowOnly(['charge']));
       },
       holds: async (toolbox) => {
         expect(toolbox.tools().map((tool) => tool.name)).toEqual(['charge']);
@@ -301,10 +467,7 @@ describe('class guard: every toolbox-level behavior survives an addition', () =>
   it('keeps all of them when they are stacked on one base', async () => {
     const effects: string[] = [];
     const policy = allowOnly(['charge']);
-    const stacked = recordToolPolicy(
-      bindRequestContext(withActiveSkillToolPolicy(idempotent(effects), policy)),
-      policy,
-    );
+    const stacked = bindRequestContext(gate(idempotent(effects), policy));
     const toolbox = withAddedTools(stacked, additionsToolbox());
 
     const first = await toolbox.execute(charge('1'));

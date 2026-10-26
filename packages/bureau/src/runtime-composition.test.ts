@@ -1379,8 +1379,8 @@ describe('Bureau hook tier composition (COR-1265)', () => {
           'agent-own-tool',
           'requestHumanInput',
         ]);
-        expect(services.options.toolbox.getTool('agent-own-tool')).toBe(
-          toolbox.getTool('agent-own-tool'),
+        expect(services.options.toolbox.getTool('agent-own-tool')?.description).toBe(
+          toolbox.getTool('agent-own-tool')?.description,
         );
         expect(services.options.generate).toBe(options.generate);
       } finally {
