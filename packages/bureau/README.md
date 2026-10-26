@@ -866,7 +866,7 @@ Two further options let an application publish MCP Apps beside the tools. `resou
 | Resource | Linked tool | What it does |
 | --- | --- | --- |
 | `ui://bureau/run-inspector/v1` | `bureau.tasks.inspect` | One task's liveness, ownership tree, progress, result, and abort. Reads `bureau.tasks.inspect` (`bureau.task-inspection.v1`: no transcript, prompt, tool argument, result, or checkpoint) and aborts through `bureau.tasks.cancel`. |
-| `ui://bureau/pending-review/v1` | `bureau.reviews.list` | The caller's pending reviews. Reads through `bureau.reviews.get` and decides through `bureau.reviews.resolve`: approve, deny, or reject with feedback, which `reject` carries as its `reason`. |
+| `ui://bureau/pending-review/v1` | `bureau.reviews.list` | The caller's pending reviews. Reads through `bureau.reviews.get` and decides through `bureau.reviews.resolve`: approve, deny, or reject with feedback, which `reject` carries as its `reason`. It sends the `round` it displayed, so a decision on a review that was re-gated meanwhile is refused as a `Conflict` instead of landing on the replacement. |
 
 The inspector also follows a task through `bureau.tasks.events`. Both declare an empty content-security policy (no network origin, frame, or base URI) and no permissions, which a host reads as denied, and neither asks for a dedicated sandbox origin. The version is part of each URI: a changed contract is a new URI. Closing an app never cancels a run; abort is the explicit `bureau.tasks.cancel`. The MCP Apps contract Bureau uses for tracked surfaces, including the `mcp-app` representation, is [`documentation/interactive-surface.md`](./documentation/interactive-surface.md); the adapter's apps are plain tool-linked pages and do not create surfaces.
 

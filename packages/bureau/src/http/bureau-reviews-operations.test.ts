@@ -9,7 +9,12 @@ import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { ApprovalOutcomeNotWrittenError, BureauError, createBureau } from '../create-bureau.ts';
+import {
+  ApprovalOutcomeNotWrittenError,
+  BureauError,
+  createBureau,
+  ReviewRoundChangedError,
+} from '../create-bureau.ts';
 import { waitForCondition } from '../test';
 import type { Bureau, PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
 import {
@@ -533,6 +538,67 @@ describe('bureau.reviews.resolve', () => {
     expect(JSON.stringify(unwritten.error)).not.toContain('"code":"APPROVAL');
   });
 
+  it('forwards the round the caller read to the Bureau, and omits it when none was named (COR-1659)', async () => {
+    const record: ResolveReviewInput[] = [];
+    const handler = serve(stubHost({}, record));
+    const id = 'approval:run-1:call-1';
+
+    await call(handler, 'bureau.reviews.resolve', { id, decision: 'approve', round: 2 });
+    await call(handler, 'bureau.reviews.resolve', { id, decision: 'deny', round: 0 });
+    await call(handler, 'bureau.reviews.resolve', { id, decision: 'deny' });
+
+    expect(record).toEqual([
+      { id, decision: 'approve', principal: 'api-key:tester', round: 2 },
+      { id, decision: 'deny', principal: 'api-key:tester', round: 0 },
+      { id, decision: 'deny', principal: 'api-key:tester' },
+    ]);
+  });
+
+  it('refuses a round that is not a non-negative integer before the Bureau is reached (COR-1659)', async () => {
+    const record: ResolveReviewInput[] = [];
+    const handler = serve(stubHost({}, record));
+
+    for (const round of [-1, 1.5, '1']) {
+      const body = await call(handler, 'bureau.reviews.resolve', {
+        id: 'approval:run-1:call-1',
+        decision: 'approve',
+        round,
+      });
+      expect(body.error?.data?.httpStatus, String(round)).toBe(400);
+    }
+    expect(record).toEqual([]);
+  });
+
+  it('tells a review that moved to another round from a resolver that lost (COR-1659)', async () => {
+    const input = { id: 'approval:run-1:call-1', decision: 'approve', round: 0 };
+    const failing = (error: BureauError) =>
+      serve(
+        stubHost({
+          resolveReview: async () => {
+            throw error;
+          },
+        }),
+      );
+    const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
+      (reply.error?.data as { reason?: string } | undefined)?.reason;
+
+    const moved = await call(
+      failing(new ReviewRoundChangedError('now at round 1')),
+      'bureau.reviews.resolve',
+      input,
+    );
+    const lost = await call(
+      failing(new BureauError('already resolved', 'CONFLICT')),
+      'bureau.reviews.resolve',
+      input,
+    );
+
+    expect(moved.error?.data?.httpStatus).toBe(409);
+    expect(reasonOf(moved)?.startsWith('REVIEW_ROUND_CHANGED: ')).toBe(true);
+    expect(reasonOf(lost)?.startsWith('REVIEW_ROUND_CHANGED')).toBe(false);
+    expect(JSON.stringify(lost.error)).not.toContain('REVIEW_ROUND_CHANGED');
+  });
+
   it('answers Forbidden to an authenticated caller it cannot attribute, even one that holds the scope', async () => {
     const record: ResolveReviewInput[] = [];
     const authenticate = async () => ({
@@ -792,6 +858,112 @@ describe('the reviews operations against a real Bureau', () => {
       expect(row?.toolResult?.outcome).toBe('success');
       expect(row?.toolResult?.content).toEqual({ charged: 500 });
       expect(charges).toEqual([500]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('refuses a decision on a round the review has moved past, through the handler (COR-1659)', async () => {
+    const charges: number[] = [];
+    let generations = 0;
+    let evaluations = 0;
+    // A policy that gates the resumed call again, so an approval supersedes itself: round 0 to 1.
+    const toolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'handler-approval-secret',
+        policy: {
+          // The reason changes with each evaluation, so the approval it binds does not carry over.
+          beforeExecute: () => {
+            evaluations += 1;
+            return {
+              allow: false,
+              status: 'needs_approval',
+              reason: `Operator approval required (evaluation ${evaluations})`,
+              action: { message: 'Approve charge' },
+            };
+          },
+        },
+      },
+    ) as unknown as Toolbox;
+    const bureau = await createBureau<AgentDefinitions>({
+      assets: { storage: createMemoryAssetStorage() },
+      id: 'reviews-round-fence-bureau',
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            generations++;
+            return generations === 1
+              ? {
+                  content: '',
+                  toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+                }
+              : { content: 'Charged.', toolCalls: [] };
+          },
+          toolbox,
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    try {
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'Charge it',
+        principal: 'api-key:tester',
+      });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the tool call to surface a pending approval',
+      );
+      const handler = createBureauHandler(bureau, { authentication });
+      const listed = await call(handler, 'bureau.reviews.list', {});
+      const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string; round: number }>;
+      expect(review?.round).toBe(0);
+      const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
+        (reply.error?.data as { reason?: string } | undefined)?.reason;
+
+      // The first resolver supersedes round 0, so the review is now at round 1.
+      const first = await call(handler, 'bureau.reviews.resolve', {
+        id: review?.id,
+        decision: 'approve',
+        round: 0,
+      });
+      expect(first.result).toMatchObject({ receipt: 'superseded' });
+      const reread = await call(handler, 'bureau.reviews.get', { id: review?.id });
+      expect(reread.result).toMatchObject({ status: 'pending', round: 1 });
+
+      // A second resolver that still shows round 0 is refused, and nothing changes.
+      const stale = await call(handler, 'bureau.reviews.resolve', {
+        id: review?.id,
+        decision: 'deny',
+        round: 0,
+      });
+      expect(stale.error?.data?.httpStatus).toBe(409);
+      expect(reasonOf(stale)?.startsWith('REVIEW_ROUND_CHANGED: ')).toBe(true);
+      const unchanged = await call(handler, 'bureau.reviews.get', { id: review?.id });
+      expect(unchanged.result).toMatchObject({ status: 'pending', round: 1 });
+
+      // The round it reads next decides.
+      const current = await call(handler, 'bureau.reviews.resolve', {
+        id: review?.id,
+        decision: 'deny',
+        round: 1,
+      });
+      expect(current.result).toMatchObject({ decision: 'deny', receipt: 'applied' });
+      expect(charges).toEqual([]);
     } finally {
       await bureau.dispose();
     }

@@ -23,7 +23,12 @@ import { describe, expect, it, spyOn } from 'bun:test';
 import type { Message } from 'conversationalist';
 import { z } from 'zod';
 
-import { ApprovalOutcomeNotWrittenError, BureauError, createBureau } from './create-bureau';
+import {
+  ApprovalOutcomeNotWrittenError,
+  BureauError,
+  createBureau,
+  ReviewRoundChangedError,
+} from './create-bureau';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 
@@ -245,6 +250,75 @@ describe('resolveReview writes the outcome of a tool approval into the session',
       expect(afterSecond[0]).toMatchObject({ kind: 'tool-approval', round: 2 });
       const stored = await bureau.getSession(review.sessionId);
       expect(stored?.metadata['pendingApprovalRounds']).toEqual({ [review.id]: 2 });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('fencing a resolution on the round the caller read (COR-1659)', () => {
+  it('refuses a resolution of a round the review has moved past, before anything happens', async () => {
+    const charges: number[] = [];
+    const { bureau, run, review } = await parkedBureau(regatingToolbox(charges));
+    try {
+      // The round read was 0; another resolver gets in between and supersedes it.
+      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'bob' });
+      const moved = bureau.listPendingReviews();
+      expect(moved[0]).toMatchObject({ id: review.id, kind: 'tool-approval', round: 1 });
+      const before = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
+
+      const error = await bureau
+        .resolveReview({ id: review.id, decision: 'deny', principal: 'alice', round: 0 })
+        .then(
+          () => undefined,
+          (rejection: unknown) => rejection,
+        );
+
+      expect(error).toBeInstanceOf(ReviewRoundChangedError);
+      expect((error as BureauError).code).toBe('CONFLICT');
+      // Nothing took effect: the review is still pending at its own round, with no decision and no write.
+      // Ages move with the clock; everything else about the pending review stays put.
+      const unchanged = bureau
+        .listPendingReviews()
+        .map(({ ageMilliseconds: _age, ...rest }) => rest);
+      expect(unchanged).toEqual(moved.map(({ ageMilliseconds: _age, ...rest }) => rest));
+      expect(resultRow(await sessionRows(bureau, run.sessionId), 'call-1')).toEqual(before);
+      const reread = await bureau.getReview(review.id);
+      expect(reread?.status).toBe('pending');
+      expect(charges).toEqual([]);
+
+      // The round the caller then reads decides, and a call naming no round is unfenced as before.
+      const current = await bureau.resolveReview({
+        id: review.id,
+        decision: 'approve',
+        principal: 'alice',
+        round: 1,
+      });
+      expect(current.superseded).toBe(true);
+      const unfenced = await bureau.resolveReview({
+        id: review.id,
+        decision: 'approve',
+        principal: 'alice',
+      });
+      expect(unfenced.superseded).toBe(true);
+      expect(bureau.listPendingReviews()[0]).toMatchObject({ round: 3 });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('applies a resolution that names the round the review is at', async () => {
+    const charges: number[] = [];
+    const { bureau, review } = await parkedBureau(approvalToolbox(charges));
+    try {
+      const resolved = await bureau.resolveReview({
+        id: review.id,
+        decision: 'approve',
+        principal: 'alice',
+        round: 0,
+      });
+      expect(resolved.decision).toBe('approve');
+      expect(charges).toHaveLength(1);
     } finally {
       await bureau.dispose();
     }

@@ -12,6 +12,7 @@ import type {
 } from '../types';
 import { CURRENT_SCHEMA_VERSION } from '../types';
 import { buildMessageFromInput, toReadonly } from '../utilities';
+import { runMessagePlugins } from './plugin-media-guard';
 import { ensureConversationSafe, ensureMessageSafe } from './validation';
 
 /**
@@ -75,7 +76,7 @@ export function buildMessage(
     isConversationEnvironmentParameter(options) ? options : environment,
   );
   const resolvedOptions = isConversationEnvironmentParameter(options) ? undefined : options;
-  const processedInput = resolvedEnvironment.plugins.reduce((acc, plugin) => plugin(acc), input);
+  const processedInput = runMessagePlugins(input, resolvedEnvironment.plugins);
   const message = buildMessageFromInput(
     processedInput,
     resolvedOptions?.position ?? 0,

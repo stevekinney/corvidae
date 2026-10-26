@@ -19,6 +19,7 @@ import type {
 import { createMessage } from '../utilities/message';
 import { getOrderedMessages } from '../utilities/message-store';
 import { toReadonly } from '../utilities/type-helpers';
+import { runMessagePlugins } from './plugin-media-guard';
 import type { AppendToolResultOptions } from './tool-interactions';
 import { ensureConversationSafe } from './validation';
 
@@ -92,10 +93,7 @@ function replaceToolResultMessage(
   resolvedEnvironment: ConversationEnvironment,
 ): Conversation {
   const draftInput = createToolResultDraft(original, normalizedToolResult, resolvedOptions);
-  const processedInput = resolvedEnvironment.plugins.reduce(
-    (acc, plugin) => plugin(acc),
-    draftInput,
-  );
+  const processedInput = runMessagePlugins(draftInput, resolvedEnvironment.plugins);
 
   const now = resolvedEnvironment.now();
   const replaced = createMessage({
