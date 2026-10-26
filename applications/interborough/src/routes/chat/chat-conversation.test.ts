@@ -488,6 +488,7 @@ describe('an existing session', () => {
             agentName: 'assistant',
             owner: 'anonymous:local',
             actor: null,
+            kind: 'chat',
             status: 'failed',
             finishReason: null,
             statusMessage: null,

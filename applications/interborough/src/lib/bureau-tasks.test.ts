@@ -24,6 +24,7 @@ const TASK = {
   agentName: 'assistant',
   owner: 'anonymous:local',
   actor: null,
+  kind: 'chat',
   status: 'working',
   finishReason: null,
   statusMessage: null,

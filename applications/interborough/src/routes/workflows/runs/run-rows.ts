@@ -101,11 +101,17 @@ function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
       href: chatSessionPath(task.contextId),
     };
   }
-  // A task that is not a fire is a chat's only when a session the caller lists has its `contextId`:
-  // the wire task does not say whether that id is a session or a catalog run's handle, which no
-  // chat has, so another owner's chat cannot be told from a handle and reads as started directly.
-  if (chat === undefined) return { kind: 'none' };
-  return { kind: 'chat', title: chat.title ?? '', href: chatSessionPath(chat.id) };
+  // A caller lists only its own sessions, so a chat another owner started is not among them. The
+  // task says whether its `contextId` is a chat session, and then the link comes from the task, as
+  // a fire's does. A catalog run's `contextId` is a handle no chat has, so it links nothing unless
+  // the caller lists a session by that id.
+  if (chat !== undefined) {
+    return { kind: 'chat', title: chat.title ?? '', href: chatSessionPath(chat.id) };
+  }
+  if (task.kind === 'chat') {
+    return { kind: 'chat', title: '', href: chatSessionPath(task.contextId) };
+  }
+  return { kind: 'none' };
 }
 
 function taskRow(task: TaskView, chats: ReadonlyMap<string, ChatContext>): RunRow {

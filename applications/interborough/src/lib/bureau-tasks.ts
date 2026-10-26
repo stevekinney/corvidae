@@ -57,6 +57,11 @@ export const taskViewSchema = z.object({
   agentName: z.string().nullable(),
   owner: z.string(),
   actor: z.string().nullable(),
+  /**
+   * What `contextId` names: a chat session, a schedule's fire in one, or a catalog run's handle,
+   * which no chat has.
+   */
+  kind: z.enum(['chat', 'schedule-fire', 'catalog']),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().nullable(),

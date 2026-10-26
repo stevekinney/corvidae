@@ -10,6 +10,7 @@ const task = (id: string, contextId: string, status: TaskView['status'], updated
     agentName: 'assistant',
     owner: 'anonymous:local',
     actor: null,
+    kind: 'chat',
     status,
     finishReason: null,
     statusMessage: null,

@@ -47,6 +47,7 @@ const ECHO_TASK = {
   agentName: 'echo',
   owner: 'anonymous:local',
   actor: null,
+  kind: 'chat',
   status: 'completed',
   finishReason: 'stop-condition',
   statusMessage: null,

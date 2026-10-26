@@ -14,6 +14,7 @@ export function taskFixture(overrides: Partial<TaskView> = {}): TaskView {
     agentName: 'assistant',
     owner: 'anonymous:local',
     actor: null,
+    kind: 'chat',
     status: 'working',
     finishReason: null,
     statusMessage: null,

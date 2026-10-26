@@ -106,6 +106,21 @@ export type TaskCleanupState =
 /** The kinds of task that are not ordinary runs. */
 export type TaskKind = 'schedule-fire';
 
+/**
+ * What a task's `contextId` names, as the management plane shows it (COR-1689): `chat` for a run
+ * in a session, `schedule-fire` for one fire of a schedule (which runs in a session too), and
+ * `catalog` for a `bureau.run()` dispatch, whose `contextId` is its own handle unless the caller
+ * named a session. The kind a record stores ({@link TaskKind}) is only the fire; the rest is read
+ * from the incarnation, which a catalog record has always left empty.
+ */
+export type TaskViewKind = 'chat' | 'schedule-fire' | 'catalog';
+
+/** The kind a task record reads as. See {@link TaskViewKind}. */
+export function taskViewKindOf(record: Pick<TaskRecord, 'kind' | 'incarnation'>): TaskViewKind {
+  if (record.kind === 'schedule-fire') return 'schedule-fire';
+  return record.incarnation === '' ? 'catalog' : 'chat';
+}
+
 /** One message in a task's own history: what the requester said, not the session transcript. */
 export interface TaskMessage {
   readonly messageId: string;
@@ -219,6 +234,8 @@ export interface TaskView {
   readonly owner: string;
   /** The service principal that started the task for its owner, or `null` when its owner did. */
   readonly actor: string | null;
+  /** What `contextId` names. See {@link TaskViewKind}. */
+  readonly kind: TaskViewKind;
   readonly status: TaskState;
   readonly finishReason: string | null;
   readonly statusMessage: string | null;
@@ -876,6 +893,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       agentName: record.agentName,
       owner: record.owner,
       actor: record.actor ?? null,
+      kind: taskViewKindOf(record),
       status,
       finishReason,
       statusMessage,
