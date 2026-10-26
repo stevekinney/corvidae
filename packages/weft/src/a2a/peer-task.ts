@@ -116,12 +116,14 @@ class PeerTaskRun implements A2APeerTask {
       this.stream = first.opened;
       this.tracker.apply(first.head);
     } else {
-      const response = await this.withRetry(
-        () => this.context.client.sendMessage(request, this.callOptions()),
-        this.follow.signal,
-      );
+      const response = await this.withRetry(() => this.boundedSend(request), this.follow.signal);
       if (isTask(response)) this.tracker.applyTask(response);
       else this.tracker.apply({ payload: { $case: 'message', value: response } });
+    }
+    // A first response that names no task leaves nothing to follow or cancel.
+    if (this.tracker.taskId() === '' && !this.tracker.stopped()) {
+      this.closeStream();
+      throw new A2APeerError('protocol', "The peer's first response did not name a task.");
     }
     this.tracker.markHeadSeen();
     this.opened = true;
@@ -148,6 +150,34 @@ class PeerTaskRun implements A2APeerTask {
     } catch (error) {
       void Promise.allSettled([opened.return()]);
       throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * The opening non-streaming request, bounded by the task timeout: the request timeout ends once
+   * headers arrive, so a peer that stalls mid-body would otherwise hold `send()` open forever.
+   */
+  private async boundedSend(request: SendMessageRequest): Promise<Message | Task> {
+    const bound = new AbortController();
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      bound.abort();
+    }, this.context.taskTimeoutMs);
+    try {
+      // Either signal ends the request, one that has already aborted included.
+      return await this.context.client.sendMessage(request, {
+        ...this.context.requestOptions,
+        signal: AbortSignal.any([this.follow.signal, bound.signal]),
+      });
+    } catch (error) {
+      if (!expired) throw error;
+      throw new A2APeerError(
+        'timeout',
+        `The peer sent no complete response within ${this.context.taskTimeoutMs} ms.`,
+      );
     } finally {
       clearTimeout(timer);
     }
