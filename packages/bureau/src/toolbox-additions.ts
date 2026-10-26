@@ -55,17 +55,15 @@ function composeAddedTools(base: AnyToolbox, additions: AnyToolbox): AnyToolbox 
   const isAdded = (call: ToolCallInput): boolean =>
     !ownedByBase(call.name) && additions.getTool(call.name) !== undefined;
 
-  const execute = async (
-    input: ToolCallInput | ToolCallInput[],
-    options?: Parameters<AnyToolbox['execute']>[1],
-  ): Promise<ToolExecutionResult | ToolExecutionResult[]> => {
-    if (!Array.isArray(input)) {
-      return isAdded(input) ? additions.execute(input, options) : base.execute(input, options);
-    }
-    // One batch for `base` (it may run its calls together) and one call per addition, with the
-    // results put back in the order the calls came in.
-    const forBase = input.filter((call) => !isAdded(call));
-    const baseResults = forBase.length === 0 ? [] : await base.execute(forBase, options);
+  /** A batch with calls for both: one batch for `base`, one call per addition, in call order. */
+  const executeMixed = async (
+    input: ToolCallInput[],
+    options: Parameters<AnyToolbox['execute']>[1],
+  ): Promise<ToolExecutionResult[]> => {
+    const baseResults = await base.execute(
+      input.filter((call) => !isAdded(call)),
+      options,
+    );
     let nextBase = 0;
     return await Promise.all(
       input.map((call) =>
@@ -74,6 +72,24 @@ function composeAddedTools(base: AnyToolbox, additions: AnyToolbox): AnyToolbox 
           : Promise.resolve(baseResults[nextBase++]!),
       ),
     );
+  };
+
+  // Not `async`: a call that is all `base`'s or all additions' goes straight to the toolbox that
+  // owns it, with no extra promise between the caller and the result. A run's park and its step
+  // events are ordered by the ticks a tool call takes, so this adds none.
+  const execute = (
+    input: ToolCallInput | ToolCallInput[],
+    options?: Parameters<AnyToolbox['execute']>[1],
+  ): Promise<ToolExecutionResult | ToolExecutionResult[]> => {
+    if (!Array.isArray(input)) {
+      return isAdded(input) ? additions.execute(input, options) : base.execute(input, options);
+    }
+    const added = input.filter(isAdded).length;
+    if (added === 0) return base.execute(input, options);
+    if (added === input.length) {
+      return Promise.all(input.map((call) => additions.execute(call, options)));
+    }
+    return executeMixed(input, options);
   };
 
   const concatenated = async <T>(read: (toolbox: AnyToolbox) => Promise<T[]>): Promise<T[]> => [
