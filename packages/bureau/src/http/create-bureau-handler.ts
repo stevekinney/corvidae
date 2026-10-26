@@ -512,7 +512,7 @@ function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions):
   if (!bureau.hasDurableEngine) {
     fail(
       'agUi needs a Bureau with a durable engine: its human-wait parks and run-creation receipts ' +
-        'both depend on one. Configure storage and `durableExecution` on createBureau',
+        'both depend on one. Configure storage and `durable` on createBureau',
     );
   }
 }
@@ -558,7 +558,7 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
     fail(
       'publicUrl needs a Bureau with a durable engine: every A2A send creates its task through a ' +
         'run-creation receipt, which only a durable engine keeps. Configure storage and ' +
-        '`durableExecution` on createBureau',
+        '`durable` on createBureau',
     );
   }
   // An exact retry of a send resolves through its binding to the task it created, so the task
@@ -570,7 +570,7 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
     retention.olderThan < COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS
   ) {
     fail(
-      `serving A2A needs the Bureau's taskRetention to be at least the ` +
+      `serving A2A needs the Bureau's retention.tasks window to be at least the ` +
         `${COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} ms a send's idempotency binding is kept ` +
         `(got ${retention.olderThan} ms)`,
     );

@@ -146,7 +146,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     try {
@@ -243,7 +243,7 @@ describe('the owner of a catalog run (COR-718)', () => {
     for (const durable of [false, true]) {
       const bureau = await createBureau({
         agents: { worker },
-        ...(durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+        ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
       });
       try {
         const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
@@ -274,7 +274,7 @@ describe('durable history follows the owner of record (COR-718)', () => {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     return { bureau, directory };
@@ -350,7 +350,7 @@ describe('the history of a live catalog run (COR-718)', () => {
     const bureau = await createBureau({
       agents: { worker },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     try {

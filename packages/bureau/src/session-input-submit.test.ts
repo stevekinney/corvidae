@@ -40,7 +40,7 @@ async function finishedRunWithHeldTerminalWrite() {
       }),
     },
     storage: seam.storage,
-    durableExecution: true,
+    durable: true,
     onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
   });
   const held = seam.holdWrite(savesSessionAs('completed'));
@@ -134,7 +134,7 @@ describe('submitSessionInput marks the session again once its admission commits 
         }),
       },
       storage: seam.storage,
-      durableExecution: true,
+      durable: true,
     });
     const holds: Array<{ release: () => void }> = [];
     try {
@@ -184,7 +184,7 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
         }),
       },
       storage: seam.storage,
-      durableExecution: true,
+      durable: true,
       onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
     });
     const holds: Array<{ release: () => void }> = [];
@@ -258,7 +258,7 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
         }),
       },
       storage: new MemoryStorage(),
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -292,7 +292,7 @@ async function parkingBureau() {
       }),
     },
     storage: new MemoryStorage(),
-    durableExecution: true,
+    durable: true,
   });
   const startRun = async (request: { message: string; sessionId?: string }) => {
     const started = deferred();

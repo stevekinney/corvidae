@@ -78,7 +78,7 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
     const bureau = await createBureau({
       agents: { photographer: photographer(seen) },
       assets: { storage: fixture.storage },
-      ...(durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+      ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
     });
     cleanups.push(async () => {
       await bureau.dispose();
@@ -162,7 +162,7 @@ describe('a tool-returned image through an approved review', () => {
       },
       assets: { storage: fixture.storage },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     cleanups.push(async () => {
       await bureau.dispose();

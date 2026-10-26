@@ -51,7 +51,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       assets: { storage: fixture.storage },
     });
     try {
@@ -105,7 +105,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       let thrown: unknown;

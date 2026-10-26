@@ -162,7 +162,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: intercept.storage,
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
@@ -203,7 +203,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       expect(bCalls).toBe(0);
@@ -284,7 +284,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       const run = await bureauA.createRun({ agentName: 'default', message: 'park-then-continue' });
@@ -314,7 +314,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       await waitForCompleted(bureauB, runId);
@@ -348,7 +348,7 @@ describe('bounded duplicate park events (COR-121)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
@@ -381,7 +381,7 @@ describe('bounded duplicate park events (COR-121)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
@@ -403,7 +403,7 @@ describe('bounded duplicate park events (COR-121)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       await waitForCondition(
@@ -457,7 +457,7 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
           }),
         },
         storage: intercept.storage,
-        durableExecution: true,
+        durable: true,
         flowControl: { concurrency: { limit: 1 } },
       });
       const runOne = await bureau.createRun({ agentName: 'default', message: 'park-me' });

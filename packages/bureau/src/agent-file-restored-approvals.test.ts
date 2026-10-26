@@ -108,7 +108,7 @@ describe('a pending approval restored after a restart', () => {
       agentSource: agentFileDirectory(directory),
       models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     bureaus.push(bureau);
 

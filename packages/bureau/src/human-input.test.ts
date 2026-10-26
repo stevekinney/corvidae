@@ -105,7 +105,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       // Deliberately NOT `stopWhen.toolCalled('requestHumanInput')` — every
       // pre-existing test in create-bureau.test.ts uses that condition,
       // which would stop the step loop on its own and mask whether the
@@ -190,7 +190,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       // `toolCalled` stops the FIRST step right on the park request (so the
       // post-loop park check sees `pendingHumanWait`); `noToolCalls` stops
       // the CONTINUATION step once it settles on plain content — matching
@@ -271,7 +271,7 @@ describe('requestHumanInput park survives a process restart while still parked (
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -298,7 +298,7 @@ describe('requestHumanInput park survives a process restart while still parked (
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -380,7 +380,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -409,7 +409,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -466,7 +466,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -515,7 +515,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -572,7 +572,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -612,7 +612,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -656,7 +656,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
         }),
       },
       storage: { type: 'sqlite' as const, path: databasePath },
-      durableExecution: true as const,
+      durable: true as const,
       durableOwnership: { ownership: 'none' as const },
     });
 
@@ -745,7 +745,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     const run = await bureauA.createRun({ agentName: 'default', message: 'parallel-park-crash' });
@@ -786,7 +786,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     try {
@@ -841,7 +841,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -882,7 +882,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -1002,7 +1002,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -1058,7 +1058,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -1160,8 +1160,8 @@ describe('the first park request in a step is honored and the rest are refused (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      durableBackgroundTasks: 'manual',
+      durable: true,
+      maintenance: 'manual',
     });
     const run = await bureau.createRun({ agentName: 'default', message: 'park-twice' });
     const reviews = () =>

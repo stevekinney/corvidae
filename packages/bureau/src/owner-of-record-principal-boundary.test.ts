@@ -33,7 +33,7 @@ async function openDurableBureau() {
     },
     validators: [createCheckValidator()],
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
   });
 }
 

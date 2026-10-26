@@ -146,7 +146,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         }),
       },
       storage: { type: 'lmdb', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -171,7 +171,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           }),
         },
         storage: { type: 'lmdb', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 

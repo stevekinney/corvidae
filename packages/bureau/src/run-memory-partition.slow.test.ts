@@ -51,7 +51,7 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
         memory,
       });
       const as = (ownerId: string) =>

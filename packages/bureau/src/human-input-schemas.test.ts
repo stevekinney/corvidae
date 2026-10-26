@@ -48,7 +48,7 @@ describe('BureauOptions.humanInput with inputSchemas', () => {
   it('refuses a schema operative cannot accept when the Bureau is created', async () => {
     const rejected = createBureau<AgentDefinitions>({
       agents: {},
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       humanInput: {
         inputSchemas: { deploy: { type: 'object', properties: { x: { pattern: 'a' } } } },
@@ -71,7 +71,7 @@ describe('BureauOptions.humanInput with inputSchemas', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: { inputSchemas: { deploy: deploySchema } },
       });

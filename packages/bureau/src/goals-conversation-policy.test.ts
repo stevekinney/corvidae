@@ -43,7 +43,7 @@ afterEach(async () => {
 async function boot(options: Parameters<typeof createBureau>[0]) {
   const bureau = await createBureau({
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
     ...options,
   });

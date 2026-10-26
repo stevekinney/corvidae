@@ -84,7 +84,7 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     },
     agentSource: agentFileDirectory(directory, { tools: { 'lookup-order': lookupTool } }),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     // A handler over this Bureau serves the asset operations, so the Bureau has the service.
     assets: { storage: createMemoryAssetStorage() },
     ...options.overrides,

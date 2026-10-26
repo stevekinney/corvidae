@@ -93,7 +93,7 @@ async function start(
   const bureau = await createBureau<AgentDefinitions>({
     agents: { ...agents },
     storage: { type: 'memory' },
-    durableExecution: durable,
+    durable: durable,
     ...toolOptions,
   });
   bureaus.push(bureau);
@@ -251,7 +251,7 @@ describe('a durable Bureau offers the tools by default', () => {
     const withValidator = await createBureau<AgentDefinitions>({
       agents: { asker: recordingAgent(offered) },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       validators: [
         {
           identity: { name: 'accepts-any-answer', version: '1' },
@@ -309,7 +309,7 @@ describe('humanInput and wakeup accept only their documented forms', () => {
       createBureau<AgentDefinitions>({
         agents: { default: recordingAgent([]) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
         [name]: value,
       } as unknown as BureauOptions<AgentDefinitions>),
     );

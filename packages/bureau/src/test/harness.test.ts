@@ -363,7 +363,7 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
       },
       runtime,
       storage,
-      durableExecution: true,
+      durable: true,
     });
 
     try {

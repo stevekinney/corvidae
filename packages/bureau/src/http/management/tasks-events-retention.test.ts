@@ -43,9 +43,9 @@ describe('bureau.tasks.events below the retention floor', () => {
       },
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
+      maintenance: 'manual',
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
@@ -129,9 +129,9 @@ describe('bureau.tasks.events below the retention floor', () => {
       },
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
+      maintenance: 'manual',
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
@@ -211,11 +211,11 @@ describe('bureau.tasks.events below the retention floor', () => {
       },
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       // A short window, so the floor passes the settlement while the approval is still valid.
-      eventRetention: { olderThan: 1_000 },
+      retention: { events: { olderThan: 1_000 } },
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
+      maintenance: 'manual',
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });

@@ -63,7 +63,7 @@ async function openBureau(generate: GenerateFunction): Promise<Bureau> {
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
   });
 }
 
@@ -344,7 +344,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({

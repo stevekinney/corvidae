@@ -93,7 +93,7 @@ async function start(
   const bureau = await createBureau<AgentDefinitions>({
     agents: { ...agents },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...options,
   });
   bureaus.push(bureau);

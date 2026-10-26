@@ -70,7 +70,7 @@ async function openBureau(
       }),
     },
     storage,
-    durableExecution: true,
+    durable: true,
     ...extra,
   });
 }
@@ -1178,7 +1178,7 @@ describe('a run promoted but never started (COR-1476)', () => {
       async () => {
         throw new Error('no run should generate');
       },
-      { runtime, durableBackgroundTasks: 'manual' },
+      { runtime, maintenance: 'manual' },
     );
     try {
       const admitted = await bureau.submitSessionInput('ghost-session', input('input-x', 'hello'));
@@ -1218,7 +1218,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
         await releaseStepZero.promise;
         return { content: 'answer', toolCalls: [] };
       },
-      { runtime, durableBackgroundTasks: 'manual' },
+      { runtime, maintenance: 'manual' },
     );
     try {
       const run = await bureau.createRun({

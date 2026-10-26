@@ -171,7 +171,7 @@ describe('bureau.deployment.get', () => {
       for (const leaked of [
         '"memory"',
         'sqlite',
-        'durableExecution',
+        '"durable"',
         'resolveApiKeyPrincipal',
         'alice-key',
       ]) {

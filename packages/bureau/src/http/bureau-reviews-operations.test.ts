@@ -706,7 +706,7 @@ describe('the reviews operations against a real Bureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const run = await bureau.createRun({
       agentName: 'default',
@@ -827,7 +827,7 @@ describe('the reviews operations against a real Bureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -916,7 +916,7 @@ describe('the reviews operations against a real Bureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -1046,7 +1046,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const run = bureau.run('asker', 'deploy', principal === undefined ? {} : { principal });
     await waitForCondition(

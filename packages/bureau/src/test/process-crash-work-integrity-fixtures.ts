@@ -222,7 +222,7 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
       }),
     },
     storage: { type: options.backend, path: options.storagePath },
-    durableExecution: true,
+    durable: true,
     requestAuthorityValidator: () => true,
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     durableOwnership: {

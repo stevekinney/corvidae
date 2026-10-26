@@ -75,10 +75,10 @@ describe('a recovered file-agent run', () => {
       },
       overrides: {
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         // No maintenance pass runs: only the hook can settle the reference.
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
         onDiagnostic: () => undefined,
       },
     });
@@ -241,7 +241,7 @@ describe('a recovered child run', () => {
           }),
         },
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic: () => undefined,
       });

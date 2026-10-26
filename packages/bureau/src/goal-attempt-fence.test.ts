@@ -713,7 +713,7 @@ describe('the fence over the real tombstone', () => {
   async function composed() {
     const runtime = await createRuntimeComposition({
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     disposers.push(() => runtime.durable?.engine[Symbol.dispose]?.());
     const store = await liveGoal();

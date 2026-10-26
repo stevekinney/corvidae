@@ -90,7 +90,7 @@ async function startRacer(backend: Backend, storagePath: string): Promise<Racer>
       }),
     },
     storage: { type: backend, path: storagePath },
-    durableExecution: true,
+    durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

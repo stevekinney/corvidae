@@ -240,7 +240,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
       storage,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
-      taskRetention: { olderThan: 60_000 },
+      retention: { tasks: { olderThan: 60_000 } },
       agents: {
         default: createAgent({
           generate: chargesOnce,

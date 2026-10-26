@@ -86,7 +86,7 @@ async function openBureau(directory: string) {
       }),
     },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-    durableExecution: true,
+    durable: true,
     durableOwnership: CLAIM_OPTIONS,
   });
 }
@@ -260,7 +260,7 @@ const outcomes = {
         }),
       },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-      durableExecution: true,
+      durable: true,
       durableOwnership: CLAIM_OPTIONS,
     });
     try {
@@ -332,7 +332,7 @@ const outcomes = {
           }),
         },
         storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-        durableExecution: true,
+        durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
       try {
@@ -379,7 +379,7 @@ const outcomes = {
           }),
         },
         storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-        durableExecution: true,
+        durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
       try {

@@ -43,7 +43,7 @@ async function durableBureau(
       options.storagePath === undefined
         ? { type: 'memory' }
         : { type: 'sqlite', path: options.storagePath },
-    durableExecution: true,
+    durable: true,
     ...(options.storagePath === undefined
       ? {}
       : {
@@ -170,7 +170,7 @@ describe('Bureau.waitForDurableRun', () => {
     });
   });
 
-  it('refuses to wait for a non-terminal run under durableBackgroundTasks: manual, and still reports a terminal one', async () => {
+  it('refuses to wait for a non-terminal run under maintenance: manual, and still reports a terminal one', async () => {
     const release = Promise.withResolvers<void>();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -184,8 +184,8 @@ describe('Bureau.waitForDurableRun', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      durableBackgroundTasks: 'manual',
+      durable: true,
+      maintenance: 'manual',
     });
     bureaus.push(bureau);
     const run = await bureau.createRun({ agentName: 'default', message: 'go' });

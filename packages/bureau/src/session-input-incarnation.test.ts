@@ -51,7 +51,7 @@ async function open(generate: () => Promise<{ content: string; toolCalls: never[
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
   });
 }
 

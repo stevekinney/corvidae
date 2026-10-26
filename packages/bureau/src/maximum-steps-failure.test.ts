@@ -69,8 +69,8 @@ async function runToLimit(bureau: Bureau) {
 
 /** The in-process loop and the durable workflow both end a run at its step limit. */
 const EXECUTIONS: readonly (readonly [string, Partial<BureauOptions>])[] = [
-  ['in process', { storage: { type: 'memory' }, durableExecution: false }],
-  ['durably', { storage: { type: 'memory' }, durableExecution: true }],
+  ['in process', { storage: { type: 'memory' }, durable: false }],
+  ['durably', { storage: { type: 'memory' }, durable: true }],
 ];
 
 describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (_name, options) => {
@@ -199,8 +199,8 @@ const FAILURES: readonly (readonly [string, { readonly generate?: GenerateFuncti
 ];
 
 const SETTLING_EXECUTIONS = [
-  ['in process', (storage: MemoryStorage) => ({ storage: storage, durableExecution: false })],
-  ['durably', (storage: MemoryStorage) => ({ storage, durableExecution: true })],
+  ['in process', (storage: MemoryStorage) => ({ storage: storage, durable: false })],
+  ['durably', (storage: MemoryStorage) => ({ storage, durable: true })],
 ] as const;
 
 describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_name, configure) => {
@@ -281,7 +281,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       bureaus.push(crashed);
@@ -306,7 +306,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       bureaus.push(recovering);

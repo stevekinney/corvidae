@@ -27,7 +27,7 @@
  *
  * A snapshot is written when a revision is about to be registered, never later, so no revision is
  * in the engine without one. It is deleted by {@link WorkflowSnapshotStore.pruneUnheld}, which the
- * maintenance pass calls under `taskRetention`.
+ * maintenance pass calls under `retention.tasks`.
  *
  * @module workflow-snapshot-store
  */
