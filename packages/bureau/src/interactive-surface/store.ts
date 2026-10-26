@@ -268,13 +268,21 @@ function digestOf(value: unknown): string {
   return `sha256:${sha256HexSync(canonicalJson(value))}`;
 }
 
+const REMOVAL_MARKER_PREFIX = 'bureau-removed-surfaces:v1:';
+
+/**
+ * How long a removal marker is kept: far longer than any command takes to commit, which retries a
+ * bounded number of times, so a command checked before the removal has long since failed or landed.
+ */
+const REMOVAL_MARKER_RETENTION_MILLISECONDS = 24 * 60 * 60 * 1000;
+
 /**
  * Marks a task whose surfaces were removed. It lives outside the task's prefix,
  * so removing the prefix keeps it, and every commit is conditioned on its
  * absence: a command checked before the removal cannot write after it.
  */
 function removedKey(taskId: string, generation: string): string {
-  return `bureau-removed-surfaces:v1:${encodeStorageKeyComponent(taskId)}:${encodeStorageKeyComponent(generation)}`;
+  return `${REMOVAL_MARKER_PREFIX}${encodeStorageKeyComponent(taskId)}:${encodeStorageKeyComponent(generation)}`;
 }
 
 function surfacePrefix(taskId: string): string {
@@ -801,6 +809,17 @@ export function createInteractiveSurfaces(
       const task = await reachTask(taskId, authorization);
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
+      // Measured first: an oversized proposal is refused before its schemas are compiled.
+      assertWithinPayloadLimit(
+        {
+          representation: record['representation'],
+          data: record['data'],
+          summary: record['summary'],
+          actions: record['actions'],
+          audience: record['audience'],
+        },
+        maxPayloadBytes,
+      );
       const representation = readRepresentation(record['representation'], schemas);
       const data = record['data'] === undefined ? null : readJsonValue(record['data'], 'data');
       const summary = readSummary(record['summary']);
@@ -896,6 +915,16 @@ export function createInteractiveSurfaces(
       if (isRejection(task)) return task;
       if (!mayChange(task, authorization)) return rejection('not-found');
       const baseRevision = readBaseRevision(record['baseRevision']);
+      // Measured first: an oversized change is refused before its schemas are compiled.
+      assertWithinPayloadLimit(
+        {
+          representation: record['representation'],
+          data: record['data'],
+          summary: record['summary'],
+          actions: record['actions'],
+        },
+        maxPayloadBytes,
+      );
       const changes = {
         ...(record['representation'] === undefined
           ? {}
@@ -1420,6 +1449,20 @@ export function createInteractiveSurfaces(
     });
   }
 
+  /**
+   * Deletes the removal markers old enough that no command authorized before the removal can still
+   * be committing. A marker only fences such a command, and a generation is never reused, so a
+   * marker past {@link REMOVAL_MARKER_RETENTION_MILLISECONDS} has nothing left to fence. A marker
+   * whose value is not a time (written before markers carried one) is retired as well.
+   */
+  async function retireRemovalMarkers(): Promise<void> {
+    const cutoff = options.now() - REMOVAL_MARKER_RETENTION_MILLISECONDS;
+    for (const key of await store.list(REMOVAL_MARKER_PREFIX)) {
+      const writtenAt = Number(await store.get(key));
+      if (!Number.isFinite(writtenAt) || writtenAt < cutoff) await store.delete(key);
+    }
+  }
+
   async function removeTask(taskId: string): Promise<void> {
     // A settlement in flight stays tracked, so `flush` still drains it, and is
     // awaited before the surfaces it is freezing go away.
@@ -1427,7 +1470,8 @@ export function createInteractiveSurfaces(
     watched.delete(taskId);
     // The marker first: a command already past its checks then fails its commit.
     const task = await options.task(taskId);
-    await store.set(removedKey(taskId, task?.generation ?? ''), '1');
+    await store.set(removedKey(taskId, task?.generation ?? ''), String(options.now()));
+    await retireRemovalMarkers();
     await store.deletePrefix(surfacePrefix(taskId));
     // A wait for this task's cleanup has nothing left to wait for.
     const waiters = settlementWaiters.get(taskId);

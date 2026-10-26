@@ -78,6 +78,13 @@ export function detach(value: Record<string, unknown>): Record<string, unknown> 
     fail('the command must be plain JSON data');
   }
   if (!isPlainObject(copy)) fail('the command must be an object');
+  // `structuredClone` keeps a cycle, which the recursive JSON checks after this would overflow on
+  // with a `RangeError`; serializing refuses it here, as it does anything nested too deeply.
+  try {
+    JSON.stringify(copy);
+  } catch {
+    fail('the command must be plain JSON data');
+  }
   return copy;
 }
 
