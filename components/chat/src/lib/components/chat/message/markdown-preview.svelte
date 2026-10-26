@@ -210,7 +210,16 @@
   {/if}
 {/snippet}
 
-<div class={classNames('cinder-markdown-content message-content-preview', className)} {...rest}>
+<!--
+  `data-state` is `rendered` once the async pipeline has swapped its formatted HTML in, and
+  `pending` while the raw-text fallback shows. The swap replaces the DOM nodes, which collapses
+  a selection made in the fallback, so a caller that selects text waits for `rendered` first.
+-->
+<div
+  class={classNames('cinder-markdown-content message-content-preview', className)}
+  data-state={renderedHtml ? 'rendered' : 'pending'}
+  {...rest}
+>
   {#if renderedHtml}
     {#each segments as segment, index (`${segment.kind}:${index}`)}
       {@render renderSegment(segment)}
