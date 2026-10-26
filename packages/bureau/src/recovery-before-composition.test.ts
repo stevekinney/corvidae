@@ -105,6 +105,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
         }),
       },
       storage: { type: 'sqlite', path: storagePath },
+      id: 'recovery-before-composition',
       memory,
       durable: true,
       durableOwnership: {
