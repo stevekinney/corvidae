@@ -30,6 +30,9 @@ const ORIGIN = 'https://agents.example.test';
 const databasePaths: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const peers: OpenedBureau[] = [];
+/** `waitForCondition` with room for a loaded host: these waits cross sqlite, HTTP and a restart. */
+const eventually = (condition: () => boolean | Promise<boolean>, failureMessage: string) =>
+  waitForCondition(condition, failureMessage, 2_000);
 /** Writes held open to stand in for a process dying inside them; released so teardown can finish. */
 const heldWrites: Array<() => void> = [];
 
@@ -175,19 +178,19 @@ describe('a durable peer call across a restart', () => {
       firstHolder,
     );
     const run = await first.createRun({ message: 'go', agentName: 'caller' });
-    await waitForCondition(
+    await eventually(
       () => firstHolder.writes.length === 1,
       'the call never recorded its peer task',
     );
     // The process dies here, mid-call, with the peer still working. It is not disposed: a graceful
     // shutdown would cancel the run and leave nothing to recover.
     dead = true;
-    await waitForCondition(() => peer.received.length === 1, 'the peer never started working');
+    await eventually(() => peer.received.length === 1, 'the peer never started working');
 
     const secondHolder = { writes: [] as string[] };
     const second = await callerBureau(databasePath, peer.fetchPeer, secondHolder);
     peer.release();
-    await waitForCondition(async () => {
+    await eventually(async () => {
       const session = await second.getSession(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the restarted run never completed');
@@ -227,13 +230,13 @@ describe('a durable peer call across a restart', () => {
       firstHolder,
     );
     const run = await first.createRun({ message: 'go', agentName: 'caller' });
-    await waitForCondition(() => diedInWrite, 'the call never reached its journal write');
-    await waitForCondition(() => peer.received.length === 1, 'the peer never started working');
+    await eventually(() => diedInWrite, 'the call never reached its journal write');
+    await eventually(() => peer.received.length === 1, 'the peer never started working');
     dead = true;
 
     const second = await callerBureau(databasePath, peer.fetchPeer, { writes: [] });
     peer.release();
-    await waitForCondition(async () => {
+    await eventually(async () => {
       const session = await second.getSession(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the restarted run never completed');
@@ -261,7 +264,7 @@ describe('the Bureau peer call journal', () => {
     });
     bureaus.push(bureau);
     const run = await bureau.createRun({ message: 'go', agentName: 'caller' });
-    await waitForCondition(async () => {
+    await eventually(async () => {
       const session = await bureau.getSession(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the run never completed');
@@ -298,7 +301,7 @@ describe('the Bureau peer call journal', () => {
     await bureau.peerCalls.write(key, entry);
 
     await retireSettledTasksOnRealClock(bureau);
-    await waitForCondition(
+    await eventually(
       async () => (await bureau.peerCalls.read(key)) === undefined,
       'the run’s peer call records were not deleted with it',
     );
