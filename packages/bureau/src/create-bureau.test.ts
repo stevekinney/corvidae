@@ -21498,9 +21498,11 @@ describe('AB-389 — session commit outbox', () => {
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
 
-      // Attaching a validator now lets the deferred recovery proceed.
+      // Attaching a validator now lets the deferred recovery proceed. (A wait here for `getRun` to
+      // report the run used to follow, and its `false` result was ignored: bureauA, never disposed,
+      // still holds the run, so bureauB does not reattach it in this process, and the wait never
+      // held.)
       bureauB.setRequestAuthorityValidator(() => true);
-      await pollUntil(() => bureauB.getRun(run.id) !== undefined);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
