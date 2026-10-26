@@ -223,6 +223,7 @@ export {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
+  ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
   UnknownScheduleAgentError,
 } from './create-bureau';

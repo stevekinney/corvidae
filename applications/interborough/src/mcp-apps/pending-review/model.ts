@@ -175,6 +175,18 @@ export function isOutcomeNotWritten(result: unknown): boolean {
   }
 }
 
+/** The token `bureau.reviews.resolve` puts in a Conflict whose review had moved to another round than the one sent. */
+export const ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
+
+/** Whether an error result from `resolve` says the review moved to another round, so nothing was decided. */
+export function isRoundChanged(result: unknown): boolean {
+  try {
+    return JSON.stringify(result)?.includes(ROUND_CHANGED) ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** What a decision's receipt tells the reader. */
 export function describeResolution(
   decision: 'approve' | 'deny' | 'reject',

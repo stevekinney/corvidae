@@ -1033,6 +1033,15 @@ export interface ResolveReviewInput {
   /** `human-wait` approve only: the payload delivered with the signal. */
   payload?: unknown;
   /**
+   * COR-1659 — the {@link PendingToolApprovalReview.round} the caller read. A re-gated approval
+   * keeps its id and advances its round, so a caller that read round N would otherwise resolve
+   * the replacement. When given, `resolveReview` compares it with the review's current round
+   * before anything is claimed, and throws a `CONFLICT` `BureauError` (a
+   * `ReviewRoundChangedError`) on a mismatch: nothing is decided, written, or audited. A human
+   * wait is always at round 0. Omitted, the call is not fenced.
+   */
+  round?: number;
+  /**
    * Optional human-readable note, recorded in the audit trail either way.
    * REQUIRED (non-empty) when `decision` is `'reject'`.
    */

@@ -1026,6 +1026,19 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
 }
 
 /**
+ * `resolveReview` was given the round the caller read, and the review has moved past it: another
+ * resolver superseded the approval, which replaces it under the same id with the next round
+ * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
+ * again; it names no other resolver's decision.
+ */
+class ReviewRoundChangedError extends BureauError {
+  constructor(message: string) {
+    super(message, 'CONFLICT');
+    this.name = 'ReviewRoundChangedError';
+  }
+}
+
+/**
  * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
  * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
  * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
@@ -1041,7 +1054,12 @@ class BureauShuttingDownError extends BureauError {
   }
 }
 
-export { ApprovalOutcomeNotWrittenError, BureauError, BureauShuttingDownError };
+export {
+  ApprovalOutcomeNotWrittenError,
+  BureauError,
+  BureauShuttingDownError,
+  ReviewRoundChangedError,
+};
 
 /**
  * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
@@ -15713,6 +15731,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
   }
 
+  /**
+   * COR-1659 — refuse a resolution whose `round` names a round the review is no longer at. A call
+   * naming none is unfenced. A human wait has no rounds, so it is always at round 0.
+   */
+  function assertExpectedReviewRound(
+    input: ResolveReviewInput,
+    review: Pick<PendingReview, 'id' | 'kind'> & { readonly round?: number },
+  ): void {
+    if (input.round === undefined) return;
+    const current = review.kind === 'tool-approval' ? (review.round ?? 0) : 0;
+    if (input.round !== current) {
+      throw new ReviewRoundChangedError(
+        `Review "${review.id}" is at round ${current}, not the round ${input.round} you read; read it again before deciding`,
+      );
+    }
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
@@ -15731,6 +15766,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
+        assertExpectedReviewRound(input, cleanup.review);
         if (cleanup.decision !== input.decision) {
           throw new BureauError(`Review with id "${input.id}" is already resolved`, 'CONFLICT');
         }
@@ -15824,6 +15860,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
+    // COR-1659: the round the caller read is compared with the review just found, in the same
+    // synchronous stretch that claims `resolvingReviewIds` below, so no other resolver's
+    // supersession can fall between the two. It is refused before anything is claimed or decided.
+    assertExpectedReviewRound(input, review);
     if (resolvingReviewIds.has(review.id)) {
       throw new BureauError(`Review with id "${review.id}" is already being resolved`, 'CONFLICT');
     }
@@ -16481,7 +16521,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * review resolves through the session path.
    */
   async function resolveAnyReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
-    if (runHumanWaits.has(input.id)) return runHumanWaits.resolve(input);
+    if (runHumanWaits.has(input.id)) {
+      assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
+      return runHumanWaits.resolve(input);
+    }
     const derived = await derivedHumanWait(input.id);
     // COR-1613: a schedule fire's wait goes through the engine by run id, as a catalog run's does,
     // though it names the session the fire runs in; a session run's keeps the session path.
@@ -16489,6 +16532,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       derived !== undefined &&
       (derived.sessionId === undefined || runHumanWaits.isDerivedFire(derived))
     ) {
+      assertExpectedReviewRound(input, derived);
       return runHumanWaits.resolve(input, derived);
     }
     return resolveReview(

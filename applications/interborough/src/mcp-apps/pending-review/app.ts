@@ -18,6 +18,7 @@ import {
   isOutcomeNotWritten,
   isReview,
   isReviewList,
+  isRoundChanged,
   type Review,
   viewReview,
 } from './model.ts';
@@ -131,8 +132,18 @@ async function start(): Promise<void> {
     }
     const receipt = await app.callServerTool({
       name: 'bureau.reviews.resolve',
-      arguments: { id: seen.id, decision, ...(reason === undefined ? {} : { reason }) },
+      // The round displayed fences the decision: a review another resolver re-gated since the
+      // read above is refused, not decided.
+      arguments: {
+        id: seen.id,
+        decision,
+        round: seen.round ?? 0,
+        ...(reason === undefined ? {} : { reason }),
+      },
     });
+    if (receipt.isError === true && isRoundChanged(receipt)) {
+      return 'This review changed while you read it. It was not decided. Read it again before deciding.';
+    }
     // The decision took effect and only the write of its outcome failed: it is not a refusal.
     if (receipt.isError === true && isOutcomeNotWritten(receipt)) {
       return `${describeResolution(decision, 'applied')} Warning: the outcome could not be written into the session; check the run.`;
