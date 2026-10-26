@@ -32,6 +32,16 @@ export type {
   AgentToolDescription,
 } from './agent-file-catalog';
 export type { AgentFileWriteResult } from './agent-file-writer';
+export type {
+  AgentSource,
+  DefinitionEntry,
+  DefinitionEntryProblem,
+  DefinitionSource,
+  DefinitionSourceChange,
+  DefinitionSourceHost,
+  WorkflowSource,
+} from './sources/definition-source';
+export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type {
   WorkflowDetail,

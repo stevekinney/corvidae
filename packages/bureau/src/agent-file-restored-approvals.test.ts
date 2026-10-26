@@ -21,6 +21,7 @@ import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { agentFileDirectory } from './sources/agent-file-directory';
 
 const directories: string[] = [];
 const bureaus: Bureau[] = [];
@@ -104,7 +105,7 @@ describe('a pending approval restored after a restart', () => {
 
     const bureau = await createBureau<AgentDefinitions>({
       agents: {},
-      agentDirectory: directory,
+      agentSource: agentFileDirectory(directory),
       models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
       storage,
       durableExecution: true,

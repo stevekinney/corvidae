@@ -28,6 +28,7 @@ import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './test/process-crash-work-integrit
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { workflowStepRunId } from './workflow-agent-step';
 import type { Bureau } from './types';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const CHILD = join(import.meta.dir, 'test', 'workflow-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -53,7 +54,7 @@ function openBureau(storagePath: string, workflows: string, messages: string[]):
   };
   return createBureau<AgentDefinitions>({
     agents: { ...agents },
-    workflowDirectory: workflows,
+    workflowSource: workflowFileDirectory(workflows),
     storage: { type: 'sqlite', path: storagePath },
     durableExecution: true,
     durableOwnership: {

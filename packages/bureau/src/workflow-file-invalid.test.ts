@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { nodeAgentFileOperations } from './agent-file-operations';
+import { nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
   createWorkflowFileFixture,
   type WorkflowFileFixture,

@@ -231,6 +231,14 @@ export interface CreateRunEngineOptions {
   /** How many past checkpoints to retain per run (storage-growth control). */
   checkpointHistory?: number | undefined;
 
+  /**
+   * Maximum depth of child-workflow nesting (`ctx.startChild`) before Weft fails the parent with its
+   * "Child workflow nesting depth exceeded" error. Depth counts child hops from the root run, so a
+   * limit of 3 admits a root run, its child, that child's child, and one more, and rejects a fourth
+   * hop. Omit to keep Weft's default of 10.
+   */
+  maxNestingDepth?: number | undefined;
+
   /** Admission cap on a single checkpoint payload (`PayloadSizeExceededError`). */
   payloadSize?: PayloadSizePolicy | undefined;
 
@@ -345,7 +353,7 @@ export interface RunEngine {
  * still fire.
  *
  * History/checkpoint guardrails ({@link CreateRunEngineOptions.history},
- * `checkpointSizeWarningThreshold`, `checkpointHistory`, `payloadSize`) are
+ * `checkpointSizeWarningThreshold`, `checkpointHistory`, `maxNestingDepth`, `payloadSize`) are
  * threaded into the engine; a `history.maxEvents` breach surfaces as a
  * `timed-out` terminal with `terminationReason: 'history-circuit-breaker'`, which
  * the active-run adapter classifies as `error` (not a deadline timeout).
@@ -445,6 +453,7 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
     ...(options.checkpointHistory !== undefined
       ? { checkpointHistory: options.checkpointHistory }
       : {}),
+    ...(options.maxNestingDepth !== undefined ? { maxNestingDepth: options.maxNestingDepth } : {}),
     ...(options.payloadSize ? { payloadSize: options.payloadSize } : {}),
     workflows,
     activities: {

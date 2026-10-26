@@ -22,7 +22,9 @@ import {
   type AgentFileCatalogOptions,
   createAgentFileCatalog,
 } from '../agent-file-catalog.ts';
-import type { AgentFileOperations } from '../agent-file-operations.ts';
+import type { AgentSource } from '../sources/definition-source.ts';
+import { agentFileDirectory } from '../sources/agent-file-directory.ts';
+import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createModels, type Models } from '../models/create-models.ts';
 
 /** A model the default catalog holds, written the way an agent file names it. */
@@ -90,12 +92,14 @@ export interface AgentFileFixtureOptions {
   /** Replaces the tool catalog, which holds {@link lookupTool} by default. */
   readonly tools?: AgentFileCatalogOptions['tools'];
   readonly operations?: AgentFileOperations;
+  /** A source to run over instead of the fixture's directory; the directory options then do nothing. */
+  readonly source?: AgentSource;
   readonly descriptors?: readonly BackendDescriptor[];
   readonly runtime?: RuntimeServices;
   /** Replaces the host's resolver, to make a model that cannot be set up. */
   readonly resolveGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
   /** Replaces how a directory is watched, to observe the watchers the catalog opens. */
-  readonly openWatcher?: AgentFileCatalogOptions['openWatcher'];
+  readonly openWatcher?: NonNullable<Parameters<typeof agentFileDirectory>[1]>['watchFactory'];
 }
 
 export async function createAgentFileFixture(
@@ -120,22 +124,31 @@ export async function createAgentFileFixture(
     generated.push(descriptor);
     return async () => ({ content: 'scripted', toolCalls: [] });
   };
+  const runtime = options.runtime ?? createDefaultRuntimeServices();
+  const diagnose =
+    options.diagnose ??
+    ((message: string, cause: unknown): never => {
+      throw new Error(`${message} ${String(cause)}`);
+    });
+  const tools = options.tools ?? { 'lookup-order': lookupTool };
   const catalog = createAgentFileCatalog({
-    directory,
+    source:
+      options.source ??
+      agentFileDirectory(directory, {
+        tools,
+        runtime,
+        diagnose,
+        ...(options.watch === undefined ? {} : { watch: options.watch }),
+        ...(options.openWatcher === undefined ? {} : { watchFactory: options.openWatcher }),
+        ...(options.operations === undefined ? {} : { operations: options.operations }),
+      }),
     reservedIdentifiers: new Set(options.reserved ?? ['alpha']),
-    tools: options.tools ?? { 'lookup-order': lookupTool },
+    tools,
     models,
     resolveGenerate: options.resolveGenerate ?? resolveGenerate,
-    runtime: options.runtime ?? createDefaultRuntimeServices(),
-    diagnose:
-      options.diagnose ??
-      ((message, cause) => {
-        throw new Error(`${message} ${String(cause)}`);
-      }),
+    runtime,
+    diagnose,
     ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
-    ...(options.operations === undefined ? {} : { operations: options.operations }),
   });
   return {
     directory,

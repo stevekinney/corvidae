@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
+import { createContextEpochSealer } from '../../src/context-epoch';
 import { createCheckpointStore } from '../../src/durable/checkpoint-store';
 import { createRunEngine } from '../../src/durable/create-run-engine';
 import {
@@ -393,6 +394,26 @@ describe('a durable run restarted over SQLite keeps its parts (COR-713)', () => 
       live.steps.map((step) => step.messageId),
     );
     expect(recovered.steps.every((step) => step.messageId !== undefined)).toBe(true);
+  });
+
+  it('keeps the context epoch each step ran under (COR-1640)', async () => {
+    let next = 0;
+    const { live, recovered } = await restart('sqlite-epoch-run', {
+      generate: scripted([
+        {
+          content: '',
+          toolCalls: [{ id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } }],
+        },
+        { content: 'Sunny.', toolCalls: [] },
+      ]),
+      toolbox: createTestToolbox([weatherTool]),
+      conversation: new Conversation(),
+      stopWhen: stopWhen.noToolCalls(),
+      contextEpoch: createContextEpochSealer({ newEpochId: () => `epoch-${++next}` }),
+    });
+
+    expect(live.steps.map((step) => step.contextEpochId)).toEqual(['epoch-1', 'epoch-2']);
+    expect(recovered.steps.map((step) => step.contextEpochId)).toEqual(['epoch-1', 'epoch-2']);
   });
 
   it('keeps an onMaximumSteps replacement row in the run-wide parts and its flag in the cursor', async () => {

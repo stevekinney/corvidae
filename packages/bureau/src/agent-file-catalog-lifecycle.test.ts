@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileError } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
-import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
+import { type AgentFileOperations, nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
   type AgentFileFixture,
   createAgentFileFixture,
