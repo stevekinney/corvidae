@@ -166,9 +166,6 @@ export class PeerTaskTracker {
   apply(event: PeerStreamEvent): void {
     const payload = event.payload;
     if (payload === undefined) return;
-    // A status event after the first response is new by definition; artifacts and messages do
-    // not change whether the task is still waiting.
-    if (this.headSeen && payload.$case === 'statusUpdate') this.fresh = true;
     switch (payload.$case) {
       case 'task':
         this.applyTask(payload.value);
@@ -176,16 +173,29 @@ export class PeerTaskTracker {
       case 'message':
         this.applyMessage(payload.value);
         return;
-      case 'statusUpdate': {
-        const identity = this.identity(payload.value.taskId, payload.value.contextId);
-        this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
-        this.setStatus(ingestStatus(payload.value.status, this.artifactLimit));
+      case 'statusUpdate':
+        this.applyStatusUpdate(payload.value);
         return;
-      }
       case 'artifactUpdate':
         this.applyArtifact(payload.value);
         return;
     }
+  }
+
+  /**
+   * A status event after the first response is new by definition (artifacts and messages do not
+   * change whether the task is still waiting). Its identity is checked first: a frame that is
+   * refused changes nothing, so a task still waiting on an answer is not taken for stopped.
+   */
+  private applyStatusUpdate(update: {
+    taskId: string;
+    contextId: string;
+    status: Task['status'];
+  }): void {
+    const identity = this.identity(update.taskId, update.contextId);
+    if (this.headSeen) this.fresh = true;
+    this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
+    this.setStatus(ingestStatus(update.status, this.artifactLimit));
   }
 
   /** Where the task stopped, as the caller sees it. */
