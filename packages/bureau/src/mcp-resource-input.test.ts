@@ -53,7 +53,7 @@ async function open() {
       return { data: 'x', encoding: 'utf8' };
     },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
   });
   cleanups.push(async () => {
     await bureau.dispose();

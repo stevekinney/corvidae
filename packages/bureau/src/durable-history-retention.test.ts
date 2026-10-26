@@ -1,7 +1,7 @@
 /**
  * COR-1477 — durable maintenance bounds the event history and the task set.
  *
- * `eventRetention` advances the fleet feed's retention floor, `taskRetention`
+ * `retention.events` advances the fleet feed's retention floor, `retention.tasks`
  * deletes terminal tasks through the run store, and the audit trail's clamp
  * keeps holding once the floor moves. Every window is measured on the bureau's
  * injected manual clock, which these tests move with `setTime`.
@@ -72,9 +72,9 @@ async function withBureau(
     },
     runtime,
     storage: fixture.configuration,
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
-    durableBackgroundTasks: 'manual',
+    maintenance: 'manual',
     ...overrides,
   });
   try {
@@ -109,7 +109,7 @@ async function settledRun(bureau: Bureau, message = 'work') {
   return created;
 }
 
-describe('eventRetention', () => {
+describe('retention.events', () => {
   it('advances the fleet feed floor past events older than the window on a maintenance pass, 7 days by default', async () => {
     await withBureau(async ({ bureau, runtime, at, retentionFloor }) => {
       await settledRun(bureau);
@@ -139,7 +139,7 @@ describe('eventRetention', () => {
         await bureau.runDurableMaintenance();
         expect(await retentionFloor()).toBeGreaterThan(0);
       },
-      { eventRetention: { olderThan: 60_000 } },
+      { retention: { events: { olderThan: 60_000 } } },
     );
 
     await withBureau(
@@ -150,7 +150,7 @@ describe('eventRetention', () => {
         await bureau.runDurableMaintenance();
         expect(await retentionFloor()).toBe(0);
       },
-      { eventRetention: 'forever' },
+      { retention: { events: 'forever' } },
     );
   });
 
@@ -170,7 +170,7 @@ describe('eventRetention', () => {
         }
         expect(floor).toBeGreaterThan(0);
       },
-      { eventRetention: { olderThan: 60_000 }, durableBackgroundTasks: 'automatic' },
+      { retention: { events: { olderThan: 60_000 } }, maintenance: 'automatic' },
     );
   });
 
@@ -214,7 +214,7 @@ describe('eventRetention', () => {
               toolbox: createToolbox<readonly Tool[]>([]),
             }),
           },
-          eventRetention: { olderThan },
+          retention: { events: { olderThan } },
         }),
       );
       expect(failure).toBeInstanceOf(BureauError);
@@ -243,7 +243,7 @@ describe('the audit trail beside an advancing floor', () => {
         expect(await bureau.auditTrail?.query({ runId: old.id })).toEqual([]);
         expect(await bureau.auditTrail?.query({ runId: recent.id })).toEqual(recentBefore);
       },
-      { eventRetention: { olderThan: 2 * DAY_MS }, auditRetention: { olderThan: DAY_MS } },
+      { retention: { events: { olderThan: 2 * DAY_MS }, audit: { olderThan: DAY_MS } } },
     );
   });
 
@@ -261,7 +261,7 @@ describe('the audit trail beside an advancing floor', () => {
         expect(await retentionFloor()).toBeGreaterThan(0);
         expect(await bureau.auditTrail?.query({ runId: run.id })).toEqual(before);
       },
-      { eventRetention: { olderThan: DAY_MS }, auditRetention: { olderThan: 5 * DAY_MS } },
+      { retention: { events: { olderThan: DAY_MS }, audit: { olderThan: 5 * DAY_MS } } },
     );
   });
 
@@ -279,7 +279,7 @@ describe('the audit trail beside an advancing floor', () => {
         expect(await retentionFloor()).toBe(0);
         expect(await bureau.auditTrail?.query({ runId: run.id })).toEqual(before);
       },
-      { eventRetention: 'forever', auditRetention: { olderThan: DAY_MS } },
+      { retention: { events: 'forever', audit: { olderThan: DAY_MS } } },
     );
   });
 
@@ -297,12 +297,12 @@ describe('the audit trail beside an advancing floor', () => {
         expect(await bureau.auditTrail?.query({ runId: run.id })).toEqual(before);
         expect(await bureau.auditTrail?.query({ type: 'audit.pruned' })).toEqual([]);
       },
-      { eventRetention: { olderThan: DAY_MS }, auditRetention: 'forever' },
+      { retention: { events: { olderThan: DAY_MS }, audit: 'forever' } },
     );
   });
 });
 
-describe('taskRetention', () => {
+describe('retention.tasks', () => {
   it('deletes a terminal task once it is older than 30 days by default, and not one inside the window', async () => {
     await withBureau(async ({ bureau, at }) => {
       const run = await settledRun(bureau);
@@ -341,7 +341,7 @@ describe('taskRetention', () => {
         expect(bureau.getRun(created.id)).toBeUndefined();
       },
       {
-        taskRetention: { olderThan: DAY_MS },
+        retention: { tasks: { olderThan: DAY_MS } },
         agents: { default: createAgent({ generate: failing }) },
       },
     );
@@ -368,7 +368,7 @@ describe('taskRetention', () => {
         gate.resolve();
       },
       {
-        taskRetention: { olderThan: DAY_MS },
+        retention: { tasks: { olderThan: DAY_MS } },
         agents: { default: createAgent({ generate: holdableGenerate(hold, gate.promise) }) },
       },
     );
@@ -390,7 +390,7 @@ describe('taskRetention', () => {
         const history = await bureau.eventHistory({ kind: 'run', id: first.id });
         expect(history).toMatchObject({ outcome: 'deleted-aggregate' });
       },
-      { taskRetention: { olderThan: DAY_MS }, eventRetention: 'forever' },
+      { retention: { tasks: { olderThan: DAY_MS }, events: 'forever' } },
     );
   });
 
@@ -413,7 +413,7 @@ describe('taskRetention', () => {
         // Records when the run settled, which starts the binding's window.
         expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'recorded' });
 
-        // `taskRetention` equals the binding retention, and the horizon passes
+        // `retention.tasks` equals the binding retention, and the horizon passes
         // before the ledger sweep has run: the binding is expired but stored.
         at(60_001);
         expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'expired' });
@@ -429,7 +429,7 @@ describe('taskRetention', () => {
         await bureau.runDurableMaintenance();
         expect(bureau.getRun(created.id)).toBeUndefined();
       },
-      { taskRetention: { olderThan: 60_000 }, runCreationTerminalRetentionMs: 60_000 },
+      { retention: { tasks: { olderThan: 60_000 }, receipts: { olderThan: 60_000 } } },
     );
   });
 
@@ -441,7 +441,7 @@ describe('taskRetention', () => {
         await bureau.runDurableMaintenance();
         expect(bureau.getRun(run.id)).toBeDefined();
       },
-      { taskRetention: 'forever' },
+      { retention: { tasks: 'forever' } },
     );
   });
 
@@ -451,7 +451,7 @@ describe('taskRetention', () => {
         agents: {
           default: createAgent({ generate: finishes, toolbox: createToolbox<readonly Tool[]>([]) }),
         },
-        taskRetention: { olderThan: -1 },
+        retention: { tasks: { olderThan: -1 } },
       }),
     );
     expect(failure).toMatchObject({ code: 'BAD_REQUEST' });
@@ -476,7 +476,7 @@ describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
         }),
       },
       runtime,
-      taskRetention: { olderThan: DAY_MS },
+      retention: { tasks: { olderThan: DAY_MS } },
     });
     try {
       const created = await bureau.createRun({

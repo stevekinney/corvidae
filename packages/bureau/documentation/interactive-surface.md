@@ -96,7 +96,7 @@ declare const taskId: string;
 const bureau = await createBureau({
   agents: { assistant: createAgent({ generate }) },
   storage: { type: 'sqlite', path: './bureau.db' },
-  durableExecution: true,
+  durable: true,
 });
 const surfaces = bureau.surfaces;
 if (surfaces === undefined)
@@ -170,7 +170,7 @@ Each committed change is one event in the task's durable history, owned by `{ ki
 
 ## Retention
 
-A surface follows its task: it stays readable, frozen or closed, until `BureauOptions.taskRetention` ends and Bureau deletes the task, and it is deleted with the task. Its events stay in the history until `eventRetention` prunes them.
+A surface follows its task: it stays readable, frozen or closed, until `BureauOptions.retention.tasks` ends and Bureau deletes the task, and it is deleted with the task. Its events stay in the history until `retention.events` prunes them.
 
 ## Payload limits
 
@@ -319,7 +319,7 @@ An `mcp-app` surface is one MCP App instance on a task: the resource it shows (`
 
 A human-input request with a schema is an `input-form` surface: the request's JSON Schema is `representation.schema`, its prompt is the `summary`, and its answer is an `answer` or `submit` action continuing the human-wait signal, so an admitted value is the signal's payload and has already been validated against the schema. `@lostgradient/chat` renders it with `SchemaForm` and reports a valid submission as `onInputSubmit(toolCallId, value)`, the same `{ toolCallId, value }` an `input` tool action produces, so a host maps that callback onto `surface.action` without reshaping it. Projected as A2UI, the same request becomes a basic-catalog form, with the summary as its text fallback.
 
-**Configuring it (COR-1487, COR-1674).** An agent's author gives `createRequestHumanInputTool({ inputSchemas })` a JSON Schema per `signalName` ([Operative's rules](../../operative/README.md)), and a Bureau enables the tool and the same map with `BureauOptions.humanInput: boolean | { inputSchemas }`. `humanInput: true` offers the tool with no schemas, so any answer is taken; the object form validates every schema at `createBureau` with `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one it cannot accept. A park on a signal with a schema records the schema on the wait, so a run recovered after a restart parks with the same one, and an answer that does not satisfy it is refused before the run resumes.
+**Configuring it (COR-1487, COR-1674).** An agent's author gives `createRequestHumanInputTool({ inputSchemas })` a JSON Schema per `signalName` ([Operative's rules](../../operative/README.md)), and a durable Bureau offers the tool by default and takes the same map with `BureauOptions.humanInput: false | { inputSchemas }`. `humanInput: false` removes the tool and `humanInput: true` throws `BAD_REQUEST`; with no option the tool has no schemas, so any answer is taken; the object form validates every schema at `createBureau` with `checkHumanInputSchemas` and throws `HumanInputSchemaError` for one it cannot accept. A park on a signal with a schema records the schema on the wait, so a run recovered after a restart parks with the same one, and an answer that does not satisfy it is refused before the run resumes.
 
 **When the form is projected.** Only an A2A request that activated A2UI's extension receives the form, as one data part per open wait in the `INPUT_REQUIRED` status message, typed `application/a2ui+json`. A read that did not activate it, a stream that did not (`SendStreamingMessage`, `SubscribeToTask`), and every push notification (the push projector never activates A2UI) carry the prompt text and the instruction to answer with a data part of the form's values, and no form. The form is not on the AG-UI stream either: AG-UI reports the same wait as a `RUN_FINISHED` interrupt.
 

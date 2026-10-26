@@ -58,7 +58,7 @@ Which paths that reaches — and the axis is the resolver, not durability. `bure
 >
 > It calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines, and COR-1276 accepted the gap rather than taking that.
 >
-> It applies to a hand-written `RunnableAgent` placed in a catalog — a deliberate act by whoever wrote the agent, not a configuration anybody falls into. `durableExecution` has nothing to do with it: tests pin the same outcome on both sides of that flag, so a future change that reintroduces a durability dependency fails rather than quietly narrowing this row.
+> It applies to a hand-written `RunnableAgent` placed in a catalog — a deliberate act by whoever wrote the agent, not a configuration anybody falls into. `durable` has nothing to do with it: tests pin the same outcome on both sides of that flag, so a future change that reintroduces a durability dependency fails rather than quietly narrowing this row.
 
 ## Child runs
 

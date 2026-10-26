@@ -14,7 +14,7 @@ import {
   hashAgentFileBytes,
   parseAgentFile,
 } from './agent-file';
-import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
+import { type AgentFileOperations, nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
   type AgentFileFixture,
   createAgentFileFixture,

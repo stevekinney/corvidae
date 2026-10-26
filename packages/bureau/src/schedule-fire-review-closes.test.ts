@@ -40,7 +40,6 @@ const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(reso
 
 const waitOptions = {
   generate: askingGenerate(),
-  humanInput: true,
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 };
 

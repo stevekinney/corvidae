@@ -9,8 +9,8 @@ import { join } from 'node:path';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
-import { nodeAgentFileOperations } from './agent-file-operations';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
+import { nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
   type AgentFileFixture,
   agentFileText,

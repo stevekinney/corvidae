@@ -116,6 +116,7 @@ import {
 } from './create-bureau';
 import { createAgentSkills } from './agent-skills';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
+import { agentFileDirectory } from './sources/agent-file-directory';
 import {
   createHumanWaitContext,
   createMemoryPersistHook,
@@ -1001,7 +1002,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ message: 'Named dispatch', agentName: 'researcher' });
@@ -1017,7 +1018,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Named dispatch' });
@@ -1033,7 +1034,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const firstRun = await bureau.createRun({ agentName: 'default', message: 'First message' });
@@ -1059,7 +1060,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     const sessionId = 'concurrent-bureau-session';
 
@@ -1124,7 +1125,7 @@ describe('createBureau', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     const [redactingRun, appendingRun] = await Promise.all([
@@ -1160,7 +1161,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     const sessionId = 'session-aligned';
 
@@ -1186,7 +1187,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Fast completion' });
@@ -1206,7 +1207,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({
@@ -1228,7 +1229,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
@@ -1249,7 +1250,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({
@@ -1271,7 +1272,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
@@ -1294,7 +1295,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     // Run 1: explicitly capped
@@ -1328,7 +1329,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     // Run 1: explicitly capped at 3 steps
@@ -1385,7 +1386,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: failOnSecondRun, toolbox: createEmptyToolbox() }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     // Run 1: creates the session.
@@ -1449,7 +1450,7 @@ describe('createBureau', () => {
         }),
       },
       storage: storageOverTextStore(flakyStore),
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -1507,7 +1508,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -1549,7 +1550,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -1697,7 +1698,7 @@ describe('createBureau', () => {
         // begins before the assertions below run; the durable write this
         // test is about happens entirely BEFORE any step executes.
         storage: gatedStorage,
-        durableExecution: true,
+        durable: true,
       });
 
       const runPromise = bureauA.createRun({
@@ -1740,7 +1741,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
       });
 
       const state = await bureauB.getDurableRun(run.id);
@@ -1759,7 +1760,7 @@ describe('createBureau', () => {
 
   it('the in-memory branch resolves createRun without ever awaiting a durable write (AB-361 control)', async () => {
     // The SAME hung-generate shape as the durable proof above, but with NO
-    // storage/durableExecution configured at all — `createRun` must still
+    // storage/durable configured at all — `createRun` must still
     // resolve within a handful of microtasks, proving the in-memory
     // branch's timing is genuinely unaffected by AB-361: it has no
     // `durablyStarted` promise to await (see `ActiveRun.durablyStarted`'s
@@ -1849,7 +1850,7 @@ describe('createBureau', () => {
         }),
       },
       storage: gatedStorage,
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -1949,7 +1950,7 @@ describe('createBureau', () => {
         }),
       },
       storage: gatedStorage,
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -2036,7 +2037,7 @@ describe('createBureau', () => {
         // No bureau-level generate/toolbox/provider at all — `bureau.run()`
         // dispatches entirely through the catalog agent's own composition.
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2067,7 +2068,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2118,7 +2119,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2138,7 +2139,7 @@ describe('createBureau', () => {
       const bureauB = await createBureau({
         agents: {},
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2186,7 +2187,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2213,7 +2214,7 @@ describe('createBureau', () => {
       const bureauB = await createBureau({
         agents: { echo: nonResolvingAgent },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2273,7 +2274,7 @@ describe('createBureau', () => {
     const bureau = await createBureau({
       agents: { echo: gatedAgent },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -2349,7 +2350,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -2477,7 +2478,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     const runs: { id: string }[] = [];
@@ -2509,7 +2510,7 @@ describe('createBureau', () => {
         }),
       },
       storage: delayed.storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       ...(onEvent ? { onEvent } : {}),
     });
@@ -2595,7 +2596,7 @@ describe('createBureau', () => {
         generate: async () => new Promise<never>(() => {}),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       try {
@@ -2653,7 +2654,7 @@ describe('createBureau', () => {
           }),
         },
         storage: delayed.storage,
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onEvent: (event) => {
           events.push(event);
@@ -2834,7 +2835,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2879,7 +2880,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -2938,7 +2939,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         workflowVersion: 'v1',
       });
@@ -2974,7 +2975,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         // Different version than bureau A stamped — simulates a deploy that
         // shipped while this run was in flight.
@@ -3035,7 +3036,7 @@ describe('createBureau', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       stopWhen: stopWhen.noToolCalls(),
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -3059,7 +3060,7 @@ describe('createBureau', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -3085,7 +3086,7 @@ describe('createBureau', () => {
         generate: async () => new Promise<never>(() => {}),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3132,7 +3133,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3175,7 +3176,7 @@ describe('createBureau', () => {
         generate: async () => new Promise<never>(() => {}),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3226,7 +3227,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3282,7 +3283,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3344,7 +3345,7 @@ describe('createBureau', () => {
             }),
           },
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
       } finally {
@@ -3410,7 +3411,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       const run = await bureauA.createRun({ agentName: 'default', message: 'Recover with a tool' });
@@ -3443,7 +3444,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       bureauB.addEventListener('action', (event) => {
@@ -3502,7 +3503,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3539,7 +3540,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3604,7 +3605,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3647,7 +3648,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3711,7 +3712,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3744,7 +3745,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3799,7 +3800,7 @@ describe('createBureau', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3822,7 +3823,7 @@ describe('createBureau', () => {
       const bureauB = await createBureau<AgentDefinitions>({
         agents: {},
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -3858,15 +3859,15 @@ describe('createBureau', () => {
     }
   });
 
-  it('routes runs through the durable engine end-to-end when durableExecution is on', async () => {
+  it('routes runs through the durable engine end-to-end when durable is on', async () => {
     // The seam #7 closure, validated through the REAL gateway wiring: a durable
     // run must fire run.completed so store.register sees completion and the
     // session is marked completed — exactly as an in-memory run does.
     //
     // NOTE: no `persistence` — it would shadow `storage`, leaving `durableStorage`
-    // undefined so NO engine is built (and, with `durableExecution: true`, the
+    // undefined so NO engine is built (and, with `durable: true`, the
     // composition now throws on that contradiction). `storage: memory` +
-    // `durableExecution: true` is what actually builds the in-memory durable
+    // `durable: true` is what actually builds the in-memory durable
     // engine, so this test genuinely exercises the durable path.
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -3877,7 +3878,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Durable hello' });
@@ -3898,13 +3899,13 @@ describe('createBureau', () => {
   });
 
   it('routes a sqlite-backed run through the durable engine BY DEFAULT at observable parity', async () => {
-    // The flip's gate: sqlite storage and NO `durableExecution` flag now routes
+    // The flip's gate: sqlite storage and NO `durable` flag now routes
     // through Weft (the default-on contract). This must be at OBSERVABLE PARITY
     // with the in-memory loop — the rich event surface gateway depends on
     // (`action` events, toolbox events from a tool call, `run.completed`, and the
     // persisted session status) must all fire exactly as for an in-memory run.
     // Asserting WITHOUT the flag is the whole point: a test that set
-    // `durableExecution: true` would retest the old opt-in path and prove nothing
+    // `durable: true` would retest the old opt-in path and prove nothing
     // about the flip.
     const databasePath = createTemporaryPath('default-on-parity', '.sqlite');
     try {
@@ -3922,7 +3923,7 @@ describe('createBureau', () => {
         // Step 0 commits a tool call (so toolbox events must fire on the durable
         // path); step 1 has no tool call, so `noToolCalls()` stops the run.
         storage: { type: 'sqlite', path: databasePath },
-        // NOTE: no `durableExecution` — relying on the default-on flip.
+        // NOTE: no `durable` — relying on the default-on flip.
       });
 
       const actions: string[] = [];
@@ -3978,7 +3979,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: storageOverTextStore(failingStore),
-      durableExecution: false,
+      durable: false,
     });
 
     const error = await bureau.createRun({ agentName: 'default', message: 'Ghost run?' }).then(
@@ -4001,7 +4002,7 @@ describe('createBureau', () => {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Explode' });
@@ -4049,7 +4050,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'trip me' });
@@ -4088,7 +4089,7 @@ describe('createBureau', () => {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
       storage: storageOverTextStore(trackingStore),
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Explode once' });
@@ -4502,7 +4503,7 @@ describe('createBureau', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       const outcome = await bureau.cancelDurableRun('does-not-exist');
@@ -4517,7 +4518,7 @@ describe('createBureau', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
@@ -4539,7 +4540,7 @@ describe('createBureau', () => {
           default: createAgent({ generate, toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
@@ -4702,7 +4703,7 @@ describe('createBureau', () => {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
@@ -4758,7 +4759,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -4860,7 +4861,7 @@ describe('createBureau', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -4955,7 +4956,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     const run = await bureau.createRun({
       agentName: 'default',
@@ -4990,7 +4991,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
@@ -5026,7 +5027,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       // No maximumSteps and no stopWhen — the run stops solely on the bureau's
       // default step cap, exercising the exact seam that diverged.
     });
@@ -5284,7 +5285,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -5347,7 +5348,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -5375,7 +5376,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -5411,7 +5412,7 @@ describe('createBureau', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -5495,7 +5496,7 @@ describe('createBureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -5613,7 +5614,7 @@ describe('createBureau: AB-64/AB-250 selection planning wiring', () => {
 
 describe('createBureau durable inspection surface', () => {
   it('getDurableRun and listDurableRuns return undefined when no durable engine is composed', async () => {
-    // A memory-backed bureau with no durableExecution flag has no engine, so the
+    // A memory-backed bureau with no durable flag has no engine, so the
     // durable read accessors report "no durable surface" via undefined.
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -5631,7 +5632,7 @@ describe('createBureau durable inspection surface', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       runMaintenance: (now?: number) => Promise<void>;
@@ -5646,8 +5647,8 @@ describe('createBureau durable inspection surface', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
-        durableBackgroundTasks: 'manual',
+        durable: true,
+        maintenance: 'manual',
       });
       try {
         expect(await bureau.runDurableMaintenance(123_456)).toBe(true);
@@ -5661,14 +5662,14 @@ describe('createBureau durable inspection surface', () => {
   });
 
   it('getDurableRun returns null for an unknown run and state for a completed run', async () => {
-    // durableExecution:true on a memory backend builds an engine, so the
+    // durable:true on a memory backend builds an engine, so the
     // accessors pass through to engine.get / engine.list.
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     expect(await bureau.getDurableRun('nonexistent-run')).toBeNull();
@@ -5697,7 +5698,7 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      // No storage / durableExecution — no engine
+      // No storage / durable — no engine
     });
 
     expect(await bureau.pauseSchedule('sched-1')).toBeUndefined();
@@ -5713,7 +5714,7 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const realEngineProto = Object.getPrototypeOf(probe.durable!.engine) as object;
     probe.durable!.engine[Symbol.dispose]?.();
@@ -5735,7 +5736,7 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -5784,7 +5785,7 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
         generate: async () => new Promise<never>(() => {}), // hang so it stays in flight
         toolbox: createToolbox([]),
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
       });
       const engine = composition.durable!.engine;
       const checkpointStore = composition.durable!.checkpointStore;
@@ -5849,7 +5850,7 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -5952,7 +5953,7 @@ describe('createBureau effectful hook idempotency (#27)', () => {
       },
       memory,
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -6590,7 +6591,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const outcome = await bureau.submitSessionInput('unknown-session', {
@@ -6636,7 +6637,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -6670,7 +6671,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -6711,7 +6712,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -6759,7 +6760,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -6812,7 +6813,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       const stranger = await bureau.submitSessionInput('session-open', {
@@ -6861,7 +6862,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const runA = await bureau.createRun({
@@ -6962,7 +6963,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
     });
     const bureauB = await createBureau<AgentDefinitions>({
       agents: {
@@ -6973,7 +6974,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const runA = await bureauA.createRun({
@@ -7574,7 +7575,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({
@@ -7614,7 +7615,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       // A durable bureau composed normally DOES have storage, so the
@@ -8274,7 +8275,7 @@ describe('createBureau session signal/update/query with terminal sessions', () =
     // store), complete a run, then verify that signalSession throws NOT_FOUND instead
     // of routing to the now-terminal engine handle.
     //
-    // `storage: { type: 'memory' }` with `durableExecution: true` gives us both a
+    // `storage: { type: 'memory' }` with `durable: true` gives us both a
     // durable engine AND a built-in session store (created from the same Memory
     // storage backend) — the combination required to hit requireSessionRunId.
     const bureau = await createBureau<AgentDefinitions>({
@@ -8286,7 +8287,7 @@ describe('createBureau session signal/update/query with terminal sessions', () =
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     // Complete a run — the session listener writes lastRunStatus: 'completed'.
@@ -8316,7 +8317,7 @@ describe('createBureau session signal/update/query with terminal sessions', () =
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Abort me' });
@@ -8435,7 +8436,7 @@ describe('createBureau session signal authority revalidation', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       requestAuthorityValidator: () => authorityCurrent,
     });
     const run = await bureau.createRun({
@@ -8725,7 +8726,7 @@ describe('createBureau review queue (AB-20)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       const reviews = bureau.listPendingReviews();
@@ -8815,7 +8816,7 @@ describe('createBureau review queue (AB-20)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       expect(
@@ -8890,7 +8891,7 @@ describe('createBureau review queue (AB-20)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       expect(bureau.listPendingReviews()).toHaveLength(0);
@@ -8919,7 +8920,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     const run = await bureauA.createRun({
       agentName: 'default',
@@ -8938,7 +8939,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       const [review] = bureauB.listPendingReviews();
@@ -8972,7 +8973,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
@@ -9110,8 +9111,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
     });
 
     try {
@@ -9167,8 +9167,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
       runtime,
     });
 
@@ -9335,7 +9334,7 @@ describe('createBureau review queue (AB-20)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -9382,7 +9381,7 @@ describe('createBureau review queue (AB-20)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage,
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -9452,7 +9451,7 @@ describe('createBureau review queue (AB-20)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -9482,7 +9481,7 @@ describe('createBureau review queue (AB-20)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage,
-        durableExecution: true,
+        durable: true,
       });
 
       try {
@@ -9536,7 +9535,7 @@ describe('createBureau review queue (AB-20)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -9554,7 +9553,7 @@ describe('createBureau review queue (AB-20)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage,
-        durableExecution: true,
+        durable: true,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
@@ -9622,7 +9621,7 @@ describe('createBureau review queue (AB-20)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -9636,7 +9635,7 @@ describe('createBureau review queue (AB-20)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage,
-        durableExecution: true,
+        durable: true,
       });
       try {
         expect(recoverAllSpy).not.toHaveBeenCalled();
@@ -9677,7 +9676,7 @@ describe('createBureau review queue (AB-20)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
       requestAuthorityValidator: () => true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -9697,7 +9696,7 @@ describe('createBureau review queue (AB-20)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -9715,7 +9714,7 @@ describe('createBureau review queue (AB-20)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
@@ -9740,7 +9739,7 @@ describe('createBureau review queue (AB-20)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       try {
         // createBureau() resolving at all (rather than rejecting) is itself
@@ -9774,7 +9773,7 @@ describe('createBureau review queue (AB-20)', () => {
             }),
           },
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
@@ -9787,7 +9786,7 @@ describe('createBureau review queue (AB-20)', () => {
           generate: createMockGenerate(),
           toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -9824,7 +9823,7 @@ describe('createBureau review queue (AB-20)', () => {
             }),
           },
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
 
@@ -9856,7 +9855,7 @@ describe('createBureau review queue (AB-20)', () => {
         generate: createMockGenerate(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
         recoverAll: () => Promise<unknown[]>;
@@ -9875,7 +9874,7 @@ describe('createBureau review queue (AB-20)', () => {
             default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
           },
           storage: { type: 'memory' },
-          durableExecution: true,
+          durable: true,
         });
         try {
           const report = await bureau.waitForRecovery?.();
@@ -9896,7 +9895,7 @@ describe('createBureau review queue (AB-20)', () => {
         generate: createMockGenerate(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
         list: (filter: unknown) => Promise<unknown>;
@@ -9917,7 +9916,7 @@ describe('createBureau review queue (AB-20)', () => {
             default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
           },
           storage: { type: 'memory' },
-          durableExecution: true,
+          durable: true,
         });
         try {
           const report = await bureau.waitForRecovery?.();
@@ -9956,7 +9955,7 @@ describe('createBureau review queue (AB-20)', () => {
             }),
           },
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         const run = await bureauA.createRun({ agentName: 'default', message: 'Recover me' });
@@ -9967,7 +9966,7 @@ describe('createBureau review queue (AB-20)', () => {
           generate: createMockGenerate(),
           toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -9996,7 +9995,7 @@ describe('createBureau review queue (AB-20)', () => {
             }),
           },
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
 
@@ -10025,7 +10024,7 @@ describe('createBureau review queue (AB-20)', () => {
         generate: createMockGenerate(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
         recoverAll: (options: {
@@ -10059,7 +10058,7 @@ describe('createBureau review queue (AB-20)', () => {
             default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
           },
           storage: { type: 'memory' },
-          durableExecution: true,
+          durable: true,
         });
         try {
           const report = await bureau.waitForRecovery?.();
@@ -10080,7 +10079,7 @@ describe('createBureau review queue (AB-20)', () => {
         generate: createMockGenerate(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
         list: (filter: unknown) => Promise<{ items: { id: string }[]; total: number }>;
@@ -10105,7 +10104,7 @@ describe('createBureau review queue (AB-20)', () => {
             default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
           },
           storage: { type: 'memory' },
-          durableExecution: true,
+          durable: true,
         });
         try {
           const report = await bureau.waitForRecovery?.();
@@ -10178,7 +10177,7 @@ describe('createBureau review queue (AB-20)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -10255,7 +10254,7 @@ describe('createBureau review queue (AB-20)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
@@ -10317,7 +10316,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
@@ -10361,7 +10360,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
     try {
       expect(restartedBureau.listPendingReviews()).toHaveLength(0);
@@ -10414,7 +10413,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       onDiagnostic: () => undefined,
     });
     try {
@@ -10477,7 +10476,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       onDiagnostic: () => undefined,
     });
     try {
@@ -10558,7 +10557,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       runtime,
     });
@@ -10725,7 +10724,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({
@@ -10813,7 +10812,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     const run = await bureau.createRun({
@@ -10886,7 +10885,7 @@ describe('createBureau review queue (AB-20)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     // A run injected directly via `store.register()` (rather than through
@@ -10940,7 +10939,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -11025,7 +11024,7 @@ describe('createBureau review queue (AB-20)', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      durableExecution: true,
+      durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -11100,7 +11099,7 @@ describe('createBureau review queue (AB-20)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -11172,8 +11171,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
     });
 
     try {
@@ -11306,7 +11304,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -11392,7 +11390,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: false,
+        durable: false,
       });
 
       try {
@@ -11433,7 +11431,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: false,
+        durable: false,
       });
 
       try {
@@ -11505,7 +11503,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: false,
+        durable: false,
       });
 
       try {
@@ -11544,7 +11542,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: false,
+        durable: false,
       });
 
       try {
@@ -11567,7 +11565,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: false,
+        durable: false,
       });
 
       try {
@@ -11651,7 +11649,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -11759,7 +11757,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     try {
       const reviews = bureau.listPendingReviews();
@@ -11901,8 +11899,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
     });
 
     try {
@@ -11982,7 +11979,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -12205,7 +12202,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -12266,7 +12263,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -12329,7 +12326,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const revoked: unknown[] = [];
@@ -12563,7 +12560,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
       ...SHORT_TASK_RETENTION,
     });
@@ -12822,8 +12819,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
       flowControl: { concurrency: { limit: 1 } },
       // `toolCalled` stops run1's loop right after the HITL tool call (so the
       // post-loop park check sees `pendingHumanWait` set); `noToolCalls` stops
@@ -12914,8 +12910,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
       // `toolCalled('requestHumanInput')` stops the FIRST step right on the
       // park request; `noToolCalls()` stops the CONTINUATION step (AB-44 —
       // the resumed run's next generation step, which never itself calls
@@ -12985,8 +12980,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
     });
     try {
       const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
@@ -13060,7 +13054,6 @@ describe('createBureau requestHumanInput availability across durability configur
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      humanInput: true,
     });
 
     try {
@@ -13100,8 +13093,7 @@ describe('createBureau requestHumanInput availability across durability configur
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      humanInput: true,
+      durable: true,
     });
 
     try {
@@ -13153,8 +13145,7 @@ describe('createBureau requestHumanInput availability across durability configur
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
-        humanInput: true,
+        durable: true,
       });
 
       try {
@@ -13208,7 +13199,7 @@ describe('createBureau requestHumanInput availability across durability configur
 // directly — the same seam `engine.scheduler.tick(deadline)` exercises at the
 // operative layer, reached here through Bureau's own public host-maintenance
 // surface since Bureau exposes no direct engine accessor). Composed with
-// `durableBackgroundTasks: 'manual'` so the scheduler poller is disarmed:
+// `maintenance: 'manual'` so the scheduler poller is disarmed:
 // nothing but an explicit maintenance tick can ever fire the timer, which is
 // exactly what proves a genuine park rather than a real-time race.
 describe('createBureau scheduleWakeup wiring (AB-201)', () => {
@@ -13276,7 +13267,6 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      wakeup: true,
     });
 
     try {
@@ -13317,9 +13307,8 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
-      wakeup: true,
-      durableBackgroundTasks: 'manual',
+      durable: true,
+      maintenance: 'manual',
     });
 
     try {
@@ -13334,7 +13323,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       expect(seenTools).toContain('scheduleWakeup');
 
       // Genuine park proof: with the scheduler poller disarmed
-      // (durableBackgroundTasks: 'manual'), nothing can advance the durable
+      // (maintenance: 'manual'), nothing can advance the durable
       // timer without an explicit tick — polling WITHOUT ticking must never
       // observe completion, and the continuation step must never run.
       const firedWithoutTick = await pollUntil(
@@ -13386,10 +13375,9 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
-        wakeup: true,
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
       });
 
       const run = await bureauA.createRun({
@@ -13439,10 +13427,9 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
-        wakeup: true,
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
       });
 
       try {
@@ -13560,8 +13547,11 @@ describe('Bureau.models', () => {
     }
   });
 
-  it('refuses agentDirectory without models.generate with BAD_REQUEST', async () => {
-    const refusal = await createBureau({ agents: {}, agentDirectory: '/nonexistent/agents' }).then(
+  it('refuses agentSource without models.generate with BAD_REQUEST', async () => {
+    const refusal = await createBureau({
+      agents: {},
+      agentSource: agentFileDirectory('/nonexistent/agents'),
+    }).then(
       () => undefined,
       (rejection: unknown) => rejection,
     );
@@ -13628,7 +13618,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const report = await bureau.shutdown();
     const kinds = report.owners.map((owner) => owner.kind).toSorted();
@@ -13640,7 +13630,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     expect(report.completed).toBe(2);
   });
 
-  it('does NOT compose an event-history owner over durableExecution-forced memory storage — "persistent" means the backend, not just runtime.durable', async () => {
+  it('does NOT compose an event-history owner over durable-forced memory storage — "persistent" means the backend, not just runtime.durable', async () => {
     // Same construction as the previous test (memory storage, durable
     // execution forced on) — proves `eventHistory`'s persistence gate
     // checks the storage backend's own `capabilities().persistence`, not
@@ -13650,7 +13640,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     const outcome = await bureau.eventHistory({ kind: 'run', id: 'run-1' });
@@ -13831,7 +13821,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -13853,7 +13843,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onlineEvals: {
         judges: [
           {
@@ -14013,7 +14003,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     ['durable', true],
   ])(
     "dispose() lands an aborted run's terminal session save before closing SQLite storage (%s execution)",
-    async (_label, durableExecution) => {
+    async (_label, durable) => {
       // Under 'abort', the run's `run.aborted` listener starts its session
       // save only after the run unwinds, which is later than the
       // session-persistence drain alone waits for. Without a wait for the
@@ -14044,7 +14034,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
             }),
           },
           storage: { type: 'sqlite', path: databasePath },
-          durableExecution,
+          durable,
           onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
         });
 
@@ -14128,7 +14118,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -14153,7 +14143,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       runtime,
     });
 
@@ -14264,7 +14254,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -14290,7 +14280,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       await bureau.dispose();
 
@@ -14796,7 +14786,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: createMockGenerate('Done.') }) },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
       });
 
       const run = bureau.run('echo', 'Attribute me to alice', { principal: 'alice' });
@@ -14873,7 +14863,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const controlBureau = await createBureau({
         agents: { echo: createAgent({ generate: createMockGenerate('control') }) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
         runtime: controlRuntime,
       });
       const controlRun = controlBureau.run('echo', 'hi', { principal: 'alice' });
@@ -14884,7 +14874,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       const bureau = await createBureau({
         agents: { throwing: throwingAgent },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         runtime,
       });
 
@@ -15976,7 +15966,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -16000,7 +15990,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -16145,7 +16135,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
 
@@ -16167,7 +16157,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
 
@@ -16257,7 +16247,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       // COR-1332: same cause as the sibling fixes in this describe block —
       // without this, a mock `generate` with no tool calls still runs to
       // the default 25-step budget instead of stopping after its one real
@@ -16855,7 +16845,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       // COR-1332: same cause as the sibling fixes in this describe block —
       // without this, a mock `generate` with no tool calls still runs to
       // the default 25-step budget instead of stopping after its one real
@@ -17397,7 +17387,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         ...SHORT_TASK_RETENTION,
-        // `durableBackgroundTasks` deliberately omitted — the default
+        // `maintenance` deliberately omitted — the default
         // 'automatic' profile is exactly what this test proves prunes on
         // its own.
       });
@@ -17768,7 +17758,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     }
   });
 
-  it('never starts the automatic pruning timer under durableBackgroundTasks: "manual" — a manual host drives pruning only through its own runDurableMaintenance() calls', async () => {
+  it('never starts the automatic pruning timer under maintenance: "manual" — a manual host drives pruning only through its own runDurableMaintenance() calls', async () => {
     const databasePath = createTemporaryPath(
       'bureau-run-ownership-prune-manual-profile',
       '.sqlite',
@@ -17787,7 +17777,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         storage: { type: 'sqlite', path: databasePath },
         runtime,
         ...SHORT_TASK_RETENTION,
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
       });
 
       try {
@@ -17862,7 +17852,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         generate: createMockGenerate(),
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       const prototype = Object.getPrototypeOf(probe.durable!.engine) as ClaimPrototype;
       probe.durable!.engine[Symbol.dispose]?.();
@@ -17880,7 +17870,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const sharedOptions = {
           storage: { type: 'sqlite' as const, path: databasePath },
           durableOwnership: { ownership: 'workflow-lease' as const },
-          durableBackgroundTasks: 'manual' as const,
+          maintenance: 'manual' as const,
         };
         const runtimeA = createManualRuntimeServices();
         const bureauA = await createBureau<AgentDefinitions>({
@@ -17994,7 +17984,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           runtime,
           ...SHORT_TASK_RETENTION,
           durableOwnership,
-          durableBackgroundTasks: 'manual',
+          maintenance: 'manual',
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
           },
@@ -18127,7 +18117,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           }),
         },
         storage: { type: 'sqlite' as const, path: databasePath },
-        durableBackgroundTasks: 'manual' as const,
+        maintenance: 'manual' as const,
         ...SHORT_TASK_RETENTION,
       };
       try {
@@ -18183,7 +18173,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const runtimeA = createManualRuntimeServices();
       const sharedOptions = {
         storage: { type: 'sqlite' as const, path: databasePath },
-        durableBackgroundTasks: 'manual' as const,
+        maintenance: 'manual' as const,
       };
       const agentPolicy = () => ({
         toolbox: createNeedsApprovalToolbox('cor-1380-review-secret', []),
@@ -18323,7 +18313,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           ...SHORT_TASK_RETENTION,
-          durableBackgroundTasks: 'manual',
+          maintenance: 'manual',
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
           },
@@ -18454,7 +18444,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
-          durableBackgroundTasks: 'manual',
+          maintenance: 'manual',
         });
         try {
           const run = await bureau.createRun({
@@ -18499,7 +18489,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           ...SHORT_TASK_RETENTION,
-          durableBackgroundTasks: 'manual',
+          maintenance: 'manual',
         });
         try {
           const run = await bureau.createRun({ agentName: 'default', message: 'A' });
@@ -18549,7 +18539,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           ...SHORT_TASK_RETENTION,
-          durableBackgroundTasks: 'manual',
+          maintenance: 'manual',
         });
         try {
           const run = await bureau.createRun({
@@ -18638,7 +18628,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           ...SHORT_TASK_RETENTION,
-          durableBackgroundTasks: 'manual',
+          maintenance: 'manual',
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
           },
@@ -18767,15 +18757,13 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       }
 
       it('task retention on a bureau with no durable engine', async () => {
-        expect(
-          await countDeleteRunUpdates({ storage: { type: 'memory' }, durableExecution: false }),
-        ).toBe(3);
+        expect(await countDeleteRunUpdates({ storage: { type: 'memory' }, durable: false })).toBe(
+          3,
+        );
       });
 
       it('task retention on a durable engine over memory storage', async () => {
-        expect(
-          await countDeleteRunUpdates({ storage: { type: 'memory' }, durableExecution: true }),
-        ).toBe(3);
+        expect(await countDeleteRunUpdates({ storage: { type: 'memory' }, durable: true })).toBe(3);
       });
 
       it('task retention on a sqlite-backed bureau whose entry is present', async () => {
@@ -18784,7 +18772,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           expect(
             await countDeleteRunUpdates({
               storage: { type: 'sqlite', path: databasePath },
-              durableBackgroundTasks: 'manual',
+              maintenance: 'manual',
             }),
           ).toBe(3);
         } finally {
@@ -18807,7 +18795,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             }),
           },
           storage: { type: 'memory' },
-          durableExecution: false,
+          durable: false,
         });
         try {
           const run = await bureau.createRun({
@@ -18853,8 +18841,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        durableBackgroundTasks: 'manual',
-        // `auditRetention` deliberately omitted — this test proves the
+        maintenance: 'manual',
+        // `retention.audit` deliberately omitted — this test proves the
         // default itself, not an explicit `'forever'`.
       });
 
@@ -18870,7 +18858,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         expect(before?.length).toBeGreaterThan(0);
 
         // Advance far past any plausible cutoff and run maintenance
-        // explicitly — with no `auditRetention` configured, this must be a
+        // explicitly — with no `retention.audit` configured, this must be a
         // complete no-op for the audit trail.
         await runtime.advance(10_000_000_000);
         await bureau.runDurableMaintenance();
@@ -18903,8 +18891,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       try {
@@ -19017,8 +19005,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 2_500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 2_500_000 } },
       });
 
       try {
@@ -19096,8 +19084,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       try {
@@ -19237,8 +19225,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        auditRetention: { olderThan: 500_000 },
-        // `durableBackgroundTasks` deliberately omitted — the default
+        retention: { audit: { olderThan: 500_000 } },
+        // `maintenance` deliberately omitted — the default
         // 'automatic' profile is exactly what this test proves prunes on
         // its own.
       });
@@ -19331,8 +19319,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime: runtimeA,
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       let highestPrunedSequence = -1;
@@ -19408,8 +19396,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       try {
@@ -19450,10 +19438,10 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       // NEVER gives `runtime.durable` a durable engine
       // (`runtime-composition.ts`'s `hasKvOnlyPersistence`).
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
-      durableBackgroundTasks: 'manual',
-      auditRetention: { olderThan: 500_000 },
+      maintenance: 'manual',
+      retention: { audit: { olderThan: 500_000 } },
     });
 
     try {
@@ -19499,10 +19487,10 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
-      auditRetention: { olderThan: 500_000 },
-      // `durableBackgroundTasks` deliberately omitted — before this fix,
+      retention: { audit: { olderThan: 500_000 } },
+      // `maintenance` deliberately omitted — before this fix,
       // the automatic timer's own start condition (`runtime.durable &&
       // ...`) never started at all for a KV-only bureau.
     });
@@ -19550,7 +19538,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     }
   });
 
-  it('does not start the automatic maintenance timer for a KV-only bureau with the default (\'forever\') auditRetention (Codex review, PR #597, "Start the KV-only timer only for active retention")', async () => {
+  it('does not start the automatic maintenance timer for a KV-only bureau with the default (\'forever\') retention.audit (Codex review, PR #597, "Start the KV-only timer only for active retention")', async () => {
     const runtime = createManualRuntimeServices();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -19561,16 +19549,16 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
-      // `auditRetention` deliberately omitted (defaults to 'forever') and
-      // `durableBackgroundTasks` deliberately omitted (default
+      // `retention.audit` deliberately omitted (defaults to 'forever') and
+      // `maintenance` deliberately omitted (default
       // 'automatic') — this KV-only bureau has NOTHING for the timer to
       // do (no durable engine for `pruneStaleRunOwnership`, and
       // `pruneAuditTrail` no-ops for 'forever'), so before this fix the
       // widened `runtime.durable || runtime.kv` start condition still
       // started a live interval that never did anything.
-      auditRetention: 'forever',
+      retention: { audit: 'forever' },
     });
 
     try {
@@ -19580,7 +19568,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
     }
   });
 
-  it('still starts the automatic maintenance timer for a KV-only bureau once auditRetention is active', async () => {
+  it('still starts the automatic maintenance timer for a KV-only bureau once retention.audit is active', async () => {
     const runtime = createManualRuntimeServices();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -19591,9 +19579,9 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
-      auditRetention: { olderThan: 500_000 },
+      retention: { audit: { olderThan: 500_000 } },
     });
 
     try {
@@ -19608,7 +19596,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       runMaintenance: (now?: number) => Promise<void>;
@@ -19629,10 +19617,10 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           }),
         },
         storage: { type: 'memory' },
-        durableExecution: true,
-        durableBackgroundTasks: 'manual',
+        durable: true,
+        maintenance: 'manual',
         runtime,
-        auditRetention: { olderThan: 500_000 },
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       try {
@@ -19682,8 +19670,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       const run = await bureau.createRun({
@@ -19725,8 +19713,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
-        durableBackgroundTasks: 'manual',
-        auditRetention: { olderThan: 500_000 },
+        maintenance: 'manual',
+        retention: { audit: { olderThan: 500_000 } },
       });
 
       const run = await bureau.createRun({
@@ -19792,7 +19780,7 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const firstRun = await bureau.createRun({ agentName: 'default', message: 'First session run' });
@@ -19890,7 +19878,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
       runtime: runtimeA,
       // Only Bureau A has storage, so only A records audit writes on its deferred ledger.
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     const bureauB = await createBureau<AgentDefinitions>({
       agents: {
@@ -19957,7 +19945,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
       },
       runtime,
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       webhooks: {
         targets: [{ url: 'https://example.test/webhook' }],
         fetch: (async () => {
@@ -20048,7 +20036,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // warning threshold (2) and then its block threshold (4), before
       // finishing with a plain text response.
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -20142,7 +20130,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -20172,7 +20160,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
   it('durably records schedule.created/paused/resumed/cancelled through a real bureau, under a schedule-scoped owner id', async () => {
     // Mirrors `schedule-fire.test.ts`'s own
     // "dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent"
-    // setup (same `storage`/`durableExecution` config, same
+    // setup (same `storage`/`durable` config, same
     // `createSchedule`/`pauseSchedule`/`resumeSchedule`/`cancelSchedule`
     // calls) — proving the durable audit write and the live event this
     // suite already covers come from the identical production call sites.
@@ -20184,7 +20172,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -20242,7 +20230,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -20298,7 +20286,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -20365,7 +20353,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -20478,7 +20466,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -20599,7 +20587,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -20702,7 +20690,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: storageOverTextStore(flakyKv),
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -20763,7 +20751,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: storageOverTextStore(failingKv),
-      durableExecution: false,
+      durable: false,
       runtime,
       onDiagnostic: (diagnostic) => received.push(diagnostic),
     });
@@ -20841,7 +20829,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -21122,7 +21110,7 @@ describe('AB-389 — session commit outbox', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
@@ -21318,7 +21306,7 @@ describe('AB-389 — session commit outbox', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -21418,7 +21406,7 @@ describe('AB-389 — session commit outbox', () => {
       // state, so its session's `lastRunStatus` stays 'running' when
       // bureauA is (deliberately) never disposed below.
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       // bureauA itself validates the transport-issued authority so the run
       // can be created at all — the restart below (bureauB) is the one
       // that deliberately omits a validator, exercising the deferred path.
@@ -21481,7 +21469,7 @@ describe('AB-389 — session commit outbox', () => {
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -21610,7 +21598,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -21663,7 +21651,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -21721,7 +21709,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -21776,7 +21764,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -21865,7 +21853,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -21930,7 +21918,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
@@ -22017,7 +22005,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -22075,7 +22063,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -22195,7 +22183,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     try {
@@ -22516,7 +22504,7 @@ describe('AB-390 — outbox claim lease', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       runtime,
     });
 
@@ -22639,7 +22627,7 @@ describe('AB-390 — outbox claim lease', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -22707,7 +22695,7 @@ describe('AB-390 — outbox claim lease', () => {
         }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -23274,7 +23262,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       durableGuardrails: { checkpointHistory: 20 },
       ...overrides,
     });
@@ -23312,7 +23300,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       stopWhen: stopWhen.noToolCalls(),
     });
     const prototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -23332,8 +23320,10 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     // never what an operator configuring RETENTION is asking for.
     for (const keepLast of [0, -1, 1.5, Number.NaN]) {
       expect(
-        await throwingRejectionOf(createRetentionBureau({ checkpointRetention: { keepLast } })),
-      ).toThrow(/"options\.checkpointRetention\.keepLast" must be a positive integer/);
+        await throwingRejectionOf(
+          createRetentionBureau({ retention: { checkpoints: { keepLast } } }),
+        ),
+      ).toThrow(/"options\.retention\.checkpoints\.keepLast" must be a positive integer/);
     }
   });
 
@@ -23341,21 +23331,23 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     for (const timeoutMilliseconds of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(
         await throwingRejectionOf(
-          createRetentionBureau({ checkpointRetention: { keepLast: 1, timeoutMilliseconds } }),
+          createRetentionBureau({
+            retention: { checkpoints: { keepLast: 1, timeoutMilliseconds } },
+          }),
         ),
       ).toThrow(
-        /"options\.checkpointRetention\.timeoutMilliseconds" must be a finite, non-negative number/,
+        /"options\.retention\.checkpoints\.timeoutMilliseconds" must be a finite, non-negative number/,
       );
     }
   });
 
   it('accepts keep-all and a valid keepLast', async () => {
-    for (const checkpointRetention of [
+    for (const checkpointOption of [
       'keep-all' as const,
       { keepLast: 1 },
       { keepLast: 5, timeoutMilliseconds: 0 },
     ]) {
-      const bureau = await createRetentionBureau({ checkpointRetention });
+      const bureau = await createRetentionBureau({ retention: { checkpoints: checkpointOption } });
       bureau.dispose();
     }
   });
@@ -23383,7 +23375,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
   it('prunes a terminal run to keepLast through the engine and records completed', async () => {
     const prototype = await resolveEnginePrototype();
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
-    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'prune me' });
       await waitForRunState(bureau.store, run.id);
@@ -23411,7 +23403,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const prototype = await resolveEnginePrototype();
     const rejection = new Error('conditionalBatch rejected the delete');
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockRejectedValue(rejection);
-    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'store rejects' });
       await waitForRunState(bureau.store, run.id);
@@ -23444,7 +23436,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     // The engine insists the run is still running, however settled operative's
     // own event surface says it is.
     const getSpy = spyOn(prototype, 'get').mockResolvedValue({ status: 'running' });
-    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'not terminal yet' });
       await waitForRunState(bureau.store, run.id);
@@ -23466,7 +23458,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
   it('never reaches the cleanup step for a cancelDurableRun that did not commit a cancellation', async () => {
     const prototype = await resolveEnginePrototype();
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
-    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       // `'not-found'` describes a run this call never genuinely terminated;
       // only `'requested'` proves a committed cancellation.
@@ -23499,7 +23491,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     // deterministic: the bound elapses when the test advances the clock, and not before.
     const runtime = createManualRuntimeServices();
     const bureau = await createRetentionBureau({
-      checkpointRetention: { keepLast: 1, timeoutMilliseconds: 50 },
+      retention: { checkpoints: { keepLast: 1, timeoutMilliseconds: 50 } },
       runtime,
     });
 
@@ -23536,7 +23528,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints');
     const { generate, resolve } = createBlockingGenerate();
     const bureau = await createRetentionBureau({
-      checkpointRetention: { keepLast: 1 },
+      retention: { checkpoints: { keepLast: 1 } },
       agents: { default: createAgent({ generate }) },
     });
     try {
@@ -23589,7 +23581,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       stopWhen: stopWhen.noToolCalls(),
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -23651,8 +23643,8 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
         }),
       },
       storage,
-      durableExecution: true,
-      checkpointRetention: { keepLast: 1 },
+      durable: true,
+      retention: { checkpoints: { keepLast: 1 } },
     });
     try {
       await bureau.waitForRecovery?.();
@@ -23680,7 +23672,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       'pruneCheckpoints for workflow "x" lost its CAS race against a concurrent write.',
     );
     const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockRejectedValue(deposed);
-    const bureau = await createRetentionBureau({ checkpointRetention: { keepLast: 1 } });
+    const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'deposed' });
       await waitForRunState(bureau.store, run.id);
@@ -23700,7 +23692,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
 // COR-660 — schedule tick observation. Weft exposes `schedule:attempted` and
 // `schedule:skipped` (COR-105); these prove Bureau maps them onto its own
 // `schedule.attempted`/`schedule.skipped` with the correlation AB-87's matrix
-// fixes. Driven deterministically: `durableBackgroundTasks: 'manual'` disarms
+// fixes. Driven deterministically: `maintenance: 'manual'` disarms
 // the scheduler poller, and `bureau.runDurableMaintenance(now)` ticks Weft's
 // scheduler at an explicit timestamp, so no assertion here depends on real
 // elapsed time.
@@ -23731,8 +23723,8 @@ describe('createBureau schedule tick observation (COR-660)', () => {
       },
       storage: { type: 'memory' },
       runtime,
-      durableExecution: true,
-      durableBackgroundTasks: 'manual',
+      durable: true,
+      maintenance: 'manual',
     });
 
     bureau.addEventListener(ScheduleAttemptedEvent.type, (event) => attempted.push(event));

@@ -147,7 +147,6 @@ describe('publication gates new runs only', () => {
   async function parkingServed() {
     const served = await serve({
       overrides: {
-        humanInput: true,
         models: {
           generate: () =>
             createScriptedGenerate([

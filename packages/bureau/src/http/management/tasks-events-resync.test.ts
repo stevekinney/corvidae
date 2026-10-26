@@ -127,7 +127,6 @@ async function open(
   const opened = await openBureau({
     storage: faulty.storage,
     generate,
-    humanInput: true,
     ...extra,
   });
   cleanups.push(() => opened.dispose());

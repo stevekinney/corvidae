@@ -125,7 +125,7 @@ export async function openBureau(options: {
     ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     storage: options.storage,
-    durableExecution: true,
+    durable: true,
     ...(options.maximumHistoryEvents === undefined
       ? {}
       : { durableGuardrails: { history: { maxEvents: options.maximumHistoryEvents } } }),

@@ -72,7 +72,7 @@ async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
   return run;
 }
 
-const humanWaitOptions = () => ({ generate: parksThenAnswers(), humanInput: true }) as const;
+const humanWaitOptions = () => ({ generate: parksThenAnswers() }) as const;
 
 describe('bureau.tasks.events', () => {
   it('requires ownership or bureau.tasks:read, and answers anyone else as a missing task', async () => {

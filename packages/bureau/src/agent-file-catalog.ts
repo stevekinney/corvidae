@@ -12,8 +12,9 @@
  *
  * ## Watching
  *
- * The directory is watched, rescanned, and backed up by a poll by `watched-directory.ts`, which this
- * catalog shares with the workflow files (COR-1527).
+ * The agent source (COR-1702) loads the files and reports changes outside Bureau; the directory
+ * source watches, rescans, and backs the watch up with a poll. `definition-scanner.ts`, shared
+ * with the workflow files (COR-1527), evaluates what the source loads.
  *
  * ## Revisions
  *
@@ -33,9 +34,6 @@
  * @module agent-file-catalog
  */
 
-import { randomUUID } from 'node:crypto';
-import type { FSWatcher } from 'node:fs';
-
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type BackendDescriptor,
@@ -47,7 +45,6 @@ import { readToolShortDescription, type Tool } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
 import {
-  AGENT_FILE_EXTENSION,
   AGENT_FILE_SIZE_LIMIT,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
@@ -55,10 +52,8 @@ import {
   AgentSnapshotError,
   checkAgentIdentifier,
   decodeAgentFile,
-  hashAgentFileBytes,
   parseAgentFile,
 } from './agent-file';
-import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
 import { createFileAgentGenerate } from './file-agent-generate';
 import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
@@ -69,7 +64,8 @@ import {
 import type { AgentSnapshot } from './agent-snapshot-store';
 import type { Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
-import { createWatchedDirectory } from './watched-directory';
+import { createDefinitionScanner } from './definition-scanner';
+import type { AgentSource, DefinitionEntry } from './sources/definition-source';
 
 /** One agent as an editor needs it: the listing, the file's exact text, and what it parses to. */
 export interface AgentFileDetail extends AgentListing {
@@ -147,7 +143,8 @@ export function readFileAgentBinding(agent: object): FileAgentBinding | undefine
 }
 
 export interface AgentFileCatalogOptions {
-  readonly directory: string;
+  /** Where the agent files come from and are written back to. */
+  readonly source: AgentSource;
   /** Identifiers a file may not take: the code-defined agents and the default agent. */
   readonly reservedIdentifiers: ReadonlySet<string>;
   /** The deployment's tool catalog, by the name an agent file uses. */
@@ -158,19 +155,12 @@ export interface AgentFileCatalogOptions {
   readonly runtime: RuntimeServices;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
-  readonly operations?: AgentFileOperations | undefined;
   /**
    * Where the revision record of each file agent lives (COR-1584). The Bureau's key-value store
    * when it has one, so the revision survives a restart and is shared by every process on the
    * store. Defaults to a store that lasts as long as the catalog.
    */
   readonly revisionStore?: ConditionalTextValueStore | undefined;
-  /** Watch the directory. Defaults to `true`; `false` leaves reloading to {@link AgentFileCatalog.refresh}. */
-  readonly watch?: boolean | undefined;
-  /** How a directory is watched. Defaults to `fs.watch` without keeping the process alive; a test replaces it. */
-  readonly openWatcher?:
-    | ((path: string, listener: (event: string, filename: string | null) => void) => FSWatcher)
-    | undefined;
 }
 
 export interface AgentFileCatalog extends AgentFileWriter {
@@ -285,8 +275,6 @@ function sameSignature(left: FileEntry, right: FileEntry): boolean {
 const DETAIL_SETTLE_ATTEMPTS = 3;
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
-  const operations = options.operations ?? nodeAgentFileOperations;
-  const { directory } = options;
   const owner = ownerOrLocal(undefined);
   const revisions = createAgentRevisionStore({
     store: options.revisionStore ?? textValueStore(new MemoryStorage()),
@@ -563,16 +551,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return settled;
   }
 
-  const directoryWatcher = createWatchedDirectory<FileEntry>({
-    directory,
+  const directoryWatcher = createDefinitionScanner<FileEntry>({
+    source: options.source,
     label: 'agent directory',
-    extension: AGENT_FILE_EXTENSION,
-    sizeLimit: AGENT_FILE_SIZE_LIMIT,
     runtime: options.runtime,
     diagnose: options.diagnose,
-    operations,
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
     revision: () => options.models.catalog().revision,
     evaluate,
     tooLarge,
@@ -582,9 +565,15 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   });
   const { refresh } = directoryWatcher;
 
+  /** The definition as the source holds it now, read from the source and not from the last scan. */
+  async function readFresh(id: string): Promise<DefinitionEntry | undefined> {
+    const entries = await options.source.load();
+    return entries.find((candidate) => candidate.id === id);
+  }
+
   const writer = createAgentFileWriter({
-    directory,
-    operations,
+    source: options.source,
+    read: readFresh,
     validate(id, definition) {
       const checked = checkDeployment(id, definition);
       if ('problem' in checked) return checked.problem;
@@ -597,8 +586,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       }
       return undefined;
     },
-    refresh,
-    newTemporaryName: () => randomUUID(),
+    refresh: directoryWatcher.reload,
   });
 
   return {
@@ -622,31 +610,30 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       for (let attempt = 0; ; attempt += 1) {
         const known = directoryWatcher.entries().get(id);
         if (known === undefined) return undefined;
-        const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
+        const raw = await readFresh(id);
+        if (raw === undefined) return undefined;
         const revision = options.models.catalog().revision;
         let entry: FileEntry;
         let text: string | undefined;
-        try {
-          const size = await operations.size(path);
-          if (size === undefined) return undefined;
-          if (size > AGENT_FILE_SIZE_LIMIT) {
-            entry = tooLarge(id, size, revision);
-          } else {
-            const bytes = await operations.read(path);
-            if (bytes === undefined) return undefined;
-            const hash = hashAgentFileBytes(bytes);
-            if (known.hash !== hash && attempt < DETAIL_SETTLE_ATTEMPTS) {
-              await refresh();
-              continue;
-            }
-            entry =
-              known.hash === hash && known.revision === revision
-                ? known
-                : evaluate(id, bytes, hash, revision);
-            text = decodeAgentFile(bytes);
+        if (raw.problem !== undefined) {
+          entry =
+            raw.problem.code === 'file-too-large'
+              ? tooLarge(id, raw.problem.size ?? 0, revision)
+              : unreadable(id, new Error(raw.problem.message), revision);
+        } else {
+          if (known.hash !== raw.hash && attempt < DETAIL_SETTLE_ATTEMPTS) {
+            await refresh();
+            continue;
           }
-        } catch (error) {
-          entry = unreadable(id, error, revision);
+          try {
+            entry =
+              known.hash === raw.hash && known.revision === revision
+                ? known
+                : evaluate(id, raw.bytes, raw.hash, revision);
+            text = decodeAgentFile(raw.bytes);
+          } catch (error) {
+            entry = unreadable(id, error, revision);
+          }
         }
         return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
       }

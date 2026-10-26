@@ -35,7 +35,7 @@ async function openBureau() {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   return { bureau, directory };
@@ -337,7 +337,7 @@ describe('a run whose session expired and was recreated while it ran (COR-718)',
           default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
         },
         storage: { type: 'memory' },
-        durableExecution: false,
+        durable: false,
       }),
     );
   });
@@ -352,7 +352,7 @@ describe('a run whose session expired and was recreated while it ran (COR-718)',
             default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
           },
           storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         }),
       );

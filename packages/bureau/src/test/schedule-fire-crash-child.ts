@@ -4,7 +4,7 @@
  * Usage: `bun schedule-fire-crash-child.ts <sqlite|lmdb> <storagePath> <markerPath>`
  *
  * Stands up a real durable Bureau whose engine timers are driven by hand
- * (`durableBackgroundTasks: 'manual'`), registers a recurring interval
+ * (`maintenance: 'manual'`), registers a recurring interval
  * schedule, and drives it to its first occurrence with
  * `bureau.runDurableMaintenance(occurrence)`, which is `engine.scheduler.tick`
  * under the hood. No real time elapses and no poller runs.
@@ -68,8 +68,8 @@ const bureau = await createBureau<AgentDefinitions>({
     }),
   },
   storage: { type: backend, path: storagePath },
-  durableExecution: true,
-  durableBackgroundTasks: 'manual',
+  durable: true,
+  maintenance: 'manual',
   // One process per store: a restart must not wait out a dead holder's claim.
   durableOwnership: { ownership: 'none' },
 });

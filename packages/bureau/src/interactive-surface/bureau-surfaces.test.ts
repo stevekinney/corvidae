@@ -34,7 +34,7 @@ function open(
       worker: createAgent({ generate: parks }),
     },
     storage: path,
-    durableExecution: true,
+    durable: true,
     ...extra,
   });
 }

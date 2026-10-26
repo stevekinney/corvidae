@@ -37,7 +37,6 @@ export async function withA2A<T>(
   agents: Record<string, GenerateFunction>,
   body: (opened: OpenedBureau) => Promise<T>,
   options: {
-    humanInput?: boolean;
     publish?: readonly string[];
     handlerOptions?: NonNullable<Parameters<typeof openBureau>[0]>['handlerOptions'];
   } = {},
@@ -50,7 +49,6 @@ export async function withA2A<T>(
       ]),
     ),
     publish: options.publish ?? Object.keys(agents),
-    ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: { publicUrl: PUBLIC_URL, ...options.handlerOptions },
   });
   try {

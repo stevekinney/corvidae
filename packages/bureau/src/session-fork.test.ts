@@ -71,7 +71,7 @@ async function openBureau(
     },
     storage:
       options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
-    durableExecution: true,
+    durable: true,
   });
   cleanups.push(() => bureau.dispose());
   return bureau;
@@ -393,7 +393,7 @@ describe('a message that is not a branch point', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     cleanups.push(() => bureau.dispose());
     const run = await bureau.createRun({ agentName: 'default', message: 'go', principal: ALICE });
@@ -669,7 +669,7 @@ describe('a parent whose model a policy profile chose', () => {
       },
       storage: { type: 'memory' },
       modelPolicy: POLICY,
-      ...(durable ? { durableExecution: true } : {}),
+      ...(durable ? { durable: true } : {}),
     });
     cleanups.push(() => bureau.dispose());
     const run = await bureau.createRun({ message: 'go', agentName: 'agent', principal: ALICE });

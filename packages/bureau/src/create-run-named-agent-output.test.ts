@@ -76,7 +76,7 @@ describe('a named agent’s structured output on a session run', () => {
         viaSession: structuredAgent(sessionGenerate),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     bureaus.push(bureau);
 
@@ -120,7 +120,7 @@ describe('a named agent’s structured output after a restart', () => {
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(crashed);
@@ -147,7 +147,7 @@ describe('a named agent’s structured output after a restart', () => {
         ),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(restarted);

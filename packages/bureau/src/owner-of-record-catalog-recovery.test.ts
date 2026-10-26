@@ -40,7 +40,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
         }),
       },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
@@ -64,7 +64,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
       });

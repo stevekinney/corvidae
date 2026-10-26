@@ -110,7 +110,6 @@ async function open(seen: Seen, parks = 1): Promise<OpenedProcess> {
     id: 'run-human-wait-multi-instance',
     assets: { storage: createMemoryAssetStorage() },
     agents: { asker: askingAgent(seen, parks) },
-    humanInput: true,
     durableOwnership: OWNERSHIP,
   });
   processes.push(opened);

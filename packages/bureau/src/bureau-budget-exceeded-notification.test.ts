@@ -54,15 +54,15 @@ const generateDone: GenerateFunction = async () => ({ content: 'Done.', toolCall
 
 const drivers: Array<{
   name: string;
-  options: Pick<BureauOptions, 'storage' | 'durableExecution'>;
+  options: Pick<BureauOptions, 'storage' | 'durable'>;
 }> = [
   { name: 'in-memory driver', options: {} },
-  { name: 'durable driver', options: { storage: { type: 'memory' }, durableExecution: true } },
+  { name: 'durable driver', options: { storage: { type: 'memory' }, durable: true } },
 ];
 
 async function collectRunFrames(
   generate: GenerateFunction,
-  driverOptions: Pick<BureauOptions, 'storage' | 'durableExecution'>,
+  driverOptions: Pick<BureauOptions, 'storage' | 'durable'>,
 ): Promise<{ frames: RunFrame[]; finishReason: string | undefined }> {
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
@@ -186,7 +186,7 @@ describe.each(failureShapes)(
             }),
           },
           storage: crashed.storage,
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
@@ -211,7 +211,7 @@ describe.each(failureShapes)(
             }),
           },
           storage: replayed.storage,
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         bureauB = reattached;

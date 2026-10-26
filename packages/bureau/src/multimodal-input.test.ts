@@ -188,7 +188,7 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
       const seen: GenerateContext[] = [];
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: recordingGenerate(seen) }) },
-        ...(durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+        ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
       });
       cleanups.push(async () => {
         await bureau.dispose();
@@ -222,7 +222,7 @@ describe('a durable catalog run records its input as submitted (COR-716)', () =>
         }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
     });
     cleanups.push(async () => {
       gate.resolve();
@@ -267,7 +267,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       assets: { storage: fixture.storage },
     });
     cleanups.push(async () => {
@@ -339,7 +339,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       assets: { storage: fixture.storage },
     });
     cleanups.push(async () => {
@@ -400,7 +400,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     cleanups.push(async () => {
       releaseStepZero.resolve();
@@ -444,7 +444,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
         default: createAgent({ generate: recordingGenerate(seen, hold.promise) }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     cleanups.push(async () => {
       hold.resolve();
@@ -499,7 +499,7 @@ describe('the asset service is ready before the scheduler can fire (COR-716)', (
         default: createAgent({ generate: recordingGenerate([]), toolbox: createToolbox([]) }),
       },
       storage: spy('engine', new MemoryStorage()),
-      durableExecution: true,
+      durable: true,
       assets: { storage: spy('assets', fixture.storage) },
     });
     cleanups.push(async () => {

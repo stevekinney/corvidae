@@ -13,6 +13,7 @@ import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { workflowFileText } from './workflow-file-fixtures.test-support.ts';
+import { workflowFileDirectory } from '../sources/workflow-file-directory';
 
 /** What a scripted agent was sent, and by which agent. */
 export interface AgentCall {
@@ -79,9 +80,9 @@ export async function startWorkflowBureau(
     agents: {
       ...scriptedAgents(options.agentNames ?? ['writer', 'editor'], options.replies ?? {}, calls),
     },
-    workflowDirectory: directory,
+    workflowSource: workflowFileDirectory(directory),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...options.overrides,
   });
   const put = async (name: string, text: string): Promise<void> => {

@@ -19,12 +19,10 @@ async function withPeer(
     opened: OpenedBureau;
     client: ReturnType<typeof createA2APeerClient>;
   }) => Promise<void>,
-  options: { humanInput?: boolean } = {},
 ): Promise<void> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', description: 'Answers.', generate }) },
     publish: ['asker'],
-    ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: { publicUrl: ORIGIN },
   });
   try {
@@ -71,53 +69,45 @@ describe('the peer client against a Bureau A2A mount', () => {
   });
 
   it('continues a task that asked for input, by its task id', async () => {
-    await withPeer(
-      parksThenAnswers(),
-      async ({ client }) => {
-        const opening = await client.send({ text: 'start' });
-        const first = await opening.result();
-        expect(first.state).toBe('input-required');
+    await withPeer(parksThenAnswers(), async ({ client }) => {
+      const opening = await client.send({ text: 'start' });
+      const first = await opening.result();
+      expect(first.state).toBe('input-required');
 
-        const continuing = await client.send({
-          text: 'blue',
-          taskId: first.taskId,
-          contextId: first.contextId,
-        });
-        const second = await continuing.result();
+      const continuing = await client.send({
+        text: 'blue',
+        taskId: first.taskId,
+        contextId: first.contextId,
+      });
+      const second = await continuing.result();
 
-        expect(second.state).toBe('completed');
-        expect(second.taskId).toBe(first.taskId);
-      },
-      { humanInput: true },
-    );
+      expect(second.state).toBe('completed');
+      expect(second.taskId).toBe(first.taskId);
+    });
   });
 
   it('settles a repeated continuation, whose first response is the task the first send finished', async () => {
     // A caller crashed after its continuation reached the peer and before it recorded the task;
     // the peer finished meanwhile, and the replay sends the same message id again.
-    await withPeer(
-      parksThenAnswers(),
-      async ({ client }) => {
-        const opening = await client.send({ text: 'start' });
-        const first = await opening.result();
-        const request = {
-          text: 'blue',
-          taskId: first.taskId,
-          contextId: first.contextId,
-          messageId: 'peer-call:replayed',
-        };
-        const originalTask = await client.send(request);
-        const original = await originalTask.result();
-        expect(original.state).toBe('completed');
+    await withPeer(parksThenAnswers(), async ({ client }) => {
+      const opening = await client.send({ text: 'start' });
+      const first = await opening.result();
+      const request = {
+        text: 'blue',
+        taskId: first.taskId,
+        contextId: first.contextId,
+        messageId: 'peer-call:replayed',
+      };
+      const originalTask = await client.send(request);
+      const original = await originalTask.result();
+      expect(original.state).toBe('completed');
 
-        const replayed = await client.send(request);
-        const outcome = await replayed.result();
+      const replayed = await client.send(request);
+      const outcome = await replayed.result();
 
-        expect(outcome.state).toBe('completed');
-        expect(outcome.taskId).toBe(first.taskId);
-      },
-      { humanInput: true },
-    );
+      expect(outcome.state).toBe('completed');
+      expect(outcome.taskId).toBe(first.taskId);
+    });
   });
 
   it('cancels a task that never ends', async () => {

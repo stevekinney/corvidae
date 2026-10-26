@@ -1332,7 +1332,7 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
       storage: { type: 'sqlite', path: database.path },
-      durableExecution: false,
+      durable: false,
       onDiagnostic: createDiagnostics().onDiagnostic,
     });
     return track(bureau as unknown as Bureau);
@@ -1475,7 +1475,7 @@ describe('a goal read by a bureau with no durable engine', () => {
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
       storage: { type: 'sqlite', path: database.path },
-      durableExecution: false,
+      durable: false,
       onDiagnostic: createDiagnostics().onDiagnostic,
     });
     return track(bureau as unknown as Bureau);

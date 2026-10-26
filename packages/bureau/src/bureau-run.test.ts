@@ -310,7 +310,7 @@ describe('bureau.run', () => {
       // the catalog agent's own generate; only the durable engine + storage
       // matter here.
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const before = await bureau.listDurableRuns();
@@ -344,7 +344,7 @@ describe('bureau.run', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = bureau.run('echo', 'hi');
@@ -367,7 +367,7 @@ describe('bureau.run', () => {
     const bureau = await createBureau({
       agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = bureau.run('echo', 'hi');
@@ -390,7 +390,7 @@ describe('bureau.run', () => {
     const bureau = await createBureau({
       agents: { plain: nonResolvingAgent },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const before = await bureau.listDurableRuns();
@@ -425,7 +425,7 @@ describe('bureau.run', () => {
     const bureau = await createBureau({
       agents: { plain: lazyNonResolvingAgent },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const before = await bureau.listDurableRuns();
@@ -569,7 +569,7 @@ describe('bureau.run', () => {
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       try {
         let reads = 0;
@@ -637,7 +637,7 @@ describe('bureau.run', () => {
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       try {
         const run = bureau.run('echo', 'hi', { principal: 'alice' });
@@ -658,7 +658,7 @@ describe('bureau.run', () => {
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       try {
         const run = bureau.run('echo', 'hi');
@@ -688,7 +688,7 @@ describe('bureau.run', () => {
       const bureau = await createBureau({
         agents: { plain: nonResolvingAgent },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       });
       try {
         const run = bureau.run('plain', 'hi', { principal: 'alice' });
@@ -838,7 +838,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
   // (AB-240), so Bureau's tier can only reach it where an options bag exists
   // outside the agent to merge into. COR-1277 made that true of every dispatch
   // whose agent exposes `OPERATIVE_RESOLVE_RUN_OPTIONS`, durable or not, so
-  // `durableExecution` is no longer part of the answer — only the resolver is.
+  // `durable` is no longer part of the answer — only the resolver is.
   //
   // Observed behaviorally rather than by introspection: `AgentRun` exposes no
   // `describeHookPlan` (that is on `ActiveRun`), and behavior is the stronger
@@ -880,7 +880,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
       },
       identity: { resolve: async () => 'You are the house agent.' },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -1147,7 +1147,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
       agents: { plain: nonResolvingAgent },
       identity: { resolve: async () => 'You are the house agent.' },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {
@@ -1280,7 +1280,7 @@ describe('a child run is outside Bureau’s hook authority (COR-1269)', () => {
       },
       identity: { resolve: async () => 'BUREAU-IDENTITY' },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
 
     try {

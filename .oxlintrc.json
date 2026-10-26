@@ -162,6 +162,23 @@
       }
     },
     {
+      "files": ["**/packages/bureau/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "armorer",
+                "importNames": ["combineToolboxes"],
+                "message": "combineToolboxes rebuilds a toolbox from its tool configurations and drops its idempotency cache, skill gate, and request-context binding (COR-1700, the class COR-321 patched). Use withAddedTools from toolbox-additions."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["**/*test-utilities.ts"],
       "rules": {
         "no-console": [

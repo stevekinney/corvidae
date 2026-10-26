@@ -39,7 +39,6 @@ describe('a schedule fire’s human wait', () => {
   it('is a pending review of the fire, answerable through bureau.tasks.respond', async () => {
     const seen: string[] = [];
     const bureau = await open({
-      humanInput: true,
       agents: {
         default: createAgent({
           generate: askingGenerate('answer', seen),
@@ -207,7 +206,6 @@ describe('a schedule fire’s human wait after a restart', () => {
     const databasePath = nextDatabasePath();
     const storage = { type: 'sqlite' as const, path: databasePath };
     const humanInputOptions = {
-      humanInput: true,
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     };
     const crashed = await open({
@@ -310,7 +308,6 @@ describe('a schedule fire’s tool approval after a restart', () => {
 describe('a schedule fire’s reviews end with the fire', () => {
   it('drops a human wait once the fire is canceled', async () => {
     const bureau = await open({
-      humanInput: true,
       agents: {
         default: createAgent({
           generate: askingGenerate(),
@@ -329,8 +326,9 @@ describe('a schedule fire’s reviews end with the fire', () => {
     );
   });
 
-  it('offers a fire no requestHumanInput without the option, so it cannot park', async () => {
+  it('offers a fire no requestHumanInput under humanInput: false, so it cannot park', async () => {
     const bureau = await open({
+      humanInput: false,
       agents: {
         default: createAgent({
           generate: askingGenerate(),

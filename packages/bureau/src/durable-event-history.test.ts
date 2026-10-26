@@ -961,7 +961,7 @@ describe('createDurableEventHistory', () => {
       // `retain()` was never called — the floor is still its initial 0 —
       // yet the one recorded event is still currently retained and must
       // still be protected: this must NOT read back as `undefined` (no
-      // clamp), which would let `auditRetention` delete audit records for
+      // clamp), which would let `retention.audit` delete audit records for
       // this event while it remains fully pageable.
       expect(await history.retentionFloorTimestamp()).toBe(t0);
 
@@ -1046,7 +1046,7 @@ describe('createDurableEventHistory', () => {
       // `retentionFloorTimestamp()` would report `0` as the floor for
       // EVERY retained history, which would collapse `create-bureau.ts`'s
       // `pruneAuditTrail`'s `effectiveCutoff` to `0` and silently disable
-      // `auditRetention` pruning entirely, forever, the instant any
+      // `retention.audit` pruning entirely, forever, the instant any
       // retention had ever happened — never diagnosed, never thrown.
       const storage = await createMemoryStorage();
       const runtime = createManualRuntimeServices();

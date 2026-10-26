@@ -7,6 +7,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { readGenerationProfile } from '@lostgradient/operative';
 import {
   createTemporaryDirectory,
@@ -24,6 +25,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { hashAgentFileBytes } from './agent-file';
 import { AGENT_REVISION_KEY_PREFIX } from './agent-revision-store';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import {
   type AgentFileFixture,
@@ -425,6 +427,35 @@ describe('a catalog that missed an intermediate edit', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it('settles the record’s revision on a safety rescan, though no byte changed and no refresh() was asked for', async () => {
+    const directory = sharedDirectory();
+    const revisionStore = newStore();
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    // Polling is the only trigger: the watcher opens and never reports.
+    const behind = await start({
+      directory,
+      revisionStore,
+      runtime,
+      watch: true,
+      openWatcher: () => ({ on: () => undefined, close: () => undefined }) as never,
+    });
+    const ahead = await start({ directory, revisionStore });
+    await behind.put('helper.md', versionOne);
+    await behind.catalog.refresh();
+    await ahead.catalog.refresh();
+    await ahead.put('helper.md', versionTwo);
+    await ahead.catalog.refresh();
+    await ahead.put('helper.md', versionOne);
+    await ahead.catalog.refresh();
+    expect(revisionOf(behind)).toBe(1);
+    const settled = behind.nextChange((change) => change.changed.includes('helper'));
+
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await settled;
+
+    expect(revisionOf(behind)).toBe(3);
+  });
+
   it('tells its listeners, because a revision-only change is a change', async () => {
     const { behind } = await missedAnEdit();
     const changes: string[][] = [];
@@ -605,9 +636,9 @@ describe('a Bureau restarted after an offline edit', () => {
     directories.push(agents);
     const storagePath = join(directory, 'bureau.sqlite');
     const overrides = {
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' as const },
-      durableBackgroundTasks: 'manual' as const,
+      maintenance: 'manual' as const,
       onDiagnostic: () => undefined,
     };
     const recordOf = async (storage: Storage, runId: string) => {

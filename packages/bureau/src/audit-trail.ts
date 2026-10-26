@@ -1657,7 +1657,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     // against anything) or always-true (silently pruning nothing),
     // depending on sign — neither is a safe default for a destructive
     // operation. `create-bureau.ts` already validates
-    // `options.auditRetention.olderThan` at construction time, but this
+    // `options.retention.audit.olderThan` at construction time, but this
     // method is part of the PUBLIC `AuditTrail` surface — a caller
     // reaching it directly must get the same protection.
     if (!Number.isFinite(cutoffMs)) {

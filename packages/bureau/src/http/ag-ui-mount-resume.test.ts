@@ -980,7 +980,6 @@ describe('resuming a human wait', () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks for the answer.')],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {
@@ -1011,7 +1010,6 @@ describe('resuming a human wait', () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks.')],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {
@@ -1055,7 +1053,6 @@ describe('resuming a human wait', () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks for the answer.')],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau, generate }) => {
@@ -1092,7 +1089,6 @@ describe('resuming a human wait', () => {
 describe('a human wait answered by a caller who may write but not read', () => {
   const options = {
     script: [askHuman, say('Thanks for the answer.')],
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     authentication,
   };
@@ -2033,7 +2029,6 @@ describe('a step that asks a human and calls a gated tool', () => {
         {
           script: [both, say('Waiting for the approval.'), say('Charged.')],
           toolbox: gateOnlyCharges(charges),
-          humanInput: true,
           storage: 'sqlite',
           ...(stop === undefined ? {} : { stopWhen: stop }),
         },
@@ -2128,7 +2123,6 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
     },
   });
   const humanWait = {
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   };
   const answerOf = (interruptId: string, text: string) =>

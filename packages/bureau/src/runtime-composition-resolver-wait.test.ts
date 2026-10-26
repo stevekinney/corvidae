@@ -26,7 +26,7 @@ async function compositionWith(
   const runtime = await createRuntimeComposition(
     {
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     },
     awaitsResolver ? { awaitsCatalogAgentRunOptionsResolver: true } : {},

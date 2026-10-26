@@ -636,7 +636,7 @@ describe('faults', () => {
       id: 'no-workflows',
       agents: {},
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     cleanups.push(() => bureau.dispose());
     const handler = createBureauHandler(bureau, {

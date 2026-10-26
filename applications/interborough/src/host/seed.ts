@@ -9,8 +9,8 @@
  * already hold it, and a restart adds nothing.
  *
  * A session run that names one of these agents (Chat, or `createRun({ agentName })`) runs that
- * agent's script, tools, and stop conditions. The host sets `humanInput: true`, so the Bureau also
- * offers every such run its `requestHumanInput` tool.
+ * agent's script, tools, and stop conditions. The durable Bureau also offers every such run its
+ * `requestHumanInput` tool, which it does by default.
  *
  * - `assistant`: answers every message with one fixed reply.
  * - `tool-runner`: looks an order up (a read-only tool), then asks to refund it (a mutating tool

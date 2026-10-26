@@ -17,6 +17,8 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
+import { agentFileDirectory } from './sources/agent-file-directory';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const harnesses: WorkflowBureauHarness[] = [];
 const fileHarnesses: FileBureauHarness[] = [];
@@ -34,19 +36,21 @@ afterEach(async () => {
   for (const directory of fileAgentDirectories.splice(0)) removeTemporaryPath(directory);
 });
 
-describe('workflowDirectory', () => {
-  it('is refused when blank', async () => {
-    const error = await createBureau({ agents: {}, workflowDirectory: '  ' }).catch(
-      (thrown: unknown) => thrown,
-    );
+describe('workflowSource', () => {
+  it('is refused when it is not a workflow source', async () => {
+    const error = await createBureau({
+      agents: {},
+      workflowSource: agentFileDirectory('/tmp/never-used') as never,
+    }).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('BAD_REQUEST');
   });
 
   it('is refused without a durable engine, because a schedule and an instance need one', async () => {
-    const error = await createBureau({ agents: {}, workflowDirectory: '/tmp/never-used' }).catch(
-      (thrown: unknown) => thrown,
-    );
+    const error = await createBureau({
+      agents: {},
+      workflowSource: workflowFileDirectory('/tmp/never-used'),
+    }).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('BAD_REQUEST');
     expect((error as BureauError).message).toContain('durable engine');
@@ -232,13 +236,13 @@ describe('an agent step that names a file agent', () => {
   );
 
   async function startWithFileAgents() {
-    const workflowDirectory = createTemporaryDirectory('bureau-workflow-file-agents');
-    fileAgentDirectories.push(workflowDirectory);
+    const workflowsPath = createTemporaryDirectory('bureau-workflow-file-agents');
+    fileAgentDirectories.push(workflowsPath);
     const harness = await startFileBureau({
       scripts: {
         'claude-opus-5-5': (observation) => `file agent reply (${observation.tools.join(',')})`,
       },
-      overrides: { workflowDirectory },
+      overrides: { workflowSource: workflowFileDirectory(workflowsPath) },
     });
     fileHarnesses.push(harness);
     return harness;
