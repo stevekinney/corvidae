@@ -30,8 +30,8 @@ const basicCatalog = (await Bun.file(
 
 describe('the catalogs A2uiSurface declares', () => {
   test('are exactly the vendored basic catalog', () => {
-    expect(A2UI_SURFACE_CATALOG_ID).toBe(basicCatalog.catalogId);
-    expect(A2UI_SURFACE_CLIENT_CAPABILITIES).toEqual({
+    expect<string>(A2UI_SURFACE_CATALOG_ID).toBe(basicCatalog.catalogId);
+    expect<unknown>(A2UI_SURFACE_CLIENT_CAPABILITIES).toEqual({
       'v0.9': { supportedCatalogIds: [basicCatalog.catalogId] },
     });
   });
