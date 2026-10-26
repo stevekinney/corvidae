@@ -279,7 +279,8 @@ describe('fencing a resolution on the round the caller read (COR-1659)', () => {
       // Nothing took effect: the review is still pending at its own round, with no decision and no write.
       expect(bureau.listPendingReviews()).toEqual(moved);
       expect(resultRow(await sessionRows(bureau, run.sessionId), 'call-1')).toEqual(before);
-      expect((await bureau.getReview(review.id))?.status).toBe('pending');
+      const reread = await bureau.getReview(review.id);
+      expect(reread?.status).toBe('pending');
       expect(charges).toEqual([]);
 
       // The round the caller then reads decides, and a call naming no round is unfenced as before.

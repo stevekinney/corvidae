@@ -930,8 +930,8 @@ describe('the reviews operations against a real Bureau', () => {
         'expected the tool call to surface a pending approval',
       );
       const handler = createBureauHandler(bureau, { authentication });
-      const [review] = ((await call(handler, 'bureau.reviews.list', {})).result?.['reviews'] ??
-        []) as Array<{ id: string; round: number }>;
+      const listed = await call(handler, 'bureau.reviews.list', {});
+      const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string; round: number }>;
       expect(review?.round).toBe(0);
       const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
         (reply.error?.data as { reason?: string } | undefined)?.reason;
@@ -954,10 +954,8 @@ describe('the reviews operations against a real Bureau', () => {
       });
       expect(stale.error?.data?.httpStatus).toBe(409);
       expect(reasonOf(stale)?.startsWith('REVIEW_ROUND_CHANGED: ')).toBe(true);
-      expect((await call(handler, 'bureau.reviews.get', { id: review?.id })).result).toMatchObject({
-        status: 'pending',
-        round: 1,
-      });
+      const unchanged = await call(handler, 'bureau.reviews.get', { id: review?.id });
+      expect(unchanged.result).toMatchObject({ status: 'pending', round: 1 });
 
       // The round it reads next decides.
       const current = await call(handler, 'bureau.reviews.resolve', {
