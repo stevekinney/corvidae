@@ -6,6 +6,7 @@ import {
   isOutcomeNotWritten,
   isReview,
   isReviewList,
+  isRoundChanged,
   type Review,
   viewReview,
 } from './model.ts';
@@ -121,6 +122,18 @@ describe('the pending-review model', () => {
     ).toBe(true);
     expect(
       isOutcomeNotWritten({ isError: true, content: [{ type: 'text', text: 'NotFound' }] }),
+    ).toBe(false);
+  });
+
+  it('recognizes a decision refused because the review moved to another round', () => {
+    expect(
+      isRoundChanged({
+        isError: true,
+        content: [{ type: 'text', text: 'Conflict: REVIEW_ROUND_CHANGED: now at round 1' }],
+      }),
+    ).toBe(true);
+    expect(
+      isRoundChanged({ isError: true, content: [{ type: 'text', text: 'Conflict: lost' }] }),
     ).toBe(false);
   });
 
