@@ -61,6 +61,7 @@
     </EmptyState>
   {:else}
     <ErrorState
+      variant="flat"
       title={VIEW_COPY.chat.error.title}
       description={VIEW_COPY.chat.error.description}
       headingLevel={1}
