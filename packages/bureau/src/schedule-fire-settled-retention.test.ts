@@ -21,12 +21,13 @@ import {
   pollUntil,
 } from './schedule-fire-fixtures.test-support';
 import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
-import { fireBureauOptions } from './schedule-fire-stream.test-support';
+import { fireBureauOptions, forgetDrivenRuntimes } from './schedule-fire-stream.test-support';
 import type { Bureau, BureauOptions } from './types';
 
 const harness = createScheduleFireHarness();
 
 afterEach(async () => {
+  forgetDrivenRuntimes();
   await harness.dispose();
 });
 

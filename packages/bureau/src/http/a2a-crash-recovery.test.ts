@@ -7,7 +7,7 @@
  */
 import { Message, TaskState } from '@a2a-js/sdk';
 import { ServerCallContext } from '@a2a-js/sdk/server';
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
@@ -90,18 +90,34 @@ type Service = {
   /** A restart whose Bureau answers `locateRunCreationReceipt` as given, for a state a test cannot reach. */
   restartLocating: (locate: () => Promise<unknown>) => void;
   claims: () => number;
+  /** The Bureau's clock; a task settled at its origin is `ageMilliseconds` old after it moves. */
+  runtime: ReturnType<typeof createManualRuntimeServices>;
+  /**
+   * Retires the tasks that settled before the clock last moved by `TASK_AGE_MILLISECONDS`, and
+   * only those: the Bureau has no method that deletes one run.
+   */
+  retireEarlierTasks: () => Promise<void>;
   records: ReturnType<typeof createA2ATaskRecords>;
   bureau: Awaited<ReturnType<typeof openBureau>>['bureau'];
 };
+
+/** How much later than the task a test retires, the task a crashed command then creates is made. */
+const TASK_AGE_MILLISECONDS = 30_000;
 
 async function withService(
   generate: GenerateFunction,
   body: (service: Service) => Promise<void>,
 ): Promise<void> {
+  const bureauRuntime = createManualRuntimeServices();
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate }) },
     publish: ['asker'],
     humanInput: true,
+    bureauOptions: {
+      runtime: bureauRuntime,
+      taskRetention: { olderThan: 2 * TASK_AGE_MILLISECONDS },
+      runCreationTerminalRetentionMs: 1000,
+    },
   });
   try {
     const base = createDefaultRuntimeServices();
@@ -193,6 +209,12 @@ async function withService(
         handler = build(true, true);
       },
       claims: () => claims,
+      runtime: bureauRuntime,
+      retireEarlierTasks: async () => {
+        await bureauRuntime.advance(TASK_AGE_MILLISECONDS + 1);
+        await opened.bureau.runDurableMaintenance();
+        await opened.bureau.runDurableMaintenance();
+      },
       records,
       bureau: opened.bureau,
     });
@@ -232,6 +254,7 @@ describe('a command retried after a crash before its receipt, on a process that 
       async () => ({ content: 'done', toolCalls: [] }),
       async (service) => {
         const referenced = await service.start(userMessage('m-referenced', 'first'));
+        await service.runtime.advance(TASK_AGE_MILLISECONDS);
         const message = Message.fromJSON({
           messageId: 'm-create-reference',
           taskId: '',
@@ -241,7 +264,7 @@ describe('a command retried after a crash before its receipt, on a process that 
         });
         service.crashNextComplete();
         await rejectionOf(service.send(message));
-        await service.bureau.deleteRun(referenced.id);
+        await service.retireEarlierTasks();
         service.restart();
         // The run exists, so the retry is owed it: recovering the creation precedes any recheck of
         // what the message referenced.
@@ -288,6 +311,7 @@ describe('a command retried after a crash before its receipt, on a process that 
       async () => ({ content: 'done', toolCalls: [] }),
       async (service) => {
         const referenced = await service.start(userMessage('m-referenced', 'first'));
+        await service.runtime.advance(TASK_AGE_MILLISECONDS);
         const message = Message.fromJSON({
           messageId: 'm-pending-receipt',
           taskId: '',
@@ -297,7 +321,7 @@ describe('a command retried after a crash before its receipt, on a process that 
         });
         service.crashNextComplete();
         await rejectionOf(service.send(message));
-        await service.bureau.deleteRun(referenced.id);
+        await service.retireEarlierTasks();
         // A receipt still `pending` names a run that never started, so there is no run to finish.
         service.restartLocating(async () => ({
           status: 'pending',
@@ -317,6 +341,7 @@ describe('a command retried after a crash before its receipt, on a process that 
       async () => ({ content: 'done', toolCalls: [] }),
       async (service) => {
         const referenced = await service.start(userMessage('m-referenced', 'first'));
+        await service.runtime.advance(TASK_AGE_MILLISECONDS);
         const message = Message.fromJSON({
           messageId: 'm-unlocatable',
           taskId: '',
@@ -326,7 +351,7 @@ describe('a command retried after a crash before its receipt, on a process that 
         });
         service.crashNextComplete();
         await rejectionOf(service.send(message));
-        await service.bureau.deleteRun(referenced.id);
+        await service.retireEarlierTasks();
         service.restartLocating(async () => {
           throw new Error('no receipts here');
         });
@@ -343,6 +368,7 @@ describe('a command retried after a crash before its receipt, on a process that 
       async () => ({ content: 'done', toolCalls: [] }),
       async (service) => {
         const referenced = await service.start(userMessage('m-referenced', 'first'));
+        await service.runtime.advance(TASK_AGE_MILLISECONDS);
         const message = Message.fromJSON({
           messageId: 'm-late-reference',
           taskId: '',
@@ -353,7 +379,7 @@ describe('a command retried after a crash before its receipt, on a process that 
         });
         service.crashNextComplete();
         await rejectionOf(service.send(message));
-        await service.bureau.deleteRun(referenced.id);
+        await service.retireEarlierTasks();
         service.restart();
         const retried = await service.send(message);
 

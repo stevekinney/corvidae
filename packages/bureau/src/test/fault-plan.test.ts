@@ -11,7 +11,6 @@ import {
   BureauFaultSelectorResolutionError,
   selectAssetWorkFaultTarget,
   selectAuditWriteFaultTarget,
-  selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
 } from './fault-plan';
 
@@ -42,7 +41,7 @@ function auditRecord(overrides: Partial<AuditRecord> = {}): AuditRecord {
 }
 
 describe('BureauFaultOperation', () => {
-  it('accepts every operative FaultOperation plus the three Bureau-scoped operations', () => {
+  it('accepts every operative FaultOperation plus the two Bureau-scoped operations', () => {
     const operations: BureauFaultOperation[] = [
       'generate',
       'tool:example',
@@ -53,10 +52,9 @@ describe('BureauFaultOperation', () => {
       'delivery',
       'webhook-delivery',
       'audit-write',
-      'scheduler-task',
     ];
 
-    expect(operations).toHaveLength(10);
+    expect(operations).toHaveLength(9);
   });
 
   it('builds a BureauFaultPlan entry for each Bureau-scoped operation', () => {
@@ -75,16 +73,9 @@ describe('BureauFaultOperation', () => {
         occurrence: { kind: 'every' },
         effect: 'drop',
       },
-      {
-        id: 'scheduler-fault',
-        boundary: 'before-work',
-        operation: 'scheduler-task',
-        occurrence: { kind: 'after-sequence', sequence: 2 },
-        effect: 'delay',
-      },
     ] satisfies BureauFaultPlanEntry[];
 
-    expect(plan).toHaveLength(3);
+    expect(plan).toHaveLength(2);
   });
 });
 
@@ -122,29 +113,6 @@ describe('selectAuditWriteFaultTarget', () => {
 
   it('throws BureauFaultSelectorResolutionError when no record matches the key', () => {
     expect(() => selectAuditWriteFaultTarget([auditRecord()], 'audit:v1:not-a-real-key')).toThrow(
-      BureauFaultSelectorResolutionError,
-    );
-  });
-});
-
-describe('selectSchedulerTaskFaultTarget', () => {
-  it('resolves a taskId to exactly one SubmitSchedulerTaskResponse', () => {
-    const target = { taskId: 'task-2', priority: 'immediate' as const, status: 'queued' as const };
-    const tasks = [
-      { taskId: 'task-1', priority: 'background' as const, status: 'queued' as const },
-      target,
-    ];
-
-    expect(selectSchedulerTaskFaultTarget(tasks, 'task-2')).toBe(target);
-  });
-
-  it('throws BureauFaultSelectorResolutionError when more than one task matches', () => {
-    const tasks = [
-      { taskId: 'dup', priority: 'background' as const, status: 'queued' as const },
-      { taskId: 'dup', priority: 'immediate' as const, status: 'queued' as const },
-    ];
-
-    expect(() => selectSchedulerTaskFaultTarget(tasks, 'dup')).toThrow(
       BureauFaultSelectorResolutionError,
     );
   });

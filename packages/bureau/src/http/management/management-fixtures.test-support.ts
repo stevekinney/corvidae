@@ -212,6 +212,8 @@ export async function openBureau(
     assetStorage?: AssetStorage;
     /** The asset service's injected ports: a metadata extractor or a safety gate a test scripts. */
     assetPorts?: AssetPorts;
+    /** Further `createBureau` options, such as a manual `runtime` and a `taskRetention`. */
+    bureauOptions?: Partial<Parameters<typeof createBureau>[0]>;
     /** Passed to `createBureauHandler` beside the authentication. */
     handlerOptions?: Omit<
       Parameters<typeof createBureauHandler>[1],
@@ -249,6 +251,7 @@ export async function openBureau(
     ...(options.humanInput === undefined || options.humanInput === false
       ? {}
       : { humanInput: options.humanInput }),
+    ...options.bureauOptions,
   });
   const handler = createBureauHandler(bureau, {
     authentication,

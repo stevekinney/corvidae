@@ -8,17 +8,20 @@
  * and the orderings a client depends on.
  *
  * SCOPE. Run feeds follow the store-registered `createRun` surface, which is
- * what bureau manages — `getRun`, `abortRun`, `deleteRun`, recovery. A
+ * what bureau manages — `getRun`, `abortRun`, task retention, recovery. A
  * direct catalog dispatch through `bureau.run` never reaches `store.register`
  * and has no bureau-managed run id for a subscriber to name, so it gets no
  * feed; a caller holding that handle already has the `AgentRun` itself.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import type { BureauEventEnvelope } from './bureau-event-feed.ts';
 import { createBureau } from './create-bureau';
 import { waitForCondition, waitForRunState } from './test';
+import { retireSettledTasks, SHORT_TASK_RETENTION } from './testing/run-retirement.test-support';
+import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 
 const CANARY = 'ModelOutputCanary';
@@ -27,13 +30,14 @@ function createMockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
 }
 
-async function buildBureau(content?: string) {
+async function buildBureau(content?: string, options: Partial<BureauOptions> = {}) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
         generate: content === undefined ? createMockGenerate() : createMockGenerate(content),
       }),
     },
+    ...options,
   });
 }
 
@@ -219,7 +223,8 @@ describe('the run feeds a bureau owns', () => {
   });
 
   it('reaps the feed when the run is deleted, ending a live reader', async () => {
-    const bureau = await buildBureau();
+    const runtime = createManualRuntimeServices();
+    const bureau = await buildBureau(undefined, { runtime, ...SHORT_TASK_RETENTION });
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
@@ -235,7 +240,7 @@ describe('the run feeds a bureau owns', () => {
       })();
       await Promise.resolve();
 
-      await bureau.deleteRun(summary.id);
+      await retireSettledTasks(bureau, runtime);
 
       // Without the feed's lifetime signal this never returns and the test
       // times out instead of failing.

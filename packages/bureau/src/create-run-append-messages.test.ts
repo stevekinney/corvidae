@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { waitForRunState, createAgent } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import {
@@ -55,7 +55,8 @@ describe('createRun appendMessages', () => {
           instructions: 'You are helpful.',
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     try {
       const run = await bureau.createRun({
@@ -83,7 +84,8 @@ describe('createRun appendMessages', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     try {
       const rows = builtRows(ORIGIN, userRow('u-1', 'hi'), {
@@ -130,7 +132,8 @@ describe('createRun appendMessages', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     try {
       const first = await bureau.createRun({

@@ -21,6 +21,7 @@ import {
 } from './testing/construction-window.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { storageOverTextStore } from './testing/text-store-storage.test-support';
 
 const bureaus: Bureau[] = [];
 const fixtures = createConstructionWindowFixtures();
@@ -211,7 +212,8 @@ describe('every listener and timer registered before a top-level await (COR-1585
       agents: {},
       agentDirectory: await fixtures.agentDirectoryWithOneFile(),
       resolveAgentGenerate,
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       auditRetention: { olderThan: 86_400_000 },
       store,
       runtime,

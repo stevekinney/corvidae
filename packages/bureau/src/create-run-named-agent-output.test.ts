@@ -6,7 +6,7 @@
  */
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -75,7 +75,8 @@ describe('a named agent’s structured output on a session run', () => {
         viaRun: structuredAgent(malformedThenValid(viaRun)),
         viaSession: structuredAgent(sessionGenerate),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     bureaus.push(bureau);
 

@@ -6,7 +6,7 @@
  * `FaultOperation`, `FaultOccurrence`, `FaultPlanEntry`, `FaultPlan`, and
  * `FiredFault` for boundaries operative itself can see. Three boundaries
  * AB-92's Decision (2026-09-01) names are Bureau-owned resources invisible
- * from operative — webhook delivery, audit write, and scheduler task — so
+ * from operative — webhook delivery and audit write — so
  * this file widens `FaultOperation` into `BureauFaultOperation` and mirrors
  * `FaultPlanEntry`/`FaultPlan` with that widened operation, re-exporting
  * every operative fault type verbatim rather than redeclaring one, so there
@@ -14,14 +14,13 @@
  *
  * Every plan entry still only NAMES a target — no engine exists yet to
  * execute a `BureauFaultPlan` at a boundary (AB-95/tst-04a is that engine).
- * What this file adds beyond the type vocabulary is the three selector
+ * What this file adds beyond the type vocabulary is the selector
  * functions a future engine (and, today, a test asserting a plan entry's
  * addressing) uses to resolve a Bureau-scoped target to exactly one
  * concrete resource: a webhook delivery by its `WebhookDeliveryRecord.id`
  * (from `WebhookNotifier.listDeliveries()`), an audit write by its audit
  * entry key (`audit-trail.ts`'s own `encodeKey` encoding, reused here —
- * never reimplemented), and a scheduler task by its
- * `SubmitSchedulerTaskResponse.taskId`.
+ * never reimplemented).
  */
 import type {
   FaultBoundary,
@@ -35,7 +34,6 @@ import type {
 import type { AssetWorkKind, AssetWorkSnapshot } from '../assets/types';
 import type { AuditRecord } from '../audit-trail';
 import { encodeKey } from '../audit-trail';
-import type { SubmitSchedulerTaskResponse } from '../types';
 import type { WebhookDeliveryRecord } from '../webhook-notifier';
 
 // Re-exported verbatim (never redeclared) — see this file's module doc.
@@ -49,20 +47,18 @@ export type {
 };
 
 /**
- * `FaultOperation` widened with the three Bureau-owned boundaries AB-92
- * names that operative cannot see: webhook delivery, audit write, and
- * scheduler task.
+ * `FaultOperation` widened with the two Bureau-owned boundaries AB-92
+ * names that operative cannot see: webhook delivery and audit write.
  */
 export type BureauFaultOperation =
   | FaultOperation
   | 'webhook-delivery'
   | 'audit-write'
-  | 'scheduler-task'
   // COR-794: every managed-asset started-work kind, addressed by its work id.
   | `asset:${AssetWorkKind}`;
 
 /** The selector operations a {@link BureauFaultSelectorResolutionError} can name. */
-type SelectorOperation = 'webhook-delivery' | 'audit-write' | 'scheduler-task' | 'asset-work';
+type SelectorOperation = 'webhook-delivery' | 'audit-write' | 'asset-work';
 
 /** Mirrors operative's `FaultPlanEntry` with the widened {@link BureauFaultOperation}. */
 export interface BureauFaultPlanEntry {
@@ -167,24 +163,6 @@ export function selectAuditWriteFaultTarget(
       // fault-plan target is always a freshly-written record, never a
       // legacy one, so `?? 0` is a safe, honest fallback rather than a cast.
       encodeKey(record.timestampMs, record.sequence ?? 0, record.runId) === auditEntryKey,
-  );
-}
-
-/**
- * Resolves a scheduler-task fault target to exactly one
- * {@link SubmitSchedulerTaskResponse} by its `taskId`. Throws
- * {@link BureauFaultSelectorResolutionError} when `tasks` contains zero or
- * more than one response with that id.
- */
-export function selectSchedulerTaskFaultTarget(
-  tasks: readonly SubmitSchedulerTaskResponse[],
-  taskId: string,
-): SubmitSchedulerTaskResponse {
-  return resolveExactlyOne(
-    'scheduler-task',
-    `task id "${taskId}"`,
-    tasks,
-    (task) => task.taskId === taskId,
   );
 }
 

@@ -17,6 +17,7 @@ import {
 import {
   advanceFeedPoll,
   driveUntil,
+  forgetDrivenRuntimes,
   fireBureauOptions,
   followFire,
   parkedGenerate,
@@ -28,6 +29,7 @@ import type { Bureau } from './types';
 const harness = createScheduleFireHarness();
 
 afterEach(async () => {
+  forgetDrivenRuntimes();
   jest.useRealTimers();
   await harness.dispose();
 });
