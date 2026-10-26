@@ -98,4 +98,10 @@ export const routes: readonly RouteDefinition[] = [
   // Not in the sidebar: a goal is made and cancelled here, and linked to from where it is mentioned.
   { pattern: '/goals', view: 'goals', load: () => import('../routes/goals/index.svelte') },
   { pattern: '/engine', view: 'engine', load: () => import('../routes/dashboard/index.svelte') },
+  // Every engine workflow across types, narrowed by `?status=`: where the Overview's counts open.
+  {
+    pattern: '/engine/runs',
+    view: 'engine',
+    load: () => import('../routes/workflows/list/workflow-list.svelte'),
+  },
 ];

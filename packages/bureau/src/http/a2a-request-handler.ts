@@ -66,6 +66,7 @@ import {
   type User,
 } from '@a2a-js/sdk/server';
 import type { SessionInputAdmissionRequest } from '@lostgradient/operative';
+import { z } from 'zod';
 import {
   createDefaultRuntimeServices,
   type RuntimeServices,
@@ -258,6 +259,7 @@ export class BureauA2AUser implements User {
 export type A2ABureau = Pick<
   Bureau,
   | 'createRun'
+  | 'locateRunCreationReceipt'
   | 'getRun'
   | 'getSession'
   | 'getOwner'
@@ -478,6 +480,12 @@ export function inclusiveBoundary(timestamp: string): number {
   const fraction = /\.(\d+)/.exec(timestamp)?.[1] ?? '';
   return /[1-9]/.test(fraction.slice(3)) ? milliseconds : milliseconds - 1;
 }
+
+/**
+ * A2A defines `statusTimestampAfter` as an ISO 8601 (RFC 3339) timestamp, so `Date.parse`, which
+ * also reads `12/31/2026` and `0`, is not the check. The management operation uses the same one.
+ */
+const ISO_TIMESTAMP = z.iso.datetime({ offset: true });
 
 /** The most serialized bytes a listed task's history keeps in a listing snapshot. */
 export const LISTED_HISTORY_BYTES = 256 * 1024;
@@ -960,14 +968,41 @@ export function createBureauA2ARequestHandler(
     return text;
   }
 
+  /**
+   * Whether the run-creation command of `message` already holds a started run: a claim an earlier
+   * attempt left pending (its `records.create` or `ledger.complete` failed) is finished with the
+   * run it took, so the checks that guard a creation do not run again. A message that referenced a
+   * task removed since would otherwise be refused though its run exists. The lookup records the
+   * receipt of a run it finds started, so a receipt still `pending` names a run that did not start:
+   * nothing exists to finish, and the checks decide.
+   */
+  async function holdsRun(message: Message, owner: Owner, version: string): Promise<boolean> {
+    try {
+      const located = await bureau.locateRunCreationReceipt({
+        principal: owner,
+        agentName,
+        ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
+        runCreationRequestId: `a2a:${version}:${message.messageId}`,
+      });
+      return located.status === 'recorded';
+    } catch {
+      // Not locatable (no receipts, a context another agent holds): the checks decide.
+      return false;
+    }
+  }
+
   async function createTask(
     message: Message,
     owner: Owner,
     version: string,
     onEffect: () => void,
     inbound: Inbound,
+    resuming: boolean,
   ): Promise<string> {
-    const text = await checkNewTask(message, owner);
+    const text =
+      resuming && (await holdsRun(message, owner, version))
+        ? textOf(message)
+        : await checkNewTask(message, owner);
     let run;
     try {
       run = await bureau.createRun({
@@ -1013,10 +1048,12 @@ export function createBureauA2ARequestHandler(
       throw error;
     }
     onEffect();
+    const admitted = await bureau.tasks.record(run.id);
     await records.create({
       recordVersion: 1,
       taskId: run.id,
       contextId: run.sessionId,
+      incarnation: admitted?.incarnation ?? '',
       history: [historyEntryOf(inbound.history, run.id, run.sessionId)],
       replyRecorded: false,
     });
@@ -1054,8 +1091,8 @@ export function createBureauA2ARequestHandler(
     owner: Owner,
     version: string,
     onEffect: () => void,
+    resuming: boolean,
   ): Promise<string> {
-    await checkNewTask(message, owner);
     // The identifier follows from the command, so a retry after a lost receipt finds this task
     // instead of recording a second one.
     const digest = await crypto.subtle.digest(
@@ -1068,6 +1105,8 @@ export function createBureauA2ARequestHandler(
     // A retry after a failed step resumes it: each step below is skipped once it has happened.
     // The task's own record keeps the message, so there is no side record to outlive its retention.
     const existing = await bureau.tasks.get(taskId);
+    // A retry that finds its task finishes it: what the message referenced is not checked again.
+    if (!(resuming && existing !== undefined)) await checkNewTask(message, owner);
     // From here the task may exist: a failure later keeps the claim, so a retry finishes this
     // task instead of claiming afresh.
     onEffect();
@@ -1219,12 +1258,38 @@ export function createBureauA2ARequestHandler(
       onEffect();
       answered = { path: 'input', state: inputReceiptState(outcome.receipt.state) };
     }
-    await records.update(view.id, (current) => {
-      const entry = historyEntryOf(inbound.history, view.id, view.contextId);
-      const already = current.history.some((held) => held['messageId'] === message.messageId);
-      return already ? undefined : { ...current, history: [...current.history, entry] };
-    });
+    await recordContinuation(message, view, inbound);
     return answered;
+  }
+
+  /**
+   * Appends a continuation to the task's A2A history. A task another transport started has no
+   * record yet, so its first continuation over A2A creates one, and its reply is recorded when it
+   * settles like any task's: the exchange would otherwise never appear in the A2A history.
+   */
+  async function recordContinuation(
+    message: Message,
+    view: TaskView,
+    inbound: Inbound,
+  ): Promise<void> {
+    const entry = historyEntryOf(inbound.history, view.id, view.contextId);
+    const append = (current: A2ATaskRecord): A2ATaskRecord | undefined =>
+      current.history.some((held) => held['messageId'] === message.messageId)
+        ? undefined
+        : { ...current, history: [...current.history, entry] };
+    if ((await records.update(view.id, append)) !== undefined) return;
+    const stored = await bureau.tasks.record(view.id);
+    const created = await records.create({
+      recordVersion: 1,
+      taskId: view.id,
+      contextId: view.contextId,
+      incarnation: stored?.incarnation ?? '',
+      history: [entry],
+      replyRecorded: false,
+    });
+    // A concurrent first continuation created it: this message joins its history.
+    await records.update(created.taskId, append);
+    recordReplyWhenSettled(view.id);
   }
 
   /**
@@ -1505,13 +1570,26 @@ export function createBureauA2ARequestHandler(
       if (continued === undefined) {
         result = expired
           ? {
-              taskId: await createExpiredTask(message, owner, version, markEffected),
+              taskId: await createExpiredTask(
+                message,
+                owner,
+                version,
+                markEffected,
+                pending !== undefined,
+              ),
               path: 'create',
               state: 'expired',
               reason: 'deadline-exceeded',
             }
           : {
-              taskId: await createTask(message, owner, version, markEffected, inbound),
+              taskId: await createTask(
+                message,
+                owner,
+                version,
+                markEffected,
+                inbound,
+                pending !== undefined,
+              ),
               path: 'create',
               state: 'applied',
             };
@@ -1706,7 +1784,7 @@ export function createBureauA2ARequestHandler(
       }
       if (
         params.statusTimestampAfter !== undefined &&
-        Number.isNaN(Date.parse(params.statusTimestampAfter))
+        !ISO_TIMESTAMP.safeParse(params.statusTimestampAfter).success
       ) {
         throw invalid('statusTimestampAfter must be an ISO 8601 timestamp.');
       }
@@ -1734,6 +1812,7 @@ export function createBureauA2ARequestHandler(
           principal: owner,
           owner,
           agentName,
+          projection: 'a2a',
           ...(params.contextId === '' ? {} : { contextId: params.contextId }),
           ...(status === undefined ? {} : { status }),
           // A2A's filter is inclusive ("greater than or equal"), and the listing's is strict:
