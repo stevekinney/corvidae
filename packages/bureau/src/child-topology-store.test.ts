@@ -13,11 +13,13 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   type BureauChildRecord,
+  type BureauPeerCallRecord,
   CHILD_PARENT_INDEX_KEY_PREFIX,
   CHILD_RECORD_KEY_PREFIX,
   createChildTopologyStore,
   DELEGATION_GRANT_KEY_PREFIX,
   DELEGATION_LEDGER_KEY_PREFIX,
+  PEER_CALL_KEY_PREFIX,
   type DelegationLedgerEntry,
   UnsupportedChildRecordVersionError,
 } from './child-topology-store';
@@ -434,5 +436,83 @@ describe('createChildTopologyStore — budget ledger', () => {
 
     expect(await store.listLedger('delegation:1')).toEqual([ledgerEntry()]);
     expect(corrupt).toEqual([brokenKey]);
+  });
+});
+
+function peerCall(overrides: Partial<BureauPeerCallRecord> = {}): BureauPeerCallRecord {
+  return {
+    parentRunId: 'run-1',
+    operationKey: 'schedule-safe:run-1:step-0:tool-0:ask',
+    taskId: 'task-1',
+    contextId: 'context-1',
+    recordedAt: 7,
+    ...overrides,
+  };
+}
+
+describe('createChildTopologyStore — peer call records', () => {
+  it('records a call once, keeps the first, and reads it back', async () => {
+    const store = createChildTopologyStore(createKv());
+    const record = peerCall();
+
+    expect(await store.recordPeerCall(record)).toEqual({ status: 'recorded' });
+    expect(await store.recordPeerCall(peerCall({ taskId: 'task-2' }))).toEqual({
+      status: 'exists',
+      existing: record,
+    });
+    expect(await store.getPeerCall('run-1', record.operationKey)).toEqual(record);
+    expect(await store.getPeerCall('run-1', 'other-key')).toBeUndefined();
+    expect(await store.getPeerCall('run-2', record.operationKey)).toBeUndefined();
+  });
+
+  it('keeps identifiers containing separators distinct', async () => {
+    const store = createChildTopologyStore(createKv());
+    await store.recordPeerCall(peerCall({ parentRunId: 'a:b', operationKey: 'c', taskId: 't1' }));
+    await store.recordPeerCall(peerCall({ parentRunId: 'a', operationKey: 'b:c', taskId: 't2' }));
+
+    const first = await store.getPeerCall('a:b', 'c');
+    const second = await store.getPeerCall('a', 'b:c');
+    expect(first?.taskId).toBe('t1');
+    expect(second?.taskId).toBe('t2');
+  });
+
+  it('deletes one run’s records and no other run’s, including a run whose id extends it', async () => {
+    const store = createChildTopologyStore(createKv());
+    await store.recordPeerCall(peerCall({ parentRunId: 'run-1', operationKey: 'a' }));
+    await store.recordPeerCall(peerCall({ parentRunId: 'run-1', operationKey: 'b' }));
+    await store.recordPeerCall(peerCall({ parentRunId: 'run-10', operationKey: 'a' }));
+
+    await store.deletePeerCalls('run-1');
+    await store.deletePeerCalls('run-1');
+
+    expect(await store.getPeerCall('run-1', 'a')).toBeUndefined();
+    expect(await store.getPeerCall('run-1', 'b')).toBeUndefined();
+    expect(await store.getPeerCall('run-10', 'a')).toBeDefined();
+  });
+
+  it('reads an unreadable record as absent, reports its key, and refuses to replace it', async () => {
+    const kv = createKv();
+    const corrupt: string[] = [];
+    const store = createChildTopologyStore(kv, { onCorrupt: (key) => corrupt.push(key) });
+    const record = peerCall();
+    await store.recordPeerCall(record);
+    const keys = await kv.list(PEER_CALL_KEY_PREFIX);
+    const key = keys[0] ?? '';
+    await kv.set(key, JSON.stringify({ ...record, taskId: '' }));
+
+    expect(await store.getPeerCall('run-1', record.operationKey)).toBeUndefined();
+    expect(await store.recordPeerCall(record)).toEqual({ status: 'exists' });
+    expect(corrupt).toEqual([key, key]);
+  });
+
+  it('does not touch the child, grant, or ledger families', async () => {
+    const kv = createKv();
+    const store = createChildTopologyStore(kv);
+    await store.register(childRecord({ parentRunId: 'run-1' }));
+    await store.recordPeerCall(peerCall());
+
+    await store.deletePeerCalls('run-1');
+
+    expect(await store.listByParent('run-1')).toHaveLength(1);
   });
 });

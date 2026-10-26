@@ -28,6 +28,7 @@ import type {
   GenerateFunction,
   HumanInputSchema,
   LivenessSnapshot,
+  PeerCallJournal,
   RunFrame,
   SelectionPlan,
   SessionInputAdmissionOutcome,
@@ -1261,6 +1262,17 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `child-topology.ts`.
    */
   readonly children: BureauChildren<AgentNames<D>>;
+
+  /**
+   * COR-1670 — the journal that makes a peer call survive a restart: hand it to
+   * `createPeerCallTool({ durable })`. A durable run's tool call records the A2A task it started
+   * here, keyed by the run and the call's operation key, and the replay of that call after a
+   * restart follows the recorded task instead of sending again. Records are deleted with the run
+   * (`run.removed`). Agents are built before the Bureau, so the tool reaches it through a
+   * reference set once the Bureau exists (see the README). A write for a run this Bureau no longer
+   * knows is refused, so a run removed mid-call leaves no record behind.
+   */
+  readonly peerCalls: PeerCallJournal;
 
   /**
    * COR-851 — durable goals: create a goal, read and list it, see what it has
