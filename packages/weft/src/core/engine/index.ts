@@ -48,6 +48,8 @@ import {
   type CoordinatedUpdateResult,
   type DefaultActivityTypes,
   type DefaultWorkflowRegistry,
+  type EnginePatch,
+  type EngineReconfigureResult,
   type ForkOptions,
   type InferActivityEntries,
   type InferActivityEntry,
@@ -272,6 +274,7 @@ import { processPendingUpdatesForHandlers as processPendingUpdatesForHandlersFro
 import { assertCompatiblePersistedDataVersion } from './persisted-data-version.ts';
 import { settleInFlightPurgeWrites } from './purge-write-tracking.ts';
 import { query as queryWorkflow } from './queries.ts';
+import { reconfigureEngine } from './reconfigure.ts';
 import {
   register as registerWorkflow,
   resolveWorkflowTypeTarget as resolveWorkflowTypeTargetFromRegistration,
@@ -3311,6 +3314,39 @@ export class Engine<
   }
   get scheduler(): Scheduler {
     return getInternals(this).scheduler;
+  }
+
+  /**
+   * Change the options in {@link EnginePatch} on this running engine, validating them exactly as
+   * the constructor does and applying them all or none.
+   *
+   * A patch that fails validation is returned as `{ outcome: 'rejected' }`, never thrown, and
+   * leaves every option and timer as it was. `schedulerPollIntervalMs` re-arms a running poll
+   * timer, so the next poll lands one new interval from now; `retentionSweepInterval` clears an
+   * armed retention-sweep timer and arms it again at the new interval. The other keys are read
+   * where they are used, so they take effect on the next operation that reads them. A patch that
+   * changes neither interval touches no timer.
+   *
+   * @throws {EngineDisposedError} After the engine is disposed, like every other engine method.
+   *   Nothing is applied and no timer is armed.
+   *
+   * @example
+   * ```ts
+   * import { Engine } from '@lostgradient/weft';
+   *
+   * const engine = new Engine();
+   * const result = engine.reconfigure({
+   *   payloadSize: { maxBytes: 1_048_576 },
+   *   schedulerPollIntervalMs: 250,
+   * });
+   * if (result.outcome === 'rejected') {
+   *   console.error(result.message);
+   * }
+   * engine[Symbol.dispose]();
+   * ```
+   */
+  reconfigure(patch: EnginePatch): EngineReconfigureResult {
+    return reconfigureEngine(getInternals(this), patch, () => this.#ensureRetentionSweepInterval());
   }
 
   /**

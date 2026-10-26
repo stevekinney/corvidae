@@ -69,6 +69,8 @@ export type {
   DisjointFrom,
   Duration,
   EngineOptions,
+  EnginePatch,
+  EngineReconfigureResult,
   FailureCategory,
   ForkLineage,
   ForkOptions,

@@ -9,6 +9,7 @@ export * from './types/checkpoint.ts';
 export * from './types/constants.ts';
 export * from './types/definition-schema-to-json.ts';
 export * from './types/definition-schema.ts';
+export * from './types/engine-patch.ts';
 export * from './types/history-policy.ts';
 export * from './types/identity.ts';
 export * from './types/launch-metadata.ts';
