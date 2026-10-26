@@ -26,7 +26,11 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
-  import { workflowRunsPath, workflowTypePath } from '../../../lib/workflow-type-paths.ts';
+  import {
+    ENGINE_RUNS_PATH,
+    workflowRunsPath,
+    workflowTypePath,
+  } from '../../../lib/workflow-type-paths.ts';
   import BulkSelectionBar from './bulk-selection-bar.svelte';
   import QueryBuilder from './query-builder.svelte';
   import QueryFaultBanner from './query-fault-banner.svelte';
@@ -50,7 +54,9 @@
   const principalStore = getPrincipalStore();
   const queryClient = useQueryClient();
   /** The address the list lives at, which a change of filter keeps the page on. */
-  const listPath = $derived(scopedType === undefined ? '/runs' : workflowRunsPath(scopedType));
+  const listPath = $derived(
+    scopedType === undefined ? ENGINE_RUNS_PATH : workflowRunsPath(scopedType),
+  );
   const listGate = $derived(scopeGate(principalStore, ['workflows:read']));
   const bulkAdminGate = $derived(scopeGate(principalStore, ['workflows:admin']));
 
@@ -199,7 +205,7 @@
   <div class="weft-workflow-list__header">
     <div>
       {#if scopedType === undefined}
-        <h1>Runs</h1>
+        <h1>Engine runs</h1>
       {:else}
         <h1>
           Runs of
