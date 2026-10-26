@@ -292,7 +292,7 @@ export function dateTimeForControl(
   } else if (zonedTime !== null) {
     // A time of day in a stated zone, shown in `timeZone` on today's date, which fixes the zones'
     // current offsets. It has no calendar date of its own.
-    const digits = zonedTime[2].toUpperCase().replace(':', '');
+    const digits = (zonedTime[2] ?? '').toUpperCase().replace(':', '');
     const offset = digits === 'Z' ? 'Z' : `${digits.slice(0, 3)}:${digits.slice(3, 5) || '00'}`;
     const today = new Date().toISOString().slice(0, 10);
     const parsed = new Date(`${today}T${zonedTime[1]}${offset}`);
