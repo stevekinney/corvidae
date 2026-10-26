@@ -4,13 +4,15 @@
 // the only network path in the decision suite and it runs by hand:
 //
 //   bun packages/operative/scripts/record-decision-fixtures.ts
-//   with-typesafe-credentials bun packages/operative/scripts/record-decision-fixtures.ts
 //
-// The key comes from `TYPESAFE_API_KEY` in the environment or, absent that, from the macOS
-// Keychain service `typesafe-api`. It is held in one variable, never printed, and a fixture that
-// contains it is refused. Run `bunx prettier --write packages/operative/test/fixtures/decisions`
-// afterwards, because the repository formats JSON. A fixture holds the request body, the response status, and the
-// response body: no headers.
+// The key comes from the macOS Keychain service `typesafe-api`. It is held in one variable and
+// never printed, and a fixture that contains it is refused. A fixture holds the request body, the
+// response status, and the response body: no headers. Run
+// `bunx prettier --write packages/operative/test/fixtures/decisions` afterwards, because the
+// repository formats JSON.
+//
+// The script reads no environment variable on purpose: the repository registers every environment
+// read in an `environment-configuration.ts` boundary (`scripts/environment-configuration-policy.ts`).
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,10 +24,6 @@ const FIXTURE_DIRECTORY = join(import.meta.dir, '..', 'test', 'fixtures', 'decis
 const KEYCHAIN_SERVICE = 'typesafe-api';
 
 function resolveApiKey(): string {
-  const fromEnvironment = process.env['TYPESAFE_API_KEY'];
-  if (fromEnvironment !== undefined && fromEnvironment.trim() !== '') {
-    return fromEnvironment.trim();
-  }
   const keychain = Bun.spawnSync(
     ['security', 'find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'],
     {
@@ -35,9 +33,7 @@ function resolveApiKey(): string {
   );
   const fromKeychain = keychain.exitCode === 0 ? keychain.stdout.toString().trim() : '';
   if (fromKeychain === '') {
-    throw new Error(
-      `No TypeSafe key: set TYPESAFE_API_KEY or add the Keychain service "${KEYCHAIN_SERVICE}".`,
-    );
+    throw new Error(`No TypeSafe key: add the Keychain service "${KEYCHAIN_SERVICE}".`);
   }
   return fromKeychain;
 }
