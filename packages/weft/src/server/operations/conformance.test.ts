@@ -17,6 +17,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '../../../scripts/lib/hang-guard.ts';
 import { executeConformance } from '../../cli/conformance.ts';
 import { createWeftClient } from '../../client/generated/operation-client.generated.ts';
 import { createConformanceTargetRunner } from '../../conformance/targets.ts';
@@ -66,7 +67,7 @@ const CHECK_NAMES = [
  * worker from failing on load alone. They only bound how long a broken run
  * may hang; a healthy run returns as soon as its last check passes.
  */
-const PASSING_RUN_TIMEOUT_MS = 10_000;
+const PASSING_RUN_TIMEOUT_MS = HANG_GUARD_MILLISECONDS;
 
 const ADMIN_KEY = 'conformance-test-admin-key';
 
@@ -136,6 +137,7 @@ const passingReport = await outcomeOf(async () => {
 });
 
 const brokenReport = await outcomeOf(async () => {
+  // load-proof: the worker is broken and never registers, so no load can make the run pass
   const result = await runReport(
     'broken',
     runnerFor({ broken: { command: brokenWorker, timeoutMs: 500 } }),
@@ -150,11 +152,13 @@ const brokenReport = await outcomeOf(async () => {
 });
 
 const cliAgreement = await outcomeOf(async () => {
+  // load-proof: the worker is broken and never registers, so no load can make the run pass
   const cli = await executeConformance({
     timeoutMs: 500,
     json: true,
     workerCommand: brokenWorker,
   });
+  // load-proof: the worker is broken and never registers, so no load can make the run pass
   const result = await runReport(
     'broken',
     runnerFor({ broken: { command: brokenWorker, timeoutMs: 500 } }),
@@ -174,6 +178,7 @@ const cliAgreement = await outcomeOf(async () => {
 const quietSandbox = await outcomeOf(async () => {
   const warn = spyOn(console, 'warn').mockImplementation(() => {});
   try {
+    // load-proof: the worker is broken and never registers, so no load can make the run pass
     const result = await runReport(
       'broken',
       runnerFor({ broken: { command: brokenWorker, timeoutMs: 500 } }),
@@ -270,7 +275,10 @@ describe('weft.conformance.targets — REST GET /v1/conformance/targets', () => 
           operationRegistry: createOperationRegistry([
             createListConformanceTargetsOperation({
               conformanceTargetRunner: runnerFor({
-                reference: { command: [...conformingWorker, '--private-flag'], timeoutMs: 3_000 },
+                reference: {
+                  command: [...conformingWorker, '--private-flag'],
+                  timeoutMs: HANG_GUARD_MILLISECONDS,
+                },
               }),
             }),
           ]),
@@ -281,7 +289,9 @@ describe('weft.conformance.targets — REST GET /v1/conformance/targets', () => 
 
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body).toEqual({ targets: [{ name: 'reference', timeoutMs: 3_000 }] });
+      expect(body).toEqual({
+        targets: [{ name: 'reference', timeoutMs: HANG_GUARD_MILLISECONDS }],
+      });
       expect(JSON.stringify(body)).not.toContain('private-flag');
       expect(JSON.stringify(body)).not.toContain('conformance-worker');
     } finally {

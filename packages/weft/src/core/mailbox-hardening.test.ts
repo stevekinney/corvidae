@@ -1240,6 +1240,7 @@ describe('fifth-round hardening', () => {
 
   it('rejects a wait deadline outside the safe-integer range', async () => {
     const { mailbox } = createMailboxFixture({ now: () => Number.MAX_SAFE_INTEGER - 5_000 });
+    // load-proof: the deadline is rejected before any wait starts, so no load can change the outcome
     expect(await throwingRejectionOf(mailbox.waitForAvailable({ timeoutMs: 10_000 }))).toThrow(
       /safe-integer millisecond range/,
     );
@@ -1703,6 +1704,7 @@ describe('ninth-round hardening', () => {
       }
       return value;
     };
+    // load-proof: the injected clock is advanced past the deadline by the read itself, so no real time passes
     expect(await mailbox.waitForAvailable({ timeoutMs: 1_000 })).toBe(false);
     mailbox.dispose();
   });
@@ -2180,6 +2182,7 @@ describe('thirteenth-round hardening', () => {
       }
       return originalGet(key);
     };
+    // load-proof: the signal aborts in a microtask while the read stalls, so the deadline is never reached
     expect(await mailbox.waitForAvailable({ timeoutMs: 10_000, signal: controller.signal })).toBe(
       false,
     );
@@ -2201,6 +2204,7 @@ describe('thirteenth-round hardening', () => {
       }
       return originalGet(key);
     };
+    // load-proof: the mailbox is disposed while the read stalls, so the deadline is never reached
     expect(await mailbox.waitForAvailable({ timeoutMs: 10_000 })).toBe(false);
   });
 

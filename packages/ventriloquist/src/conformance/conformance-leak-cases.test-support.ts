@@ -37,7 +37,7 @@ export async function settledDescriptorCount(
 ): Promise<{ count: number; turns: number }> {
   let turns = 0;
   let count = openDescriptorCount();
-  // bounded-negative: the caller that passes maximumTurns holds the descriptor, so it is never released
+  // load-proof: the caller that passes maximumTurns holds the descriptor, so it is never released
   for await (const _turn of awakeTurns()) {
     await Bun.sleep(0);
     count = openDescriptorCount();

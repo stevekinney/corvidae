@@ -13,6 +13,7 @@ import { afterAwakeTime, spawnWithHangGuard } from './hang-guard.ts';
 
 // A real child process, so it runs once at module scope, off Bun's per-test clock.
 const killsAHungChild = await outcomeOf(async () => {
+  // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
   const child = spawnWithHangGuard(['sleep', '30'], { hangGuardMilliseconds: 100 });
   await child.exited;
   expect(child.signalCode).toBe('SIGTERM');
@@ -25,6 +26,7 @@ describe('the hang guard in Weft’s copy', () => {
     const started = performance.now();
     // The first tick, at 10 ms, finds fake timers and stops. They end at 20 ms, so the backstop
     // at 40 ms finds real timers and no tick running, and resumes ticking until the budget is spent.
+    // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
     const fired = new Promise<number>((resolve) =>
       afterAwakeTime(40, () => resolve(performance.now() - started), {
         tickMilliseconds: 10,

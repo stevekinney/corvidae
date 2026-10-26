@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { createRegisterCheck } from '../conformance/run-conformance.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { executeConformance } from './index.ts';
@@ -39,6 +40,7 @@ describe('createRegisterCheck', () => {
 // module scope, off Bun's five-second per-test clock; its test rethrows the outcome.
 
 const scenario1 = await outcomeOf(async () => {
+  // load-proof: the worker command is empty, so the run ends before any process starts
   const result = await executeConformance({
     timeoutMs: 500,
     json: false,
@@ -51,7 +53,7 @@ const scenario1 = await outcomeOf(async () => {
 
 const scenario2 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 3_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-worker.ts'],
   });
@@ -75,7 +77,7 @@ const scenario2 = await outcomeOf(async () => {
 
 const scenario3 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 3_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: false,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-worker.ts'],
   });
@@ -86,6 +88,7 @@ const scenario3 = await outcomeOf(async () => {
 });
 
 const scenario4 = await outcomeOf(async () => {
+  // load-proof: the broken worker never registers, so no load can make the run succeed
   const result = await executeConformance({
     timeoutMs: 500,
     json: true,
@@ -99,6 +102,7 @@ const scenario4 = await outcomeOf(async () => {
 });
 
 const scenario5 = await outcomeOf(async () => {
+  // load-proof: the broken worker never registers, so no load can make the run succeed
   const result = await executeConformance({
     timeoutMs: 500,
     json: false,
@@ -110,6 +114,7 @@ const scenario5 = await outcomeOf(async () => {
 });
 
 const scenario6 = await outcomeOf(async () => {
+  // load-proof: the worker advertises the wrong activities, so no load can make the run succeed
   const result = await executeConformance({
     timeoutMs: 750,
     json: true,
@@ -134,6 +139,7 @@ const scenario6 = await outcomeOf(async () => {
 });
 
 const scenario7 = await outcomeOf(async () => {
+  // load-proof: the worker exits after registering, so no load can make the run succeed
   const result = await executeConformance({
     timeoutMs: 1_000,
     json: true,
@@ -152,6 +158,7 @@ const scenario7 = await outcomeOf(async () => {
 });
 
 const scenario8 = await outcomeOf(async () => {
+  // load-proof: the worker fixture fails by design, so no load can make the run succeed
   const result = await executeConformance({
     timeoutMs: 1_000,
     json: true,
@@ -173,6 +180,7 @@ const scenario8 = await outcomeOf(async () => {
 });
 
 const scenario9 = await outcomeOf(async () => {
+  // load-proof: the worker fixture fails by design, so no load can make the run succeed
   const result = await executeConformance({
     timeoutMs: 1_000,
     json: true,

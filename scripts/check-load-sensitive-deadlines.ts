@@ -19,9 +19,11 @@
  *     Their default is raised by `configureAsyncUtilityDeadline` in every UI preload.
  *   - `wait-budget`: a `timeout`, `timeoutMs`, `timeoutMilliseconds` or `hangGuardMilliseconds`
  *     property greater than zero and below the hang guard, passed to a call that waits for
- *     something that should eventually happen (`waitFor*`, `awaitCleanup`, `drain`, `readFrames`,
- *     `nextServerMessage`, a hang-guarded spawn, and the others in `WAITING_CALLEES`), and
- *     `afterAwakeTime` with a duration below the hang guard.
+ *     something that should eventually happen (`waitFor*`, `readFrames`, `nextServerMessage`, a
+ *     hang-guarded spawn, and the others in `WAITING_CALLEES`), and `afterAwakeTime` with a
+ *     duration below the hang guard. A product's own timeout option (`mailbox.awaitCleanup`,
+ *     `outbox.drain`, `server.shutdownWorker`) is not read: tests of those drive an injected clock
+ *     or a stalled dependency, which no load can speed up.
  *
  * A budget is read through numeric literals, `+ - * /`, parentheses, the hang-guard constants, and
  * a `const` declared in the file. A budget the guard cannot resolve is not a `wait-budget`
@@ -114,7 +116,7 @@ const BUDGET_PROPERTIES = new Set([
 ]);
 /** Calls whose budget is a wait for something that should eventually happen. */
 const WAITING_CALLEES =
-  /^(waitUntil|awakeTurns|waitFor\w*|poll\w*|eventually|\w+Until|awaitCleanup|drain|readFrames|nextServerMessage|resolveWithin|shutdown\w*|close|launch|spawnWithHangGuard|runWithHangGuard|executeCodegen|executeConformance|createConformanceTargetRunner|runnerFor|mcpJson|callMcpTool|jsonRequest)$/;
+  /^(waitUntil|awakeTurns|waitFor\w*|poll\w*|eventually|\w+Until|readFrames|nextServerMessage|resolveWithin|launch|spawnWithHangGuard|runWithHangGuard|executeCodegen|executeConformance|createConformanceTargetRunner|runnerFor)$/;
 // The hang guards, and the wait helpers whose own tests prove they give up. These are the only calls
 // a `hang-guard-self-test` comment can exempt; a fake-timer scope never does.
 const HANG_GUARD_CALLEES = new Set([
@@ -135,7 +137,7 @@ const HANG_GUARD_NAMES = new Map([
   ['TEST_TIMEOUT_MILLISECONDS', TEST_TIMEOUT_MILLISECONDS],
 ]);
 const SELF_TEST_MARKER = /\/\/\s*hang-guard-self-test:\s*(.*)$/m;
-const BOUNDED_NEGATIVE_MARKER = /\/\/\s*bounded-negative:\s*(.*)$/m;
+const LOAD_PROOF_MARKER = /\/\/\s*load-proof:\s*(.*)$/m;
 const MINIMUM_SELF_TEST_REASON = 20;
 
 function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
@@ -282,14 +284,14 @@ function selfTestReason(
 }
 
 /**
- * Whether a loop carries `// bounded-negative: <reason>` directly above it. A loop that waits for
+ * Whether a loop carries `// load-proof: <reason>` directly above it. A loop that waits for
  * something that must not happen (a descriptor that is held, an event that is suppressed) can be
  * bounded by turns or time without flaking, because a loaded host only makes the thing later, never
  * earlier: its pass is load-proof, and no hang guard can end a wait on an event that never comes.
  * The reason must be at least twenty characters and name what cannot happen.
  */
-function isBoundedNegative(sourceFile: ts.SourceFile, node: ts.Node): boolean {
-  const reason = selfTestReason(sourceFile, node, BOUNDED_NEGATIVE_MARKER);
+function isLoadProof(sourceFile: ts.SourceFile, node: ts.Node): boolean {
+  const reason = selfTestReason(sourceFile, node, LOAD_PROOF_MARKER);
   return reason !== null && reason.length >= MINIMUM_SELF_TEST_REASON;
 }
 
@@ -354,11 +356,25 @@ function isShort(
   return resolved < HANG_GUARD_MILLISECONDS;
 }
 
-/** Whether `node` contains a call to `useFakeTimers`, bare or as a method (`jest.useFakeTimers`). */
+// Calls that put a test on a clock it advances itself: Bun's fake timers, and the manual runtime
+// services and manual clocks the workspaces own. Under any of them a duration is virtual time.
+const MANUAL_CLOCK_CALLEES = new Set([
+  'useFakeTimers',
+  'createManualRuntimeServices',
+  'createManualClock',
+  'createManualDurableEngine',
+]);
+
+/** Whether `node` installs a manual clock: `useFakeTimers()`, `createManualRuntimeServices()`, `new ManualClock()`. */
 function callsUseFakeTimers(node: ts.Node): boolean {
   let found = false;
   walk(node, (child) => {
-    if (ts.isCallExpression(child) && calleeName(child) === 'useFakeTimers') found = true;
+    if (ts.isCallExpression(child)) {
+      const name = calleeName(child);
+      if (name !== null && MANUAL_CLOCK_CALLEES.has(name)) found = true;
+    } else if (ts.isNewExpression(child) && /ManualClock$/.test(child.expression.getText())) {
+      found = true;
+    }
   });
   return found;
 }
@@ -367,7 +383,7 @@ function callsUseFakeTimers(node: ts.Node): boolean {
 function hookInstallsFakeTimers(call: ts.CallExpression): boolean {
   return call.arguments.some(
     (argument) =>
-      (ts.isIdentifier(argument) && argument.text === 'useFakeTimers') ||
+      (ts.isIdentifier(argument) && MANUAL_CLOCK_CALLEES.has(argument.text)) ||
       ((ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) &&
         callsUseFakeTimers(argument)),
   );
@@ -512,6 +528,8 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
 
     // Waits for something that should eventually happen, and the hang guards themselves.
     const exempt = (): boolean => {
+      // A wait for something that must not happen, whatever the callee.
+      if (isLoadProof(sourceFile, node)) return true;
       if (!HANG_GUARD_CALLEES.has(name)) return false;
       const reason = selfTestReason(sourceFile, node);
       return reason !== null && reason.length >= MINIMUM_SELF_TEST_REASON;
@@ -687,7 +705,7 @@ function findIterationCapWaits(
       }
     });
     if ((capInCondition && (conditionalCondition || exitsEarly)) || capInBody) {
-      if (isBoundedNegative(sourceFile, node)) return;
+      if (isLoadProof(sourceFile, node)) return;
       violations.push(violation(sourceFile, node, 'iteration-cap-wait'));
     }
   });
@@ -718,7 +736,7 @@ function findWallClockPolls(sourceFile: ts.SourceFile): DeadlineViolation[] {
     if (!containsAwait(node.statement)) return;
     // `while (Date.now() < deadline)`, or `for (;;) { ...; if (Date.now() > deadline) throw ...; }`.
     if ((condition !== undefined && readsClock(condition)) || leavesOnClock(node.statement)) {
-      if (isBoundedNegative(sourceFile, node)) return;
+      if (isLoadProof(sourceFile, node)) return;
       violations.push(violation(sourceFile, node, 'wall-clock-poll'));
     }
   });

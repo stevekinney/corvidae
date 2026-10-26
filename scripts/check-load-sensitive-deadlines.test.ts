@@ -78,8 +78,8 @@ describe('a wait budget below the hang guard handed to a waiting call', () => {
     ['waitForCondition timeoutMs', 'await waitForCondition(() => ready, { timeoutMs: 1_000 });'],
     ['readFrames', 'await readFrames(socket, 3, { timeoutMs: 5_000 });'],
     ['a spawn hang guard', "spawnWithHangGuard(['x'], { hangGuardMilliseconds: 4_500 });"],
-    ['a method', 'await mailbox.waitForAvailable({ timeoutMs: 2_000 });'],
-    ['timeoutMilliseconds', 'await harness.close({ timeoutMilliseconds: 3_000 });'],
+    ['a method', 'await harness.nextServerMessage({ timeoutMs: 2_000 });'],
+    ['timeoutMilliseconds', 'await harness.resolveWithin({ timeoutMilliseconds: 3_000 });'],
     [
       'a constant',
       'const GATE = 4_500;\nawait runWithHangGuard(cmd, { hangGuardMilliseconds: GATE });',
@@ -90,7 +90,7 @@ describe('a wait budget below the hang guard handed to a waiting call', () => {
 
   test.each([
     ['the hang guard', 'await waitForCondition(check, { timeoutMs: HANG_GUARD_MILLISECONDS });'],
-    ['zero', 'await outbox.drain({ timeoutMs: 0 });'],
+    ['zero', 'await frames.readFrames({ timeoutMs: 0 });'],
     ['an unrelated callee', 'createThing({ timeoutMs: 50 });'],
     ['the default', 'await waitForCondition(check);'],
   ])('accepts %s', (_name, source) => {
@@ -178,7 +178,7 @@ describe('a wait budget under fake timers is virtual time', () => {
   test.each([
     [
       'a test body that installs them',
-      "test('a', async () => {\n  useFakeTimers();\n  await mailbox.waitForAvailable({ timeoutMs: 150 });\n});",
+      "test('a', async () => {\n  useFakeTimers();\n  await harness.nextServerMessage({ timeoutMs: 150 });\n});",
     ],
     [
       'jest.useFakeTimers in the body',
@@ -186,15 +186,15 @@ describe('a wait budget under fake timers is virtual time', () => {
     ],
     [
       'a beforeEach in the suite',
-      "describe('a', () => {\n  beforeEach(() => { useFakeTimers(); });\n  it('b', async () => {\n    await outbox.drain({ timeoutMs: 100 });\n  });\n});",
+      "describe('a', () => {\n  beforeEach(() => { useFakeTimers(); });\n  it('b', async () => {\n    await frames.readFrames({ timeoutMs: 100 });\n  });\n});",
     ],
     [
       'a beforeEach that is the installer itself',
-      "describe('a', () => {\n  beforeEach(useFakeTimers);\n  it('b', async () => {\n    await outbox.drain({ timeoutMs: 100 });\n  });\n});",
+      "describe('a', () => {\n  beforeEach(useFakeTimers);\n  it('b', async () => {\n    await frames.readFrames({ timeoutMs: 100 });\n  });\n});",
     ],
     [
       'a hook at the top of the file',
-      "beforeEach(() => { jest.useFakeTimers(); });\nit('b', async () => {\n  await outbox.drain({ timeoutMs: 100 });\n});",
+      "beforeEach(() => { jest.useFakeTimers(); });\nit('b', async () => {\n  await frames.readFrames({ timeoutMs: 100 });\n});",
     ],
   ])('accepts %s', (_name, source) => {
     expect(inspect(source)).toEqual([]);
@@ -203,7 +203,7 @@ describe('a wait budget under fake timers is virtual time', () => {
   test('reports the same call in a test that does not install them', () => {
     expect(
       inspect(
-        "describe('a', () => {\n  it('b', async () => {\n    await outbox.drain({ timeoutMs: 100 });\n  });\n});",
+        "describe('a', () => {\n  it('b', async () => {\n    await frames.readFrames({ timeoutMs: 100 });\n  });\n});",
       ),
     ).toEqual(['wait-budget']);
   });

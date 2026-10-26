@@ -17,6 +17,7 @@ import ts from 'typescript';
 import manifest from '../../package.json';
 import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { codegenPackageName, executeCodegen } from './codegen.ts';
 
@@ -447,7 +448,11 @@ describe('executeCodegen end-to-end', () => {
   it('emits the expected .d.ts from the registry fixture', async () => {
     const dir = makeTempDir();
     const out = join(dir, 'weft.d.ts');
-    const result = await executeCodegen({ from: REGISTRY_FIXTURE, out, timeoutMs: 30_000 });
+    const result = await executeCodegen({
+      from: REGISTRY_FIXTURE,
+      out,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('codegen: wrote');
     const written = await Bun.file(out).text();
@@ -463,7 +468,11 @@ describe('executeCodegen end-to-end', () => {
     // name, and the manifest does not.
     const dir = makeTempDir();
     const out = join(dir, 'weft.d.ts');
-    const result = await executeCodegen({ from: REGISTRY_FIXTURE, out, timeoutMs: 30_000 });
+    const result = await executeCodegen({
+      from: REGISTRY_FIXTURE,
+      out,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
     expect(result.exitCode).toBe(0);
     const written = await Bun.file(out).text();
     expect(codegenPackageName).toBe(manifest.name);
@@ -491,10 +500,14 @@ describe('executeCodegen end-to-end', () => {
   it('reports "up to date" on the second run and does not rewrite content', async () => {
     const dir = makeTempDir();
     const out = join(dir, 'weft.d.ts');
-    await executeCodegen({ from: REGISTRY_FIXTURE, out, timeoutMs: 30_000 });
+    await executeCodegen({ from: REGISTRY_FIXTURE, out, timeoutMs: HANG_GUARD_MILLISECONDS });
     const first = await Bun.file(out).text();
 
-    const second = await executeCodegen({ from: REGISTRY_FIXTURE, out, timeoutMs: 30_000 });
+    const second = await executeCodegen({
+      from: REGISTRY_FIXTURE,
+      out,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
     expect(second.exitCode).toBe(0);
     expect(second.stdout).toContain('is up to date');
     const after = await Bun.file(out).text();
@@ -527,8 +540,16 @@ describe('executeCodegen end-to-end', () => {
 
     const outEarly = join(dir, 'early.d.ts');
     const outLate = join(dir, 'late.d.ts');
-    const resultEarly = await executeCodegen({ from: early, out: outEarly, timeoutMs: 30_000 });
-    const resultLate = await executeCodegen({ from: late, out: outLate, timeoutMs: 30_000 });
+    const resultEarly = await executeCodegen({
+      from: early,
+      out: outEarly,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
+    const resultLate = await executeCodegen({
+      from: late,
+      out: outLate,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
     expect(resultEarly.exitCode).toBe(0);
     expect(resultLate.exitCode).toBe(0);
     expect(await Bun.file(outEarly).text()).toBe(await Bun.file(outLate).text());
@@ -541,7 +562,7 @@ describe('executeCodegen end-to-end', () => {
       from: REGISTRY_FIXTURE,
       out,
       target: 'worker',
-      timeoutMs: 30_000,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
     });
 
     expect(result.exitCode).toBe(0);
@@ -572,7 +593,7 @@ describe('executeCodegen end-to-end', () => {
     const out = join(dir, 'weft.d.ts');
     const raw = await Bun.file(REGISTRY_FIXTURE).text();
     writeFileSync(bad, raw.replace('"registryVersion": 2', '"registryVersion": 3'));
-    const result = await executeCodegen({ from: bad, out, timeoutMs: 30_000 });
+    const result = await executeCodegen({ from: bad, out, timeoutMs: HANG_GUARD_MILLISECONDS });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('registryVersion 3');
     expect(existsSync(out)).toBe(false);
@@ -590,7 +611,7 @@ describe('executeCodegen end-to-end', () => {
         activities: {},
       }),
     );
-    const result = await executeCodegen({ from: v1, out, timeoutMs: 30_000 });
+    const result = await executeCodegen({ from: v1, out, timeoutMs: HANG_GUARD_MILLISECONDS });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe(
       'codegen: registryVersion 1 is not supported (expected 2); upgrade or regenerate the snapshot',
@@ -602,7 +623,7 @@ describe('executeCodegen end-to-end', () => {
     const dir = makeTempDir();
     const out = join(dir, 'weft.d.ts');
     const missing = join(dir, 'no-such-file.json');
-    const result = await executeCodegen({ from: missing, out, timeoutMs: 30_000 });
+    const result = await executeCodegen({ from: missing, out, timeoutMs: HANG_GUARD_MILLISECONDS });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('--from file not found');
     expect(existsSync(out)).toBe(false);
@@ -613,7 +634,7 @@ describe('executeCodegen end-to-end', () => {
     const bad = join(dir, 'bad.json');
     writeFileSync(bad, '{ not valid json');
     const out = join(dir, 'weft.d.ts');
-    const result = await executeCodegen({ from: bad, out, timeoutMs: 30_000 });
+    const result = await executeCodegen({ from: bad, out, timeoutMs: HANG_GUARD_MILLISECONDS });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('failed to parse JSON');
     expect(existsSync(out)).toBe(false);
