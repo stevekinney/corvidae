@@ -44,7 +44,8 @@ function inlineDataUrl(part: ToolResultPart, partIndex: number): ToolResultPart 
   if (parsed === undefined) {
     throw new ToolResultMediaRefusal(partIndex, part.type, 'its data URL is malformed');
   }
-  const mimeType = part.mimeType ?? parsed.mimeType;
+  // The URL's own type describes its bytes; the part's label may be stale.
+  const mimeType = parsed.mimeType ?? part.mimeType;
   return {
     ...part,
     ...(mimeType === undefined ? {} : { mimeType }),
@@ -75,20 +76,29 @@ function refusalMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Tool result media was not admitted.';
 }
 
+/**
+ * The error result that answers a call whose media was refused. A result that already failed keeps
+ * its own message (an MCP error's text is what the model needs), with the refusal beside it in
+ * `details`; a result that succeeded is replaced by the refusal.
+ */
 function refusedResult(result: ToolExecutionResult, error: unknown): ToolExecutionResult {
-  const message = refusalMessage(error);
+  const refusal = refusalMessage(error);
+  const original = result.outcome === 'error' ? result.error?.message : undefined;
+  const message = original ?? refusal;
+  const content = original === undefined ? message : result.content;
   return {
     callId: result.callId,
     toolCallId: result.toolCallId,
     toolName: result.toolName,
     outcome: 'error',
-    content: message,
+    content,
     result: message,
     error: {
       code: 'TOOL_RESULT_MEDIA_NOT_ADMITTED',
       category: 'permission',
       retryable: false,
       message,
+      ...(original === undefined ? {} : { details: { refusal } }),
     },
     ...(result.inputDigest === undefined ? {} : { inputDigest: result.inputDigest }),
     ...(result.outputDigest === undefined ? {} : { outputDigest: result.outputDigest }),
