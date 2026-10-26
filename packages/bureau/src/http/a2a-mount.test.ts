@@ -844,6 +844,84 @@ describe('ListTasks page tokens', () => {
   });
 });
 
+describe('the errors of a send', () => {
+  const activated = { headers: { 'A2A-Extensions': COMMAND_RECEIPTS_EXTENSION_URI } };
+  const withCorrelation = (extra: Json = {}, receipts?: Json) =>
+    message('hi', {
+      ...extra,
+      metadata: {
+        correlationId: 'corr-1',
+        ...(receipts === undefined ? {} : { [COMMAND_RECEIPTS_EXTENSION_URI]: receipts }),
+      },
+    });
+
+  it('carry the command’s id and correlation id once the extension is activated, whatever the error', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const malformed = await send(
+        opened,
+        'asker',
+        { message: withCorrelation({}, { deadline: 'tomorrow' }) },
+        activated,
+      );
+      const unknownTask = await send(
+        opened,
+        'asker',
+        { message: withCorrelation({ taskId: 'no-such-task' }) },
+        activated,
+      );
+      const stale = await sendForTask(opened, 'asker', { message: message('first') }, activated);
+      const staleRevision = await send(
+        opened,
+        'asker',
+        {
+          message: withCorrelation({ taskId: stale.id }, { expectedRevision: 'not-the-revision' }),
+        },
+        activated,
+      );
+
+      for (const [refused, code, sent] of [
+        [malformed, -32602, malformed],
+        [unknownTask, -32001, unknownTask],
+        [staleRevision, undefined, staleRevision],
+      ] as const) {
+        expect(sent.body.error).toBeDefined();
+        if (code !== undefined) expect(refused.body.error.code).toBe(code);
+        const metadata = refused.body.error.data?.[0]?.metadata;
+        expect(metadata?.correlationId).toBe('corr-1');
+        expect(typeof metadata?.commandId).toBe('string');
+        expect(metadata?.commandId).not.toBe('');
+      }
+    });
+  });
+
+  it('carry the correlation id, and no command id, when the extension was not activated', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const refused = await send(opened, 'asker', {
+        message: withCorrelation({ taskId: 'no-such-task' }),
+      });
+
+      const metadata = refused.body.error.data?.[0]?.metadata;
+      expect(metadata?.correlationId).toBe('corr-1');
+      expect(metadata?.commandId).toBeUndefined();
+    });
+  });
+
+  it('carry no correlation id when the message had none', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const refused = await send(
+        opened,
+        'asker',
+        { message: message('hi', { taskId: 'no-such-task' }) },
+        activated,
+      );
+
+      const metadata = refused.body.error.data?.[0]?.metadata;
+      expect(metadata?.commandId).toBeDefined();
+      expect(metadata?.correlationId).toBeUndefined();
+    });
+  });
+});
+
 describe('two identical sends at once', () => {
   it('create one task and answer both with it', async () => {
     await withA2A({ asker: answering('done') }, async (opened) => {

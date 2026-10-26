@@ -52,6 +52,7 @@ import {
   TaskState,
 } from '@a2a-js/sdk';
 import {
+  A2AError,
   ContentTypeNotSupportedError,
   PushNotificationNotSupportedError,
   RequestMalformedError,
@@ -125,7 +126,9 @@ import {
   DURABLE_HISTORY_EXTENSION_URI,
   followTask,
   type OpeningSnapshot,
+  readRetained,
 } from './a2a-task-stream.ts';
+import { bearsSettlement } from '../task-resync.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
 import { INPUT_FORM_SUBMIT_EVENT } from '../a2ui/input-form.ts';
@@ -754,6 +757,7 @@ export function createBureauA2ARequestHandler(
   }
   /** Sends being admitted in this process, by binding: an identical send waits for the first. */
   const inFlight = new Map<string, Promise<Admitted>>();
+  const continuationFences = new Map<string, Promise<void>>();
 
   /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
   async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
@@ -834,7 +838,7 @@ export function createBureauA2ARequestHandler(
       task.metadata = {
         ...task.metadata,
         [COMMAND_RECEIPTS_EXTENSION_URI]: receiptMetadata(
-          currentState(receipt, view),
+          await currentState(receipt, view),
           receipt.commandId,
           revisionOf(view, record),
           receipt.reason,
@@ -857,13 +861,32 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
-   * How far a command has gone now. A new task's command is `accepted` until its run starts,
-   * `applied` once it has, and `observed` once the task's end is in its history; an answer or an
-   * input keeps the state its admission reported, which a retry reads again.
+   * Whether the task's end is in its durable history, which is what `observed` reports: its
+   * terminal event is there. Without a durable history the registry is the only evidence there
+   * is. A history with no settlement event means the end is not there yet when the task's record
+   * is marked resync-pending (an append failed and its repair has not landed) or when the history
+   * holds other events of the task; one that holds none of its events has lost them all to
+   * retention, which removes the oldest first, so the end went with them. A mark alone is not
+   * evidence: an earlier, non-terminal failure leaves it set after the terminal event landed.
    */
-  function currentState(receipt: Receipt, view: TaskView): SendReceiptState {
+  async function endInHistory(taskId: string): Promise<boolean> {
+    const retained = await readRetained(bureau, taskId, undefined);
+    if (retained === undefined) return true;
+    if (retained.events.some((event) => bearsSettlement(event))) return true;
+    if (retained.events.length > 0) return false;
+    const stored = await bureau.tasks.record(taskId);
+    return stored?.resyncPending !== true;
+  }
+
+  /**
+   * How far a command has gone now. A new task's command is `accepted` until its run starts,
+   * `applied` once it has, and `observed` once the task's end is in its history (a terminal task
+   * whose end failed to append is `applied` until the history is repaired); an answer or an input
+   * keeps the state its admission reported, which a retry reads again.
+   */
+  async function currentState(receipt: Receipt, view: TaskView): Promise<SendReceiptState> {
     if (receipt.path !== 'create' || receipt.state === 'expired') return receipt.state;
-    if (isTerminal(view.status)) return 'observed';
+    if (isTerminal(view.status)) return (await endInHistory(view.id)) ? 'observed' : 'applied';
     return view.status === 'submitted' ? 'accepted' : 'applied';
   }
 
@@ -1170,9 +1193,15 @@ export function createBureauA2ARequestHandler(
     command: Extract<ContinuationCommand, { path: 'input' }>,
     inbound: Inbound,
   ) {
+    // The incarnation the continuation was checked against travels with it: a context deleted and
+    // created again between the check and the admission is not given this message.
+    const stored = await bureau.tasks.record(view.id);
     const outcome = await bureau.submitSessionInput(view.contextId, {
       id: message.messageId,
       principal: owner,
+      ...(stored === undefined || stored.incarnation === ''
+        ? {}
+        : { incarnation: stored.incarnation }),
       deliveryMode: command.mode,
       payload: (inbound.content ?? command.text) as SessionInputAdmissionRequest['payload'],
       ...(deadline === undefined ? {} : { expiresAt: new Date(deadline).toISOString() }),
@@ -1302,15 +1331,37 @@ export function createBureauA2ARequestHandler(
     context: ServerCallContext | undefined,
   ): Promise<Admitted> {
     const taskId = params.message?.taskId ?? '';
-    if (
-      push === undefined ||
-      taskId === '' ||
-      params.configuration?.taskPushNotificationConfig === undefined
-    ) {
-      return admitUnfenced(params, context, false);
-    }
-    await push.ready;
-    return push.projector.fence(taskId, () => admitUnfenced(params, context, true));
+    if (taskId === '') return admitUnfenced(params, context, false);
+    // Continuations of one task are admitted one at a time, from the revision check to the
+    // recorded message: two that name the same `expectedRevision` would otherwise both pass it, and
+    // the command-receipts contract wants one winner.
+    return continuationFence(taskId, async () => {
+      if (push === undefined || params.configuration?.taskPushNotificationConfig === undefined) {
+        return admitUnfenced(params, context, false);
+      }
+      await push.ready;
+      return push.projector.fence(taskId, () => admitUnfenced(params, context, true));
+    });
+  }
+
+  /**
+   * Runs `work` once every earlier continuation of `taskId` has finished, whether it succeeded or
+   * not. The fence lives in this handler instance: a deployment serving one task from several
+   * instances still has the revision's own durable part (the A2A history's length) to refuse a
+   * stale name, but no mutual exclusion across them.
+   */
+  function continuationFence<T>(taskId: string, work: () => Promise<T>): Promise<T> {
+    const previous = continuationFences.get(taskId) ?? Promise.resolve();
+    const result = previous.then(work, work);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    continuationFences.set(taskId, tail);
+    void tail.finally(() => {
+      if (continuationFences.get(taskId) === tail) continuationFences.delete(taskId);
+    });
+    return result;
   }
 
   async function admitUnfenced(
@@ -1678,6 +1729,47 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
+   * The identifiers an error of a send carries in its `ErrorInfo.metadata`: the `messageId` as
+   * `commandId` once the request activated the command-receipts extension, and the message's
+   * correlation identifier (honored whether or not it did). Read before the send's first await,
+   * because the request is the caller's and may change while the send runs.
+   */
+  function identifiersOf(
+    params: SendMessageRequest,
+    context: ServerCallContext | undefined,
+  ): Record<string, string> {
+    const message = params?.message;
+    if (message === undefined) return {};
+    const correlationId = message.metadata?.[CORRELATION_ID_METADATA_KEY];
+    return {
+      ...(message.messageId !== '' &&
+      activate(declared, context).has(COMMAND_RECEIPTS_EXTENSION_URI)
+        ? { commandId: message.messageId }
+        : {}),
+      ...(typeof correlationId === 'string' && correlationId !== '' ? { correlationId } : {}),
+    };
+  }
+
+  /**
+   * An error of a send, carrying the command's identifiers in its `ErrorInfo.metadata`. Every
+   * error after the request was parsed passes through here, the parse-time refusals of the
+   * extension's own namespace included. An error that is not an A2A error has no `ErrorInfo` to
+   * carry them.
+   */
+  function decorated(error: unknown, identifiers: Record<string, string>): unknown {
+    if (!(error instanceof A2AError) || Object.keys(identifiers).length === 0) return error;
+    const original = error.toErrorInfo.bind(error);
+    Object.defineProperty(error, 'toErrorInfo', {
+      configurable: true,
+      value: () => {
+        const info = original();
+        return { ...info, metadata: { ...identifiers, ...info.metadata } };
+      },
+    });
+    return error;
+  }
+
+  /**
    * Admits a send once per binding at a time: one that arrives while an identical send is being
    * admitted waits for that admission only, never for the first send's wait on its task, so a
    * retry with its own response controls answers by them.
@@ -1718,20 +1810,30 @@ export function createBureauA2ARequestHandler(
     },
 
     async sendMessage(params, context) {
-      const { taskId, shape, receipt, deadline } = await admitOnce(params, context);
-      const view =
-        params.configuration?.returnImmediately === true
-          ? await bureau.tasks.get(taskId)
-          : await settledUntil(taskId, context, deadline, receipt.commandId);
-      if (view === undefined) throw taskNotFound(taskId);
-      return respondWith(view, shape, receipt);
+      const identifiers = identifiersOf(params, context);
+      try {
+        const { taskId, shape, receipt, deadline } = await admitOnce(params, context);
+        const view =
+          params.configuration?.returnImmediately === true
+            ? await bureau.tasks.get(taskId)
+            : await settledUntil(taskId, context, deadline, receipt.commandId);
+        if (view === undefined) throw taskNotFound(taskId);
+        return await respondWith(view, shape, receipt);
+      } catch (error) {
+        throw decorated(error, identifiers);
+      }
     },
 
     async *sendMessageStream(params, context) {
-      // `returnImmediately` has no effect on a stream, which stays open through INPUT_REQUIRED
-      // and AUTH_REQUIRED and closes only once the task is terminal.
-      const { taskId, shape, receipt } = await admitOnce(params, context);
-      yield* follow(taskId, shape, context, receipt);
+      const identifiers = identifiersOf(params, context);
+      try {
+        // `returnImmediately` has no effect on a stream, which stays open through INPUT_REQUIRED
+        // and AUTH_REQUIRED and closes only once the task is terminal.
+        const { taskId, shape, receipt } = await admitOnce(params, context);
+        yield* follow(taskId, shape, context, receipt);
+      } catch (error) {
+        throw decorated(error, identifiers);
+      }
     },
 
     async *resubscribe(params: SubscribeToTaskRequest, context) {
