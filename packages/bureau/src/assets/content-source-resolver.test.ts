@@ -14,7 +14,11 @@ import {
   pngBytes,
 } from '../testing/asset-fixtures.test-support';
 import type { BureauAssetOptions } from './asset-service';
-import { createAssetContentSourceResolver } from './content-source-resolver';
+import {
+  createAssetContentSourceResolver,
+  createMcpResourceContentSourceResolver,
+  type McpResourceReader,
+} from './content-source-resolver';
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -220,5 +224,110 @@ describe('createAssetContentSourceResolver', () => {
       expect(outcome).toMatchObject({ message: 'cancelled' });
       expect(calls()).toEqual({ resolveCalls: 0, inspectCalls: 0 });
     });
+  });
+});
+
+describe('an mcp-resource part (COR-1634)', () => {
+  const link: MediaContent = {
+    type: 'image',
+    mimeType: 'image/png',
+    source: { kind: 'mcp-resource', serverId: 'files', uri: 'file:///chart.png' },
+  };
+
+  it('is read through the host reader as the run principal and projected to inline bytes', async () => {
+    const { assets } = await open();
+    const bytes = pngBytes(3, 3);
+    const calls: Array<{ serverId: string; uri: string; principalId: string }> = [];
+    const mcpResources: McpResourceReader = async (resource, context) => {
+      calls.push({ ...resource, principalId: context.principalId });
+      return { data: base64Of(bytes), encoding: 'base64', mimeType: 'image/png' };
+    };
+    const result = await createAssetContentSourceResolver(assets, 'alice', { mcpResources })(
+      link,
+      position,
+    );
+    expect(result).toEqual({
+      outcome: 'resolved',
+      source: { kind: 'inline', data: base64Of(bytes), encoding: 'base64' },
+      mimeType: 'image/png',
+      byteLength: bytes.byteLength,
+      safety: 'unknown',
+    });
+    expect(calls).toEqual([{ serverId: 'files', uri: 'file:///chart.png', principalId: 'alice' }]);
+  });
+
+  it('projects text contents as inline UTF-8 with its byte length', async () => {
+    const { assets } = await open();
+    const result = await createAssetContentSourceResolver(assets, 'alice', {
+      mcpResources: async () => ({ data: 'héllo', encoding: 'utf8', mimeType: 'text/plain' }),
+    })({ type: 'document', source: link.source }, position);
+    expect(result).toMatchObject({
+      outcome: 'resolved',
+      source: { kind: 'inline', data: 'héllo', encoding: 'utf8' },
+      byteLength: 6,
+    });
+  });
+
+  it('answers unavailable when the server no longer has the resource', async () => {
+    const { assets } = await open();
+    const result = await createAssetContentSourceResolver(assets, 'alice', {
+      mcpResources: async () => undefined,
+    })(link, position);
+    expect(result).toEqual({ outcome: 'unavailable', reason: 'mcp-resource-not-found' });
+  });
+
+  it('answers unavailable for contents that are not valid base64, rather than costing them', async () => {
+    const { assets } = await open();
+    for (const data of ['not base64!', 'abc', 'QUJD=']) {
+      const result = await createAssetContentSourceResolver(assets, 'alice', {
+        mcpResources: async () => ({ data, encoding: 'base64' }),
+      })(link, position);
+      expect(result).toEqual({ outcome: 'unavailable', reason: 'mcp-resource-invalid-contents' });
+    }
+  });
+
+  it('answers unavailable, as before, when no reader is configured', async () => {
+    const { assets } = await open();
+    expect(await createAssetContentSourceResolver(assets, 'alice')(link, position)).toEqual({
+      outcome: 'unavailable',
+      reason: 'source-kind-not-supported',
+    });
+  });
+
+  it('reads nothing for a run that already ended, and stops waiting when it ends', async () => {
+    const { assets } = await open();
+    let reads = 0;
+    const mcpResources: McpResourceReader = () => {
+      reads += 1;
+      return new Promise(() => {});
+    };
+    const resolve = createAssetContentSourceResolver(assets, 'alice', { mcpResources });
+    const ended = new AbortController();
+    ended.abort(new Error('ended'));
+    const early = await resolve(link, { ...position, signal: ended.signal }).then(
+      () => 'settled',
+      (error: unknown) => error,
+    );
+    expect(early).toMatchObject({ message: 'ended' });
+    expect(reads).toBe(0);
+
+    const running = new AbortController();
+    const pending = resolve(link, { ...position, signal: running.signal }).then(
+      () => 'settled',
+      (error: unknown) => error,
+    );
+    running.abort(new Error('cancelled'));
+    expect(await pending).toMatchObject({ message: 'cancelled' });
+  });
+
+  it('serves a Bureau that has a reader but no asset service, and refuses other kinds', async () => {
+    const resolve = createMcpResourceContentSourceResolver(
+      async () => ({ data: 'x', encoding: 'utf8' }),
+      'alice',
+    );
+    expect(await resolve(link, position)).toMatchObject({ outcome: 'resolved' });
+    expect(
+      await resolve({ type: 'image', source: { kind: 'managed-asset', assetId: 'a' } }, position),
+    ).toEqual({ outcome: 'unavailable', reason: 'source-kind-not-supported' });
   });
 });

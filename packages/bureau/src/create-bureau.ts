@@ -152,7 +152,10 @@ import {
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
-import { createAssetContentSourceResolver } from './assets/content-source-resolver';
+import {
+  createAssetContentSourceResolver,
+  createMcpResourceContentSourceResolver,
+} from './assets/content-source-resolver';
 import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 import {
   claimRowAssets,
@@ -2229,10 +2232,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         reference: async (runId) => fileAgents?.snapshots.reference(runId),
         record: async (binding, runId) => fileAgents?.recordBoundRun(binding, runId),
       },
-      contentSourceResolverFor: (principalId) =>
-        assetServiceHolder.current === undefined
+      contentSourceResolverFor: (principalId) => {
+        const owner = ownerOrLocal(principalId);
+        if (assetServiceHolder.current !== undefined) {
+          return createAssetContentSourceResolver(assetServiceHolder.current, owner, {
+            mcpResources: options.mcpResources,
+          });
+        }
+        // No asset service: a host that reads MCP resources still resolves a linked one.
+        return options.mcpResources === undefined
           ? undefined
-          : createAssetContentSourceResolver(assetServiceHolder.current, ownerOrLocal(principalId)),
+          : createMcpResourceContentSourceResolver(options.mcpResources, owner);
+      },
       generatedMediaAdmitterFor: (principalId, rowHolder) =>
         assetServiceHolder.current === undefined
           ? undefined
