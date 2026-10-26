@@ -491,7 +491,6 @@ import type {
   BureauShutdownReport,
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
-  ConfigurationResponse,
   ContextDeletionReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
@@ -17012,16 +17011,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return runtime.getToolSummaries();
   }
 
-  function getConfiguration(): ConfigurationResponse {
-    return {
-      provider: runtime.provider,
-      providers: runtime.providers,
-      maximumSteps: runtime.maximumSteps,
-      systemPrompt: runtime.systemPrompt,
-      tools: getToolSummaries(),
-    };
-  }
-
   /**
    * Every subsystem kind {@link BureauShutdownReport.owners} can report on.
    * `'heartbeat'` is reserved for the day Bureau composes one — see
@@ -18856,7 +18845,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     resumeSchedule,
     cancelSchedule,
     updateSchedule,
-    getConfiguration,
     getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
       let active = true;

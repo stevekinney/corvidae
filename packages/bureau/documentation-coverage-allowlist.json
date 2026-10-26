@@ -63,7 +63,6 @@
     ". CatalogRefreshOutcome",
     ". CatalogRefreshSnapshotObserver",
     ". CatalogRefreshStatus",
-    ". ConfigurationResponse",
     ". CreateCommandLedgerOptions",
     ". CreateModelCatalogServiceOptions",
     ". CreateModelPolicyPlannerOptions",
