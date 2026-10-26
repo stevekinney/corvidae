@@ -109,7 +109,7 @@ async function pasteUntilHeld(
 async function releaseGate(path: string): Promise<boolean> {
   let released = false;
   for await (const _turn of awakeTurns()) {
-    if (!!released) break;
+    if (released) break;
     released = await attempt(() =>
       closeSync(openSync(path, constants.O_WRONLY | constants.O_NONBLOCK)),
     );
@@ -134,7 +134,7 @@ async function outputReaches(rig: Rig, length: number): Promise<void> {
 async function untilAccepted(rig: Rig, input: string): Promise<boolean> {
   let accepted = false;
   for await (const _turn of awakeTurns()) {
-    if (!!accepted) break;
+    if (accepted) break;
     const answer = await offer(rig, input);
     accepted = answer.kind === 'operation-ack';
     // Give the held write a turn to finish before asking again.

@@ -4,11 +4,16 @@ import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from './hang-guard.ts';
 export async function yieldEventLoopTurn(): Promise<void> {
   await new Promise<void>((resolve) => {
     const channel = new MessageChannel();
-    channel.port1.onmessage = () => {
-      channel.port1.close();
-      channel.port2.close();
-      resolve();
-    };
+    channel.port1.addEventListener(
+      'message',
+      () => {
+        channel.port1.close();
+        channel.port2.close();
+        resolve();
+      },
+      { once: true },
+    );
+    channel.port1.start();
     channel.port2.postMessage(undefined);
   });
   await Promise.resolve();
@@ -104,7 +109,8 @@ export async function* awakeTurns(options: WaitUntilOptions = {}): AsyncGenerato
     hung = true;
   });
   try {
-    for (let turn = 0; !hung; turn += 1) {
+    for (let turn = 0; ; turn += 1) {
+      if (hung) return;
       yield turn;
       await waitOneTurn(turn + 1, options);
     }

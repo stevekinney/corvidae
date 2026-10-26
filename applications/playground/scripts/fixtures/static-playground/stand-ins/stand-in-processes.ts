@@ -42,7 +42,7 @@ export function waitMilliseconds(): number {
 
 /** Resolve once `path` exists; throw `timed out waiting for <path>` after `milliseconds`. */
 export async function waitForFile(path: string, milliseconds = waitMilliseconds()): Promise<void> {
-  for await (const _turn of awakeTurns({
+  for await (const _ of awakeTurns({
     hangGuardMilliseconds: milliseconds,
     yieldTurn: () => Bun.sleep(20),
   })) {

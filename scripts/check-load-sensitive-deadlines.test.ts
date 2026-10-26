@@ -280,3 +280,198 @@ describe('scripts that start bun test themselves', () => {
     expect(inspectScript(source)).toBe(0);
   });
 });
+
+describe('a loop that waits by counting turns', () => {
+  test.each([
+    [
+      'a for loop with a numeric cap and an early exit',
+      'async function f() {\n  for (let i = 0; i < 50; i++) {\n    if (done()) return;\n    await yieldToPortableEventLoop();\n  }\n}',
+    ],
+    [
+      'a while loop with a counter cap',
+      'async function f() {\n  let attempt = 0;\n  while (!done() && attempt < 400) {\n    attempt += 1;\n    await Bun.sleep(5);\n  }\n}',
+    ],
+    [
+      'a cap named by an identifier',
+      'async function f(maximumAttempts = HANG_GUARD_MILLISECONDS) {\n  for (let attempt = 0; attempt < maximumAttempts; attempt++) {\n    if (done()) return;\n    await sleep(1);\n  }\n}',
+    ],
+    [
+      'a cap checked inside the body',
+      'async function f() {\n  let attempt = 0;\n  while (true) {\n    if (attempt++ > 100) throw new Error("never");\n    await sleep(5);\n  }\n}',
+    ],
+    [
+      'a constant cap',
+      'const LIMIT = 200;\nasync function f() {\n  for (let turn = 0; turn < LIMIT && !done(); turn++) await setImmediateTurn();\n}',
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['iteration-cap-wait']);
+  });
+
+  test.each([
+    [
+      'a microtask-only loop, whose turn count belongs to the code',
+      'async function f() {\n  for (let i = 0; i < 1000; i++) {\n    if (done()) return;\n    await Promise.resolve();\n  }\n}',
+    ],
+    [
+      'a loop ended by the hang guard',
+      'async function f() {\n  for await (const _turn of awakeTurns()) {\n    if (done()) return;\n  }\n}',
+    ],
+    [
+      'a loop with no early exit, which samples a fixed number of turns',
+      'async function f() {\n  for (let i = 0; i < 5; i++) await yieldToPortableEventLoop();\n}',
+    ],
+    [
+      'a loop under a load-proof marker',
+      'async function f() {\n  // load-proof: the descriptor is held, so it is never released\n  for (let i = 0; i < 3; i++) {\n    if (released()) break;\n    await Bun.sleep(0);\n  }\n}',
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+
+  test('rejects a load-proof marker without a reason', () => {
+    expect(
+      inspect(
+        'async function f() {\n  // load-proof: held\n  for (let i = 0; i < 3; i++) {\n    if (released()) break;\n    await Bun.sleep(1);\n  }\n}',
+      ),
+    ).toEqual(['iteration-cap-wait']);
+  });
+});
+
+describe('a poll that ends on a wall-clock deadline', () => {
+  test.each([
+    [
+      'a clock in the loop condition',
+      'async function f(deadline: number) {\n  while (Date.now() < deadline) {\n    if (done()) return;\n    await Bun.sleep(5);\n  }\n}',
+    ],
+    [
+      'a clock compared inside an if that throws',
+      'async function f(deadline: number) {\n  for (;;) {\n    if (done()) return;\n    if (Date.now() > deadline) throw new Error("late");\n    await Bun.sleep(5);\n  }\n}',
+    ],
+    [
+      'performance.now',
+      'async function f(start: number, budget: number) {\n  while (performance.now() - start < budget) await Bun.sleep(5);\n}',
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['wall-clock-poll']);
+  });
+
+  test('accepts a loop that reads no clock', () => {
+    expect(inspect('async function f() {\n  while (!done()) await Bun.sleep(5);\n}')).toEqual([]);
+  });
+});
+
+describe('a helper whose default budget is below the hang guard', () => {
+  test.each([
+    ['a destructured timeout', 'async function wait({ timeoutMs = 2_000 } = {}) {}'],
+    [
+      'a timeout parameter',
+      'async function wait(check: () => boolean, timeoutMilliseconds = 500) {}',
+    ],
+    ['an attempt cap parameter', 'async function wait(check: () => boolean, attempts = 50) {}'],
+    [
+      'a hang guard parameter',
+      'function spawn(command: string[], hangGuardMilliseconds = 4_500) {}',
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['wait-budget-default']);
+  });
+
+  test.each([
+    ['the hang guard', 'async function wait({ timeoutMs = HANG_GUARD_MILLISECONDS } = {}) {}'],
+    ['no deadline at all', 'async function wait({ timeoutMs }: { timeoutMs?: number } = {}) {}'],
+    ['zero', 'async function wait({ timeoutMs = 0 } = {}) {}'],
+    ['a count of one', 'async function wait(check: () => boolean, attempts = 1) {}'],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('a sleep used to let something settle', () => {
+  test.each([
+    [
+      'Bun.sleep',
+      "test('a', async () => {\n  start();\n  await Bun.sleep(50);\n  expect(done()).toBe(true);\n});",
+    ],
+    ['sleep', "it('a', async () => {\n  await sleep(10);\n  expect(1).toBe(1);\n});"],
+    [
+      'a promise around setTimeout',
+      "test('a', async () => {\n  await new Promise((resolve) => setTimeout(resolve, 50));\n});",
+    ],
+    ['a hook', 'beforeEach(async () => {\n  await Bun.sleep(5);\n});'],
+  ])('reports %s in a test body', (_name, source) => {
+    expect(inspect(source)).toEqual(['sleep-synchronization']);
+  });
+
+  test.each([
+    [
+      'quietFor, which names a negative window',
+      "test('a', async () => {\n  await quietFor(50);\n});",
+    ],
+    ['a zero delay', "test('a', async () => {\n  await Bun.sleep(0);\n});"],
+    [
+      'a sleep inside a polling loop',
+      "test('a', async () => {\n  while (!done()) await Bun.sleep(5);\n});",
+    ],
+    ['a sleep in a helper', 'async function settle() {\n  await Bun.sleep(50);\n}'],
+    [
+      'a sleep under fake timers',
+      "test('a', async () => {\n  useFakeTimers();\n  await Bun.sleep(50);\n});",
+    ],
+    [
+      'a sleep under a load-proof marker',
+      "test('a', async () => {\n  // load-proof: the test asserts only a lower bound on the elapsed time\n  await Bun.sleep(50);\n});",
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('a timer that rejects after a short delay', () => {
+  test.each([
+    [
+      'setTimeout calling reject',
+      "const p = new Promise((resolve, reject) => {\n  setTimeout(() => reject(new Error('t')), 3_000);\n});",
+    ],
+    ['setTimeout throwing', "setTimeout(() => {\n  throw new Error('late');\n}, 500);"],
+    ['AbortSignal.timeout', 'const signal = AbortSignal.timeout(5_000);'],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['timer-rejection']);
+  });
+
+  test.each([
+    [
+      'a delay at the hang guard',
+      "setTimeout(() => reject(new Error('t')), HANG_GUARD_MILLISECONDS);",
+    ],
+    ['a callback that does not reject', 'setTimeout(() => resolve(1), 500);'],
+    [
+      'a stand-in under a load-proof marker',
+      "// load-proof: a double that fails after a delay, which nothing waits out as a deadline\nsetTimeout(() => reject(new Error('t')), 30);",
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('work raced against a timer', () => {
+  test('reports Promise.race against sleep', () => {
+    expect(inspect('await Promise.race([work, sleep(3000)]);')).toEqual(['timer-race']);
+  });
+
+  test('reports Promise.race against a promise around setTimeout', () => {
+    expect(
+      inspect('await Promise.race([work, new Promise((resolve) => setTimeout(resolve, 3000))]);'),
+    ).toEqual(['timer-race']);
+  });
+
+  test.each([
+    ['a zero delay, a single turn', 'await Promise.race([write, Bun.sleep(0)]);'],
+    ['two pieces of work', 'await Promise.race([first, second]);'],
+    [
+      'a race that checks the work is still pending',
+      '// load-proof: the promise waits on a resolver that never arrives, so load only keeps it pending\nawait Promise.race([work, sleep(20)]);',
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
