@@ -105,6 +105,7 @@ describe('the peer client against a Bureau A2A mount', () => {
 
         // Bureau answers CancelTask once the cancel is requested, while the run is still stopping,
         // so the client reports the cancel it made as unconfirmed; the task then does stop.
+        // COR-1713 fixes that: whoever does flips `cancelConfirmed` to true and drops `cancelError`.
         expect(outcome.state).toBe('canceled');
         expect(outcome.cancelConfirmed).toBe(false);
         expect(outcome.cancelError).toContain('working');

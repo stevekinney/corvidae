@@ -134,3 +134,38 @@ describe('a stream whose first frame names no task', () => {
     expect(peer.methods()).not.toContain('CancelTask');
   });
 });
+
+describe('a caller that aborts while a request is backing off', () => {
+  test('sends nothing more to the peer, whichever request was retried', async () => {
+    let sends = 0;
+    const controller = new AbortController();
+    const { peer, client } = connect(
+      {
+        card: nonStreaming,
+        intercept: (_request, method) => {
+          if (method !== 'SendMessage') return undefined;
+          sends += 1;
+          return sends === 1 ? new Response('unavailable', { status: 503 }) : undefined;
+        },
+      },
+      {
+        attempts: 3,
+        // The caller gives up during the backoff; like the real sleep, this resolves on abort.
+        sleep: async (_ms, signal) => {
+          controller.abort(new Error('caller gave up'));
+          if (signal?.aborted !== true) await immediate();
+        },
+      },
+    );
+
+    const outcome = await client.send({ text: 'hi', signal: controller.signal }).then(
+      () => 'resolved',
+      (error: unknown) => String(error),
+    );
+
+    expect(outcome).not.toBe('resolved');
+    expect(sends).toBe(1);
+    expect(peer.methods().filter((method) => method === 'SendMessage')).toHaveLength(1);
+    expect(peer.methods()).not.toContain('CancelTask');
+  });
+});

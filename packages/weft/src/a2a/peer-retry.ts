@@ -25,9 +25,15 @@ export function backoffMs(policy: PeerRetryPolicy, attempt: number): number {
   return Math.min(policy.baseDelayMs * 2 ** (attempt - 1), policy.maxDelayMs);
 }
 
+/** Read through a function so each check sees the signal as it is now. */
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
 /**
  * Runs `call`, repeating it with backoff while it fails with a retryable error, up to
- * `policy.attempts` times. Stops at once when `signal` aborts.
+ * `policy.attempts` times. Stops at once when `signal` aborts, including during a backoff, so no
+ * attempt starts after the abort.
  */
 export async function retryRequest<T>(
   policy: PeerRetryPolicy,
@@ -39,8 +45,10 @@ export async function retryRequest<T>(
       return await call();
     } catch (error) {
       const classified = policy.classify(error);
-      if (!classified.retryable || signal?.aborted === true) throw classified;
+      if (!classified.retryable || isAborted(signal)) throw classified;
       await policy.sleep(backoffMs(policy, attempt), signal);
+      // A sleep resolves early when `signal` aborts: the request must not go out after that.
+      if (isAborted(signal)) throw classified;
     }
   }
   // The last attempt has nothing left to retry, so its failure is final.

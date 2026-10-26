@@ -162,16 +162,15 @@ class PeerTaskRun implements A2APeerTask {
   private async boundedSend(request: SendMessageRequest): Promise<Message | Task> {
     const bound = new AbortController();
     let expired = false;
-    const forward = (): void => bound.abort(this.follow.signal.reason);
-    this.follow.signal.addEventListener('abort', forward, { once: true });
     const timer = setTimeout(() => {
       expired = true;
       bound.abort();
     }, this.context.taskTimeoutMs);
     try {
+      // Either signal ends the request, one that has already aborted included.
       return await this.context.client.sendMessage(request, {
         ...this.context.requestOptions,
-        signal: bound.signal,
+        signal: AbortSignal.any([this.follow.signal, bound.signal]),
       });
     } catch (error) {
       if (!expired) throw error;
@@ -181,7 +180,6 @@ class PeerTaskRun implements A2APeerTask {
       );
     } finally {
       clearTimeout(timer);
-      this.follow.signal.removeEventListener('abort', forward);
     }
   }
 
