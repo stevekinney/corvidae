@@ -451,6 +451,14 @@ async function commitSessionInputIdentity(
  */
 const MAILBOX_MAXIMUM_COMMAND_TIMEOUT_MS = 31_536_000_000;
 
+/**
+ * The message a command is refused with at delivery when the `expiresAt` it persisted has passed.
+ * The mailbox's own deadline is set from the clock at admission and so can trail `expiresAt` by
+ * however long the admission took, so delivery checks the persisted instant itself, and the receipt
+ * reads a command refused with this message as `expired`.
+ */
+export const SESSION_INPUT_EXPIRED_MESSAGE = 'the input expired before it was delivered';
+
 /** Reason recorded on a command cancelled because its identity was taken over by another session. */
 export const SESSION_INPUT_IDENTITY_TAKEN_REASON =
   'the same input id was admitted to another session while this admission was in flight';
@@ -557,7 +565,7 @@ function receiptState(
     case 'cancelled':
       return 'canceled';
     case 'rejected':
-      return 'failed';
+      return receipt.failure?.message === SESSION_INPUT_EXPIRED_MESSAGE ? 'expired' : 'failed';
     default:
       return deliveryMode === 'steer' ? 'accepted' : 'queued';
   }

@@ -12,6 +12,7 @@ import { CINDER, createMessage, updateComponentsMessage } from '../a2ui/a2ui.tes
 import { createA2uiAdapter } from '../a2ui/adapter.ts';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from '../interactive-surface/types.ts';
 import { A2UI_BASIC_CATALOG_ID, A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
+import { faultyStorage } from './a2a-faulty-storage.test-support.ts';
 import { DURABLE_HISTORY_EXTENSION_URI } from './a2a-task-stream.ts';
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
 
@@ -92,12 +93,15 @@ function declare(supportedCatalogIds: string[]): Json {
   return { a2uiClientCapabilities: { 'v0.9': { supportedCatalogIds } } };
 }
 
-async function withTask(body: (kit: Kit) => Promise<void>): Promise<void> {
+async function withTask(
+  body: (kit: Kit) => Promise<void>,
+  storage?: Awaited<ReturnType<typeof faultyStorage>>['storage'],
+): Promise<void> {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers() }) },
     publish: ['asker'],
     humanInput: true,
-    durableHistory: true,
+    ...(storage === undefined ? { durableHistory: true } : { storage }),
     handlerOptions: { publicUrl: 'http://localhost' },
   });
   try {
@@ -457,6 +461,41 @@ describe('SubscribeToTask with a surface', () => {
         tasks.get = get;
       }
     });
+  });
+
+  it('delivers the task-end freeze ahead of the live terminal update when neither the terminal append nor its repair lands', async () => {
+    const cleanups: Array<() => Promise<void> | void> = [];
+    const { storage, faults } = await faultyStorage(cleanups);
+    try {
+      await withTask(async (kit) => {
+        const taskId = await kit.park();
+        const stream = serverSentEvents(await kit.subscribe(taskId));
+        await stream.next();
+        await kit.apply(taskId);
+        const created = await stream.next();
+        expect(revisionsOf(created)).toEqual(['panel@1']);
+
+        faults.failCompletions = 1;
+        faults.failResyncs = 1_000;
+        // The stream's surface reads are slow, so its mapping chain is still delivering the
+        // surface when the registry's terminal update is ready.
+        const list = kit.surfaces.list.bind(kit.surfaces);
+        kit.surfaces.list = async (...args) => {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return list(...args);
+        };
+        await kit.answer(taskId);
+        const rest = await drain(stream);
+        kit.surfaces.list = list;
+
+        const states = rest.map((event) => event.data.result.statusUpdate?.status.state);
+        expect(states.at(-1)).toBe('TASK_STATE_COMPLETED');
+        // The frozen revision reached the client ahead of the terminal status.
+        expect(rest.filter(isSurfaceFrame).flatMap(revisionsOf)).toEqual(['panel@2']);
+      }, storage);
+    } finally {
+      for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
+    }
   });
 
   it('keeps a surface frame in history order against the status frames around it', async () => {

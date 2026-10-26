@@ -507,6 +507,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   let endedByHistory = false;
   let endedByRegistry = false;
   let recheck: { readonly handle: RuntimeTimeoutHandle } | undefined;
+  // The history's events, mapped one after another; the registry's live end waits for it.
+  let mapping: Promise<void> = Promise.resolve();
   // The facts with no durable event: a run starting and, without a history, every change. A
   // view a listener is handed is the change itself, so a short-lived state (WORKING between a
   // review's close and the run's end) is seen even when the task has moved on by the next read.
@@ -546,9 +548,12 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         if (isTerminal(view.status) && !endedByHistory && !endedByRegistry) {
           // The task has ended and its terminal event is not in the history yet. A task whose
           // append failed is marked until the repair commits, and ends here with a live update;
-          // otherwise the event is on its way, and the registry is looked at again shortly.
+          // otherwise the event is on its way, and the registry is looked at again shortly. The
+          // history's own mapping, which may still be delivering a surface or a status, goes first,
+          // so the end never overtakes it.
+          await mapping.catch(() => undefined);
           const stored = await bureau.tasks.record(taskId);
-          if (stored?.resyncPending === true) {
+          if (stored?.resyncPending === true && !endedByHistory) {
             endedByRegistry = true;
             const reply = view.status === 'completed' ? await options.replyOf(view) : undefined;
             const element = {
@@ -562,6 +567,18 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
               artifact: null,
             };
             const mapped = eventsOf(view, element, reply, await formsFor(view), options.a2ui);
+            // The same closing the history's terminal event gets: the surfaces the task froze or
+            // closed with its end are delivered ahead of the terminal status.
+            if (
+              options.surfaces !== undefined &&
+              (view.status === 'completed' ||
+                view.status === 'failed' ||
+                view.status === 'canceled')
+            ) {
+              await options.surfaces.settle(taskId, view.status).catch(() => undefined);
+            }
+            const closing = await reconciler.reconcile(view, sentState, element.emittedAtMs);
+            if (closing !== undefined) queue.push({ event: closing });
             for (const [index, event] of mapped.entries()) {
               queue.push({ event, ends: index === mapped.length - 1 });
             }
@@ -657,7 +674,6 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   }
 
   if (retained !== undefined) {
-    let mapping: Promise<void> = Promise.resolve();
     const controller = new AbortController();
     stops.push(() => controller.abort());
     const subscription = bureau.subscribeEventHistory(

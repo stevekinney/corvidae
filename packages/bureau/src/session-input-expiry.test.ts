@@ -5,13 +5,15 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
+import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import type { Conversation } from 'conversationalist';
+import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
+import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
 import { deferred } from './test/session-input-fixtures';
 
 /**
@@ -35,7 +37,10 @@ function userTexts(conversation: Conversation): string[] {
     .map((message) => (typeof message.content === 'string' ? message.content : ''));
 }
 
-async function open(generate: GenerateFunction) {
+async function open(
+  generate: GenerateFunction,
+  storage: Storage | { type: 'memory' } = { type: 'memory' },
+) {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
@@ -46,7 +51,7 @@ async function open(generate: GenerateFunction) {
       }),
     },
     runtime,
-    storage: { type: 'memory' },
+    storage,
     durableExecution: true,
   });
   return { bureau, runtime };
@@ -101,6 +106,73 @@ describe('a queued input’s expiresAt', () => {
         payload: 'late',
         expiresAt,
       });
+      expect(replay.outcome).toBe('replayed');
+      if (replay.outcome === 'replayed') expect(replay.receipt.state).toBe('expired');
+    } finally {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('is not delivered after its instant even when the mailbox’s deadline trails it, and reads expired', async () => {
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const stepOneStarted = deferred();
+    const prompts: string[][] = [];
+    const storage = new MemoryStorage();
+    const { bureau, runtime } = await open(async (context: GenerateContext) => {
+      prompts[context.step] = userTexts(context.conversation);
+      if (context.step === 0) {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+      }
+      stepOneStarted.resolve();
+      return { content: 'done', toolCalls: [] };
+    }, storage);
+    try {
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'Start',
+        principal: 'alice',
+      });
+      await stepZeroStarted.promise;
+      const session = await bureau.getSession(run.sessionId);
+      const incarnation = session?.incarnation ?? '';
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+        runtime.clock.now(),
+      );
+      const expiresAt = new Date(runtime.clock.now() + 1_000).toISOString();
+      const admit = (nowMs: number) =>
+        admitSessionInput({
+          storage,
+          kv: textValueStore(storage, { disposeUnderlyingStorage: false }),
+          sessionMailbox: mailbox,
+          sessionId: run.sessionId,
+          incarnation,
+          id: 'input-slow',
+          principal: 'alice',
+          deliveryMode: 'queue',
+          payload: {
+            schemaVersion: CURRENT_SCHEMA_VERSION,
+            incarnation,
+            payload: 'slow',
+            expiresAt,
+          },
+          principalBacklogLimit: 100,
+          sessionBacklogLimitForCrossSessionRead: 100,
+          nowMs,
+        });
+      // A slow admission: the clock was read ten seconds before the mailbox stamps the command, so
+      // the mailbox's deadline trails `expiresAt` by those ten seconds.
+      await admit(runtime.clock.now() - 10_000);
+
+      runtime.setTime(Date.parse(ORIGIN) + 5_000);
+      releaseStepZero.resolve();
+      await stepOneStarted.promise;
+
+      expect(prompts[1]).toEqual(['Start']);
+      const replay = await admit(runtime.clock.now());
       expect(replay.outcome).toBe('replayed');
       if (replay.outcome === 'replayed') expect(replay.receipt.state).toBe('expired');
     } finally {
