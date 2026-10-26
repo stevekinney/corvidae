@@ -956,6 +956,19 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
 }
 
 /**
+ * `resolveReview` was given the round the caller read, and the review has moved past it: another
+ * resolver superseded the approval, which replaces it under the same id with the next round
+ * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
+ * again; it names no other resolver's decision.
+ */
+class ReviewRoundChangedError extends BureauError {
+  constructor(message: string) {
+    super(message, 'CONFLICT');
+    this.name = 'ReviewRoundChangedError';
+  }
+}
+
+/**
  * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
  * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
  * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
@@ -971,7 +984,12 @@ class BureauShuttingDownError extends BureauError {
   }
 }
 
-export { ApprovalOutcomeNotWrittenError, BureauError, BureauShuttingDownError };
+export {
+  ApprovalOutcomeNotWrittenError,
+  BureauError,
+  BureauShuttingDownError,
+  ReviewRoundChangedError,
+};
 
 /**
  * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
@@ -15298,10 +15316,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function refuseStaleRoundOfHeldClaim(
     review: PendingReview,
     claimHeld: boolean,
+    expectedRound: number | undefined,
   ): Promise<void> {
     if (!claimHeld || review.kind !== 'tool-approval') return;
     const session = await runtime.sessionStore?.load(review.sessionId);
-    await refuseStaleApprovalRound(review, session?.metadata);
+    await refuseStaleApprovalRound(review, session?.metadata, { expectedRound, mayRetry: false });
   }
 
   /**
@@ -15316,15 +15335,58 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function refuseStaleApprovalRound(
     review: PendingReview,
     sessionMetadata: Record<string, JSONValue> | undefined,
-  ): Promise<void> {
-    if (review.kind !== 'tool-approval') return;
+    fence?: { readonly expectedRound: number | undefined; readonly mayRetry: boolean },
+  ): Promise<'adopted' | undefined> {
+    if (review.kind !== 'tool-approval') return undefined;
     const persisted = persistedApprovalOf(sessionMetadata, review.id);
-    if (persisted === undefined || persisted.round <= review.round) return;
+    if (persisted === undefined || persisted.round <= review.round) return undefined;
     await adoptPersistedApprovalRound(review.runId, review.id, persisted);
-    throw new BureauError(
-      `Review "${review.id}" was re-gated since it was listed (round ${review.round}, now ${persisted.round}); read it again before deciding it`,
-      'CONFLICT',
-    );
+    // COR-1659: a caller that names the round the session is at read the current one: this process
+    // only lagged, and it has caught up, so the decision can be made afresh on the refreshed review.
+    if (fence?.mayRetry === true && fence.expectedRound === persisted.round) return 'adopted';
+    const message = `Review "${review.id}" was re-gated since it was listed (round ${review.round}, now ${persisted.round}); read it again before deciding it`;
+    // A caller that named a round is told so by the typed refusal, not by a plain conflict.
+    if (fence?.expectedRound !== undefined) throw new ReviewRoundChangedError(message);
+    throw new BureauError(message, 'CONFLICT');
+  }
+
+  /**
+   * COR-1659 — refuse a resolution whose `round` names a round the review is no longer at. A call
+   * naming none is unfenced. A human wait has no rounds, so it is always at round 0.
+   */
+  function assertExpectedReviewRound(
+    input: ResolveReviewInput,
+    review: Pick<PendingReview, 'id' | 'kind'> & { readonly round?: number },
+  ): void {
+    if (input.round === undefined) return;
+    const current = review.kind === 'tool-approval' ? (review.round ?? 0) : 0;
+    if (input.round !== current) {
+      throw new ReviewRoundChangedError(
+        `Review "${review.id}" is at round ${current}, not the round ${input.round} you read; read it again before deciding`,
+      );
+    }
+  }
+
+  /**
+   * COR-1659 — fence a decision on the round the caller read, once the session has been read and
+   * `resolvingReviewIds` is held (so no other resolver here can supersede before the claim). The
+   * round compared is the higher of this process's and the session's: this process can lag a peer
+   * that re-gated. A caller that names the session's round is let through after this process
+   * catches up (`'retry'`); any other round is refused with {@link ReviewRoundChangedError}.
+   */
+  async function fenceReviewRound(
+    review: PendingReview,
+    input: ResolveReviewInput,
+    sessionMetadata: Record<string, JSONValue> | undefined,
+    mayRetry: boolean,
+  ): Promise<'retry' | undefined> {
+    const caughtUp = await refuseStaleApprovalRound(review, sessionMetadata, {
+      expectedRound: input.round,
+      mayRetry,
+    });
+    if (caughtUp === 'adopted') return 'retry';
+    assertExpectedReviewRound(input, review);
+    return undefined;
   }
 
   async function resolveReview(
@@ -15332,6 +15394,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-1579: the human wait of a session run another process holds, derived from durable
     // state by `resolveAnyReview` when this process lists no review under the id.
     derived?: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+    // COR-1659: set on the one re-entry after this process caught up with a peer's re-gate.
+    afterCatchUp = false,
   ): Promise<ResolveReviewResult> {
     // AB-46: `reject` requires a non-empty `reason` for BOTH review kinds —
     // `resolveReview` is the validation boundary, so this throws before any
@@ -15345,6 +15409,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
+        assertExpectedReviewRound(input, cleanup.review);
         if (cleanup.decision !== input.decision) {
           throw new BureauError(`Review with id "${input.id}" is already resolved`, 'CONFLICT');
         }
@@ -15443,6 +15508,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     resolvingReviewIds.add(review.id);
 
+    let retryAfterCatchUp = false;
     try {
       // AB-391 (Codex P1 review finding, PR #601, "Fence concurrent
       // resolutions before performing the action"): everything below this
@@ -15494,10 +15560,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           );
         }
       }
-      await refuseStaleApprovalRound(review, existingSession?.metadata);
+      retryAfterCatchUp =
+        (await fenceReviewRound(review, input, existingSession?.metadata, !afterCatchUp)) ===
+        'retry';
     } catch (error) {
       resolvingReviewIds.delete(review.id);
       throw error;
+    }
+    if (retryAfterCatchUp) {
+      resolvingReviewIds.delete(review.id);
+      return resolveReview(input, derived, true);
     }
 
     // COR-1579: claim the decision durably before anything irreversible. See
@@ -15535,7 +15607,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let result: unknown;
     let keepPending = false;
     try {
-      await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined);
+      await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined, input.round);
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was
@@ -16095,7 +16167,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * review resolves through the session path.
    */
   async function resolveAnyReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
-    if (runHumanWaits.has(input.id)) return runHumanWaits.resolve(input);
+    if (runHumanWaits.has(input.id)) {
+      assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
+      return runHumanWaits.resolve(input);
+    }
     const derived = await derivedHumanWait(input.id);
     // COR-1613: a schedule fire's wait goes through the engine by run id, as a catalog run's does,
     // though it names the session the fire runs in; a session run's keeps the session path.
@@ -16103,6 +16178,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       derived !== undefined &&
       (derived.sessionId === undefined || runHumanWaits.isDerivedFire(derived))
     ) {
+      assertExpectedReviewRound(input, derived);
       return runHumanWaits.resolve(input, derived);
     }
     return resolveReview(
