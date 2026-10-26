@@ -107,11 +107,13 @@ export type TaskCleanupState =
 export type TaskKind = 'schedule-fire';
 
 /**
- * What a task's `contextId` names, as the management plane shows it (COR-1689): `chat` for a run
- * in a session, `schedule-fire` for one fire of a schedule (which runs in a session too), and
- * `catalog` for a `bureau.run()` dispatch, whose `contextId` is its own handle unless the caller
- * named a session. The kind a record stores ({@link TaskKind}) is only the fire; the rest is read
- * from the incarnation, which a catalog record has always left empty.
+ * What a task reads as in the management plane (COR-1689), by how its record was written: a record
+ * of the `schedule-fire` kind is `schedule-fire`; otherwise a non-empty incarnation, the session
+ * incarnation the run ran in, is `chat`; and anything else is `catalog`. A `bureau.run()` dispatch
+ * records no incarnation, so it is `catalog` and its `contextId` is its own handle unless the
+ * caller named a session. A Bureau without a session store records none for a `createRun` task
+ * either, so that task reads `catalog` too: `catalog` means no session incarnation was recorded,
+ * not that the run is a dispatch. The kind a record stores ({@link TaskKind}) is only the fire.
  */
 export type TaskViewKind = 'chat' | 'schedule-fire' | 'catalog';
 

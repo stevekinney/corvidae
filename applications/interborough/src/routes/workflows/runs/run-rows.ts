@@ -102,9 +102,9 @@ function taskOrigin(task: TaskView, chat: ChatContext | undefined): RunOrigin {
     };
   }
   // A caller lists only its own sessions, so a chat another owner started is not among them. The
-  // task says whether its `contextId` is a chat session, and then the link comes from the task, as
-  // a fire's does. A catalog run's `contextId` is a handle no chat has, so it links nothing unless
-  // the caller lists a session by that id.
+  // task says whether its record holds a session incarnation (`chat`), and then the link comes from
+  // the task, as a fire's does. A `catalog` task's `contextId` is a handle no chat has (or a run in
+  // a Bureau with no session store), so it links nothing unless the caller lists a session by that id.
   if (chat !== undefined) {
     return { kind: 'chat', title: chat.title ?? '', href: chatSessionPath(chat.id) };
   }

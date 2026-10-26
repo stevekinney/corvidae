@@ -8,6 +8,7 @@ import { createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
+import { taskViewKindOf } from '../../task-registry.ts';
 import {
   openBureau,
   type OpenedBureau,
@@ -26,6 +27,18 @@ async function withBureau<T>(body: (opened: OpenedBureau) => Promise<T>): Promis
     await opened.dispose();
   }
 }
+
+describe('taskViewKindOf', () => {
+  it('reads a fire from its record kind, a chat from a recorded incarnation, and anything else as catalog', () => {
+    expect(taskViewKindOf({ kind: 'schedule-fire', incarnation: '' })).toBe('schedule-fire');
+    expect(taskViewKindOf({ kind: 'schedule-fire', incarnation: 'incarnation-1' })).toBe(
+      'schedule-fire',
+    );
+    expect(taskViewKindOf({ kind: undefined, incarnation: 'incarnation-1' })).toBe('chat');
+    // A dispatch, and a `createRun` task of a Bureau with no session store, record no incarnation.
+    expect(taskViewKindOf({ kind: undefined, incarnation: '' })).toBe('catalog');
+  });
+});
 
 type KindedTask = { id: string; contextId: string; kind: string };
 

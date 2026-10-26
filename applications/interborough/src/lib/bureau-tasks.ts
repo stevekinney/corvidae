@@ -58,8 +58,9 @@ export const taskViewSchema = z.object({
   owner: z.string(),
   actor: z.string().nullable(),
   /**
-   * What `contextId` names: a chat session, a schedule's fire in one, or a catalog run's handle,
-   * which no chat has.
+   * How the Bureau's record of the task reads: `chat` when it recorded the session incarnation the
+   * run ran in (so `contextId` is a session), `schedule-fire` for a schedule's fire, and `catalog`
+   * otherwise: a dispatch's handle, or a run in a Bureau without a session store.
    */
   kind: z.enum(['chat', 'schedule-fire', 'catalog']),
   status: taskStateSchema,

@@ -54,10 +54,12 @@ export const taskViewSchema = z.object({
   /** The service principal that started the task for its owner (a schedule's fire), or `null`. */
   actor: z.string().nullable(),
   /**
-   * What `contextId` names: `chat` for a run in a chat session, `schedule-fire` for a schedule's
-   * fire (which runs in a session too), and `catalog` for a `bureau.run()` dispatch, whose
-   * `contextId` is its own handle unless the caller named a session. A client that lists other
-   * owners' tasks and lists only its own sessions reads this instead of asking the session store.
+   * How the task's record was written: `schedule-fire` for a schedule's fire, `chat` when it
+   * recorded the session incarnation it ran in, and `catalog` otherwise (a `bureau.run()` dispatch,
+   * or a run in a Bureau without a session store, which records no incarnation). Only `chat` says
+   * `contextId` is a session; a `catalog` task's is its own handle unless the caller named a
+   * session. A client that lists other owners' tasks and lists only its own sessions reads this
+   * instead of asking the session store.
    */
   kind: z.enum(['chat', 'schedule-fire', 'catalog']),
   status: taskStateSchema,
