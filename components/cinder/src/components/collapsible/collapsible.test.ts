@@ -422,6 +422,8 @@ describe('Collapsible variant', () => {
     const triggerRule = declarationsFor(css, `${flat} .cinder-collapsible__trigger`);
     expect(triggerRule.get('background')).toBe('transparent');
     expect(triggerRule.get('padding')).toBe('var(--cinder-space-2) 0');
+    const label = declarationsFor(css, `${flat} .cinder-collapsible__label`);
+    expect(label.get('font-weight')).toBe('var(--cinder-font-semibold)');
     const panel = declarationsFor(css, `${flat} .cinder-collapsible__panel-inner`);
     expect(panel.get('padding')).toBe('var(--cinder-space-2) 0 var(--cinder-space-3)');
     expect(panel.get('background')).toBe('transparent');

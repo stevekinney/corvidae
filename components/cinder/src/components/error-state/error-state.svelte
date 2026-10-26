@@ -3,7 +3,7 @@
    * @cinder
    * @category feedback
    * @status stable
-   * @purpose Centered error placeholder with a title, description, optional detail, and optional retry button for a region whose data failed to load.
+   * @purpose Error placeholder, centered in an alert or flat on the surrounding surface, with a title, description, optional detail, and optional retry button for a region whose data failed to load.
    * @tag feedback
    * @tag error
    * @useWhen Replacing a primary content region after its query or request failed, so the failure never looks like an empty result.

@@ -37,7 +37,7 @@ Start-aligned — the content reads from the inline start instead of the centre,
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `align` | `"center"` \| `"start"` | no | `"center"` | Alignment of the content. `'center'` centres the icon, text, and action in the region; `'start'` aligns them to the inline start, for a state that reads as instructions rather than a placeholder. |
+| `align` | `"center"` \| `"start"` | no | `"center"` | Alignment of the content. `'center'` centres the icon, text, and action in the region; `'start'` aligns them to the inline start, for a state that reads as instructions rather than a placeholder. A start-aligned state also leads with a larger, semibold, default-colour title and a muted description. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-empty-state` root element. |
 | `description` | `string` | no | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the title element. |

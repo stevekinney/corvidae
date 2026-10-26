@@ -35,7 +35,7 @@ const schema = {
     variant: {
       enum: ['default', 'flat'],
       description:
-        "Visual treatment. `'default'` is a bordered card with a raised trigger.\n`'flat'` drops the border, the raised trigger background, and the horizontal\npadding, so the disclosure reads as a row on the surrounding surface.",
+        "Visual treatment. `'default'` is a bordered card with a raised trigger.\n`'flat'` drops the border, the raised trigger background, and the horizontal\npadding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.",
       default: 'default',
     },
     animated: {

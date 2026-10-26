@@ -72,7 +72,7 @@ For multiple coordinated sections where opening one may close others, use [`Acco
 | `trigger` | `string` | yes | — | Trigger label text. (The snippet form is template-only; see the type above.) |
 | `triggerAriaLabel` | `string` | no | — | Accessible name override for the trigger button. The runtime prop also accepts a state-aware function (`{ open, disabled } => string`), but JSON Schema can only model the string variant. |
 | `triggerClass` | `string` | no | — | Additional class names applied to the disclosure trigger button. |
-| `variant` | `"default"` \| `"flat"` | no | `"default"` | Visual treatment. `'default'` is a bordered card with a raised trigger. `'flat'` drops the border, the raised trigger background, and the horizontal padding, so the disclosure reads as a row on the surrounding surface. |
+| `variant` | `"default"` \| `"flat"` | no | `"default"` | Visual treatment. `'default'` is a bordered card with a raised trigger. `'flat'` drops the border, the raised trigger background, and the horizontal padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold. |
 | `children` | `(opaque)` | yes | — | Panel content shown when open. Not expressible in JSON Schema; see the component types for the signature. |
 | `leadingIcon` | `(opaque)` | no | — | Optional decorative icon rendered inside the disclosure trigger. Not expressible in JSON Schema; see the component types for the signature. |
 | `onToggle` | `(opaque)` | no | — | Fired on every successful toggle with the next open state. Not called while disabled. Not expressible in JSON Schema; see the component types for the signature. |

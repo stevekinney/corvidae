@@ -44,7 +44,7 @@ export type CollapsibleProps = Omit<
   /**
    * Visual treatment. `'default'` is a bordered card with a raised trigger.
    * `'flat'` drops the border, the raised trigger background, and the horizontal
-   * padding, so the disclosure reads as a row on the surrounding surface.
+   * padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.
    * @default 'default'
    */
   variant?: CollapsibleVariant;
@@ -96,7 +96,7 @@ export interface CollapsibleSchemaProps {
   /**
    * Visual treatment. `'default'` is a bordered card with a raised trigger.
    * `'flat'` drops the border, the raised trigger background, and the horizontal
-   * padding, so the disclosure reads as a row on the surrounding surface.
+   * padding, so the disclosure reads as a row on the surrounding surface. Its trigger label is semibold.
    * @default 'default'
    */
   variant?: CollapsibleVariant;

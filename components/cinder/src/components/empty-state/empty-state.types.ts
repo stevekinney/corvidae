@@ -19,7 +19,8 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /**
    * Alignment of the content. `'center'` centres the icon, text, and action in
    * the region; `'start'` aligns them to the inline start, for a state that
-   * reads as instructions rather than a placeholder.
+   * reads as instructions rather than a placeholder. A start-aligned state also leads with
+   * a larger, semibold, default-colour title and a muted description.
    * @default 'center'
    */
   align?: EmptyStateAlign;
