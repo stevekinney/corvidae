@@ -85,12 +85,13 @@ function refusedResult(result: ToolExecutionResult, error: unknown): ToolExecuti
   const refusal = refusalMessage(error);
   const original = result.outcome === 'error' ? result.error?.message : undefined;
   const message = original ?? refusal;
+  const content = original === undefined ? message : result.content;
   return {
     callId: result.callId,
     toolCallId: result.toolCallId,
     toolName: result.toolName,
     outcome: 'error',
-    content: message,
+    content,
     result: message,
     error: {
       code: 'TOOL_RESULT_MEDIA_NOT_ADMITTED',

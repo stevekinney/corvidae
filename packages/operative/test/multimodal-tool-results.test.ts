@@ -378,7 +378,9 @@ describe('tool-result media follow-ups (COR-1634)', () => {
       async execute() {
         throw new ToolResultError(
           'remote render failed',
-          toolContent([{ type: 'text', text: 'remote render failed' }, inlineImage]),
+          toolContent([{ type: 'text', text: 'remote render failed' }, inlineImage], {
+            value: { code: 7 },
+          }),
         );
       },
     });
@@ -397,7 +399,7 @@ describe('tool-result media follow-ups (COR-1634)', () => {
     expect(toolResult?.outcome).toBe('error');
     expect(toolResult?.error?.code).toBe('TOOL_RESULT_MEDIA_NOT_ADMITTED');
     expect(toolResult?.error?.message).toBe('remote render failed');
-    expect(toolResult?.content).toBe('remote render failed');
+    expect(toolResult?.content).toEqual({ code: 7 });
     expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
   });
 
