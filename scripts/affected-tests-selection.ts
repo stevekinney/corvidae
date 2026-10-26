@@ -327,12 +327,25 @@ export function selectTests(input: SelectionInput): Selection {
       seed(test, { kind: 'fallback', rule: `snapshot ${path}` });
       return;
     }
-    if ((importers.get(path)?.size ?? 0) > 0) return;
-    const namedBy = filesNaming(path);
-    if (namedBy.length > 0) {
-      for (const file of namedBy) seed(file, { kind: 'fallback', rule: `${file} names ${path}` });
-      return;
+    // A data file can be imported and also read by name, so every way of attributing it counts.
+    let attributed = (importers.get(path)?.size ?? 0) > 0;
+    for (const file of filesNaming(path)) {
+      seed(file, { kind: 'fallback', rule: `${file} names ${path}` });
+      attributed = true;
     }
+    for (const [file, analysis] of analyses) {
+      if (
+        analysis.computedPathExtensions.includes(extensionOf(path)) &&
+        owningWorkspace(file, workspaces) === workspace
+      ) {
+        seed(file, {
+          kind: 'fallback',
+          rule: `${file} reads files by a computed name like ${path}`,
+        });
+        attributed = true;
+      }
+    }
+    if (attributed) return;
     if (isDocumentation(path)) {
       documentationChanged = true;
       return;

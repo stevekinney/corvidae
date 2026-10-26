@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 
 import { spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
@@ -618,6 +619,61 @@ test('the tasks the selector narrows declare the selection variable, so no resul
       expect(definition.env ?? [], name).not.toContain(SELECTION_VARIABLE);
     }
   }
+});
+
+test('a package task keys on every root script it runs and every root script those import', async () => {
+  // A task that runs `bun ../../scripts/x.ts` replays a cached result unless x.ts, and what x.ts
+  // imports, are among its inputs: the package's own files do not change when a root script does.
+  // This covers the class for every script of every workspace, not one runner at a time.
+  const { discoverWorkspaces, listTree } = await import('./affected-tests.ts');
+  const { analyzeSource, resolveSpecifier } = await import('./affected-tests-graph.ts');
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { inputs?: string[] }> = configuration.tasks;
+  const workspaces = discoverWorkspaces(root);
+  const { paths } = listTree(root);
+  const isRootScript = (path: string) => /^scripts\/(?!browser-fixtures\/).+\.ts$/.test(path);
+  const isScript = (path: string) =>
+    /(?:^|\/)scripts\/.+\.ts$/.test(path) && !/\.test\./.test(path);
+
+  // Every script file a script file imports, through `scripts/` directories only: library source
+  // an entrypoint imports is hashed as the package's own files.
+  const closure = (entrypoint: string): string[] => {
+    const seen = new Set<string>();
+    const pending = [entrypoint];
+    for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+      if (seen.has(current)) continue;
+      seen.add(current);
+      const source = readFileSync(join(root, current), 'utf8');
+      for (const specifier of analyzeSource(current, source).specifiers) {
+        const target = resolveSpecifier(current, specifier, paths, workspaces);
+        if (target !== null && isScript(target)) pending.push(target);
+      }
+    }
+    return [...seen].filter(isRootScript);
+  };
+
+  const missing: string[] = [];
+  for (const workspace of workspaces) {
+    if (workspace.directory === '') continue;
+    const manifest = await Bun.file(join(root, workspace.directory, 'package.json')).json();
+    for (const [script, command] of Object.entries<string>(manifest.scripts ?? {})) {
+      const task = tasks[`${manifest.name}#${script}`] ?? tasks[script];
+      if (task === undefined) continue;
+      for (const token of command.split(/[\s&|;'"]+/)) {
+        const resolved = posix.normalize(posix.join(workspace.directory, token));
+        if (!isScript(resolved) || !paths.has(resolved)) continue;
+        for (const file of closure(resolved)) {
+          const covered = (task.inputs ?? []).some(
+            (input) =>
+              input === `$TURBO_ROOT$/${file}` || new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`),
+          );
+          if (!covered)
+            missing.push(`${manifest.name}#${script} runs ${resolved}: add $TURBO_ROOT$/${file}`);
+        }
+      }
+    }
+  }
+  expect(missing.toSorted()).toEqual([]);
 });
 
 test('every test lane that bypasses the JUnit wrapper goes through a runner that honours the selection', async () => {

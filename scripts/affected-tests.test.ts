@@ -322,6 +322,47 @@ describe('fallbacks that widen the selection', () => {
     expect(selection.repositoryRule).toBeNull();
   });
 
+  describe('files a test reads through a path anchored to its own location', () => {
+    // The chat.css case: a stylesheet a component imports, and a test that also reads it as text.
+    const reading: Record<string, string> = {
+      ...baseFiles,
+      'packages/gamma/src/chat.css': '.a { color: red; }\n',
+      'packages/gamma/src/Chat.svelte':
+        '<script lang="ts">\n  import \'./chat.css\';\n</script>\n<p>chat</p>\n',
+      'packages/gamma/src/chat.test.ts': "import Chat from './Chat.svelte';\nvoid Chat;\n",
+    };
+    const readers: Record<string, string> = {
+      'template-dir.test.ts': 'await Bun.file(`${import.meta.dir}/chat.css`).text();\n',
+      'template-dirname.test.ts': 'await Bun.file(`${import.meta.dirname}/chat.css`).text();\n',
+      'url.test.ts': "await Bun.file(new URL('./chat.css', import.meta.url)).text();\n",
+      'join.test.ts':
+        "import { join } from 'node:path';\nawait Bun.file(join(import.meta.dir, 'chat.css')).text();\n",
+    };
+
+    for (const [name, source] of Object.entries(readers)) {
+      test(`${name} is selected when the stylesheet it reads changes, though a component imports it`, () => {
+        const files = { ...reading, [`packages/gamma/src/${name}`]: source };
+        const { selected } = select(files, ['packages/gamma/src/chat.css']);
+        expect(selected('@scope/gamma')).toContain(`packages/gamma/src/${name}`);
+        expect(selected('@scope/gamma')).toContain('packages/gamma/src/chat.test.ts');
+      });
+    }
+
+    test('a path built from a run-time value falls back to the readers of that kind of file in the workspace', () => {
+      const files = {
+        ...reading,
+        'packages/gamma/src/other.css': '.b {}\n',
+        'packages/gamma/src/computed.test.ts':
+          'const name = process.env.STYLE ?? "";\nawait Bun.file(`${import.meta.dir}/${name}.css`).text();\n',
+        'packages/alpha/src/computed.test.ts':
+          'const name = process.env.STYLE ?? "";\nawait Bun.file(`${import.meta.dir}/${name}.css`).text();\n',
+      };
+      const { selected } = select(files, ['packages/gamma/src/other.css']);
+      expect(selected('@scope/gamma')).toContain('packages/gamma/src/computed.test.ts');
+      expect(selected('@scope/alpha')).not.toContain('packages/alpha/src/computed.test.ts');
+    });
+  });
+
   test('a workspace with no code, such as the shared TypeScript bases, selects the repository', () => {
     const configuration = workspace('@scope/typescript', 'internal/typescript', {
       exports: { './base.json': './base.json' },

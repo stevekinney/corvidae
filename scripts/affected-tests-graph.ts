@@ -105,6 +105,8 @@ export function isTestOrTooling(path: string): boolean {
 }
 
 const typeOnlyImport = /\b(?:import|export)\s+type\b[^;'"`]*?\bfrom\s*['"]([^'"\n]+)['"]/g;
+const templateLiteral = /`((?:[^`\\]|\\.)*)`/g;
+const anchorInterpolation = /\$\{\s*(?:import\.meta\.(?:dir|dirname)|__dirname)\s*\}/g;
 const pathLikeLiteral = /^[\w@$.~/-][\w@$.~/ -]*\.[A-Za-z0-9]{1,8}$/;
 
 /** What the text of one source file says about its dependencies. */
@@ -113,6 +115,8 @@ export interface SourceAnalysis {
   specifiers: string[];
   /** Specifiers imported for types only. They leave no runtime edge, but they do name a user. */
   typeSpecifiers: string[];
+  /** Extensions of files read through a path built at run time (`${dir}/${name}.css`). */
+  computedPathExtensions: string[];
   /** String literals that look like paths to files, for runtime reads the import graph cannot see. */
   pathLiterals: string[];
   /** Reads the file system in a way an import edge cannot express (a glob or directory listing). */
@@ -131,6 +135,7 @@ export interface SourceAnalysis {
 const emptyAnalysis: SourceAnalysis = {
   specifiers: [],
   typeSpecifiers: [],
+  computedPathExtensions: [],
   pathLiterals: [],
   scansFileSystem: false,
   scansRepository: false,
@@ -198,9 +203,23 @@ export function analyzeSource(path: string, source: string): SourceAnalysis {
     }
   }
 
+  const computedPathExtensions = new Set<string>();
+  for (const match of literalSource.matchAll(templateLiteral)) {
+    const anchored = (match[1] ?? '').replace(anchorInterpolation, '.');
+    if (!anchored.includes('${')) {
+      // `${import.meta.dir}/chat.css` is a path relative to the file itself.
+      if (pathLikeLiteral.test(anchored) && !anchored.includes('*')) pathLiterals.push(anchored);
+      continue;
+    }
+    const tail = anchored.slice(anchored.lastIndexOf('}') + 1);
+    const tailExtension = /\.[A-Za-z0-9]{1,8}$/.exec(tail)?.[0];
+    if (tailExtension !== undefined) computedPathExtensions.add(tailExtension);
+  }
+
   return {
     specifiers,
     typeSpecifiers,
+    computedPathExtensions: [...computedPathExtensions],
     pathLiterals,
     scansFileSystem: filesystemScan.test(code),
     scansRepository: repositoryScan.test(code) && ownLocation.test(code),
