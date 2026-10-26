@@ -783,7 +783,7 @@ describe('MegaMenu', () => {
     await waitFor(async () => {
       first.focus();
       await fireEvent.keyDown(first, { key: 'ArrowRight' });
-      expect(document.activeElement).toBe(second);
+      expect(document.activeElement === second).toBe(true);
     });
   });
 
