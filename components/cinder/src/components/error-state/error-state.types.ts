@@ -1,5 +1,8 @@
 import type { HTMLAttributes } from 'svelte/elements';
 
+/** Visual treatment of an error state: a padded, boxed alert, or a flat block with no box or padding. */
+export type ErrorStateVariant = 'default' | 'flat';
+
 export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'title'> & {
   /** Primary heading text rendered as a heading element at the configured `headingLevel`. */
   title: string;
@@ -19,6 +22,14 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * @default 2
    */
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  /**
+   * Visual treatment. `'default'` centres a boxed danger alert in padded space.
+   * `'flat'` renders the same content as a start-aligned block with no box and
+   * no padding of its own, for a page whose container already pads it. Either
+   * way the error is announced as an alert.
+   * @default 'default'
+   */
+  variant?: ErrorStateVariant;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 };
@@ -44,6 +55,14 @@ export interface ErrorStateSchemaProps {
    * @default 2
    */
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  /**
+   * Visual treatment. `'default'` centres a boxed danger alert in padded space.
+   * `'flat'` renders the same content as a start-aligned block with no box and
+   * no padding of its own, for a page whose container already pads it. Either
+   * way the error is announced as an alert.
+   * @default 'default'
+   */
+  variant?: ErrorStateVariant;
   /** Additional class merged onto the `.cinder-error-state` root element. */
   class?: string;
 }

@@ -16,6 +16,7 @@ type SnapshotCollapsibleProps = {
   onToggle?: (open: boolean) => void;
   disabled?: boolean;
   triggerAriaLabel?: string | ((state: CollapsibleTriggerState) => string);
+  variant?: 'default' | 'flat';
   idBase?: string;
   class?: string;
 };

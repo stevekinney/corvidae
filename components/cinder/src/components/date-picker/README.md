@@ -29,6 +29,7 @@ DatePicker owns the picker UI (decision B): it uses a text input and Cinder's Ca
 | `granularity` | `"day"` \| `"hour"` \| `"minute"` \| `"second"` | no | — | Date-time precision. Defaults to day. |
 | `id` | `string` | yes | — | Stable id for label/input/error wiring. |
 | `label` | `string` | no | — | Field label text. |
+| `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` to visually hide it while keeping it available to assistive technology. |
 | `max` | `string` | no | — | Maximum allowed value (same format as `value`). |
 | `min` | `string` | no | — | Minimum allowed value (same format as `value`). |
 | `placeholder` | `string` | no | — | Placeholder shown when empty. |

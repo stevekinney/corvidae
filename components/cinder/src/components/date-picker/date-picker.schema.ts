@@ -20,6 +20,12 @@ const schema = {
       type: 'string',
       description: 'Field label text.',
     },
+    labelVisible: {
+      type: 'boolean',
+      description:
+        'Whether the label is visibly rendered. Set `false` to visually hide it\nwhile keeping it available to assistive technology.',
+      default: true,
+    },
     granularity: {
       enum: ['day', 'hour', 'minute', 'second'],
       description: 'Date-time precision. Defaults to day.',
