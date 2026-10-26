@@ -1,5 +1,4 @@
 import type { GenerateFunction, SessionInputAdmissionOutcome } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

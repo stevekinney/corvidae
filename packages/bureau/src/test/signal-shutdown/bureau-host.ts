@@ -39,7 +39,6 @@ import { awakeTurns } from '@lostgradient/testing/wait-until';
 const CLAIM_TTL_MS = 200;
 const CLAIM_RENEW_MS = 50;
 const SHUTDOWN_TIMEOUT_MS = 100;
-const POLL_ATTEMPTS = 2000;
 const POLL_DELAY_MS = 5;
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'timed-out']);
 
@@ -131,7 +130,7 @@ async function recover(): Promise<never> {
   const report = await bureau.waitForRecovery?.();
   // The previous process may have died holding the run's claim; maintenance
   // adopts it once the claim lapses.
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const durable = await bureau.getDurableRun(runId);
     if (durable?.status !== undefined && TERMINAL_STATUSES.has(durable.status)) break;
     await bureau.runDurableMaintenance();

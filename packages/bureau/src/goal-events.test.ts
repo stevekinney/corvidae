@@ -383,7 +383,7 @@ describe('who may subscribe to a goal history', () => {
 
     // The owner's replay finished, so anything the stranger was going to be given has been.
     expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
-    expect(await pollUntil(() => stranger.seen.length > 0, 100)).toBe(false);
+    expect(await pollUntil(() => stranger.seen.length > 0)).toBe(false);
   });
 
   it('delivers nothing to a stranger who subscribed to the id before the goal existed, and everything to its owner', async () => {
@@ -397,6 +397,6 @@ describe('who may subscribe to a goal history', () => {
 
     expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
     expect(owner.seen[0]).toBe('goal.started');
-    expect(await pollUntil(() => stranger.seen.length > 0, 100)).toBe(false);
+    expect(await pollUntil(() => stranger.seen.length > 0)).toBe(false);
   });
 });

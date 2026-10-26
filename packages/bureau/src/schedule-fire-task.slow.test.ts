@@ -20,8 +20,6 @@ import {
 import type { GenerateFunction } from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 
-const FIRE_TIMEOUT_MS = 20_000;
-
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();

@@ -35,8 +35,6 @@ import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-const FIRE_TIMEOUT_MS = 20_000;
-
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
 async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
   await waitUntil(condition, { message: 'waitForReal' });

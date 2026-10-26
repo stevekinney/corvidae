@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 const repositoryRoot = new URL('../..', import.meta.url);
 const engineModulePath = fileURLToPath(new URL('src/core/engine.ts', repositoryRoot));
@@ -259,7 +260,6 @@ import {
 import { activity, workflow } from ${JSON.stringify(typesModulePath)};
 import { IndexedDBStorage } from ${JSON.stringify(indexedDatabaseStorageModulePath)};
 import { setupServiceWorker } from ${JSON.stringify(setupModulePath)};
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 const serviceWorker = self;
 const instanceId = crypto.randomUUID();

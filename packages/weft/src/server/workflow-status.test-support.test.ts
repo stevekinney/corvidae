@@ -11,7 +11,7 @@ describe('waitForStatus test helper', () => {
       get: async () => ({ status: 'running' }),
     } as unknown as Engine;
 
-    expect(await throwingRejectionOf(waitForStatus(engine, 'wf-timeout', 'completed', 1))).toThrow(
+    expect(await throwingRejectionOf(waitForStatus(engine, 'wf-timeout', 'completed'))).toThrow(
       'Workflow wf-timeout did not reach completed within 1ms',
     );
   });

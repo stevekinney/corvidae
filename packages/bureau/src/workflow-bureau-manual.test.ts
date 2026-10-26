@@ -49,7 +49,7 @@ describe('an agent step that a restart runs again', () => {
     await first.put('midstep.json', file);
     await first.bureau.workflows?.refresh();
     await first.bureau.durableEngine()!.start('midstep', null, { id: 'midstep-run' });
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (!(first.calls.length < 1)) break;
       await Bun.sleep(5);
     }
@@ -68,7 +68,7 @@ describe('an agent step that a restart runs again', () => {
     });
     cleanups.push(() => second.dispose());
     await second.bureau.waitForRecovery?.();
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       await second.bureau.runDurableMaintenance();
       const state = await second.bureau.getDurableRun('midstep-run');
       if (state?.status !== 'running' && state?.status !== 'pending') break;

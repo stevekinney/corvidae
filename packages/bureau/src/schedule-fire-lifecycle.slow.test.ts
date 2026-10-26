@@ -23,12 +23,11 @@ import {
   readFrames,
   rpc,
   type RpcBody,
+  type SseFrame,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
-
-const FIRE_TIMEOUT_MS = 20_000;
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -75,12 +74,13 @@ async function firstFire(opened: OpenedBureau): Promise<TaskView> {
 }
 
 /** Starts reading a task's event stream, so a test can change the world while it is open. */
-async function observe(opened: OpenedBureau, taskId: string) {
+/** Follows the fire's events; `into` fills as frames arrive, so a test can wait for the first. */
+async function observe(opened: OpenedBureau, taskId: string, into?: SseFrame[]) {
   const response = await opened.handler(
     subscribeRequest('bureau.tasks.events', { taskId }, 'alice-key'),
   );
   expect(response.status).toBe(200);
-  return readFrames(response);
+  return readFrames(response, into === undefined ? {} : { into });
 }
 
 /** Step 0 saves the fire's session (a tool call the toolbox lacks); step 1 waits on `gate`. */
@@ -111,8 +111,9 @@ describe('the event stream of a schedule fire', () => {
     const unbound = await opened.bureau.tasks.record(task.id);
     expect(unbound?.incarnation).toBe('');
 
-    const frames = observe(opened, task.id);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const live: SseFrame[] = [];
+    const frames = observe(opened, task.id, live);
+    await waitUntil(() => live.length >= 1, { message: 'the stream to deliver its snapshot' });
     await rpc(opened.handler, 'bureau.tasks.cancel', { taskId: task.id }, 'alice-key');
     const seen = await frames;
 
@@ -127,8 +128,9 @@ describe('the event stream of a schedule fire', () => {
     const task = await firstFire(opened);
     await waitForBound(opened, task.id);
 
-    const frames = observe(opened, task.id);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const live: SseFrame[] = [];
+    const frames = observe(opened, task.id, live);
+    await waitUntil(() => live.length >= 1, { message: 'the stream to deliver its snapshot' });
     gate.resolve();
     const seen = await frames;
 

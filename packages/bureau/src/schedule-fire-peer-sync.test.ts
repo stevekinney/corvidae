@@ -23,6 +23,7 @@ import { BureauError } from './create-bureau';
 import {
   OWNER,
   readFrames,
+  type SseFrame,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import {
@@ -46,7 +47,7 @@ import type { DefaultAgentFields } from './testing/default-agent.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
-import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
+import { awakeTurns, quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -750,15 +751,19 @@ describe('a task stream whose notification fails after the review is dropped', (
       failOnce,
     );
     let ended = false;
+    const live: SseFrame[] = [];
     const frames = readFrames(
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
+      { into: live },
     ).finally(() => {
       ended = true;
     });
     frames.catch(() => undefined);
-    await sleep(150);
+    await waitUntil(() => live.length >= 1, {
+      message: 'the subscriber to receive its first frame',
+    });
 
     failing.armed = true;
     await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
@@ -835,7 +840,6 @@ describe('the human wait of a fire', () => {
     const review = await reviewOf(holder, fireId);
     expect(review.kind).toBe('human-wait');
     expect(fireReviewFollowerOf(holder).followed()).toEqual([fireId]);
-    await sleep(150);
     const peer = await harness.open({ ...waitOptions, storage: await harness.sqliteStorage(path) });
 
     await peer.resolveReview({
@@ -908,15 +912,19 @@ describe('a close the holder cannot read durable state for', () => {
       failOnce,
     );
     let ended = false;
+    const live: SseFrame[] = [];
     const frames = readFrames(
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
+      { into: live },
     ).finally(() => {
       ended = true;
     });
     frames.catch(() => undefined);
-    await sleep(100);
+    await waitUntil(() => live.length >= 1, {
+      message: 'the subscriber to receive its first frame',
+    });
 
     failing.armed = true;
     await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });

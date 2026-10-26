@@ -1225,7 +1225,7 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
 
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'hi' });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(seen.length === 0)) break;
         await waitOneTimerTurn();
       }

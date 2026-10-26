@@ -107,7 +107,7 @@ if (mode === 'running') {
     message: 'Start',
     principal: 'alice',
   });
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (!!stepOneStarted) break;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
   }

@@ -165,7 +165,7 @@ export async function waitForQueryReadyForTesting(
   client: WeftClient,
   workflowId: string,
 ): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if ((await client.query(workflowId, 'ready')) === true) {
       return;
     }

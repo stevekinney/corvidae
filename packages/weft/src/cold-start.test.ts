@@ -2,7 +2,7 @@ import { expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnWithHangGuard } from '../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '../scripts/lib/hang-guard.ts';
 import { outcomeOf, rethrow } from './testing/module-scope-scenario.test-support.ts';
 
 async function readHealthAddress(output: ReadableStream<Uint8Array>): Promise<string> {
@@ -50,8 +50,8 @@ const scenario1 = await outcomeOf(async () => {
       readHealthAddress(child.stdout),
       new Promise<never>((_resolve, reject) => {
         deadline = setTimeout(
-          () => reject(new Error('CLI readiness exceeded five seconds.')),
-          5_000,
+          () => reject(new Error('CLI readiness exceeded the hang guard.')),
+          HANG_GUARD_MILLISECONDS,
         );
       }),
     ]);

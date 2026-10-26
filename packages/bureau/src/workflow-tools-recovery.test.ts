@@ -54,7 +54,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
 
   const stuck = await open(() => new Promise<never>(() => {}));
   const created = await stuck.createRun({ message: 'write it', agentName: 'scribe' });
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if ((await stuck.getDurableRun(created.id)) !== undefined) break;
     await Bun.sleep(5);
   }

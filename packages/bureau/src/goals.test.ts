@@ -699,7 +699,7 @@ describe('bureau.goals', () => {
 
       validating.release();
       await verdictDelivered.promise;
-      await pollUntil(() => false, 10);
+      await pollUntil(() => false);
       expect(await bureau.goals.get('g1')).toEqual(canceled);
       expect(canceled?.attempts.map((attempt) => attempt.status)).toEqual(['aborted']);
       expect(canceled?.attempts[0]?.validation).toBeUndefined();

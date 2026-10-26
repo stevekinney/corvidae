@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
@@ -91,10 +92,10 @@ function makeEmitter(): JsonRpcWebSocketEmitter & {
         if (waiterIndex >= 0) pendingWaiters.splice(waiterIndex, 1);
         reject(
           new Error(
-            `${description} within 500ms; saw ${sent.length} frame${sent.length === 1 ? '' : 's'}`,
+            `${description} before the hang guard elapsed; saw ${sent.length} frame${sent.length === 1 ? '' : 's'}`,
           ),
         );
-      }, 500);
+      }, HANG_GUARD_MILLISECONDS);
 
       pendingWaiters.push({ description, resolve, reject, isSatisfied, timeout });
     });

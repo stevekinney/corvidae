@@ -76,14 +76,14 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
       // B deletes the session; A learns of it from its poll and aborts the
       // run as its own deletion would, rather than letting it keep working.
       await bureauB.deleteSession(run.sessionId);
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -141,7 +141,7 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
@@ -164,7 +164,7 @@ describe('durable steering across two Bureau processes', () => {
       const pauseSequence = pauseHead.sequence;
       const pauseEntry = `:entry:${String(pauseSequence).padStart(12, '0')}`;
       readsByA.mockClear();
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (readsByA.mock.calls.some(([key]) => key.endsWith(pauseEntry))) break;
         await Bun.sleep(10);
       }
@@ -183,7 +183,7 @@ describe('durable steering across two Bureau processes', () => {
         requestedValue: { target: 'resume' },
       });
       expect(resumed.outcome).toBe('accepted');
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -245,7 +245,7 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
@@ -263,7 +263,7 @@ describe('durable steering across two Bureau processes', () => {
       // B deletes the session. Nothing in B knows A's run; A sees the
       // deletion from the paused run's own watch and releases it.
       await bureauB.deleteSession(run.sessionId);
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -282,7 +282,7 @@ describe('durable steering across two Bureau processes', () => {
           message: 'again',
           principal: 'alice',
         });
-        for await (const attempt of awakeTurns()) {
+        for await (const _turn of awakeTurns()) {
           if (!(generateCalls < 3)) break;
           await Bun.sleep(10);
         }
@@ -292,7 +292,7 @@ describe('durable steering across two Bureau processes', () => {
         });
         expect(pausedAgain.outcome).toBe('accepted');
         releaseSecondTool?.();
-        for await (const attempt of awakeTurns()) {
+        for await (const _turn of awakeTurns()) {
           if (intervals.mock.calls.some(([, delay]) => delay === 2_000)) break;
           await Bun.sleep(10);
         }
@@ -300,7 +300,7 @@ describe('durable steering across two Bureau processes', () => {
         expect(watchIndex).toBeGreaterThanOrEqual(0);
         const watch = intervals.mock.results[watchIndex]?.value;
         bureauA.abortRun(second.id);
-        for await (const attempt of awakeTurns()) {
+        for await (const _turn of awakeTurns()) {
           if (cleared.mock.calls.some(([handle]) => handle === watch)) break;
           await Bun.sleep(10);
         }

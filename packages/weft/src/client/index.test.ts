@@ -772,7 +772,7 @@ describe('HttpClient', () => {
         id: 'http-suspend-live',
       });
       // Let the run reach 'running' (parked on waitForSignal('continue')).
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if ((await statusOfWorkflow('http-suspend-live')) === 'running') break;
         await sleepForTesting(5);
       }

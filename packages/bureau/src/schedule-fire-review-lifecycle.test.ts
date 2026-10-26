@@ -16,6 +16,7 @@ import {
   OWNER,
   readFrames,
   rpc,
+  type SseFrame,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import {
@@ -35,6 +36,7 @@ import {
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 const { open } = harness;
@@ -646,11 +648,12 @@ describe('a fire’s task stream ends when its last review closes', () => {
       const schedule = await bureau.getSchedule(created?.id ?? '');
       return schedule?.currentWorkflowId ?? undefined;
     }, 'the fire to start');
-    const follow = async () =>
+    const follow = async (into?: SseFrame[]) =>
       readFrames(
         await handlerOf(bureau)(
           subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
         ),
+        into === undefined ? {} : { into },
       );
     return { bureau, fireId, follow, release: () => gate.resolve(), charges };
   }
@@ -694,8 +697,11 @@ describe('a fire’s task stream ends when its last review closes', () => {
         async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
         'the fire to settle with its approval open',
       );
-      const reading = follow();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      const live: SseFrame[] = [];
+      const reading = follow(live);
+      await waitUntil(() => live.length >= 1, {
+        message: 'the subscriber to receive its snapshot',
+      });
 
       await close(bureau, review.id);
       const frames = await reading;
@@ -736,15 +742,22 @@ describe('a fire’s task stream ends when its last review closes', () => {
       const schedule = await bureau.getSchedule(created?.id ?? '');
       return schedule?.currentWorkflowId ?? undefined;
     }, 'the fire to start');
+    const live: SseFrame[] = [];
     const reading = readFrames(
       await handlerOf(bureau)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
+      { into: live },
     );
     gate.resolve();
     const review = await reviewOf(bureau, fireId);
     // Let the stream hear the park before the answer, so its order is the task's.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitUntil(
+      () => live.some((frame) => (frame.data as { status?: string }).status === 'input-required'),
+      {
+        message: 'the stream to hear the park',
+      },
+    );
 
     await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;

@@ -162,7 +162,7 @@ describe('eventRetention', () => {
         // One tick of the automatic pass (five minutes) after the window.
         await runtime.advance(5 * 60_000 + 1);
         let floor = 0;
-        for await (const attempt of awakeTurns()) {
+        for await (const _turn of awakeTurns()) {
           if (!(floor === 0)) break;
           floor = await retentionFloor();
           if (floor === 0) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -333,7 +333,7 @@ describe('taskRetention', () => {
         // `run.error` is followed by `run.completed`, which closes the run and
         // starts its window; poll the passes until it has and the run goes.
         at(2 * DAY_MS);
-        for await (const attempt of awakeTurns()) {
+        for await (const _turn of awakeTurns()) {
           if (!(bureau.getRun(created.id) !== undefined)) break;
           await bureau.runDurableMaintenance();
           await new Promise((resolve) => setTimeout(resolve, 5));

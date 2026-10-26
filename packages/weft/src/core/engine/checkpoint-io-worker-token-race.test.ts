@@ -98,7 +98,7 @@ async function waitForCheckpointQuiescence(
   workflowId: string,
 ): Promise<Uint8Array> {
   let previous = await storage.get(KEYS.checkpoint(workflowId));
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     await new Promise((resolve) => setTimeout(resolve, 10));
     const current = await storage.get(KEYS.checkpoint(workflowId));
     if (

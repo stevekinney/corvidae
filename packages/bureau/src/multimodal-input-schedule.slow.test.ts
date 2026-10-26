@@ -18,10 +18,6 @@ import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-// The poll ends inside Bun's default per-test limit, which this file leaves as it is: a
-// 1 s schedule fires well within it, and a fire that does not is a failure, not a slow test.
-const FIRE_WAIT_MS = 4_000;
-
 async function waitForReal(condition: () => boolean): Promise<boolean> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;

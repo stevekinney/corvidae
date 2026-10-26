@@ -13,8 +13,6 @@ import {
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-
-const WALL_CLOCK_TIMEOUT_MS = 30_000;
 const harnesses: WorkflowBureauHarness[] = [];
 
 afterEach(async () => {

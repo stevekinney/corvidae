@@ -46,8 +46,6 @@ import {
 } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-
-const POLL_ATTEMPTS = 2000;
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -83,7 +81,7 @@ if (
  * passes `Infinity`, so a slow host is not mistaken for a stuck one.
  */
 async function pollUntil(description: string, check: () => boolean | Promise<boolean>) {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     if (await check()) return;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }

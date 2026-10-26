@@ -148,7 +148,7 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
     // in-memory baseline for it; launch() must prime one from storage.
     forgetCommittedCheckpointBytes(internals, prepared.id);
     await prepared.launch();
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (internals.parkedInlineWorkflows.has(prepared.id)) break;
       await new Promise((resolve) => setImmediate(resolve));
     }

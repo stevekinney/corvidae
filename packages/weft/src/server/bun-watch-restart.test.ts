@@ -36,6 +36,7 @@ import { describe, expect, it } from 'bun:test';
 import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 const REVISION_MODULE_NAME = 'revision.ts';
 
@@ -49,7 +50,6 @@ import { GENERATION } from './${REVISION_MODULE_NAME}';
 import { Engine, workflow } from ${JSON.stringify(indexUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteUrl)};
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 function readArgument(name, fallback) {
   const index = Bun.argv.indexOf(name);
@@ -89,7 +89,6 @@ async function waitForMarker(
   pattern: RegExp,
   timeoutMs: number,
 ): Promise<RegExpMatchArray> {
-  const deadline = Date.now() + timeoutMs;
   for await (const _turn of awakeTurns()) {
     const match = stdout().match(pattern);
     if (match !== null) return match;
@@ -104,7 +103,6 @@ async function waitForWorkflowCompleted(
   workflowId: string,
   timeoutMs: number,
 ): Promise<unknown> {
-  const deadline = Date.now() + timeoutMs;
   for await (const _turn of awakeTurns()) {
     const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}`).catch(() => null);
     if (response?.ok) {

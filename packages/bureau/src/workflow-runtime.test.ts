@@ -116,7 +116,7 @@ async function versionOf(engine: Engine, workflowId: string): Promise<string | u
 }
 
 async function parkedOnSignal(engine: Engine, workflowId: string): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const timeline = await engine.getTimeline(workflowId);
     if (timeline.some((entry) => entry.operationType === 'wait-signal')) return;
     await Bun.sleep(5);

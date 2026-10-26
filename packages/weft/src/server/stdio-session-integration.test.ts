@@ -289,7 +289,7 @@ describe('runStdioSession — engine-backed integration', () => {
       // MUST NOT leave any active listener behind that would forward
       // weft.events.deliver notifications to this session.
       await engine.signal(handle.id, 'release', 'done');
-      await waitForStatus(engine, handle.id, 'completed', 2_000);
+      await waitForStatus(engine, handle.id, 'completed');
 
       function findPostRejectDeliver(): unknown {
         for (const line of output.lines().slice(lineCountAfterRejectedSubscribe)) {
@@ -362,7 +362,7 @@ describe('runStdioSession — engine-backed integration', () => {
       const lineCountAfterClose = output.lines().length;
 
       await engine.signal(handle.id, 'release', 'done');
-      await waitForStatus(engine, handle.id, 'completed', 2_000);
+      await waitForStatus(engine, handle.id, 'completed');
 
       await new Promise<void>((resolve) => setImmediate(resolve));
       await new Promise<void>((resolve) => setImmediate(resolve));

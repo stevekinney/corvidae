@@ -4893,7 +4893,7 @@ describe('createBureau', () => {
     // injected failure (1), plus the three session commits `deleteRun` retries (3), plus the claim
     // and the acknowledgement of each of those three outbox entries (6). So the assertion waits
     // for the outbox to empty and then counts every batch.
-    for await (const turn of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       const pending = await bureau.sessionStore!.outbox.pending();
       if (pending.length === 0) break;
       await yieldToPortableEventLoop();

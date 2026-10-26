@@ -45,6 +45,7 @@ import {
   type BunOrNodeAdapterSpec,
   type OpenedAdapter,
 } from './adapter-spec.test-support.ts';
+import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 
 /**
  * A `Promise.race` branch that resolves to `value` after `milliseconds` of
@@ -377,7 +378,6 @@ await new Promise(() => {});
   return `
 ${importLineFor(spec)}
 import { createRequire } from 'node:module';
-import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 
 const databasePath = process.argv[2];
 const storage = openAdapter(databasePath);

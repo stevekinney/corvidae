@@ -5,7 +5,6 @@
  */
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';

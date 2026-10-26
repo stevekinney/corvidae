@@ -15,23 +15,6 @@ import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-// ---------------------------------------------------------------------------
-// D6 scheduled-fire E2E (#109)
-//
-// These are the assertions that were missing: every prior scheduling test only
-// checked that a schedule was *registered*, never that a native timer tick
-// actually *ran an agent*. Here we register a real weft schedule, let the engine
-// poller fire it on real elapsed time, and assert an `agentRun` body executed
-// with the right prompt and the right session semantics.
-//
-// TIMING: weft's scheduler poll interval defaults to 1000ms and there is no
-// fake-timer path for `engine.schedule` ticks — the poller runs on real wall
-// clock. So these tests use a real-time poll and a raised per-test timeout. This
-// is real elapsed time, NOT a masked hang.
-// ---------------------------------------------------------------------------
-
-const FIRE_TIMEOUT_MS = 20_000;
-
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
 async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
   await waitUntil(condition, { message: 'waitForReal' });

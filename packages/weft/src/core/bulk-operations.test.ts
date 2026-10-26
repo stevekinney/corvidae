@@ -1329,7 +1329,7 @@ describe('bulk workflow operations', () => {
         );
       }
 
-      await waitForWorkflowStatusCount(engine, 'running', handles.length, 10_000);
+      await waitForWorkflowStatusCount(engine, 'running', handles.length);
 
       const result = await engine.signalAll({ status: 'running' }, 'continue', 'released');
 
@@ -1420,7 +1420,7 @@ describe('bulk workflow operations', () => {
         id: 'bulk-preview-selected-b',
         tags: ['preview'],
       });
-      await waitForWorkflowStatusCount(engine, 'running', 2, 10_000);
+      await waitForWorkflowStatusCount(engine, 'running', 2);
 
       const preview = await engine.cancelAll(
         { tags: ['preview'] },
@@ -1484,7 +1484,7 @@ describe('bulk workflow operations', () => {
         id: 'bulk-attribute-preview-south',
         searchAttributes: { region: 'ap-south', tier: 'active' },
       });
-      await waitForWorkflowStatusCount(engine, 'running', 3, 10_000);
+      await waitForWorkflowStatusCount(engine, 'running', 3);
 
       const preview = await engine.cancelAll(
         {
@@ -1695,7 +1695,7 @@ describe('bulk workflow operations', () => {
         id: 'bulk-audit-selected-b',
         tags: ['audit'],
       });
-      await waitForWorkflowStatusCount(engine, 'running', 2, 10_000);
+      await waitForWorkflowStatusCount(engine, 'running', 2);
 
       const preview = await engine.cancelAll(
         { tags: ['audit'] },

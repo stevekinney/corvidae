@@ -97,7 +97,7 @@ export async function collectWebSocketDeliveredEnvelopes(
       const timer = setTimeout(() => {
         webSocket.removeEventListener('message', handler);
         reject(new Error('collectWebSocketDeliveredEnvelopes timed out'));
-      }, 3_000);
+      }, HANG_GUARD_MILLISECONDS);
 
       function finish(value: EventEnvelope[]): void {
         clearTimeout(timer);

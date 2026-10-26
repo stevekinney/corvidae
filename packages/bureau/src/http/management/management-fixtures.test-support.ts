@@ -126,17 +126,21 @@ export type SseFrame = { id?: string; event?: string; data?: unknown };
 
 /**
  * Reads frames from a Server-Sent-Events response until the stream ends or `stop` says it has
- * enough. The reader is cancelled either way. The read has no deadline of its own beyond the
+ * enough. Frames are also pushed into `into` as they arrive. The reader is cancelled either way. The read has no deadline of its own beyond the
  * awake-time hang guard, which fails it rather than hanging the test: how long a stream takes to
  * deliver its frames depends on how busy the host is, so a shorter limit would fail healthy runs.
  */
 export async function readFrames(
   response: Response,
-  options: { stop?: (frames: readonly SseFrame[]) => boolean } = {},
+  options: {
+    stop?: (frames: readonly SseFrame[]) => boolean;
+    /** An array the frames are pushed into as they arrive, so a test can wait for one. */
+    into?: SseFrame[];
+  } = {},
 ): Promise<SseFrame[]> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
-  const frames: SseFrame[] = [];
+  const frames: SseFrame[] = options.into ?? [];
   let buffer = '';
   let hung = false;
   // Cancelling the reader ends a pending `read()` with `done`, so a stalled stream falls out below.

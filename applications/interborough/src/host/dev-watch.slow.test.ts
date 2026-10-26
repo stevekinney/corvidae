@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
 import { startBrowserBuild, stopBrowserBuilds } from './browser-build.ts';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-dev-watch-'));
 
@@ -58,7 +59,6 @@ writeFileSync(
 
 import { startBrowserBuild } from ${JSON.stringify(join(import.meta.dir, 'browser-build.ts'))};
 import { generation } from './generation.ts';
-import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const [outdirPrefix, log] = process.argv.slice(2);
 const build = startBrowserBuild({ outdir: outdirPrefix + '-' + generation });

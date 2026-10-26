@@ -48,6 +48,7 @@ import type { WorkerManifest, WorkerWorkflowContract } from './manifest/index.ts
 import { WORKER_MANIFEST_VERSION } from './manifest/index.ts';
 import type { ServerToWorkerMessage, TaskMessage } from './protocol.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from './protocol.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 /**
  * Build a minimal manifest advertising exactly the given activity names. Each
@@ -267,9 +268,7 @@ async function readResolvedRecord(engine: Engine, operationId: string): Promise<
 async function waitForInflightCleared(
   engine: Engine,
   operationId: string,
-  options: { timeoutMs?: number } = {},
 ): Promise<void> {
-  const deadline = Date.now() + (options.timeoutMs ?? 2_000);
   let record: ReturnType<typeof decodeRemoteTaskRecord> = null;
   for await (const _turn of awakeTurns()) {
     record = decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey(operationId)));
@@ -372,7 +371,6 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
 
     // The resolved record appears once the server processes the completion.
     let resolved: unknown;
-    const deadline = Date.now() + 2_000;
     for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined) break;
@@ -861,7 +859,6 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
     });
 
     let resolved: unknown;
-    const deadline = Date.now() + 2_000;
     for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined && resolved !== null) break;
@@ -1114,7 +1111,6 @@ async function recoverInFlightTaskAcrossSigkill(): Promise<void> {
   const handles = inFlightRestartHandles;
 
   async function waitForTestDispatchUrl(handle: SubprocessServerHandle): Promise<string> {
-    const deadline = Date.now() + 3_000;
     for await (const _turn of awakeTurns()) {
       const match = handle.stdout.match(/WEFT_TEST_DISPATCH_URL\s+(\S+)/);
       if (match !== null && match[1] !== undefined) return match[1];
@@ -1148,7 +1144,6 @@ import { Engine, activity } from ${JSON.stringify(indexUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteUrl)};
 import { decodeRemoteTaskRecord, isRemoteTaskTerminalResolved, taskLedgerKey } from ${JSON.stringify(taskLedgerUrl)};
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 function readArgument(name, fallback) {
   const index = Bun.argv.indexOf(name);
@@ -1303,7 +1298,6 @@ process.on('SIGINT', () => void stop(0));
 
     // Poll the rebooted subprocess's test-control endpoint for resolution.
     const newTestDispatchUrl = await waitForTestDispatchUrl(rebooted);
-    const deadline = Date.now() + 5_000;
     let resolvedFlag = false;
     for await (const _turn of awakeTurns()) {
       const response = await fetch(

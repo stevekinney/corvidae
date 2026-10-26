@@ -204,7 +204,7 @@ describe('RemoteWorker', () => {
     // Give time for the register message to arrive. The previous fixed
     // 50ms sleep flaked on slow CI runners; poll up to 2s instead.
     let registerMessage: any;
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (!(registerMessage === undefined)) break;
       await sleepForTesting(50);
       registerMessage = messages.find((m) => m.type === 'register');
@@ -249,7 +249,7 @@ describe('RemoteWorker', () => {
     await worker.connect();
 
     let registerMessage: any;
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       if (!(registerMessage === undefined)) break;
       await sleepForTesting(50);
       registerMessage = messages.find((m) => m.type === 'register');
@@ -1290,9 +1290,6 @@ describe('RemoteWorker', () => {
       label: 'shutdown acknowledgement',
     });
     expect(worker.shuttingDown).toBe(true);
-
-    // `waitForCondition` throws past this bound, so it is the deadline for the drain to give up.
-    const shutdownTimeoutMs = disconnectTimeoutMs + 500;
     await waitForCondition(() => !worker.connected, {
       label: 'shutdown timeout completion',
     });

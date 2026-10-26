@@ -21,7 +21,7 @@ import { CleanupWarningEvent } from './events.ts';
 import { activity, workflow, type WorkflowContext } from './types.ts';
 
 async function forceFinalizers(stopWhen: () => boolean): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     Bun.gc(true);
     await flush();
     await sleepForTesting(5);

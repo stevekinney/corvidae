@@ -3,7 +3,7 @@ import { $, Glob } from 'bun';
 // Bun parses `bunfig.toml` natively when imported, so `coveragePathIgnorePatterns`
 // stays a single source of truth (no hand-rolled TOML parse that could drift). The
 // path resolves relative to THIS file, so it holds regardless of the invocation cwd.
-import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
+import { HANG_GUARD_MILLISECONDS } from './lib/hang-guard.ts';
 import bunfig from '../bunfig.toml';
 // The package manifest supplies the `test` script's own exclusions, for the same reason
 // `bunfig.toml` supplies the instrumentation ignores: one list, read where it is written.
@@ -193,6 +193,9 @@ export function assertNoAllowanceKeyIsCoverageIgnored(
   }
 }
 
+// Bun's per-test timeout for the coverage run: twice the hang guard, as `scripts/test-deadlines.ts`
+// sets it for every other lane (this package cannot import the root scripts, so it computes its own).
+const TEST_TIMEOUT_ARGUMENT = `--timeout=${2 * HANG_GUARD_MILLISECONDS}`;
 const COVERAGE_FAILURE_OUTPUT_TAIL_BYTES = 16 * 1024 * 1024;
 const COVERAGE_TEST_FILE_GLOBS = ['*test.ts', '*spec.ts'] as const;
 

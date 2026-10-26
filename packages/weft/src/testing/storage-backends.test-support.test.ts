@@ -27,7 +27,7 @@ describe('waitForWorkflowStatus', () => {
     };
 
     expect(
-      await waitForWorkflowStatus(engine as never, 'workflow-1', 'completed', 500),
+      await waitForWorkflowStatus(engine as never, 'workflow-1', 'completed'),
     ).toBeUndefined();
   });
 
@@ -38,7 +38,7 @@ describe('waitForWorkflowStatus', () => {
 
     expect(
       await throwingRejectionOf(
-        waitForWorkflowStatus(engine as never, 'workflow-1', 'completed', 20),
+        waitForWorkflowStatus(engine as never, 'workflow-1', 'completed'),
       ),
     ).toThrow('Expected workflow "workflow-1" to reach status "completed"');
   });

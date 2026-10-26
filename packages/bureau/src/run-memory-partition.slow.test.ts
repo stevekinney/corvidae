@@ -19,11 +19,6 @@ import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-/** The test's own timeout, which is the same as the other scheduled-fire tests'. */
-const FIRE_TIMEOUT_MS = 20_000;
-/** How long the test waits for the fire. Shorter than the test's timeout, so a fire that never writes fails `expect(written)` rather than the clock. */
-const FIRE_WAIT_MS = 15_000;
-
 async function waitForReal(condition: () => Promise<boolean>): Promise<boolean> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;

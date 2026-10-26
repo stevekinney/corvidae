@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { waitForParityCondition as waitFor } from '../core/parity/real-timer-wait.test-support.ts';
 import { waitForRealTimersForTesting } from '../testing/fake-timers.test-support.ts';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { decode, encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
 import {
@@ -3208,7 +3209,10 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url.toString());
-      const timeout = setTimeout(() => reject(new Error('Expected WebSocket failure')), 1_000);
+      const timeout = setTimeout(
+        () => reject(new Error('Expected WebSocket failure')),
+        HANG_GUARD_MILLISECONDS,
+      );
       const finish = (): void => {
         clearTimeout(timeout);
         resolve();
@@ -3240,7 +3244,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
         timedOut = true;
         ws.close();
         reject(new Error(`Expected ${connectionType} WebSocket policy close`));
-      }, 1_000);
+      }, HANG_GUARD_MILLISECONDS);
 
       ws.addEventListener(
         'close',
@@ -3698,7 +3702,10 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     const wsUrl = server.url.replace('http://', 'ws://');
     const failed = await new Promise<boolean>((resolve, reject) => {
       const ws = new WebSocket(`${wsUrl}/v1/workflows/%E0%A4%A/stream`);
-      const timeout = setTimeout(() => reject(new Error('Expected WebSocket failure')), 1_000);
+      const timeout = setTimeout(
+        () => reject(new Error('Expected WebSocket failure')),
+        HANG_GUARD_MILLISECONDS,
+      );
       const finish = (): void => {
         clearTimeout(timeout);
         resolve(true);
@@ -7144,7 +7151,6 @@ describe('retry policy respected on reassignment', () => {
   // argument), strictly above `CI_WAIT_TIMEOUT_MS`, makes those tests
   // self-contained regardless of which supported invocation runs them.
   const CI_WAIT_TIMEOUT_MS = 8000;
-  const CI_WAIT_TEST_TIMEOUT_MS = CI_WAIT_TIMEOUT_MS + 5000;
 
   it('does not re-dispatch when maxAttempts exceeded on visibility timeout expiry', async () => {
     ({ engine, storage } = createReconnectTestEngineWithStorage());

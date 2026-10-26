@@ -35,7 +35,7 @@ async function served() {
   await bureau.workflows!.refresh();
   const engine = bureau.durableEngine()!;
   await engine.start('waiter', null, { id: 'waiting-run' });
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get('waiting-run');
     if (state?.waitingForSignals?.includes('go') === true) break;
     await Bun.sleep(5);
@@ -143,7 +143,7 @@ describe('bureau.workflows.signal', () => {
     const harness = await served();
     const engine = harness.bureau.durableEngine()!;
     await engine.start('waiter', null, { id: 'second-run' });
-    for await (const attempt of awakeTurns()) {
+    for await (const _turn of awakeTurns()) {
       const state = await engine.get('second-run');
       if (state?.waitingForSignals?.includes('go') === true) break;
       await Bun.sleep(5);

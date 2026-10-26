@@ -851,7 +851,10 @@ describe('a followed fire whose subscription keeps ending', () => {
     await eventually(() => (lives.length >= 2 ? true : undefined), 'the first reopen');
     await follower.settled();
     // The stability timer fires (the recording timers run it at once), which is the cap elapsing.
-    await eventually(() => (requested.length >= 3 ? true : undefined), 'the stability timer to be asked for');
+    await eventually(
+      () => (requested.length >= 3 ? true : undefined),
+      'the stability timer to be asked for',
+    );
     lives[1]?.();
     await eventually(() => (lives.length >= 3 ? true : undefined), 'the second reopen');
 
@@ -911,6 +914,7 @@ describe('a followed fire whose subscription keeps ending', () => {
       page: () =>
         new Promise((_resolve, reject) => {
           pageStarted?.();
+          // load-proof: a stand-in storage that fails after a delay, which nothing waits out as a deadline
           setTimeout(() => reject(new Error('storage unavailable')), 30);
         }),
       subscribeEventHistoryOfOwners(listener, options) {

@@ -71,7 +71,7 @@ async function waitForWorkflowStatus(
   workflowId: string,
   status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended',
 ): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get(workflowId);
     if (state?.status === status) {
       return;

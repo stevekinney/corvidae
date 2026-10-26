@@ -107,7 +107,7 @@ if (mode === 'retry') {
   runId = run.id;
   // Poll rather than sleep: the run must actually be live before a pause is
   // admissible, and a fixed delay would either be flaky or slow.
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const session = await bureau.getSession(sessionId);
     if (session?.metadata['lastRunStatus'] === 'running') break;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));

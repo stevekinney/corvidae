@@ -22,7 +22,7 @@ async function waitForCheckpointStep(
   workflowId: string,
   step: number,
 ): Promise<void> {
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const checkpoints = await engine.listCheckpoints(workflowId);
     if (checkpoints.some((checkpoint) => checkpoint.step === step)) {
       return;

@@ -78,7 +78,7 @@ for (const [label, ownership] of OWNERSHIPS) {
       await engine.start('sleeper', null, { id: 'sleeper-run' });
       await engine.start('waiter', null, { id: 'waiter-run' });
       await engine.start('midstep', null, { id: 'midstep-run' });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(first.calls.length < 1)) break;
         await Bun.sleep(5);
       }

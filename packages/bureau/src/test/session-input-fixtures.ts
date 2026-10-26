@@ -22,7 +22,6 @@ import {
   encodeStorageKeyComponent,
   resolveStorage,
   type Storage,
-  yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 

@@ -20,7 +20,6 @@ import {
   type ValidatorInput,
   type ValidatorOutcome,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { expect } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 

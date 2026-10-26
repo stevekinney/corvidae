@@ -83,7 +83,7 @@ async function startRunningSession(bureau: TestBureau, sessionId?: string): Prom
     principal: 'alice',
     ...(sessionId !== undefined ? { sessionId } : {}),
   });
-  for await (const attempt of awakeTurns()) {
+  for await (const _turn of awakeTurns()) {
     const session = await bureau.getSession(run.sessionId);
     if (session?.metadata['lastRunStatus'] === 'running') return run.sessionId;
     await Bun.sleep(10);
@@ -301,7 +301,7 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
@@ -340,7 +340,7 @@ describe('durable steering across two Bureau processes', () => {
         reads.mockRestore();
       }
       bureau.abortRun(run.id);
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(pollTimers().length > before)) break;
         await Bun.sleep(10);
       }
@@ -406,7 +406,7 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
@@ -424,7 +424,7 @@ describe('durable steering across two Bureau processes', () => {
       ).toBe(2);
 
       releaseTool?.();
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -438,7 +438,7 @@ describe('durable steering across two Bureau processes', () => {
         principal: 'alice',
         sessionId: run.sessionId,
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (!(toolCalls < 2)) break;
         await Bun.sleep(10);
       }
@@ -451,7 +451,7 @@ describe('durable steering across two Bureau processes', () => {
           throw new Error(`expected replayed, got ${outcome.outcome}`);
         return outcome.command.state;
       };
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if ((await stateIn(bureauA, 'k2', 'claude-opus-4-8')) === 'applied') break;
         await Bun.sleep(10);
       }
@@ -1243,7 +1243,7 @@ describe('durable steering across two Bureau processes', () => {
         message: 'Wait forever',
         principal: 'bob',
       });
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         const bobs = await bureau.getSession(bobsRun.sessionId);
         if (bobs?.metadata['lastRunStatus'] === 'running') break;
         await Bun.sleep(10);
@@ -1393,7 +1393,7 @@ describe('durable steering across two Bureau processes', () => {
         { type: 'run-ended', runId, now: new Date().toISOString() },
       );
       bureau.abortRun(runId);
-      for await (const attempt of awakeTurns()) {
+      for await (const _turn of awakeTurns()) {
         if (bureau.getRun(runId)?.status !== 'running') break;
         await Bun.sleep(10);
       }
