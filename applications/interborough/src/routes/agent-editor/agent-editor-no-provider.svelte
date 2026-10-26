@@ -36,6 +36,7 @@
 <EmptyState
   title={copy.title}
   headingLevel={2}
+  align="start"
   description={copy.description}
   class="weft-no-provider"
   data-testid="agent-no-provider"
@@ -78,22 +79,11 @@
 </EmptyState>
 
 <style>
-  /* Cinder's empty state centres a short message; this one is instructions, so it reads from the start. */
-  :global(.weft-no-provider.cinder-empty-state) {
-    align-items: stretch;
-    text-align: start;
+  /* The outlet already pads the page; the state adds only a little air above its steps, and its steps fill the width. */
+  :global(.weft-no-provider) {
     padding-inline: 0;
     padding-block: var(--cinder-space-4);
-  }
-
-  :global(.weft-no-provider .cinder-empty-state-title) {
-    font-size: var(--cinder-text-md);
-    font-weight: var(--cinder-font-semibold);
-    color: var(--cinder-text-default);
-  }
-
-  :global(.weft-no-provider .cinder-empty-state-description) {
-    color: var(--cinder-text-muted);
+    align-items: stretch;
   }
 
   .weft-no-provider__steps {

@@ -250,6 +250,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       title: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       headingLevel: { optional: true, type_kind: 'TSUnionType', default: L(3) },
+      align: { optional: true, type_kind: 'TSTypeReference', default: L('center') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {

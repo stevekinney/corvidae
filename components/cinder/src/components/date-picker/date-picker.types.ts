@@ -12,6 +12,12 @@ export type DatePickerProps = Omit<
   value?: string | undefined;
   /** Field label text. */
   label?: string;
+  /**
+   * Whether the label is visibly rendered. Set `false` to visually hide it
+   * while keeping it available to assistive technology.
+   * @default true
+   */
+  labelVisible?: boolean;
   /** Placeholder shown when empty. */
   placeholder?: string;
   /** Date-time precision. Defaults to day. */

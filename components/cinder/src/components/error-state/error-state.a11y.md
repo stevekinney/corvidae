@@ -2,9 +2,9 @@
 
 ## Pattern
 
-ErrorState stands where an `EmptyState` would, for a region whose data failed to load. It renders through `Alert` with the `danger` variant, which owns `role="alert"`, so the failure is announced assertively when the component mounts. Exactly one element carries `role="alert"`. The alert is named by the title through `aria-labelledby`.
+ErrorState stands where an `EmptyState` would, for a region whose data failed to load. By default it renders through `Alert` with the `danger` variant, which owns `role="alert"`, so the failure is announced assertively when the component mounts; the `flat` variant puts `role="alert"` on its own body instead. Exactly one element carries `role="alert"`. The alert is named by the title through `aria-labelledby`.
 
-Purpose: Centered error placeholder with a title, description, optional detail, and optional retry button for a region whose data failed to load.
+Purpose: Error placeholder, centered in an alert or flat on the surrounding surface, with a title, description, optional detail, and optional retry button for a region whose data failed to load.
 
 ## Use when
 

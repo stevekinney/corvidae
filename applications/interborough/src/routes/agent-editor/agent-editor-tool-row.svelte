@@ -5,8 +5,8 @@
    * is at most 120 characters (`lib/tool-line.ts`), so a tool whose description is a long prompt
    * does not turn the list into a wall of text.
    *
-   * The disclosure is Cinder's `Collapsible`, flattened below: the component is a bordered card
-   * with roomy padding, which a list of one-line rows cannot afford.
+   * The disclosure is Cinder's flat `Collapsible`, shrunk below to a quiet text control that sits
+   * on the line's row: a list of one-line rows cannot afford a full-width trigger.
    */
   import { Checkbox, Collapsible } from '@lostgradient/cinder';
 
@@ -31,7 +31,13 @@
   <div class="weft-tool-row__text">
     <span class="weft-tool-row__line" data-testid="agent-tool-line">{summary.line}</span>
     {#if summary.expandable}
-      <Collapsible trigger={copy.toolDisclosure} class="weft-tool-row__more">
+      <Collapsible
+        trigger={copy.toolDisclosure}
+        variant="flat"
+        class="weft-tool-row__more"
+        triggerClass="weft-tool-row__more-trigger"
+        labelClass="weft-tool-row__more-label"
+      >
         <p class="weft-tool-row__full" data-testid="agent-tool-full">{tool.description}</p>
       </Collapsible>
     {/if}
@@ -75,50 +81,32 @@
     overflow-wrap: anywhere;
   }
 
-  /* Flat: no card, no border, no band; just a quiet text control and the text it opens. */
-  .weft-tool-row :global(.weft-tool-row__more) {
-    background: none;
-    border: none;
-    border-radius: 0;
-  }
-
+  /* A quiet text control and the text it opens; it takes the full row once it is open. */
   .weft-tool-row :global(.weft-tool-row__more[data-cinder-expanded]) {
     flex-basis: 100%;
   }
 
-  .weft-tool-row :global(.weft-tool-row__more .cinder-collapsible__trigger) {
+  .weft-tool-row :global(.weft-tool-row__more-trigger) {
     inline-size: auto;
     gap: var(--cinder-space-1);
-    padding: 0;
-    background: none;
+    padding-block: 0;
     color: var(--cinder-text-secondary);
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-normal);
   }
 
-  .weft-tool-row :global(.weft-tool-row__more .cinder-collapsible__trigger:hover:not(:disabled)) {
-    background: none;
+  .weft-tool-row :global(.weft-tool-row__more-trigger:hover:not(:disabled)) {
     text-decoration: underline;
   }
 
-  .weft-tool-row :global(.weft-tool-row__more .cinder-collapsible__label) {
+  .weft-tool-row :global(.weft-tool-row__more-label) {
     flex: none;
     font-weight: var(--cinder-font-normal);
   }
 
-  .weft-tool-row :global(.weft-tool-row__more .cinder-collapsible__chevron) {
-    inline-size: 1rem;
-    block-size: 1rem;
-  }
-
-  .weft-tool-row :global(.weft-tool-row__more .cinder-collapsible__panel-inner) {
-    padding: var(--cinder-space-1) 0 var(--cinder-space-2);
-    background: none;
-    font-size: var(--cinder-text-sm);
-  }
-
   .weft-tool-row__full {
     margin: 0;
+    font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
     white-space: pre-wrap;
     overflow-wrap: anywhere;

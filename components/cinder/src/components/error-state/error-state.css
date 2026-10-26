@@ -14,6 +14,15 @@
     padding-inline: var(--cinder-space-8);
   }
 
+  .cinder-error-state[data-cinder-variant='flat'] {
+    align-items: flex-start;
+    padding: 0;
+  }
+
+  .cinder-error-state[data-cinder-variant='flat'] .cinder-error-state-title {
+    color: var(--cinder-status-danger-text);
+  }
+
   .cinder-error-state-alert {
     max-inline-size: 36rem;
   }
