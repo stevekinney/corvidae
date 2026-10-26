@@ -40,6 +40,7 @@ const VIEW: TaskView = {
   agentName: 'asker',
   owner: 'api-key:alice',
   actor: null,
+  kind: 'chat',
   status: 'working',
   finishReason: null,
   statusMessage: null,

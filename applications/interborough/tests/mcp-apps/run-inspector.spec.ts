@@ -39,6 +39,7 @@ const inspection = (overrides: Record<string, unknown> = {}, taskOverrides = {})
     agentName: 'worker',
     owner: 'alice',
     actor: null,
+    kind: 'chat',
     status: 'working',
     finishReason: null,
     statusMessage: null,
