@@ -10,6 +10,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import ThemeChecksPanel from './theme-checks-panel.svelte';
@@ -71,7 +72,8 @@ afterEach(() => {
 });
 
 async function until(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 80 && !condition(); attempt += 1) {
+  for await (const attempt of awakeTurns()) {
+    if (!!condition()) break;
     await new Promise((resolve) => setTimeout(resolve, 25));
     flushSync();
     await tick();

@@ -22,6 +22,7 @@ import { BureauError, createBureau } from './create-bureau';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -33,12 +34,8 @@ afterEach(async () => {
   }
 });
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 400): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 type Seen = {

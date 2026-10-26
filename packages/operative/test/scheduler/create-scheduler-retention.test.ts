@@ -4,6 +4,7 @@ import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import { SchedulerStoppedEvent, TaskRetentionCleanedEvent } from '../../src/scheduler/events';
 import { SchedulerTaskLookupError } from '../../src/scheduler/task-lookup-error';
@@ -78,11 +79,7 @@ async function drain(): Promise<void> {
 
 const EVENT_LOOP_POLL_MAX_ATTEMPTS = 200;
 async function waitForEventLoop(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < EVENT_LOOP_POLL_MAX_ATTEMPTS; attempt++) {
-    if (predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('waitForEventLoop exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'waitForEventLoop' });
 }
 
 function createTrackedScheduler(retentionWindowMs?: number) {

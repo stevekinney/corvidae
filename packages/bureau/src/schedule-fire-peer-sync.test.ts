@@ -46,6 +46,7 @@ import type { DefaultAgentFields } from './testing/default-agent.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -72,15 +73,13 @@ const peerOptions = {
 async function eventually<T>(
   check: () => T | undefined | Promise<T | undefined>,
   what: string,
-  timeoutMs = 3_500,
 ): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
+  for await (const _turn of awakeTurns()) {
     const value = await check();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`Condition was not met: ${what}`);
     await sleep(10);
   }
+  throw new Error(`Condition was not met: ${what}`);
 }
 
 /**

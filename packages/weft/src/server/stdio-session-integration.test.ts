@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '../../scripts/lib/hang-guard.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
@@ -91,11 +92,16 @@ function controllableInput(): {
 function waitForLine(
   lines: () => string[],
   predicate: (parsed: unknown) => boolean,
-  timeoutMs = 3_000,
+  timeoutMs = HANG_GUARD_MILLISECONDS,
   startFromIndex = 0,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
+    // A line that should arrive waits on the awake-time hang guard; a caller that proves one never
+    // arrives passes a short window, which a loaded host can only make later, never earlier.
+    let hung = false;
+    const cancelGuard = afterAwakeTime(timeoutMs, () => {
+      hung = true;
+    });
     function check() {
       const all = lines();
       for (let i = startFromIndex; i < all.length; i++) {
@@ -106,11 +112,12 @@ function waitForLine(
           continue;
         }
         if (predicate(parsed)) {
+          cancelGuard();
           resolve(parsed);
           return;
         }
       }
-      if (Date.now() >= deadline) {
+      if (hung) {
         reject(new Error('waitForLine timed out'));
         return;
       }
@@ -129,9 +136,8 @@ function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: WaitableWorkflowStatus,
-  timeoutMs = 2_000,
 ): Promise<void> {
-  return waitForStatusWithTimeout(engine, workflowId, status, timeoutMs);
+  return waitForStatusWithTimeout(engine, workflowId, status);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,7 +209,6 @@ describe('runStdioSession — engine-backed integration', () => {
     const subscribeResponse = (await waitForLine(
       output.lines.bind(output),
       (parsed: any) => parsed?.id === 1 && parsed?.error?.data?.weftCode === 'UnsupportedTransport',
-      3_000,
     )) as any;
     expect(subscribeResponse.error.code).toBe(-32030);
 

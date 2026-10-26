@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { workflowFileText } from '../../testing/workflow-file-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
 import { ownerRpc, serveWorkflows } from './workflows-fixtures.test-support.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -34,7 +35,7 @@ async function served() {
   await bureau.workflows!.refresh();
   const engine = bureau.durableEngine()!;
   await engine.start('waiter', null, { id: 'waiting-run' });
-  for (let attempt = 0; attempt < 1000; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     const state = await engine.get('waiting-run');
     if (state?.waitingForSignals?.includes('go') === true) break;
     await Bun.sleep(5);
@@ -142,7 +143,7 @@ describe('bureau.workflows.signal', () => {
     const harness = await served();
     const engine = harness.bureau.durableEngine()!;
     await engine.start('waiter', null, { id: 'second-run' });
-    for (let attempt = 0; attempt < 1000; attempt += 1) {
+    for await (const attempt of awakeTurns()) {
       const state = await engine.get('second-run');
       if (state?.waitingForSignals?.includes('go') === true) break;
       await Bun.sleep(5);

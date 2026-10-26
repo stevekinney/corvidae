@@ -2,6 +2,8 @@
  * Shared pieces of the gate's stand-in children. A sleeper is a `sh` loop that records its PID and
  * never exits on its own, so a lifecycle case can prove the runner, not the sleeper, ended it.
  */
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -31,7 +33,7 @@ export function startSleeper(
  * How long a stand-in waits for its test's next step before giving up. `--wait-milliseconds`
  * overrides it, so a test can prove the bound without waiting it out.
  */
-export const STAND_IN_WAIT_MILLISECONDS = 30_000;
+export const STAND_IN_WAIT_MILLISECONDS = HANG_GUARD_MILLISECONDS;
 
 export function waitMilliseconds(): number {
   const value = Number(argumentValue('--wait-milliseconds') ?? STAND_IN_WAIT_MILLISECONDS);
@@ -40,11 +42,13 @@ export function waitMilliseconds(): number {
 
 /** Resolve once `path` exists; throw `timed out waiting for <path>` after `milliseconds`. */
 export async function waitForFile(path: string, milliseconds = waitMilliseconds()): Promise<void> {
-  const deadline = performance.now() + milliseconds;
-  while (!existsSync(path)) {
-    if (performance.now() >= deadline) throw new Error(`stand-in timed out waiting for ${path}`);
-    await Bun.sleep(20);
+  for await (const _turn of awakeTurns({
+    hangGuardMilliseconds: milliseconds,
+    yieldTurn: () => Bun.sleep(20),
+  })) {
+    if (existsSync(path)) return;
   }
+  throw new Error(`stand-in timed out waiting for ${path}`);
 }
 
 /** Read a flag value such as `--record <dir>` from `process.argv`. */

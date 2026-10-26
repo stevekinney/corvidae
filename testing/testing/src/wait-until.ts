@@ -14,18 +14,46 @@ export async function yieldEventLoopTurn(): Promise<void> {
   await Promise.resolve();
 }
 
+// A wait that has not finished after this many event-loop turns is waiting on something slower than
+// a promise chain (a timer, a child process, the network), so it stops spinning and polls instead.
+const SPIN_TURNS = 200;
+const POLL_INTERVAL_MILLISECONDS = 5;
+
+const { setTimeout: hostSetTimeout } = globalThis;
+
+async function sleepOnePollInterval(): Promise<void> {
+  await new Promise<void>((resolve) => hostSetTimeout(resolve, POLL_INTERVAL_MILLISECONDS));
+}
+
 export interface WaitUntilOptions {
   /** What the wait is for, named in the failure. Defaults to `condition`. */
   message?: string;
   /**
-   * Hands control back between checks. Defaults to one event-loop turn. A test that runs under
-   * fake timers passes a turn that advances them.
+   * Hands control back between checks. Defaults to one event-loop turn, then, once a wait has gone
+   * on for a couple of hundred turns, to a five-millisecond real timer, so a wait on something slow
+   * does not spin the processor away from the thing it waits for. A test that runs under fake
+   * timers passes a turn that advances them.
    */
   yieldTurn?: () => Promise<void>;
   /** Awake time after which the wait fails. Only a test of the guard itself shortens it. */
   hangGuardMilliseconds?: number;
   /** Whether fake timers are installed, so awake time cannot be measured. Defaults to never. */
   fakeTimersActive?: () => boolean;
+}
+
+async function waitOneTurn(turn: number, options: WaitUntilOptions): Promise<void> {
+  if (options.yieldTurn !== undefined) await options.yieldTurn();
+  else if (turn <= SPIN_TURNS || options.fakeTimersActive?.() === true) await yieldEventLoopTurn();
+  else await sleepOnePollInterval();
+}
+
+function armHangGuard(options: WaitUntilOptions, onHung: () => void): () => void {
+  const { hangGuardMilliseconds = HANG_GUARD_MILLISECONDS, fakeTimersActive } = options;
+  return afterAwakeTime(
+    hangGuardMilliseconds,
+    onHung,
+    fakeTimersActive === undefined ? {} : { fakeTimersActive },
+  );
 }
 
 /**
@@ -42,20 +70,12 @@ export async function waitUntil(
   condition: () => boolean | Promise<boolean>,
   options: WaitUntilOptions = {},
 ): Promise<void> {
-  const {
-    message = 'condition',
-    yieldTurn = yieldEventLoopTurn,
-    hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
-    fakeTimersActive,
-  } = options;
+  const { message = 'condition', hangGuardMilliseconds = HANG_GUARD_MILLISECONDS } = options;
   let hung = false;
-  const cancel = afterAwakeTime(
-    hangGuardMilliseconds,
-    () => {
-      hung = true;
-    },
-    fakeTimersActive === undefined ? {} : { fakeTimersActive },
-  );
+  let turns = 0;
+  const cancel = armHangGuard(options, () => {
+    hung = true;
+  });
   try {
     while (!(await condition())) {
       if (hung) {
@@ -63,7 +83,30 @@ export async function waitUntil(
           `waitUntil gave up after ${hangGuardMilliseconds}ms of awake time waiting for ${message}`,
         );
       }
-      await yieldTurn();
+      turns += 1;
+      await waitOneTurn(turns, options);
+    }
+  } finally {
+    cancel();
+  }
+}
+
+/**
+ * The turns of a wait written as a loop: `for await (const turn of awakeTurns()) { ... }` runs its
+ * body at once, then again after each event-loop turn, until the body leaves the loop or the
+ * awake-time hang guard elapses, when the loop simply ends and the code after it fails the way it
+ * always has. It replaces `for (let turn = 0; turn < 50; turn++)`: a count of turns is a
+ * performance bound, since how many turns a settle takes depends on the host.
+ */
+export async function* awakeTurns(options: WaitUntilOptions = {}): AsyncGenerator<number, void> {
+  let hung = false;
+  const cancel = armHangGuard(options, () => {
+    hung = true;
+  });
+  try {
+    for (let turn = 0; !hung; turn += 1) {
+      yield turn;
+      await waitOneTurn(turn + 1, options);
     }
   } finally {
     cancel();

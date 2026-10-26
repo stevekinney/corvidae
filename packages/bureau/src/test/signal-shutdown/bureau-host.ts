@@ -33,6 +33,7 @@ import type { BureauShutdownReport } from '../../types';
 import { announce, fail, parseHostArguments, writeMarker } from './host-support';
 import { handleShutdownSignals } from './shutdown-handler';
 import type { AgentDefinitions } from '../../agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 /** Matches `process-crash-child.ts`, so a dead holder's claim lapses quickly. */
 const CLAIM_TTL_MS = 200;
@@ -130,7 +131,7 @@ async function recover(): Promise<never> {
   const report = await bureau.waitForRecovery?.();
   // The previous process may have died holding the run's claim; maintenance
   // adopts it once the claim lapses.
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     const durable = await bureau.getDurableRun(runId);
     if (durable?.status !== undefined && TERMINAL_STATUSES.has(durable.status)) break;
     await bureau.runDurableMaintenance();

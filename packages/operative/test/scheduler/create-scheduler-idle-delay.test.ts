@@ -1,9 +1,9 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerPriority, SchedulerTask } from '../../src/scheduler/types';
 import { createMockGenerate } from '../../src/test/index';
@@ -58,11 +58,7 @@ function makeTask(
 // Bounded, event-loop-turn poll — never a real timer delay.
 const EVENT_LOOP_POLL_MAX_ATTEMPTS = 200;
 async function waitForEventLoop(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < EVENT_LOOP_POLL_MAX_ATTEMPTS; attempt++) {
-    if (predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('waitForEventLoop exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'waitForEventLoop' });
 }
 
 describe('createScheduler — idleDelay against a manual runtime', () => {

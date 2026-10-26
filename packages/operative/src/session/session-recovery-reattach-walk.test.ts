@@ -2,6 +2,7 @@ import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgr
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { createAgentSession } from '../agent-session';
 import { createCheckpointStore } from '../durable/checkpoint-store';
 import { createRunEngine } from '../durable/create-run-engine';
@@ -303,7 +304,7 @@ describe('recover() — running reference selection', () => {
       // settle (via the success branch's fire-and-forget write, so poll for
       // it rather than reading the store synchronously).
       let persistedStatus: string | undefined;
-      for (let attempt = 0; attempt < 5; attempt++) {
+      for await (const attempt of awakeTurns()) {
         const persisted = await secondStore.load(sessionId);
         persistedStatus = persisted?.runs.find((r) => r.runId === runId)?.status;
         if (persistedStatus === 'completed') break;

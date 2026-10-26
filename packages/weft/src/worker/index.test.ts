@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import {
   restoreRealTimers,
@@ -203,7 +204,8 @@ describe('RemoteWorker', () => {
     // Give time for the register message to arrive. The previous fixed
     // 50ms sleep flaked on slow CI runners; poll up to 2s instead.
     let registerMessage: any;
-    for (let attempt = 0; attempt < 40 && registerMessage === undefined; attempt++) {
+    for await (const attempt of awakeTurns()) {
+      if (!(registerMessage === undefined)) break;
       await sleepForTesting(50);
       registerMessage = messages.find((m) => m.type === 'register');
     }
@@ -247,7 +249,8 @@ describe('RemoteWorker', () => {
     await worker.connect();
 
     let registerMessage: any;
-    for (let attempt = 0; attempt < 40 && registerMessage === undefined; attempt++) {
+    for await (const attempt of awakeTurns()) {
+      if (!(registerMessage === undefined)) break;
       await sleepForTesting(50);
       registerMessage = messages.find((m) => m.type === 'register');
     }

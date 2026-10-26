@@ -1,5 +1,5 @@
 import { describe, expect, jest, test } from 'bun:test';
-import { waitUntil, yieldEventLoopTurn } from './wait-until.ts';
+import { awakeTurns, waitUntil, yieldEventLoopTurn } from './wait-until.ts';
 
 describe('waitUntil', () => {
   test('returns at once when the condition already holds', async () => {
@@ -10,9 +10,9 @@ describe('waitUntil', () => {
     let checks = 0;
     await waitUntil(() => {
       checks += 1;
-      return checks > 500;
+      return checks > 300;
     });
-    expect(checks).toBe(501);
+    expect(checks).toBe(301);
   });
 
   test('awaits an asynchronous condition', async () => {
@@ -64,5 +64,46 @@ describe('waitUntil', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('awakeTurns', () => {
+  test('runs the loop body at once and again after each turn until the body breaks', async () => {
+    const seen: number[] = [];
+    for await (const turn of awakeTurns()) {
+      seen.push(turn);
+      if (turn === 3) break;
+    }
+    expect(seen).toEqual([0, 1, 2, 3]);
+  });
+
+  test('is not capped by a count of turns', async () => {
+    let last = 0;
+    for await (const turn of awakeTurns()) {
+      last = turn;
+      if (turn >= 250) break;
+    }
+    expect(last).toBe(250);
+  });
+
+  test('ends the loop once the hang guard elapses, leaving the code after it to fail', async () => {
+    let turns = 0;
+    // hang-guard-self-test: the loop body never breaks, so no load can end the loop early
+    for await (const _turn of awakeTurns({ hangGuardMilliseconds: 20 })) {
+      turns += 1;
+    }
+    expect(turns).toBeGreaterThan(0);
+  });
+
+  test('hands control back through the turn it was given', async () => {
+    let handedBack = 0;
+    for await (const turn of awakeTurns({
+      yieldTurn: async () => {
+        handedBack += 1;
+      },
+    })) {
+      if (turn === 2) break;
+    }
+    expect(handedBack).toBe(2);
   });
 });

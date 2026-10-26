@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { createBureau } from '../create-bureau';
 import { admitsSessionInput, savesSessionAs, seamStorage } from './session-input-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const [backend, storagePath, markerPath, mode = 'running'] = process.argv.slice(2);
 if (
@@ -106,7 +107,8 @@ if (mode === 'running') {
     message: 'Start',
     principal: 'alice',
   });
-  for (let attempt = 0; attempt < 400 && !stepOneStarted; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
+    if (!!stepOneStarted) break;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
   }
   if (!stepOneStarted) {

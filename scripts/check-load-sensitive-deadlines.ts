@@ -114,7 +114,7 @@ const BUDGET_PROPERTIES = new Set([
 ]);
 /** Calls whose budget is a wait for something that should eventually happen. */
 const WAITING_CALLEES =
-  /^(waitUntil|waitFor\w*|poll\w*|eventually|\w+Until|awaitCleanup|drain|readFrames|nextServerMessage|resolveWithin|shutdown\w*|close|launch|spawnWithHangGuard|runWithHangGuard|executeCodegen|executeConformance|createConformanceTargetRunner|runnerFor|mcpJson|callMcpTool|jsonRequest)$/;
+  /^(waitUntil|awakeTurns|waitFor\w*|poll\w*|eventually|\w+Until|awaitCleanup|drain|readFrames|nextServerMessage|resolveWithin|shutdown\w*|close|launch|spawnWithHangGuard|runWithHangGuard|executeCodegen|executeConformance|createConformanceTargetRunner|runnerFor|mcpJson|callMcpTool|jsonRequest)$/;
 // The hang guards, and the wait helpers whose own tests prove they give up. These are the only calls
 // a `hang-guard-self-test` comment can exempt; a fake-timer scope never does.
 const HANG_GUARD_CALLEES = new Set([
@@ -126,6 +126,7 @@ const HANG_GUARD_CALLEES = new Set([
   'waitForWorkflowStatus',
   'waitForRunState',
   'waitUntil',
+  'awakeTurns',
 ]);
 // Hang guards on real work: a child process or an awake-time deadline, whatever the clock says.
 const REAL_TIME_CALLEES = new Set(['spawnWithHangGuard', 'runWithHangGuard', 'afterAwakeTime']);
@@ -134,6 +135,7 @@ const HANG_GUARD_NAMES = new Map([
   ['TEST_TIMEOUT_MILLISECONDS', TEST_TIMEOUT_MILLISECONDS],
 ]);
 const SELF_TEST_MARKER = /\/\/\s*hang-guard-self-test:\s*(.*)$/m;
+const BOUNDED_NEGATIVE_MARKER = /\/\/\s*bounded-negative:\s*(.*)$/m;
 const MINIMUM_SELF_TEST_REASON = 20;
 
 function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
@@ -263,16 +265,32 @@ function propertyNamed(
  * holds it, up to its enclosing statement: `// hang-guard-self-test: ...` before the call, or before
  * the `expect(...)` statement around it.
  */
-function selfTestReason(sourceFile: ts.SourceFile, node: ts.Node): string | null {
+function selfTestReason(
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+  marker: RegExp = SELF_TEST_MARKER,
+): string | null {
   for (let current: ts.Node | undefined = node; current !== undefined; current = current.parent) {
     const comments = ts.getLeadingCommentRanges(sourceFile.text, current.getFullStart()) ?? [];
     for (const comment of comments.toReversed()) {
-      const match = SELF_TEST_MARKER.exec(sourceFile.text.slice(comment.pos, comment.end));
+      const match = marker.exec(sourceFile.text.slice(comment.pos, comment.end));
       if (match !== null) return (match[1] ?? '').trim();
     }
     if (ts.isStatement(current) || ts.isSourceFile(current)) break;
   }
   return null;
+}
+
+/**
+ * Whether a loop carries `// bounded-negative: <reason>` directly above it. A loop that waits for
+ * something that must not happen (a descriptor that is held, an event that is suppressed) can be
+ * bounded by turns or time without flaking, because a loaded host only makes the thing later, never
+ * earlier: its pass is load-proof, and no hang guard can end a wait on an event that never comes.
+ * The reason must be at least twenty characters and name what cannot happen.
+ */
+function isBoundedNegative(sourceFile: ts.SourceFile, node: ts.Node): boolean {
+  const reason = selfTestReason(sourceFile, node, BOUNDED_NEGATIVE_MARKER);
+  return reason !== null && reason.length >= MINIMUM_SELF_TEST_REASON;
 }
 
 function violation(
@@ -542,16 +560,26 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
   ];
 }
 
+// Yields that hand control to the event loop, so something outside the promise chain (a timer, a
+// socket, a child process, another thread) can make progress before the loop looks again. How many
+// such turns a settle takes depends on the host. A pure microtask yield (`await Promise.resolve()`,
+// Svelte's `tick`, a `flushMicrotasks`) is not here: microtasks drain before anything else runs, so
+// the number a promise chain needs is a property of the code, not of the load.
 const YIELDING_CALLEE =
-  /(sleep|yield|tick|turn|flush|settle|delay|wait|advance|nextTick|setImmediate|macrotask|microtask|eventLoop)/i;
+  /(sleep|delay|setTimeout|setImmediate|macrotask|eventLoop|timerTurn|waitOneTurn|nextTimer|advanceTimers)/i;
 
 /** Whether an `await` operand hands control back without finishing the work being waited for. */
 function isYield(expression: ts.Expression): boolean {
   const operand = unwrap(expression);
-  if (ts.isNewExpression(operand)) return operand.expression.getText() === 'Promise';
+  if (ts.isNewExpression(operand)) {
+    // `await new Promise((resolve) => setTimeout(resolve, 5))` is a timer turn.
+    return (
+      operand.expression.getText() === 'Promise' &&
+      /setTimeout|setImmediate|MessageChannel/.test(operand.getText())
+    );
+  }
   if (!ts.isCallExpression(operand)) return false;
   const name = calleeName(operand);
-  if (name === 'resolve') return true; // Promise.resolve()
   return name !== null && YIELDING_CALLEE.test(name);
 }
 
@@ -659,6 +687,7 @@ function findIterationCapWaits(
       }
     });
     if ((capInCondition && (conditionalCondition || exitsEarly)) || capInBody) {
+      if (isBoundedNegative(sourceFile, node)) return;
       violations.push(violation(sourceFile, node, 'iteration-cap-wait'));
     }
   });
@@ -686,11 +715,32 @@ function findWallClockPolls(sourceFile: ts.SourceFile): DeadlineViolation[] {
   walk(sourceFile, (node) => {
     if (!ts.isForStatement(node) && !ts.isWhileStatement(node) && !ts.isDoStatement(node)) return;
     const condition = ts.isForStatement(node) ? node.condition : node.expression;
-    if (condition === undefined || !readsClock(condition)) return;
     if (!containsAwait(node.statement)) return;
-    violations.push(violation(sourceFile, node, 'wall-clock-poll'));
+    // `while (Date.now() < deadline)`, or `for (;;) { ...; if (Date.now() > deadline) throw ...; }`.
+    if ((condition !== undefined && readsClock(condition)) || leavesOnClock(node.statement)) {
+      if (isBoundedNegative(sourceFile, node)) return;
+      violations.push(violation(sourceFile, node, 'wall-clock-poll'));
+    }
   });
   return violations;
+}
+
+/** Whether `node` holds an `if` on a clock reading that throws, breaks or returns, outside nested functions. */
+function leavesOnClock(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (ts.isFunctionLike(child)) return;
+    if (
+      ts.isIfStatement(child) &&
+      readsClock(child.expression) &&
+      /^\s*(\{\s*)?(throw|break|return)\b/.test(child.thenStatement.getText())
+    ) {
+      found = true;
+    }
+    child.forEachChild(visit);
+  };
+  node.forEachChild(visit);
+  return found;
 }
 
 function containsAwait(node: ts.Node): boolean {
@@ -800,14 +850,7 @@ export function findTestRunnerSpawnViolations(sourceFile: ts.SourceFile): Deadli
 
 // Directories whose modules exist to support tests: a helper there sets the deadline of every test
 // that calls it, so it is scanned like a test file.
-const TEST_SUPPORT_DIRECTORIES = new Set([
-  'test',
-  'tests',
-  'testing',
-  '__tests__',
-  'fixtures',
-  'conformance',
-]);
+const TEST_SUPPORT_DIRECTORIES = new Set(['test', 'tests', 'testing', '__tests__', 'fixtures']);
 
 function isTestFile(name: string, directory: string): boolean {
   if (name.endsWith('.playwright.ts') || name.endsWith('.spec.ts')) return false;

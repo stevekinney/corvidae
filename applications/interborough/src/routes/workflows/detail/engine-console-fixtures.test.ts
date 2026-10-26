@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine } from '@lostgradient/weft';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
   CHUNK_STREAMER_RUN_ID,
@@ -93,9 +94,9 @@ describe('seedEngineConsole', () => {
     ] as const) {
       const run = await runOfType(engine, type, id);
       await engine.signal(run.id, signal);
-      const deadline = Date.now() + 2_000;
       let state = await engine.get(run.id);
-      while (state?.status !== 'completed' && Date.now() < deadline) {
+      for await (const _turn of awakeTurns()) {
+        if (!(state?.status !== 'completed')) break;
         await Bun.sleep(5);
         state = await engine.get(run.id);
       }

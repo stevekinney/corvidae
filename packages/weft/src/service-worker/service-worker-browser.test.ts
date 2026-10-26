@@ -259,6 +259,7 @@ import {
 import { activity, workflow } from ${JSON.stringify(typesModulePath)};
 import { IndexedDBStorage } from ${JSON.stringify(indexedDatabaseStorageModulePath)};
 import { setupServiceWorker } from ${JSON.stringify(setupModulePath)};
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 const serviceWorker = self;
 const instanceId = crypto.randomUUID();
@@ -701,9 +702,8 @@ async function waitForActivityCount(
   await withinPhase(
     `wait for activity count ${expectedCount}`,
     (async () => {
-      const deadline = Date.now() + 5_000;
       let actualCount = 0;
-      while (Date.now() < deadline) {
+      for await (const _turn of awakeTurns()) {
         const response = await fetch(`${origin}/activity-count`);
         const body = (await response.json()) as { count: number };
         actualCount = body.count;

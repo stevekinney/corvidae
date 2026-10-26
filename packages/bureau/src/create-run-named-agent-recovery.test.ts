@@ -16,6 +16,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForRunState } from './test';
 import type { Bureau } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const databasePaths: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
@@ -40,12 +41,8 @@ const next = createTool({
   execute: async () => 'ok',
 });
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 200): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 async function assistantReplies(

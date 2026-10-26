@@ -31,6 +31,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
@@ -97,7 +98,7 @@ async function waitForCheckpointQuiescence(
   workflowId: string,
 ): Promise<Uint8Array> {
   let previous = await storage.get(KEYS.checkpoint(workflowId));
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     await new Promise((resolve) => setTimeout(resolve, 10));
     const current = await storage.get(KEYS.checkpoint(workflowId));
     if (

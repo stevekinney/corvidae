@@ -23,6 +23,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil, awakeTurns } from '@lostgradient/testing/wait-until';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
@@ -40,11 +41,8 @@ function finishesAfter(gate: Promise<void>): GenerateFunction {
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
 async function pollUntil(check: () => boolean): Promise<boolean> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  return check();
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 /**
@@ -164,7 +162,8 @@ describe('eventRetention', () => {
         // One tick of the automatic pass (five minutes) after the window.
         await runtime.advance(5 * 60_000 + 1);
         let floor = 0;
-        for (let attempt = 0; attempt < 400 && floor === 0; attempt++) {
+        for await (const attempt of awakeTurns()) {
+          if (!(floor === 0)) break;
           floor = await retentionFloor();
           if (floor === 0) await new Promise((resolve) => setTimeout(resolve, 5));
         }
@@ -334,7 +333,8 @@ describe('taskRetention', () => {
         // `run.error` is followed by `run.completed`, which closes the run and
         // starts its window; poll the passes until it has and the run goes.
         at(2 * DAY_MS);
-        for (let attempt = 0; attempt < 400 && bureau.getRun(created.id) !== undefined; attempt++) {
+        for await (const attempt of awakeTurns()) {
+          if (!(bureau.getRun(created.id) !== undefined)) break;
           await bureau.runDurableMaintenance();
           await new Promise((resolve) => setTimeout(resolve, 5));
         }

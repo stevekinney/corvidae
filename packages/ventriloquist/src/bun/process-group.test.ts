@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { systemClock } from '../session/session-clock.ts';
 import { flush } from '../session/session.test-support.ts';
@@ -217,7 +218,7 @@ async function startZombieGroup(): Promise<{ readonly group: number; end(): Prom
     await parent.exited;
   };
   // The child must have exited before it can be a zombie; wait until the table says so.
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     const states = (await readGroupMemberStates(group)) ?? [];
     // `Z` is the zombie state; ps may add flags to it, such as `N` for a niced process.
     if (states.length > 0 && states.every((state) => state.startsWith('Z'))) return { group, end };

@@ -41,6 +41,7 @@ import {
   steeringSessionRunTag,
 } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
@@ -82,7 +83,7 @@ async function startRunningSession(bureau: TestBureau, sessionId?: string): Prom
     principal: 'alice',
     ...(sessionId !== undefined ? { sessionId } : {}),
   });
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     const session = await bureau.getSession(run.sessionId);
     if (session?.metadata['lastRunStatus'] === 'running') return run.sessionId;
     await Bun.sleep(10);
@@ -300,7 +301,10 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      for await (const attempt of awakeTurns()) {
+        if (!(generateCalls === 0)) break;
+        await Bun.sleep(10);
+      }
       // The run's session is polled through the injected timer service, so
       // a host driving time itself drives cross-process steering too.
       expect(pollTimers().length).toBe(before + 1);
@@ -336,7 +340,8 @@ describe('durable steering across two Bureau processes', () => {
         reads.mockRestore();
       }
       bureau.abortRun(run.id);
-      for (let attempt = 0; attempt < 200 && pollTimers().length > before; attempt += 1) {
+      for await (const attempt of awakeTurns()) {
+        if (!(pollTimers().length > before)) break;
         await Bun.sleep(10);
       }
       expect(pollTimers().length).toBe(before);
@@ -401,7 +406,10 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      for await (const attempt of awakeTurns()) {
+        if (!(generateCalls === 0)) break;
+        await Bun.sleep(10);
+      }
       const model = (id: string, override: string) =>
         ({ id, principal: 'alice', requestedValue: { target: 'model', override } }) as const;
       expect(
@@ -416,7 +424,7 @@ describe('durable steering across two Bureau processes', () => {
       ).toBe(2);
 
       releaseTool?.();
-      for (let attempt = 0; attempt < 500; attempt += 1) {
+      for await (const attempt of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -430,7 +438,10 @@ describe('durable steering across two Bureau processes', () => {
         principal: 'alice',
         sessionId: run.sessionId,
       });
-      for (let attempt = 0; attempt < 200 && toolCalls < 2; attempt += 1) await Bun.sleep(10);
+      for await (const attempt of awakeTurns()) {
+        if (!(toolCalls < 2)) break;
+        await Bun.sleep(10);
+      }
 
       // The boundary's `applied` event is logged in the background; wait for
       // A itself to report it, then compare with a process that only folds.
@@ -440,7 +451,7 @@ describe('durable steering across two Bureau processes', () => {
           throw new Error(`expected replayed, got ${outcome.outcome}`);
         return outcome.command.state;
       };
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      for await (const attempt of awakeTurns()) {
         if ((await stateIn(bureauA, 'k2', 'claude-opus-4-8')) === 'applied') break;
         await Bun.sleep(10);
       }
@@ -1232,7 +1243,7 @@ describe('durable steering across two Bureau processes', () => {
         message: 'Wait forever',
         principal: 'bob',
       });
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      for await (const attempt of awakeTurns()) {
         const bobs = await bureau.getSession(bobsRun.sessionId);
         if (bobs?.metadata['lastRunStatus'] === 'running') break;
         await Bun.sleep(10);
@@ -1382,7 +1393,7 @@ describe('durable steering across two Bureau processes', () => {
         { type: 'run-ended', runId, now: new Date().toISOString() },
       );
       bureau.abortRun(runId);
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      for await (const attempt of awakeTurns()) {
         if (bureau.getRun(runId)?.status !== 'running') break;
         await Bun.sleep(10);
       }

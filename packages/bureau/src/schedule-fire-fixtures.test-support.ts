@@ -17,13 +17,13 @@ import { authentication, OWNER } from './http/management/management-fixtures.tes
 import type { Bureau, BureauOptions, PendingReview } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { type DefaultAgentFields, withDefaultAgent } from './testing/default-agent.test-support';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 export async function pollUntil<T>(
   check: () => T | undefined | Promise<T | undefined>,
   what: string,
-  attempts = 600,
 ): Promise<T> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     const value = await check();
     if (value !== undefined) return value;
     await yieldToPortableEventLoop();

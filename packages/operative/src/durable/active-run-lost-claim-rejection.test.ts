@@ -1,14 +1,10 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import {
-  MemoryStorage,
-  textValueStore,
-  workflow,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, workflow } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { stopWhen } from '../conditions/index';
 import {
   type CombinedOperativeEventMap,
@@ -58,11 +54,7 @@ function makeParkingWorkflow() {
 }
 
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; attempt < 1000; attempt++) {
-    if (await predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('pollUntil exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'pollUntil' });
 }
 
 const emptyCheckpointStore = createCheckpointStore(

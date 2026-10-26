@@ -49,6 +49,7 @@ import { GENERATION } from './${REVISION_MODULE_NAME}';
 import { Engine, workflow } from ${JSON.stringify(indexUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteUrl)};
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 function readArgument(name, fallback) {
   const index = Bun.argv.indexOf(name);
@@ -89,7 +90,7 @@ async function waitForMarker(
   timeoutMs: number,
 ): Promise<RegExpMatchArray> {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const match = stdout().match(pattern);
     if (match !== null) return match;
     await sleepForTesting(20);
@@ -104,7 +105,7 @@ async function waitForWorkflowCompleted(
   timeoutMs: number,
 ): Promise<unknown> {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}`).catch(() => null);
     if (response?.ok) {
       const body = (await response.json()) as { status?: string; result?: unknown };

@@ -17,6 +17,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 function createNextTool() {
   return createTool({
@@ -33,15 +34,9 @@ function createNextTool() {
  * condition-checked poll with a real (tiny) per-iteration delay, never a
  * blind sleep-then-assume.
  */
-async function pollUntilWithRealDelay(
-  check: () => boolean | Promise<boolean>,
-  attempts = 400,
-): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    if (await check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  return check();
+async function pollUntilWithRealDelay(check: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(check, { message: 'pollUntilWithRealDelay' });
+  return true;
 }
 
 function recoveredToolCallId(page: { events: readonly { payload?: unknown }[] }): string {

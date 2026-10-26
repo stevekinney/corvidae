@@ -8,6 +8,7 @@ import {
 } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createRunEngine, type RegistryAgnosticEngine } from './create-run-engine';
 
 /**
@@ -87,11 +88,7 @@ function makeSleepingWorkflow(sleepMilliseconds: number) {
 // Generously-bounded poll: yield the portable event loop until `predicate` holds.
 const POLL_UNTIL_MAX_ATTEMPTS = 1000;
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; attempt < POLL_UNTIL_MAX_ATTEMPTS; attempt++) {
-    if (await predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('pollUntil exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'pollUntil' });
 }
 
 /**

@@ -21,21 +21,17 @@ import { ReviewCanceledEvent } from './events';
 import { createFireReviewFollower, type FireReviewFollower } from './fire-review-follower';
 import { reviewCanceledDedupeKey } from './review-closing-events';
 import type { Bureau, BureauDiagnostic } from './types';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function eventually<T>(
-  check: () => T | undefined,
-  what: string,
-  timeoutMs = 3_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
+async function eventually<T>(check: () => T | undefined, what: string): Promise<T> {
+  for await (const _turn of awakeTurns()) {
     const value = check();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`Condition was not met: ${what}`);
     await sleep(5);
   }
+  throw new Error(`Condition was not met: ${what}`);
 }
 
 const cleanups: Array<() => Promise<void> | void> = [];

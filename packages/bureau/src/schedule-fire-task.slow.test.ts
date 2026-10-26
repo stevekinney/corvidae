@@ -18,6 +18,7 @@ import {
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import type { GenerateFunction } from '@lostgradient/operative';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const FIRE_TIMEOUT_MS = 20_000;
 
@@ -26,18 +27,13 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-async function waitForReal<T>(
-  read: () => Promise<T | undefined>,
-  what: string,
-  timeoutMs = FIRE_TIMEOUT_MS,
-): Promise<T> {
-  const start = performance.now();
-  for (;;) {
+async function waitForReal<T>(read: () => Promise<T | undefined>, what: string): Promise<T> {
+  for await (const _turn of awakeTurns()) {
     const value = await read();
     if (value !== undefined) return value;
-    if (performance.now() - start > timeoutMs) throw new Error(`Timed out waiting for ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  throw new Error(`Timed out waiting for ${what}`);
 }
 
 async function serve(generate: GenerateFunction): Promise<OpenedBureau> {

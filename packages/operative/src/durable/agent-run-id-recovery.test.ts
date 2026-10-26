@@ -14,12 +14,12 @@ import {
   type RecoverAllOptions,
   textValueStore,
   workflow,
-  yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createAgentRun } from '../agent-run';
 import { stopWhen } from '../conditions/index';
 import { createActiveRun } from '../create-run';
@@ -36,11 +36,7 @@ type RecoveredWorkflowInfo = Parameters<NonNullable<RecoverAllOptions['onRecover
 // Bounded, event-loop-turn poll — never a real timer delay.
 const EVENT_LOOP_POLL_MAX_ATTEMPTS = 500;
 async function waitForEventLoop(predicate: () => Promise<boolean> | boolean): Promise<void> {
-  for (let attempt = 0; attempt < EVENT_LOOP_POLL_MAX_ATTEMPTS; attempt++) {
-    if (await predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('waitForEventLoop exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'waitForEventLoop' });
 }
 
 /**

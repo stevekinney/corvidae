@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import type { Bureau } from './types';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const roots: string[] = [];
 
@@ -125,13 +126,12 @@ export async function pollForTime<T>(
   check: () => Promise<T | undefined>,
   what: string,
 ): Promise<T> {
-  const deadline = Date.now() + 5000;
-  for (;;) {
+  for await (const _turn of awakeTurns()) {
     const value = await check();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`Condition was not met: ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+  throw new Error(`Condition was not met: ${what}`);
 }
 
 /** Whether the session has recorded an active skill. */

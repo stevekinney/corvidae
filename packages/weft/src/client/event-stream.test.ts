@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { WorkflowEvent } from '../core/types.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 import { defaultWebSocketFactory, workflowWatchWebSocketUrl } from './event-stream-transport.ts';
@@ -9,12 +10,12 @@ import {
   type WorkflowEventStreamHost,
 } from './open-event-subscription.ts';
 
-async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error('timed out waiting for predicate');
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for await (const _turn of awakeTurns()) {
+    if (predicate()) return;
     await sleepForTesting(2);
   }
+  throw new Error('timed out waiting for predicate');
 }
 
 const noHistory: EventHistoryFetcher = async () => [];

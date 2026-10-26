@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import { bus, evaluator, tab } from './theme-builder-test-support.ts';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
@@ -202,7 +203,8 @@ describe('context changes made before the previous one has landed', () => {
     workbench.setContext({ ...workbench.requestedContext, colorMode: 'dark' });
     workbench.setContext({ ...workbench.requestedContext, motion: 'reduced' });
     expect(workbench.requestedContext).toEqual({ colorMode: 'dark', motion: 'reduced' });
-    for (let attempt = 0; attempt < 100 && workbench.context.motion !== 'reduced'; attempt += 1) {
+    for await (const attempt of awakeTurns()) {
+      if (!(workbench.context.motion !== 'reduced')) break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(workbench.context).toEqual({ colorMode: 'dark', motion: 'reduced' });

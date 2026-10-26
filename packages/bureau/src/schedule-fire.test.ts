@@ -13,6 +13,7 @@ import { getMessages } from 'conversationalist';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 // ---------------------------------------------------------------------------
 // D6 scheduled-fire E2E (#109)
@@ -32,16 +33,9 @@ import type { AgentDefinitions } from './agent-catalog';
 const FIRE_TIMEOUT_MS = 20_000;
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
-async function waitForReal(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs: number,
-): Promise<boolean> {
-  const start = performance.now();
-  while (performance.now() - start < timeoutMs) {
-    if (await condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 interface RecordedCall {
@@ -104,7 +98,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       });
       expect(summary).toBeDefined();
 
-      const fired = await waitForReal(() => calls.length >= 1, FIRE_TIMEOUT_MS);
+      const fired = await waitForReal(() => calls.length >= 1);
       // Stop further fires before asserting so the count is stable.
       await bureau.cancelSchedule(summary!.id);
 
@@ -150,7 +144,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       expect(summary).toBeDefined();
 
       const recurringCalls = () => calls.filter((call) => call.conversationId === sessionId);
-      const firedTwice = await waitForReal(() => recurringCalls().length >= 2, FIRE_TIMEOUT_MS);
+      const firedTwice = await waitForReal(() => recurringCalls().length >= 2);
       await bureau.cancelSchedule(summary!.id);
 
       expect(firedTwice).toBe(true);

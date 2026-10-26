@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClient } from '@lostgradient/weft';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import ScheduleDetailHarness from './schedule-detail-test-harness.test-harness.svelte';
 
@@ -24,12 +25,7 @@ import ScheduleDetailHarness from './schedule-detail-test-harness.test-harness.s
  * rendering, not about scheduler latency.
  */
 async function waitForServerState(check: () => Promise<boolean>, label: string): Promise<void> {
-  const deadline = Date.now() + 8_000;
-  while (Date.now() < deadline) {
-    if (await check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`server never reached state: ${label}`);
+  await waitUntil(check, { message: label });
 }
 
 describe('ScheduleDetail', () => {

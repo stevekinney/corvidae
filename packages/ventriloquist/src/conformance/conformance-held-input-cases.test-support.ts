@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import type { ServerMessage } from '../protocol/messages.ts';
 import { attempt } from '../session/settle.ts';
@@ -109,7 +110,8 @@ async function pasteUntilHeld(
  */
 async function releaseGate(path: string): Promise<boolean> {
   let released = false;
-  for (let turn = 0; turn < GATE_TURNS && !released; turn += 1) {
+  for await (const turn of awakeTurns()) {
+    if (!!released) break;
     released = await attempt(() =>
       closeSync(openSync(path, constants.O_WRONLY | constants.O_NONBLOCK)),
     );
@@ -133,7 +135,8 @@ async function outputReaches(rig: Rig, length: number): Promise<void> {
 /** Offer `input` until the host accepts it: the view is writable again. */
 async function untilAccepted(rig: Rig, input: string): Promise<boolean> {
   let accepted = false;
-  for (let attempt = 0; attempt < 500 && !accepted; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
+    if (!!accepted) break;
     const answer = await offer(rig, input);
     accepted = answer.kind === 'operation-ack';
     // Give the held write a turn to finish before asking again.

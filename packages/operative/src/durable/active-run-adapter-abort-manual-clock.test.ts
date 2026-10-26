@@ -1,9 +1,10 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { stopWhen } from '../conditions/index';
 import { createActiveRun } from '../create-run';
 import { spyEngine } from '../test/durable-engine';
@@ -50,11 +51,7 @@ import { createRunWorkflow } from './run-workflow';
 // (attempts exhausted) rather than silently passing.
 const EVENT_LOOP_POLL_MAX_ATTEMPTS = 200;
 async function waitForEventLoop(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < EVENT_LOOP_POLL_MAX_ATTEMPTS; attempt++) {
-    if (predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('waitForEventLoop exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'waitForEventLoop' });
 }
 
 const MICROTASK_POLL_MAX_ATTEMPTS = 2000;

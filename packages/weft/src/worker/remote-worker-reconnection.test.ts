@@ -271,7 +271,7 @@ async function waitForInflightCleared(
 ): Promise<void> {
   const deadline = Date.now() + (options.timeoutMs ?? 2_000);
   let record: ReturnType<typeof decodeRemoteTaskRecord> = null;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     record = decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey(operationId)));
     if (record === null || (record.state !== 'leased' && record.state !== 'completing')) return;
     await sleepForTesting(5);
@@ -373,7 +373,7 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
     // The resolved record appears once the server processes the completion.
     let resolved: unknown;
     const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined) break;
       await sleepForTesting(10);
@@ -449,8 +449,7 @@ describe('RemoteWorker durability — idempotent duplicate completion (different
     });
 
     let resolved: unknown;
-    const phase2aDeadline = Date.now() + 2_000;
-    while (Date.now() < phase2aDeadline) {
+    for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined && resolved !== null) break;
       await sleepForTesting(10);
@@ -863,7 +862,7 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
 
     let resolved: unknown;
     const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined && resolved !== null) break;
       await sleepForTesting(10);
@@ -1116,7 +1115,7 @@ async function recoverInFlightTaskAcrossSigkill(): Promise<void> {
 
   async function waitForTestDispatchUrl(handle: SubprocessServerHandle): Promise<string> {
     const deadline = Date.now() + 3_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const match = handle.stdout.match(/WEFT_TEST_DISPATCH_URL\s+(\S+)/);
       if (match !== null && match[1] !== undefined) return match[1];
       await sleepForTesting(20);
@@ -1149,6 +1148,7 @@ import { Engine, activity } from ${JSON.stringify(indexUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteUrl)};
 import { decodeRemoteTaskRecord, isRemoteTaskTerminalResolved, taskLedgerKey } from ${JSON.stringify(taskLedgerUrl)};
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 function readArgument(name, fallback) {
   const index = Bun.argv.indexOf(name);
@@ -1305,7 +1305,7 @@ process.on('SIGINT', () => void stop(0));
     const newTestDispatchUrl = await waitForTestDispatchUrl(rebooted);
     const deadline = Date.now() + 5_000;
     let resolvedFlag = false;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const response = await fetch(
         `${newTestDispatchUrl}/__test__/resolved/${encodeURIComponent(operationId)}`,
       );

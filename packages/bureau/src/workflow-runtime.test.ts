@@ -26,6 +26,7 @@ import {
 import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -115,7 +116,7 @@ async function versionOf(engine: Engine, workflowId: string): Promise<string | u
 }
 
 async function parkedOnSignal(engine: Engine, workflowId: string): Promise<void> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
+  for await (const attempt of awakeTurns()) {
     const timeline = await engine.getTimeline(workflowId);
     if (timeline.some((entry) => entry.operationType === 'wait-signal')) return;
     await Bun.sleep(5);

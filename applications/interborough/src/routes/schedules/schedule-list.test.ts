@@ -14,6 +14,7 @@ import { flushSync } from 'svelte';
 
 import { HttpClient } from '@lostgradient/weft';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ScheduleListHarness from './schedule-list-test-harness.test-harness.svelte';
@@ -190,7 +191,7 @@ describe('ScheduleList', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
     // The last run is read from the engine, so the page opens once a run has completed.
     const deadline = Date.now() + 8_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'fired-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'completed')) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -260,7 +261,7 @@ describe('ScheduleList', () => {
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
     const deadline = Date.now() + 8_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'failed')) break;
       await new Promise((resolve) => setTimeout(resolve, 50));

@@ -79,6 +79,7 @@ import {
 
 import type { GenerateProviderName, ProviderConfiguration } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)
 // inline-launch left by one durable run can starve a later one under full
@@ -177,12 +178,9 @@ function createGenerateForProvider(provider: ProviderConfiguration): GenerateFun
   };
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 20): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await yieldToPortableEventLoop();
-  }
-  return false;
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 async function saveRecoverableSession(sessionStore: SessionStore, runId: string): Promise<void> {

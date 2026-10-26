@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
@@ -48,8 +49,7 @@ function open(fetchAgUi: Fetcher): ChatSessionState {
 }
 
 async function until(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 300 && !condition(); attempt += 1) await Bun.sleep(5);
-  expect(condition()).toBe(true);
+  await waitUntil(condition, { message: 'until' });
 }
 
 describe('a message', () => {

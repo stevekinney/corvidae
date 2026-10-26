@@ -18,6 +18,7 @@ import {
 } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
 
@@ -522,8 +523,7 @@ describe('a stop', () => {
 });
 
 async function expectEventually(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) await Bun.sleep(5);
-  expect(condition()).toBe(true);
+  await waitUntil(condition, { message: 'expectEventually' });
 }
 
 describe('the thread’s history', () => {

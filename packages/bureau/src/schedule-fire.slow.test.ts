@@ -33,20 +33,14 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const FIRE_TIMEOUT_MS = 20_000;
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
-async function waitForReal(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs: number,
-): Promise<boolean> {
-  const start = performance.now();
-  while (performance.now() - start < timeoutMs) {
-    if (await condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 interface RecordedCall {
@@ -127,10 +121,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       });
       expect(schedule).toBeDefined();
 
-      const bureauAStartedFire = await waitForReal(
-        () => bureauACall !== undefined,
-        FIRE_TIMEOUT_MS,
-      );
+      const bureauAStartedFire = await waitForReal(() => bureauACall !== undefined);
       expect(bureauAStartedFire).toBe(true);
       const recoveredSessionId = bureauACall!.conversationId;
       expect(recoveredSessionId.startsWith(`sched-${schedule!.id}-`)).toBe(true);
@@ -176,10 +167,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       try {
         await bureauB.cancelSchedule(schedule!.id);
 
-        const bureauBRecoveredFire = await waitForReal(
-          () => bureauBCall !== undefined,
-          FIRE_TIMEOUT_MS,
-        );
+        const bureauBRecoveredFire = await waitForReal(() => bureauBCall !== undefined);
         expect(bureauBRecoveredFire).toBe(true);
         expect(bureauBCall!.conversationId).toBe(recoveredSessionId);
         expect(bureauBCall!.userPrompts).toContain('recover this scheduled fire');
@@ -197,7 +185,7 @@ describe('D6 scheduled-fire path (#109)', () => {
               typeof message.content === 'string' &&
               message.content.includes('recovered scheduled fire completed'),
           );
-        }, FIRE_TIMEOUT_MS);
+        });
         expect(persisted).toBe(true);
 
         const session = await bureauB.getSession(recoveredSessionId);
@@ -259,9 +247,8 @@ describe('D6 scheduled-fire path (#109)', () => {
       expect(summary).toBeDefined();
 
       // Wait for at least one fire to have run a step (it will hit maximum-steps).
-      const fired = await waitForReal(
-        () => calls.some((call) => call.conversationId === sessionId),
-        FIRE_TIMEOUT_MS,
+      const fired = await waitForReal(() =>
+        calls.some((call) => call.conversationId === sessionId),
       );
       await bureau.cancelSchedule(summary!.id);
       expect(fired).toBe(true);
@@ -308,7 +295,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
       });
       expect(summary).toBeDefined();
 
-      const fired = await waitForReal(() => completed.length >= 1, FIRE_TIMEOUT_MS);
+      const fired = await waitForReal(() => completed.length >= 1);
       await bureau.cancelSchedule(summary!.id);
 
       expect(fired).toBe(true);
@@ -351,7 +338,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
       });
       expect(summary).toBeDefined();
 
-      const fired = await waitForReal(() => failed.length >= 1, FIRE_TIMEOUT_MS);
+      const fired = await waitForReal(() => failed.length >= 1);
       await bureau.cancelSchedule(summary!.id);
 
       expect(fired).toBe(true);

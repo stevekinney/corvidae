@@ -43,6 +43,7 @@ import {
 } from './test/storage-fixtures';
 import type { Bureau, BureauDiagnostic, CreateRunRequest } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const REQUEST: CreateRunRequest = {
   agentName: 'default',
@@ -69,11 +70,8 @@ const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
 async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (await check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  return check();
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 /** One key/value a storage call was about to write. */

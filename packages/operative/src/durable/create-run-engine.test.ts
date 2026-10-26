@@ -13,6 +13,7 @@ import {
 } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { WorkflowVersionMismatchEvent } from '../events';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine } from './create-run-engine';
@@ -142,11 +143,7 @@ function makeSleepingWorkflow(sleepMilliseconds: number) {
 // passing run red. It is a backstop, NOT a tuned timing value.
 const POLL_UNTIL_MAX_ATTEMPTS = 1000;
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; attempt < POLL_UNTIL_MAX_ATTEMPTS; attempt++) {
-    if (await predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('pollUntil exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'pollUntil' });
 }
 
 describe('createRunEngine', () => {

@@ -12,6 +12,7 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const WALL_CLOCK_TIMEOUT_MS = 30_000;
 const harnesses: WorkflowBureauHarness[] = [];
@@ -20,16 +21,9 @@ afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
 });
 
-async function waitForReal(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs = 20_000,
-): Promise<boolean> {
-  const started = performance.now();
-  while (performance.now() - started < timeoutMs) {
-    if (await condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 /** A writer whose first call waits for `release()`, so an instance can be held mid-step. */

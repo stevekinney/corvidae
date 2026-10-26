@@ -38,6 +38,7 @@ import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /**
  * Every bureau here reports into this sink instead of the console. Disposing
@@ -55,15 +56,9 @@ afterEach(async () => {
   diagnostics = [];
 });
 
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 200,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    if (await check()) return true;
-    await yieldToPortableEventLoop();
-  }
-  return check();
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 function databasePath(label: string): string {

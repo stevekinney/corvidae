@@ -11,10 +11,10 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClient } from '@lostgradient/weft';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { completedEntriesOnly, pendingEntriesOnly } from './review-domain.ts';
 
-const REVIEW_PERSISTENCE_POLL_ATTEMPTS = 5;
 const REVIEW_PERSISTENCE_POLL_DELAY_MS = 20;
 
 /** Mirrors `fixtures/reviews.ts`'s own `waitForPendingReview` — the review-creation write is async relative to `engine.start()` resolving (see that module's doc). */
@@ -22,12 +22,10 @@ async function waitForPendingReview(
   client: HttpClient,
   workflowId: string,
 ): Promise<{ reviewId: string }> {
-  for (let attempt = 1; attempt <= REVIEW_PERSISTENCE_POLL_ATTEMPTS; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const [pending] = await client.listReviews({ status: 'pending', workflowId });
     if (pending !== undefined) return pending;
-    if (attempt < REVIEW_PERSISTENCE_POLL_ATTEMPTS) {
-      await Bun.sleep(REVIEW_PERSISTENCE_POLL_DELAY_MS);
-    }
+    await Bun.sleep(REVIEW_PERSISTENCE_POLL_DELAY_MS);
   }
   throw new Error(`Expected a pending review for workflow ${workflowId} — got none.`);
 }

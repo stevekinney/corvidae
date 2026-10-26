@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { ActivityContext, WorkflowContext } from '../core/types.ts';
 import { activity, signal } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -164,7 +165,7 @@ export async function waitForQueryReadyForTesting(
   client: WeftClient,
   workflowId: string,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for await (const attempt of awakeTurns()) {
     if ((await client.query(workflowId, 'ready')) === true) {
       return;
     }

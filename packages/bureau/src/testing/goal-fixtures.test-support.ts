@@ -27,6 +27,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import type { GoalState } from '../goal-state';
 import type { BureauGoalRequest } from '../goal-types';
 import type { Bureau, BureauDiagnostic } from '../types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export interface TestDatabase {
   readonly path: string;
@@ -69,17 +70,9 @@ export function createTestDatabase(label: string): TestDatabase {
   };
 }
 
-export async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    // A tiny real delay: SQLite's completion callbacks starve under a zero-delay loop.
-    await new Promise<void>((resolve) => realRuntime.timers.setTimeout(resolve, 2));
-    await yieldToPortableEventLoop();
-  }
-  return check();
+export async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 export interface Latch {

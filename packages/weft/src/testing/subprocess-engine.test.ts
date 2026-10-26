@@ -71,6 +71,7 @@ function durableEntrypointSource(): string {
 import { Engine, activity, workflow } from ${JSON.stringify(indexModuleUrl)};
 import { serve } from ${JSON.stringify(serverModuleUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteModuleUrl)};
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 ${parseArgumentsSource()}
 
@@ -150,7 +151,7 @@ async function waitForWorkflowStatus(
 ): Promise<WorkflowState> {
   const deadline = Date.now() + 3_000;
   let lastState: WorkflowState | null = null;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     lastState = await client.get(workflowId);
     if (lastState !== null && predicate(lastState)) return lastState;
     await sleepForTesting(10);
@@ -160,7 +161,7 @@ async function waitForWorkflowStatus(
 
 async function waitForFileText(path: string, expected: string, label: string): Promise<void> {
   const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     if ((await Bun.file(path).exists()) && (await Bun.file(path).text()) === expected) return;
     await sleepForTesting(10);
   }

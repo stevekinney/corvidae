@@ -29,6 +29,7 @@ import {
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, CreateRunRequest } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
@@ -106,11 +107,8 @@ async function withBureau(
  * `run-creation-fault-points.test.ts`).
  */
 async function pollUntil(check: () => boolean): Promise<boolean> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  return check();
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 /** Creates the request's run, waits for it to finish, and lets a receipt query observe that. */

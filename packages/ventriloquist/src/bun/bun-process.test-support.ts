@@ -1,6 +1,7 @@
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { afterAll, test } from 'bun:test';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { systemClock } from '../session/session-clock.ts';
 import type {
   AttachmentGrant,
@@ -289,6 +290,9 @@ export function isAlive(pid: number): boolean {
 
 /** Wait for a process that something else is ending to disappear. */
 export async function waitUntilGone(pid: number): Promise<void> {
-  for (let attempt = 0; attempt < 400 && isAlive(pid); attempt += 1) await Bun.sleep(5);
+  for await (const attempt of awakeTurns()) {
+    if (!isAlive(pid)) break;
+    await Bun.sleep(5);
+  }
   if (isAlive(pid)) throw new Error(`process ${pid} is still running`);
 }

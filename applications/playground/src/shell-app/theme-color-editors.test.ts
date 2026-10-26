@@ -5,6 +5,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { setupHappyDom } from '@lostgradient/testing';
 
 import { buildThemeSources, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import {
   catalogueRowByPath,
@@ -97,7 +98,7 @@ const settle = async () => {
 
 /** Poll a condition the app settles asynchronously; the 5 s test budget bounds the wait. */
 async function until(done: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 400 && !done(); attempt += 1) await settle();
+  await waitUntil(done, { message: 'until' });
 }
 
 async function open(path: string) {

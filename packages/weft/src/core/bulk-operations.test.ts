@@ -45,14 +45,13 @@ async function waitForWorkflowStatus(
   engine: Engine,
   workflowId: string,
   status: WorkflowState['status'],
-  timeoutMs = 10_000,
 ): Promise<void> {
   await waitForCondition(
     async () => {
       const state = await engine.get(workflowId);
       return state?.status === status;
     },
-    { label: `workflow "${workflowId}" to reach ${status}`, timeoutMs, intervalMs: 5 },
+    { label: `workflow "${workflowId}" to reach ${status}`, intervalMs: 5 },
   );
 }
 
@@ -60,7 +59,6 @@ async function waitForWorkflowStatusCount(
   engine: Engine,
   status: WorkflowState['status'],
   expectedCount: number,
-  timeoutMs = 500,
 ): Promise<void> {
   await waitForCondition(
     async () => {
@@ -69,7 +67,6 @@ async function waitForWorkflowStatusCount(
     },
     {
       label: `${String(expectedCount)} workflows to reach ${status}`,
-      timeoutMs,
       intervalMs: 5,
     },
   );

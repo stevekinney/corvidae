@@ -130,7 +130,7 @@ async function drainReader(
   let text = '';
   let complete = false;
   const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const remaining = Math.max(0, deadline - Date.now());
     const timeoutBranch = realTimeoutBranch(remaining, { kind: 'timeout' as const });
     const result = await Promise.race([
@@ -227,7 +227,7 @@ async function readUntilMarkerOrExit(
   };
 
   try {
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const remaining = Math.max(0, deadline - Date.now());
       const timeoutBranch = realTimeoutBranch<RaceResult>(remaining, { kind: 'timeout' });
       const result: RaceResult = await Promise.race<RaceResult>([
@@ -377,6 +377,7 @@ await new Promise(() => {});
   return `
 ${importLineFor(spec)}
 import { createRequire } from 'node:module';
+import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 
 const databasePath = process.argv[2];
 const storage = openAdapter(databasePath);

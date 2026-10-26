@@ -11,6 +11,10 @@
  * package may not depend on a workspace, because turbo folds every workspace the root depends on
  * into the global hash.
  *
+ * The wait helpers (`testing/testing/src/wait-until.ts`: `waitUntil` and `awakeTurns`, which end a
+ * wait on the hang guard instead of a count of turns) are copied beside each hang-guard copy, for the
+ * same reasons, and import it by the same relative name.
+ *
  * The temporary-path helper (`testing/testing/src/temporary-path.ts`, COR-1619) is copied into
  * `packages/bureau/src/test/temporary-path.ts` for a different reason: Bureau's public storage
  * fixtures (`src/test/storage-fixtures.ts`, exported from its index) allocate their paths with it,
@@ -29,6 +33,8 @@ const root = join(import.meta.dir, '..');
 export const TEST_SUPPORT_COPIES = [
   { source: 'testing/testing/src/hang-guard.ts', copy: 'packages/weft/scripts/lib/hang-guard.ts' },
   { source: 'testing/testing/src/hang-guard.ts', copy: 'scripts/hang-guard.ts' },
+  { source: 'testing/testing/src/wait-until.ts', copy: 'packages/weft/scripts/lib/wait-until.ts' },
+  { source: 'testing/testing/src/wait-until.ts', copy: 'scripts/wait-until.ts' },
   {
     source: 'testing/testing/src/temporary-path.ts',
     copy: 'packages/bureau/src/test/temporary-path.ts',

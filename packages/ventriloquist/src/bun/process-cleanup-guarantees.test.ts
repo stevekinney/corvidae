@@ -3,6 +3,7 @@ import { describe, expect } from 'bun:test';
 import { rejectionOf } from '@lostgradient/testing';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createDeferred } from '../session/fixtures/deferred.ts';
 import { flush, utf8 } from '../session/session.test-support.ts';
 import {
@@ -25,10 +26,8 @@ const PTY_DIMENSIONS = { columns: 80, rows: 24 };
 
 /** Wait for `condition`, failing after about five seconds; a condition is a state, never a guess at timing. */
 async function eventually(condition: () => boolean): Promise<boolean> {
-  for (let attempt = 0; attempt < 1000 && !condition(); attempt += 1) {
-    await Bun.sleep(5);
-  }
-  return condition();
+  await waitUntil(condition, { message: 'eventually' });
+  return true;
 }
 
 /** A spawn that starts the real process and lets a test hand back a variation of it. */

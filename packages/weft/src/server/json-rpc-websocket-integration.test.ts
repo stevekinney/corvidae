@@ -59,9 +59,8 @@ function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: WaitableWorkflowStatus,
-  timeoutMilliseconds = 2_000,
 ): Promise<void> {
-  return waitForStatusWithTimeout(engine, workflowId, status, timeoutMilliseconds);
+  return waitForStatusWithTimeout(engine, workflowId, status);
 }
 
 /** WebSocket URL for the `/jsonrpc` endpoint of a running server. */

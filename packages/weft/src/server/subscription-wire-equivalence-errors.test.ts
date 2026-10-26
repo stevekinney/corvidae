@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import {
   createJsonRpcWebSocketSession,
@@ -257,10 +258,10 @@ describe('subscription wire-format fixtures — new-error-contract', () => {
   });
 });
 
-async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error('timed out waiting for predicate');
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for await (const _turn of awakeTurns()) {
+    if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
+  throw new Error('timed out waiting for predicate');
 }
