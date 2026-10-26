@@ -15,6 +15,7 @@
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "dependencies": {
+    "@standard-schema/spec": "catalog:",
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",
@@ -28,7 +29,21 @@
     "openai": "catalog:",
     "@lostgradient/environmentalist": "catalog:"
   },
+  "peerDependencies": {
+    "@tanstack/ai": "catalog:",
+    "@tanstack/ai-typesafe": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/ai": {
+      "optional": true
+    },
+    "@tanstack/ai-typesafe": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@tanstack/ai": "catalog:",
+    "@tanstack/ai-typesafe": "catalog:",
     "@types/bun": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",

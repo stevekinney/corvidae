@@ -161,6 +161,15 @@ export function projectChatToolResult(rawResult: ChatToolResult): Record<string,
     outcome: result.outcome,
     content: assertFiniteJSONValue(result.content, 'tool result content'),
   };
+  // The ordered text and media parts beside `content` (COR-1634). They are plain JSON by schema,
+  // so the same finite-JSON assertion applies; the structural guard below checks their shape.
+  if (result.parts !== undefined) {
+    // The part interfaces carry no index signature, so the guard narrows them to JSON.
+    const parts: unknown = result.parts;
+    if (!isJSONValue(parts))
+      throw new Error('Invalid chat stream event: tool result parts is not a valid JSON value');
+    projected['parts'] = assertFiniteJSONValue(parts, 'tool result parts');
+  }
   if (result.error !== undefined) {
     const error = ownFields(result.error);
     const projectedError: Record<string, unknown> = {

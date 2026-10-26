@@ -1,0 +1,41 @@
+{
+  "scenario": "choice",
+  "exchange": {
+    "path": "/v1/systemone",
+    "requestBody": {
+      "model": "jev-latest",
+      "state": "I was charged twice for my subscription this month and need an invoice correction.",
+      "questions": {
+        "decision": {
+          "type": "choice",
+          "instructions": "Which team should handle this ticket?",
+          "criteria": {
+            "billing": "Payments, invoices, refunds",
+            "tech": "Bugs, outages, integrations",
+            "sales": "Pricing, upgrades, new accounts"
+          }
+        }
+      }
+    },
+    "status": 200,
+    "responseBody": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "decision": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 1,
+          "probabilities": {
+            "billing": 1,
+            "tech": 0,
+            "sales": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 352,
+        "output_tokens": 38
+      }
+    }
+  }
+}
