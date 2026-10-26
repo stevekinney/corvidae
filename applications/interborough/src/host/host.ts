@@ -53,11 +53,10 @@ import {
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
-  createModelCatalogService,
   resolveProviderGenerate,
   type Bureau,
 } from '@lostgradient/bureau';
-import { createModelCatalog, type GenerateFunction } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
   serve,
@@ -300,21 +299,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const storage = new BunSQLiteStorage(bungalow.database);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
-    // the secrets, and nothing else. It is installed before the Bureau exists, so no boot step
-    // plans against a provider that is not configured, and the refresh source returns the same
-    // rows so a refresh cannot bring one back. The seeded agents still answer from a script.
+    // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
+    // plans against a provider that is not configured. The seeded agents still answer from a
+    // script.
     const providers = await loadProviders({
       configurationPath: bungalow.configuration,
       readSecret: (key) => bungalow.readSecret(key),
       warn: options.warn ?? ((message) => console.warn(message)),
     });
-    const modelCatalog = createModelCatalogService({
-      seed: createModelCatalog(),
-      descriptorSource: () => Promise.resolve(providers.rows),
-      now: () => new Date().toISOString(),
-      newRefreshId: () => `catalog-refresh-${crypto.randomUUID()}`,
-    });
-    modelCatalog.replaceCatalog(providers.rows);
     const generateFor = (selection: ModelSelection): GenerateFunction =>
       createCatalogGenerate(selection, {
         rows: providers.rows,
@@ -333,7 +325,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // calls to park for an operator's answer.
       humanInput: true,
       validators: createSeededValidators(),
-      modelCatalog,
+      // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
+      models: {
+        catalog: providers.rows,
+        generate: (row) => {
+          const provider = PROVIDER_NAMES.find((name) => name === row.provider);
+          if (provider === undefined) {
+            throw new Error(`The ${row.provider} provider is not one this host offers.`);
+          }
+          return generateFor({ provider, model: row.model });
+        },
+      },
       storage,
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
@@ -342,19 +344,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // attachment is one, so the Bureau keeps them in the same database as everything else.
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
-      // file's `model` is a row of the catalog above, so it runs with the key in the secrets.
+      // file's `model` is a row of the `models` catalog.
       agentDirectory,
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowDirectory,
       agentTools: createAgentFileTools(),
-      resolveAgentGenerate: (descriptor) => {
-        const provider = PROVIDER_NAMES.find((name) => name === descriptor.provider);
-        if (provider === undefined) {
-          throw new Error(`The ${descriptor.provider} provider is not one this host offers.`);
-        }
-        return generateFor({ provider, model: descriptor.model });
-      },
     });
     held.bureau = bureau;
     if (options.seed !== false) {

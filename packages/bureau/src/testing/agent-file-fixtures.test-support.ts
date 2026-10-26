@@ -23,7 +23,7 @@ import {
   createAgentFileCatalog,
 } from '../agent-file-catalog.ts';
 import type { AgentFileOperations } from '../agent-file-operations.ts';
-import { createModelCatalogService, type ModelCatalogService } from '../model-catalog-refresh.ts';
+import { createModels, type Models } from '../models/create-models.ts';
 
 /** A model the default catalog holds, written the way an agent file names it. */
 export const KNOWN_MODEL = 'anthropic/claude-opus-5-5';
@@ -62,8 +62,8 @@ export function validAgentFile(body = 'You are helpful.\n'): string {
 export interface AgentFileFixture {
   readonly directory: string;
   readonly catalog: AgentFileCatalog;
-  /** The model catalog the file catalog validates against; `replaceCatalog` raises its revision. */
-  readonly modelCatalog: ModelCatalogService;
+  /** The models the file catalog validates against; `replace` raises the catalog's revision. */
+  readonly models: Models;
   readonly descriptors: readonly BackendDescriptor[];
   readonly generated: BackendDescriptor[];
   /** Write a file into the directory without going through the catalog. */
@@ -104,11 +104,16 @@ export async function createAgentFileFixture(
   const root = options.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-agent-files-')));
   const directory = options.subdirectory === undefined ? root : join(root, options.subdirectory);
   const descriptors = options.descriptors ?? createModelCatalog().descriptors;
-  const modelCatalog = createModelCatalogService({
-    seed: { ...createModelCatalog(), descriptors },
-    descriptorSource: () => Promise.resolve(descriptors),
+  const models = createModels({
+    options: { catalog: descriptors },
     now: () => '2026-10-18T00:00:00.000Z',
-    newRefreshId: () => 'refresh',
+    notConfigured: () => new Error('The fixture has no generate.'),
+    badRequest: (message) => {
+      throw new Error(message);
+    },
+    onReplace: () => {},
+    agents: {},
+    modelPolicy: undefined,
   });
   const generated: BackendDescriptor[] = [];
   const resolveGenerate = (descriptor: BackendDescriptor): GenerateFunction => {
@@ -119,7 +124,7 @@ export async function createAgentFileFixture(
     directory,
     reservedIdentifiers: new Set(options.reserved ?? ['alpha']),
     tools: options.tools ?? { 'lookup-order': lookupTool },
-    modelCatalog,
+    models,
     resolveGenerate: options.resolveGenerate ?? resolveGenerate,
     runtime: options.runtime ?? createDefaultRuntimeServices(),
     diagnose:
@@ -135,7 +140,7 @@ export async function createAgentFileFixture(
   return {
     directory,
     catalog,
-    modelCatalog,
+    models,
     descriptors,
     generated,
     async put(name, text) {
