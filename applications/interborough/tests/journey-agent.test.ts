@@ -46,6 +46,7 @@ async function generateWith(...rows: Row[]) {
   const generate = createJourneyProviderResolver(resolver)(
     { provider: 'anthropic', model: 'sonnet', apiKey: 'fixture' },
     undefined,
+    undefined,
   );
   return generate(contextOf(...rows));
 }
@@ -88,7 +89,7 @@ describe('the journey provider resolver', () => {
     const { resolved, resolver } = fallbackResolver();
     const provider = { provider: 'anthropic', model: 'sonnet', apiKey: 'fixture' } as const;
 
-    createJourneyProviderResolver(resolver)(provider, undefined);
+    createJourneyProviderResolver(resolver)(provider, undefined, undefined);
 
     expect(resolved).toEqual([provider]);
   });

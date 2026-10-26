@@ -268,5 +268,6 @@ export function createCatalogGenerate(
   return dependencies.resolveProviderGenerate(
     { provider: selection.provider, model: row.model, apiKey },
     undefined,
+    undefined,
   );
 }

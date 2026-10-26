@@ -95,6 +95,16 @@ describe('renderBrief', () => {
     expect(renderBrief(issue(null), options)).toContain('no description');
   });
 
+  test('a description with criteria but no execution-brief heading is included whole', () => {
+    const body =
+      '## Scope\n\nRemove `a/b.ts`.\n\n## Acceptance criteria\n\n- It is gone.\n\n## Verification\n\n`bun test a`';
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('Remove `a/b.ts`.');
+    expect(text).toContain('- It is gone.');
+    expect(text).toContain('`bun test a`');
+    expect(text).not.toContain('no description');
+  });
+
   test('cuts a very long description and says so', () => {
     const text = renderBrief(issue('x'.repeat(40_000)), options);
     expect(text).toContain('description cut at 16000');

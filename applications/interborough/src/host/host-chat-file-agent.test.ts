@@ -73,9 +73,14 @@ async function startWithFileAgents(files: Record<string, string>) {
   const resolver: NonNullable<HostOptions['resolveProviderGenerate']> = (
     provider,
     streamEventTarget,
+    streaming,
   ) => {
     handed.push(provider);
-    return resolveProviderGenerate(Object.assign({}, provider, { client }), streamEventTarget);
+    return resolveProviderGenerate(
+      Object.assign({}, provider, { client }),
+      streamEventTarget,
+      streaming,
+    );
   };
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },

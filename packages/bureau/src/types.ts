@@ -14,6 +14,7 @@ import type {
   AgentRunEventRegistry,
   AgentSession,
   BackendDescriptor,
+  CacheOptions,
   ChildSignalContract,
   CleanupAcknowledgement as RunCleanupAcknowledgement,
   CreateRunEngineOptions,
@@ -21,6 +22,7 @@ import type {
   DurableEventGap,
   DurableEventOwner,
   DurableEventPage,
+  EnhancedStreamingOptions,
   FlowControlPolicy,
   FreshAttemptSourceResolver,
   GenerateFunction,
@@ -53,6 +55,7 @@ import type {
   ScheduleSummary,
   Storage,
   StorageConfiguration,
+  TextValueStore,
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
@@ -72,6 +75,7 @@ import type {
   BureauAgentCatalog,
 } from './agent-catalog';
 import type { BureauAssetOptions } from './assets/asset-service';
+import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
@@ -199,6 +203,15 @@ export interface SkillProvider {
    */
   loadResource(name: string, path: string): Promise<Uint8Array | undefined>;
   isEnabled(name: string): Promise<boolean>;
+}
+
+export interface CacheConfiguration extends Omit<CacheOptions, 'store'> {
+  enabled?: boolean;
+  store?: TextValueStore;
+}
+
+export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, 'onTextDelta'> {
+  enabled?: boolean;
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────
@@ -662,6 +675,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `'assets'` owner. Omit to compose none — the default.
    */
   assets?: BureauAssetOptions;
+  /**
+   * Reads the MCP resource an `mcp-resource` part of a tool result links to (COR-1634), so the
+   * step after a tool returned an MCP `resource_link` can send the linked bytes to a provider.
+   * Bureau holds no MCP connections, so the host that connected the server supplies the read. Only a
+   * tool result introduces such a link (a run, session or schedule input carrying one is refused),
+   * but the reader must still authorize the run's principal, the server and the URI on every
+   * call, and it is called again at every step that sends the row. Without it, a run whose
+   * row holds such a link fails its next generation with a `MediaAdmissionError`. See
+   * {@link McpResourceReader}.
+   */
+  mcpResources?: McpResourceReader;
   /**
    * Host sink for internal operational diagnostics — recovery failures,
    * live-frame listener exceptions, dispose errors, and persistence

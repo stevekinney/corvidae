@@ -110,6 +110,42 @@ describe('PeerTaskTracker', () => {
     expect(t.outcome()).toMatchObject({ state: 'input-required', message: 'q2' });
   });
 
+  test('a status frame for another task is refused without ending the wait after a continuation', () => {
+    const t = tracker(true);
+    t.apply(taskEvent(TaskState.TASK_STATE_INPUT_REQUIRED, 'q1'));
+    t.markHeadSeen();
+    expect(t.stopped()).toBe(false);
+
+    const otherTask: PeerStreamEvent = {
+      payload: {
+        $case: 'statusUpdate',
+        value: {
+          taskId: 'another',
+          contextId: 'c',
+          status: status(TaskState.TASK_STATE_COMPLETED, 'not ours'),
+          metadata: undefined,
+        },
+      },
+    };
+    const otherContext: PeerStreamEvent = {
+      payload: {
+        $case: 'statusUpdate',
+        value: {
+          taskId: 't',
+          contextId: 'another',
+          status: status(TaskState.TASK_STATE_COMPLETED, 'not ours'),
+          metadata: undefined,
+        },
+      },
+    };
+
+    expect(() => t.apply(otherTask)).toThrow();
+    expect(() => t.apply(otherContext)).toThrow();
+    // The refused frames changed nothing: the task still waits for the answer it was sent.
+    expect(t.stopped()).toBe(false);
+    expect(t.outcome()).toMatchObject({ state: 'input-required', message: 'q1' });
+  });
+
   test('keeps at most the limit of content per artifact however many chunks arrive', () => {
     const t = tracker(false, 10);
     t.apply(taskEvent(TaskState.TASK_STATE_WORKING));

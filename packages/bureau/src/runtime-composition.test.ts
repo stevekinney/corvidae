@@ -61,6 +61,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import {
   activeSkillsFromStepMetadata,
+  applyCache,
   CATALOG_RUN_RECOVERY_KEY_PREFIX,
   createMemoryPersistHook,
   createRoutingStrategy,
@@ -745,6 +746,7 @@ describe('createRuntimeComposition', () => {
             provider: { provider: 'anthropic', model: 'expensive-model' },
           },
         ],
+        streaming: { enabled: false },
         toolbox: createToolbox([], { context: {} }),
       },
       {
@@ -859,18 +861,16 @@ describe('createRuntimeComposition', () => {
   it('composes the default non-streaming Gemini provider factory', async () => {
     const runtime = await createRuntimeComposition({
       provider: { provider: 'gemini', model: 'gemini-test', apiKey: 'test' },
+      streaming: { enabled: false },
       toolbox: createToolbox([], { context: {} }),
       guardrails: false,
     });
 
-    const runRuntime = await runtime.createRunRuntime(
-      {
-        agentName: 'bureau',
-        message: 'Hello',
-        sessionId: 'default-gemini-provider',
-      },
-      { liveStreaming: false },
-    );
+    const runRuntime = await runtime.createRunRuntime({
+      agentName: 'bureau',
+      message: 'Hello',
+      sessionId: 'default-gemini-provider',
+    });
 
     expect(runRuntime.streamEventTarget).toBeUndefined();
   });
@@ -995,6 +995,16 @@ describe('createRuntimeComposition', () => {
     expect(decision).toMatchObject({ route: 'complex' });
   });
 
+  it('applies cache only when configuration and a store are available', () => {
+    const generate: GenerateFunction = async () => ({ content: 'fresh', toolCalls: [] });
+    const kv = textValueStore(new MemoryStorage());
+
+    expect(applyCache(generate, undefined, undefined)).toBe(generate);
+    expect(applyCache(generate, { enabled: false }, kv)).toBe(generate);
+    expect(applyCache(generate, { enabled: true }, undefined)).toBe(generate);
+    expect(applyCache(generate, { enabled: true, store: kv }, undefined)).not.toBe(generate);
+  });
+
   it('falls through streaming resolution before rejecting an unknown provider directly', () => {
     const streamEventTarget = new TypedEventTarget<StreamEventMap>();
 
@@ -1002,6 +1012,7 @@ describe('createRuntimeComposition', () => {
       resolveProviderGenerate(
         { provider: 'voyage', model: 'voyage-test' } as unknown as ProviderConfiguration,
         streamEventTarget,
+        {},
       ),
     ).toThrow('Unknown provider');
   });
@@ -6827,8 +6838,8 @@ describe('AB-40: default guardrails preset', () => {
     // `withEnhancedStreaming` has already forwarded `stream:text-delta` events
     // during generation. Streaming a response the default tripwire is meant to
     // gate would leak the flagged content before the guardrail ever ran. No
-    // `generate` — provider streaming would normally be wired here — and no
-    // `guardrails` option, so the
+    // `generate` and no `streaming: { enabled: false }` — provider streaming
+    // would normally be wired here — and no `guardrails` option, so the
     // default preset must be the thing suppressing it.
     let resolveProviderGenerateCalls = 0;
     const runtime = await createRuntimeComposition(

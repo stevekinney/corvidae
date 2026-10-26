@@ -67,6 +67,40 @@ export function ingestIdentity(
   };
 }
 
+/**
+ * Refuses an identity that differs from the one this peer task already has. An empty identifier
+ * says nothing (a status update may leave the context unstated) and never differs; a task or
+ * context that changes between responses is a peer that has mixed up two tasks, and following on
+ * would attribute the second one's state and content to the first.
+ */
+export function assertSameIdentity(
+  known: { readonly taskId: string; readonly contextId: string },
+  next: { readonly taskId: string; readonly contextId: string },
+): void {
+  for (const [what, held, seen] of [
+    ['task', known.taskId, next.taskId],
+    ['context', known.contextId, next.contextId],
+  ] as const) {
+    if (held !== '' && seen !== '' && held !== seen) {
+      throw new A2APeerError(
+        'protocol',
+        `The peer changed the ${what} identifier of a task it already named.`,
+      );
+    }
+  }
+}
+
+/** What a peer task's identity is once `next` is read against `known`: unstated parts keep the known value. */
+export function mergeIdentity(
+  known: { readonly taskId: string; readonly contextId: string },
+  next: { readonly taskId: string; readonly contextId: string },
+): { taskId: string; contextId: string } {
+  return {
+    taskId: next.taskId === '' ? known.taskId : next.taskId,
+    contextId: next.contextId === '' ? known.contextId : next.contextId,
+  };
+}
+
 /** Bounds a message's text to `limit` characters. */
 export function ingestMessageText(message: Message | undefined, limit: number): string {
   return textOfMessage(message).slice(0, limit);

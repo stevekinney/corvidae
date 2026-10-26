@@ -83,6 +83,7 @@ import {
   ScheduleSkippedEvent,
   withActiveSkillToolPolicy,
   withBackendDescriptors,
+  withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
@@ -114,6 +115,7 @@ import {
   type Storage,
   storageConditionalBatch,
   type StorageConfiguration,
+  type TextValueStore,
   textValueStore,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
@@ -168,9 +170,11 @@ import {
 import type {
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  CacheConfiguration,
   CreateRunRequest,
   ProviderConfiguration,
   ProviderRouteConfiguration,
+  StreamingConfiguration,
   SkillRuntimeConfiguration,
   RoutingConfiguration,
 } from './types';
@@ -1349,20 +1353,24 @@ export function createMemoryPersistHook(
 export function resolveProviderGenerate(
   provider: ProviderConfiguration,
   streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
+  streamingConfiguration: StreamingConfiguration | undefined,
 ): GenerateFunction {
   if (streamEventTarget) {
     switch (provider.provider) {
       case 'anthropic':
         return withEnhancedStreaming(createAnthropicProviderStream(provider), {
           eventTarget: streamEventTarget,
+          onTextDelta: streamingConfiguration?.onTextDelta,
         });
       case 'openai':
         return withEnhancedStreaming(createOpenAIProviderStream(provider), {
           eventTarget: streamEventTarget,
+          onTextDelta: streamingConfiguration?.onTextDelta,
         });
       case 'gemini':
         return withEnhancedStreaming(createGeminiProviderStream(provider), {
           eventTarget: streamEventTarget,
+          onTextDelta: streamingConfiguration?.onTextDelta,
         });
       default:
         break;
@@ -1460,6 +1468,26 @@ export function withUsageTracking(
     return response;
   };
   return withBackendDescriptors(tracked, readBackendDescriptors(generate));
+}
+
+export function applyCache(
+  generate: GenerateFunction,
+  configuration: CacheConfiguration | undefined,
+  store: TextValueStore | undefined,
+): GenerateFunction {
+  if (!configuration) {
+    return generate;
+  }
+
+  const cacheStore = configuration.store ?? store;
+  if (configuration.enabled === false || !cacheStore) {
+    return generate;
+  }
+
+  return withCache(generate, {
+    ...configuration,
+    store: cacheStore,
+  });
 }
 
 /**
@@ -2561,6 +2589,10 @@ export interface CompositionRunOptions {
   stopWhen?: StopCondition | StopCondition[];
   maximumSteps?: number;
   systemPrompt?: string;
+  /** Response caching over the composition's own `generate`; a Bureau composes none. */
+  cache?: CacheConfiguration;
+  /** Enhanced streaming over the composition's own provider `generate`; a Bureau composes none. */
+  streaming?: StreamingConfiguration;
 }
 
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'> & CompositionRunOptions;
@@ -3032,7 +3064,11 @@ async function buildRuntimeComposition(
       if (routingStrategy && baseProviders.length > 1) {
         const routes = baseProviders.map((route) => ({
           name: route.name,
-          generate: dependencies.resolveProviderGenerate(route.provider, streamEventTarget),
+          generate: dependencies.resolveProviderGenerate(
+            route.provider,
+            streamEventTarget,
+            options.streaming,
+          ),
         }));
 
         const routingGenerate = createRoutingGenerate({
@@ -3049,18 +3085,23 @@ async function buildRuntimeComposition(
         generate = createFalloverGenerate({
           providers: baseProviders.map((route) => ({
             name: route.name,
-            generate: dependencies.resolveProviderGenerate(route.provider, streamEventTarget),
+            generate: dependencies.resolveProviderGenerate(
+              route.provider,
+              streamEventTarget,
+              options.streaming,
+            ),
           })),
         });
       } else {
         generate = dependencies.resolveProviderGenerate(
           baseProviders[0]!.provider,
           streamEventTarget,
+          options.streaming,
         );
       }
     }
 
-    return generate;
+    return applyCache(generate, options.cache, kv);
   }
 
   const nonStreamingGenerate = composeConfiguredGenerate(undefined);
@@ -3218,6 +3259,7 @@ async function buildRuntimeComposition(
       // A named agent's own `generate` is not wrapped for live token streaming.
       sessionAgent !== undefined ||
       options.generate !== undefined ||
+      options.streaming?.enabled === false ||
       usingDefaultGuardrailsPreset
         ? undefined
         : new TypedEventTarget<StreamEventMap>();
