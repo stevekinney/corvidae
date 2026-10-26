@@ -260,6 +260,38 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(jsonResult.container.textContent).toContain('"ok"');
   });
 
+  test('a result with parts shows its ordered text and media labels, not the structured value beside them (COR-1634)', async () => {
+    const withParts = render(ToolCallTimeline, {
+      props: {
+        pairs: [
+          {
+            call: { id: 'chart-result', name: 'chart', arguments: {} },
+            result: {
+              callId: 'chart-result',
+              outcome: 'success',
+              content: { series: 'sales' },
+              parts: [
+                { type: 'text', text: 'Here is the chart:' },
+                {
+                  type: 'image',
+                  mimeType: 'image/png',
+                  name: 'chart.png',
+                  source: { kind: 'remote-url', url: 'https://tracker.example/pixel.png' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    await clickAndFlush(buttonByText(withParts.container, 'Result'));
+    const text = withParts.container.textContent ?? '';
+    expect(text).toContain('Here is the chart:');
+    expect(text).toContain('[image: chart.png, image/png]');
+    expect(text).not.toContain('"series"');
+    expect(text).not.toContain('tracker.example');
+  });
+
   test('grouped repeated call ids remain unique and preserve structured error details', async () => {
     const { container } = render(ToolCallTimeline, {
       props: {

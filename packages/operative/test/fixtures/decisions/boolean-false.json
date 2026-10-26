@@ -1,0 +1,30 @@
+{
+  "scenario": "boolean-false",
+  "exchange": {
+    "path": "/v1/systemone",
+    "requestBody": {
+      "model": "jev-latest",
+      "state": "Hello! How do I change the colour theme of the dashboard to dark mode?",
+      "questions": {
+        "decision": {
+          "type": "noul",
+          "instructions": "Is the customer asking for a refund?"
+        }
+      }
+    },
+    "status": 200,
+    "responseBody": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "decision": {
+          "type": "noul",
+          "noul": 0.01
+        }
+      },
+      "usage": {
+        "input_tokens": 290,
+        "output_tokens": 20
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 {
-  "components/chat/src/lib/session/stream-event-codec-encoding-projection.ts": "Projects a settled tool result onto chat's versioned stream wire (version 3) without parts: rendering parts in chat is outside COR-792, and adding them to the wire is that follow-up's change, not a silent drop of a field the wire carries.",
+  "components/chat/src/lib/session/stream-event-codec-encoding-projection.ts": "Projects a settled tool result onto chat's versioned stream wire with its parts beside content, finite-JSON checked and shape-checked by the same guard the decoder applies (COR-1634).",
+  "components/chat/src/lib/utilities/tool-result-text.ts": "toolResultText shows a result's ordered parts (text, and a label for each media part, never its URL or bytes) when it has them, and its content otherwise.",
   "packages/armorer/src/adapters/anthropic/index.ts": "formatAnthropicToolResults sends parts as text, image, and PDF blocks through toolResultParts; any other part is refused.",
   "packages/armorer/src/adapters/gemini/index.ts": "formatGeminiToolResults sends parts as inline functionResponse.parts referenced by $ref; any other part is refused.",
   "packages/armorer/src/adapters/open-ai/agents/index.ts": "A result with parts reaches the agent as their text through toolResultParts; a media part is refused. content is read only for an error message.",
