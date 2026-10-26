@@ -31,12 +31,14 @@
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 
 import ts from 'typescript';
 
+import { repositoryRoot, selectedFilesFor } from '../../../scripts/affected-tests-manifest.ts';
 import { finishRun } from '../../../scripts/bun-test-junit.ts';
 import { readAllowlist } from '../../../scripts/check-test-durations.ts';
+import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 
 const TEST_ENV = {
   ...process.env,
@@ -243,8 +245,24 @@ async function runBunTest(
 /** Run every test process in sequence; exit non-zero if any process fails. */
 async function main(): Promise<void> {
   const lane: TestLane = Bun.argv.includes('--slow') ? 'slow' : 'fast';
-  const processPlan = createTestProcessPlan(await discoverTestFiles(lane));
+  const discovered = await discoverTestFiles(lane);
+  // `bun scripts/affected-tests.ts run` narrows the lane to the files a change can reach.
+  const selected = selectedFilesFor(
+    rootScriptEnvironment(),
+    relative(repositoryRoot, PLAYGROUND_ROOT),
+  );
+  const testFiles =
+    selected === null || selected === 'all'
+      ? discovered
+      : discovered.filter((file) => selected.includes(file.path));
+  const processPlan = createTestProcessPlan(testFiles);
   if (processPlan.length === 0) {
+    if (selected !== null) {
+      console.log(
+        `run-tests: no playground ${lane} test is reachable from the change; nothing to run.`,
+      );
+      process.exit(0);
+    }
     throw new Error(`No playground ${lane} tests were discovered.`);
   }
   let failed = false;

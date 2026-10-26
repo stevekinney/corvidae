@@ -567,20 +567,73 @@ test("the validate gate runs each package's suite once, through its coverage run
   }
 });
 
-test("the check gate enforces the affected workspaces' coverage floors through test:gate (COR-1693)", async () => {
+test('the check gate keeps the coverage floor of every workspace it selects whole (COR-1693)', async () => {
   // `check` once ran the plain `test` and so merged a coverage regression that only `validate`
-  // would have caught. Its affected run names `test:gate`, which runs each suite once, through the
-  // coverage run where the workspace has a floor; naming `test` or `test:coverage` beside it would
-  // run a suite twice.
+  // would have caught. Tests now run through the selector, which runs a workspace selected whole
+  // through `test:gate` (its coverage run where the workspace has a floor) and one selected in part
+  // through a narrowed `test`, where a floor cannot be judged on a partial file set. Naming `test`
+  // beside `test:gate`, or `test:coverage` at all, would run a suite twice.
   const { scripts } = await Bun.file(join(root, 'package.json')).json();
-  const affected = (scripts.check as string)
-    .match(/turbo run [^&']+/g)
-    ?.filter((invocation) => invocation.includes('--affected'))
-    .map((invocation) => invocation.split(/\s+/).slice(2));
-  expect(affected?.some((names) => names.includes('test:gate'))).toBe(true);
-  for (const names of affected ?? []) {
+  expect(scripts.check as string).toContain('bun scripts/affected-tests.ts run');
+  for (const invocation of (scripts.check as string).match(/turbo run [^&']+/g) ?? []) {
+    const names = invocation.split(/\s+/).slice(2);
     expect(names).not.toContain('test');
+    expect(names).not.toContain('test:gate');
     expect(names).not.toContain('test:coverage');
+  }
+
+  const { discoverWorkspaces, planInvocations } = await import('./affected-tests.ts');
+  const { selectTests } = await import('./affected-tests-selection.ts');
+  const workspaces = discoverWorkspaces(root);
+  const selection = selectTests({
+    changed: ['turbo.json'],
+    tree: { paths: new Set(['package.json', 'turbo.json']), read: () => undefined },
+    workspaces,
+  });
+  expect(selection.repositoryRule).not.toBeNull();
+  for (const step of planInvocations(selection)) {
+    expect(step.tasks).not.toContain('test:coverage');
+    if (step.tasks.includes('test') || step.tasks.includes('test:gate')) {
+      // A whole-workspace step is the one that must reach the floor.
+      expect(step.tasks).toEqual([step.narrowed ? 'test' : 'test:gate']);
+    }
+  }
+});
+
+test('the tasks the selector narrows declare the selection variable, so no result is replayed across selections', async () => {
+  // Strict environment mode passes a task only the variables it declares, and hashes them. A
+  // narrowed lane without the variable would run everything, or replay a result cached for another
+  // selection. Every task the selector runs narrowed, and each package-specific override of one,
+  // names it; the whole-workspace lanes (`test:gate`, `test:coverage`) never read it.
+  const { SELECTION_VARIABLE } = await import('./affected-tests-manifest.ts');
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { env?: string[] }> = configuration.tasks;
+  for (const [name, definition] of Object.entries(tasks)) {
+    const task = name.slice(name.lastIndexOf('#') + 1);
+    const narrowed = ['test', 'test:slow', 'test:self', 'test:self:slow', 'test:browser-fixtures'];
+    if (narrowed.includes(task) && !name.endsWith('#test:host')) {
+      expect(definition.env ?? [], name).toContain(SELECTION_VARIABLE);
+    }
+    if (task === 'test:gate' || task === 'test:coverage') {
+      expect(definition.env ?? [], name).not.toContain(SELECTION_VARIABLE);
+    }
+  }
+});
+
+test('every test lane that bypasses the JUnit wrapper goes through a runner that honours the selection', async () => {
+  // `test:slow` scripts used to call `bun test` directly, which would ignore the selection and run
+  // every slow file in a workspace the selector narrowed.
+  const { discoverWorkspaces } = await import('./affected-tests.ts');
+  for (const workspace of discoverWorkspaces(root)) {
+    const manifest = await Bun.file(join(root, workspace.directory, 'package.json')).json();
+    for (const lane of ['test', 'test:slow', 'test:self', 'test:self:slow']) {
+      const script: string | undefined = manifest.scripts?.[lane];
+      if (script === undefined) continue;
+      for (const command of script.split('&&')) {
+        if (!/\bbun test\b/.test(command)) continue;
+        expect(command, `${workspace.name} ${lane}`).toMatch(/bun-test-(?:junit|selected)\.ts/);
+      }
+    }
   }
 });
 
