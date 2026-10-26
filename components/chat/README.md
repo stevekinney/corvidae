@@ -159,6 +159,8 @@ export const onToolCall: McpAppToolCallHandler = (params, { signal }) =>
 
 A failure to load the resource, connect the bridge, or keep the frame on its document sets `data-state="error"`, shows "This app could not be loaded.", and calls `onError`. The frame remounts, and the app re-handshakes, when the permissions it would be granted, or whether `onToolCall` is set, changes.
 
+A message body is shown as raw text first, so its markdown preview is `data-state="pending"` until the rendered HTML replaces that text, then `data-state="rendered"`; it stays `pending` if rendering fails. The swap replaces the text nodes and so collapses a selection made before it, so a caller that selects text waits for `rendered`.
+
 ### Security boundary
 
 - **Sandbox.** The iframe is `sandbox="allow-scripts"` and nothing else: no `allow-same-origin`, so the page has an opaque origin and no access to the host's cookies, storage, or DOM; no forms, popups, or top navigation. It has a `srcdoc` and no `src`.
