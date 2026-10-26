@@ -25,6 +25,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
+// The harness looks a script up by the backend's bare model name, not the file's provider-prefixed one.
+const BARE_KNOWN_MODEL = KNOWN_MODEL.slice(KNOWN_MODEL.indexOf('/') + 1);
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
 
 async function start(
@@ -35,7 +37,7 @@ async function start(
   const fixture = createSqliteStorageFixture({ runtime });
   cleanups.push(() => fixture.dispose());
   const harness = await startFileBureau({
-    ...(script === undefined ? {} : { scripts: { [KNOWN_MODEL]: script } }),
+    ...(script === undefined ? {} : { scripts: { [BARE_KNOWN_MODEL]: script } }),
     overrides: {
       runtime,
       storage: fixture.configuration,
