@@ -586,7 +586,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       }
       return undefined;
     },
-    refresh,
+    refresh: directoryWatcher.reload,
   });
 
   return {

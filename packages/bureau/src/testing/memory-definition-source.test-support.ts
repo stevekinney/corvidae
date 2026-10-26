@@ -26,6 +26,10 @@ export interface MemoryDefinitionSource<TSource extends AgentSource | WorkflowSo
   readonly watchers: () => number;
   /** Run `hook` once, inside the next `write`, after its hash check and before it commits. */
   beforeCommit(hook: () => void): void;
+  /** Make the next `load()` (after `skip` more) reject with `error`, as a source that is briefly unavailable does. */
+  failNextLoad(error: Error, options?: { skip?: number }): void;
+  /** How many times `load()` was called. */
+  readonly loads: () => number;
 }
 
 const encoder = new TextEncoder();
@@ -38,6 +42,9 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
   const held = new Map<string, Uint8Array>();
   const listeners = new Set<(change: DefinitionSourceChange) => void>();
   let hook: (() => void) | undefined;
+  let failure: Error | undefined;
+  let skipLoads = 0;
+  let loads = 0;
 
   function entryOf(id: string, bytes: Uint8Array): DefinitionEntry {
     return { id, bytes, hash: hashDefinitionBytes(bytes) };
@@ -47,6 +54,14 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
     kind,
     ...extras,
     async load() {
+      loads += 1;
+      if (failure !== undefined && skipLoads > 0) {
+        skipLoads -= 1;
+      } else if (failure !== undefined) {
+        const error = failure;
+        failure = undefined;
+        throw error;
+      }
       return [...held].map(([id, bytes]) => entryOf(id, bytes));
     },
     watch(listener: (change: DefinitionSourceChange) => void) {
@@ -100,5 +115,10 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
     beforeCommit: (next) => {
       hook = next;
     },
+    failNextLoad: (error, options) => {
+      failure = error;
+      skipLoads = options?.skip ?? 0;
+    },
+    loads: () => loads,
   };
 }

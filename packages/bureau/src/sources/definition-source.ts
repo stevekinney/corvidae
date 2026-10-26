@@ -67,7 +67,10 @@ export interface DefinitionSource {
   load(): Promise<readonly DefinitionEntry[]>;
   /**
    * Tell `listener` about changes made outside Bureau's own write-through. A report of a change
-   * Bureau already made is harmless: Bureau reloads, and a reload is idempotent. Returns the
+   * Bureau already made is harmless: Bureau reloads, and a reload is idempotent. A report may
+   * list nothing: Bureau's catalogs depend on state outside the bytes (a revision record another
+   * process raised), so a source that rescans on a timer calls the listener on every rescan, and
+   * Bureau settles that state again. A listener may be called before `watch` returns. Returns the
    * unsubscribe.
    */
   watch(listener: (change: DefinitionSourceChange) => void): () => void;

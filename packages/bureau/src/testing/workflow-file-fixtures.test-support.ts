@@ -52,6 +52,8 @@ export interface WorkflowFileFixtureOptions {
   /** A source to run over instead of the fixture's directory; the directory options then do nothing. */
   readonly source?: WorkflowSource;
   readonly runtime?: RuntimeServices;
+  /** Where scan and watcher failures are reported. Defaults to throwing. */
+  readonly diagnose?: (message: string, cause: unknown) => void;
   readonly openWatcher?: NonNullable<Parameters<typeof workflowFileDirectory>[1]>['watchFactory'];
 }
 
@@ -65,9 +67,11 @@ export async function createWorkflowFileFixture(
   });
   const codeWorkflows = new Set(options.codeWorkflows ?? ['code-workflow']);
   const runtime = options.runtime ?? createDefaultRuntimeServices();
-  const diagnose = (message: string, cause: unknown): never => {
-    throw new Error(`${message} ${String(cause)}`);
-  };
+  const diagnose =
+    options.diagnose ??
+    ((message: string, cause: unknown): never => {
+      throw new Error(`${message} ${String(cause)}`);
+    });
   const catalog = createWorkflowFileCatalog({
     source:
       options.source ??

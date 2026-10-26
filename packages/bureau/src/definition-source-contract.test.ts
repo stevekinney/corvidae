@@ -550,3 +550,36 @@ describe('the directory source with watch: false', () => {
     stop();
   });
 });
+
+describe('a write whose reload fails', () => {
+  it('rejects saying the write is durable, and the catalog converges on its own', async () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
+    const fixture = await createWorkflowFileFixture({
+      source: memory.source,
+      runtime,
+      diagnose: () => undefined,
+    });
+    disposers.push(fixture.dispose);
+    const definition = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
+    const { hash } = await fixture.catalog.create('digest', definition);
+    expect(fixture.catalog.list()[0]).toMatchObject({ paused: false });
+
+    // The first load is the write's own read of the file; the second is the reload after it.
+    memory.failNextLoad(new Error('store unavailable'), { skip: 1 });
+    const failure = await fixture.catalog
+      .setPaused('digest', true, { expectedHash: hash })
+      .catch((thrown: unknown) => thrown);
+
+    // The pause is in the source, and the caller is told so rather than shown a success.
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('durable');
+    expect(memory.text('digest')).toContain('"paused": true');
+    expect(fixture.catalog.list()[0]).toMatchObject({ paused: false });
+
+    const converged = fixture.nextChange((change) => change.changed.includes('digest'));
+    await runtime.advance(60_000);
+    await converged;
+    expect(fixture.catalog.list()[0]).toMatchObject({ paused: true });
+  });
+});

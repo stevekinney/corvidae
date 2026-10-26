@@ -125,7 +125,7 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
     }
   }
 
-  async function scanOnce(): Promise<void> {
+  async function scanOnce(heartbeat: boolean): Promise<void> {
     const listing = await operations.listDirectory(directory);
     const next = new Map<string, DefinitionEntry>();
     for (const item of listing ?? []) {
@@ -144,7 +144,10 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
     }
     for (const id of entries.keys()) if (!next.has(id)) removed.push(id);
     entries = next;
-    if (added.length + changed.length + removed.length > 0) {
+    // A safety rescan that found nothing still tells the listeners, with empty lists: Bureau's
+    // catalogs depend on state outside the bytes (a revision record another process raised), so
+    // each rescan is their cue to settle it again.
+    if (heartbeat || added.length + changed.length + removed.length > 0) {
       for (const listener of listeners) {
         try {
           listener({ added, changed, removed });
@@ -156,6 +159,8 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
   }
 
   let dirty = false;
+  /** Set by the safety rescan's timer: the scan it causes tells the listeners even if nothing changed. */
+  let polled = false;
   let running: Promise<void> | undefined;
   /** Whether the directory is being watched: nothing is armed or polled until a listener asks. */
   let watching = false;
@@ -230,7 +235,10 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
   function startPolling(): void {
     if (pollTimer !== undefined || !watching) return;
     pollRuntime = options.runtime();
-    pollTimer = pollRuntime.timers.setInterval(trigger, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    pollTimer = pollRuntime.timers.setInterval(() => {
+      polled = true;
+      trigger();
+    }, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
   }
 
   async function loop(): Promise<void> {
@@ -243,10 +251,12 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
         return;
       }
       dirty = false;
+      const heartbeat = polled;
+      polled = false;
       // Armed before the scan, so a change after the scan reads the directory is not missed.
       try {
         await arm();
-        await scanOnce();
+        await scanOnce(heartbeat);
       } catch (error) {
         options.diagnose(`The ${options.label} could not be scanned.`, error);
       }

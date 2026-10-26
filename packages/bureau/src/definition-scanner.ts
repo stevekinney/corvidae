@@ -76,11 +76,25 @@ export interface DefinitionScanner<TEntry extends ScannedEntry> {
   readonly entries: () => ReadonlyMap<string, TEntry>;
   /** Rescan the source; resolves once the entries reflect a scan that began after this call. */
   readonly refresh: () => Promise<void>;
+  /**
+   * Rescan after a write the source already made durable. Like {@link refresh}, but it rejects
+   * when the scan that follows fails, saying the write is durable, so a write-through caller does
+   * not report success over a catalog that does not show it. A failed scan also schedules a
+   * rescan of its own, so the catalog catches up without waiting for the source to report.
+   */
+  readonly reload: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed an entry. Returns its unsubscribe. */
   readonly onChange: (listener: (change: DefinitionChange) => void) => () => void;
   /** Stop listening to the source and wait for a scan in flight. */
   readonly close: () => Promise<void>;
 }
+
+/**
+ * How long after a failed scan the next attempt runs, in milliseconds. A scan that fails leaves the
+ * catalog behind a source that may have changed; this bounds how long it stays behind when the
+ * source reports nothing.
+ */
+export const REPAIR_RESCAN_MILLISECONDS = 1000;
 
 export function createDefinitionScanner<TEntry extends ScannedEntry>(
   options: DefinitionScannerOptions<TEntry>,
@@ -134,10 +148,16 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
         }
       }
     }
+    failure = undefined;
     options.afterScan?.();
   }
 
   let dirty = false;
+  /** The error of the last scan when it failed, until a scan succeeds. */
+  let failure: { readonly error: unknown } | undefined;
+  let repairTimer: unknown;
+  /** True while `source.watch` runs: a listener it calls at once only marks the set dirty. */
+  let subscribing = false;
   let running: Promise<void> | undefined;
   let closed = false;
   let unwatch: (() => void) | undefined;
@@ -146,7 +166,14 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
     // Listening starts with the first scan, never at construction: a catalog nobody has
     // refreshed holds no watcher. It starts before the scan so a change after the scan reads
     // the source is not missed.
-    unwatch ??= source.watch(() => trigger());
+    if (unwatch === undefined) {
+      subscribing = true;
+      try {
+        unwatch = source.watch(() => trigger());
+      } finally {
+        subscribing = false;
+      }
+    }
     for (;;) {
       // Decided and cleared in one synchronous step, so a `refresh()` is either behind a scan
       // that has not started yet or starts a loop of its own, never handed a loop that is over.
@@ -158,7 +185,9 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
       try {
         await scanOnce();
       } catch (error) {
+        failure = { error };
         options.diagnose(`The ${options.label} could not be scanned.`, error);
+        scheduleRepair();
       }
     }
   }
@@ -166,7 +195,17 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
   function trigger(): void {
     if (closed) return;
     dirty = true;
+    if (subscribing) return;
     running ??= loop();
+  }
+
+  /** One rescan later, so a scan that failed is tried again whether or not the source reports. */
+  function scheduleRepair(): void {
+    if (closed || repairTimer !== undefined) return;
+    repairTimer = options.runtime.timers.setTimeout(() => {
+      repairTimer = undefined;
+      trigger();
+    }, REPAIR_RESCAN_MILLISECONDS);
   }
 
   return {
@@ -174,6 +213,17 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
     refresh() {
       trigger();
       return running ?? Promise.resolve();
+    },
+    async reload() {
+      trigger();
+      await running;
+      if (failure === undefined) return;
+      const { error } = failure;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `The ${options.label} was written and the change is durable, but reading it back failed: ${reason}. The catalog is behind the ${options.label} until a later rescan succeeds, which has been scheduled.`,
+        { cause: error },
+      );
     },
     onChange(listener) {
       listeners.add(listener);
@@ -183,6 +233,8 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
     },
     async close() {
       closed = true;
+      if (repairTimer !== undefined) options.runtime.timers.clearTimeout(repairTimer);
+      repairTimer = undefined;
       unwatch?.();
       unwatch = undefined;
       listeners.clear();

@@ -292,7 +292,7 @@ export function createWorkflowFileCatalog(
     expectedHash: string | null,
   ): Promise<WorkflowFileWriteResult> {
     const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
-    await watched.refresh();
+    await watched.reload();
     return { id, hash: written.hash };
   }
 
@@ -385,7 +385,7 @@ export function createWorkflowFileCatalog(
       return exclusive(async () => {
         checkIdentifier(id);
         await throughSource(() => source.delete(id, { expectedHash }));
-        await watched.refresh();
+        await watched.reload();
         return { id, hash: expectedHash };
       });
     },

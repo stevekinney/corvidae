@@ -42,7 +42,7 @@ export interface AgentFileWriterDependencies {
   validate(id: string, definition: AgentFileDefinition): AgentFileProblem | undefined;
   /** The definition as the source holds it now, read from the source and not from the last scan. */
   read(id: string): Promise<DefinitionEntry | undefined>;
-  /** Reload the source; resolves once the catalog reflects it. */
+  /** Reload the source after a write; resolves once the catalog reflects it, rejects if it cannot. */
   refresh(): Promise<void>;
 }
 
