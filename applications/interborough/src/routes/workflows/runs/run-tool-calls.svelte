@@ -80,6 +80,7 @@
   </ToolCalls>
 {:else if threadFailed}
   <ErrorState
+    variant="flat"
     title={TASK_COPY.toolCallsLoadFailed.title}
     description={TASK_COPY.toolCallsLoadFailed.description}
     headingLevel={3}

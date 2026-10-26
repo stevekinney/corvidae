@@ -163,6 +163,7 @@
     <DatePicker
       id="weft-audit-since"
       label={AUDIT_COPY.sinceLabel}
+      labelVisible={false}
       placeholder={AUDIT_COPY.sincePlaceholder}
       granularity="minute"
       bind:value={since}

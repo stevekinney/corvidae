@@ -12,7 +12,7 @@
    * @avoidWhen Reporting the result of a just-completed action — use alert or toast-region.
    * @related alert, empty-state, banner
    */
-  export type { ErrorStateProps } from './error-state.types.ts';
+  export type { ErrorStateProps, ErrorStateVariant } from './error-state.types.ts';
 </script>
 
 <script lang="ts">
@@ -28,6 +28,7 @@
     onRetry,
     retryLabel = 'Try again',
     headingLevel = 2,
+    variant = 'default',
     class: className,
     ...rest
   }: ErrorStateProps = $props();
@@ -45,21 +46,35 @@
   const tag = $derived(`h${safeLevel}`);
 </script>
 
-<div {...rest} class={classNames('cinder-error-state', className)}>
-  <Alert variant="danger" class="cinder-error-state-alert" aria-labelledby={titleId}>
-    <div class="cinder-error-state-body">
-      <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
-        {title}
-      </svelte:element>
-      <p class="cinder-error-state-description">{description}</p>
-      {#if detail}
-        <p class="cinder-error-state-detail">{detail}</p>
-      {/if}
-      {#if onRetry}
-        <div class="cinder-error-state-action">
-          <Button variant="secondary" label={retryLabel} onclick={() => onRetry()} />
-        </div>
-      {/if}
+{#snippet body()}
+  <svelte:element this={tag} id={titleId} class="cinder-error-state-title">
+    {title}
+  </svelte:element>
+  <p class="cinder-error-state-description">{description}</p>
+  {#if detail}
+    <p class="cinder-error-state-detail">{detail}</p>
+  {/if}
+  {#if onRetry}
+    <div class="cinder-error-state-action">
+      <Button variant="secondary" label={retryLabel} onclick={() => onRetry()} />
     </div>
-  </Alert>
+  {/if}
+{/snippet}
+
+<div
+  {...rest}
+  class={classNames('cinder-error-state', className)}
+  data-cinder-variant={variant === 'flat' ? 'flat' : undefined}
+>
+  {#if variant === 'flat'}
+    <div class="cinder-error-state-body" role="alert" aria-labelledby={titleId}>
+      {@render body()}
+    </div>
+  {:else}
+    <Alert variant="danger" class="cinder-error-state-alert" aria-labelledby={titleId}>
+      <div class="cinder-error-state-body">
+        {@render body()}
+      </div>
+    </Alert>
+  {/if}
 </div>

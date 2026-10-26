@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { declarationsFor } from '../../test/css.ts';
 import type { CollapsibleTriggerState } from './collapsible.types.ts';
 
 setupHappyDom();
@@ -393,5 +394,48 @@ describe('Collapsible root', () => {
 
     expect(root?.classList.contains('extra-class')).toBe(true);
     expect(root?.getAttribute('data-testid')).toBe('collapsible-root');
+  });
+});
+
+describe('Collapsible variant', () => {
+  test('the default variant sets no variant attribute', () => {
+    const { container } = render(Collapsible, { trigger: 'Details', children: bodySnippet() });
+    expect(
+      container.querySelector('.cinder-collapsible')?.hasAttribute('data-cinder-variant'),
+    ).toBe(false);
+  });
+
+  test("variant='flat' marks the root and its rules remove the border and the raised trigger", async () => {
+    const css = await Bun.file(new URL('./collapsible.css', import.meta.url)).text();
+    const { container } = render(Collapsible, {
+      trigger: 'Details',
+      children: bodySnippet(),
+      variant: 'flat',
+    });
+    expect(
+      container.querySelector('.cinder-collapsible')?.getAttribute('data-cinder-variant'),
+    ).toBe('flat');
+    const flat = ".cinder-collapsible[data-cinder-variant='flat']";
+    const root = declarationsFor(css, flat);
+    expect(root.get('border')).toBe('0');
+    expect(root.get('background')).toBe('transparent');
+    const triggerRule = declarationsFor(css, `${flat} .cinder-collapsible__trigger`);
+    expect(triggerRule.get('background')).toBe('transparent');
+    expect(triggerRule.get('padding')).toBe('var(--cinder-space-2) 0');
+    const panel = declarationsFor(css, `${flat} .cinder-collapsible__panel-inner`);
+    expect(panel.get('padding')).toBe('var(--cinder-space-2) 0 var(--cinder-space-3)');
+    expect(panel.get('background')).toBe('transparent');
+  });
+
+  test('flat keeps the toggle behavior', async () => {
+    const { container } = render(Collapsible, {
+      trigger: 'Details',
+      children: bodySnippet(),
+      variant: 'flat',
+      animated: false,
+    });
+    expect(trigger(container).getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(trigger(container));
+    expect(trigger(container).getAttribute('aria-expanded')).toBe('true');
   });
 });

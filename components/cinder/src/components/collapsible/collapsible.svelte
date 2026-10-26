@@ -12,7 +12,11 @@
    * @related accordion
    * @related accordion-item
    */
-  export type { CollapsibleProps, CollapsibleTriggerState } from './collapsible.types.ts';
+  export type {
+    CollapsibleProps,
+    CollapsibleTriggerState,
+    CollapsibleVariant,
+  } from './collapsible.types.ts';
 </script>
 
 <script lang="ts">
@@ -33,6 +37,7 @@
     triggerAriaLabel,
     triggerClass,
     labelClass,
+    variant = 'default',
     animated = true,
     idBase,
     class: className,
@@ -72,6 +77,7 @@
 <div
   {...rest}
   class={classNames('cinder-collapsible', className)}
+  data-cinder-variant={variant === 'flat' ? 'flat' : undefined}
   data-cinder-expanded={open ? '' : undefined}
   data-cinder-disabled={disabled ? '' : undefined}
 >

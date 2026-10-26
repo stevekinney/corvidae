@@ -30,6 +30,18 @@ Controlled — the parent owns the state with `bind:open`:
 </Collapsible>
 ```
 
+Flat — a row on the surrounding surface, with no border, no raised trigger, and no horizontal padding. Use it where the page is already a stack of flat rows:
+
+```svelte
+<script lang="ts">
+  import { Collapsible } from '@lostgradient/cinder';
+</script>
+
+<Collapsible variant="flat" trigger="Advanced options">
+  <p>Settings most people never change.</p>
+</Collapsible>
+```
+
 ### State model
 
 `open` is bindable. Without `bind:open`, it seeds local state and can still be updated by parent prop changes, but trigger clicks update local state only. Use `bind:open` (or mirror `onToggle` in the parent) when parent and trigger interactions must stay fully synchronized. `onToggle` fires on every toggle with the next boolean, so one-way observers stay in sync.
@@ -60,6 +72,7 @@ For multiple coordinated sections where opening one may close others, use [`Acco
 | `trigger` | `string` | yes | — | Trigger label text. (The snippet form is template-only; see the type above.) |
 | `triggerAriaLabel` | `string` | no | — | Accessible name override for the trigger button. The runtime prop also accepts a state-aware function (`{ open, disabled } => string`), but JSON Schema can only model the string variant. |
 | `triggerClass` | `string` | no | — | Additional class names applied to the disclosure trigger button. |
+| `variant` | `"default"` \| `"flat"` | no | `"default"` | Visual treatment. `'default'` is a bordered card with a raised trigger. `'flat'` drops the border, the raised trigger background, and the horizontal padding, so the disclosure reads as a row on the surrounding surface. |
 | `children` | `(opaque)` | yes | — | Panel content shown when open. Not expressible in JSON Schema; see the component types for the signature. |
 | `leadingIcon` | `(opaque)` | no | — | Optional decorative icon rendered inside the disclosure trigger. Not expressible in JSON Schema; see the component types for the signature. |
 | `onToggle` | `(opaque)` | no | — | Fired on every successful toggle with the next open state. Not called while disabled. Not expressible in JSON Schema; see the component types for the signature. |

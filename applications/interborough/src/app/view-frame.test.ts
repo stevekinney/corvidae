@@ -454,7 +454,9 @@ describe('the chat list, a new chat, and the agents', () => {
       [...line.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
     ).toEqual(['assistant', 'tool-runner']);
     // The outlet pads the page, so the empty state is Cinder's with its own padding removed.
-    expect(container.querySelector('.cinder-empty-state')?.classList).toContain('weft-view__empty');
+    expect(container.querySelector('[role="group"].weft-view__empty')?.classList).toContain(
+      'weft-view__empty',
+    );
   });
 
   test('the welcome says nothing of agents when the Bureau lists none', async () => {

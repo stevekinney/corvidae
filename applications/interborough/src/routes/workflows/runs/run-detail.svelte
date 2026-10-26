@@ -223,6 +223,7 @@
   </EmptyState>
 {:else if failed}
   <ErrorState
+    variant="flat"
     title={TASK_COPY.loadFailed.title}
     description={TASK_COPY.loadFailed.description}
     headingLevel={1}

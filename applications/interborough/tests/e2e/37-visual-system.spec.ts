@@ -101,7 +101,7 @@ test.describe('the empty chat screen on a fresh host', () => {
 
     // Cinder's EmptyState pads itself 48px by 32px; the frame takes that off, so the outlet's
     // padding is the only one and the state starts where the page does.
-    const empty = page.locator('[data-view="chat"] .cinder-empty-state');
+    const empty = page.locator('[data-view="chat"] .weft-view__empty');
     await expect(empty).toHaveCSS('padding-top', '0px');
     await expect(empty).toHaveCSS('padding-right', '0px');
     await expect(empty).toHaveCSS('padding-bottom', '0px');

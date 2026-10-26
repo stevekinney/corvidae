@@ -208,6 +208,7 @@
     </EmptyState>
   {:else if state === 'error'}
     <ErrorState
+      variant="flat"
       title={errorCopy.title}
       description={errorCopy.description}
       headingLevel={1}

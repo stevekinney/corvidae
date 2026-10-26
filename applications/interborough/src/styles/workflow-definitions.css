@@ -238,30 +238,6 @@
   align-items: center;
 }
 
-/* Cinder's collapsible is a bordered card with a raised trigger. These disclosures sit on a page
- * that is flat rows, so each is a faint rule and a plain trigger, with nothing boxed inside it. */
-.ib-disclosure {
-  background: transparent;
-  border: 0;
-  border-block-start: 1px solid var(--cinder-border-faint);
-  border-radius: 0;
-}
-
-.ib-disclosure .cinder-collapsible__trigger {
-  padding: var(--cinder-space-2) 0;
-  background: transparent;
-  border-radius: 0;
-}
-
-.ib-disclosure .cinder-collapsible__label {
-  font-weight: 600;
-}
-
-.ib-disclosure .cinder-collapsible__panel-inner {
-  padding: var(--cinder-space-2) 0 var(--cinder-space-3);
-  background: transparent;
-}
-
 .ib-workflow__alert-title {
   margin: 0;
   font-weight: 600;

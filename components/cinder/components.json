@@ -23,6 +23,7 @@
       "content",
       "control",
       "data-table",
+      "density",
       "ease",
       "feed-event",
       "file-upload",
@@ -60,6 +61,7 @@
       "tracking",
       "tree",
       "type",
+      "type-role",
       "virtual-list",
       "z"
     ],
