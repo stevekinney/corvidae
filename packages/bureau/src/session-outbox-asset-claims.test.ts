@@ -16,7 +16,7 @@ import {
   waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   appendMessages,
@@ -80,7 +80,8 @@ async function openBureau(
 ): Promise<Bureau> {
   const bureau = await createBureau({
     agents: { echo },
-    persistence: textValueStore(environment.persistence, { disposeUnderlyingStorage: false }),
+    storage: environment.persistence,
+    durableExecution: false,
     runtime: environment.runtime,
     onDiagnostic: (diagnostic) => environment.diagnostics.push(diagnostic),
     ...(options.assets === false

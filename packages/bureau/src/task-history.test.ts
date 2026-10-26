@@ -1,7 +1,7 @@
 // COR-1481 — every task records its originating user message as its own history,
 // apart from the session transcript, and its owner outlives the run store.
 
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   createMockGenerate,
@@ -18,6 +18,7 @@ import { createAskingAgent } from './test/task-record-crash-agent';
 import { TASK_RECORD_KEY_PREFIX } from './task-registry';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { retireSettledTasks, SHORT_TASK_RETENTION } from './testing/run-retirement.test-support';
 import type { AgentDefinitions } from './agent-catalog';
 
 const finishes: GenerateFunction = async () => ({ content: 'done', toolCalls: [] });
@@ -105,6 +106,7 @@ describe('a task’s own message history', () => {
   });
 
   it('forgets a task whose run is deleted', async () => {
+    const runtime = createManualRuntimeServices();
     const bureau = await createBureau<AgentDefinitions>({
       id: 'history-delete',
       agents: {
@@ -112,6 +114,8 @@ describe('a task’s own message history', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
     try {
       const run = await bureau.createRun({
@@ -121,7 +125,7 @@ describe('a task’s own message history', () => {
       });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
 
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
 
       expect(await bureau.tasks.get(run.id)).toBeUndefined();
       expect(await bureau.tasks.history(run.id)).toBeUndefined();
@@ -131,6 +135,7 @@ describe('a task’s own message history', () => {
   });
 
   it('deletes a run whose task record cannot be read, and diagnoses it', async () => {
+    const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       id: 'history-unreadable',
@@ -139,6 +144,8 @@ describe('a task’s own message history', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
+      runtime,
+      ...SHORT_TASK_RETENTION,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     try {
@@ -153,7 +160,7 @@ describe('a task’s own message history', () => {
         '{not json',
       );
 
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
 
       expect(bureau.getRun(run.id)).toBeUndefined();
       expect(diagnostics.some((message) => message.includes('unreadable task record'))).toBe(true);

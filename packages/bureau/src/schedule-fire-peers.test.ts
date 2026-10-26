@@ -26,6 +26,7 @@ import {
   reviewOf,
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();
 
@@ -155,7 +156,7 @@ describe('a peer closing a fire’s last review ends the stream another instance
     );
     await sleep(100);
 
-    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(peer, Date.now() + 60 * 60 * 1000)).toBe(1);
     const frames = await reading;
 
     expect(frames.map((frame) => (frame.data as { status?: string }).status)).toEqual([

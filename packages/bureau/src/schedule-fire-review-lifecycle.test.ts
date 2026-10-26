@@ -34,6 +34,7 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();
 const { open } = harness;
@@ -156,7 +157,7 @@ describe('an unanswered fire approval expires', () => {
     const pending = await sessionMetadata(bureau, 'expiring-session');
     expect(keysOf(pending['pendingApprovalOverrides'])).toEqual([review.id]);
 
-    const swept = await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000);
+    const swept = await expireReviews(bureau, Date.now() + 60 * 60 * 1000);
 
     expect(swept).toBe(1);
     expect(reviewsOf(bureau, fireId)).toEqual([]);
@@ -171,7 +172,7 @@ describe('an unanswered fire approval expires', () => {
     expect(keysOf(metadata['pendingApprovalRounds'])).toEqual([]);
     // Expired, not decided: nothing ran, and a second sweep finds nothing.
     expect(charges).toEqual([]);
-    expect(await bureau.sweepExpiredReviews(Date.now() + 2 * 60 * 60 * 1000)).toBe(0);
+    expect(await expireReviews(bureau, Date.now() + 2 * 60 * 60 * 1000)).toBe(0);
     const refused = await rejectionOf(
       bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
@@ -271,7 +272,7 @@ describe('the audit record of an expired fire approval', () => {
     expect(superseded.superseded).toBe(true);
     expect(charges).toEqual([]);
 
-    expect(await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(bureau, Date.now() + 60 * 60 * 1000)).toBe(1);
 
     const records = await bureau.auditTrail?.query({ runId: fireId });
     const expired = records?.find((record) => record.type === 'review.tool-approval.expired');
@@ -660,7 +661,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       await bureau.resolveReview({ id: reviewId, decision: 'approve', principal: OWNER.alice });
     },
     expired: async (bureau: Bureau) => {
-      expect(await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+      expect(await expireReviews(bureau, Date.now() + 60 * 60 * 1000)).toBe(1);
     },
   };
 

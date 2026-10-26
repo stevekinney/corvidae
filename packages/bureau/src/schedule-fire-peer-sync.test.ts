@@ -45,6 +45,7 @@ import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import type { DefaultAgentFields } from './testing/default-agent.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();
 
@@ -174,7 +175,7 @@ describe('a fire review a peer closes, with no stream open', () => {
       'peer-sync-expired',
     );
 
-    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(peer, Date.now() + 60 * 60 * 1000)).toBe(1);
 
     await eventually(
       () => (reviewsOf(holder, fireId).length === 0 ? true : undefined),
@@ -625,7 +626,7 @@ describe('the grace a review is given to reach durable state', () => {
     );
     // The holder hears nothing of the expiry: only a read of durable state can drop the review.
     fireReviewFollowerOf(holder).unfollow(fireId);
-    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(peer, Date.now() + 60 * 60 * 1000)).toBe(1);
 
     await fireReviewFollowerOf(holder).reread(fireId);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
@@ -706,7 +707,7 @@ describe('a fire read again when its events cannot be trusted', () => {
     );
     hold.armed = true;
     // The peer closes the approval just after it was announced.
-    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(peer, Date.now() + 60 * 60 * 1000)).toBe(1);
     // 100 ms short of the 30 s grace, and standing still: the review is too young however long
     // the host takes to get to the read below.
     clockState.frozenAt = review.requestedAt + 29_900;
@@ -793,7 +794,7 @@ describe('the grace of an approval that may not have reached the session yet', (
     );
     // The holder hears nothing of the peer's expiry: only a read of durable state can drop it.
     fireReviewFollowerOf(holder).unfollow(fireId);
-    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    expect(await expireReviews(peer, Date.now() + 60 * 60 * 1000)).toBe(1);
 
     clock.now = requestedAt + 29_999;
     await fireReviewFollowerOf(holder).reread(fireId);

@@ -865,19 +865,12 @@ describe('what the retry loop must not hold (COR-1476)', () => {
   it('ends its backoff wait the moment the bureau shuts down', async () => {
     const seam = seamStorage(new MemoryStorage());
     const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
-    // Each wait is held until the test lets it go.
-    const sleeps: Array<{ readonly promise: Promise<void>; readonly resolve: () => void }> = [];
+    // Each wait is a timer on the runtime, held until the test advances the clock.
+    const runtime = createManualRuntimeServices();
     const bureau = await openBureau(
       seam.storage,
       async () => ({ content: 'answer', toolCalls: [] }),
-      {
-        sessionPersistenceSleep: () => {
-          const sleep = deferred<void>();
-          sleeps.push({ promise: sleep.promise, resolve: () => sleep.resolve() });
-          return sleep.promise;
-        },
-        onDiagnostic: () => {},
-      },
+      { runtime, onDiagnostic: () => {} },
     );
     try {
       const run = await bureau.createRun({
@@ -888,19 +881,21 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       });
       await bureau.waitForDurableRun(run.id);
       // The loop is in its first wait, which nothing has released.
-      await pollUntil(() => sleeps.length === 1);
+      const firstBackoffDueAt = runtime.monotonic.now() + 10;
+      await pollUntil(() =>
+        runtime.pendingTimers().some((timer) => timer.dueAt === firstBackoffDueAt),
+      );
 
-      // Disposal does not wait for it: it completes while the wait still stands.
+      // Disposal does not wait for it: it completes while the clock has not moved.
       let disposed = false;
       const disposing = bureau.dispose().then(() => {
         disposed = true;
       });
       await pollUntil(() => disposed);
-      expect(sleeps).toHaveLength(1);
+      expect(runtime.monotonic.now()).toBeLessThan(firstBackoffDueAt);
       await disposing;
     } finally {
       failing.stop();
-      sleeps.forEach((sleep) => sleep.resolve());
       await bureau.dispose();
     }
   });
@@ -970,20 +965,12 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
   it('backs off between attempts, doubling to a 2 s cap, and reports only the first failure', async () => {
     const seam = seamStorage(new MemoryStorage());
     const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
-    const delays: number[] = [];
+    const runtime = createManualRuntimeServices();
     const diagnostics: BureauDiagnostic[] = [];
     const bureau = await openBureau(
       seam.storage,
       async () => ({ content: 'answer', toolCalls: [] }),
-      {
-        // Every wait is recorded and cut to one event-loop turn, so the loop's
-        // schedule is read, not timed.
-        sessionPersistenceSleep: async (milliseconds) => {
-          delays.push(milliseconds);
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        },
-        onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
-      },
+      { runtime, onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
       const run = await bureau.createRun({
@@ -993,10 +980,16 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
         maximumSteps: 1,
       });
       await bureau.waitForDurableRun(run.id);
+      // Each wait is a timer on the runtime: the loop's schedule is read off the clock, one wait
+      // at a time, doubling from 10 ms and holding at 2000 ms.
+      const expectedDelays = [10, 20, 40, 80, 160, 320, 640, 1280, 2000, 2000, 2000];
+      for (const expectedDelay of expectedDelays) {
+        const dueAt = runtime.monotonic.now() + expectedDelay;
+        await pollUntil(() => runtime.pendingTimers().some((timer) => timer.dueAt === dueAt));
+        await runtime.advance(expectedDelay);
+      }
       await pollUntil(() => failing.attempts() >= 12);
 
-      expect(delays.slice(0, 9)).toEqual([10, 20, 40, 80, 160, 320, 640, 1280, 2000]);
-      expect(delays.slice(9).every((delay) => delay === 2000)).toBe(true);
       expect(
         diagnostics.filter(
           (diagnostic) =>

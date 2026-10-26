@@ -1,14 +1,9 @@
 /**
- * COR-323 — a scheduler task and a schedule's fire run as a named catalog agent, resolved through
+ * COR-323 — a schedule's fire runs as a named catalog agent, resolved through
  * the catalog, with that agent's own `generate`. No Bureau-wide `generate` exists to run them on,
  * and the implicit `bureau` agent that used to stand for it is refused rather than run. COR-1667: creating a schedule under a name the catalog lacks is refused too, so a fire only meets a missing agent after the catalog loses one.
  */
-import {
-  createAgent,
-  createAgentSession,
-  OPERATIVE_RESOLVE_RUN_OPTIONS,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { createAgent, createAgentSession, type GenerateFunction } from '@lostgradient/operative';
 import { decode, encode, encodeStorageKeyComponent } from '@lostgradient/weft';
 import { Database } from 'bun:sqlite';
 import { createConversationHistory } from 'conversationalist';
@@ -46,108 +41,6 @@ function answering(reply: string): { generate: GenerateFunction; calls: () => nu
     calls: () => calls,
   };
 }
-
-/** `agent`, resolving the token cap a `createAgent` agent has no option for. */
-function withMaximumTokens<TAgent extends AgentDefinitions[string]>(
-  agent: TAgent,
-  maximumTokens: number,
-): TAgent {
-  const resolve = Reflect.get(agent, OPERATIVE_RESOLVE_RUN_OPTIONS) as (
-    ...args: unknown[]
-  ) => Promise<Record<string, unknown>>;
-  return {
-    ...agent,
-    [OPERATIVE_RESOLVE_RUN_OPTIONS]: async (...args: unknown[]) => ({
-      ...(await resolve.apply(agent, args)),
-      maximumTokens,
-    }),
-  };
-}
-
-describe('submitSchedulerTask', () => {
-  async function openWithTwoAgents() {
-    const worker = answering('worker answer');
-    const other = answering('other answer');
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        worker: createAgent({ generate: worker.generate }),
-        other: createAgent({ generate: other.generate }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-    bureaus.push(bureau);
-    return { bureau, worker, other };
-  }
-
-  it('runs the named agent’s own generate, and no other agent’s', async () => {
-    const { bureau, worker, other } = await openWithTwoAgents();
-
-    const { taskId } = await bureau.submitSchedulerTask({
-      agentName: 'worker',
-      message: 'do the work',
-      priority: 'background',
-    });
-    const result = await bureau.awaitSchedulerTask(taskId);
-
-    expect(result?.content).toBe('worker answer');
-    expect(worker.calls()).toBe(1);
-    expect(other.calls()).toBe(0);
-  });
-
-  it('refuses an agent the catalog does not hold with NOT_FOUND', async () => {
-    const { bureau, worker } = await openWithTwoAgents();
-
-    const refusal = await rejectionOf(
-      bureau.submitSchedulerTask({ agentName: 'ghost', message: 'hello' }),
-    );
-
-    expect(refusal).toBeInstanceOf(BureauError);
-    expect((refusal as BureauError).code).toBe('NOT_FOUND');
-    expect(worker.calls()).toBe(0);
-  });
-
-  it('refuses the implicit "bureau" agent with NOT_FOUND, never running it', async () => {
-    const { bureau } = await openWithTwoAgents();
-
-    const refusal = await rejectionOf(
-      bureau.submitSchedulerTask({ agentName: 'bureau', message: 'hello' }),
-    );
-
-    expect((refusal as BureauError).code).toBe('NOT_FOUND');
-  });
-
-  it('carries the agent’s token cap into the task run', async () => {
-    let seen: number | undefined;
-    const base = createAgent({
-      generate: async ({ maximumTokens }) => {
-        seen = maximumTokens;
-        return { content: 'ok', toolCalls: [] };
-      },
-    });
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: { capped: withMaximumTokens(base, 77) },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-    bureaus.push(bureau);
-
-    const { taskId } = await bureau.submitSchedulerTask({ agentName: 'capped', message: 'go' });
-    await bureau.awaitSchedulerTask(taskId);
-
-    expect(seen).toBe(77);
-  });
-
-  it('requires an agent name', async () => {
-    const { bureau } = await openWithTwoAgents();
-
-    const refusal = await rejectionOf(
-      bureau.submitSchedulerTask({ message: 'hello' } as Parameters<
-        typeof bureau.submitSchedulerTask
-      >[0]),
-    );
-
-    expect((refusal as BureauError).code).toBe('BAD_REQUEST');
-  });
-});
 
 describe('a schedule’s fire', () => {
   it('runs the named agent’s own generate on a Bureau with only catalog agents', async () => {

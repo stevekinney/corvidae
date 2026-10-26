@@ -30,7 +30,6 @@ export {
   BureauFaultSelectorResolutionError,
   selectAssetWorkFaultTarget,
   selectAuditWriteFaultTarget,
-  selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
 } from './fault-plan';
 export type {

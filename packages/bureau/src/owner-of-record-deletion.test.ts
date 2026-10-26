@@ -1,5 +1,4 @@
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -14,7 +13,8 @@ async function openBureau() {
     agents: {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    persistence: textValueStore(new MemoryStorage()),
+    storage: { type: 'memory' },
+    durableExecution: false,
   });
 }
 

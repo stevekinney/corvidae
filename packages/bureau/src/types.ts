@@ -29,12 +29,6 @@ import type {
   HumanInputSchema,
   LivenessSnapshot,
   RunFrame,
-  RunReport,
-  RunResult,
-  Scheduler,
-  SchedulerPriority,
-  SchedulerState,
-  SchedulerTaskLocation,
   SelectionPlan,
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
@@ -52,7 +46,6 @@ import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type {
   ConditionalTextValueStore,
-  HistoryPolicy,
   ListFilter,
   ListOptions,
   ObservabilityOptions,
@@ -129,12 +122,6 @@ export interface ProviderRouteConfiguration {
   provider: ProviderConfiguration;
   budgetRatio?: number;
 }
-
-export type RedactedProviderConfiguration = Omit<ProviderConfiguration, 'apiKey'>;
-
-export type RedactedProviderRouteConfiguration = Omit<ProviderRouteConfiguration, 'provider'> & {
-  provider: RedactedProviderConfiguration;
-};
 
 export type RoutingConfiguration =
   | {
@@ -227,25 +214,12 @@ export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, '
   enabled?: boolean;
 }
 
-export interface SchedulerConfiguration {
-  enabled?: boolean;
-  idleDelay?: number;
-  /**
-   * How long a settled scheduler task stays resolvable through
-   * `locateSchedulerTask` / `awaitSchedulerTask` before it expires (and one
-   * window later is forgotten). Finite and greater than zero; unset defaults to
-   * 3600000 milliseconds (one hour), and an explicit value overrides that
-   * default. Forwarded to `createScheduler`.
-   */
-  retentionWindowMs?: number;
-}
-
 // ── Diagnostics ──────────────────────────────────────────────────────
 
 /**
  * A single operational diagnostic emitted by bureau internals — recovery
  * failures, live-frame listener exceptions, dispose errors, and persistence
- * failures. Distinct from {@link PersistenceOptions.onLog}: `onLog` carries
+ * failures. Distinct from {@link BureauOptions.onLog}: `onLog` carries
  * only replay-safe `ctx.log` records emitted BY durable workflow code, while
  * `BureauDiagnostic` covers bureau's own operational logging — the sites
  * that today write straight to `console.error`/`console.warn`.
@@ -264,54 +238,6 @@ export interface BureauDiagnostic {
 
 /** Sink for {@link BureauDiagnostic} events. See {@link BureauOptions.onDiagnostic}. */
 export type DiagnosticSink = (diagnostic: BureauDiagnostic) => void;
-
-// ── Persistence Options ─────────────────────────────────────────────
-
-/**
- * Unified persistence options for {@link BureauOptions.persistence}.
- *
- * Pass `.persistence({ store, history, observability, onLog })` to co-locate the
- * storage backend with its operational knobs. The bureau builds one Weft engine
- * over `store` — the engine handles durable run checkpointing; a `ConditionalTextValueStore`
- * view of the same backend is used for sessions, cache, and memory.
- *
- * Only `store` is required. `history` and `observability` are the two operational
- * knobs exposed in v1; additional guardrails can be specified but are deferred.
- *
- * @see {@link BureauOptions.persistence}
- */
-export interface PersistenceOptions {
-  /**
-   * The Weft storage backend config. The bureau resolves this to a raw `Storage`
-   * and builds both the durable engine AND the `ConditionalTextValueStore` KV layer from it.
-   * One config → one backend → one engine (the Weft invariant: one engine per
-   * durable store).
-   */
-  store: StorageConfiguration;
-
-  /**
-   * History circuit-breaker for the durable engine. An agent run checkpoints its
-   * full transcript per step; `history.maxEvents` caps how long the event-log may
-   * grow before the run is force-terminated. Omit to disable.
-   */
-  history?: HistoryPolicy;
-
-  /**
-   * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
-   * default interceptor; pass an {@link ObservabilityOptions} object (minus
-   * `eventTarget`, which the engine supplies) to customize.
-   * `@opentelemetry/api` is an optional peer — spans are no-ops without it, so
-   * enabling this is safe before any telemetry backend exists.
-   */
-  observability?: boolean | Omit<ObservabilityOptions, 'eventTarget'>;
-
-  /**
-   * Host sink for `ctx.log` records emitted by durable workflows. Receives every
-   * replay-safe log record from inline execution. A throwing sink falls back to
-   * the host console without failing the workflow.
-   */
-  onLog?: (record: WorkflowLogRecord) => void;
-}
 
 // ── Bureau (headless, no HTTP) ──────────────────────────────────────
 
@@ -373,7 +299,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * and doesn't dispatch through the catalog at all. There is no
    * register/unregister lifecycle: the map is fixed for the bureau's
    * lifetime, independent of and additive to `createRun` (a bureau may use
-   * either surface or both). Every run, scheduler task, and schedule fire
+   * either surface or both). Every run and schedule fire
    * belongs to one of these agents.
    *
    * The name `bureau` is reserved (it named the implicit Bureau-wide agent,
@@ -456,26 +382,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   modelPolicy?: BureauModelPolicyOptions;
   store?: Store;
   /**
-   * Persistence for this bureau. Accepts three forms:
-   *
-   * - **`PersistenceOptions`** — `{ store: StorageConfiguration, history?, observability?, onLog? }`:
-   *   the full options-object form. The bureau resolves `store` to a Weft `Storage`
-   *   backend and builds both the durable engine AND the KV layer from it. This is
-   *   the canonical form for durable bureaus: one config → one engine.
-   *
-   * - **`StorageConfiguration`** — shorthand for `{ store: config }` with no extra
-   *   knobs. Durable execution is on by default for persistent backends (`sqlite`,
-   *   `lmdb`) and off by default for `memory` (which loses checkpoints with the
-   *   process). Use `storage` field or `durableExecution` override if needed.
-   *
-   * - **`ConditionalTextValueStore`** — KV-only (no durable engine). Used for session/cache
-   *   persistence without durability. Cannot be combined with `durableExecution:
-   *   true` (a durable engine needs a raw `Storage` to checkpoint against).
-   *
-   * When omitted, runs are ephemeral (in-memory loop, no sessions persisted).
-   */
-  persistence?: PersistenceOptions | StorageConfiguration | ConditionalTextValueStore;
-  /**
    * Storage configuration or an already-constructed Weft storage adapter. Raw
    * adapters let platform packages such as `cloudflare` supply a Durable Object
    * SQLite backend; their lifecycle remains owned by the caller.
@@ -494,11 +400,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `true` forces the engine on (incl. for `memory`, so durable behavior is
    * testable locally); `false` forces it off even for a persistent backend.
    * Has no effect without any `storage` (a durable engine needs a backend).
-   *
-   * `durableExecution: true` is rejected when combined with a custom
-   * `persistence` value: `persistence` shadows `storage`, so the engine and the
-   * session store would live on different backends and a recovered run could
-   * never be found. Provide `storage` WITHOUT `persistence` for durable runs.
    *
    * Recovered runs are registered through Weft's pre-resume recovery hook, so
    * {@link Bureau.getRun} and live event subscribers see them before resumed
@@ -633,15 +534,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
-  scheduler?: SchedulerConfiguration;
   /**
    * AB-13 — declarative flow control gating run ADMISSION, composed over
    * operative's `createFlowController`: a per-key concurrency cap, a rate
    * limit keyed by an arbitrary function of the trigger, and singleton
    * dedupe of concurrent identical triggers. Applies uniformly to both
-   * API-triggered runs (`createRun`) and scheduler-originated ones
-   * (`submitSchedulerTask`, durable schedule fires) — the same policy
-   * instance tracks state across both surfaces. `concurrency`/`rateLimit`
+   * API-triggered runs (`createRun`) and durable schedule fires — the same
+   * policy instance tracks state across both surfaces. `concurrency`/`rateLimit`
    * default their grouping key to the run's `agentName`; `singleton`
    * requires an explicit key (there is no sane default identity for "this
    * is a duplicate of that"). A rejected admission throws
@@ -689,21 +588,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * this option.
    */
   wakeup?: boolean;
-  sessionPersistenceRetryDelayMilliseconds?: number;
-  sessionPersistenceSleep?: (milliseconds: number) => Promise<void>;
-  /**
-   * Injectable sleep used ONLY to bound `shutdown({ timeoutMilliseconds })`'s
-   * wait (AB-207). Defaults to a real `setTimeout`-backed sleep, cleared via
-   * `signal` once the real teardown chain wins the race first — otherwise a
-   * `shutdown({ timeoutMilliseconds })` call on a bureau whose teardown
-   * finishes quickly would still hold a live timer open for the full
-   * duration. Tests supply a manually-controlled promise here instead of a
-   * fake system clock — the same pattern `sessionPersistenceSleep` already
-   * establishes — so the timeout-elapsed acceptance criterion never depends
-   * on a real wall-clock wait; a test implementation should also honor
-   * `signal` so it does not itself leak a pending timer/interval.
-   */
-  shutdownTimeoutSleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   /**
    * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
    * default interceptor; pass an {@link ObservabilityOptions} (minus `eventTarget`,
@@ -862,7 +746,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * monotonic time, timers, identifiers, randomness, and deferred-work
    * tracking. `createBureau` resolves `options.runtime ?? createDefaultRuntimeServices()`
    * exactly once, before any subsystem is constructed, and snapshots that
-   * single instance into every run, session, schedule, scheduler task,
+   * single instance into every run, session, schedule,
    * heartbeat tick, audit write, webhook delivery, and background evaluation
    * the bureau starts — two bureaus in one process given independent manual
    * runtimes never share a clock, an identifier sequence, or a deferred
@@ -920,8 +804,8 @@ export type BureauEventType = keyof BureauEventMap & string;
  * - `'pending'` — awaiting a decision.
  * - `'approved'` / `'denied'` — resolved via `resolveReview` with `decision: 'approve' | 'deny'`.
  * - `'rejected'` — resolved via `resolveReview` with `decision: 'reject'` (requires a reason).
- * - `'expired'` — a tool-approval review swept by `sweepExpiredReviews` past its binding's `expiresAt`.
- * - `'revoked'` — transitioned by `deleteRun`/`deleteSession` via `revokePendingApprovalsForRun`.
+ * - `'expired'` — a tool-approval review swept by the expiry pass (a schedule fire's, the maintenance pass's) past its binding's `expiresAt`.
+ * - `'revoked'` — transitioned by task-retention expiry or `deleteSession` via `revokePendingApprovalsForRun`.
  * - `'canceled'` — transitioned by `abortRun`/`cancelDurableRun` via `revokePendingApprovalsForRun`.
  * - `'superseded'` — a tool-approval review whose `resumeApproval` re-gate produced a new `pendingApproval` for the same `callId`.
  */
@@ -1085,8 +969,7 @@ export interface BureauShutdownOptions {
    * Bounds `shutdown()`'s WAIT only — see {@link Bureau.shutdown}. Omit to
    * wait indefinitely.
    *
-   * The wait itself sleeps on `BureauOptions.shutdownTimeoutSleep`, which
-   * defaults to a sleep driven by this bureau's own resolved
+   * The wait itself sleeps on this bureau's own resolved
    * `RuntimeServices.timers` (AB-260's deterministic contract) — never a
    * real timer, even under a real-globals bureau. Under a
    * `ManualRuntimeServices`, that means nothing advances this wait on its
@@ -1109,7 +992,6 @@ export interface BureauShutdownOwnerReport {
    * reserved for the day Bureau composes one; no row carries it today.
    */
   readonly kind:
-    | 'scheduler'
     | 'online-evals'
     | 'webhook-notifier'
     | 'audit-trail'
@@ -1288,16 +1170,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `operative.runs.events` engine's `runFeeds` and a client can watch any
    * run this bureau started.
    *
-   * A feed outlives its run's completion and is reaped by `deleteRun`, so a
-   * client that subscribes on hearing `run.completed` still gets the whole
-   * history. A host that never deletes runs retains them.
+   * A feed outlives its run's completion and is reaped when the run's task
+   * expires under {@link BureauOptions.taskRetention}, so a client that
+   * subscribes on hearing `run.completed` still gets the whole history. A
+   * host that keeps `taskRetention` at `'forever'` retains them.
    *
    * Read-only: entries are bureau's to create and remove.
    */
   readonly runEventFeeds: AgentRunEventRegistry;
   readonly store: Store;
   readonly memory: GovernedMemory | undefined;
-  readonly scheduler: Scheduler | undefined;
   /**
    * AB-246 — the model-catalog refresh service (AB-64's catalog, AB-34's
    * started-work control contract). Present regardless of `D`, matching the
@@ -1419,20 +1301,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   locateRunCreationReceipt(
     request: LocateRunCreationReceiptRequest,
   ): Promise<RunCreationReceiptLocation>;
-  submitSchedulerTask(request: SubmitSchedulerTaskRequest): Promise<SubmitSchedulerTaskResponse>;
-  /**
-   * Resolve a scheduler receipt's `taskId` to `in-progress`, `terminal` (with the
-   * settled outcome), `expired`, or `not-found`. Throws `BureauError`
-   * (`NOT_CONFIGURED`) synchronously when the scheduler is not enabled.
-   */
-  locateSchedulerTask(taskId: string): SchedulerTaskLocation;
-  /**
-   * Await a scheduler task's settlement through its receipt `taskId`. Rejects
-   * with `SchedulerTaskLookupError` for an expired or unknown id. Throws
-   * `BureauError` (`NOT_CONFIGURED`) synchronously when the scheduler is not
-   * enabled.
-   */
-  awaitSchedulerTask(taskId: string): Promise<RunResult | null>;
   /**
    * The runs `createRun` started that this process still holds. A
    * `bureau.run()` run is not listed, though `getRun` and `abortRun` accept
@@ -1442,7 +1310,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * A run this process holds, by id: a `createRun` run's `RunSummary.id`, or
    * the `id` on a `bureau.run()` handle (COR-1302). A `createRun` run is held
-   * after it settles, until `deleteRun`. A `bureau.run()` run is held from the
+   * after it settles, until its task expires under {@link BureauOptions.taskRetention}. A `bureau.run()` run is held from the
    * moment `bureau.run()` returns until it settles, and then released on its
    * own, as it was before it could be read by id. Until its agent's run is
    * built — and for its whole life when Bureau cannot build it (a
@@ -1516,20 +1384,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   ): Subscription;
 
   /**
-   * Synchronously returns the versioned, JSON-serializable {@link RunReport}
-   * (AB-96) for a run — a plain in-memory read, no I/O, no promise.
-   *
-   * For a terminal run (`completed`/`error`/`aborted`) this is the cached
-   * report built at the moment the run's lifecycle event fired. For a
-   * still-`running` run this synchronously builds a **partial** report from
-   * the live `RunState` (accumulated usage, transcript through the last
-   * checkpointed step) — the graceful-shutdown path: call this right after
-   * `abortRun(id)` (or from a `SIGTERM` handler, before process exit) to
-   * capture what the run had accomplished, without waiting for the abort to
-   * fully settle. Returns `undefined` when `id` is unknown.
-   */
-  getRunReport(id: string): RunReport | undefined;
-  /**
    * Requests cancellation of a running run and returns its summary with
    * `status: 'aborting'`. Accepts the ids {@link Bureau.getRun} accepts. For a
    * `bureau.run()` run (COR-1302) this works from the moment `bureau.run()`
@@ -1539,7 +1393,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * returns its terminal summary.
    */
   abortRun(id: string): RunSummary;
-  deleteRun(id: string): Promise<void>;
 
   /**
    * AB-369: every run `abortRun` has requested cancellation for but whose
@@ -1650,7 +1503,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * return value"): resolves `true` whenever there was ANY maintenance
    * surface to drive — a composed durable engine, OR just a KV-backed
    * audit trail with no durable engine at all (a persistent backend with
-   * `durableExecution: false`, or a custom KV-only `persistence`). This
+   * `durableExecution: false`). This
    * used to document `undefined` for "no durable engine is composed",
    * which was accurate before this issue but is no longer: a KV-only
    * bureau now genuinely has maintenance to run (audit retention) even
@@ -1694,32 +1547,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * engine is composed; throws `BureauError('NOT_FOUND')` when the session has no current run.
    */
   signalSession(sessionId: string, name: string, payload?: unknown): Promise<void>;
-
-  /**
-   * Intended to send a validated, request/response update to a session's
-   * current in-flight run, but currently unsupported: after the existing
-   * `BureauError('NOT_CONFIGURED', subject: 'durable')` (no durable engine
-   * composed) and `BureauError('NOT_FOUND')` (no active run) checks, this
-   * unconditionally throws `BureauError('UNSUPPORTED_CAPABILITY')` (AB-41/
-   * AB-192): the built-in `agentRun` workflow registers no `ctx.onUpdate`
-   * handler, so this call can never reach `engine.update`. Kept, not
-   * withdrawn — check {@link Bureau.sessionVerbCapabilities} to detect this
-   * before calling.
-   */
-  updateSession(sessionId: string, name: string, payload?: unknown): Promise<unknown>;
-
-  /**
-   * Intended to query live state from a session's current in-flight run
-   * without mutating it, but currently unsupported: after the existing
-   * `BureauError('NOT_CONFIGURED', subject: 'durable')` (no durable engine
-   * composed) and `BureauError('NOT_FOUND')` (no active run) checks, this
-   * unconditionally throws `BureauError('UNSUPPORTED_CAPABILITY')` (AB-41/
-   * AB-192): the built-in `agentRun` workflow registers no `ctx.onQuery`
-   * handler, so this call can never reach `engine.query`. Kept, not
-   * withdrawn — check {@link Bureau.sessionVerbCapabilities} to detect this
-   * before calling.
-   */
-  querySession(sessionId: string, name: string, input?: unknown): Promise<unknown>;
 
   /**
    * AB-42/AB-194 — admit a caller's session input as a fifth session verb.
@@ -1882,21 +1709,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   forkSession(sessionId: string, request: ForkSessionRequest): Promise<ForkSessionResult>;
 
   /**
-   * Synchronous, constant capability discovery for the three session verbs
-   * (AB-192) — lets a caller check `update`/`query` support before calling
-   * either method, rather than only by catching `UNSUPPORTED_CAPABILITY`.
-   * `signal` is `true` (`signalSession` has a real delivery path); `update`
-   * and `query` are `false` because the built-in `agentRun` workflow
-   * registers no `ctx.onUpdate`/`ctx.onQuery` handler. Computed once; not a
-   * function of runtime configuration.
-   */
-  readonly sessionVerbCapabilities: {
-    readonly signal: true;
-    readonly update: false;
-    readonly query: false;
-  };
-
-  /**
    * List every parked run awaiting human review (AB-20): armorer's
    * `needs_approval` tool-approval flow AND durable `requestHumanInput`
    * (`ctx.waitForSignal`) waits, across all live runs. Newest requests last
@@ -1905,8 +1717,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * rejected), even if the underlying run has not produced further activity.
    * Also excludes any `tool-approval` review whose binding's `expiresAt` is at
    * or before the current clock time (AB-46) — a read-time filter with no
-   * write; see `sweepExpiredReviews` for the write that transitions it to
-   * `'expired'`.
+   * write; the expiry pass is the write that transitions it to `'expired'`.
    */
   listPendingReviews(): PendingReview[];
 
@@ -1964,18 +1775,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult>;
 
   /**
-   * Host-driven expiry sweep (AB-46): scans every tool-approval review past
-   * its binding's `expiresAt` that is not already resolved, transitions each
-   * to `status: 'expired'`, writes one `review.tool-approval.expired` audit
-   * entry per review attributed to the synthetic principal
-   * `'system:expiry'`, and returns the count swept. Calling it twice in
-   * a row without new expirations returns `0` the second time. `human-wait`
-   * reviews are never swept — their expiry is Weft's own wait timeout.
-   * `now` defaults to the bureau's own clock.
-   */
-  sweepExpiredReviews(now?: number): Promise<number>;
-
-  /**
    * Installs the host-owned authority freshness check used immediately before
    * a delayed tool approval is resumed. Transports that issue revocable
    * credentials should configure this when they attach to the bureau.
@@ -2025,14 +1824,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   finishes.
    */
   waitForRecovery?(): Promise<BureauRecoveryReport>;
-
-  /**
-   * Returns the current host-owned authority freshness check so transports can
-   * compose their own revocation checks without replacing construction-time
-   * host validation.
-   */
-  getRequestAuthorityValidator():
-    ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined;
 
   /**
    * Register a durable recurring schedule via `engine.schedule(...)`.
@@ -2092,7 +1883,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined>;
 
-  getTools(): ToolSummary[];
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
    * emission order, the frames emitted during boot recovery and by the runs it recovered (at
@@ -2157,7 +1947,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * immediately, then awaits every drain. `'drain'` closes admission
    * identically but lets every already-active caller-owned agent run
    * (`bureau.run`/session-owned) reach its own natural terminal result while
-   * Bureau-owned background work (scheduler, online-evals, webhook notifier,
+   * Bureau-owned background work (online-evals, webhook notifier,
    * audit trail) is stopped/awaited exactly as under `'abort'`.
    *
    * `timeoutMilliseconds` bounds the WAIT only: on elapse, `shutdown()`
@@ -2205,8 +1995,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * The durable audit trail (Layer B glass-box).
    *
-   * Present when the bureau has a KV store configured (`.persistence()` or
-   * `storage`). `undefined` when the bureau is ephemeral (no persistence).
+   * Present when the bureau has a KV store configured (`storage`). `undefined`
+   * when the bureau is ephemeral (no `storage`).
    *
    * The audit trail sinks `tool.*`, `run.*`, and `step.completed` events into
    * the KV store as an append-only log. Use `auditTrail.query()` to read them
@@ -2273,7 +2063,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   internal/trusted caller, or a gateway request from a privileged
    *   connection).
    * - When the owner's live Bureau record is gone (the session was
-   *   deleted, or the run's record was removed via `deleteRun`) but this
+   *   deleted, or the run's task expired under `taskRetention`) but this
    *   store still holds committed events for it, this returns
    *   `{ outcome: 'deleted-aggregate', owner, events, hasMore, nextCursor?
    *   }` instead of an ordinary page — distinguishable from BOTH an
@@ -2350,7 +2140,7 @@ export interface EventHistoryNotFoundOutcome {
 
 /**
  * Returned by {@link Bureau.eventHistory} (AB-313) when `owner`'s live
- * Bureau record is gone (`deleteRun`, or a deleted session) but this store
+ * Bureau record is gone (its task expired under `taskRetention`, or a deleted session) but this store
  * still holds committed durable events for it — distinguishable from both
  * an ordinary empty {@link DurableEventPage} (an id nothing was ever
  * recorded under) and {@link EventHistoryNotFoundOutcome} (no committed
@@ -2602,31 +2392,6 @@ export interface LocateRunCreationReceiptRequest {
   runCreationRequestId: string;
 }
 
-export interface SubmitSchedulerTaskRequest {
-  /**
-   * The catalog agent the task runs as: its own `generate`, tools, stop condition, and
-   * instructions. An agent that is not in the catalog is refused with `NOT_FOUND`.
-   */
-  agentName: string;
-  message: string;
-  maximumSteps?: number;
-  metadata?: Record<string, unknown>;
-  priority?: SchedulerPriority;
-  requeue?: boolean;
-  systemPrompt?: string;
-}
-
-export interface SubmitSchedulerTaskResponse {
-  taskId: string;
-  priority: SchedulerPriority;
-  status: 'queued';
-}
-
-export interface ToolSummary {
-  name: string;
-  description: string;
-}
-
 // ── WebSocket Frame Types ───────────────────────────────────────────
 
 /**
@@ -2660,8 +2425,8 @@ export type StreamFrame =
 /**
  * AB-96 — a versioned run-lifecycle frame from `operative`'s run envelope
  * (`RunFrame`: run-started, step, assistant-chunk/final, tool-pre/post,
- * notification, run-finished). See {@link Bureau.getRunReport} for the
- * terminal `RunReport` embedded on the `run-finished` variant.
+ * notification, run-finished). The terminal `RunReport` is embedded on the
+ * `run-finished` variant.
  *
  * Deliberately NOT part of {@link StreamFrame}/the AB-15 `runSeq` replay
  * contract: `create-bureau.ts` emits these without a `runSeq` stamp (they
@@ -2701,8 +2466,6 @@ export type ServerFrame =
   | { type: 'unsubscribed'; runId: string }
   | { type: 'error'; code: string; message: string }
   | { type: 'pong' }
-  | { type: 'scheduler.state'; state: SchedulerState }
-  | { type: 'scheduler.task.preempted'; taskId: string; reason: string; state: SchedulerState }
   | (StreamFrame & { runSeq: number })
   | RunEnvelopeFrame
   | {
