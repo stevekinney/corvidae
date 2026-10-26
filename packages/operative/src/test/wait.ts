@@ -16,7 +16,8 @@ export const MINIMUM_WAIT_MILLISECONDS = 3_000;
  * microseconds, so a run that needs a timer, a thread-pool result, or disk I/O
  * (all slower under host load) can outlast any fixed count of them. The wait
  * therefore gives up only once `maximumAttempts` tries have passed and
- * {@link MINIMUM_WAIT_MILLISECONDS} has elapsed, so the count never decides
+ * `minimumWaitMilliseconds` (default {@link MINIMUM_WAIT_MILLISECONDS}; pass 0 for a wait that is
+ * meant to fail fast) has elapsed, so the count never decides
  * the outcome on a loaded host.
  *
  * Throws with `failureMessage` when the condition is not met within the limit.
@@ -26,6 +27,7 @@ export async function waitForCondition(
   failureMessage: string,
   maximumAttempts = 50,
   yieldTurn: () => Promise<void> = yieldToPortableEventLoop,
+  minimumWaitMilliseconds = MINIMUM_WAIT_MILLISECONDS,
 ): Promise<void> {
   const startedAt = performance.now();
   for (let attempt = 0; ; attempt++) {
@@ -34,7 +36,7 @@ export async function waitForCondition(
     }
     if (
       attempt + 1 >= maximumAttempts &&
-      performance.now() - startedAt >= MINIMUM_WAIT_MILLISECONDS
+      performance.now() - startedAt >= minimumWaitMilliseconds
     ) {
       break;
     }
@@ -63,16 +65,23 @@ export async function waitForRunState<R extends { status: string }>(
   store: { getRun(id: string): R | undefined },
   runId: string,
   predicate: (run: R) => boolean = (run) => run.status !== 'running',
+  minimumWaitMilliseconds = MINIMUM_WAIT_MILLISECONDS,
 ): Promise<R> {
   let matchingRun: R | undefined;
-  await waitForCondition(() => {
-    const run = store.getRun(runId);
-    if (run && predicate(run)) {
-      matchingRun = run;
-      return true;
-    }
-    return false;
-  }, `Run ${runId} did not reach the expected state`);
+  await waitForCondition(
+    () => {
+      const run = store.getRun(runId);
+      if (run && predicate(run)) {
+        matchingRun = run;
+        return true;
+      }
+      return false;
+    },
+    `Run ${runId} did not reach the expected state`,
+    undefined,
+    undefined,
+    minimumWaitMilliseconds,
+  );
 
   return matchingRun!;
 }
