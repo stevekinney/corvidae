@@ -14,7 +14,7 @@ import type { AppendableMessageInput } from '../utilities/message';
 import { buildMessageFromInput, repositionMessage } from '../utilities/message';
 import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
 import { toReadonly } from '../utilities/type-helpers';
-import { assertPluginsKeptToolResultMedia } from './plugin-media-guard';
+import { runMessagePlugins } from './plugin-media-guard';
 import {
   assertToolReference,
   buildToolUseIndex,
@@ -87,27 +87,10 @@ function applyPlugins(
   input: AppendableMessageInput,
   plugins: ConversationEnvironment['plugins'],
 ): AppendableMessageInput {
-  if (!('id' in input)) return keepToolResultMedia(input, runPlugins(input, plugins));
+  if (!('id' in input)) return runMessagePlugins(input, plugins);
   if (!(PLUGINS_APPLY in input)) return input;
   const { id } = input;
-  const processed = runPlugins(input as MessageInput, plugins);
-  return keepToolResultMedia(input, { ...processed, id });
-}
-
-function runPlugins(
-  input: MessageInput,
-  plugins: ConversationEnvironment['plugins'],
-): MessageInput {
-  return plugins.reduce((acc, plugin) => plugin(acc), input);
-}
-
-/** Refuses a plugin result that changed a tool result's media, and otherwise returns it (COR-1634). */
-function keepToolResultMedia<Processed extends AppendableMessageInput>(
-  input: AppendableMessageInput,
-  processed: Processed,
-): Processed {
-  assertPluginsKeptToolResultMedia(input, processed);
-  return processed;
+  return { ...runMessagePlugins(input as MessageInput, plugins), id };
 }
 
 /**

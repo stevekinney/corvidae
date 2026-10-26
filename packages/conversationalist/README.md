@@ -748,7 +748,7 @@ const clean = redact('Call me at 555-123-4567');
 // 'Call me at [PHONE_REDACTED]'
 ```
 
-A conversation plugin runs over every input after the host has admitted a tool result's media, so it may rewrite a tool result's text parts and a media part's descriptive fields (name, alt, caption, transcript, extracted text, metadata) and the body of an inline or data-URL source, as the PII plugin does, but not the media itself: the number and order of media parts, each part's type and media type, and the kind and locator of every other source stay as they were. A plugin that changes them makes the append throw an `error:invalid-input`.
+A conversation plugin runs over every input after the host has admitted a tool result's media, so it may rewrite a tool result's text parts and a media part's descriptive fields (name, alt, caption, transcript, extracted text, metadata), and the text body of an inline or data-URL source (as the PII plugin does) while the source's kind, encoding and data-URL header stay the same. It may not change the media itself: the number and order of media parts, each part's type and media type, a binary body, or any other source. A plugin that does makes the append throw an `error:invalid-input` naming the part. Every path that runs plugins (appending, prepending, transcript mutations, `resolveToolResult`, `buildMessage`) goes through the same check.
 
 **Key exports:** `createPIIRedaction`, `createPIIRedactionPlugin`, `redactPii`, `DEFAULT_PII_RULES`. Also exports `PIIRedactionRule` and `PIIRedactionOptions` types.
 

@@ -2,7 +2,7 @@ import type { ConversationEnvironment } from '../environment';
 import { createInvalidInputError } from '../errors';
 import type { Message, MessageInput, ToolResult } from '../types';
 import { createMessage, hasOwnProperty, isAssistantMessage } from '../utilities';
-import { assertPluginsKeptToolResultMedia } from './plugin-media-guard';
+import { runMessagePlugins } from './plugin-media-guard';
 
 /** Message fields that can be changed without changing message identity or order. */
 export type MessageUpdate = Partial<
@@ -63,11 +63,8 @@ function processPluginInput(
   environment: ConversationEnvironment,
 ): MessageInput {
   const applyPlugins = (input: MessageInput): MessageInput =>
-    environment.plugins.reduce((current, plugin) => plugin(current), input);
-  const originalInput = createInput();
+    runMessagePlugins(input, environment.plugins);
   const processedInput = applyPlugins(createInput());
-  // A plugin may reword a tool result, not change its media (COR-1634).
-  assertPluginsKeptToolResultMedia(originalInput, processedInput);
   const repeatedInput = applyPlugins(createInput());
   if (!arePluginValuesEqual(processedInput, repeatedInput)) {
     throw createInvalidInputError(

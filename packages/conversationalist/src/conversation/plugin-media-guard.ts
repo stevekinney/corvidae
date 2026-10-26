@@ -1,6 +1,8 @@
 import { createInvalidInputError } from '../errors';
+import { readMediaBody } from '../media-body';
+import { splitDataUrl } from '../media-types';
 import type { MediaContent, ToolResultPart } from '../multi-modal';
-import type { ToolResult } from '../types';
+import type { MessageInput, MessagePlugin, ToolResult } from '../types';
 
 /**
  * COR-1634: what a conversation plugin may not change about a tool result's media.
@@ -9,22 +11,25 @@ import type { ToolResult } from '../types';
  * read) before the row is appended, and the plugins run after. A plugin that swapped a source for a
  * URL, added a part, or relabeled a media type would put media into the row that nothing admitted.
  * So a plugin may rewrite a result's text parts and a media part's descriptive fields (name, alt,
- * caption, transcript, extracted text, metadata), and the body of an inline or data-URL source (the
- * PII plugin redacts one), but the media parts themselves stay: the same count and order, each
- * with the same type and media type, and each source of the same kind, a locator unchanged.
+ * caption, transcript, extracted text, metadata), and the text body of an inline or data-URL
+ * source, as the PII plugin redacts one. The media itself stays: the same count and order, each
+ * part with the same type and media type, and each source exactly as it was, except that a source
+ * whose body is text (readable as characters by {@link readMediaBody}) may have that text changed
+ * while its kind, encoding, and data-URL header stay the same. A binary body is never rewritten.
+ *
+ * Every place that runs plugins goes through {@link runMessagePlugins}, so a path added later
+ * cannot run them without the guard.
  */
-function mediaParts(toolResult: ToolResult | undefined): MediaContent[] {
-  return (toolResult?.parts ?? []).filter(
-    (part: ToolResultPart): part is MediaContent => part.type !== 'text',
-  );
+interface IndexedMedia {
+  readonly part: MediaContent;
+  /** The part's position in the tool result's own `parts`, which is what an error names. */
+  readonly index: number;
 }
 
-function sameSource(before: MediaContent['source'], after: MediaContent['source']): boolean {
-  if (before.kind !== after.kind) return false;
-  // The body of an inline or data-URL source is the part's content, which redaction rewrites;
-  // every other kind names bytes elsewhere, and where it names is what admission governed.
-  if (before.kind === 'inline' || before.kind === 'data-url') return true;
-  return sameValue(before, after);
+function mediaParts(toolResult: ToolResult | undefined): IndexedMedia[] {
+  return (toolResult?.parts ?? []).flatMap((part: ToolResultPart, index) =>
+    part.type === 'text' ? [] : [{ part, index }],
+  );
 }
 
 /** Structural equality of two JSON values, independent of object key order. */
@@ -52,19 +57,36 @@ function sameValue(left: unknown, right: unknown): boolean {
   );
 }
 
+/** Whether the source is untouched, or is a text body rewritten in the form it was stored in. */
+function sameSource(before: MediaContent, after: MediaContent): boolean {
+  if (sameValue(before.source, after.source)) return true;
+  if (readMediaBody(before).status !== 'text') return false;
+  const { source: from } = before;
+  const { source: to } = after;
+  if (from.kind === 'inline' && to.kind === 'inline') return from.encoding === to.encoding;
+  if (from.kind === 'data-url' && to.kind === 'data-url') {
+    return splitDataUrl(from.url)?.header === splitDataUrl(to.url)?.header;
+  }
+  return false;
+}
+
 function problem(
-  before: readonly MediaContent[],
-  after: readonly MediaContent[],
+  before: readonly IndexedMedia[],
+  after: readonly IndexedMedia[],
 ): string | undefined {
   if (before.length !== after.length) {
     return `it changed the number of media parts from ${before.length} to ${after.length}`;
   }
-  for (const [index, kept] of before.entries()) {
-    const next = after[index]!;
-    if (kept.type !== next.type)
-      return `it changed media part ${index} from ${kept.type} to ${next.type}`;
-    if (kept.mimeType !== next.mimeType) return `it changed the media type of part ${index}`;
-    if (!sameSource(kept.source, next.source)) return `it changed the source of part ${index}`;
+  for (const [position, kept] of before.entries()) {
+    const next = after[position]!;
+    const { index } = kept;
+    if (kept.part.type !== next.part.type) {
+      return `it changed part ${index} from ${kept.part.type} to ${next.part.type}`;
+    }
+    if (kept.part.mimeType !== next.part.mimeType) {
+      return `it changed the media type of part ${index}`;
+    }
+    if (!sameSource(kept.part, next.part)) return `it changed the source of part ${index}`;
   }
   return undefined;
 }
@@ -85,4 +107,17 @@ export function assertPluginsKeptToolResultMedia(
       { callId: before.toolResult.callId },
     );
   }
+}
+
+/**
+ * Runs the environment's plugins over `input` and checks that they kept a tool result's media.
+ * The only way the package runs plugins.
+ */
+export function runMessagePlugins(
+  input: MessageInput,
+  plugins: readonly MessagePlugin[],
+): MessageInput {
+  const processed = plugins.reduce((current, plugin) => plugin(current), input);
+  assertPluginsKeptToolResultMedia(input, processed);
+  return processed;
 }

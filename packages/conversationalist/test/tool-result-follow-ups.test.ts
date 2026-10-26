@@ -125,6 +125,28 @@ describe('Gemini inbound rebuilds a function response with media references', ()
     ).toThrow(/part-9/);
   });
 
+  it('leaves a response with other keys, or with media nothing references, as content', () => {
+    const read = (response: Record<string, unknown>, parts: unknown[]) =>
+      lastResult(
+        fromGeminiMessages({
+          contents: [
+            { role: 'model', parts: [{ functionCall: { name: 'chart', args: {} } }] },
+            {
+              role: 'user',
+              parts: [{ functionResponse: { name: 'chart', response, parts } as never }],
+            },
+          ],
+        }),
+      );
+    const media = [{ inlineData: { mimeType: 'image/png', data: PNG, displayName: 'part-1' } }];
+    const extraKey = read({ output: ['x', { $ref: 'part-1' }], note: 'kept?' }, media);
+    expect(extraKey?.parts).toBeUndefined();
+    expect(extraKey?.content).toEqual({ output: ['x', { $ref: 'part-1' }], note: 'kept?' });
+    const unreferenced = read({ output: ['x'] }, media);
+    expect(unreferenced?.parts).toBeUndefined();
+    expect(unreferenced?.content).toEqual({ output: ['x'] });
+  });
+
   it('leaves a plain function response, with no media list, as content', () => {
     const conversation = fromGeminiMessages({
       contents: [

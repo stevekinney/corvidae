@@ -78,7 +78,8 @@ function isMediaReference(entry: unknown): entry is { $ref: string } {
  * The inverse of how a result with parts is exported (COR-1634): `response.output` lists every part
  * in order, a text part as its string and a media part as `{ $ref: displayName }`, and the media
  * itself rides in `functionResponse.parts`. A response with no media list is a plain result and is
- * left to the other readers, since `{ output: [...] }` is also an ordinary value. A `$ref` the
+ * left to the other readers, since `{ output: [...] }` is also an ordinary value, as is a response
+ * with other keys or media nothing references. A `$ref` the
  * media list does not carry is refused: reading it as text would drop the media silently.
  */
 function toPartsToolResult(
@@ -91,6 +92,12 @@ function toPartsToolResult(
   if (!output.every((entry) => typeof entry === 'string' || isMediaReference(entry))) {
     return undefined;
   }
+  // Anything else in the response, or media nothing references, is not this export's shape:
+  // reading it as parts would drop it silently, so it stays a plain value.
+  const EXPORT_KEYS = new Set(['output', 'outcome', 'error', 'action']);
+  if (!Object.keys(response).every((key) => EXPORT_KEYS.has(key))) return undefined;
+  const referenced = new Set(output.filter(isMediaReference).map((entry) => entry.$ref));
+  if (!media.every(({ inlineData }) => referenced.has(inlineData.displayName))) return undefined;
   const byName = new Map(media.map(({ inlineData }) => [inlineData.displayName, inlineData]));
   const parts = output.map((entry: string | { $ref: string }): ToolResultPart => {
     if (typeof entry === 'string') return { type: 'text', text: entry };
