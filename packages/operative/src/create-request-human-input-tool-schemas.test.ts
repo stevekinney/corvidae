@@ -68,6 +68,13 @@ describe('createRequestHumanInputTool inputSchemas', () => {
     expect(result.inputSchema).toEqual(formSchema);
   });
 
+  it('refuses a signal name longer than the 256 characters Bureau carries in a continuation (COR-1638)', () => {
+    const tool = createRequestHumanInputTool({ context: makeContext() });
+
+    expect(tool.input.safeParse({ signalName: 'x'.repeat(256) }).success).toBe(true);
+    expect(tool.input.safeParse({ signalName: 'x'.repeat(257) }).success).toBe(false);
+  });
+
   it('leaves a signal without a configured schema exactly as it was', () => {
     const context = makeContext();
     const tool = createRequestHumanInputTool({ context, inputSchemas: { deploy: formSchema } });
