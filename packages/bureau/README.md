@@ -793,7 +793,7 @@ console.log(((await extended.json()) as { error: { code: number } }).error.code)
 await bureau.dispose();
 ```
 
-**The outbound client.** Calling another A2A agent is a separate surface and is built (COR-905): Weft's `createA2APeerClient` from `@lostgradient/weft/a2a` reads and validates the peer's Agent Card, refuses a peer whose card requires an extension the client does not implement, applies an egress policy to every URL, retries transient failures, and cancels a task that outlives its timeout. Operative's `createPeerCallTool` wraps a client as a tool: the call is a child run in the parent's child registry with the peer's task identity, aborting it sends `CancelTask`, and a peer's reply is returned marked `untrusted: true`. The call is synchronous and persists nothing, so a restart of the caller does not resume it. Bureau does not call peers on its own; a host composes the tool into an agent's toolbox.
+**The outbound client.** Calling another A2A agent is a separate surface and is built (COR-905): Weft's `createA2APeerClient` from `@lostgradient/weft/a2a` reads and validates the peer's Agent Card, refuses a peer whose card requires an extension the client does not implement, applies an egress policy to every URL, retries transient failures, and cancels a task that outlives its timeout. Operative's `createPeerCallTool` wraps a client as a tool: the call is a child run in the parent's child registry with the peer's task identity, aborting it sends `CancelTask`, and a peer's reply is returned marked `untrusted: true`. By default the call is synchronous and persists nothing, so a restart of the caller does not resume it; pass `durable: bureau.peerCalls` and a durable run's call records the peer task it started, so the replay after a restart follows that task instead of sending again (COR-1670). Bureau does not call peers on its own; a host composes the tool into an agent's toolbox.
 
 ```typescript
 import { createPeerCallTool } from '@lostgradient/operative';
@@ -808,6 +808,27 @@ export const askSummarizer = createPeerCallTool({
   name: 'askSummarizer',
   description: 'Ask the remote summarizer agent to summarize a document.',
   peer,
+});
+```
+
+Agents are built before the Bureau, so a durable tool reaches the journal through a reference set once the Bureau exists:
+
+```typescript
+import { createPeerCallTool } from '@lostgradient/operative';
+import type { Bureau } from '@lostgradient/bureau';
+import { createA2APeerClient } from '@lostgradient/weft/a2a';
+
+declare const peer: ReturnType<typeof createA2APeerClient>;
+let bureau: Bureau | undefined; // assigned from createBureau(...) once it resolves
+
+export const askSummarizerDurably = createPeerCallTool({
+  name: 'askSummarizer',
+  description: 'Ask the remote summarizer agent to summarize a document.',
+  peer,
+  durable: {
+    read: (key) => bureau!.peerCalls.read(key),
+    write: (key, entry) => bureau!.peerCalls.write(key, entry),
+  },
 });
 ```
 
