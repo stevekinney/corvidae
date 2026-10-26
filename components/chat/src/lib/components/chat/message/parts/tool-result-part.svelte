@@ -8,7 +8,7 @@
 </script>
 
 <script lang="ts">
-  import { stringify } from '../../../../utilities/stringify.ts';
+  import { toolResultText } from '../../../../utilities/tool-result-text.ts';
   import ToolPayloadCode from '../tool-payload-code.svelte';
 
   let { part }: ToolResultPartProps = $props();
@@ -23,7 +23,8 @@
   //   otherwise stringify to `[object Object]`).
   // - action_required: the requested action's message, with a neutral
   //   fallback so it is never blank.
-  // - otherwise: the safely-stringified content.
+  // - otherwise: the result's ordered parts (text, and a label for each media part) when it has
+  //   them, else the safely-stringified content.
   const formatted = $derived.by(() => {
     if (result.outcome === 'error' && result.error) {
       return result.error.message;
@@ -31,7 +32,7 @@
     if (result.outcome === 'action_required') {
       return result.action?.message ?? 'This tool call requires action.';
     }
-    return stringify(result.content);
+    return toolResultText(result);
   });
 </script>
 
