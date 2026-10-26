@@ -71,6 +71,23 @@ describe('node helpers', () => {
     expect(timeOutOfRange('08:00', '09:00', '17:00', 'UTC')).toBe(true);
   });
 
+  test('timeOutOfRange treats a range that wraps past midnight as spanning it', () => {
+    // 09:00Z to 17:00Z is 18:00 to 02:00 in Tokyo.
+    expect(timeOutOfRange('19:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('01:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('18:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('02:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('12:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(true);
+    expect(timeOutOfRange('17:59', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(true);
+    expect(timeOutOfRange('02:01', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(true);
+    // A local overnight range wraps the same way.
+    expect(timeOutOfRange('23:30', '22:00', '06:00')).toBe(false);
+    expect(timeOutOfRange('12:00', '22:00', '06:00')).toBe(true);
+    // One bound alone never wraps.
+    expect(timeOutOfRange('23:00', '22:00', '')).toBe(false);
+    expect(timeOutOfRange('21:00', '22:00', '')).toBe(true);
+  });
+
   test('displayTimeZone shows UTC until the surface mounts, unless the host names a zone', () => {
     expect(displayTimeZone(undefined, false)).toBe('UTC');
     expect(displayTimeZone(undefined, true)).toBeUndefined();

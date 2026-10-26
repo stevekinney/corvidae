@@ -321,7 +321,8 @@ export function sliderStep(min: number, max: number): number {
 
 /**
  * Whether a time value falls outside `min` or `max`, each an ISO 8601 time or
- * date-time whose time part bounds it. A bound that has no time is ignored.
+ * date-time whose time part bounds it. A bound that has no time is ignored. A `min` later than
+ * `max` is a range that wraps past midnight.
  */
 export function timeOutOfRange(
   value: unknown,
@@ -333,6 +334,11 @@ export function timeOutOfRange(
   if (time === undefined) return false;
   const lower = dateTimeForControl(min, 'time', timeZone);
   const upper = dateTimeForControl(max, 'time', timeZone);
+  if (lower !== undefined && upper !== undefined && lower > upper) {
+    // The bounds wrap past midnight (a zoned pair shown in a zone whose offset crosses it, or an
+    // overnight range): a time is in range at or after `lower` or at or before `upper`.
+    return time < lower && time > upper;
+  }
   return (lower !== undefined && time < lower) || (upper !== undefined && time > upper);
 }
 
