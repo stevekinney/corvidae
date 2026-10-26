@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
 import { VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
-import { TEXT_ECHO_SOLO_AGENT_NAME } from './text-echo-agent.ts';
+import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 1280] as const;
 
@@ -63,16 +63,16 @@ test.describe('the list of agents', () => {
     request,
   }) => {
     await page.goto('/agents');
-    await expect(row(page, TEXT_ECHO_SOLO_AGENT_NAME)).toBeVisible();
-    const before = await chatsOf(page, TEXT_ECHO_SOLO_AGENT_NAME);
+    await expect(row(page, TEXT_ECHO_AGENT_NAME)).toBeVisible();
+    const before = await chatsOf(page, TEXT_ECHO_AGENT_NAME);
 
-    await runToEnd(request, TEXT_ECHO_SOLO_AGENT_NAME, newThreadId('usage'), 'A chat for the list');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('usage'), 'A chat for the list');
     await page.goto('/agents');
 
-    await expect(chatCount(page, TEXT_ECHO_SOLO_AGENT_NAME)).toHaveText(
+    await expect(chatCount(page, TEXT_ECHO_AGENT_NAME)).toHaveText(
       `${before + 1} ${before + 1 === 1 ? 'chat' : 'chats'}`,
     );
-    await expect(row(page, TEXT_ECHO_SOLO_AGENT_NAME).getByTestId('agent-last-chat')).toHaveText(
+    await expect(row(page, TEXT_ECHO_AGENT_NAME).getByTestId('agent-last-chat')).toHaveText(
       /^Last chat (just now|\d+[smhd] ago)$/,
     );
     // An agent nobody has chatted with says so, and has no last chat to date.
@@ -103,20 +103,15 @@ test.describe('one agent', () => {
     page,
     request,
   }) => {
-    await runToEnd(
-      request,
-      TEXT_ECHO_SOLO_AGENT_NAME,
-      newThreadId('page'),
-      'A memory for the page',
-    );
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('page'), 'A memory for the page');
 
-    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}`);
+    await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}`);
 
     const frame = page.locator('[data-view="agents"]');
-    await expect(frame.getByRole('heading', { level: 1 })).toHaveText(TEXT_ECHO_SOLO_AGENT_NAME);
+    await expect(frame.getByRole('heading', { level: 1 })).toHaveText(TEXT_ECHO_AGENT_NAME);
     // The name is the heading and appears nowhere else in the header: no subtitle repeats it.
     await expect(
-      page.locator('.ib-agent__header').getByText(TEXT_ECHO_SOLO_AGENT_NAME, { exact: true }),
+      page.locator('.ib-agent__header').getByText(TEXT_ECHO_AGENT_NAME, { exact: true }),
     ).toHaveCount(1);
     await expect(frame).not.toContainText('Scripted');
     await expect(frame).not.toContainText('Model');
@@ -126,7 +121,7 @@ test.describe('one agent', () => {
     const memory = frame.getByRole('link', { name: /^Memory \(\d+\+?\)$/ });
     await expect(memory).toHaveCount(1);
     await memory.click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory$`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${TEXT_ECHO_AGENT_NAME}/memory$`));
   });
 
   test('lists the chats had with it, and no other agent’s, and New chat opens a new chat with it', async ({
