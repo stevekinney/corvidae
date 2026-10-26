@@ -17,7 +17,7 @@ import { createBureau } from './create-bureau';
 import * as runtimeCompositionModule from './runtime-composition';
 import {
   createConstructionWindowFixtures,
-  resolveAgentGenerate,
+  agentDirectoryGenerate,
 } from './testing/construction-window.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -211,7 +211,7 @@ describe('every listener and timer registered before a top-level await (COR-1585
     const building = createBureau<AgentDefinitions>({
       agents: {},
       agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-      resolveAgentGenerate,
+      models: { generate: agentDirectoryGenerate },
       storage: storageOverTextStore(persistence),
       durableExecution: false,
       auditRetention: { olderThan: 86_400_000 },

@@ -117,7 +117,7 @@ describe('runStep: AB-64/AB-250 selection boundary read', () => {
 
   it('proceeds normally when revalidate() reports the plan is still selected', async () => {
     const { gate } = makeSelectionGateWithCatalog(catalogOf([anthropic]));
-    gate.revalidate(); // seed the gate's recorded plan, as a real Bureau caller's earlier planSelection() would
+    gate.revalidate(); // seed the gate's recorded plan, as a real Bureau caller's earlier models.plan() would
 
     let generateCalls = 0;
     const result = await executeLoop({

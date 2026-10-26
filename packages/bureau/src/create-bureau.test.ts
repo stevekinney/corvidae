@@ -26,6 +26,7 @@ import {
   type AgentInput,
   type AgentRunContext,
   type AgentSession,
+  type BackendDescriptor,
   type CombinedOperativeEventMap,
   createAgent,
   createAgentSession,
@@ -113,14 +114,8 @@ import {
   ScheduleLocatorUnavailableError,
   wireStreamEventTargetFrames,
 } from './create-bureau';
-import type {
-  CatalogRefreshHandle,
-  CatalogRefreshRequest,
-  ModelCatalogService,
-} from './model-catalog-refresh';
 import { createAgentSkills } from './agent-skills';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
-import { createModelCatalogService } from './model-catalog-refresh';
 import {
   createHumanWaitContext,
   createMemoryPersistHook,
@@ -5591,7 +5586,7 @@ describe('createBureau: AB-64/AB-250 selection planning wiring', () => {
     }
   });
 
-  it('bureau.planSelection builds a full SelectionPlan without starting a run or refreshing the catalog', async () => {
+  it('bureau.models.plan builds a full SelectionPlan without starting a run or changing the catalog', async () => {
     const seed = createModelCatalog();
     const anthropicDescriptor = seed.descriptors.find(
       (descriptor) => descriptor.provider === 'anthropic',
@@ -5605,11 +5600,11 @@ describe('createBureau: AB-64/AB-250 selection planning wiring', () => {
 
     const bureau = await createBureau({ agents: { fixed } });
     try {
-      const revisionBefore = bureau.modelCatalog.catalog().revision;
-      const plan = bureau.planSelection({ agentName: 'fixed' });
+      const revisionBefore = bureau.models.catalog().revision;
+      const plan = bureau.models.plan({ agentName: 'fixed' });
 
       expect(plan).not.toBeInstanceOf(Promise);
-      expect(bureau.modelCatalog.catalog().revision).toBe(revisionBefore);
+      expect(bureau.models.catalog().revision).toBe(revisionBefore);
     } finally {
       bureau.dispose();
     }
@@ -7129,7 +7124,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   it('admits a model override that the selector endorses, and reports it as desired state (AB-200)', async () => {
     // The four configuration targets resolve through the shipped AB-64
     // selector rather than a steering-only validation path: one
-    // `planSelection` call validates the override against the live catalog.
+    // `models.plan` call validates the override against the live catalog.
     // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
@@ -13467,162 +13462,129 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
   });
 });
 
-describe('Bureau.modelCatalog (AB-246)', () => {
-  it('is present regardless of D, and defaults to a service seeded from the operative static catalog', async () => {
+describe('Bureau.models', () => {
+  const stampedClock = () => {
+    const runtime = createDefaultRuntimeServices();
+    return { ...runtime, clock: { ...runtime.clock, nowISO: () => '2026-10-26T00:00:00.000Z' } };
+  };
+
+  it('is present regardless of D, and defaults to operative’s static catalog at revision 1', async () => {
+    const bureau = await createBureau({ agents: {}, runtime: stampedClock() });
+    try {
+      const catalog = bureau.models.catalog();
+      const pair = (row: BackendDescriptor) => `${row.provider}/${row.model}`;
+      expect(catalog.descriptors.map(pair)).toEqual(createModelCatalog().descriptors.map(pair));
+      expect(catalog.descriptors.every((row) => row.source === 'static')).toBe(true);
+      expect(catalog.revision).toBe(1);
+      expect(catalog.stale).toBe(false);
+      expect(catalog.generatedAt).toBe('2026-10-26T00:00:00.000Z');
+      expect(Object.isFrozen(catalog)).toBe(true);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('catalog() returns the same object across two reads, and a new one with the revision incremented after replace', async () => {
     const bureau = await createBureau({ agents: {} });
     try {
-      const before = bureau.modelCatalog.catalog();
-      expect(before.descriptors.length).toBeGreaterThan(0);
-      expect(before.stale).toBe(false);
+      const first = bureau.models.catalog();
+      expect(bureau.models.catalog()).toBe(first);
 
-      const handle = bureau.modelCatalog.refresh({
-        id: 'default-refresh',
-        requestedAt: '2030-01-01T00:00:00.000Z',
-      });
-      const result = await handle.result();
+      const rows = first.descriptors.slice(0, 2);
+      const replaced = bureau.models.replace(rows);
 
-      expect(result.outcome).toBe('completed');
-      expect(result.newRevision).toBe(before.revision + 1);
-      expect(bureau.modelCatalog.catalog().revision).toBe(before.revision + 1);
+      expect(replaced).not.toBe(first);
+      expect(replaced.revision).toBe(first.revision + 1);
+      expect(bureau.models.catalog()).toBe(replaced);
+      expect(bureau.models.catalog()).toBe(bureau.models.catalog());
+      expect(replaced.stale).toBe(false);
+      expect(replaced.descriptors.map((row) => `${row.provider}/${row.model}`)).toEqual(
+        rows.map((row) => `${row.provider}/${row.model}`),
+      );
+      expect(replaced.descriptors.every((row) => row.source === 'operator-override')).toBe(true);
+      expect(Object.isFrozen(replaced)).toBe(true);
+      expect(Object.isFrozen(replaced.descriptors)).toBe(true);
+      // The caller's rows are not frozen or aliased.
+      expect(replaced.descriptors[0]).not.toBe(rows[0]);
     } finally {
-      bureau.dispose();
+      await bureau.dispose();
     }
   });
 
-  it('accepts a caller-supplied ModelCatalogService via BureauOptions.modelCatalog', async () => {
-    const seed = createModelCatalog({ now: () => '2026-09-02T00:00:00.000Z' });
-    const modelCatalog = createModelCatalogService({
-      seed,
-      descriptorSource: () => Promise.resolve([]),
-      now: () => '2026-09-02T00:00:01.000Z',
-      newRefreshId: () => 'injected-refresh',
-    });
-    const bureau = await createBureau({ agents: {}, modelCatalog });
+  it('offers exactly the rows of models.catalog, stamped as the host’s, at revision 1', async () => {
+    const [row] = createModelCatalog().descriptors;
+    if (row === undefined) throw new Error('expected a seed row');
+    const bureau = await createBureau({ agents: {}, models: { catalog: [row] } });
     try {
-      expect(bureau.modelCatalog).toBe(modelCatalog);
-      // The service clones and deep-freezes its seed at construction (a
-      // defensive copy, since a caller-supplied ModelCatalog is not
-      // guaranteed to already be frozen), so check by value rather than
-      // object identity.
-      expect(bureau.modelCatalog.catalog().revision).toBe(seed.revision);
-      expect(bureau.modelCatalog.catalog().descriptors.length).toBe(seed.descriptors.length);
+      const catalog = bureau.models.catalog();
+      expect(catalog.revision).toBe(1);
+      expect(catalog.descriptors).toHaveLength(1);
+      expect(catalog.descriptors[0]).toEqual({ ...row, source: 'operator-override' });
     } finally {
-      bureau.dispose();
+      await bureau.dispose();
     }
   });
 
-  it('dispose() awaits an in-flight refresh before its returned promise resolves — it does not abort it', async () => {
-    let resolveSource!: (descriptors: readonly []) => void;
-    const source = new Promise<readonly []>((resolve) => {
-      resolveSource = resolve;
-    });
-    const seed = createModelCatalog({ now: () => '2026-09-02T00:00:00.000Z' });
-    const modelCatalog = createModelCatalogService({
-      seed,
-      descriptorSource: () => source,
-      now: () => '2026-09-02T00:00:01.000Z',
-      newRefreshId: () => 'in-flight-refresh',
-    });
-    const bureau = await createBureau({ agents: {}, modelCatalog });
-
-    const handle = bureau.modelCatalog.refresh({
-      id: 'req-1',
-      requestedAt: '2026-09-02T00:00:00.000Z',
-    });
-
-    let disposeSettled = false;
-    const disposePromise = bureau.dispose().then(() => {
-      disposeSettled = true;
-    });
-
-    // Give dispose() every chance to resolve prematurely before the source
-    // ever settles — it must not.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(disposeSettled).toBe(false);
-    // abort() was never called: the refresh is still genuinely running.
-    expect(handle.snapshot().status).toBe('pending');
-
-    resolveSource([]);
-    await disposePromise;
-
-    expect(disposeSettled).toBe(true);
-    const result = await handle.result();
-    expect(result.outcome).toBe('completed');
+  it('models.generate is the host’s generate, and NOT_CONFIGURED when the host supplied none', async () => {
+    const [row] = createModelCatalog().descriptors;
+    if (row === undefined) throw new Error('expected a seed row');
+    const generate = createMockGenerate();
+    const configured = await createBureau({ agents: {}, models: { generate: () => generate } });
+    const bare = await createBureau({ agents: {} });
+    try {
+      expect(configured.models.generate(row)).toBe(generate);
+      expect(() => bare.models.generate(row)).toThrow(BureauError);
+      try {
+        bare.models.generate(row);
+      } catch (error) {
+        expect((error as BureauError).code).toBe('NOT_CONFIGURED');
+        expect((error as BureauError).subject).toBe('generate');
+      }
+    } finally {
+      await configured.dispose();
+      await bare.dispose();
+    }
   });
 
-  it('a second dispose() call after an in-flight refresh already settled resolves immediately', async () => {
-    const seed = createModelCatalog({ now: () => '2026-09-02T00:00:00.000Z' });
-    const modelCatalog = createModelCatalogService({
-      seed,
-      descriptorSource: () => Promise.resolve([]),
-      now: () => '2026-09-02T00:00:01.000Z',
-      newRefreshId: () => 'settled-refresh',
-    });
-    const bureau = await createBureau({ agents: {}, modelCatalog });
-
-    const handle = bureau.modelCatalog.refresh({
-      id: 'req-1',
-      requestedAt: '2026-09-02T00:00:00.000Z',
-    });
-    await handle.result();
-
-    await bureau.dispose();
-    await bureau.dispose();
-    expect(bureau.modelCatalog.inFlightRefresh()).toBeUndefined();
+  it('refuses agentDirectory without models.generate with BAD_REQUEST', async () => {
+    const refusal = await createBureau({ agents: {}, agentDirectory: '/nonexistent/agents' }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
+    );
+    expect(refusal).toBeInstanceOf(BureauError);
+    expect((refusal as BureauError).code).toBe('BAD_REQUEST');
+    expect((refusal as Error).message).toContain('options.models.generate');
   });
 
-  it("dispose() awaits closed(), not just result() — a caller-supplied service's slower cleanup acknowledgement still blocks completion", async () => {
-    const seedCatalog = createModelCatalog({ now: () => '2026-09-02T00:00:00.000Z' });
-    let resolveClosed!: (value: 'completed') => void;
-    const closedPromise = new Promise<'completed'>((resolve) => {
-      resolveClosed = resolve;
-    });
+  it('refuses a malformed models option and a malformed replace with BAD_REQUEST', async () => {
+    const refusal = await createBureau({
+      agents: {},
+      models: { catalog: [{ provider: 'anthropic' }] as never },
+    }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
+    );
+    expect(refusal).toBeInstanceOf(BureauError);
+    expect((refusal as BureauError).code).toBe('BAD_REQUEST');
 
-    const fakeHandle: CatalogRefreshHandle = {
-      refreshId: 'fake-refresh',
-      snapshot: () => {
-        throw new Error('not exercised by this test');
-      },
-      subscribeSnapshot: () => () => {},
-      abort: () => {},
-      // result() resolves IMMEDIATELY (a pre-resolved promise) — only
-      // closed() is deliberately slow, so a `dispose()` that captured
-      // result() instead would resolve too early.
-      result: () =>
-        Promise.resolve({
-          id: 'fake-refresh',
-          outcome: 'completed' as const,
-          previousRevision: seedCatalog.revision,
-          newRevision: seedCatalog.revision + 1,
-          completedAt: '2026-09-02T00:00:01.000Z',
-        }),
-      closed: () => closedPromise,
-    };
+    const bureau = await createBureau({ agents: {} });
+    try {
+      const before = bureau.models.catalog();
+      expect(() => bureau.models.replace('not rows' as never)).toThrow(BureauError);
+      // A refused replace changes nothing.
+      expect(bureau.models.catalog()).toBe(before);
+    } finally {
+      await bureau.dispose();
+    }
+  });
 
-    const fakeModelCatalog: ModelCatalogService = {
-      catalog: () => seedCatalog,
-      refresh: (_request: CatalogRefreshRequest) => fakeHandle,
-      replaceCatalog: () => seedCatalog,
-      inFlightRefresh: () => fakeHandle,
-    };
-
-    const bureau = await createBureau({ agents: {}, modelCatalog: fakeModelCatalog });
-
-    let disposeSettled = false;
-    const disposePromise = bureau.dispose().then(() => {
-      disposeSettled = true;
-    });
-
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(disposeSettled).toBe(false);
-
-    resolveClosed('completed');
-    await disposePromise;
-    expect(disposeSettled).toBe(true);
+  it('dispose() and shutdown() wait on nothing from the models, and a second dispose() resolves', async () => {
+    const bureau = await createBureau({ agents: {} });
+    bureau.models.replace(bureau.models.catalog().descriptors);
+    const report = await bureau.shutdown();
+    expect(report.owners).toEqual([]);
+    await bureau.dispose();
+    await bureau.dispose();
   });
 });
 

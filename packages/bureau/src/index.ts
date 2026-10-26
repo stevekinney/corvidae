@@ -314,27 +314,13 @@ export {
   projectWorkerLivenessSnapshot,
 } from './liveness-projection';
 export type {
-  CatalogDescriptorSource,
-  CatalogRefreshCleanupAcknowledgement,
-  CatalogRefreshHandle,
-  CatalogRefreshOutcome,
-  CatalogRefreshRequest,
-  CatalogRefreshResult,
-  CatalogRefreshSnapshot,
-  CatalogRefreshSnapshotObserver,
-  CatalogRefreshStatus,
-  CreateModelCatalogServiceOptions,
-  ModelCatalogService,
-  SubscribeSnapshotOptions,
-} from './model-catalog-refresh';
-export { createModelCatalogService } from './model-catalog-refresh';
-export type {
   BureauModelPolicyOptions,
   CreateModelPolicyPlannerOptions,
   ModelPolicyPlanner,
   PlanSelectionRequest,
 } from './model-policy';
 export { createModelPolicyPlanner } from './model-policy';
+export type { Models, ModelsOptions } from './models/create-models';
 export type {
   EvalScore,
   OnlineEvalJudge,

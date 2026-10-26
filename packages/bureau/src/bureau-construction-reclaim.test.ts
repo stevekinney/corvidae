@@ -26,7 +26,7 @@ import type { RuntimeComposition } from './runtime-composition';
 import * as workflowToolsModule from './workflow-tools';
 import {
   createConstructionWindowFixtures,
-  resolveAgentGenerate,
+  agentDirectoryGenerate,
 } from './testing/construction-window.test-support';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { pollUntil } from './testing/goal-fixtures.test-support';
@@ -147,7 +147,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
           writer: writerAnswering('recovered'),
         },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        resolveAgentGenerate,
+        models: { generate: agentDirectoryGenerate },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: leaseOptions,
@@ -235,7 +235,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
           }),
         },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        resolveAgentGenerate,
+        models: { generate: agentDirectoryGenerate },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: leaseOptions,
@@ -334,7 +334,7 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       createBureau<AgentDefinitions>({
         agents: {},
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        resolveAgentGenerate,
+        models: { generate: agentDirectoryGenerate },
         storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
         durableExecution: true,
         durableBackgroundTasks: 'manual',
@@ -458,7 +458,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
           writer: writerAnswering('never runs'),
         },
         agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-        resolveAgentGenerate,
+        models: { generate: agentDirectoryGenerate },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         durableOwnership: leaseOptions,

@@ -74,8 +74,8 @@ export function createConstructionWindowFixtures(): ConstructionWindowFixtures {
   };
 }
 
-/** A `resolveAgentGenerate` for an agent directory: every file agent answers `answer`. */
-export const resolveAgentGenerate = (): GenerateFunction => async () => ({
+/** An `options.models.generate` for an agent directory: every file agent answers `answer`. */
+export const agentDirectoryGenerate = (): GenerateFunction => async () => ({
   content: 'answer',
   toolCalls: [],
 });

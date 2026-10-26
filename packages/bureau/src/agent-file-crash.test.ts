@@ -99,18 +99,20 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         agentDirectory: agents,
         // The tool catalog is the deployment's, so it is the same after the restart.
         agentTools: { 'lookup-order': lookupTool },
-        resolveAgentGenerate:
-          (descriptor) =>
-          async ({ toolbox }) => {
-            calls.push({
-              model: descriptor.model,
-              tools: toolbox
-                .tools()
-                .map((tool) => tool.name)
-                .toSorted(),
-            });
-            return { content: 'resumed', toolCalls: [] };
-          },
+        models: {
+          generate:
+            (descriptor) =>
+            async ({ toolbox }) => {
+              calls.push({
+                model: descriptor.model,
+                tools: toolbox
+                  .tools()
+                  .map((tool) => tool.name)
+                  .toSorted(),
+              });
+              return { content: 'resumed', toolCalls: [] };
+            },
+        },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
@@ -206,7 +208,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         agents: {},
         agentDirectory: agents,
         agentTools: { 'lookup-order': lookupTool },
-        resolveAgentGenerate: () => async () => ({ content: 'unused', toolCalls: [] }),
+        models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,
         // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.

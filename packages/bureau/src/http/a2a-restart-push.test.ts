@@ -104,7 +104,7 @@ async function createWorld(
     directory,
     overrides: {
       id: 'restart-push-bureau',
-      resolveAgentGenerate: () => parksOnRequest,
+      models: { generate: () => parksOnRequest },
       storage: fixture.configuration,
     },
   });
@@ -214,7 +214,7 @@ async function createWorld(
         directory: previous.harness.directory,
         overrides: {
           id: 'restart-push-bureau',
-          resolveAgentGenerate: () => parksOnRequest,
+          models: { generate: () => parksOnRequest },
           storage: fixture.configuration,
         },
       });

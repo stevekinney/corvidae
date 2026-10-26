@@ -27,7 +27,7 @@ import {
   noopTool,
   OPUS_5,
   OPUS_5_5,
-  twinModelCatalog,
+  twinModels,
   TWIN_OF_OPUS_5_5,
 } from './testing/model-override.test-support';
 import type { Bureau } from './types';
@@ -52,7 +52,7 @@ async function openBureau(
     generate?: Parameters<typeof createAgent>[0]['generate'];
     path?: string;
     durable?: boolean;
-    catalog?: ReturnType<typeof twinModelCatalog>;
+    catalog?: ReturnType<typeof twinModels>;
     allowed?: Parameters<typeof createAgent>[0]['allowedCandidates'];
   } = {},
 ) {
@@ -71,7 +71,7 @@ async function openBureau(
     storage:
       options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
     ...(options.durable === false ? {} : { durableExecution: true }),
-    ...(options.catalog === undefined ? {} : { modelCatalog: options.catalog }),
+    ...(options.catalog === undefined ? {} : { models: options.catalog }),
   });
   cleanups.push(() => bureau.dispose());
   return bureau;
@@ -192,7 +192,7 @@ describe('admission checks the model against the agent', () => {
     const stepped = createSteppedGenerate();
     const bureau = await openBureau({
       generate: stepped.generate,
-      catalog: twinModelCatalog(),
+      catalog: twinModels(),
       allowed: [OPUS_5_5],
     });
     const run = await startRun(bureau);

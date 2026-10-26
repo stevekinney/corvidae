@@ -92,7 +92,7 @@ describe('which agents are offered the tools', () => {
         agents: {},
         agentDirectory: '/nonexistent',
         workflowDirectory: '/nonexistent-workflows',
-        resolveAgentGenerate: () => async () => ({ content: '', toolCalls: [] }),
+        models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
         agentTools: { [name]: lookupTool },
         storage: { type: 'memory' },
         durableExecution: true,
