@@ -748,6 +748,8 @@ const clean = redact('Call me at 555-123-4567');
 // 'Call me at [PHONE_REDACTED]'
 ```
 
+A conversation plugin runs over every input after the host has admitted a tool result's media, so it may rewrite a tool result's text parts and a media part's descriptive fields (name, alt, caption, transcript, extracted text, metadata) and the body of an inline or data-URL source, as the PII plugin does, but not the media itself: the number and order of media parts, each part's type and media type, and the kind and locator of every other source stay as they were. A plugin that changes them makes the append throw an `error:invalid-input`.
+
 **Key exports:** `createPIIRedaction`, `createPIIRedactionPlugin`, `redactPii`, `DEFAULT_PII_RULES`. Also exports `PIIRedactionRule` and `PIIRedactionOptions` types.
 
 ### Versioning
@@ -935,6 +937,8 @@ const payload = toGeminiMessages(history);
 const imported = fromGeminiMessages(payload);
 const updated = appendGeminiMessages(history, payload);
 ```
+
+A tool result with parts exports as a `functionResponse` whose `response.output` lists every part in order (a text part as its string, a media part as `{ $ref: displayName }`) and whose `parts` carry the media as inline data. `fromGeminiMessages` rebuilds the ordered text and media parts from that pair, keeps a non-success outcome, error and action beside them, and refuses a `$ref` the media list does not carry instead of dropping it. A response with no media list is a plain value and is read as content.
 
 **Key exports:** `toGeminiMessages`, `fromGeminiMessages`, `appendGeminiMessages`, `geminiConversationAdapter`. Type exports: `GeminiConversation`, `GeminiExport`, `GeminiContent`, `GeminiPart`, `GeminiTextPart`, `GeminiInlineDataPart`, `GeminiFileDataPart`, `GeminiFunctionCallPart`, `GeminiFunctionResponsePart`.
 
