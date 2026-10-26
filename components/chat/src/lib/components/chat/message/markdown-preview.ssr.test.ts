@@ -107,7 +107,7 @@ describe('Chat markdown-preview SSR contract', () => {
 
     try {
       expect(result.ssrHtml).toContain(
-        '<div class="cinder-markdown-content message-content-preview">',
+        '<div class="cinder-markdown-content message-content-preview" data-state="pending">',
       );
       expect(result.ssrHtml).toContain('<p>hello world</p>');
     } finally {
