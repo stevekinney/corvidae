@@ -316,6 +316,11 @@ export interface TaskListQuery<T = TaskView> {
    * Omitted, an entry is its {@link TaskView}.
    */
   readonly project?: ((view: TaskView) => T | Promise<T>) | undefined;
+  /**
+   * Which wire projection the entries are in; a token is valid only for the projection it was
+   * issued for. Defaults to `'task-view'`, the native listing; an A2A `ListTasks` names `'a2a'`.
+   */
+  readonly projection?: string | undefined;
 }
 
 /** What `enumerate` filters and pages by. */
@@ -333,7 +338,7 @@ export interface TaskQuery {
 export interface TaskRegistry {
   /**
    * Lists tasks, most recently changed first (`TaskView.updatedAt` descending, then id
-   * descending), as a snapshot-consistent listing (COR-1304). The first page that has a next page
+   * ascending), as a snapshot-consistent listing (COR-1304). The first page that has a next page
    * records the ordered listing; its `nextPageToken` names that record, and every later page is
    * read from it, so a task that changes or is created mid-enumeration neither moves nor repeats.
    * A task removed since is skipped, so a page may hold fewer than `limit` entries. A refused
@@ -1090,6 +1095,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const scope: TaskListingScope = {
       principal: query.principal,
       reach: query.owner === undefined ? 'every-owner' : 'own',
+      projection: query.projection ?? 'task-view',
       filters: filtersOf(query),
     };
     return query.pageToken === undefined

@@ -40,7 +40,7 @@ const RECORD_ENVELOPE_BYTES = 16 * 1024;
 
 /** Why a page token was refused. */
 export type TaskListingTokenFailure =
-  'malformed' | 'not-found' | 'expired' | 'reach' | 'filters' | 'context-changed';
+  'malformed' | 'not-found' | 'expired' | 'reach' | 'projection' | 'filters' | 'context-changed';
 
 /**
  * A page token `bureau.tasks.list` refuses: it is not a token, names no live snapshot (a token of
@@ -70,10 +70,15 @@ export interface TaskListingFilters {
 export interface TaskListingScope {
   readonly principal: string;
   readonly reach: 'own' | 'every-owner';
+  /**
+   * The wire projection the entries are in (`'task-view'` for a native listing, `'a2a'` for an A2A
+   * `ListTasks`). A token replayed to another projection would serve entries of the wrong shape.
+   */
+  readonly projection: string;
   readonly filters: TaskListingFilters;
 }
 
-/** A position in the listing order: later in the order means older, then smaller by id. */
+/** A position in the listing order: later in the order means older, then larger by id. */
 export interface TaskListingKey {
   readonly at: number;
   readonly id: string;
@@ -108,11 +113,14 @@ export interface TaskListingToken {
   readonly position: number;
 }
 
-/** Orders keys the way a listing does: most recent status change first, then id descending. */
+/**
+ * Orders keys the way a listing does: most recent status change first, then id ascending, as A2A's
+ * reference orders tasks that share a status timestamp.
+ */
 export function compareListingKeys(left: TaskListingKey, right: TaskListingKey): number {
   if (left.at !== right.at) return left.at < right.at ? 1 : -1;
   if (left.id === right.id) return 0;
-  return left.id < right.id ? 1 : -1;
+  return left.id < right.id ? -1 : 1;
 }
 
 /** Whether `key` comes strictly after `after` in listing order. */
@@ -248,6 +256,7 @@ export function createTaskListingStore(options: TaskListingStoreOptions): TaskLi
 
   function check(record: TaskListingRecord<unknown>, scope: TaskListingScope): void {
     if (record.reach !== scope.reach) throw new TaskListingTokenError('reach');
+    if (record.projection !== scope.projection) throw new TaskListingTokenError('projection');
     if (!sameFilters(record.filters, scope.filters)) throw new TaskListingTokenError('filters');
   }
 
