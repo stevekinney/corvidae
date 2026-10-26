@@ -16,6 +16,7 @@ import {
   ToolResultError,
   type ToolResultPart,
 } from '../src/protocol';
+import { DEFAULT_TRUNCATION_MARKER } from '../src/truncation/index';
 
 const PNG = 'iVBORw0KGgo=';
 const image = { type: 'image' as const, data: PNG, mimeType: 'image/png' };
@@ -242,8 +243,13 @@ describe('truncation middleware shares one budget across the text parts', () => 
     parts: ToolResultPart[],
     maxCharacters: number,
     extra: { isError?: boolean; errorMaxCharacters?: number } = {},
+    defaultMarker = false,
   ) {
-    const configuration = createTruncationMiddleware({ maxCharacters, marker: '…', ...extra })({
+    const configuration = createTruncationMiddleware({
+      maxCharacters,
+      ...(defaultMarker ? {} : { marker: '…' }),
+      ...extra,
+    })({
       name: 't',
       description: 't',
       execute: async () => toolContent(parts),
@@ -285,6 +291,22 @@ describe('truncation middleware shares one budget across the text parts', () => 
       errorMaxCharacters: 20,
     });
     expect(parts).toEqual([{ type: 'text', text: `${'e'.repeat(19)}…` }]);
+  });
+
+  it('marks the cut when the budget left is no longer than the marker', async () => {
+    const parts = await truncate(
+      [
+        { type: 'text', text: 'a'.repeat(7990) },
+        { type: 'text', text: 'b'.repeat(500) },
+      ],
+      8000,
+      {},
+      true,
+    );
+    expect(parts).toEqual([
+      { type: 'text', text: 'a'.repeat(7990) },
+      { type: 'text', text: DEFAULT_TRUNCATION_MARKER },
+    ]);
   });
 
   it('leaves parts that fit the whole budget unchanged', async () => {

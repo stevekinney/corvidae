@@ -405,6 +405,12 @@ function truncatePartsWithinBudget(
       return [{ ...part, text: marker }];
     }
     const stripped = stripBase64Placeholders(part.text, options);
+    // `truncateText` keeps no marker once the budget is no longer than the marker, so a part that
+    // does not fit then is replaced by the marker alone rather than cut silently.
+    if (stripped.length > remaining && remaining <= marker.length) {
+      state = 'cut';
+      return [{ ...part, text: marker }];
+    }
     const text = truncateText(stripped, remaining, { marker });
     remaining -= text.length;
     if (text !== stripped) state = 'cut';
