@@ -2825,7 +2825,7 @@ async function buildRuntimeComposition(
       // so a schedule that is due the moment the engine exists cannot fire a type Weft does not
       // have yet. `createBureau` starts it, before the engine recovers, once they are.
       startScheduler:
-        options.durableBackgroundTasks !== 'manual' && options.workflowDirectory === undefined,
+        options.durableBackgroundTasks !== 'manual' && options.workflowSource === undefined,
       resolveWorkflowServices: resolveRunServices,
       ...(dependencies.onRecoveredWorkflow === undefined
         ? {}

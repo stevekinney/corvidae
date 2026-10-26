@@ -32,6 +32,7 @@ import {
 } from './testing/agent-file-fixtures.test-support';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { agentFileDirectory } from './sources/agent-file-directory';
 
 const CHILD = join(import.meta.dir, 'test', 'agent-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -96,9 +97,8 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     bureau = await scope.phase('boot', () =>
       createBureau<AgentDefinitions>({
         agents: {},
-        agentDirectory: agents,
         // The tool catalog is the deployment's, so it is the same after the restart.
-        agentTools: { 'lookup-order': lookupTool },
+        agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: {
           generate:
             (descriptor) =>
@@ -204,8 +204,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       });
       bureau = await createBureau<AgentDefinitions>({
         agents: {},
-        agentDirectory: agents,
-        agentTools: { 'lookup-order': lookupTool },
+        agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
         storage: { type: 'sqlite', path: storagePath },
         durableExecution: true,

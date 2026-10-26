@@ -1,7 +1,8 @@
 /**
- * A directory of files that a Bureau subsystem loads, keeps current, and reports changes of
- * (COR-1524 for agent files, COR-1527 for workflow files). Everything here is format-neutral: the
- * subsystem supplies how one file's bytes become an entry.
+ * A directory of files that a definition source loads, keeps current, and reports changes of
+ * (COR-1524 for agent files, COR-1527 for workflow files, COR-1702 for the sources around them).
+ * Everything here is format-neutral: it hands out each file's bytes and hash, and Bureau supplies
+ * how one file's bytes become an agent or a workflow.
  *
  * ## Watching
  *
@@ -21,8 +22,8 @@ import { basename, dirname } from 'node:path';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 
-import { hashAgentFileBytes } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
+import { type DefinitionEntry, hashDefinitionBytes } from './definition-source';
 
 /**
  * How often a directory rescans on its own, in milliseconds. `fs.watch` is the primary signal, but
@@ -35,21 +36,12 @@ export const DIRECTORY_POLL_INTERVAL_MILLISECONDS = 1000;
 
 /** What changed in one rescan, by identifier. */
 export interface DirectoryChange {
-  readonly added: readonly string[];
-  readonly changed: readonly string[];
-  readonly removed: readonly string[];
+  readonly added: string[];
+  readonly changed: string[];
+  readonly removed: string[];
 }
 
-/** What every entry a directory holds carries, so a rescan can tell whether a file changed. */
-export interface DirectoryEntry {
-  readonly id: string;
-  /** The SHA-256 of the file's bytes, or `undefined` when they could not be read. */
-  readonly hash: string | undefined;
-  /** The deployment state the entry was evaluated against; a different value re-evaluates it. */
-  readonly revision: number;
-}
-
-export interface WatchedDirectoryOptions<TEntry extends DirectoryEntry> {
+export interface WatchedDirectoryOptions {
   readonly directory: string;
   /** What the directory holds, for diagnostics: `agent directory`. */
   readonly label: string;
@@ -57,7 +49,8 @@ export interface WatchedDirectoryOptions<TEntry extends DirectoryEntry> {
   readonly extension: string;
   /** The largest file read, in bytes. */
   readonly sizeLimit: number;
-  readonly runtime: RuntimeServices;
+  /** The runtime whose timers drive the safety rescan; read when the rescan starts. */
+  readonly runtime: () => RuntimeServices;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   readonly operations?: AgentFileOperations | undefined;
@@ -67,101 +60,90 @@ export interface WatchedDirectoryOptions<TEntry extends DirectoryEntry> {
   readonly openWatcher?:
     | ((path: string, listener: (event: string, filename: string | null) => void) => FSWatcher)
     | undefined;
-  /** The current deployment revision; an entry evaluated against another is evaluated again. */
-  readonly revision: () => number;
-  /** Turn one file's bytes into an entry. */
-  readonly evaluate: (id: string, bytes: Uint8Array, hash: string, revision: number) => TEntry;
-  /** The entry for a file larger than the limit. */
-  readonly tooLarge: (id: string, size: number, revision: number) => TEntry;
-  /** The entry for a file that could not be read. */
-  readonly unreadable: (id: string, error: unknown, revision: number) => TEntry;
-  /**
-   * Runs after a rescan has loaded every entry and before the scan's entries replace the previous
-   * ones, so before `refresh()` resolves and before any listener is told (COR-1584). It resolves
-   * the entries to keep, which the scan then compares with the previous ones: a subsystem whose
-   * entries need an async step (a persisted revision) completes them here. It must not reject; a
-   * rejection fails the scan, which keeps the previous entries. `previous` is the entries the last
-   * scan kept. The scan waits for it: a step that never settles stalls the scan, every `refresh()`
-   * behind it, and `close()`, as a file read that never settles does.
-   */
-  readonly settle?:
-    | ((
-        loaded: ReadonlyMap<string, TEntry>,
-        previous: ReadonlyMap<string, TEntry>,
-      ) => Promise<ReadonlyMap<string, TEntry>>)
-    | undefined;
-  /**
-   * Called after every rescan, whether or not it found a change, once the listeners have been
-   * told. A subsystem whose work on a change can fail uses it to try again on the next rescan.
-   */
-  readonly afterScan?: (() => void) | undefined;
-  /** Whether a rescan found `after` to be a different file state than `before`. */
-  readonly sameSignature: (before: TEntry, after: TEntry) => boolean;
 }
 
-export interface WatchedDirectory<TEntry extends DirectoryEntry> {
+export interface WatchedDirectory {
   /** Every file in the directory that is a candidate, by identifier. */
-  readonly entries: () => ReadonlyMap<string, TEntry>;
+  readonly entries: () => ReadonlyMap<string, DefinitionEntry>;
   /** Rescan the directory; resolves once the entries reflect it. */
   readonly refresh: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed an entry. Returns its unsubscribe. */
   readonly onChange: (listener: (change: DirectoryChange) => void) => () => void;
-  /** Stop watching and wait for a scan in flight. */
-  readonly close: () => Promise<void>;
+  /** Begin watching: arm `fs.watch` and the safety rescan. Does nothing under `watch: false`. */
+  readonly startWatching: () => void;
+  /** Stop watching: close the watchers and the safety rescan. A scan in flight finishes. */
+  readonly stopWatching: () => void;
 }
 
-export function createWatchedDirectory<TEntry extends DirectoryEntry>(
-  options: WatchedDirectoryOptions<TEntry>,
-): WatchedDirectory<TEntry> {
+const NO_BYTES = new Uint8Array(0);
+
+/** Whether a rescan found `after` to be a different file state than `before`. */
+function sameSignature(before: DefinitionEntry, after: DefinitionEntry): boolean {
+  return before.hash === after.hash && before.problem?.code === after.problem?.code;
+}
+
+export function createWatchedDirectory(options: WatchedDirectoryOptions): WatchedDirectory {
   const operations = options.operations ?? nodeAgentFileOperations;
   const { directory, extension } = options;
   const openWatcher =
     options.openWatcher ?? ((path, listener) => watch(path, { persistent: false }, listener));
-  let entries = new Map<string, TEntry>();
+  let entries = new Map<string, DefinitionEntry>();
   const listeners = new Set<(change: DirectoryChange) => void>();
 
   async function loadEntry(
     id: string,
     name: string,
-    revision: number,
-    previous: TEntry | undefined,
-  ): Promise<TEntry | undefined> {
+    previous: DefinitionEntry | undefined,
+  ): Promise<DefinitionEntry | undefined> {
     const path = `${directory}/${name}`;
     try {
       const size = await operations.size(path);
       if (size === undefined) return undefined;
-      if (size > options.sizeLimit) return options.tooLarge(id, size, revision);
+      if (size > options.sizeLimit) {
+        return {
+          id,
+          bytes: NO_BYTES,
+          hash: '',
+          problem: { code: 'file-too-large', message: `The file is ${size} bytes.`, size },
+        };
+      }
       const bytes = await operations.read(path);
       if (bytes === undefined) return undefined;
-      const hash = hashAgentFileBytes(bytes);
-      if (previous?.hash === hash && previous.revision === revision) return previous;
-      return options.evaluate(id, bytes, hash, revision);
+      const hash = hashDefinitionBytes(bytes);
+      if (previous?.hash === hash) return previous;
+      return { id, bytes, hash };
     } catch (error) {
-      return options.unreadable(id, error, revision);
+      return {
+        id,
+        bytes: NO_BYTES,
+        hash: '',
+        problem: {
+          code: 'unreadable',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
   }
 
   async function scanOnce(): Promise<void> {
     const listing = await operations.listDirectory(directory);
-    const revision = options.revision();
-    const loaded = new Map<string, TEntry>();
+    const next = new Map<string, DefinitionEntry>();
     for (const item of listing ?? []) {
       if (!item.isFile || item.name.startsWith('.') || !item.name.endsWith(extension)) continue;
       const id = item.name.slice(0, -extension.length);
-      const entry = await loadEntry(id, item.name, revision, entries.get(id));
-      if (entry !== undefined) loaded.set(id, entry);
+      const entry = await loadEntry(id, item.name, entries.get(id));
+      if (entry !== undefined) next.set(id, entry);
     }
-    const next = options.settle === undefined ? loaded : await options.settle(loaded, entries);
     const added: string[] = [];
     const changed: string[] = [];
     const removed: string[] = [];
     for (const [id, entry] of next) {
       const before = entries.get(id);
       if (before === undefined) added.push(id);
-      else if (!options.sameSignature(before, entry)) changed.push(id);
+      else if (!sameSignature(before, entry)) changed.push(id);
     }
     for (const id of entries.keys()) if (!next.has(id)) removed.push(id);
-    entries = new Map(next);
+    entries = next;
     if (added.length + changed.length + removed.length > 0) {
       for (const listener of listeners) {
         try {
@@ -171,16 +153,17 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
         }
       }
     }
-    options.afterScan?.();
   }
 
   let dirty = false;
   let running: Promise<void> | undefined;
-  let closed = false;
+  /** Whether the directory is being watched: nothing is armed or polled until a listener asks. */
+  let watching = false;
   /** The watchers that are open, by the path each watches. */
   const watchers = new Map<string, { readonly watcher: FSWatcher; readonly watches: string }>();
   let forceRearm = false;
   let pollTimer: unknown;
+  let pollRuntime: RuntimeServices | undefined;
 
   /**
    * The nearest existing ancestor of the directory, and the name of the entry under it that leads
@@ -202,7 +185,7 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
   }
 
   function open(path: string, entry: string | undefined): void {
-    if (closed) return;
+    if (!watching) return;
     try {
       const opened = openWatcher(path, (event, filename) => {
         const name = filename ?? null;
@@ -222,12 +205,12 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
   }
 
   async function arm(): Promise<void> {
-    if (closed || options.watch === false) return;
+    if (!watching) return;
     const wanted = new Map<string, string | undefined>();
     if ((await operations.size(directory)) !== undefined) wanted.set(directory, undefined);
     const ancestor = await nearestExistingAncestor();
-    // `close()` may have landed while the directory was being looked at: open nothing then.
-    if (closed) return;
+    // `stopWatching()` may have landed while the directory was being looked at: open nothing then.
+    if (!watching) return;
     if (ancestor !== undefined) wanted.set(ancestor.path, ancestor.entry);
     for (const [path, held] of watchers) {
       const entry = wanted.get(path);
@@ -245,8 +228,9 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
   }
 
   function startPolling(): void {
-    if (pollTimer !== undefined || closed || options.watch === false) return;
-    pollTimer = options.runtime.timers.setInterval(trigger, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    if (pollTimer !== undefined || !watching) return;
+    pollRuntime = options.runtime();
+    pollTimer = pollRuntime.timers.setInterval(trigger, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
   }
 
   async function loop(): Promise<void> {
@@ -254,7 +238,7 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
     for (;;) {
       // Decided and cleared in one synchronous step, so a `refresh()` is either behind a scan
       // that has not started yet or starts a loop of its own, never handed a loop that is over.
-      if (!dirty || closed) {
+      if (!dirty) {
         running = undefined;
         return;
       }
@@ -270,7 +254,6 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
   }
 
   function trigger(): void {
-    if (closed) return;
     dirty = true;
     running ??= loop();
   }
@@ -289,14 +272,16 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
         listeners.delete(listener);
       };
     },
-    async close() {
-      closed = true;
-      if (pollTimer !== undefined) options.runtime.timers.clearInterval(pollTimer);
+    startWatching() {
+      if (options.watch === false || watching) return;
+      watching = true;
+      trigger();
+    },
+    stopWatching() {
+      // A scan in flight may be setting watchers up: it opens none once `watching` is cleared.
+      watching = false;
+      if (pollTimer !== undefined) pollRuntime?.timers.clearInterval(pollTimer);
       pollTimer = undefined;
-      listeners.clear();
-      // A scan in flight may be setting watchers up: it opens none once `closed` is set, and the
-      // watchers it opened before are closed here, after it has stopped.
-      await running;
       for (const held of watchers.values()) held.watcher.close();
       watchers.clear();
     },

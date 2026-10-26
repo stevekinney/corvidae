@@ -37,10 +37,10 @@ import {
 } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { AgentFileOperations } from './agent-file-operations';
 import { auditTrailWorkflowOwnerId } from './audit-trail';
 import { ownerOrLocal } from './owner-of-record';
-import type { DirectoryChange } from './watched-directory';
+import type { DefinitionChange } from './definition-scanner';
+import type { WorkflowSource } from './sources/definition-source';
 import type { WorkflowFileDefinition } from './workflow-file';
 import {
   createWorkflowFileCatalog,
@@ -198,7 +198,7 @@ export interface BureauWorkflows {
   /** Rescan the directory; resolves once the engine and the schedules match it. */
   readonly refresh: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
-  readonly onChange: (listener: (change: DirectoryChange) => void) => () => void;
+  readonly onChange: (listener: (change: DefinitionChange) => void) => () => void;
   /**
    * Throws `BureauError` `NOT_FOUND` unless `id` is a ready, unpaused workflow: the check a path
    * that starts a workflow by identifier (`signal`) makes, so a paused or deleted workflow is
@@ -308,7 +308,8 @@ export interface WorkflowRuntime {
 }
 
 export interface WorkflowRuntimeOptions {
-  readonly directory: string;
+  /** Where the workflow files come from and are written back to. */
+  readonly source: WorkflowSource;
   readonly engine: Engine;
   readonly host: DocumentWorkflowHost;
   /** Where snapshots live; durable in a Bureau, since this needs the durable engine. */
@@ -328,9 +329,6 @@ export interface WorkflowRuntimeOptions {
    * Bureau with no persistent storage keeps no trail.
    */
   readonly audit?: ((entry: WorkflowAuditEntry) => Promise<void>) | undefined;
-  readonly operations?: AgentFileOperations | undefined;
-  readonly watch?: boolean | undefined;
-  readonly openWatcher?: Parameters<typeof createWorkflowFileCatalog>[0]['openWatcher'];
 }
 
 function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefined {
@@ -356,7 +354,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   let started = false;
 
   const catalog: WorkflowFileCatalog = createWorkflowFileCatalog({
-    directory: options.directory,
+    source: options.source,
     host,
     // A name the engine already has that Bureau did not register itself is a code workflow.
     isCodeWorkflow: (id) =>
@@ -366,9 +364,6 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     afterScan: () => {
       if (applyPending) queueApply();
     },
-    ...(options.operations === undefined ? {} : { operations: options.operations }),
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
   });
 
   const track = (promise: Promise<unknown>, label: string): void => {

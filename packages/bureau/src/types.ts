@@ -41,6 +41,7 @@ import type { SkillActivationRecord, SkillCatalogRevision } from './skills';
 import type { TaskRegistry } from './task-registry';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
+import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import type {
   ConditionalTextValueStore,
   ListFilter,
@@ -57,12 +58,7 @@ import type {
   WorkflowState,
   WorkflowSummary,
 } from '@lostgradient/weft';
-import type {
-  PendingToolApproval,
-  SignedPendingToolApproval,
-  Tool,
-  ToolRequestContext,
-} from 'armorer';
+import type { PendingToolApproval, SignedPendingToolApproval, ToolRequestContext } from 'armorer';
 import type { ConversationHistory, Message, MultiModalContent } from 'conversationalist';
 
 import type {
@@ -305,36 +301,34 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agents: D;
   /**
-   * COR-1524 — a directory of Markdown agent files. Every `*.md` file in it is an agent whose
-   * identifier is the filename without the extension, listed in {@link Bureau.agents} beside
-   * the code-defined ones and run by name through {@link Bureau.run} or a session run. See
+   * COR-1702 — where agent definitions are loaded from, watched in, and written back to. Pass
+   * `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of
+   * Markdown agent files (COR-1524): every `*.md` file in it is an agent whose identifier is the
+   * filename without the extension, listed in {@link Bureau.agents} beside the code-defined ones
+   * and run by name through {@link Bureau.run} or a session run. See
    * `documentation/agent-files.md`.
    *
-   * A host names a directory and Bureau reads, watches, and writes it; Bureau does not depend on
-   * where that directory lives. A directory that does not exist is an empty one. Requires
-   * {@link ModelsOptions.generate}: a model name that nothing can turn into a
-   * `generate` would be silently ignored, so `createBureau` refuses the combination with
-   * `BureauError` (`BAD_REQUEST`).
+   * Bureau keeps parsing, validation, snapshots, revisions, publication, and the write-through
+   * operations; the source only holds bytes. The source's `tools` is the deployment's tool
+   * catalog: the tools an agent file may name in `tools`. With {@link BureauOptions.workflowSource}
+   * Bureau adds `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`,
+   * and `workflows-list` (COR-1529); a tool of the host's with one of those names is refused with
+   * `BureauError` (`BAD_REQUEST`). Requires {@link ModelsOptions.generate}: a model name that
+   * nothing can turn into a `generate` would be silently ignored, so `createBureau` refuses the
+   * combination with `BureauError` (`BAD_REQUEST`).
    */
-  agentDirectory?: string;
+  agentSource?: AgentSource;
   /**
-   * COR-1524 — the deployment's tool catalog: the tools an agent file may name in `tools`, by
-   * the name it uses. A file naming a tool that is not here is `invalid`. Defaults to none. With
-   * {@link BureauOptions.workflowDirectory} Bureau adds `workflows-create`, `workflows-update`,
-   * `workflows-pause`, `workflows-resume`, and `workflows-list` (COR-1529); a tool of the host's
-   * with one of those names is refused with `BureauError` (`BAD_REQUEST`).
+   * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
+   * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON
+   * workflow files (COR-1527): every `*.json` file in it is an agent-authored workflow
+   * (COR-1525's document plus `agent` and `paused`) whose identifier is the filename without the
+   * extension, registered with the durable engine as its own workflow type and run on the
+   * schedule its `trigger` names. Requires a durable engine, and `createBureau` refuses the
+   * combination without one with `BureauError` (`BAD_REQUEST`). See
+   * `documentation/workflow-files.md`.
    */
-  agentTools?: Readonly<Record<string, Tool>>;
-  /**
-   * COR-1527 — a directory of JSON workflow files. Every `*.json` file in it is an agent-authored
-   * workflow (COR-1525's document plus `agent` and `paused`) whose identifier is the filename
-   * without the extension, registered with the durable engine as its own workflow type and run on
-   * the schedule its `trigger` names. Bureau reads, watches, and writes the directory and does not
-   * depend on where it lives; a directory that does not exist is an empty one. Requires a durable
-   * engine, and `createBureau` refuses the combination without one with `BureauError`
-   * (`BAD_REQUEST`). See `documentation/workflow-files.md`.
-   */
-  workflowDirectory?: string;
+  workflowSource?: WorkflowSource;
   /**
    * COR-772 — configuration for {@link Bureau.children}, Bureau's durable
    * parent-child topology. Omit it and children still dispatch, persist, and
@@ -724,7 +718,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * The model rows the deployment offers and how a row becomes a `generate`, exposed as
    * {@link Bureau.models}. `catalog` defaults to `@lostgradient/operative`'s static seed.
-   * `generate` is required with {@link BureauOptions.agentDirectory}: a model name that nothing
+   * `generate` is required with {@link BureauOptions.agentSource}: a model name that nothing
    * can turn into a `generate` would be silently ignored, so `createBureau` refuses the
    * combination with `BureauError` (`BAD_REQUEST`).
    */
@@ -1049,7 +1043,7 @@ export interface BureauRecoveryReport {
   readonly perRunFailures: readonly { readonly runId: string; readonly reason: string }[];
   /**
    * COR-1583 — one entry per stored run that was left untouched because its workflow type is not
-   * registered with this Bureau (a Bureau started without `workflowDirectory`, or a workflow whose
+   * registered with this Bureau (a Bureau started without `workflowSource`, or a workflow whose
    * file and stored revisions are both gone). A skipped run keeps its state and has no claim taken
    * on it, so a later boot that has registered its type recovers it; no other run is held back by
    * it. Empty when every stored run's type was registered. Each entry is also diagnosed once, as a
@@ -1193,7 +1187,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly agents: BureauAgentCatalog<D>;
   /**
-   * COR-1527 — the workflow files in {@link BureauOptions.workflowDirectory}, or `undefined` when
+   * COR-1527 — the workflow files in {@link BureauOptions.workflowSource}, or `undefined` when
    * the Bureau has none. Every workflow belongs to the deployment's owner of record.
    */
   readonly workflows: BureauWorkflows | undefined;
@@ -1227,7 +1221,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   ): AgentRunForName<D, TName>;
   /**
    * COR-1524 — dispatch an agent by a name only known at run time: a file-based agent's
-   * identifier (see {@link BureauOptions.agentDirectory}). The handle is untyped, as the agent's
+   * identifier (see {@link BureauOptions.agentSource}). The handle is untyped, as the agent's
    * output is. A name that matches neither a code-defined agent nor a file agent whose state is
    * `ready` throws `BureauError` (`NOT_FOUND`), exactly as the typed overload does.
    */

@@ -5,29 +5,29 @@
  * Every `*.json` file in the directory is a workflow whose identifier is the filename without the
  * extension. Dotfiles, other extensions, and directories are ignored. A file that cannot be used is
  * still listed, with `state: 'invalid'` and a typed {@link WorkflowFileProblem}; it never runs and
- * it never affects another workflow. Watching, the safety rescan, and the atomic write are shared
- * with the agent files (`watched-directory.ts`, `atomic-file-writer.ts`).
+ * it never affects another workflow. Loading, watching, and writing go through a workflow source
+ * (COR-1702); the scan that evaluates what the source loads is shared with the agent files
+ * (`definition-scanner.ts`).
  *
  * @module workflow-file-catalog
  */
 
-import { randomUUID } from 'node:crypto';
-import type { FSWatcher } from 'node:fs';
-
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { DocumentWorkflowHost } from '@lostgradient/weft';
 
-import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
-import { createAtomicFileWriter } from './atomic-file-writer';
+import { createDefinitionScanner, type DefinitionChange } from './definition-scanner';
 import { ownerOrLocal } from './owner-of-record';
-import { createWatchedDirectory, type DirectoryChange } from './watched-directory';
+import {
+  type DefinitionEntry,
+  SourceConflictError,
+  type WorkflowSource,
+} from './sources/definition-source';
 import {
   checkWorkflowIdentifier,
   decodeWorkflowFile,
   hashWorkflowFileBytes,
   parseWorkflowFile,
   serializeWorkflowFile,
-  WORKFLOW_FILE_EXTENSION,
   WORKFLOW_FILE_SIZE_LIMIT,
   WorkflowFileConflictError,
   type WorkflowFileContents,
@@ -74,21 +74,16 @@ export interface WorkflowFileWriteResult {
 }
 
 export interface WorkflowFileCatalogOptions {
-  readonly directory: string;
+  /** Where the workflow files come from and are written back to. */
+  readonly source: WorkflowSource;
   readonly host: DocumentWorkflowHost;
   /** Whether `id` names a workflow the engine already has from code; a file may not take it. */
   readonly isCodeWorkflow: (id: string) => boolean;
   readonly runtime: RuntimeServices;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
-  readonly operations?: AgentFileOperations | undefined;
   /** Called after every rescan, whether or not it found a change. */
   readonly afterScan?: (() => void) | undefined;
-  /** Watch the directory. Defaults to `true`; `false` leaves reloading to `refresh()`. */
-  readonly watch?: boolean | undefined;
-  readonly openWatcher?:
-    | ((path: string, listener: (event: string, filename: string | null) => void) => FSWatcher)
-    | undefined;
 }
 
 export interface WorkflowFileCatalog {
@@ -122,7 +117,7 @@ export interface WorkflowFileCatalog {
   /** Rescan the directory; resolves once the catalog reflects it. */
   readonly refresh: () => Promise<void>;
   /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
-  readonly onChange: (listener: (change: DirectoryChange) => void) => () => void;
+  readonly onChange: (listener: (change: DefinitionChange) => void) => () => void;
   /** Stop watching and wait for a scan in flight. */
   readonly close: () => Promise<void>;
 }
@@ -142,8 +137,7 @@ function refuse(problem: WorkflowFileProblem): never {
 export function createWorkflowFileCatalog(
   options: WorkflowFileCatalogOptions,
 ): WorkflowFileCatalog {
-  const operations = options.operations ?? nodeAgentFileOperations;
-  const { directory, host } = options;
+  const { source, host } = options;
   const owner = ownerOrLocal(undefined);
 
   function evaluate(id: string, bytes: Uint8Array, hash: string, revision: number): WorkflowEntry {
@@ -173,17 +167,12 @@ export function createWorkflowFileCatalog(
     };
   }
 
-  const watched = createWatchedDirectory<WorkflowEntry>({
-    directory,
+  const watched = createDefinitionScanner<WorkflowEntry>({
+    source,
     label: 'workflow directory',
-    extension: WORKFLOW_FILE_EXTENSION,
-    sizeLimit: WORKFLOW_FILE_SIZE_LIMIT,
     runtime: options.runtime,
     diagnose: options.diagnose,
-    operations,
     ...(options.afterScan === undefined ? {} : { afterScan: options.afterScan }),
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
     revision: () => 0,
     evaluate,
     tooLarge: (id, size, revision) => ({
@@ -208,26 +197,68 @@ export function createWorkflowFileCatalog(
       before.hash === after.hash && before.problem?.code === after.problem?.code,
   });
 
-  const files = createAtomicFileWriter({
-    directory,
-    operations,
-    extension: WORKFLOW_FILE_EXTENSION,
-    newTemporaryName: () => randomUUID(),
-    notFound: (id) =>
-      new WorkflowFileError('workflow-file-not-found', `There is no workflow file for "${id}".`),
-    exists: (id, currentHash) =>
-      new WorkflowFileConflictError(
-        'workflow-file-exists',
-        `A workflow file for "${id}" already exists.`,
-        currentHash,
-      ),
-    changed: (id, currentHash) =>
-      new WorkflowFileConflictError(
-        'workflow-file-changed',
-        `The file for "${id}" has changed since it was read.`,
-        currentHash,
-      ),
-  });
+  let tail: Promise<unknown> = Promise.resolve();
+  /** Run `work` after every earlier write has settled: writes are serialized in this process. */
+  function exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const result = tail.then(work, work);
+    tail = result.catch(() => undefined);
+    return result;
+  }
+
+  /** The error for a source that found the file in a state the caller did not expect. */
+  function conflictOf(error: SourceConflictError): WorkflowFileError {
+    const { id, expectedHash, actualHash } = error;
+    if (actualHash === null) {
+      return new WorkflowFileError(
+        'workflow-file-not-found',
+        `There is no workflow file for "${id}".`,
+      );
+    }
+    return expectedHash === null
+      ? new WorkflowFileConflictError(
+          'workflow-file-exists',
+          `A workflow file for "${id}" already exists.`,
+          actualHash,
+        )
+      : new WorkflowFileConflictError(
+          'workflow-file-changed',
+          `The file for "${id}" has changed since it was read.`,
+          actualHash,
+        );
+  }
+
+  async function throughSource<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      throw error instanceof SourceConflictError ? conflictOf(error) : error;
+    }
+  }
+
+  /** The definition as the source holds it now, read from the source and not from the last scan. */
+  async function readFresh(id: string): Promise<DefinitionEntry | undefined> {
+    const entries = await source.load();
+    return entries.find((candidate) => candidate.id === id);
+  }
+
+  /** The file's bytes, which must still hold `expectedHash`. */
+  async function readExisting(
+    id: string,
+    expectedHash: string,
+  ): Promise<{ readonly bytes: Uint8Array; readonly hash: string }> {
+    const entry = await readFresh(id);
+    if (entry === undefined) throw conflictOf(new SourceConflictError(id, expectedHash, null));
+    if (entry.problem !== undefined) {
+      throw new WorkflowFileError(
+        entry.problem.code,
+        `The file for "${id}" cannot be read: ${entry.problem.message}`,
+      );
+    }
+    if (entry.hash !== expectedHash) {
+      throw conflictOf(new SourceConflictError(id, expectedHash, entry.hash));
+    }
+    return { bytes: entry.bytes, hash: entry.hash };
+  }
 
   function checkIdentifier(id: string): void {
     const problem = checkWorkflowIdentifier(id);
@@ -254,16 +285,15 @@ export function createWorkflowFileCatalog(
     return bytes;
   }
 
-  /** Replace the file, which must still hold `expectedHash`, with `bytes`. */
-  async function replace(
+  /** Write `bytes` as the file `id`: a create for `expectedHash: null`, else a replace. */
+  async function write(
     id: string,
     bytes: Uint8Array,
-    expectedHash: string,
+    expectedHash: string | null,
   ): Promise<WorkflowFileWriteResult> {
-    await files.readExisting(id, expectedHash);
-    await files.publish(id, bytes, () => files.recheck(id, expectedHash));
+    const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
     await watched.refresh();
-    return { id, hash: hashWorkflowFileBytes(bytes) };
+    return { id, hash: written.hash };
   }
 
   return {
@@ -292,42 +322,43 @@ export function createWorkflowFileCatalog(
 
     async read(id) {
       checkIdentifier(id);
-      const bytes = await files.readBytes(id);
-      if (bytes === undefined) return undefined;
-      const text = decodeWorkflowFile(bytes);
+      const entry = await readFresh(id);
+      if (entry === undefined) return undefined;
+      if (entry.problem !== undefined) {
+        throw new WorkflowFileError(
+          entry.problem.code,
+          `The file for "${id}" cannot be read: ${entry.problem.message}`,
+        );
+      }
+      const text = decodeWorkflowFile(entry.bytes);
       if (text === undefined) {
         throw new WorkflowFileError('not-utf8', `The file for "${id}" is not valid UTF-8.`);
       }
-      return { hash: hashWorkflowFileBytes(bytes), text };
+      return { hash: entry.hash, text };
     },
 
     create(id, definition) {
-      return files.exclusive(async () => {
+      return exclusive(async () => {
         checkIdentifier(id);
-        const bytes = bytesFor(id, definition);
-        const absent = (): Promise<void> => files.assertAbsent(id);
-        await absent();
-        await files.publish(id, bytes, absent);
-        await watched.refresh();
-        return { id, hash: hashWorkflowFileBytes(bytes) };
+        return write(id, bytesFor(id, definition), null);
       });
     },
 
     update(id, definition, { expectedHash }) {
-      return files.exclusive(async () => {
+      return exclusive(async () => {
         checkIdentifier(id);
         const bytes = bytesFor(id, definition);
-        const current = await files.readExisting(id, expectedHash);
+        const current = await readExisting(id, expectedHash);
         // An update that changes nothing writes nothing.
         if (hashWorkflowFileBytes(bytes) === current.hash) return { id, hash: current.hash };
-        return replace(id, bytes, expectedHash);
+        return write(id, bytes, expectedHash);
       });
     },
 
     setPaused(id, paused, { expectedHash }) {
-      return files.exclusive(async () => {
+      return exclusive(async () => {
         checkIdentifier(id);
-        const current = await files.readExisting(id, expectedHash);
+        const current = await readExisting(id, expectedHash);
         const text = decodeWorkflowFile(current.bytes);
         const parsed = text === undefined ? undefined : parseWorkflowFile(id, text, host);
         if (parsed === undefined || !parsed.ok) {
@@ -346,18 +377,16 @@ export function createWorkflowFileCatalog(
           trigger: document.trigger,
           steps: document.steps,
         });
-        return replace(id, bytes, expectedHash);
+        return write(id, bytes, expectedHash);
       });
     },
 
     delete(id, { expectedHash }) {
-      return files.exclusive(async () => {
+      return exclusive(async () => {
         checkIdentifier(id);
-        const { hash } = await files.readExisting(id, expectedHash);
-        await files.recheck(id, expectedHash);
-        await files.remove(id);
+        await throughSource(() => source.delete(id, { expectedHash }));
         await watched.refresh();
-        return { id, hash };
+        return { id, hash: expectedHash };
       });
     },
 
