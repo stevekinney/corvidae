@@ -612,7 +612,7 @@ The handler has no run-starting operation of its own, so the host starts the run
 | `SendStreamingMessage` | Yes | The same send, then a Server-Sent Events stream: the task first, then only later events, closing when the task is terminal. It stays open through `INPUT_REQUIRED`. |
 | `GetTask` | Yes | The caller's task, with `historyLength` applied. |
 | `ListTasks` | Yes | The caller's tasks with the mounted agent, filtered by `contextId`, `status`, and `statusTimestampAfter`, newest first, paginated. |
-| `CancelTask` | Yes | Cancels a task that has not ended. Cleanup may still be pending when it returns; the cleanup extension reports it. |
+| `CancelTask` | Yes | Cancels a task that has not ended and answers once the task has stopped (up to five seconds; a task still stopping then is answered as it stands). Cleanup may still be pending when it returns; the cleanup extension reports it. |
 | `SubscribeToTask` | Yes | Resumable with `Last-Event-ID` where the durable-history extension is declared. A terminal task answers `UnsupportedOperationError` (`-32004`). |
 | `CreateTaskPushNotificationConfig`, `GetTaskPushNotificationConfig`, `ListTaskPushNotificationConfigs`, `DeleteTaskPushNotificationConfig` | Only where push is declared | Elsewhere each answers `PushNotificationNotSupportedError` (`-32003`), as does a send carrying `taskPushNotificationConfig`. |
 | `GetExtendedAgentCard` | No | Answers `UnsupportedOperationError` (`-32004`); the card never declares `extendedAgentCard`. |
