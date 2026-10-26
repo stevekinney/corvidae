@@ -241,8 +241,6 @@ describe('createBureauTestHarness', () => {
     });
   });
 
-  describe('submitSchedulerTask', () => {});
-
   describe('reattachDurable', () => {
     it('is a thin wrapper over Bureau.getDurableRun, returning undefined without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();

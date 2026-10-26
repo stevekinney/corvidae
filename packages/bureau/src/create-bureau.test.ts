@@ -24196,8 +24196,6 @@ describe('bureau:pending-approval-persist idempotency under crash replay (COR-12
   });
 });
 
-describe('COR-636: scheduler task locator', () => {});
-
 // COR-690: shutdown must close run admission before it snapshots the runs and
 // toolboxes it drains, and an aborted run's toolbox must stay discoverable
 // until its own execution lifecycle is idle.
