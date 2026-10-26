@@ -16,11 +16,13 @@ import type {
   A2APeerTaskState,
 } from './peer-client-types.ts';
 import {
+  assertSameIdentity,
   ingestArtifactUpdate,
   ingestIdentity,
   ingestMessageText,
   ingestStatus,
   ingestTask,
+  mergeIdentity,
   type IngestedStatus,
 } from './peer-ingest.ts';
 import { isStopState } from './peer-parts.ts';
@@ -135,11 +137,27 @@ export class PeerTaskTracker {
     this.emit();
   }
 
+  /**
+   * Bounds an identity pair and checks it against the task's own: the one the peer has named, or
+   * before it has, the task a continuation addressed.
+   */
+  private identity(taskId: string, contextId: string): { taskId: string; contextId: string } {
+    const identity = ingestIdentity(taskId, contextId);
+    const known = { taskId: this.snapshot?.id ?? '', contextId: this.snapshot?.contextId ?? '' };
+    assertSameIdentity(
+      { ...known, taskId: known.taskId === '' ? (this.request.taskId ?? '') : known.taskId },
+      identity,
+    );
+    // What the peer left unstated keeps the value it first gave.
+    return mergeIdentity(known, identity);
+  }
+
   /** Applies a whole task, from `GetTask`, `CancelTask`, or a bare response. */
   applyTask(task: Task): void {
+    const identity = this.identity(task.id, task.contextId);
     const ingested = ingestTask(task, this.artifactLimit);
     // The snapshot keeps identity only; status, content, and history are bounded on the way in.
-    this.snapshot = emptyTask(ingested.taskId, ingested.contextId);
+    this.snapshot = emptyTask(identity.taskId, identity.contextId);
     this.artifacts = ingested.artifacts;
     this.setStatus(ingested.status);
   }
@@ -148,9 +166,6 @@ export class PeerTaskTracker {
   apply(event: PeerStreamEvent): void {
     const payload = event.payload;
     if (payload === undefined) return;
-    // A status event after the first response is new by definition; artifacts and messages do
-    // not change whether the task is still waiting.
-    if (this.headSeen && payload.$case === 'statusUpdate') this.fresh = true;
     switch (payload.$case) {
       case 'task':
         this.applyTask(payload.value);
@@ -158,16 +173,29 @@ export class PeerTaskTracker {
       case 'message':
         this.applyMessage(payload.value);
         return;
-      case 'statusUpdate': {
-        const identity = ingestIdentity(payload.value.taskId, payload.value.contextId);
-        this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
-        this.setStatus(ingestStatus(payload.value.status, this.artifactLimit));
+      case 'statusUpdate':
+        this.applyStatusUpdate(payload.value);
         return;
-      }
       case 'artifactUpdate':
         this.applyArtifact(payload.value);
         return;
     }
+  }
+
+  /**
+   * A status event after the first response is new by definition (artifacts and messages do not
+   * change whether the task is still waiting). Its identity is checked first: a frame that is
+   * refused changes nothing, so a task still waiting on an answer is not taken for stopped.
+   */
+  private applyStatusUpdate(update: {
+    taskId: string;
+    contextId: string;
+    status: Task['status'];
+  }): void {
+    const identity = this.identity(update.taskId, update.contextId);
+    if (this.headSeen) this.fresh = true;
+    this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
+    this.setStatus(ingestStatus(update.status, this.artifactLimit));
   }
 
   /** Where the task stopped, as the caller sees it. */
@@ -192,9 +220,9 @@ export class PeerTaskTracker {
   }
 
   private applyMessage(message: Message): void {
+    const identity = this.identity(message.taskId, message.contextId);
     this.lastMessage = ingestMessageText(message, this.artifactLimit);
     if (this.snapshot !== undefined) return;
-    const identity = ingestIdentity(message.taskId, message.contextId);
     this.snapshot = emptyTask(identity.taskId, identity.contextId);
     this.current = 'completed';
     // A bare reply is the peer's whole answer, so it counts at once even to a continuation.
@@ -209,7 +237,7 @@ export class PeerTaskTracker {
     append: boolean;
   }): void {
     if (update.artifact === undefined) return;
-    const identity = ingestIdentity(update.taskId, update.contextId);
+    const identity = this.identity(update.taskId, update.contextId);
     this.snapshot ??= emptyTask(identity.taskId, identity.contextId);
     this.artifacts = ingestArtifactUpdate(
       this.artifacts,
