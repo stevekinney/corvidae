@@ -8,6 +8,7 @@ import {
   createModelCatalog,
   type GenerateContext,
   type GenerateResponse,
+  MediaAdmissionError,
   stopWhen,
   type Toolbox,
   waitForRunState,
@@ -189,5 +190,110 @@ describe('a tool-returned image through an approved review', () => {
     const descriptor = await bureau.assets!.inspect(source.assetId, alice);
     expect(descriptor.owner).toBe(alice.id);
     expect(JSON.stringify(session)).not.toContain(snapshotBase64);
+  });
+});
+
+describe('a tool-returned MCP resource link (COR-1634)', () => {
+  const linkedPng = pngBytes(2, 2);
+  const linkTool = createTool({
+    name: 'chart-link',
+    version: '1.0.0',
+    description: 'Returns a link to a chart on an MCP server',
+    input: z.object({}),
+    async execute() {
+      return toolContent([
+        { type: 'text', text: 'The chart:' },
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'mcp-resource', serverId: 'charts', uri: 'file:///chart.png' },
+        },
+      ]);
+    },
+  });
+
+  function linkAgent(seen: GenerateContext[]) {
+    return createAgent({
+      tools: { 'chart-link': linkTool },
+      generate: withBackendDescriptors(async (context: GenerateContext) => {
+        seen.push(context);
+        const response: GenerateResponse =
+          context.step === 0
+            ? { content: '', toolCalls: [{ id: 'link-1', name: 'chart-link', arguments: {} }] }
+            : { content: 'Done.', toolCalls: [] };
+        return response;
+      }, descriptors),
+    });
+  }
+
+  it('is read through the host reader at the next generation, and the row keeps only the link', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const seen: GenerateContext[] = [];
+    const reads: Array<{ serverId: string; uri: string; principalId: string }> = [];
+    const bureau = await createBureau({
+      agents: { charter: linkAgent(seen) },
+      assets: { storage: fixture.storage },
+      mcpResources: async (resource, context) => {
+        reads.push({ ...resource, principalId: context.principalId });
+        return { data: base64Of(linkedPng), encoding: 'base64', mimeType: 'image/png' };
+      },
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+
+    const run = bureau.run('charter', 'Show the chart', { principal: alice.id });
+    const result = await run.result();
+    expect(result.finishReason).not.toBe('error');
+    expect(reads).toEqual([
+      { serverId: 'charts', uri: 'file:///chart.png', principalId: alice.id },
+    ]);
+    const second = seen.find((context) => context.step === 1);
+    const row = second?.conversation
+      .getMessages()
+      .find((message) => message.role === 'tool-result');
+    expect(row?.toolResult?.parts?.[1]).toMatchObject({
+      source: { kind: 'mcp-resource', serverId: 'charts' },
+    });
+    expect(second?.resolvedSources?.get(`${row?.id}:1`)).toMatchObject({
+      outcome: 'resolved',
+      source: { kind: 'inline', data: base64Of(linkedPng) },
+    });
+    expect(JSON.stringify(result.conversation.current)).not.toContain(base64Of(linkedPng));
+  });
+
+  it('names the resolver’s reason on the refusal when the server no longer has the resource', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const bureau = await createBureau({
+      agents: { charter: linkAgent([]) },
+      assets: { storage: fixture.storage },
+      mcpResources: async () => undefined,
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+    const result = await bureau.run('charter', 'Show the chart', { principal: alice.id }).result();
+    expect(result.finishReason).toBe('error');
+    expect(result.error).toBeInstanceOf(MediaAdmissionError);
+    expect((result.error as MediaAdmissionError).outcomes).toMatchObject([
+      { reason: 'source-form-not-accepted', detail: 'mcp-resource-not-found' },
+    ]);
+  });
+
+  it('fails the next generation, as before, when the host configured no reader', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const bureau = await createBureau({
+      agents: { charter: linkAgent([]) },
+      assets: { storage: fixture.storage },
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+    const run = bureau.run('charter', 'Show the chart', { principal: alice.id });
+    const result = await run.result();
+    expect(result.finishReason).toBe('error');
   });
 });

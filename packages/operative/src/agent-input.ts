@@ -16,6 +16,7 @@ import type {
 } from 'conversationalist';
 import { isMediaContent, multiModalContentSchema, withMessageId } from 'conversationalist';
 
+import { callerSourceProblem } from './durable/session-input-payload';
 import type { SessionInputPayload } from './durable/types';
 import { AgentContractError } from './errors';
 import type { AgentInput } from './runnable-agent';
@@ -63,6 +64,10 @@ function assertPartList(parts: readonly unknown[]): void {
       throw new AgentContractError(`Agent input part ${index} is not valid content`, parsed.error);
     }
     const part = parsed.data;
+    const sourceProblem = isMediaContent(part) ? callerSourceProblem(part) : undefined;
+    if (sourceProblem !== undefined) {
+      throw new AgentContractError(`Agent input part ${index} (${part.type}): ${sourceProblem}`);
+    }
     const admissible =
       isMediaContent(part) || (part.type === 'text' && part.citations === undefined);
     if (!admissible) {
