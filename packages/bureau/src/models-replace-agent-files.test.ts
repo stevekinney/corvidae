@@ -2,16 +2,23 @@
  * `bureau.models.replace(rows)` validates the agent files against the new rows by itself: a file
  * whose model the new catalog no longer holds becomes `invalid` with `unknown-model`, and one
  * whose model the new catalog brings back becomes ready again, without the host asking for a
- * rescan. (The directory's once-a-second poll is the backstop; `replace` starts the rescan at once.)
+ * rescan. The directory's once-a-second poll is switched off here, so only `replace` can start one.
  */
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/operative';
 import { afterEach, expect, it } from 'bun:test';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 
 const harnesses: FileBureauHarness[] = [];
+const directories: string[] = [];
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
+  for (const directory of directories.splice(0))
+    await rm(directory, { recursive: true, force: true });
 });
 
 const stateOf = (harness: FileBureauHarness) =>
@@ -27,11 +34,28 @@ function nextChange(harness: FileBureauHarness): Promise<void> {
   });
 }
 
+/** Runtime services whose once-a-second rescan never fires, so only `replace` can start one. */
+function runtimeWithoutPolling(): RuntimeServices {
+  const runtime = createDefaultRuntimeServices();
+  const timers: RuntimeServices['timers'] = {
+    ...runtime.timers,
+    setInterval: (_callback, milliseconds) =>
+      runtime.timers.setInterval(() => undefined, milliseconds),
+  };
+  return { ...runtime, timers };
+}
+
 it('rescans the agent files against the replaced rows', async () => {
-  const harness = await startFileBureau();
+  // The file exists before the Bureau does, so nothing touches the directory afterwards and no
+  // file event can start a rescan: only `replace` can.
+  const directory = await mkdtemp(join(tmpdir(), 'bureau-models-replace-'));
+  directories.push(directory);
+  await writeFile(join(directory, 'picker.md'), agentFileText({ model: KNOWN_MODEL }));
+  const harness = await startFileBureau({
+    directory,
+    overrides: { runtime: runtimeWithoutPolling() },
+  });
   harnesses.push(harness);
-  await harness.put('picker.md', agentFileText({ model: KNOWN_MODEL }));
-  await harness.bureau.agents.refresh();
   expect(stateOf(harness)).toBe('ready');
 
   const all = harness.bureau.models.catalog().descriptors;

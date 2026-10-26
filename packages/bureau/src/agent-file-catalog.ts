@@ -331,10 +331,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   function checkResources(
     definition: AgentFileDefinition,
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
-    const resolved = resolveModelDescriptor(
-      definition.model,
-      options.models.catalog().descriptors,
-    );
+    const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
     if (isProblem(resolved)) return { problem: resolved };
     const missing = missingTools(definition.tools);
     if (missing.length > 0) {
@@ -390,10 +387,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         defaultGenerate: options.resolveGenerate(descriptor),
         defaultDescriptor: descriptor,
         allowed: () =>
-          allowedDescriptorsOfFileAgent(
-            definition.models,
-            options.models.catalog().descriptors,
-          ),
+          allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
         resolveGenerate: options.resolveGenerate,
       }),
       allowedCandidates: allowedDescriptorsOfFileAgent(
