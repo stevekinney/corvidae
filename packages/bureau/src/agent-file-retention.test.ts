@@ -114,7 +114,7 @@ describe('snapshot retention', () => {
     // The queued task has no run behind it for longer than the grace, and is still waiting.
     at(11 * 60 * 1000);
     await bureau.runDurableMaintenance();
-    expect((await bureau.agents.revisions('analyst')).length).toBe(1);
+    expect(await bureau.agents.revisions('analyst')).toHaveLength(1);
 
     // Both tasks run to the end once the first is released; the manual clock drives the scheduler.
     release();
@@ -131,7 +131,7 @@ describe('snapshot retention', () => {
     }
     expect(bureau.locateSchedulerTask(queued.taskId).status).toBe('terminal');
     await runtime.deferred.drain();
-    expect((await bureau.agents.revisions('analyst')).length).toBe(1);
+    expect(await bureau.agents.revisions('analyst')).toHaveLength(1);
   });
 
   it('keeps a snapshot for ever under taskRetention "forever"', async () => {
