@@ -40,6 +40,7 @@ describe('createDefaultRuntimeServices', () => {
         fired = true;
       }, 0);
       runtime.timers.clearTimeout(handle);
+      // load-proof: a cleared timer cannot fire, and a longer pause only gives it more time to
       await new Promise((resolve) => globalThis.setTimeout(resolve, 10));
       expect(fired).toBe(false);
     });
@@ -50,10 +51,11 @@ describe('createDefaultRuntimeServices', () => {
       const handle = runtime.timers.setInterval(() => {
         calls += 1;
       }, 1);
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 15));
+      while (calls === 0) await new Promise((resolve) => globalThis.setTimeout(resolve, 1));
       runtime.timers.clearInterval(handle);
       const callsAtClear = calls;
       expect(callsAtClear).toBeGreaterThan(0);
+      // load-proof: a cleared interval cannot fire, and a longer pause only gives it more time to
       await new Promise((resolve) => globalThis.setTimeout(resolve, 15));
       expect(calls).toBe(callsAtClear);
     });

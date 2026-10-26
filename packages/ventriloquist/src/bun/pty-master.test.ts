@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import type { PtyDevice } from './pty-device.ts';
 import { MASTER_FLAGS, MASTER_FLAG_COUNT, type MasterMessage } from './pty-master-loop.ts';
 import { createPtyMaster, type MasterWorker, type MasterWrite } from './pty-master.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 /** A reader thread the test drives: it never touches a descriptor, and says what the test makes it say. */
 function fakeWorker() {
@@ -355,7 +356,7 @@ describe('writing a master', () => {
     const run = recordingWrite(() => 'EIO');
     const { log, hold } = reports();
     void master({ write: run.write }).created.write(new TextEncoder().encode('lost'), hold);
-    await Bun.sleep(30);
+    await quietFor(30);
     expect(log).toEqual([]);
   });
 
@@ -365,7 +366,7 @@ describe('writing a master', () => {
     void created.write(new TextEncoder().encode('stuck'));
     const calls = run.calls();
     created.close();
-    await Bun.sleep(40);
+    await quietFor(40);
     expect(run.calls()).toBe(calls);
   });
 });

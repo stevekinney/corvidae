@@ -41,6 +41,7 @@ import {
   runBuildMain,
   wasmPlugin,
 } from './build.ts';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
 
@@ -582,7 +583,7 @@ describe('the build process entry', () => {
     expect(exits).toEqual([0]);
 
     closeInput();
-    await Bun.sleep(10);
+    await waitUntil(() => exits.length >= 2, { message: 'the second exit' });
     expect(exits).toEqual([0, 1]);
   });
 
@@ -595,7 +596,7 @@ describe('the build process entry', () => {
       },
     });
     exitWhenStandardInputCloses(input, (code) => void exits.push(code));
-    await Bun.sleep(10);
+    await waitUntil(() => exits.length >= 1, { message: 'the exit' });
     expect(exits).toEqual([1]);
   });
 });

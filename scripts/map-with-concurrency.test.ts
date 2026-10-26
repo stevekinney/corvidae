@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { mapWithConcurrency } from './map-with-concurrency';
 import { throwingRejectionOf } from './promise-outcome.test-support.ts';
+import { quietFor } from './wait-until.ts';
 
 /** A promise the test settles by hand, so completion order is chosen rather than raced. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -46,7 +47,7 @@ describe('mapWithConcurrency', () => {
       return item;
     });
     expect(await throwingRejectionOf(mapped)).toThrow('item 1 failed');
-    await Bun.sleep(10);
+    await quietFor(10);
     expect(started).toEqual([0, 1]);
   });
 

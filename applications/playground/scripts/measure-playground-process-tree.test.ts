@@ -6,6 +6,7 @@ import {
   startTreeSampler,
   treeResidentBytes,
 } from './measure-playground-process-tree.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const table = `
     1     0   2048
@@ -78,7 +79,7 @@ describe('startTreeSampler', () => {
       readProcessTable: () => Promise.resolve('10 1 100\n'),
       intervalMilliseconds: 1,
     });
-    await Bun.sleep(5);
+    await quietFor(5);
     const series = await sampler.stop();
     expect(series.sampleCount).toBe(0);
     expect(series.peakResidentBytes).toBe(0);
@@ -94,6 +95,7 @@ describe('startTreeSampler', () => {
         }),
       intervalMilliseconds: 1,
     });
+    // load-proof: the 1 ms interval's first tick is due before this pause ends, and timers run in deadline order
     await Bun.sleep(10);
     release?.();
     const series = await sampler.stop();
@@ -151,7 +153,7 @@ describe('startTreeSampler memory pressure (CIN-588 harness fix 5)', () => {
       readPressureLevel: () => Promise.resolve(null),
       intervalMilliseconds: 1,
     });
-    await Bun.sleep(5);
+    await quietFor(5);
     const series = await sampler.stop();
     expect(series.maximumPressureLevel).toBeNull();
     expect(series.pressureReadings).toBe(0);

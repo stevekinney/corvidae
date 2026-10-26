@@ -18,6 +18,7 @@ import {
   runGate,
 } from './gate-run.ts';
 import type { Runner } from './process-runner.ts';
+import { quietFor } from '../wait-until.ts';
 
 describe('readGateLog', () => {
   test('a log with no exit code reports none, never a pass', () => {
@@ -335,7 +336,7 @@ describe('runGate and signals', () => {
       expect(timer.state.milliseconds).toBe(5_000);
       // The wrapper exits, but turbo (901, in a session of its own) is still draining.
       child.finish(143);
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await quietFor(10);
       expect(timer.state.cancelled).toBe(false);
       // The grace period passes: the group and every collected process get SIGKILL.
       timer.fire();

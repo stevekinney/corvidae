@@ -9,11 +9,11 @@ import { OutputSchemaConversionError } from '../../src/errors';
 import type { OperativeHookMap } from '../../src/hooks';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerEventType } from '../../src/scheduler/events';
-import { sleep } from '../../src/scheduler/sleep';
 import type { SchedulerPriority, SchedulerTask } from '../../src/scheduler/types';
 import { createMockGenerate } from '../../src/test/index';
 import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateFunction, GenerateResponse } from '../../src/types';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 
 function textResponse(content: string): GenerateResponse {
   return { content, toolCalls: [] };
@@ -80,6 +80,26 @@ function createDeferred<T = void>(): {
     reject = _reject;
   });
   return { promise, resolve, reject };
+}
+
+type SchedulerUnderTest = Pick<ReturnType<typeof createMinimalScheduler>, 'getState'>;
+
+/** Waits until a task (the given one, if named) is the scheduler's active task. */
+async function dispatched(scheduler: SchedulerUnderTest, id?: string): Promise<void> {
+  await waitUntil(
+    () => {
+      const active = scheduler.getState().activeTask;
+      return active !== undefined && (id === undefined || active.id === id);
+    },
+    { message: `the scheduler to dispatch ${id ?? 'a task'}` },
+  );
+}
+
+/** Waits until a background task is queued behind the active one. */
+async function queuedIn(scheduler: SchedulerUnderTest, id: string): Promise<void> {
+  await waitUntil(() => scheduler.getState().queued.background.some((task) => task.id === id), {
+    message: `${id} to be queued`,
+  });
 }
 
 function createMinimalScheduler(overrides: Partial<Parameters<typeof createScheduler>[0]> = {}) {
@@ -149,7 +169,7 @@ describe('createScheduler', () => {
     );
 
     // Give the scheduler time to dispatch the background task
-    await sleep(10);
+    await dispatched(scheduler, 'bg-task');
 
     // Submit immediate — should preempt the background task
     const immResult = scheduler.submitImmediate(() => ({
@@ -205,7 +225,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await dispatched(scheduler);
 
     // Preempt with immediate task
     const immResult = scheduler.submitImmediate(() => ({
@@ -257,7 +277,7 @@ describe('createScheduler', () => {
     );
 
     // First dispatch
-    await sleep(10);
+    await waitUntil(() => blockingGenerates.length >= 1, { message: 'the first dispatch' });
 
     // First preemption (requeue count 0 → 1)
     const imm1 = scheduler.submitImmediate(() => ({
@@ -270,7 +290,7 @@ describe('createScheduler', () => {
     await imm1;
 
     // Wait for requeued task to be dispatched
-    await sleep(10);
+    await waitUntil(() => blockingGenerates.length >= 2, { message: 'the requeued dispatch' });
 
     // Second preemption (requeue count 1 — at max, so task is dropped)
     const imm2 = scheduler.submitImmediate(() => ({
@@ -344,7 +364,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await dispatched(scheduler, 'bg-stop');
 
     // Stop should abort the background task
     const stopPromise = scheduler.stop();
@@ -465,7 +485,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await dispatched(scheduler, 'active-task');
 
     const secondResult = scheduler.submit(
       makeTask({
@@ -474,7 +494,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await queuedIn(scheduler, 'queued-task');
 
     const state = scheduler.getState();
     expect(state.activeTask?.id).toBe('active-task');
@@ -500,7 +520,7 @@ describe('createScheduler', () => {
       maximumSteps: 1,
     }));
 
-    await sleep(10);
+    await dispatched(scheduler);
 
     const backgroundResult = scheduler.submit(
       makeTask({
@@ -518,7 +538,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await quietFor(10);
     expect(executionOrder).toEqual([]);
 
     blocking.resolve(textResponse('immediate-done'));
@@ -658,7 +678,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await dispatched(scheduler, 'aborted-task');
     controller.abort('task-aborted');
 
     const result = await resultPromise;
@@ -685,7 +705,7 @@ describe('createScheduler', () => {
       signal: controller.signal,
     }));
 
-    await sleep(10);
+    await dispatched(scheduler);
     controller.abort('dispatch-aborted');
 
     const runResult = await result;
@@ -748,7 +768,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await dispatched(scheduler, 'active-stop-task');
 
     const queuedResult = scheduler.submit(
       makeTask({
@@ -757,7 +777,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await queuedIn(scheduler, 'queued-stop-task');
     await scheduler.stop();
 
     expect(await queuedResult).toBeNull();
@@ -810,7 +830,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await sleep(10);
+    await dispatched(scheduler, 'running-cancel-task');
 
     expect(scheduler.cancel('running-cancel-task')).toBe(true);
     expect(await runningResult).toBeNull();
