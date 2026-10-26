@@ -13,6 +13,7 @@ import {
   createSessionInputMailbox,
   SESSION_INPUT_COMMAND_TIMEOUT_MS,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
+  SESSION_INPUT_EXPIRED_MESSAGE,
 } from './session-input-durability';
 import {
   createSessionInputDeliveryGate,
@@ -207,6 +208,30 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
     ],
   ])('refuses %s', (_name, value, error) => {
     expect(() => decodeSessionInputCommand(claimWith(value), INCARNATION)).toThrow(error);
+  });
+
+  it('refuses a stored input whose expiresAt has passed, with the message its receipt reads as expired', () => {
+    const value = {
+      schemaVersion: SCHEMA_VERSION,
+      incarnation: INCARNATION,
+      payload: 'late',
+      expiresAt: '2030-01-01T00:00:00.000Z',
+    };
+
+    expect(() =>
+      decodeSessionInputCommand(
+        claimWith(value),
+        INCARNATION,
+        Date.parse('2030-01-01T00:00:00.000Z'),
+      ),
+    ).toThrow(SESSION_INPUT_EXPIRED_MESSAGE);
+    expect(
+      decodeSessionInputCommand(
+        claimWith(value),
+        INCARNATION,
+        Date.parse('2029-12-31T23:59:59.999Z'),
+      ),
+    ).toMatchObject({ payload: 'late' });
   });
 
   it('refuses a kind it never produced', () => {

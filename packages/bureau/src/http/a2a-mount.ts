@@ -16,6 +16,7 @@
  * @module a2a-mount
  */
 
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { OperationHandlerMount } from '@lostgradient/weft';
 import {
   type A2AHandler,
@@ -70,6 +71,11 @@ export type BureauA2AMountOptions = BureauA2AOptions & {
   readonly security: A2ASecurityDeclaration | undefined;
   readonly records: A2ATaskRecords;
   readonly ledger: A2ASendLedger;
+  /**
+   * The runtime the handlers read deadlines and schedule waits on. Defaults to the process's own
+   * services; `createBureauHandler` passes the Bureau's.
+   */
+  readonly runtime?: RuntimeServices | undefined;
   /** The handler's request-body bound, applied to A2A requests too. */
   readonly maxRequestBodyBytes?: number | undefined;
   readonly respond: BureauA2ARequestHandlerOptions['respond'];
@@ -212,6 +218,9 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       respond: options.respond,
       acceptsNewTasks: () => options.publication.includes(agentName),
       push: options.push,
+      ...(options.runtime === undefined
+        ? {}
+        : { runtime: options.runtime, timers: options.runtime.timers }),
     });
     const handler = createA2AHandler({
       // Reads of a configuration never echo its credentials back.

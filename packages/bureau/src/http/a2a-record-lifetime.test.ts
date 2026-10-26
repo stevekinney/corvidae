@@ -15,7 +15,12 @@ import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types.ts';
 import { type Json, message } from './a2a-mount.test-support.ts';
-import { A2A_TASK_RECORD_KEY_PREFIX, createA2ATaskRecords } from './a2a-task-record.ts';
+import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
+import {
+  A2A_CONTEXT_INDEX_KEY_PREFIX,
+  A2A_TASK_RECORD_KEY_PREFIX,
+  createA2ATaskRecords,
+} from './a2a-task-record.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 
@@ -89,6 +94,7 @@ async function sendOn(
   handler: (request: Request) => Promise<Response>,
   text: string,
   extra: Json = {},
+  headers: Record<string, string> = {},
 ) {
   const response = await handler(
     new Request('http://localhost/a2a/asker', {
@@ -97,6 +103,7 @@ async function sendOn(
         'content-type': 'application/json',
         'A2A-Version': '1.0',
         'X-API-Key': 'alice-key',
+        ...headers,
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -150,6 +157,65 @@ describe('a task’s A2A record, when removing it fails', () => {
       await waitForCondition(
         async () => (await createA2ATaskRecords(kv).read('long-gone')) === undefined,
         'the orphaned record was never swept',
+      );
+    });
+  });
+});
+
+describe('a deadline-expired task, which no run backs', () => {
+  it('keeps no A2A record, so retention removing the task leaves nothing to delete', async () => {
+    await withBureau(async ({ bureau, handle }) => {
+      const expired = await sendOn(
+        handle(),
+        'too late',
+        { metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } } },
+        { 'A2A-Extensions': COMMAND_RECEIPTS_EXTENSION_URI },
+      );
+
+      // The task's own record keeps the message, and a read creates no side record either.
+      expect(expired.id).toStartWith('agent-run-expired-');
+      expect(await bureau.kv?.list(A2A_TASK_RECORD_KEY_PREFIX)).toEqual([]);
+      expect(await bureau.kv?.list(A2A_CONTEXT_INDEX_KEY_PREFIX)).toEqual([]);
+    });
+  });
+});
+
+describe('retention removing a task whose run the Bureau no longer holds', () => {
+  it('deletes the task’s A2A record, as removing its run does', async () => {
+    await withBureau(async ({ bureau, handle, runtime }) => {
+      handle();
+      // A task a restart left runless: its record is the registry's alone, and so is the A2A record.
+      await bureau.tasks.recordAdmission({
+        taskId: 'runless-task',
+        contextId: 'runless-context',
+        incarnation: '',
+        agentName: 'asker',
+        owner: 'api-key:alice',
+        message: 'private words',
+      });
+      await bureau.tasks.recordSettled('runless-task', {
+        at: runtime.clock.nowISO(),
+        status: 'failed',
+        finishReason: 'deadline-exceeded',
+        message: 'ended',
+      });
+      const records = createA2ATaskRecords(bureau.kv as ConditionalTextValueStore);
+      await records.create({
+        recordVersion: 1,
+        taskId: 'runless-task',
+        contextId: 'runless-context',
+        incarnation: '',
+        history: [{ messageId: 'm-1', parts: [{ text: 'private words' }] }],
+        replyRecorded: true,
+      });
+
+      runtime.setTime(Date.parse(ORIGIN) + 3 * DAY_MS);
+      await bureau.runDurableMaintenance();
+
+      expect(await bureau.tasks.record('runless-task')).toBeUndefined();
+      await waitForCondition(
+        async () => (await records.read('runless-task')) === undefined,
+        'the A2A record outlived its task',
       );
     });
   });
