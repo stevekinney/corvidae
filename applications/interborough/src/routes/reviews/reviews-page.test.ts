@@ -407,9 +407,9 @@ describe('a decision the Bureau gated again', () => {
 describe('a decision on a review that changed while it was read (COR-1714)', () => {
   test('sends the round the row showed, and a question none', async () => {
     const approval = toolApprovalFixture({ round: 2, requestedAt: Date.now() - 120_000 });
-    const { container, findAllByRole } = open({ reviews: [approval] });
+    const { container, findByRole } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: approval.id,
