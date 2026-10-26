@@ -67,7 +67,7 @@ async function start(setup: Setup, options: HostOptions = {}): Promise<Host> {
 }
 
 function pairsOf(host: Host): string[] {
-  return host.bureau.modelCatalog
+  return host.bureau.models
     .catalog()
     .descriptors.map((descriptor) => `${descriptor.provider}/${descriptor.model}`)
     .toSorted();
@@ -93,7 +93,7 @@ describe('a configuration that is not valid', () => {
     // The failed start released Bungalow's lock, so a corrected file starts.
     await writeFile(join(home, 'configuration.json'), JSON.stringify({ providers: {} }));
     const host = await startAt(home);
-    expect(host.bureau.modelCatalog.catalog().descriptors).toEqual([]);
+    expect(host.bureau.models.catalog().descriptors).toEqual([]);
   });
 
   test('fails startup on an allowlist entry that matches no row', async () => {
@@ -115,7 +115,7 @@ describe('the installed catalog', () => {
     const warnings: string[] = [];
     const host = await start({}, { warn: (message) => warnings.push(message) });
 
-    expect(host.bureau.modelCatalog.catalog().descriptors).toEqual([]);
+    expect(host.bureau.models.catalog().descriptors).toEqual([]);
     const result = await host.bureau.run('assistant', 'Hello').result();
     expect(result.content).toBe(
       'Hello from the assistant. This reply is scripted; no model was called.',
@@ -125,29 +125,30 @@ describe('the installed catalog', () => {
 
   test('holds no model when the configuration names no provider', async () => {
     const host = await start({ configuration: { providers: {} } });
-    expect(host.bureau.modelCatalog.catalog().descriptors).toEqual([]);
+    expect(host.bureau.models.catalog().descriptors).toEqual([]);
   });
 
-  test('is the configured providers’ rows, each installed through replaceCatalog, and survives a refresh', async () => {
+  test('is the configured providers’ rows, each stamped as the host’s, and survives a replace', async () => {
     const host = await start({
       configuration: { providers: { anthropic: {}, gemini: { models: ['pro'] } } },
       secrets: { 'anthropic-api-key': FIXTURE_KEY, 'gemini-api-key': `${FIXTURE_KEY}-gemini` },
     });
     const expected = [...staticPairs(['anthropic']), 'gemini/gemini-2.5-pro'].toSorted();
 
-    const before = host.bureau.modelCatalog.catalog().descriptors;
+    const before = host.bureau.models.catalog();
     expect(pairsOf(host)).toEqual(expected);
-    expect(new Set(pairsOf(host)).size).toBe(before.length);
-    // Only `replaceCatalog` stamps this, so the host installed the rows through it.
-    expect(before.every((descriptor) => descriptor.source === 'operator-override')).toBe(true);
+    expect(new Set(pairsOf(host)).size).toBe(before.descriptors.length);
+    // Rows a host supplies are stamped as its own, never `static`.
+    expect(
+      before.descriptors.every((descriptor) => descriptor.source === 'operator-override'),
+    ).toBe(true);
 
-    const refresh = await host.bureau.modelCatalog
-      .refresh({ id: 'interborough-test', requestedAt: new Date().toISOString() })
-      .result();
-    expect(refresh.outcome).toBe('completed');
-    // The Bureau’s refresh asks the host’s source, so it cannot bring an unconfigured provider back.
+    const replaced = host.bureau.models.replace(before.descriptors);
+    expect(replaced.revision).toBe(before.revision + 1);
+    // Replacing with the rows it already holds keeps exactly those rows, so a replace cannot bring
+    // an unconfigured provider back.
     expect(pairsOf(host)).toEqual(expected);
-    expect(host.bureau.modelCatalog.catalog().descriptors.length).toBe(expected.length);
+    expect(host.bureau.models.catalog().descriptors.length).toBe(expected.length);
   });
 
   test('omits a provider whose key is missing and warns once, naming the provider and key but no value', async () => {

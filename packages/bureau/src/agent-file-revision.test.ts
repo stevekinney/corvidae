@@ -173,7 +173,7 @@ describe('the revision of a file agent', () => {
     await fixture.catalog.refresh();
     const before = await recordOf(revisionStore);
 
-    fixture.modelCatalog.replaceCatalog(fixture.descriptors);
+    fixture.models.replace(fixture.descriptors);
     await fixture.catalog.refresh();
 
     expect(revisionOf(fixture)).toBe(1);

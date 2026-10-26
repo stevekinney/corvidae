@@ -1778,7 +1778,7 @@ describe('createSubagentTool', () => {
       expect(calls[0]?.context?.delegatedAuthority).toEqual(parentGrant);
     });
 
-    it("excludes a child-forbidden candidate from its own planSelection record with 'exceeds-delegated-authority'; a parent with no grant still dispatches with delegatedAuthority undefined", async () => {
+    it("excludes a child-forbidden candidate from its own plan record with 'exceeds-delegated-authority'; a parent with no grant still dispatches with delegatedAuthority undefined", async () => {
       const now = () => '2026-09-03T12:00:00.000Z';
       const catalog = createModelCatalog({ now });
       const anthropic = catalog.descriptors.find(

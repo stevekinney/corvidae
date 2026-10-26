@@ -553,7 +553,7 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 | `eventFeed`, `runEventFeeds`, `subscribeLiveFrames`, `events`, `on`, `once`, `subscribe`, `toObservable`, `addEventListener`, `removeEventListener` | Internal; the live sources behind the AG-UI streams and, without durable history, the A2A status and artifact projection |
 | `agents` | Agent Cards; `bureau.agents.list` |
 | `id`, `waitForRecovery` | `bureau.deployment.get` (identity and recovery status only) |
-| `modelCatalog`, `planSelection` | Internal |
+| `models` | Internal |
 | `onlineEvalSampler` | Internal; breaches reach deliveries |
 | `setRequestAuthorityValidator` | Internal; the authorization predicate is configured on the handler |
 | `ready`, `store`, `memory`, `sessionStore`, `kv`, `signal`, `completed`, `complete`, `dispose`, `shutdown`, `runDurableMaintenance` | Internal host lifecycle |

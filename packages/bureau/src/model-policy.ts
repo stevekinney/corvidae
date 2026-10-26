@@ -3,17 +3,16 @@
  * (AB-64's decision record; AB-248's `composePolicy` / AB-249's `select`
  * consumed as dependencies; this module is AB-250/mod-03c).
  *
- * A caller asks Bureau what an Agent would use — `planSelection(request)` —
+ * A caller asks Bureau what an Agent would use — `models.plan(request)` —
  * and gets a full `SelectionPlan` back without starting a run or refreshing
  * a catalog. `createSelectionGateFor(request)` wraps the same planning
  * logic into a `SelectionGate` (`@lostgradient/operative`), seeded with an
  * initial plan and wired to revalidate against Bureau's LIVE
- * `ModelCatalogService` and policy configuration on demand — the value
+ * `Bureau.models` catalog and policy configuration on demand — the value
  * `RunOptions.selection` consumes at the `runStep` boundary.
  *
- * Side-effect-free throughout: `planSelection` starts no run, refreshes no
- * catalog (`modelCatalog.catalog()` is a synchronous, cached, side-effect-
- * free read — see `model-catalog-refresh.ts`), and dispatches no event.
+ * Side-effect-free throughout: `plan` starts no run and dispatches no
+ * event (`models.catalog()` is a synchronous, cached, side-effect-free read).
  *
  * Out of scope, per AB-250's delivery boundary: `submitSteeringCommand` and
  * `policyRef` resolution through the selector (AB-200); retargeting an
@@ -44,7 +43,7 @@ import type {
 import { createSelectionGate, readGenerationProfile, select } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from './agent-catalog';
-import type { ModelCatalogService } from './model-catalog-refresh';
+import type { Models } from './models/create-models';
 
 export type {
   AgentPreferences,
@@ -56,7 +55,7 @@ export type {
 
 /**
  * `BureauOptions.modelPolicy` — the deployment/Bureau invariants and the
- * per-principal user configuration `planSelection` composes against, plus
+ * per-principal user configuration `plan` composes against, plus
  * the policy revision every produced plan is stamped with. AB-64's decision
  * record: `BureauRunOptions` gains no field for any of this (see
  * `## AB-15 and AB-22 boundaries (AC9)`); it is supplied once, at
@@ -73,7 +72,7 @@ export interface BureauModelPolicyOptions {
 }
 
 /**
- * The caller-facing request `Bureau.planSelection`/`createSelectionGateFor`
+ * The caller-facing request `Bureau.models.plan`/`createSelectionGateFor`
  * accept — the subset of AB-249's `SelectionRequest` a caller supplies;
  * `catalogRevision`, `policyRevision`, and `availabilitySnapshotRevision`
  * are Bureau's own live state and are filled in automatically, never
@@ -103,7 +102,7 @@ export interface PlanSelectionRequest {
 
 export interface CreateModelPolicyPlannerOptions<D extends AgentDefinitions> {
   readonly agents: D;
-  readonly modelCatalog: ModelCatalogService;
+  readonly models: Pick<Models, 'catalog'>;
   readonly modelPolicy?: BureauModelPolicyOptions;
   /** Defaults to the wall clock; inject in tests for byte-stable plans. */
   readonly now?: () => string;
@@ -117,9 +116,9 @@ export interface ModelPolicyPlanner {
    * catalog and policy configuration — synchronous, side-effect-free: no
    * run starts, no catalog refresh is triggered, no event is dispatched.
    */
-  planSelection(request: PlanSelectionRequest): SelectionPlan;
+  plan(request: PlanSelectionRequest): SelectionPlan;
   /**
-   * Builds a `SelectionGate` seeded with `planSelection(request)`'s plan
+   * Builds a `SelectionGate` seeded with `plan(request)`'s plan
    * and wired to revalidate against Bureau's LIVE catalog/policy on every
    * `revalidate()` call — the value `RunOptions.selection` consumes at the
    * `runStep` boundary (`@lostgradient/operative`).
@@ -150,7 +149,7 @@ function resolveAgentPreferences<D extends AgentDefinitions>(
  * `GenerationMode` actually offers — `select`/`composePolicy` carry no
  * notion of "candidates this specific Agent attached or nominated"; that
  * narrowing happens here, before the catalog ever reaches `select`, exactly
- * once per `planSelection`/`createSelectionGateFor` call so it stays
+ * once per `plan`/`createSelectionGateFor` call so it stays
  * correct as Bureau's live catalog changes:
  *
  * - `'fixed'`/`'routed'` — the profile's OWN attached descriptors
@@ -164,7 +163,7 @@ function resolveAgentPreferences<D extends AgentDefinitions>(
  *   AB-64's verification walk: "a custom opaque generator yields an empty
  *   `candidates` array... no fabricated descriptor."
  * - An unknown `agentName` (no catalog entry) — Bureau's full catalog,
- *   unfiltered; `select` still resolves candidates from it and `planSelection`
+ *   unfiltered; `select` still resolves candidates from it and `plan`
  *   doesn't need to special-case a name it can't otherwise validate.
  */
 function resolveAgentCatalog<D extends AgentDefinitions>(
@@ -210,7 +209,7 @@ function resolveUserConfiguration(
 
 function buildSelectionRequest(
   request: PlanSelectionRequest,
-  modelCatalog: ModelCatalogService,
+  models: Pick<Models, 'catalog'>,
   modelPolicy: BureauModelPolicyOptions | undefined,
   context?: SelectionBoundaryContext,
 ): SelectionRequest {
@@ -219,13 +218,13 @@ function buildSelectionRequest(
   // is judged with none rather than with the plan's earlier guess.
   const inputMedia = context === undefined ? request.inputMedia : context.inputMedia;
   // `availabilitySnapshotRevision` is pinned to the catalog's own
-  // `revision`: AB-246's `ModelCatalogService` has no separate availability
+  // `revision`: `Bureau.models` has no separate availability
   // overlay — descriptor availability is part of the catalog's own
   // content, so any availability change is a catalog content change and
   // therefore already a new catalog revision. A future live health/
   // availability probe distinct from a full catalog refresh would give
   // this its own counter; none exists yet.
-  const catalog = modelCatalog.catalog();
+  const catalog = models.catalog();
   return {
     agentName: request.agentName,
     ...(request.taskClassification === undefined
@@ -242,13 +241,13 @@ function buildSelectionRequest(
 function buildSelectOptions<D extends AgentDefinitions>(
   request: PlanSelectionRequest,
   agents: D,
-  modelCatalog: ModelCatalogService,
+  models: Pick<Models, 'catalog'>,
   modelPolicy: BureauModelPolicyOptions | undefined,
   now: (() => string) | undefined,
   newPlanId: (() => string) | undefined,
 ): SelectOptions {
   return {
-    catalog: resolveAgentCatalog(request.agentName, agents, modelCatalog.catalog()),
+    catalog: resolveAgentCatalog(request.agentName, agents, models.catalog()),
     ...(modelPolicy?.deployment === undefined ? {} : { deployment: modelPolicy.deployment }),
     ...(modelPolicy?.bureau === undefined ? {} : { bureau: modelPolicy.bureau }),
     agent: resolveAgentPreferences(request.agentName, agents),
@@ -259,7 +258,7 @@ function buildSelectOptions<D extends AgentDefinitions>(
 }
 
 /**
- * Builds Bureau's selection-planning surface: `planSelection`, called
+ * Builds Bureau's selection-planning surface: `plan`, called
  * directly (AB-250's "a caller asks Bureau what an Agent would use"
  * observable outcome), and `createSelectionGateFor`, which wraps the same
  * logic into the `SelectionGate` a run's `RunOptions.selection` consumes.
@@ -267,28 +266,21 @@ function buildSelectOptions<D extends AgentDefinitions>(
 export function createModelPolicyPlanner<D extends AgentDefinitions>(
   options: CreateModelPolicyPlannerOptions<D>,
 ): ModelPolicyPlanner {
-  const { agents, modelCatalog, modelPolicy, now, newPlanId } = options;
+  const { agents, models, modelPolicy, now, newPlanId } = options;
 
-  function planSelection(request: PlanSelectionRequest): SelectionPlan {
-    const selectionRequest = buildSelectionRequest(request, modelCatalog, modelPolicy);
-    const selectOptions = buildSelectOptions(
-      request,
-      agents,
-      modelCatalog,
-      modelPolicy,
-      now,
-      newPlanId,
-    );
+  function plan(request: PlanSelectionRequest): SelectionPlan {
+    const selectionRequest = buildSelectionRequest(request, models, modelPolicy);
+    const selectOptions = buildSelectOptions(request, agents, models, modelPolicy, now, newPlanId);
     return select(selectionRequest, selectOptions);
   }
 
   function createSelectionGateFor(request: PlanSelectionRequest): SelectionGate {
     return createSelectionGate({
-      initialPlan: planSelection(request),
-      request: (context) => buildSelectionRequest(request, modelCatalog, modelPolicy, context),
-      options: () => buildSelectOptions(request, agents, modelCatalog, modelPolicy, now, newPlanId),
+      initialPlan: plan(request),
+      request: (context) => buildSelectionRequest(request, models, modelPolicy, context),
+      options: () => buildSelectOptions(request, agents, models, modelPolicy, now, newPlanId),
     });
   }
 
-  return { planSelection, createSelectionGateFor };
+  return { plan, createSelectionGateFor };
 }

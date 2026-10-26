@@ -394,7 +394,7 @@ export type AssetWorkResult<T> =
 /**
  * Structurally satisfies the started-work snapshot floor
  * (`documentation/operative-type-safe-api.md` § "The common facts"), the same
- * way `CatalogRefreshSnapshot` does.
+ * way Bureau's other started-work snapshots do.
  */
 export interface AssetWorkSnapshot<T = unknown> {
   readonly id: string;

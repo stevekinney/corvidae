@@ -43,7 +43,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
       agents: {},
       agentDirectory: agents,
       workflowDirectory: workflows,
-      resolveAgentGenerate: () => generate,
+      models: { generate: () => generate },
       storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
