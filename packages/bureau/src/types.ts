@@ -630,11 +630,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
    */
   memoryAuthority?: BureauMemoryAuthorityOptions;
-  cache?: CacheConfiguration;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
-  streaming?: StreamingConfiguration;
   scheduler?: SchedulerConfiguration;
   /**
    * AB-13 — declarative flow control gating run ADMISSION, composed over
@@ -2103,7 +2101,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined>;
 
-  getConfiguration(): ConfigurationResponse;
   getTools(): ToolSummary[];
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
@@ -2632,14 +2629,6 @@ export interface SubmitSchedulerTaskResponse {
   taskId: string;
   priority: SchedulerPriority;
   status: 'queued';
-}
-
-export interface ConfigurationResponse {
-  provider: RedactedProviderConfiguration | undefined;
-  providers: RedactedProviderRouteConfiguration[];
-  maximumSteps: number;
-  systemPrompt: string | undefined;
-  tools: ToolSummary[];
 }
 
 export interface ToolSummary {

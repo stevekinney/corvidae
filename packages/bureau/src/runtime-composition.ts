@@ -179,6 +179,7 @@ import type {
   RedactedProviderConfiguration,
   ProviderRouteConfiguration,
   RedactedProviderRouteConfiguration,
+  StreamingConfiguration,
   SkillRuntimeConfiguration,
   RoutingConfiguration,
   ToolSummary,
@@ -1448,7 +1449,7 @@ export function createMemoryPersistHook(
 export function resolveProviderGenerate(
   provider: ProviderConfiguration,
   streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
-  streamingConfiguration: BureauOptions['streaming'],
+  streamingConfiguration: StreamingConfiguration | undefined,
 ): GenerateFunction {
   if (streamEventTarget) {
     switch (provider.provider) {
@@ -2688,6 +2689,10 @@ export interface CompositionRunOptions {
   stopWhen?: StopCondition | StopCondition[];
   maximumSteps?: number;
   systemPrompt?: string;
+  /** Response caching over the composition's own `generate`; a Bureau composes none. */
+  cache?: CacheConfiguration;
+  /** Enhanced streaming over the composition's own provider `generate`; a Bureau composes none. */
+  streaming?: StreamingConfiguration;
 }
 
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'> & CompositionRunOptions;

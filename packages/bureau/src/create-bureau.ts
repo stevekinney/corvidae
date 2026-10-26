@@ -491,7 +491,6 @@ import type {
   BureauShutdownReport,
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
-  ConfigurationResponse,
   ContextDeletionReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
@@ -9844,6 +9843,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
+    // COR-1662 — a file agent's definition is stored, and this task tied to it, before the task is
+    // queued, so every attempt (a preempted task starts again) and a task that waits in the queue
+    // run the definition this submission resolved, not whatever the file has become. A write that
+    // fails refuses the submission: a task that could not be pinned is not queued.
+    if (resolution.run.agentBinding !== undefined) {
+      try {
+        await fileAgents?.recordBoundRun(resolution.run.agentBinding, taskId);
+        // The record is a stale read once `shutdown()` may have started during the await.
+        assertRunAdmissionOpen('scheduler task');
+      } catch (error) {
+        // Nothing was queued: give back the flow-control slot and the reference, if it was written.
+        flowController?.settle(taskId);
+        await fileAgents?.releaseRun(taskId);
+        throw error;
+      }
+    }
+
     const task: Parameters<NonNullable<typeof runtime.scheduler>['submit']>[0] = {
       id: taskId,
       priority,
@@ -9856,10 +9872,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assertRunAdmissionOpen('scheduler task');
         // Each attempt resolves its own agent run: a preempted-and-requeued task starts a fresh
         // conversation, and the guardrail hooks and skill client of the earlier attempt are stateful.
+        // The definition the submission recorded (COR-1662), never the file's current one.
+        const pinned = await fileAgents?.snapshots.reference(taskId);
         const attempt = await runtime.resolveSessionAgentRun(
           agentName,
           taskId,
           ownerOrLocal(undefined),
+          pinned === undefined || pinned.id !== agentName
+            ? undefined
+            : { agentDefinitionHash: pinned.hash, definitionRevision: pinned.definitionRevision },
         );
         if (attempt.status !== 'resolved') {
           throw new BureauError(
@@ -9915,7 +9936,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
     };
 
-    detachBestEffortPromise(runtime.scheduler.submit(task));
+    // COR-1662 — the reference that pins the definition is settled when the task itself ends, not on
+    // an event: with durable execution a `task.failed` can come from a suspend write that failed
+    // while the task goes on, and a task preempted and requeued is not over. `submit` settles once,
+    // when the task has run to its end, is cancelled, or is discarded, and held for task retention
+    // from then like a run-store run's reference. `settleRun` never rejects.
+    const settleReference = (): void => {
+      detachBestEffortPromise(fileAgents?.settleRun(taskId) ?? Promise.resolve());
+    };
+    detachBestEffortPromise(runtime.scheduler.submit(task).then(settleReference, settleReference));
 
     return Promise.resolve({
       taskId,
@@ -11618,7 +11647,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       now: runtimeServices.clock.now(),
       isLive: (runId) => {
         const status = store.getRun(runId)?.status;
-        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
+        // COR-1662: a scheduler task waiting in the queue has no run yet, but is not a start that
+        // failed: its reference holds the definition it will run under.
+        return (
+          status === 'running' ||
+          status === 'aborting' ||
+          findCatalogRun(runId) !== undefined ||
+          runtime.scheduler?.locateTask(runId).status === 'in-progress'
+        );
       },
       durableState: async (reference) => {
         // Without a durable engine nothing outlives the process, so a reference from before this
@@ -17027,16 +17063,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return runtime.getToolSummaries();
   }
 
-  function getConfiguration(): ConfigurationResponse {
-    return {
-      provider: runtime.provider,
-      providers: runtime.providers,
-      maximumSteps: runtime.maximumSteps,
-      systemPrompt: runtime.systemPrompt,
-      tools: getToolSummaries(),
-    };
-  }
-
   /**
    * Every subsystem kind {@link BureauShutdownReport.owners} can report on.
    * `'heartbeat'` is reserved for the day Bureau composes one — see
@@ -18871,7 +18897,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     resumeSchedule,
     cancelSchedule,
     updateSchedule,
-    getConfiguration,
     getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
       let active = true;

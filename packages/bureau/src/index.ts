@@ -465,7 +465,6 @@ export type {
   BureauShutdownReport,
   CacheConfiguration,
   CleanupAcknowledgement,
-  ConfigurationResponse,
   CreateRunRequest,
   DurableGuardrailsConfiguration,
   DurableScheduleDefinition,

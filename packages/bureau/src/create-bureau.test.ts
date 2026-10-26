@@ -5132,7 +5132,7 @@ describe('createBureau', () => {
     // and runtime-composition hardcoded `?? 10`, while operative's loop actually
     // used DEFAULT_MAXIMUM_STEPS = 25. A bureau-created run silently capped at 10
     // steps instead of the 25 the same agent would get through operative directly.
-    // This test drives a REAL run — not just getConfiguration() — past the
+    // This test drives a REAL run — not just a configuration read — past the
     // boundary so any future re-divergence between the two entry points fails here.
     const bureau = await createBureau<AgentDefinitions>({
       agents: {

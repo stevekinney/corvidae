@@ -1,0 +1,42 @@
+{
+  "scenario": "scale",
+  "exchange": {
+    "path": "/v1/systemone",
+    "requestBody": {
+      "model": "jev-latest",
+      "state": "Our production checkout has been down for every customer for two hours and we are losing orders.",
+      "questions": {
+        "decision": {
+          "type": "score",
+          "instructions": "How urgent is this ticket?",
+          "criteria": ["low", "medium", "high"]
+        }
+      }
+    },
+    "status": 200,
+    "responseBody": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "decision": {
+          "type": "score",
+          "score": 2,
+          "confidence": 1,
+          "legend": {
+            "0": "low",
+            "1": "medium",
+            "2": "high"
+          },
+          "probabilities": {
+            "0": 0,
+            "1": 0,
+            "2": 1
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 314,
+        "output_tokens": 17
+      }
+    }
+  }
+}
