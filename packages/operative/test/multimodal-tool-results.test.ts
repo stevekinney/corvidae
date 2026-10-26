@@ -1,6 +1,6 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
-import { toolContent, type ToolResultPart } from 'armorer/protocol';
+import { ToolResultError, toolContent, type ToolResultPart } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
@@ -335,6 +335,77 @@ describe('tool-result media review fixes', () => {
     expect(toolResult?.outcome).toBe('error');
     expect(toolResult?.parts?.[1]).toMatchObject({ source: { kind: 'managed-asset' } });
     expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
+  });
+});
+
+describe('tool-result media follow-ups (COR-1634)', () => {
+  it("admits a data-URL part under the URL's own media type, not a stale label", async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const result = await runWith(
+      [
+        {
+          type: 'image',
+          mimeType: 'image/jpeg',
+          source: { kind: 'data-url', url: `data:image/png;base64,${BYTES}` },
+        },
+      ],
+      { generatedMediaAdmitter: admitter.port },
+    ).result;
+    expect(admitter.admissions[0]?.request.part.mimeType).toBe('image/png');
+    expect(toolResultRow(result.conversation)?.toolResult?.outcome).toBe('success');
+  });
+
+  it("keeps a part's own media type when its data URL names none", async () => {
+    const admitter = createScriptedMediaAdmitter();
+    await runWith(
+      [
+        {
+          type: 'image',
+          mimeType: 'image/webp',
+          source: { kind: 'data-url', url: `data:;base64,${BYTES}` },
+        },
+      ],
+      { generatedMediaAdmitter: admitter.port },
+    ).result;
+    expect(admitter.admissions[0]?.request.part.mimeType).toBe('image/webp');
+  });
+
+  it("keeps an MCP error result's own message when its media cannot be admitted", async () => {
+    const failing = createTool({
+      name: 'chart',
+      description: 'Fails with media',
+      input: z.object({}),
+      async execute() {
+        throw new ToolResultError(
+          'remote render failed',
+          toolContent([{ type: 'text', text: 'remote render failed' }, inlineImage]),
+        );
+      },
+    });
+    const active = createActiveRun({
+      generate: createMockGenerate([
+        { content: '', toolCalls: [chartCall()] },
+        { content: 'Done', toolCalls: [] },
+      ]),
+      toolbox: createTestToolbox([failing]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      runId: 'run-tool-media-error',
+    });
+    const result = await active.result;
+    const toolResult = toolResultRow(result.conversation)?.toolResult;
+    expect(toolResult?.outcome).toBe('error');
+    expect(toolResult?.error?.code).toBe('TOOL_RESULT_MEDIA_NOT_ADMITTED');
+    expect(toolResult?.error?.message).toBe('remote render failed');
+    expect(toolResult?.content).toBe('remote render failed');
+    expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
+  });
+
+  it('still names the refusal when a successful result is refused', async () => {
+    const result = await runWith([inlineImage]).result;
+    expect(toolResultRow(result.conversation)?.toolResult?.error?.message).toContain(
+      'no media admission port',
+    );
   });
 });
 
