@@ -1582,7 +1582,7 @@ A `DecisionModel` answers one question and returns a typed `Decision`. A `Decisi
 
 `llmDecisionModel({ generate, descriptor })` serves all four kinds on any `GenerateFunction` by asking for structured output. It validates the answer, retries once with the bad answer and the validation error appended, and throws `DecisionSchemaError` (with `usage` summed across both attempts) after the second failure. An error thrown by `generate` is a provider error: it is not retried and not wrapped. A `structured` request with a bare Standard Schema (one that cannot describe itself as JSON Schema) asks the model for plain JSON, and the retry does the rest.
 
-`typesafeJev({ apiKey, fetch? })` serves `boolean`, `choice`, and `scale` through TypeSafe's Jev model and reports Jev's probability for the answer. It needs the optional peers `@tanstack/ai` and `@tanstack/ai-typesafe`, imports them when called, and returns a promise that rejects with `DecisionProviderUnavailableError` when either is missing.
+`typesafeJev({ apiKey, fetch? })` serves `boolean`, `choice`, and `scale` through TypeSafe's Jev model and reports Jev's probability for the answer. It needs the optional peers `@tanstack/ai` and `@tanstack/ai-typesafe`. Construction is synchronous and throws `DecisionProviderUnavailableError` when either is missing, so the result can be assigned wherever a `DecisionModel` is expected; the peers are imported on the first `decide`.
 
 ```ts
 import { llmDecisionModel, typesafeJev } from '@lostgradient/operative';
@@ -1595,7 +1595,7 @@ const fallback: DecisionModel = llmDecisionModel({
   generate,
   descriptor: { provider: 'anthropic', model: 'claude-haiku-5-5' },
 });
-const jev: DecisionModel = await typesafeJev({ apiKey });
+const jev: DecisionModel = typesafeJev({ apiKey });
 
 // Route by kind: Jev for the questions it serves, the language model for the rest.
 const model = (kind: 'boolean' | 'choice' | 'scale' | 'structured') =>

@@ -135,7 +135,7 @@ function shapeFor(request: DecisionRequest): AnswerShape {
   }
 }
 
-function describeRequest(request: DecisionRequest): string {
+function describeRequest(request: DecisionRequest, responseFormat: ResponseFormat): string {
   const lines = [`Question: ${request.question}`];
   if (request.context !== undefined && request.context.trim() !== '') {
     lines.push('', 'Context:', request.context);
@@ -155,8 +155,12 @@ function describeRequest(request: DecisionRequest): string {
       lines.push('', 'Answer with {"level": <index>}.');
       break;
     case 'structured':
-      lines.push('', 'Answer with a JSON object that satisfies the requested schema.');
+      lines.push('', 'Answer with a JSON object that satisfies the JSON Schema below.');
       break;
+  }
+  // A provider may ignore `responseFormat`, so the shape of the answer is also stated in the prompt.
+  if (responseFormat.type === 'json_schema') {
+    lines.push('', 'JSON Schema of the answer:', JSON.stringify(responseFormat.schema));
   }
   return lines.join('\n');
 }
@@ -213,7 +217,7 @@ export function llmDecisionModel(options: LlmDecisionModelOptions): DecisionMode
       const signal = decideOptions?.signal;
       const conversation = new Conversation();
       conversation.appendSystemMessage(SYSTEM_PROMPT);
-      conversation.appendUserMessage(describeRequest(request));
+      conversation.appendUserMessage(describeRequest(request, shape.responseFormat));
 
       let usage: TokenUsage | undefined;
       let lastFailure: unknown;

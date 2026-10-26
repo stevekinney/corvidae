@@ -286,6 +286,54 @@ describe('llmDecisionModel kinds', () => {
   });
 });
 
+describe('llmDecisionModel prompt', () => {
+  function firstPrompt(generate: ReturnType<typeof createScriptedGenerate>): string {
+    return transcript(generate.calls[0]!.context.conversation).join('\n');
+  }
+
+  it('states the structured schema, with its descriptions, in the prompt', async () => {
+    const generate = createScriptedGenerate([
+      { kind: 'respond', response: reply('{"team":"billing"}') },
+    ]);
+    const model = llmDecisionModel({ generate, descriptor });
+
+    await model.decide({
+      kind: 'structured',
+      question: 'Triage this.',
+      schema: z.object({ team: z.enum(['billing', 'tech']).describe('The owning team') }),
+    });
+
+    const prompt = firstPrompt(generate);
+    expect(prompt).toContain('"enum":["billing","tech"]');
+    expect(prompt).toContain('The owning team');
+  });
+
+  it('states the choice enum and the scale range in the prompt', async () => {
+    const generate = createScriptedGenerate([
+      { kind: 'respond', response: reply('{"key":"a"}') },
+      { kind: 'respond', response: reply('{"level":1}') },
+    ]);
+    const model = llmDecisionModel({ generate, descriptor });
+
+    await model.decide({
+      kind: 'choice',
+      question: 'Which?',
+      options: [
+        { key: 'a', label: 'A' },
+        { key: 'b', label: 'B' },
+      ],
+    });
+    await model.decide({ kind: 'scale', question: 'How?', levels: ['low', 'high'] });
+
+    expect(transcript(generate.calls[0]!.context.conversation).join('\n')).toContain(
+      '"enum":["a","b"]',
+    );
+    const scalePrompt = transcript(generate.calls[1]!.context.conversation).join('\n');
+    expect(scalePrompt).toContain('"minimum":0');
+    expect(scalePrompt).toContain('"maximum":1');
+  });
+});
+
 describe('llmDecisionModel construction', () => {
   it('reports the identity it was built with even if the caller edits the descriptor later', async () => {
     const mutable = { provider: 'anthropic', model: 'claude-haiku-5-5' };

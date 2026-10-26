@@ -12,7 +12,7 @@ import {
 import { DecisionProviderUnavailableError } from './errors';
 import { llmDecisionModel } from './llm-decision-model';
 import type { DecisionModel, DecisionRequest } from './types';
-import { createTypesafeJev, typesafeJev } from './typesafe-jev';
+import { createTypesafeJev, importTypesafePeers, typesafeJev } from './typesafe-jev';
 
 const structuredSchema = z.object({ team: z.string(), urgent: z.boolean() });
 const structuredRequest: DecisionRequest = {
@@ -171,7 +171,7 @@ describe('typesafeJev contract over recorded fixtures', () => {
   });
 
   it('reports the probability of the chosen side, not P(true)', async () => {
-    const model = await typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch });
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch });
     const no = decisionScenarios.find((scenario) => scenario.name === 'boolean-false')!;
     const fixture = fixtures.find((candidate) => candidate.scenario === 'boolean-false')!;
     const wire = (fixture.exchange.responseBody as { answers: { decision: { noul: number } } })
@@ -186,7 +186,7 @@ describe('typesafeJev contract over recorded fixtures', () => {
   });
 
   it('maps Jev usage onto prompt, completion and total', async () => {
-    const model = await typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch });
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch });
     const scale = decisionScenarios.find((scenario) => scenario.name === 'scale')!;
     const fixture = fixtures.find((candidate) => candidate.scenario === 'scale')!;
     const wire = (
@@ -203,7 +203,7 @@ describe('typesafeJev contract over recorded fixtures', () => {
   });
 
   it('serves boolean, choice and scale only', async () => {
-    const model = await typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch });
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: replayFetch });
     expect([...model.kinds].toSorted()).toEqual(['boolean', 'choice', 'scale']);
 
     const failure = await model.decide(structuredRequest).catch((error: unknown) => error);
@@ -217,7 +217,7 @@ describe('typesafeJev contract over recorded fixtures', () => {
       calls += 1;
       return new Response('{"error":"unauthorized"}', { status: 401, statusText: 'Unauthorized' });
     }) as unknown as typeof fetch;
-    const model = await typesafeJev({ apiKey: REPLAY_KEY, fetch: failing });
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: failing });
 
     const failure = (await model
       .decide(decisionScenarios[0]!.request)
@@ -235,17 +235,15 @@ describe('typesafeJev contract over recorded fixtures', () => {
       options.length = 0;
       return replayFetch(input, init);
     }) as typeof fetch;
-    const model = await typesafeJev({ apiKey: REPLAY_KEY, fetch: mutating });
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: mutating });
 
     const decision = await model.decide({ ...choiceRequest, options });
 
     expect(decision.value).toBe('billing');
   });
 
-  it('rejects an empty API key before anything is loaded', async () => {
-    const failure = await typesafeJev({ apiKey: ' ' }).catch((error: unknown) => error);
-
-    expect(failure).toBeInstanceOf(TypeError);
+  it('rejects an empty API key at construction, before anything is loaded', () => {
+    expect(() => typesafeJev({ apiKey: ' ' })).toThrow(TypeError);
   });
 
   it('passes the abort signal to the request', async () => {
@@ -255,27 +253,76 @@ describe('typesafeJev contract over recorded fixtures', () => {
       seen = init?.signal;
       return replayFetch(_input as string, init);
     }) as unknown as typeof fetch;
-    const model = await typesafeJev({ apiKey: REPLAY_KEY, fetch: capturing });
+    const model = typesafeJev({ apiKey: REPLAY_KEY, fetch: capturing });
 
     await model.decide(decisionScenarios[0]!.request, { signal: controller.signal });
 
     expect(seen).toBe(controller.signal);
   });
-});
 
-describe('typesafeJev with a peer absent', () => {
-  it('rejects at construction with DecisionProviderUnavailableError', async () => {
+  describe('peer loading', () => {
     const missing = Object.assign(new Error("Cannot find package '@tanstack/ai-typesafe'"), {
       code: 'ERR_MODULE_NOT_FOUND',
     });
 
-    const failure = await createTypesafeJev({ apiKey: REPLAY_KEY }, () => {
-      throw missing;
-    }).catch((error: unknown) => error);
+    it('throws at construction with DecisionProviderUnavailableError when a peer is absent', () => {
+      let loads = 0;
+      const absent = {
+        resolve: () => {
+          throw missing;
+        },
+        load: () => {
+          loads += 1;
+          return importTypesafePeers.load();
+        },
+      };
 
-    expect(failure).toBeInstanceOf(DecisionProviderUnavailableError);
-    expect((failure as DecisionProviderUnavailableError).provider).toBe('typesafe');
-    expect((failure as Error).cause).toBe(missing);
-    expect((failure as Error).message).not.toContain(REPLAY_KEY);
+      let failure: unknown;
+      try {
+        createTypesafeJev({ apiKey: REPLAY_KEY }, absent);
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBeInstanceOf(DecisionProviderUnavailableError);
+      expect((failure as DecisionProviderUnavailableError).provider).toBe('typesafe');
+      expect((failure as Error).cause).toBe(missing);
+      expect((failure as Error).message).not.toContain(REPLAY_KEY);
+      expect(loads).toBe(0);
+    });
+
+    it('resolves the real peers synchronously and imports nothing until the first decide', () => {
+      expect(() => importTypesafePeers.resolve()).not.toThrow();
+      const model = typesafeJev({ apiKey: REPLAY_KEY });
+      expect(model.kinds.has('boolean')).toBe(true);
+    });
+
+    it('shares one import across concurrent decides and does not cache a failed import', async () => {
+      let loads = 0;
+      let failNext = true;
+      const flaky = {
+        resolve: () => undefined,
+        load: async () => {
+          loads += 1;
+          if (failNext) {
+            failNext = false;
+            throw missing;
+          }
+          return importTypesafePeers.load();
+        },
+      };
+      const fixtureFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        replayFetch(input, init)) as typeof fetch;
+      const model = createTypesafeJev({ apiKey: REPLAY_KEY, fetch: fixtureFetch }, flaky);
+      const request = decisionScenarios[0]!.request;
+
+      const failure = await model.decide(request).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(DecisionProviderUnavailableError);
+      expect(loads).toBe(1);
+
+      const [first, second] = await Promise.all([model.decide(request), model.decide(request)]);
+      expect(first.value).toBe(second.value);
+      expect(loads).toBe(2);
+    });
   });
 });
