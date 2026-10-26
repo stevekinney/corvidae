@@ -147,7 +147,7 @@ describe('bureau.agents.models for a file agent', () => {
     expect(result.selectable).toBe(true);
     expect(result.default).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' });
     expect(result.models.map((choice) => `${choice.provider}/${choice.model}`).toSorted()).toEqual(
-      served.bureau.modelCatalog
+      served.bureau.models
         .catalog()
         .descriptors.filter((row) => row.lifecycle !== 'retired')
         .map((row) => `${row.provider}/${row.model}`)

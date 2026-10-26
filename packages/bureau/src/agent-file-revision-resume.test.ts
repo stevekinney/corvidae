@@ -140,7 +140,7 @@ describe('a pending approval restored after a restart', () => {
     const bureau: Bureau = await createBureau<AgentDefinitions>({
       agents: {},
       agentDirectory: directory,
-      resolveAgentGenerate: () => async () => ({ content: 'ok', toolCalls: [] }),
+      models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
       storage,
       durableExecution: true,
       onDiagnostic: () => undefined,

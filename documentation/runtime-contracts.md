@@ -29,7 +29,7 @@ The native batch clients are intentionally provider-shaped: `createAnthropicBatc
 
 ## Selection plans and model policy
 
-`bureau.planSelection(request)` answers what the current Bureau would use without starting a run, refreshing the catalog, or dispatching an event. The caller supplies `agentName`, an optional `taskClassification`, an optional model/provider/route/effort `requestedValue`, and an optional `principal`. Bureau supplies the live catalog and policy revisions.
+`bureau.models.plan(request)` answers what the current Bureau would use without starting a run, changing the catalog, or dispatching an event. The caller supplies `agentName`, an optional `taskClassification`, an optional model/provider/route/effort `requestedValue`, and an optional `principal`. Bureau supplies the live catalog and policy revisions.
 
 The returned `SelectionPlan` is self-contained and frozen. Its fields are:
 
