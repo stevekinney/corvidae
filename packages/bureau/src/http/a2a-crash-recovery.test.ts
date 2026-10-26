@@ -87,6 +87,8 @@ type Service = {
   restart: () => void;
   /** A restart after the durable events were pruned: the run holds no history to read a reply from. */
   restartPruned: () => void;
+  /** A restart whose Bureau answers `locateRunCreationReceipt` as given, for a state a test cannot reach. */
+  restartLocating: (locate: () => Promise<unknown>) => void;
   claims: () => number;
   records: ReturnType<typeof createA2ATaskRecords>;
   bureau: Awaited<ReturnType<typeof openBureau>>['bureau'];
@@ -138,7 +140,7 @@ async function withService(
       pushNotifications: false,
     });
     /** A handler over the durable state only: the Bureau it reads holds no run of its own. */
-    const build = (restarted: boolean, pruned = false) =>
+    const build = (restarted: boolean, pruned = false, locate?: () => Promise<unknown>) =>
       createBureauA2ARequestHandler({
         publicUrl: 'http://localhost',
         agentName: 'asker',
@@ -146,6 +148,7 @@ async function withService(
         bureau: restarted
           ? Object.create(opened.bureau, {
               getRun: { value: () => undefined },
+              ...(locate === undefined ? {} : { locateRunCreationReceipt: { value: locate } }),
               ...(pruned
                 ? { eventHistory: { value: async () => ({ events: [], hasMore: false }) } }
                 : {}),
@@ -182,6 +185,9 @@ async function withService(
       },
       restart: () => {
         handler = build(true);
+      },
+      restartLocating: (locate) => {
+        handler = build(true, false, locate);
       },
       restartPruned: () => {
         handler = build(true, true);
@@ -273,6 +279,61 @@ describe('a command retried after a crash before its receipt, on a process that 
           offset: 0,
         });
         expect(listed.tasks.map((task) => task.id)).toEqual([retried.id]);
+      },
+    );
+  });
+
+  it('create with references, its run-creation receipt not started: the checks decide', async () => {
+    await withService(
+      async () => ({ content: 'done', toolCalls: [] }),
+      async (service) => {
+        const referenced = await service.start(userMessage('m-referenced', 'first'));
+        const message = Message.fromJSON({
+          messageId: 'm-pending-receipt',
+          taskId: '',
+          role: 'ROLE_USER',
+          parts: [{ text: 'second' }],
+          referenceTaskIds: [referenced.id],
+        });
+        service.crashNextComplete();
+        await rejectionOf(service.send(message));
+        await service.bureau.deleteRun(referenced.id);
+        // A receipt still `pending` names a run that never started, so there is no run to finish.
+        service.restartLocating(async () => ({
+          status: 'pending',
+          receipt: { runId: 'run-never-started', status: 'pending' },
+          sessionId: 'context-never-started',
+        }));
+
+        const error = await rejectionOf(service.send(message));
+
+        expect(String(error)).toContain('referenceTaskIds');
+      },
+    );
+  });
+
+  it('create with references, its receipt unlocatable: the checks decide', async () => {
+    await withService(
+      async () => ({ content: 'done', toolCalls: [] }),
+      async (service) => {
+        const referenced = await service.start(userMessage('m-referenced', 'first'));
+        const message = Message.fromJSON({
+          messageId: 'm-unlocatable',
+          taskId: '',
+          role: 'ROLE_USER',
+          parts: [{ text: 'second' }],
+          referenceTaskIds: [referenced.id],
+        });
+        service.crashNextComplete();
+        await rejectionOf(service.send(message));
+        await service.bureau.deleteRun(referenced.id);
+        service.restartLocating(async () => {
+          throw new Error('no receipts here');
+        });
+
+        const error = await rejectionOf(service.send(message));
+
+        expect(String(error)).toContain('referenceTaskIds');
       },
     );
   });

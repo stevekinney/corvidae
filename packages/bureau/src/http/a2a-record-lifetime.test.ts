@@ -85,7 +85,11 @@ async function withBureau(
   }
 }
 
-async function sendOn(handler: (request: Request) => Promise<Response>, text: string) {
+async function sendOn(
+  handler: (request: Request) => Promise<Response>,
+  text: string,
+  extra: Json = {},
+) {
   const response = await handler(
     new Request('http://localhost/a2a/asker', {
       method: 'POST',
@@ -98,7 +102,7 @@ async function sendOn(handler: (request: Request) => Promise<Response>, text: st
         jsonrpc: '2.0',
         id: 1,
         method: 'SendMessage',
-        params: { message: { ...message(text) } },
+        params: { message: message(text, extra) },
       }),
     }),
   );
@@ -151,41 +155,55 @@ describe('a task’s A2A record, when removing it fails', () => {
   });
 });
 
+describe('the start-up sweep', () => {
+  it('keeps the record of a task the store still holds', async () => {
+    await withBureau(async ({ bureau, handle }) => {
+      const live = await sendOn(handle(), 'still here');
+      const records = createA2ATaskRecords(bureau.kv as ConditionalTextValueStore);
+      // Sweeps list records in key order, so once this later key is gone the live one was examined.
+      await records.create({
+        recordVersion: 1,
+        taskId: 'zz-gone',
+        contextId: 'context-gone',
+        incarnation: 'incarnation-gone',
+        history: [],
+        replyRecorded: true,
+      });
+
+      handle();
+
+      await waitForCondition(
+        async () => (await records.read('zz-gone')) === undefined,
+        'the orphaned record was never swept',
+      );
+      const kept = await records.read(live.id);
+      expect(kept?.history.length).toBeGreaterThan(0);
+    });
+  });
+});
+
 describe('clearing a deleted context', () => {
   it('leaves the history of a context created again under the same id', async () => {
     await withBureau(async ({ bureau, handle }) => {
       const handler = handle();
       const before = await sendOn(handler, 'first life');
       await bureau.deleteSession(before.contextId);
-      const response = await handler(
-        new Request('http://localhost/a2a/asker', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'A2A-Version': '1.0',
-            'X-API-Key': 'alice-key',
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'SendMessage',
-            params: { message: message('second life', { contextId: before.contextId }) },
-          }),
-        }),
-      );
-      const rebornBody: Json = await response.json();
-      const reborn = rebornBody.result.task as { id: string };
+      const reborn = await sendOn(handler, 'second life', { contextId: before.contextId });
       const records = createA2ATaskRecords(bureau.kv as ConditionalTextValueStore);
       const born = await records.read(reborn.id);
       const earlier = await records.read(before.id);
-      expect(born?.incarnation).not.toBe('');
-      expect(earlier?.incarnation).not.toBe(born?.incarnation);
-      await waitForCondition(async () => {
-        const held = await records.read(before.id);
-        return held?.history.length === 0;
-      }, 'the deleted incarnation’s history was never cleared');
+      // Two real, different incarnations of one context id.
+      expect(earlier?.incarnation).toBeTruthy();
+      expect(born?.incarnation).toBeTruthy();
+      expect(born?.incarnation).not.toBe(earlier?.incarnation);
 
+      // The deleted incarnation's cleanup arriving after the context was created again, as a slow
+      // or retried cleanup does: it reaches the first life's task and not the second's.
+      await records.clearContext(before.contextId, earlier?.incarnation ?? '');
+
+      const cleared = await records.read(before.id);
       const kept = await records.read(reborn.id);
+      expect(cleared?.history).toEqual([]);
       expect(kept?.history).toHaveLength(2);
     });
   });

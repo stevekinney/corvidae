@@ -969,10 +969,12 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
-   * Whether the run-creation command of `message` already holds a run: a claim an earlier attempt
-   * left pending (its `records.create` or `ledger.complete` failed) is finished with the run it
-   * took, so the checks that guard a creation do not run again. A message that referenced a task
-   * removed since would otherwise be refused though its run exists.
+   * Whether the run-creation command of `message` already holds a started run: a claim an earlier
+   * attempt left pending (its `records.create` or `ledger.complete` failed) is finished with the
+   * run it took, so the checks that guard a creation do not run again. A message that referenced a
+   * task removed since would otherwise be refused though its run exists. The lookup records the
+   * receipt of a run it finds started, so a receipt still `pending` names a run that did not start:
+   * nothing exists to finish, and the checks decide.
    */
   async function holdsRun(message: Message, owner: Owner, version: string): Promise<boolean> {
     try {
@@ -982,7 +984,7 @@ export function createBureauA2ARequestHandler(
         ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
         runCreationRequestId: `a2a:${version}:${message.messageId}`,
       });
-      return located.status === 'recorded' || located.status === 'pending';
+      return located.status === 'recorded';
     } catch {
       // Not locatable (no receipts, a context another agent holds): the checks decide.
       return false;
