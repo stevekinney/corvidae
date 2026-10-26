@@ -48,7 +48,8 @@ function settleToolOutcome(context: ExecutionSettlementContext, hasLiveStream: b
   if (result.error) {
     context.emit('error', {
       tool: context.tool,
-      result,
+      // A failure that carries parts shows media's type, size, and identity, never its bytes.
+      result: redactToolResultMedia(result),
       executionId: context.executionId,
       ...(context.ownerId !== undefined ? { ownerId: context.ownerId } : {}),
     });

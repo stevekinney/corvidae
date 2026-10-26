@@ -3,9 +3,13 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { ClearScheduledTimeout, ScheduleTimeout, ToolConfiguration } from '../is-tool';
 import { isToolContent, toolContent, type ToolResultPart } from '../protocol';
 import {
+  containsBase64Data,
   createTruncatingAsyncIterable,
   DEFAULT_MAX_CHARACTERS,
+  DEFAULT_TRUNCATION_MARKER,
+  stripBase64Data,
   type ToolResultTruncationOptions,
+  truncateText,
   truncateToolResultContent,
 } from '../truncation/index';
 import { isAsyncIterable } from '../type-guards';
@@ -269,15 +273,11 @@ export function createTruncationMiddleware(options?: ToolResultTruncationOptions
         return truncateToolResultContent(result, options);
       }
 
-      // COR-792: a `toolContent` result's text is in its parts; each text part is truncated,
-      // and media parts pass through for the run's admission.
+      // COR-792: a `toolContent` result's text is in its parts; the text parts share one
+      // `maxCharacters` budget, and media parts pass through for the run's admission.
       if (isToolContent(result)) {
         return toolContent(
-          result.parts.map((part) =>
-            part.type === 'text'
-              ? { ...part, text: truncateToolResultContent(part.text, options) }
-              : part,
-          ),
+          truncatePartsWithinBudget(result.parts, options),
           result.value === undefined ? {} : { value: result.value },
         );
       }
@@ -380,6 +380,40 @@ export function createUntrustedOutputFencingMiddleware(
       ...(wrappedRawExecute ? { rawExecute: wrappedRawExecute } : {}),
     };
   };
+}
+
+/**
+ * Truncates a result's text parts against one shared budget, in order: each part spends what is
+ * left, the part that overflows ends in the marker, and any later text part is dropped. Media
+ * parts keep their place. A budget spent exactly by one part marks the cut with the next text part.
+ */
+function truncatePartsWithinBudget(
+  parts: readonly ToolResultPart[],
+  options: ToolResultTruncationOptions | undefined,
+): ToolResultPart[] {
+  const marker = options?.marker ?? DEFAULT_TRUNCATION_MARKER;
+  let remaining = options?.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
+  let state: 'open' | 'spent' | 'cut' = 'open';
+  return parts.flatMap((part): ToolResultPart[] => {
+    if (part.type !== 'text' || state === 'cut') return part.type === 'text' ? [] : [part];
+    if (state === 'spent') {
+      state = 'cut';
+      return [{ ...part, text: marker }];
+    }
+    const stripped = stripBase64Placeholders(part.text, options);
+    const text = truncateText(stripped, remaining, { marker });
+    remaining -= text.length;
+    if (text !== stripped) state = 'cut';
+    else if (remaining <= 0) state = 'spent';
+    return [{ ...part, text }];
+  });
+}
+
+function stripBase64Placeholders(
+  text: string,
+  options: ToolResultTruncationOptions | undefined,
+): string {
+  return containsBase64Data(text) ? stripBase64Data(text, options?.base64Placeholder) : text;
 }
 
 function fenceToolResult(result: unknown, options: Required<UntrustedOutputFencingOptions>) {
