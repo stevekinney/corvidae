@@ -309,6 +309,34 @@ describe('fallbacks that widen the selection', () => {
     ]);
   });
 
+  test('a file a test names by a bare or partial path reaches that test, not the workspace', () => {
+    const files = {
+      ...baseFiles,
+      'documentation/contracts.md': '# Contracts\n',
+      'packages/gamma/src/contract.test.ts':
+        "import { join } from 'node:path';\nconst file = join(import.meta.dir, '..', '..', '..', 'documentation', 'contracts.md');\nvoid file;\n",
+    };
+    const { selected, mode, selection } = select(files, ['documentation/contracts.md']);
+    expect(selected('@scope/gamma')).toEqual(['packages/gamma/src/contract.test.ts']);
+    expect(mode('@scope/alpha')).toBe('none');
+    expect(selection.repositoryRule).toBeNull();
+  });
+
+  test('a workspace with no code, such as the shared TypeScript bases, selects the repository', () => {
+    const configuration = workspace('@scope/typescript', 'internal/typescript', {
+      exports: { './base.json': './base.json' },
+      testScripts: [],
+    });
+    const files = { ...baseFiles, 'internal/typescript/base.json': '{}' };
+    const { selection, mode } = select(
+      files,
+      ['internal/typescript/base.json'],
+      [...everyWorkspace, configuration],
+    );
+    expect(selection.repositoryRule).toContain('internal/typescript/base.json');
+    expect(mode('@scope/gamma')).toBe('full');
+  });
+
   test('a snapshot selects the test it belongs to', () => {
     const files = {
       ...baseFiles,

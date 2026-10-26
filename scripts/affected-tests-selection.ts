@@ -255,6 +255,25 @@ export function selectTests(input: SelectionInput): Selection {
 
   const changedWorkspaces = new Set<string>();
   let documentationChanged = false;
+
+  // Literals name files by a trailing path or a bare name (`join(root, 'documentation', 'a.md')`),
+  // so a data file is also attributed to the code whose literal is its name or a tail of its path.
+  const literalsByName = new Map<string, { literal: string; file: string }[]>();
+  const workspacesWithCode = new Set<string>();
+  for (const [file, analysis] of analyses) {
+    if (isCodeFile(file)) workspacesWithCode.add(owningWorkspace(file, workspaces).directory);
+    for (const literal of analysis.pathLiterals) {
+      const tail = literal.replace(/^(?:\.{1,2}\/)+/, '');
+      const key = posix.basename(tail);
+      const list = literalsByName.get(key) ?? [];
+      list.push({ literal: tail, file });
+      literalsByName.set(key, list);
+    }
+  }
+  const filesNaming = (path: string): string[] =>
+    (literalsByName.get(posix.basename(path)) ?? [])
+      .filter(({ literal }) => path === literal || path.endsWith(`/${literal}`))
+      .map(({ file }) => file);
   for (const path of changed) {
     const workspace = owningWorkspace(path, workspaces);
     const rootLevel = workspace.directory === '';
@@ -263,6 +282,11 @@ export function selectTests(input: SelectionInput): Selection {
     seed(path, { kind: 'changed' });
 
     if (rootLevel && ROOT_CONFIGURATION.has(path)) widenRepository(`root configuration ${path}`);
+    if (!rootLevel && !workspacesWithCode.has(workspace.directory)) {
+      // Configuration every other workspace extends (the shared TypeScript bases) has no code and
+      // no tests of its own, so only the whole repository can observe it.
+      widenRepository(`${path} is in ${workspace.name}, which holds no code`);
+    }
     for (const [entrypoint, { scope, closure }] of entrypointClosures) {
       if (!closure.has(path)) continue;
       const via =
@@ -304,6 +328,11 @@ export function selectTests(input: SelectionInput): Selection {
       return;
     }
     if ((importers.get(path)?.size ?? 0) > 0) return;
+    const namedBy = filesNaming(path);
+    if (namedBy.length > 0) {
+      for (const file of namedBy) seed(file, { kind: 'fallback', rule: `${file} names ${path}` });
+      return;
+    }
     if (isDocumentation(path)) {
       documentationChanged = true;
       return;
@@ -327,13 +356,14 @@ export function selectTests(input: SelectionInput): Selection {
     else if (
       eligible &&
       analysis.scansFileSystem &&
-      (changedWorkspaces.has(workspace.directory) || documentationChanged)
+      (changedWorkspaces.has(workspace.directory) ||
+        (documentationChanged && (isTestFile(path) || /(?:^|\/)scripts\//.test(path))))
     ) {
       reason = 'reads the file system by glob or directory listing';
     } else if (unseen !== null) {
       const scope = dependencyScope(workspace, workspaces);
       const touched = [...changedWorkspaces].some((directory) => scope.has(directory));
-      if (touched || documentationChanged) reason = unseen;
+      if (touched || (documentationChanged && isTestFile(path))) reason = unseen;
     }
     if (reason !== null) seed(path, { kind: 'fallback', rule: `${path} ${reason}` });
   }
