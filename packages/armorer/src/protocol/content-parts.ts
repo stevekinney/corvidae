@@ -113,18 +113,54 @@ function sourceProblem(source: unknown): string | undefined {
   return undefined;
 }
 
+/** Whether `value` is JSON-serializable data. A repeated object on one path is a cycle, so it is not JSON. */
+function isJsonData(value: unknown, ancestors: Set<object> = new Set()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object' || ancestors.has(value)) return false;
+  ancestors.add(value);
+  const entries: unknown[] = Array.isArray(value) ? value : Object.values(value);
+  const valid = entries.every((entry) => isJsonData(entry, ancestors));
+  ancestors.delete(value);
+  return valid;
+}
+
+const OPTIONAL_STRING_FIELDS = [
+  'mimeType',
+  'name',
+  'alt',
+  'caption',
+  'transcript',
+  'extractedText',
+] as const;
+
+function mediaFieldProblem(part: Record<string, unknown>): string | undefined {
+  for (const field of OPTIONAL_STRING_FIELDS) {
+    if (part[field] !== undefined && typeof part[field] !== 'string') {
+      return `${field} must be a string`;
+    }
+  }
+  const metadata = part['metadata'];
+  if (metadata !== undefined && !(isRecord(metadata) && isJsonData(metadata))) {
+    return 'metadata must be an object of JSON values';
+  }
+  return undefined;
+}
+
 function partProblem(part: unknown): string | undefined {
   if (!isRecord(part)) return 'part must be an object';
   const type = part['type'];
-  if (type === 'text')
-    return typeof part['text'] === 'string' ? undefined : 'text must be a string';
+  if (type === 'text') {
+    if (typeof part['text'] !== 'string') return 'text must be a string';
+    const citations = part['citations'];
+    return citations === undefined || isJsonData(citations)
+      ? undefined
+      : 'citations must be a JSON value';
+  }
   if (typeof type !== 'string' || !MEDIA_TYPES.has(type)) {
     return `type ${JSON.stringify(type)} is not a tool-result part type`;
   }
-  if (part['mimeType'] !== undefined && typeof part['mimeType'] !== 'string') {
-    return 'mimeType must be a string';
-  }
-  return sourceProblem(part['source']);
+  return mediaFieldProblem(part) ?? sourceProblem(part['source']);
 }
 
 /**
@@ -195,6 +231,32 @@ export function isToolContent(value: unknown): value is ToolContent {
   return (
     isRecord(value) && value['kind'] === TOOL_CONTENT_KIND && isToolResultParts(value['parts'])
   );
+}
+
+// ── Tool errors that carry parts ────────────────────────────────────────
+
+const toolResultErrorContent = new WeakMap<ToolResultError, ToolContent>();
+
+/**
+ * An error a tool throws when its failure is itself ordered text and media,
+ * such as an MCP `isError` result with image or resource blocks. The error's
+ * `message` is the text for logs and the `ToolError`; the settled error result
+ * carries `content` as its `parts` (and `value` as its `content`), so the
+ * parts reach the model and an MCP client.
+ *
+ * The parts stay off the error's own properties, so logging or serializing an
+ * error, or an event that shows it, never prints the media bytes.
+ */
+export class ToolResultError extends Error {
+  constructor(message: string, content: ToolContent) {
+    super(message);
+    toolResultErrorContent.set(this, content);
+  }
+
+  /** The ordered parts, and the JSON value beside them, the failure carries. */
+  get content(): ToolContent {
+    return toolResultErrorContent.get(this)!;
+  }
 }
 
 // ── Redaction: what events, logs, and audit may show of a part ──────────

@@ -1,5 +1,7 @@
 export const DEFAULT_MAX_CHARACTERS = 8000;
 export const DEFAULT_ERROR_MAX_CHARACTERS = 400;
+/** The text that ends a truncated result unless the caller supplies a `marker`. */
+export const DEFAULT_TRUNCATION_MARKER = '\n\u2026(truncated)\u2026';
 
 export interface TruncationOptions {
   marker?: string;
@@ -69,7 +71,7 @@ export function truncateText(
 ): string {
   if (text.length <= maxCharacters) return text;
 
-  const marker = options?.marker ?? '\n…(truncated)…';
+  const marker = options?.marker ?? DEFAULT_TRUNCATION_MARKER;
 
   if (maxCharacters <= marker.length) {
     return safeSlice(text, maxCharacters);
@@ -100,7 +102,7 @@ export async function* createTruncatingAsyncIterable<T>(
   options?: { maxCharacters?: number; marker?: string },
 ): AsyncIterable<T | string> {
   const maxCharacters = options?.maxCharacters ?? DEFAULT_MAX_CHARACTERS;
-  const marker = options?.marker ?? '\n\u2026(truncated)\u2026';
+  const marker = options?.marker ?? DEFAULT_TRUNCATION_MARKER;
   let accumulated = 0;
 
   for await (const chunk of source) {

@@ -9,6 +9,7 @@ import type {
   ToolPolicyContext,
   ToolPolicyContextProvider,
 } from '../is-tool';
+import { ToolResultError } from '../protocol';
 import { providerCallIdField } from '../provider-call-id';
 import type { ToolCall, ToolExecutionResult } from '../types';
 import { createDeadlineError, isAbortRejection } from './cancellation';
@@ -315,10 +316,14 @@ function buildToolError(
 function errorResult(input: ErrorInput, toolError: ToolError): ToolExecutionResult {
   const callId = input.toolCall.id;
   const message = toolError.message;
+  // A failure that is itself parts (an MCP `isError` result with media) keeps them, with the JSON
+  // value beside them as `content`, the way a successful `toolContent` result splits.
+  const failure = input.error instanceof ToolResultError ? input.error.content : undefined;
   return {
     callId,
     outcome: 'error',
-    content: message,
+    content: failure === undefined ? message : (failure.value ?? null),
+    ...(failure === undefined ? {} : { parts: [...failure.parts] }),
     toolCallId: callId,
     ...providerCallIdField(input.toolCall),
     toolName: input.name,
