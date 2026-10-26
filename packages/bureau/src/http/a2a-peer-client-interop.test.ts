@@ -131,12 +131,10 @@ describe('the peer client against a Bureau A2A mount', () => {
 
         const outcome = await task.cancel('not needed');
 
-        // Bureau answers CancelTask once the cancel is requested, while the run is still stopping,
-        // so the client reports the cancel it made as unconfirmed; the task then does stop.
-        // COR-1713 fixes that: whoever does flips `cancelConfirmed` to true and drops `cancelError`.
+        // Bureau answers CancelTask once the run has stopped, so the client confirms the cancel.
         expect(outcome.state).toBe('canceled');
-        expect(outcome.cancelConfirmed).toBe(false);
-        expect(outcome.cancelError).toContain('working');
+        expect(outcome.cancelConfirmed).toBe(true);
+        expect(outcome.cancelError).toBeUndefined();
         await waitForCondition(async () => {
           const view = await opened.bureau.tasks.get(task.taskId);
           return view?.status === 'canceled';
