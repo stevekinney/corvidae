@@ -104,24 +104,28 @@ describe('Dashboard', () => {
     await waitFor(() => expect(getByText('Runs by status')).not.toBeNull());
     expect(getAllByText('9').length).toBeGreaterThan(0);
     expect(getByText('Recent activity')).not.toBeNull();
-    // Each status opens the runs list on a state it has, and a modified click is the browser's.
+    // Each status opens the engine's own run list on that status, in the engine's own word, and a
+    // modified click is the browser's. None goes to the Bureau's `/runs`.
     const targets: Readonly<Record<string, string>> = {
-      Running: '/runs?status=working',
-      Pending: '/runs?status=working',
-      Suspended: '/runs?status=working',
-      Completed: '/runs?status=completed',
-      Cancelled: '/runs?status=canceled',
-      Failed: '/runs?status=failed',
-      'Timed out': '/runs?status=failed',
+      Running: '/engine/runs?status=running',
+      Pending: '/engine/runs?status=pending',
+      Suspended: '/engine/runs?status=suspended',
+      Completed: '/engine/runs?status=completed',
+      Cancelled: '/engine/runs?status=cancelled',
+      Failed: '/engine/runs?status=failed',
+      'Timed out': '/engine/runs?status=timed-out',
     };
     for (const [label, target] of Object.entries(targets)) {
       expect(getByText(label).closest('a')?.getAttribute('href'), label).toBe(target);
     }
+    for (const link of document.querySelectorAll('a')) {
+      expect(link.getAttribute('href')?.startsWith('/runs?status='), link.outerHTML).toBe(false);
+    }
     const failed = getByText('Failed').closest('a') as HTMLAnchorElement;
-    expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/runs');
+    expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/engine/runs');
     expect(await fireEvent.click(failed, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(failed, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/runs');
+    expect(router.pathname).toBe('/engine/runs');
     expect(router.search.get('status')).toBe('failed');
     // The engine runs its work in-process, so no card counts remote workers, and failures are one
     // count among the statuses rather than a chart of their own.

@@ -24,7 +24,7 @@ function happyDomAPI(): DetachedWindowAPI {
   return window.happyDOM;
 }
 
-function resetLocation(path = '/runs'): void {
+function resetLocation(path = '/engine/runs'): void {
   happyDomAPI().setURL('http://localhost/');
   router.navigate(path, { replace: true });
 }
@@ -77,7 +77,7 @@ describe('WorkflowList', () => {
   // query-string navigation first keeps this file warning-free without
   // touching the frozen `router.svelte.ts` singleton.
   test('shows the "no workflows match" empty state when a filter is active and nothing matches', async () => {
-    resetLocation('/runs?status=failed');
+    resetLocation('/engine/runs?status=failed');
     fetchScript.routeUrl('/workflows', { items: [], total: 0, offset: 0, limit: 50 });
 
     const { findByText } = render(WorkflowListHarness, {
@@ -137,7 +137,7 @@ describe('WorkflowList', () => {
   });
 
   test('filtering from a later page requests and renders the first filtered page', async () => {
-    resetLocation('/runs?offset=50');
+    resetLocation('/engine/runs?offset=50');
     fetchScript.enqueueJson({
       items: [summary({ id: 'wf_later_page', type: 'later-page-workflow' })],
       total: 51,
@@ -166,6 +166,36 @@ describe('WorkflowList', () => {
       expect(requestUrl.searchParams.get('offset')).toBe('0');
       expect(requestUrl.searchParams.get('status')).toBe('failed');
     });
+  });
+
+  test('lists every type the engine holds in the status the address names, and stays at the engine list', async () => {
+    resetLocation('/engine/runs?status=failed');
+    fetchScript.routeUrl('/workflows', {
+      items: [
+        summary({ id: 'wf_failed_a', type: 'payment-failing', status: 'failed' }),
+        summary({ id: 'wf_failed_b', type: 'order-processing', status: 'failed' }),
+      ],
+      total: 2,
+      offset: 0,
+      limit: 50,
+    });
+
+    const { findByText, getByRole } = render(WorkflowListHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    expect(await findByText('payment-failing')).not.toBeNull();
+    expect(await findByText('order-processing')).not.toBeNull();
+    expect(getByRole('heading', { level: 1 }).textContent).toBe('Engine runs');
+    const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
+    expect(requestUrl.searchParams.get('status')).toBe('failed');
+    expect(requestUrl.searchParams.get('type')).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: 'Completed' }));
+    await waitFor(() =>
+      expect(router.search.getAll('status').sort()).toEqual(['completed', 'failed']),
+    );
+    expect(router.pathname).toBe('/engine/runs');
   });
 
   test('shows the "no workflows yet" empty state when the list is empty and no filter is active', async () => {
