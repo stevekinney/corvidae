@@ -961,41 +961,6 @@ export function wireFlowControlSchedulerEvents(
 }
 
 /**
- * COR-1662 — a scheduler task ends: settle the reference that tied it to its agent file's
- * definition, so the snapshot is held for task retention like a run-store run's and then pruned.
- * A completed, failed, or cancelled task, and one preempted and not requeued, is over; a requeued
- * one is not, and keeps its reference for the next attempt. Nothing else settles it: a task has no
- * engine record under its own id, so reconcile reads it as an unstarted run, and without a durable
- * engine reads it as active for as long as the process runs.
- */
-export function wireSchedulerAgentSnapshotSettlement(
-  scheduler: FlowControlScheduler | undefined,
-  fileAgents: Pick<FileAgentRuntime, 'settleRun'> | undefined,
-): Array<() => void> {
-  if (scheduler === undefined || fileAgents === undefined) return [];
-  const settleRun = (taskId: string) => detachBestEffortPromise(fileAgents.settleRun(taskId));
-  const settleEnded = (event: Event) => {
-    settleRun(
-      (event as SchedulerTaskCompletedEvent | SchedulerTaskFailedEvent | TaskCancelledEvent).taskId,
-    );
-  };
-  const settlePreempted = (event: Event) => {
-    const preempted = event as TaskPreemptedEvent;
-    if (!preempted.requeued) settleRun(preempted.taskId);
-  };
-  const listeners: ReadonlyArray<readonly [string, EventListener]> = [
-    [SchedulerTaskCompletedEvent.type, settleEnded],
-    [SchedulerTaskFailedEvent.type, settleEnded],
-    [TaskCancelledEvent.type, settleEnded],
-    [TaskPreemptedEvent.type, settlePreempted],
-  ];
-  return listeners.map(([eventType, listener]) => {
-    scheduler.addEventListener(eventType, listener);
-    return () => scheduler.removeEventListener(eventType, listener);
-  });
-}
-
-/**
  * Discriminates *why* a `BureauError` with code `NOT_CONFIGURED` was thrown.
  * `NOT_CONFIGURED` alone is not enough for a consumer to decide an HTTP status:
  * some subjects mean "this deployment does not compose that capability at all"
@@ -5070,12 +5035,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     flowController === undefined || runtime.scheduler === undefined
       ? []
       : wireFlowControlSchedulerEvents(runtime.scheduler, flowController);
-
-  // COR-1662 — a scheduler task's definition reference is settled when the task ends.
-  const schedulerSnapshotCleanup = wireSchedulerAgentSnapshotSettlement(
-    runtime.scheduler,
-    fileAgents,
-  );
 
   function requireSessionStore(): SessionStore {
     if (!runtime.sessionStore) {
@@ -9959,7 +9918,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
     };
 
-    detachBestEffortPromise(runtime.scheduler.submit(task));
+    // COR-1662 — the reference that pins the definition is settled when the task itself ends, not on
+    // an event: with durable execution a `task.failed` can come from a suspend write that failed
+    // while the task goes on, and a task preempted and requeued is not over. `submit` settles once,
+    // when the task has run to its end, is cancelled, or is discarded, and held for task retention
+    // from then like a run-store run's reference. `settleRun` never rejects.
+    const settleReference = (): void => {
+      detachBestEffortPromise(fileAgents?.settleRun(taskId) ?? Promise.resolve());
+    };
+    detachBestEffortPromise(runtime.scheduler.submit(task).then(settleReference, settleReference));
 
     return Promise.resolve({
       taskId,
@@ -17551,9 +17518,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             disposeListener();
           }
           for (const disposeListener of flowControlSchedulerCleanup) {
-            disposeListener();
-          }
-          for (const disposeListener of schedulerSnapshotCleanup) {
             disposeListener();
           }
           emitter.complete();

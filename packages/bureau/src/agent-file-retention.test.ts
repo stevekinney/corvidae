@@ -130,6 +130,44 @@ describe('snapshot retention', () => {
     expect(await revisionCount(harness)).toBe(0);
   });
 
+  it('keeps the pin of a task that is still running past task retention, and runs retention from the end of the task (COR-1662)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const harness = await start({ scheduler: { enabled: true, idleDelay: 1 } }, async () => {
+      entered();
+      await gate;
+      return 'finished';
+    });
+    const { bureau, runtime, at } = harness;
+    const task = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' });
+    await started;
+
+    // Not over, so not settled, whatever the scheduler has emitted about it meanwhile (with durable
+    // execution a `task.failed` can come from a suspend write that failed while the task goes on,
+    // as operative's durable-preemption test shows): the pin follows the task's own end.
+    at(30 * DAY_MS + 1);
+    await bureau.runDurableMaintenance();
+    expect(await revisionCount(harness)).toBe(1);
+
+    // It settles when the task ends, and the retention window runs from then, not from any event.
+    release();
+    await bureau.awaitSchedulerTask(task.taskId);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await runtime.deferred.drain();
+    at(30 * DAY_MS + 1 + DAY_MS);
+    await bureau.runDurableMaintenance();
+    expect(await revisionCount(harness)).toBe(1);
+    at(60 * DAY_MS + 2);
+    await bureau.runDurableMaintenance();
+    expect(await revisionCount(harness)).toBe(0);
+  });
+
   it('keeps the snapshot of a scheduler task that waits in the queue past the unstarted-run grace (COR-1662)', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
